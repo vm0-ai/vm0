@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   chatSearchContract,
@@ -20,6 +20,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import {
   agentsByIdContract,
   type AgentResponse,
@@ -54,7 +55,7 @@ import {
 // can drive it. Keyboard events on a detached editor are silently dropped.
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");
@@ -227,8 +228,7 @@ function mockChatThreadSnapshot(
     return [];
   },
   targetContext = context,
-): { readonly responseReturned: Promise<void> } {
-  const responseReturned = targetContext.mocks.deferred<void>();
+): void {
   targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
     const response = respond(200, {
@@ -250,12 +250,12 @@ function mockChatThreadSnapshot(
           selectedModel: null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedVideoModel: null,
         };
       }),
       latestEventId: null,
       latestSeqId: null,
     });
-    responseReturned.resolve();
     return response;
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -271,7 +271,17 @@ function mockChatThreadSnapshot(
       ),
     });
   });
-  return { responseReturned: responseReturned.promise };
+  targetContext.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+  targetContext.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
 }
 
 function mockUnreadAgents(
@@ -566,18 +576,28 @@ function chatListNewChatButton(): HTMLElement {
   return within(actions).getByLabelText("New chat");
 }
 
+function mockSidebarViewport(height: number, scrollHeight: number): void {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function (this: HTMLElement): number {
+      return this.dataset.testid === "sidebar-scroll-area" ? height : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function (this: HTMLElement): number {
+      return this.dataset.testid === "sidebar-scroll-area" ? scrollHeight : 0;
+    },
+  );
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
   activeThreadIds: readonly string[] = [],
   targetContext = context,
-): {
-  threads: SidebarThread[];
-  snapshotResponseReturned: Promise<void>;
-} {
+): { threads: SidebarThread[] } {
   let threads = [...firstPageThreads];
 
-  const { responseReturned: snapshotResponseReturned } = mockChatThreadSnapshot(
+  mockChatThreadSnapshot(
     () => {
       return [...threads, ...extraThreads];
     },
@@ -635,10 +655,10 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads, snapshotResponseReturned };
+  return { threads };
 }
 
-test("Browse a long sidebar chat history", async () => {
+function mockLongSidebarHistory(): void {
   prepareDefaultAgent();
   const overflowThreads = Array.from({ length: 23 }, (_, index) => {
     return createThread(
@@ -646,31 +666,26 @@ test("Browse a long sidebar chat history", async () => {
       `Refresh overflow ${index + 1}`,
     );
   });
-  mockSidebarThreadStory(
-    [
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ],
-    [...overflowThreads, createThread(ARCHIVED_THREAD_ID, "Archived context")],
-  );
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ...overflowThreads,
+    createThread(ARCHIVED_THREAD_ID, "Archived context"),
+  ]);
+}
 
-  await setupSidebarPage({
-    context,
-    path: `/chats/${EXISTING_THREAD_ID}`,
-  });
-
+async function scrollToArchivedContext(): Promise<HTMLElement> {
   await waitFor(() => {
     expect(
       within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
     ).toBeInTheDocument();
+    expect(
+      within(sidebar()).getAllByTestId("sidebar-chat-thread-virtual-row"),
+    ).toHaveLength(14);
   });
 
   const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-  Object.defineProperties(scrollArea, {
-    clientHeight: { configurable: true, value: 200 },
-    scrollHeight: { configurable: true, value: 1000 },
-    scrollTop: { configurable: true, value: 780, writable: true },
-  });
+  scrollArea.scrollTop = 780;
   fireEvent.scroll(scrollArea);
 
   await waitFor(() => {
@@ -678,7 +693,32 @@ test("Browse a long sidebar chat history", async () => {
   });
   expect(within(sidebar()).queryByText("Release plan")).toBeNull();
   expect(within(sidebar()).queryByText("Load more")).not.toBeInTheDocument();
+  return scrollArea;
+}
 
+test("Browse a long sidebar chat history", async () => {
+  mockLongSidebarHistory();
+  mockSidebarViewport(200, 1000);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  const scrollArea = await scrollToArchivedContext();
+  expect(scrollArea).toBeInTheDocument();
+});
+
+test("Refresh a long sidebar after deleting an offscreen chat", async () => {
+  mockLongSidebarHistory();
+  mockSidebarViewport(200, 1000);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const scrollArea = await scrollToArchivedContext();
   openThreadMenu("Archived context");
   click(menuItemByText("Delete chat"));
   const dialog = await screen.findByRole("dialog", {
@@ -962,7 +1002,7 @@ test("Find conversations by title in workspace search", async () => {
         name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
-    expect(document.title).toBe("Support escalation | VM0");
+    expect(document.title).toBe("Support escalation | Okou");
   });
 });
 
@@ -1037,15 +1077,10 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponse = context.mocks.deferred<void>();
   const draftRequestStarted = context.mocks.deferred<void>();
   const draftResponseReturned = context.mocks.deferred<void>();
-  const indicatorRequestStarted = context.mocks.deferred<void>();
-
-  const { snapshotResponseReturned } = mockSidebarThreadStory([
+  mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
-    if (!indicatorRequestStarted.settled()) {
-      indicatorRequestStarted.resolve();
-    }
     await indicatorResponse.promise;
     return respond(200, { agents: {}, threads: {} });
   });
@@ -1063,10 +1098,6 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   });
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-  await Promise.all([
-    snapshotResponseReturned,
-    indicatorRequestStarted.promise,
-  ]);
 
   await waitFor(() => {
     expect(
@@ -1139,7 +1170,7 @@ test("Mount only the sidebar for the current viewport", async () => {
   expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
 });
 
-test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
+test("Keep pin management usable with many pinned agents", async () => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents();
   const preferencesGate = context.mocks.deferred<void>();
   context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
@@ -1173,7 +1204,6 @@ test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: large },
   });
 
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
@@ -1209,22 +1239,17 @@ test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
   if (!pinAgent) {
     throw new Error("Pin agent button not found");
   }
-  // Pin closes the first row at either avatar size; remaining agents wrap.
-  const beforePin = pinnedAgentLink(
-    grid,
-    large ? "Research Agent" : "Operations Agent",
-  );
-  const afterPin = pinnedAgentLink(
-    grid,
-    large ? "Support Agent" : "Analytics Agent",
-  );
+  // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+  // Billing, so Pin closes the first row and the rest wrap after it.
+  const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
+  const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
 
   expect(
-    beforePin.compareDocumentPosition(pinAgent) &
+    fourthAgent.compareDocumentPosition(pinAgent) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(
-    pinAgent.compareDocumentPosition(afterPin) &
+    pinAgent.compareDocumentPosition(fifthAgent) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
@@ -1632,15 +1657,6 @@ test("Mark conversations read and unread from the sidebar", async () => {
       );
     },
   );
-  context.mocks.api(browserContract.get, ({ respond }) => {
-    return respond(404, {
-      error: {
-        code: "BROWSER_NOT_FOUND",
-        message: "Managed browser not found",
-      },
-    });
-  });
-
   await setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
   await waitFor(() => {
@@ -1830,7 +1846,7 @@ test("Open and use workspace search with the keyboard", async () => {
         name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
-    expect(document.title).toBe("Support escalation | VM0");
+    expect(document.title).toBe("Support escalation | Okou");
   });
 });
 
@@ -2418,11 +2434,7 @@ test("Search, pin, and open an agent from the pin manager", async () => {
     return [researchThread];
   });
 
-  await setupSidebarPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: true },
-  });
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
   const grid = await screen.findByTestId("pinned-agents-grid");
   click(screen.getByLabelText("Pin an agent"));
@@ -2512,7 +2524,6 @@ test("Search workspace chats and messages", async () => {
               },
             ]
           : [],
-      hasMore: false,
     });
   });
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
@@ -2668,7 +2679,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
     }),
   ]);
   context.mocks.api(chatSearchContract.search, ({ respond }) => {
-    return respond(200, { results: [], hasMore: false });
+    return respond(200, { results: [] });
   });
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
     return respond(200, { artifacts: [], nextCursor: null });
@@ -2870,7 +2881,7 @@ test("Show the three-column chat navigation and actions", async () => {
   const list = screen.getByTestId("chat-list-column");
   expect(within(list).getByText("Chat")).toBeInTheDocument();
   const searchButton = within(list).getByLabelText("Search workspace");
-  const chatThreadsTitle = within(list).getByText("Chats with Zero");
+  const chatThreadsTitle = within(list).getByText("Chats with Okou");
   if (!searchButton.parentElement || !chatThreadsTitle.parentElement) {
     throw new Error("Chat action headers not found");
   }

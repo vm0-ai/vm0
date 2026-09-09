@@ -1,0 +1,24 @@
+[package]
+name = "guest-control-server"
+version = "0.20.5"
+edition.workspace = true
+
+[dependencies]
+chrono = { workspace = true, features = ["std"] }
+guest-contracts.workspace = true
+process-control-ipc.workspace = true
+libc = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
+uuid = { workspace = true, features = ["std", "v4"] }
+shell-quote.workspace = true
+guest-control-proto.workspace = true
+
+[features]
+# Enables local integration-test hooks. Do not enable for production guest binaries.
+test-support = []
+
+[dev-dependencies]
+tempfile = { workspace = true, features = ["getrandom"] }
+
+[lints]
+workspace = true

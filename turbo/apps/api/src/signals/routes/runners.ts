@@ -1,3 +1,9 @@
+import { dispatchGoalRetirementEffects$ } from "../services/goal-retirement-effects.service";
+import {
+  retirePendingGoalRunInTransaction,
+  type RetiredGoalRun,
+} from "../services/goal-retirement.service";
+import { clerk$ } from "../external/clerk";
 import { command } from "ccstate";
 import {
   claimCompatibleStoredExecutionContextSchema,
@@ -35,6 +41,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   runnerState,
@@ -47,7 +54,6 @@ import {
   eq,
   gt,
   inArray,
-  isNotNull,
   lt,
   lte,
   notInArray,
@@ -88,7 +94,10 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
-import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
+import {
+  dispatchCompleteSideEffects$,
+  drainOrgQueue$,
+} from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
 import { reportBuiltInModelProviderFailure } from "../services/built-in-model-provider-failure.service";
@@ -827,7 +836,7 @@ interface ClaimedRun {
   readonly id: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentId: string;
+  readonly agentId: string | null;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
   readonly vars: unknown;
@@ -918,24 +927,36 @@ async function getClaimableJob(
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         vars: agentRuns.vars,
       },
+      maintenanceRunId: piMemoryPhase2Jobs.maintenanceRunId,
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .leftJoin(
+      piMemoryPhase2Jobs,
+      and(
+        eq(piMemoryPhase2Jobs.maintenanceRunId, agentRuns.id),
+        eq(piMemoryPhase2Jobs.orgId, agentRuns.orgId),
+        eq(piMemoryPhase2Jobs.userId, agentRuns.userId),
+        eq(piMemoryPhase2Jobs.status, "leased"),
+      ),
+    )
     .where(
       and(
         eq(runnerJobQueue.runId, runId),
         gt(runnerJobQueue.expiresAt, sql`now()`),
-        isNotNull(agentSessions.agentId),
       ),
     )
     .limit(1);
   signal.throwIfAborted();
 
-  if (jobWithRun?.run.agentId) {
+  if (
+    jobWithRun &&
+    (jobWithRun.run.agentId !== null || jobWithRun.maintenanceRunId === runId)
+  ) {
     return {
-      ...jobWithRun,
-      run: { ...jobWithRun.run, agentId: jobWithRun.run.agentId },
+      job: jobWithRun.job,
+      run: jobWithRun.run,
     };
   }
   return notFound("Job not found in queue");
@@ -1154,7 +1175,10 @@ async function transitionClaimedJobToRunning(
   runnerAttribution: RunnerClaimAttribution | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
+): Promise<
+  | ClaimTransitionResult
+  | { readonly status: "retired"; readonly run: RetiredGoalRun }
+> {
   const query = buildClaimTransitionSql(
     runId,
     runnerAttribution?.runnerIdentity.runnerId ?? null,
@@ -1163,6 +1187,10 @@ async function transitionClaimedJobToRunning(
     runnerAttribution?.runnerVersion ?? null,
   );
   return await db.transaction(async (tx) => {
+    const retired = await retirePendingGoalRunInTransaction(tx, runId);
+    if (retired) {
+      return { status: "retired" as const, run: retired };
+    }
     const result = await timing.measure(
       "claim_route_transition_execute",
       "nested",
@@ -1385,6 +1413,7 @@ async function refreshClaimNetworkPolicies(args: {
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
   const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
+  assertClaimConnectorIdentity(args.run, args.storedContext);
   if (Object.keys(storedNetworkPolicies).length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
@@ -1409,6 +1438,11 @@ async function refreshClaimNetworkPolicies(args: {
         },
         path: "no_builtin_targets",
       };
+    }
+    if (args.run.agentId === null) {
+      throw new Error(
+        "Connector network policy refresh requires an Agent identity",
+      );
     }
 
     const scope = {
@@ -1495,6 +1529,20 @@ async function refreshClaimNetworkPolicies(args: {
       path: selected.path,
     };
   });
+}
+
+function assertClaimConnectorIdentity(
+  run: ClaimedRun,
+  storedContext: StoredExecutionContext,
+): void {
+  if (
+    run.agentId === null &&
+    storedContext.connectorRuntimeTargets.length > 0
+  ) {
+    throw new Error(
+      "Private Pi memory maintenance run cannot use connector runtime targets",
+    );
+  }
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -2466,6 +2514,8 @@ async function resolveStoredExecutionContextForClaim(
     cliAgentType: storedContextResult.data.cliAgentType,
     modelConfig: storedContextResult.data.piModelConfig,
     capabilities: args.capabilities,
+    environment: storedContextResult.data.environment,
+    firewalls: storedContextResult.data.firewalls,
   });
   if (piModelConfigResolution.status === "unsupported") {
     return {
@@ -2491,6 +2541,13 @@ async function resolveStoredExecutionContextForClaim(
     }),
   };
 }
+
+const finishRetiredGoalClaim$ = command(
+  async ({ set }, run: RetiredGoalRun, signal: AbortSignal): Promise<void> => {
+    await set(dispatchGoalRetirementEffects$, run, signal);
+    await set(drainOrgQueue$, { orgId: run.orgId }, signal);
+  },
+);
 
 const claimAuthorizedJob$ = command(
   async (
@@ -2580,6 +2637,16 @@ const claimAuthorizedJob$ = command(
         );
       },
     );
+    if (signal.aborted) {
+      L.debug("Runner claim request aborted after committed transition", {
+        runId,
+      });
+    }
+    if (claimResult.status === "retired") {
+      const committedSignal = new AbortController().signal;
+      waitUntil(set(finishRetiredGoalClaim$, claimResult.run, committedSignal));
+      return notFound("Job not found in queue");
+    }
     signal.throwIfAborted();
     if (claimResult.status !== "claimed") {
       return claimTransitionErrorResponse(claimResult);
@@ -2711,12 +2778,26 @@ const modelProviderFailureInner$ = command(
     });
     signal.throwIfAborted();
     if (transition.outcome === "recorded" && transition.cooldown) {
-      L.error("Built-in model provider failure report recorded", {
-        type: "built_in_model_provider_cooldown",
-        runId,
-        ...transition.cooldown,
-        unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
-      });
+      const logLevels = {
+        authentication: "warn",
+        billing: "warn",
+        rate_limit: "info",
+        provider_unavailable: "info",
+        timeout: "info",
+        connection: "info",
+      } as const satisfies Record<
+        typeof transition.cooldown.failureKind,
+        "info" | "warn"
+      >;
+      L[logLevels[transition.cooldown.failureKind]](
+        "Built-in model provider failure report recorded",
+        {
+          type: "built_in_model_provider_cooldown",
+          runId,
+          ...transition.cooldown,
+          unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
+        },
+      );
     }
     return { status: 200 as const, body: { outcome: transition.outcome } };
   },
@@ -2878,6 +2959,7 @@ const reserveActiveInputsInner$ = command(
     }
     const result = await reserveActiveInputDelivery(
       set(writeDb$),
+      get(clerk$),
       {
         runId,
         userId: auth.userId,

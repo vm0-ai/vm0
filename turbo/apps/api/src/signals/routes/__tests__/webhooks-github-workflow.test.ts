@@ -648,13 +648,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       }
 
       const deliveryId = `delivery-${randomUUID()}`;
-      const webhookPublicBrand: PublicBrand =
-        testCase.event === "pull_request" ? "okou" : "vm0";
       const response = await postGithubWebhook({
         event: testCase.event,
         deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
-        publicBrand: webhookPublicBrand,
+        publicBrand: "okou",
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();
@@ -684,7 +682,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       if (!okouToken) {
         throw new Error("Expected the webhook run to expose OKOU_TOKEN");
       }
-      expect(verifyOkouToken(okouToken)?.publicBrand).toBe(webhookPublicBrand);
       expect(claim.prompt).toContain(
         `Summary: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
       );
@@ -700,7 +697,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
   );
 
   it("preserves Okou branding through delayed queue drain and failure callback", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { fixture, actor, agentId, workflowId } = await setupFixture();
     const installed = await gh.installGithubApp(actor, agentId);
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
@@ -769,7 +766,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!okouToken) {
       throw new Error("Expected the drained run to expose OKOU_TOKEN");
     }
-    expect(verifyOkouToken(okouToken)?.publicBrand).toBe("okou");
 
     await webhooksApi.requestAgentComplete(
       {
@@ -790,7 +786,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected the drained Okou run failure callback");
     }
     expect(failed.error).toContain("https://app.okou.ai/?settings=model");
-    expect(failed.error).not.toContain("https://app.vm0.ai/?settings=model");
   });
 
   it.each([
@@ -899,12 +894,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       if (!okouToken) {
         throw new Error("Expected the GitHub chat run to expose OKOU_TOKEN");
       }
-      expect(verifyOkouToken(okouToken)?.publicBrand).toBe("okou");
     },
   );
 
   it("preserves Okou branding when queued GitHub chat dispatch fails", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { actor, agentId, workflowId } = await setupFixture();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped GitHub dispatch-failure actor");
@@ -979,7 +973,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(postedComments[0]).toMatch(
       /https:\/\/app\.okou\.ai\/activities\/[0-9a-f-]+/u,
     );
-    expect(postedComments[0]).not.toContain("https://app.vm0.ai/activities/");
   });
 
   it("validates pull request review actions before dispatching", async () => {

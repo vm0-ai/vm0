@@ -27,24 +27,35 @@ def test_join_and_raise_propagates_worker_assertion_with_traceback():
     assert not thread.is_alive()
 
 
-def test_raise_if_failed_reports_completed_worker_failure_without_joining_first():
-    finished = threading.Event()
+def test_raise_if_failed_reports_completed_worker_failure():
+    target_signaled = threading.Event()
+    release = threading.Event()
 
     def fail_then_signal() -> None:
         try:
             raise RuntimeError("worker failed")
         finally:
-            finished.set()
+            target_signaled.set()
+            release.wait()
 
     thread = ThreadUnderTest(target=fail_then_signal)
-    thread.start()
-    assert finished.wait(timeout=1)
-
-    with pytest.raises(RuntimeError, match="worker failed"):
+    try:
+        thread.start()
+        assert target_signaled.wait(timeout=1)
+        assert thread.is_alive()
+        # The target has signaled, but the wrapper has not captured its failure.
         thread.raise_if_failed()
 
-    thread.join(timeout=1)
-    assert not thread.is_alive()
+        release.set()
+        thread.join(timeout=1)
+        assert not thread.is_alive()
+
+        with pytest.raises(RuntimeError, match="worker failed"):
+            thread.raise_if_failed()
+    finally:
+        release.set()
+        thread.join(timeout=1)
+        assert not thread.is_alive()
 
 
 def test_wait_for_event_raises_worker_failure_before_timeout_message():
@@ -70,29 +81,40 @@ def test_wait_for_event_raises_worker_failure_before_timeout_message():
 
 def test_wait_for_event_raises_worker_failure_even_when_event_is_set():
     event = threading.Event()
-    finished = threading.Event()
+    target_signaled = threading.Event()
+    release = threading.Event()
 
     def signal_then_fail() -> None:
         try:
             event.set()
             raise RuntimeError("worker failed after event")
         finally:
-            finished.set()
+            target_signaled.set()
+            release.wait()
 
     thread = ThreadUnderTest(target=signal_then_fail)
-    thread.start()
-    assert finished.wait(timeout=1)
+    try:
+        thread.start()
+        assert target_signaled.wait(timeout=1)
+        assert thread.is_alive()
+        # An already-set event does not imply the worker failure is published.
+        wait_for_event(event, timeout=1, threads=(thread,))
 
-    with pytest.raises(RuntimeError, match="worker failed after event"):
-        wait_for_event(
-            event,
-            timeout=1,
-            threads=(thread,),
-            message="event was not signaled",
-        )
+        release.set()
+        thread.join(timeout=1)
+        assert not thread.is_alive()
 
-    thread.join(timeout=1)
-    assert not thread.is_alive()
+        with pytest.raises(RuntimeError, match="worker failed after event"):
+            wait_for_event(
+                event,
+                timeout=1,
+                threads=(thread,),
+                message="event was not signaled",
+            )
+    finally:
+        release.set()
+        thread.join(timeout=1)
+        assert not thread.is_alive()
 
 
 def test_join_and_raise_propagates_pytest_outcome_failures():

@@ -10,6 +10,7 @@ export interface HostedSiteManifestFile {
 
 export interface HostedSiteManifest {
   readonly version: 1;
+  readonly access?: "owner-private-v1";
   readonly publicBrand?: PublicBrand;
   readonly deploymentId: string;
   readonly siteId: string;

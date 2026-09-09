@@ -173,50 +173,59 @@ test("Disabling touch selection removes an active selection and restores native 
   expect(feedbackItems()[0]).toHaveTextContent("launch plan");
 });
 
-test("Touch selection survives release and quotes an adjusted range without a native selection", async () => {
-  const sends: CapturedChatSend[] = [];
-  mockTouchLayout(PASSAGE);
-  installCapabilityChat({
-    events: completedConversation(PASSAGE),
-    onSend(send) {
-      sends.push(send);
-    },
-  });
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
-  });
-  await readyChat();
-  const passage = await screen.findByText(PASSAGE);
+test.each([false, true])(
+  "Touch selection survives release and quotes an adjusted range with desktop selection %s",
+  async (desktopSelection) => {
+    const sends: CapturedChatSend[] = [];
+    mockTouchLayout(PASSAGE);
+    installCapabilityChat({
+      events: completedConversation(PASSAGE),
+      onSend(send) {
+        sends.push(send);
+      },
+    });
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTouchSelection]: true,
+        [FeatureSwitchKey.ChatDesktopSelection]: desktopSelection,
+      },
+    });
+    await readyChat();
+    const passage = await screen.findByText(PASSAGE);
 
-  await longPress(passage, PASSAGE.indexOf("launch") + 1);
+    await longPress(passage, PASSAGE.indexOf("launch") + 1);
 
-  expect(window.getSelection()?.toString()).toBe("");
-  expect(fireEvent.contextMenu(passage)).toBeFalsy();
-  expect(fireEvent.click(passage, { detail: 1 })).toBeFalsy();
-  await expect(findButton("Quote")).resolves.toBeVisible();
+    expect(window.getSelection()?.toString()).toBe("");
+    expect(fireEvent.contextMenu(passage)).toBeFalsy();
+    expect(fireEvent.click(passage, { detail: 1 })).toBeFalsy();
+    await expect(findButton("Quote")).resolves.toBeVisible();
 
-  const endHandle = screen.getByLabelText("Adjust selection end");
-  fireEvent.pointerDown(endHandle, touchAt(PASSAGE.indexOf(" plan")));
-  fireEvent.pointerMove(endHandle, touchAt(PASSAGE.indexOf(" has")));
-  fireEvent.pointerUp(endHandle, touchAt(PASSAGE.indexOf(" has")));
-  await quoteSelectedPassage();
+    const endHandle = screen.getByLabelText("Adjust selection end");
+    fireEvent.pointerDown(endHandle, touchAt(PASSAGE.indexOf(" plan")));
+    fireEvent.pointerMove(endHandle, touchAt(PASSAGE.indexOf(" has")));
+    fireEvent.pointerUp(endHandle, touchAt(PASSAGE.indexOf(" has")));
+    await quoteSelectedPassage();
 
-  expect(feedbackItems()[0]).toHaveTextContent("launch plan");
-  expect(
-    screen.queryByLabelText("Adjust selection end"),
-  ).not.toBeInTheDocument();
-  click(await findButton("Send"));
-  const sent = await waitForSend(sends, 1);
-  expect(sent.userMessage?.parts).toContainEqual(
-    expect.objectContaining({
-      type: "feedback",
-      quote: "launch plan",
-      range: { start: PASSAGE.indexOf("launch"), end: PASSAGE.indexOf(" has") },
-    }),
-  );
-});
+    expect(feedbackItems()[0]).toHaveTextContent("launch plan");
+    expect(
+      screen.queryByLabelText("Adjust selection end"),
+    ).not.toBeInTheDocument();
+    click(await findButton("Send"));
+    const sent = await waitForSend(sends, 1);
+    expect(sent.userMessage?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "feedback",
+        quote: "launch plan",
+        range: {
+          start: PASSAGE.indexOf("launch"),
+          end: PASSAGE.indexOf(" has"),
+        },
+      }),
+    );
+  },
+);
 
 test.each(["button", "keyboard"])(
   "Touch copy via %s segments Chinese text with the standard caret API",

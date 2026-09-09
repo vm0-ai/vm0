@@ -6,20 +6,24 @@ const SHARED_THREAD_PATH =
 const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
 const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
-const APP_BOOTSTRAP_API_PATH = "/api/bootstrap";
+const APP_API_PREFETCH_PATHS = [
+  "/api/feature-switches",
+  "/api/user-preferences",
+  "/api/onboarding/status",
+  "/api/agents",
+];
+const APP_API_PREFETCH_MARKER = "<!--okou-app-api-prefetch-->";
+// The deferred app module waits for HTML EOF, so prefetch must not extend the
+// navigation indefinitely.
+const APP_API_PREFETCH_BUDGET_MS = 500;
 const APP_ASSET_REQUEST_HEADER_NAMES = [
   "Accept",
   "If-Modified-Since",
   "If-None-Match",
   "Range",
 ];
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
-const PRODUCTION_API_ORIGINS = new Map([
-  ["app.okou.ai", "https://api.okou.ai"],
-  ["app.vm0.ai", "https://api.vm0.ai"],
-]);
+const PRODUCTION_APP_HOSTNAME = "app.okou.ai";
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const APP_BOOTSTRAP_QUERY_PARAMETER = "__bootstrap";
 const CLERK_EDGE_SESSION_TIMEOUT_MS = 1000;
 const CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN =
   /^pr-[1-9][0-9]*-app-okou-app-preview\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev$/u;
@@ -41,48 +45,18 @@ const EMBEDDED_SHELL_CONTENT_TYPES = new Map([
   ["/icons/icon-512-maskable.png", "image/png"],
 ]);
 
-const VM0_APP_METADATA = {
-  brandName: "VM0",
-  canonicalUrl: "https://app.vm0.ai/",
-  description:
-    "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
-  documentTitle: "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
-  openGraphTitle: "VM0 - Your Trustworthy AI Teammate",
-  socialImagePath: "web/og-image.png",
-  staticAssetsOrigin: "https://static.vm0.io",
-  twitterDescription:
-    "VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
-};
-
 const OKOU_APP_METADATA = {
   brandName: "Okou",
   canonicalUrl: "https://app.okou.ai/",
   description:
-    "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
-  documentTitle:
-    "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
-  openGraphTitle: "Okou - Your Trustworthy AI Teammate",
+    "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
+  documentTitle: "AI Teammate for Real Work — More Done, Same Team | Okou",
+  openGraphTitle: "AI Teammate for Real Work — More Done, Same Team | Okou",
   socialImagePath: "web/okou-og-image-373c892e.png",
   staticAssetsOrigin: "https://static.okou.io",
   twitterDescription:
-    "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
+    "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
 };
-
-function appMetadata(hostname, configuredPublicBrand) {
-  if (configuredPublicBrand === "okou") {
-    return OKOU_APP_METADATA;
-  }
-  if (configuredPublicBrand === "vm0") {
-    return VM0_APP_METADATA;
-  }
-  const normalizedHostname = hostname.toLowerCase();
-  const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
-    return (
-      normalizedHostname === domain || normalizedHostname.endsWith(`.${domain}`)
-    );
-  });
-  return isOkou ? OKOU_APP_METADATA : VM0_APP_METADATA;
-}
 
 function apiOrigin(requestUrl) {
   const origin = derivePlatformServiceOrigin(requestUrl.origin, "api");
@@ -126,50 +100,10 @@ function previewAppAssetHtml(indexHtml, requestUrl) {
   }
 
   const previewAssetBase = `${requestUrl.origin}${APP_ASSET_PATH_PREFIX}`;
-  return indexHtml
-    .replaceAll(
-      `${VM0_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
-      previewAssetBase,
-    )
-    .replaceAll(
-      `${OKOU_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
-      previewAssetBase,
-    );
-}
-
-function rewriteStaticAssetAttribute(attributeName, staticAssetsOrigin) {
-  return {
-    element(element) {
-      const value = element.getAttribute(attributeName);
-      if (value === null) {
-        return;
-      }
-      const rewritten = value.replace(
-        /^https:\/\/static\.(?:vm0|okou)\.io(?=\/|$)/u,
-        staticAssetsOrigin,
-      );
-      if (rewritten !== value) {
-        element.setAttribute(attributeName, rewritten);
-      }
-    },
-  };
-}
-
-function addStaticAssetHandlers(rewriter, metadata) {
-  rewriter
-    .on(
-      'link[rel="icon"]',
-      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
-    )
-    .on(
-      'link[rel="preconnect"]',
-      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
-    )
-    .on(
-      'link[rel="apple-touch-icon"]',
-      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
-    )
-    .on("img", rewriteStaticAssetAttribute("src", metadata.staticAssetsOrigin));
+  return indexHtml.replaceAll(
+    `${OKOU_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
+    previewAssetBase,
+  );
 }
 
 function htmlResponse(indexHtml, assetResponse, status, cacheControl) {
@@ -197,14 +131,14 @@ function noIndexResponse(response, cacheControl) {
   });
 }
 
-function serializeClerkEdgeSession(session) {
-  return JSON.stringify(session)
+function serializeJsonForScript(value) {
+  return JSON.stringify(value)
     .replaceAll("<", "\\u003c")
     .replaceAll("\u2028", "\\u2028")
     .replaceAll("\u2029", "\\u2029");
 }
 
-function appBootstrapRequestHeaders(request, requestUrl) {
+function appApiPrefetchRequestHeaders(request, requestUrl) {
   const headers = new Headers({
     Accept: "application/json",
     Origin: requestUrl.origin,
@@ -222,38 +156,13 @@ function appBootstrapRequestHeaders(request, requestUrl) {
   return headers;
 }
 
-function parseAppBootstrap(value) {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !Array.isArray(value.responses)
-  ) {
-    return null;
-  }
-  for (const entry of value.responses) {
-    if (
-      typeof entry !== "object" ||
-      entry === null ||
-      entry.method !== "GET" ||
-      typeof entry.path !== "string" ||
-      !entry.path.startsWith("/api/") ||
-      entry.contentType !== "application/json" ||
-      !Object.hasOwn(entry, "body")
-    ) {
-      return null;
-    }
-  }
-  return value.responses;
-}
-
-async function fetchAppBootstrap(request, requestUrl, fetcher) {
-  const url = new URL(APP_BOOTSTRAP_API_PATH, apiOrigin(requestUrl));
-  url.searchParams.set("path", `${requestUrl.pathname}${requestUrl.search}`);
-
+async function fetchAppApiJson(path, origin, headers, fetcher, signal) {
   let response;
   try {
-    response = await fetcher(url, {
-      headers: appBootstrapRequestHeaders(request, requestUrl),
+    response = await fetcher(new URL(path, origin), {
+      headers,
+      method: "GET",
+      signal,
     });
   } catch {
     return null;
@@ -268,31 +177,148 @@ async function fetchAppBootstrap(request, requestUrl, fetcher) {
   } catch {
     return null;
   }
-  return parseAppBootstrap(body);
+  return { body };
 }
 
-function appBootstrapScript(entry) {
-  const path = encodeURIComponent(entry.path);
-  return `<script type="application/json" data-okou-api-bootstrap="" data-method="GET" data-path="${path}" data-content-type="application/json">${serializeClerkEdgeSession(entry.body)}</script>`;
+function appApiPrefetchScript(path, body) {
+  return `<script type="application/json" data-okou-api-bootstrap="" data-method="GET" data-path="${encodeURIComponent(path)}" data-content-type="application/json">${serializeJsonForScript(body)}</script>`;
+}
+
+function appApiPrefetchStream(request, requestUrl, fetcher) {
+  const encoder = new globalThis.TextEncoder();
+  const origin = apiOrigin(requestUrl);
+  const headers = appApiPrefetchRequestHeaders(request, requestUrl);
+  return new globalThis.ReadableStream({
+    async start(controller) {
+      const abortController = new globalThis.AbortController();
+      let acceptingResults = true;
+      const requests = Promise.all(
+        APP_API_PREFETCH_PATHS.map(async (path) => {
+          const result = await fetchAppApiJson(
+            path,
+            origin,
+            headers,
+            fetcher,
+            abortController.signal,
+          );
+          if (result === null || !acceptingResults) {
+            return;
+          }
+          controller.enqueue(
+            encoder.encode(appApiPrefetchScript(path, result.body)),
+          );
+        }),
+      );
+      let timeoutId;
+      const deadline = new Promise((resolve) => {
+        timeoutId = globalThis.setTimeout(() => {
+          acceptingResults = false;
+          abortController.abort();
+          resolve();
+        }, APP_API_PREFETCH_BUDGET_MS);
+      });
+      await Promise.race([requests, deadline]);
+      acceptingResults = false;
+      globalThis.clearTimeout(timeoutId);
+      controller.close();
+    },
+  });
+}
+
+function byteSequenceIndex(bytes, sequence) {
+  const lastStart = bytes.length - sequence.length;
+  for (let start = 0; start <= lastStart; start += 1) {
+    let matches = true;
+    for (let offset = 0; offset < sequence.length; offset += 1) {
+      if (bytes[start + offset] !== sequence[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return start;
+    }
+  }
+  return -1;
+}
+
+// HTMLRewriter drains replacement streams before flushing its outer buffer.
+// Splice into the top-level response so each API result can reach the browser.
+function appApiPrefetchResponse(response, prefetchState) {
+  const sourceReader = response.body.getReader();
+  const marker = new globalThis.TextEncoder().encode(APP_API_PREFETCH_MARKER);
+  const body = new globalThis.ReadableStream({
+    async start(controller) {
+      let pending = new Uint8Array();
+      let injected = false;
+      while (true) {
+        const source = await sourceReader.read();
+        if (source.done) {
+          break;
+        }
+        if (injected) {
+          controller.enqueue(source.value);
+          continue;
+        }
+
+        const combined = new Uint8Array(pending.length + source.value.length);
+        combined.set(pending);
+        combined.set(source.value, pending.length);
+        const markerIndex = byteSequenceIndex(combined, marker);
+        if (markerIndex === -1) {
+          const writeLength = Math.max(0, combined.length - marker.length + 1);
+          if (writeLength > 0) {
+            controller.enqueue(combined.slice(0, writeLength));
+          }
+          pending = combined.slice(writeLength);
+          continue;
+        }
+
+        if (markerIndex > 0) {
+          controller.enqueue(combined.slice(0, markerIndex));
+        }
+        const prefetchStream = prefetchState.stream;
+        if (prefetchStream === null) {
+          throw new Error("App API prefetch stream is unavailable");
+        }
+        const prefetchReader = prefetchStream.getReader();
+        while (true) {
+          const prefetched = await prefetchReader.read();
+          if (prefetched.done) {
+            break;
+          }
+          controller.enqueue(prefetched.value);
+        }
+        const remaining = combined.slice(markerIndex + marker.length);
+        if (remaining.length > 0) {
+          controller.enqueue(remaining);
+        }
+        pending = new Uint8Array();
+        injected = true;
+      }
+      if (pending.length > 0) {
+        controller.enqueue(pending);
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }
 
 function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
-  const debugFlags = requestUrl.searchParams.getAll(
-    APP_BOOTSTRAP_QUERY_PARAMETER,
-  );
-  if (
-    requestUrl.protocol !== "https:" ||
-    debugFlags.length !== 1 ||
-    debugFlags[0] !== "1"
-  ) {
+  if (requestUrl.protocol !== "https:") {
     return null;
   }
-  if (PRODUCTION_API_ORIGINS.has(requestUrl.hostname)) {
+  if (requestUrl.hostname === PRODUCTION_APP_HOSTNAME) {
     return requestUrl.origin;
   }
   return CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN.test(
     requestUrl.hostname,
-  ) && env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
+  ) && env.CLERK_EDGE_AUTHORIZED_PARTY === requestUrl.origin
     ? requestUrl.origin
     : null;
 }
@@ -343,15 +369,19 @@ async function clerkEdgeSession(
       return null;
     }
 
-    const { userId, orgId } = requestState.toAuth();
+    const { orgId, userId, sessionId } = requestState.toAuth();
     if (
       typeof userId !== "string" ||
       userId.length === 0 ||
-      (orgId !== null && typeof orgId !== "string")
+      typeof sessionId !== "string" ||
+      sessionId.length === 0
     ) {
       return null;
     }
-    return { userId, orgId };
+    return {
+      orgId: typeof orgId === "string" && orgId.length > 0 ? orgId : null,
+      session: { userId, sessionId },
+    };
   } catch {
     // Clerk must never affect availability of the existing app shell.
     return null;
@@ -364,49 +394,70 @@ async function clerkEdgeSession(
 
 function rewriteAppPage(
   response,
-  metadata,
   edgeSessionPromise,
   request,
   requestUrl,
-  bootstrapFetcher,
+  apiFetcher,
 ) {
-  const bootstrapState = { available: false };
+  const prefetchState = { stream: null };
   const rewriter = new HTMLRewriter()
-    .on("html", setBrandContext(metadata.brandName))
+    .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
     .on("title", {
       element(element) {
-        element.setInnerContent(metadata.documentTitle);
+        element.setInnerContent(OKOU_APP_METADATA.documentTitle);
       },
     })
-    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on(
+      'meta[name="application-name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on(
       'meta[name="apple-mobile-web-app-title"]',
-      setMetaContent(metadata.brandName),
+      setMetaContent(OKOU_APP_METADATA.brandName),
     )
-    .on('meta[name="description"]', setMetaContent(metadata.description))
+    .on(
+      'meta[name="description"]',
+      setMetaContent(OKOU_APP_METADATA.description),
+    )
     .on('meta[property="og:type"]', setMetaContent("website"))
-    .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
-    .on('meta[property="og:title"]', setMetaContent(metadata.openGraphTitle))
-    .on('meta[property="og:description"]', setMetaContent(metadata.description))
+    .on(
+      'meta[property="og:site_name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
+    .on(
+      'meta[property="og:title"]',
+      setMetaContent(OKOU_APP_METADATA.openGraphTitle),
+    )
+    .on(
+      'meta[property="og:description"]',
+      setMetaContent(OKOU_APP_METADATA.description),
+    )
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on(
       'meta[property="og:image:alt"]',
-      setMetaContent(metadata.openGraphTitle),
+      setMetaContent(OKOU_APP_METADATA.openGraphTitle),
     )
     .on('meta[name="twitter:card"]', setMetaContent("summary_large_image"))
     .on('meta[name="twitter:site"]', setMetaContent("@okou_ai"))
     .on('meta[name="twitter:creator"]', setMetaContent("@okou_ai"))
-    .on('meta[name="twitter:title"]', setMetaContent(metadata.openGraphTitle))
+    .on(
+      'meta[name="twitter:title"]',
+      setMetaContent(OKOU_APP_METADATA.openGraphTitle),
+    )
     .on(
       'meta[name="twitter:description"]',
-      setMetaContent(metadata.twitterDescription),
+      setMetaContent(OKOU_APP_METADATA.twitterDescription),
     )
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on("head", {
       element(element) {
@@ -414,63 +465,55 @@ function rewriteAppPage(
           html: true,
         });
         element.append(
-          `<link rel="canonical" href="${metadata.canonicalUrl}" />`,
+          `<link rel="canonical" href="${OKOU_APP_METADATA.canonicalUrl}" />`,
           { html: true },
         );
         element.append(
-          `<meta property="og:url" content="${metadata.canonicalUrl}" />`,
+          `<meta property="og:url" content="${OKOU_APP_METADATA.canonicalUrl}" />`,
           { html: true },
         );
       },
     });
-  addStaticAssetHandlers(rewriter, metadata);
   if (edgeSessionPromise !== null) {
-    rewriter
-      .on("body", {
-        async element(element) {
-          const edgeSession = await edgeSessionPromise;
-          if (edgeSession === null) {
-            return;
-          }
-          const bootstrap = await fetchAppBootstrap(
+    rewriter.on("body", {
+      async element(element) {
+        const edgeAuth = await edgeSessionPromise;
+        if (edgeAuth === null) {
+          return;
+        }
+        if (edgeAuth.orgId !== null) {
+          prefetchState.stream = appApiPrefetchStream(
             request,
             requestUrl,
-            bootstrapFetcher,
+            apiFetcher,
           );
-          if (bootstrap !== null && bootstrap.length > 0) {
-            bootstrapState.available = true;
-            element.prepend(bootstrap.map(appBootstrapScript).join(""), {
-              html: true,
-            });
-          }
-          element.append(
-            `<script type="application/json" id="okou-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
-            { html: true },
-          );
-        },
-      })
-      .on("#app-bootstrap-skeleton", {
-        element(element) {
-          if (bootstrapState.available) {
-            element.remove();
-          }
-        },
-      });
+          element.append(APP_API_PREFETCH_MARKER, { html: true });
+        }
+        element.append(
+          `<script type="application/json" id="okou-clerk-edge-session">${serializeJsonForScript(edgeAuth.session)}</script>`,
+          { html: true },
+        );
+      },
+    });
   }
   const rewrittenResponse = rewriter.transform(response);
+  const responseWithPrefetch =
+    edgeSessionPromise === null
+      ? rewrittenResponse
+      : appApiPrefetchResponse(rewrittenResponse, prefetchState);
   return noIndexResponse(
-    rewrittenResponse,
+    responseWithPrefetch,
     edgeSessionPromise === null
       ? "public, max-age=0, must-revalidate"
       : "private, no-store",
   );
 }
 
-async function rewriteManifest(response, metadata) {
+async function rewriteManifest(response) {
   const manifest = await response.json();
-  manifest.name = metadata.brandName;
-  manifest.short_name = metadata.brandName;
-  manifest.description = metadata.description;
+  manifest.name = OKOU_APP_METADATA.brandName;
+  manifest.short_name = OKOU_APP_METADATA.brandName;
+  manifest.description = OKOU_APP_METADATA.description;
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Encoding");
@@ -485,35 +528,45 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(response, title, canonicalUrl, metadata) {
-  const sharedDescription = `A conversation shared from ${metadata.brandName}`;
+function rewriteFound(response, title, canonicalUrl) {
+  const sharedDescription = `A conversation shared from ${OKOU_APP_METADATA.brandName}`;
   const rewriter = new HTMLRewriter()
-    .on("html", setBrandContext(metadata.brandName))
-    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
+    .on(
+      'meta[name="application-name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on(
       'meta[name="apple-mobile-web-app-title"]',
-      setMetaContent(metadata.brandName),
+      setMetaContent(OKOU_APP_METADATA.brandName),
     )
     .on("title", {
       element(element) {
-        element.setInnerContent(`${title} | ${metadata.brandName}`);
+        element.setInnerContent(`${title} | ${OKOU_APP_METADATA.brandName}`);
       },
     })
     .on('meta[name="description"]', setMetaContent(sharedDescription))
     .on('meta[property="og:type"]', setMetaContent("website"))
-    .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
+    .on(
+      'meta[property="og:site_name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on('meta[property="og:title"]', setMetaContent(title))
     .on('meta[property="og:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
     .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on("head", {
       element(element) {
@@ -525,22 +578,24 @@ function rewriteFound(response, title, canonicalUrl, metadata) {
         });
       },
     });
-  addStaticAssetHandlers(rewriter, metadata);
   return rewriter.transform(response);
 }
 
-function rewriteNotFound(response, metadata) {
+function rewriteNotFound(response) {
   const rewriter = new HTMLRewriter()
-    .on("html", setBrandContext(metadata.brandName))
-    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
+    .on(
+      'meta[name="application-name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on(
       'meta[name="apple-mobile-web-app-title"]',
-      setMetaContent(metadata.brandName),
+      setMetaContent(OKOU_APP_METADATA.brandName),
     )
     .on("title", {
       element(element) {
         element.setInnerContent(
-          `Shared conversation not found | ${metadata.brandName}`,
+          `Shared conversation not found | ${OKOU_APP_METADATA.brandName}`,
         );
       },
     })
@@ -553,7 +608,6 @@ function rewriteNotFound(response, metadata) {
         });
       },
     });
-  addStaticAssetHandlers(rewriter, metadata);
   return rewriter.transform(response);
 }
 
@@ -732,7 +786,7 @@ async function handleRequest(
   requestUrl,
   embeddedShell,
   clerkClientFactory,
-  bootstrapFetcher,
+  apiFetcher,
 ) {
   if (
     (request.method === "GET" || request.method === "HEAD") &&
@@ -778,7 +832,6 @@ async function handleRequest(
           404,
           "public, max-age=60, s-maxage=60",
         ),
-        appMetadata(requestUrl.hostname, env.PUBLIC_BRAND),
       );
     }
     if (!metaResponse.ok) {
@@ -790,19 +843,12 @@ async function handleRequest(
     } catch {
       return gatewayResponse(502);
     }
-    if (
-      typeof metadata.title !== "string" ||
-      metadata.title.length === 0 ||
-      (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
-    ) {
+    if (typeof metadata.title !== "string" || metadata.title.length === 0) {
       return gatewayResponse(502);
     }
-    const publicBrand = metadata.publicBrand;
-    const sharedAppMetadata =
-      publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
     const canonicalUrl = new URL(
       requestUrl.pathname,
-      sharedAppMetadata.canonicalUrl,
+      OKOU_APP_METADATA.canonicalUrl,
     ).toString();
     return rewriteFound(
       htmlResponse(
@@ -813,7 +859,6 @@ async function handleRequest(
       ),
       metadata.title,
       canonicalUrl,
-      sharedAppMetadata,
     );
   }
 
@@ -822,9 +867,8 @@ async function handleRequest(
     return assetResponse;
   }
 
-  const metadata = appMetadata(requestUrl.hostname, env.PUBLIC_BRAND);
   if (requestUrl.pathname === "/manifest.webmanifest") {
-    return rewriteManifest(assetResponse, metadata);
+    return rewriteManifest(assetResponse);
   }
   if (
     !assetResponse.headers
@@ -840,18 +884,17 @@ async function handleRequest(
     : null;
   return rewriteAppPage(
     assetResponse,
-    metadata,
     edgeSessionPromise,
     request,
     requestUrl,
-    bootstrapFetcher,
+    apiFetcher,
   );
 }
 
 export function createWorker(
   embeddedShell,
   clerkClientFactory = createClerkClient,
-  bootstrapFetcher = fetch,
+  apiFetcher = fetch,
 ) {
   return {
     async fetch(request, env) {
@@ -862,9 +905,16 @@ export function createWorker(
         requestUrl,
         embeddedShell,
         clerkClientFactory,
-        bootstrapFetcher,
+        apiFetcher,
       );
-      return withAppHeaders(response, requestUrl);
+      const result = withAppHeaders(response, requestUrl);
+      if (requestUrl.pathname.startsWith("/share/artifacts/")) {
+        const headers = new Headers(result.headers);
+        headers.set("Cache-Control", "private, no-store");
+        headers.set("Referrer-Policy", "no-referrer");
+        return new Response(result.body, { status: result.status, headers });
+      }
+      return result;
     },
   };
 }

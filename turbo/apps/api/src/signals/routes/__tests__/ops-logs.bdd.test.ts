@@ -24,6 +24,10 @@ import { commitMemoryVersion } from "./helpers/memory";
 import { createFixtureTracker } from "./helpers/route-test";
 import { agentInstructionsRoutes } from "../agent-instructions";
 import { seedPiMemoryPhase2ExportJobFixture } from "../../../test-fixtures/pi-memory-stage1-candidates";
+import {
+  readUserExportJobFixture,
+  seedLegacyUserExportJobFixture,
+} from "../../../test-fixtures/user-export";
 
 /* OPS-01 user export. */
 
@@ -319,8 +323,8 @@ describe("OPS-01: user data export", () => {
     });
 
     expect(exportDownloadDispositions(exportKey)).toStrictEqual([
-      'attachment; filename="vm0-data-export.zip"',
-      'attachment; filename="vm0-data-export.zip"',
+      'attachment; filename="okou-data-export.zip"',
+      'attachment; filename="okou-data-export.zip"',
     ]);
 
     const putInput = context.mocks.s3.send.mock.calls
@@ -388,7 +392,7 @@ describe("OPS-01: user data export", () => {
     });
   });
 
-  it("uses the persisted Okou brand for export download filenames", async () => {
+  it("downloads a historical export with the Okou filename without rewriting its row", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -397,7 +401,7 @@ describe("OPS-01: user data export", () => {
     context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
     context.mocks.s3.send.mockResolvedValue({});
 
-    const started = await api.requestPostUserExport(actor, [202], "okou");
+    const started = await api.requestPostUserExport(actor, [202]);
     const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
     await waitForUserExportJobStatus(
       api,
@@ -406,10 +410,26 @@ describe("OPS-01: user data export", () => {
       "completed",
     );
 
+    // The public API no longer creates VM0 exports. Seed the completed,
+    // test-owned row to exercise a download from before the brand cutover.
+    const historicalJob = await seedLegacyUserExportJobFixture(
+      actor.userId,
+      started.body.jobId,
+    );
+    const downloaded = await api.requestGetUserExport(actor, [200]);
+    expect(downloaded.body.job).toMatchObject({
+      id: started.body.jobId,
+      status: "completed",
+      downloadUrl,
+    });
     expect(exportDownloadDispositions(exportKey)).toStrictEqual([
       'attachment; filename="okou-data-export.zip"',
       'attachment; filename="okou-data-export.zip"',
+      'attachment; filename="okou-data-export.zip"',
     ]);
+    await expect(
+      readUserExportJobFixture(actor.userId, started.body.jobId),
+    ).resolves.toStrictEqual(historicalJob);
   });
 
   it("exports the userMessage projection", async () => {

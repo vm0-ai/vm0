@@ -184,16 +184,23 @@ export const ANNOTATION_RESIZE_EDGES = [
 
 export type AnnotationResizeEdge = (typeof ANNOTATION_RESIZE_EDGES)[number];
 
+/** Which end of an arrow a drag is holding. */
+export type AnnotationArrowEnd = "from" | "to";
+
 /**
- * A mark being moved or resized. Drawing produces a new mark; this edits one
- * that already exists, so it carries the mark it started from and the pointer
- * offset at grab time — without the offset a drag snaps the mark's corner to
- * the cursor on the first move.
+ * A mark being moved, resized, or re-aimed. Drawing produces a new mark; this
+ * edits one that already exists, so it carries the mark it started from and the
+ * pointer offset at grab time — without the offset a drag snaps the mark's
+ * corner to the cursor on the first move.
+ *
+ * `endpoint` is the arrow's own mode: an arrow has no rectangle to resize, so
+ * its two ends are dragged directly and the pointer position *is* the new end.
  */
 export interface AnnotationDrag {
   readonly markId: string;
-  readonly mode: "move" | "resize";
+  readonly mode: "move" | "resize" | "endpoint";
   readonly corner?: AnnotationResizeEdge;
+  readonly endpoint?: AnnotationArrowEnd;
   readonly origin: AnnotationPoint;
   readonly startRect: {
     x: number;
@@ -209,8 +216,11 @@ const MAX_NOTE_WIDTH = 1;
 /** Clear of the mark's own outline and its ordinal pin. */
 const NOTE_GAP = 0.015;
 
-/** The box a mark occupies, used to place its note under it. */
-function markBounds(mark: ImageAnnotationMark): {
+/**
+ * The box a mark occupies, used to place its note under it and — for the shapes
+ * that have no rectangle of their own — to give a drag something to translate.
+ */
+export function markBounds(mark: ImageAnnotationMark): {
   x: number;
   y: number;
   width: number;
@@ -244,6 +254,56 @@ function markBounds(mark: ImageAnnotationMark): {
     return { x: mark.at.x, y: mark.at.y, width: 0, height: 0 };
   }
   return mark.rect;
+}
+
+/**
+ * Slides a whole mark by a normalized delta, held so its bounding box cannot
+ * leave the image — a mark dragged off the edge would survive in the draft but
+ * disappear from the flattened copy the model actually reads.
+ *
+ * An arrow and a freehand stroke have no rectangle to assign, so this is the
+ * only way either of them moves: every point shifts by the same amount, which
+ * keeps the arrow's aim and the stroke's shape while changing where it sits.
+ */
+function offsetMark(
+  mark: ImageAnnotationMark,
+  dx: number,
+  dy: number,
+): ImageAnnotationMark {
+  const bounds = markBounds(mark);
+  const shiftX = Math.min(
+    Math.max(dx, -bounds.x),
+    Math.max(0, 1 - bounds.width - bounds.x),
+  );
+  const shiftY = Math.min(
+    Math.max(dy, -bounds.y),
+    Math.max(0, 1 - bounds.height - bounds.y),
+  );
+  const shift = (point: AnnotationPoint): AnnotationPoint => {
+    return { x: point.x + shiftX, y: point.y + shiftY };
+  };
+
+  switch (mark.shape) {
+    case "arrow": {
+      return { ...mark, from: shift(mark.from), to: shift(mark.to) };
+    }
+    case "pen": {
+      return { ...mark, points: mark.points.map(shift) };
+    }
+    case "text": {
+      return { ...mark, at: shift(mark.at) };
+    }
+    default: {
+      return {
+        ...mark,
+        rect: {
+          ...mark.rect,
+          x: mark.rect.x + shiftX,
+          y: mark.rect.y + shiftY,
+        },
+      };
+    }
+  }
 }
 
 /**
@@ -321,6 +381,15 @@ interface AnnotationSelection {
 
 function createAnnotationViewportSignals() {
   const drag$ = state<AnnotationDrag | null>(null);
+  /**
+   * Whether the drag in flight has already taken its undo step.
+   *
+   * A drag reports a new geometry on every pointer move, and each one used to
+   * become its own history entry — so undoing one gesture meant pressing Cmd+Z
+   * once per frame it lasted. The first move of a drag pushes; the rest amend
+   * the present in place, which makes the whole gesture a single undo.
+   */
+  const dragPushed$ = state(false);
   const zoom$ = state(1);
   const stroke$ = state<AnnotationStroke | null>(null);
   const surface$ = state<HTMLElement | null>(null);
@@ -338,6 +407,7 @@ function createAnnotationViewportSignals() {
   });
   const setAnnotationDrag$ = command(({ set }, drag: AnnotationDrag | null) => {
     set(drag$, drag);
+    set(dragPushed$, false);
   });
   const zoomAnnotation$ = command(({ get, set }, direction: 1 | -1) => {
     const next = get(zoom$) + direction * ZOOM_STEP;
@@ -400,7 +470,7 @@ function createAnnotationViewportSignals() {
     }),
   );
   return {
-    internal: { drag$, zoom$, stroke$ },
+    internal: { drag$, dragPushed$, zoom$, stroke$ },
     signals: {
       annotationStroke$,
       annotationSurface$,
@@ -543,6 +613,28 @@ function createAnnotationHistorySignals(session: AnnotationSessionSignals) {
       });
     },
   );
+  /**
+   * Rewrites the present without recording a step.
+   *
+   * Only a gesture already represented in `past` may use this: the continuation
+   * of a drag belongs to the entry its first move pushed, not to one of its
+   * own. Anything that starts an edit must go through `pushAnnotation$`.
+   */
+  const amendAnnotation$ = command(
+    (
+      { get, set },
+      update: (current: ImageAnnotation) => ImageAnnotation,
+    ): void => {
+      const current = get(session.internal.session$);
+      if (!current) {
+        return;
+      }
+      set(session.internal.session$, {
+        ...current,
+        present: update(current.present),
+      });
+    },
+  );
   const undoAnnotation$ = command(({ get, set }) => {
     const current = get(session.internal.session$);
     const previous = current?.past.at(-1);
@@ -573,7 +665,12 @@ function createAnnotationHistorySignals(session: AnnotationSessionSignals) {
     });
     set(session.internal.selection$, null);
   });
-  return { pushAnnotation$, undoAnnotation$, redoAnnotation$ };
+  return {
+    pushAnnotation$,
+    amendAnnotation$,
+    undoAnnotation$,
+    redoAnnotation$,
+  };
 }
 
 type AnnotationHistorySignals = ReturnType<
@@ -633,7 +730,19 @@ function createAnnotationContentSignals(
 function createAnnotationGeometrySignals(
   session: AnnotationSessionSignals,
   history: AnnotationHistorySignals,
+  viewport: AnnotationViewport,
 ) {
+  /** One undo step per gesture: the first move records, the rest amend. */
+  const applyDragEdit$ = command(
+    ({ get, set }, update: (current: ImageAnnotation) => ImageAnnotation) => {
+      if (get(viewport.internal.dragPushed$)) {
+        set(history.amendAnnotation$, update);
+        return;
+      }
+      set(viewport.internal.dragPushed$, true);
+      set(history.pushAnnotation$, update);
+    },
+  );
   const addAnnotationMark$ = command(({ set }, mark: ImageAnnotationMark) => {
     set(history.pushAnnotation$, (current) => {
       return {
@@ -671,7 +780,7 @@ function createAnnotationGeometrySignals(
       id: string,
       rect: { x: number; y: number; width: number; height: number },
     ) => {
-      set(history.pushAnnotation$, (current) => {
+      set(applyDragEdit$, (current) => {
         return {
           ...current,
           marks: current.marks.map((mark) => {
@@ -681,9 +790,69 @@ function createAnnotationGeometrySignals(
             if (mark.shape === "box") {
               return { ...mark, rect };
             }
-            return mark.shape === "text"
-              ? { ...mark, at: { x: rect.x, y: rect.y } }
-              : mark;
+            if (mark.shape === "text") {
+              return { ...mark, at: { x: rect.x, y: rect.y } };
+            }
+            // An arrow and a freehand stroke have no rectangle to assign, so
+            // the incoming rect is read as a destination for their bounding box
+            // and the difference is applied to every point. The drag computes
+            // each rect from the box it grabbed, so the difference against the
+            // mark's *current* bounds is exactly this move's increment — which
+            // is what keeps amended moves from compounding.
+            const bounds = markBounds(mark);
+            return offsetMark(mark, rect.x - bounds.x, rect.y - bounds.y);
+          }),
+        };
+      });
+    },
+  );
+  /**
+   * Re-aims an arrow by dragging one of its ends.
+   *
+   * The pointer position is the new end outright rather than an offset: an
+   * arrow is defined by where it starts and where it points, so a grip that
+   * lags the cursor by its grab offset would feel like the tip is slipping.
+   */
+  const moveAnnotationArrowEnd$ = command(
+    (
+      { set },
+      id: string,
+      endpoint: AnnotationArrowEnd,
+      point: AnnotationPoint,
+    ) => {
+      set(applyDragEdit$, (current) => {
+        return {
+          ...current,
+          marks: current.marks.map((mark) => {
+            if (mark.id !== id || mark.shape !== "arrow") {
+              return mark;
+            }
+            return endpoint === "from"
+              ? { ...mark, from: point }
+              : { ...mark, to: point };
+          }),
+        };
+      });
+    },
+  );
+  /**
+   * Moves the open mark by a step from the keyboard.
+   *
+   * One press is one undo step. That differs from a drag on purpose: a nudge is
+   * already the smallest edit the user can make, so collapsing a run of them
+   * would leave no way to take back just the last one.
+   */
+  const nudgeAnnotationMark$ = command(
+    ({ get, set }, dx: number, dy: number) => {
+      const id = get(session.signals.annotationOpenMarkId$);
+      if (id === null) {
+        return;
+      }
+      set(history.pushAnnotation$, (current) => {
+        return {
+          ...current,
+          marks: current.marks.map((mark) => {
+            return mark.id === id ? offsetMark(mark, dx, dy) : mark;
           }),
         };
       });
@@ -694,6 +863,8 @@ function createAnnotationGeometrySignals(
     removeAnnotationMark$,
     removeSelectedAnnotationMark$,
     moveAnnotationMarkRect$,
+    moveAnnotationArrowEnd$,
+    nudgeAnnotationMark$,
   };
 }
 
@@ -716,7 +887,7 @@ export function createImageAnnotationSignals() {
   const session = createAnnotationSessionSignals(viewport);
   const history = createAnnotationHistorySignals(session);
   const content = createAnnotationContentSignals(session, history);
-  const geometry = createAnnotationGeometrySignals(session, history);
+  const geometry = createAnnotationGeometrySignals(session, history, viewport);
   return {
     ...viewport.signals,
     ...session.signals,

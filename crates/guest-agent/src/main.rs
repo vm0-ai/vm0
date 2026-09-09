@@ -19,8 +19,6 @@ use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 use guest_agent::{codex_session_cleanup, session_history_identity};
 
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationReason, EventDeliveryDiagnostic, FailureClass,
     FailureDiagnostic, FailureReason, WorkloadResourceLimitDiagnostic,
@@ -30,6 +28,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SessionHistoryIdentityExpectation,
 };
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_error, log_info, log_warn};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -282,7 +282,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     );
 
     // Lifecycle: Header
-    log_info!(LOG_TAG, "▶ VM0 Sandbox {}", runtime.config.run_id);
+    log_info!(LOG_TAG, "▶ Okou Sandbox {}", runtime.config.run_id);
 
     // Lifecycle: Initialization
     log_info!(LOG_TAG, "▷ Initialization");
@@ -346,22 +346,6 @@ async fn run(runtime: GuestRuntime) -> i32 {
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
 
     let t = Instant::now();
-    let metrics_sources = metrics::MetricsSources::new(
-        std::path::PathBuf::from("/proc/stat"),
-        runtime
-            .workload_containment
-            .as_ref()
-            .map(guest_agent::workload_containment::WorkloadContainment::cpu_stat_paths),
-    );
-    let metrics_handle = tokio::spawn({
-        let shutdown = shutdown.clone();
-        let metrics_log_file = runtime.paths.metrics_log_file().to_string();
-        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file, metrics_sources).await }
-    });
-    log_info!(LOG_TAG, "Metrics collector started");
-    record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
-
-    let t = Instant::now();
     let telemetry = Telemetry::spawn_for_paths(
         runtime.config.run_id.clone(),
         &runtime.paths,
@@ -370,6 +354,30 @@ async fn run(runtime: GuestRuntime) -> i32 {
     );
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
+
+    let t = Instant::now();
+    let mut metrics_sources = metrics::MetricsSources::new(
+        std::path::PathBuf::from("/proc/stat"),
+        runtime
+            .workload_containment
+            .as_ref()
+            .map(guest_agent::workload_containment::WorkloadContainment::cpu_stat_paths),
+    );
+    if let Some(containment) = runtime.workload_containment.clone() {
+        metrics_sources = metrics_sources.with_evidence(
+            containment,
+            telemetry
+                .incident_reporter()
+                .with_sandbox_id(runtime.config.sandbox_id.clone()),
+        );
+    }
+    let metrics_handle = tokio::spawn({
+        let shutdown = shutdown.clone();
+        let metrics_log_file = runtime.paths.metrics_log_file().to_string();
+        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file, metrics_sources).await }
+    });
+    log_info!(LOG_TAG, "Metrics collector started");
+    record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
 
     // Execute main logic (init + CLI + checkpoint/recovery + /complete).
     // On the success path, `execute` overlaps the pre-checkpoint telemetry
@@ -600,6 +608,17 @@ async fn execute(
         }
     };
     if let Some(workload_containment) = runtime.workload_containment.as_ref() {
+        let reason = if cli_execution_succeeded {
+            guest_contracts::oom_evidence::CaptureReason::Sample
+        } else {
+            guest_contracts::oom_evidence::CaptureReason::CliError
+        };
+        if let Some(evidence) = workload_containment.oom_evidence(reason) {
+            telemetry
+                .incident_reporter()
+                .with_sandbox_id(runtime.config.sandbox_id.clone())
+                .record(evidence);
+        }
         match workload_containment.resource_diagnostics() {
             Ok(diagnostics) => {
                 if let Some(pressure) = diagnostics.pressure {
@@ -826,16 +845,6 @@ async fn complete_execution(
         .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
         .is_some_and(|termination| termination.reason == CliTerminationReason::UserCancellation);
     let mut guest_completion_reported = false;
-
-    if let Err(error) = guest_agent::maintenance_usage::report_for_runtime(runtime).await {
-        // Accounting is part of this private attempt; a failure must not turn
-        // the journal into public output or permit an unreported new result.
-        log_warn!(
-            LOG_TAG,
-            "Private maintenance usage reporting failed: {error}"
-        );
-        exit_code = 1;
-    }
 
     // Checkpoint on success (skip when no API — local/test mode). The
     // pre-checkpoint flush runs in `tokio::join!` with the snapshot work so
@@ -1271,14 +1280,14 @@ mod tests {
 
     impl SystemLogOverrideGuard {
         fn set(path: &std::path::Path) -> Self {
-            guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
+            guest_telemetry::log::set_system_log_file(path.to_string_lossy().as_ref());
             Self
         }
     }
 
     impl Drop for SystemLogOverrideGuard {
         fn drop(&mut self) {
-            guest_common::log::clear_system_log_file();
+            guest_telemetry::log::clear_system_log_file();
         }
     }
 
@@ -1286,14 +1295,14 @@ mod tests {
 
     impl SandboxOpsOverrideGuard {
         fn set(path: &std::path::Path) -> Self {
-            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            guest_telemetry::telemetry::set_sandbox_ops_log_file(path);
             Self
         }
     }
 
     impl Drop for SandboxOpsOverrideGuard {
         fn drop(&mut self) {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
+            guest_telemetry::telemetry::clear_sandbox_ops_log_file();
         }
     }
 
@@ -1475,57 +1484,96 @@ mod tests {
             .block_on(async {
                 let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
                 server.reset_async().await;
-                let _env_guard = unsafe { set_test_env(server, None) };
-                let guest_paths = test_guest_paths();
+                let tmp = tempfile::tempdir().unwrap();
+                let guest_paths = paths::GuestPaths::from_runtime_dir(tmp.path());
+                let system_log_path = Path::new(guest_paths.system_log_file());
+                paths::write_private(system_log_path, "").unwrap();
+                let _system_log_guard = SystemLogOverrideGuard::set(system_log_path);
                 let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(std::path::Path::new(
                     guest_paths.sandbox_ops_file(),
                 ));
 
                 let marker = "producer_after_shutdown_before_final_upload";
-                let cleanup_paths = vec![
-                    guest_paths.sandbox_ops_file().to_string(),
-                    guest_paths.telemetry_system_log_pos_file().to_string(),
-                    guest_paths.telemetry_metrics_pos_file().to_string(),
-                    guest_paths.telemetry_sandbox_ops_pos_file().to_string(),
-                ];
-                for path in &cleanup_paths {
-                    let _ = std::fs::remove_file(path);
-                }
-
+                let request_bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+                let request_bodies_for_mock = Arc::clone(&request_bodies);
                 let telemetry_mock = server.mock(|when, then| {
                     when.method(POST)
-                        .path("/api/webhooks/agent/telemetry")
-                        .body_includes(marker);
-                    then.status(200)
-                        .header("Content-Type", "application/json")
-                        .json_body(json!({}));
+                        .path("/api/webhooks/agent/telemetry");
+                    then.respond_with(move |request| {
+                        request_bodies_for_mock.lock().unwrap().push(request.body_vec());
+                        HttpMockResponse::builder()
+                            .status(200)
+                            .header("Content-Type", "application/json")
+                            .body("{}")
+                            .build()
+                    });
                 });
 
                 let shutdown = CancellationToken::new();
                 let producer_shutdown = shutdown.clone();
+                let (producer_cancelled_tx, producer_cancelled_rx) = tokio::sync::oneshot::channel();
+                let (release_producer_tx, release_producer_rx) = tokio::sync::oneshot::channel();
                 let metrics_handle = tokio::spawn(async move {
                     producer_shutdown.cancelled().await;
+                    producer_cancelled_tx.send(()).unwrap();
+                    release_producer_rx.await.unwrap();
                     record_sandbox_op(marker, Duration::from_millis(1), true, None);
                 });
-                let heartbeat_handle = tokio::spawn(async {
-                    std::future::pending::<()>().await;
+                let (heartbeat_done_tx, heartbeat_done_rx) = tokio::sync::oneshot::channel();
+                let heartbeat_handle = tokio::spawn(async move {
+                    heartbeat_done_tx.send(()).unwrap();
                 });
-                let config = test_guest_config(server, None);
-                let masker = Arc::new(masker::SecretMasker::from_config(&config));
+                let masker = Arc::new(masker::SecretMasker::from_raw(""));
                 let http = test_http_client(server);
-                let telemetry =
-                    Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
+                let telemetry = Telemetry::spawn_for_paths(
+                    "test-run-001".to_string(),
+                    &guest_paths,
+                    masker,
+                    http,
+                );
 
-                tokio::time::timeout(
-                    Duration::from_secs(5),
-                    stop_background_and_flush_final_telemetry(
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    // On this current-thread runtime the sender's task finishes
+                    // before we resume. Heartbeat cleanup must not mask the join
+                    // under test by providing another pending await first.
+                    heartbeat_done_rx.await.unwrap();
+                    assert!(heartbeat_handle.is_finished());
+                    let finalization = stop_background_and_flush_final_telemetry(
                         shutdown,
                         None,
                         metrics_handle,
                         heartbeat_handle,
                         telemetry,
-                    ),
-                )
+                    );
+                    // Exclude cooperative-budget yields from both explicit polls.
+                    let finalization = tokio::task::unconstrained(finalization);
+                    tokio::pin!(finalization);
+                    assert!(futures_util::poll!(&mut finalization).is_pending());
+                    producer_cancelled_rx.await.unwrap();
+
+                    // Poll past already-settled heartbeat cleanup while the
+                    // producer is acknowledged but still blocked on release.
+                    let finalization_poll = futures_util::poll!(&mut finalization);
+                    // This log is synchronously persisted before final_telemetry's
+                    // first await, unlike an eventually dispatched HTTP request.
+                    let final_upload_log = "Performing final telemetry upload...";
+                    assert!(
+                        !std::fs::read_to_string(system_log_path)
+                            .unwrap()
+                            .contains(final_upload_log),
+                        "final telemetry started before the producer was released"
+                    );
+                    assert!(finalization_poll.is_pending());
+
+                    release_producer_tx.send(()).unwrap();
+                    finalization.await;
+                    assert!(
+                        std::fs::read_to_string(system_log_path)
+                            .unwrap()
+                            .contains(final_upload_log),
+                        "completed shutdown must exercise the final-upload log boundary"
+                    );
+                })
                 .await
                 .expect(
                     "final telemetry producer shutdown and final upload completion should finish within 5 seconds",
@@ -1533,9 +1581,12 @@ mod tests {
 
                 telemetry_mock.assert_calls_async(1).await;
                 telemetry_mock.delete_async().await;
-                for path in cleanup_paths {
-                    let _ = std::fs::remove_file(path);
-                }
+                let request_bodies = request_bodies.lock().unwrap();
+                assert_eq!(request_bodies.len(), 1);
+                let payload: serde_json::Value = serde_json::from_slice(&request_bodies[0]).unwrap();
+                let operations = payload["sandboxOperations"].as_array().unwrap();
+                assert_eq!(operations.len(), 1);
+                assert_eq!(operations[0]["action_type"], marker);
             });
     }
 

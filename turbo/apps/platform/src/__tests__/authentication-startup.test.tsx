@@ -1,17 +1,20 @@
 import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { mockedClerk } from "./mock-auth.ts";
-import { queryAllByRoleFast, setupPage } from "./page-helper.ts";
+import { queryAllByRoleFast, setupPage, startPage } from "./page-helper.ts";
+import frFRCommon from "../i18n/locales/fr-FR/common.json";
+import frFRCommonUrl from "../i18n/locales/fr-FR/common.json?url";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
+import { createChildAbortController } from "../signals/utils.ts";
 
 const context = testContext();
 
 const PRIMARY_LOAD_OPTIONS = {
-  afterSignOutUrl: "https://app.vm0.ai/sign-in",
-  signInUrl: "https://app.vm0.ai/sign-in",
-  signUpUrl: "https://app.vm0.ai/sign-up",
+  afterSignOutUrl: "https://app.okou.ai/sign-in",
+  signInUrl: "https://app.okou.ai/sign-in",
+  signUpUrl: "https://app.okou.ai/sign-up",
 } as const;
 
 async function waitForReadySignIn(): Promise<void> {
@@ -29,7 +32,6 @@ function installEarlyBootstrap(options: {
   const bootstrap: NonNullable<Window["__okouClerkBootstrap"]> = {
     loadOptions: PRIMARY_LOAD_OPTIONS,
     loaded: options.loaded,
-    productionPrimaryAppDomain: "app.vm0.ai",
     publishableKey: "test_production_key",
   };
   if (options.clerk) {
@@ -59,7 +61,7 @@ test("Authentication is ready before Platform content becomes interactive", asyn
 
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
   });
 
@@ -79,6 +81,92 @@ test("Authentication is ready before Platform content becomes interactive", asyn
   expect(queryAllByRoleFast("link").length).toBeGreaterThan(0);
 });
 
+test("The SharedWorker owns realtime", async () => {
+  await setupPage({
+    context,
+    host: "app.okou.ai",
+    path: "/agents",
+    sharedWorkerTestTransport: "message-port",
+  });
+
+  await screen.findByRole("heading", { name: "Agents" });
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(
+        "user:test-user-123",
+        "connectorPermissionUpdated",
+      ),
+    ).toBeTruthy();
+  });
+  expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+});
+
+test.each(["setupPage", "startPage"])(
+  "%s does not report cancelled authentication startup as ready",
+  async (entryPoint) => {
+    const clerkLoad = context.mocks.clerk().runtimePending();
+    const controller = createChildAbortController(context.signal);
+    const options = {
+      context: {
+        ...context,
+        signal: controller.signal,
+      },
+      host: "app.okou.ai",
+      path: "/agents",
+    };
+    const pageReady =
+      entryPoint === "setupPage"
+        ? setupPage(options)
+        : (await startPage(options)).ready;
+
+    const skeleton = await screen.findByTestId("app-skeleton");
+    expect(skeleton).toBeVisible();
+    const reason = new DOMException("Page startup cancelled", "AbortError");
+    controller.abort(reason);
+    clerkLoad.resolve();
+    await expect(pageReady).rejects.toBe(reason);
+
+    expect(screen.queryByRole("heading", { name: "Agents" })).toBeNull();
+    expect(skeleton).not.toBeInTheDocument();
+  },
+);
+
+test("Cancelled locale startup does not adopt a replacement lifetime", async () => {
+  const localeRequested = context.mocks.deferred<Request>();
+  const localeResponse = context.mocks.deferred<void>();
+  context.mocks.http.get(frFRCommonUrl, async ({ request }) => {
+    localeRequested.resolve(request);
+    await localeResponse.promise;
+    return HttpResponse.json(frFRCommon);
+  });
+  const controller = createChildAbortController(context.signal);
+  let currentSignal = controller.signal;
+  const startup = startPage({
+    context: {
+      ...context,
+      get signal() {
+        return currentSignal;
+      },
+    },
+    host: "app.okou.ai",
+    path: "/agents",
+    locale: "fr-FR",
+  });
+  const request = await localeRequested.promise;
+  const reason = new DOMException("Locale startup cancelled", "AbortError");
+  controller.abort(reason);
+  // Model testContext replacing its lifetime while old startup is suspended.
+  currentSignal = context.signal;
+  localeResponse.resolve();
+  await expect(startup).rejects.toBe(reason);
+
+  expect(request.signal.aborted).toBeTruthy();
+  expect(screen.queryByTestId("app-skeleton")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Agents" }),
+  ).not.toBeInTheDocument();
+});
+
 test("Authentication startup is reused without a duplicate load", async () => {
   const clerk = context.mocks.clerk();
   const clerkLoad = clerk.runtimePending();
@@ -87,7 +175,7 @@ test("Authentication startup is reused without a duplicate load", async () => {
 
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
   });
 
@@ -110,7 +198,7 @@ test("Authentication startup retries after an early failure", async () => {
 
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });
@@ -142,7 +230,7 @@ test("Startup onboarding follows the current account and workspace", async () =>
   const clerk = context.mocks.clerk();
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
   });
   await statusRequested.promise;
@@ -163,11 +251,11 @@ test("Startup onboarding follows the current account and workspace", async () =>
   ).not.toBeInTheDocument();
 });
 
-test("VM0 production uses production authentication", async () => {
+test("Okou production uses production authentication", async () => {
   const clerk = context.mocks.clerk();
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });
@@ -193,30 +281,19 @@ test("Authorized preview hosts use preview authentication", async () => {
   ]);
 });
 
-test("Okou lookalike hosts do not use production authentication", async () => {
-  const clerk = context.mocks.clerk();
-  await setupPage({
-    context,
-    host: "okou.ai.evil.example",
-    path: "/sign-in",
-    auth: null,
-  });
-  await waitForReadySignIn();
-  expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_preview_key" },
-  ]);
-});
-
-test("VM0 lookalike hosts do not use production authentication", async () => {
-  const clerk = context.mocks.clerk();
-  await setupPage({
-    context,
-    host: "app.vm0.ai.evil.example",
-    path: "/sign-in",
-    auth: null,
-  });
-  await waitForReadySignIn();
-  expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_preview_key" },
-  ]);
-});
+test.each(["okou.ai.evil.example", "app.okou.ai.evil.example"])(
+  "Okou lookalike host %s does not use production authentication",
+  async (host) => {
+    const clerk = context.mocks.clerk();
+    await setupPage({
+      context,
+      host,
+      path: "/sign-in",
+      auth: null,
+    });
+    await waitForReadySignIn();
+    expect(clerk.resourceRequests).toStrictEqual([
+      { domain: undefined, publishableKey: "test_preview_key" },
+    ]);
+  },
+);

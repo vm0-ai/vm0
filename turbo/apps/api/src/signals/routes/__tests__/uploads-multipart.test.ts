@@ -36,6 +36,40 @@ function authHeaders() {
 }
 
 describe("multipart user artifact uploads", () => {
+  it.each(["complete", "abort"] as const)(
+    "preserves the public %s error when storage cannot find the multipart upload",
+    async (action) => {
+      mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+      context.mocks.s3.send.mockImplementation((command) => {
+        expect(command).toBeInstanceOf(ListPartsCommand);
+        return Promise.reject(
+          Object.assign(new Error("Multipart upload not found"), {
+            name: "NoSuchUpload",
+          }),
+        );
+      });
+      const body = {
+        id: randomUUID(),
+        filename: "recording.mp4",
+        uploadId: randomUUID(),
+      };
+      const response =
+        action === "complete"
+          ? await accept(
+              apiClient().completeMultipart({
+                headers: authHeaders(),
+                body: { ...body, partCount: 1 },
+              }),
+              [500],
+            )
+          : await accept(
+              apiClient().abortMultipart({ headers: authHeaders(), body }),
+              [500],
+            );
+      expect(response.body).toStrictEqual({ error: "Internal server error" });
+    },
+  );
+
   it("prepares 5 MiB parts for a large upload", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -96,7 +130,7 @@ describe("multipart user artifact uploads", () => {
       },
     });
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u,
     );
     const createCommand = context.mocks.s3.send.mock.calls
       .map(([command]) => {
@@ -112,7 +146,7 @@ describe("multipart user artifact uploads", () => {
       Metadata: {
         "artifact-id": response.body.id,
         filename: "recording.mp4",
-        "public-brand": "vm0",
+        "public-brand": "okou",
         "user-id": encodeURIComponent(userId),
       },
     });
@@ -139,13 +173,11 @@ describe("multipart user artifact uploads", () => {
 
     expect(response.body).toMatchObject({
       uploadUrl: "https://r2.example.com/upload?sig=test",
-      url: expect.stringMatching(
-        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
-      ),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u),
       uploadHeaders: {
         "x-amz-meta-artifact-id": response.body.id,
         "x-amz-meta-filename": "small.mp4",
-        "x-amz-meta-public-brand": "vm0",
+        "x-amz-meta-public-brand": "okou",
         "x-amz-meta-user-id": encodeURIComponent(userId),
       },
     });
@@ -240,7 +272,7 @@ describe("multipart user artifact uploads", () => {
           Metadata: {
             "artifact-id": artifactId,
             filename: "my recording.mp4",
-            "public-brand": "vm0",
+            "public-brand": "okou",
             "user-id": encodeURIComponent(userId),
           },
         });
@@ -263,9 +295,7 @@ describe("multipart user artifact uploads", () => {
 
     expect(response.body).toStrictEqual({
       id: artifactId,
-      url: expect.stringMatching(
-        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
-      ),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u),
     });
     const completeCommand = context.mocks.s3.send.mock.calls
       .map(([command]) => {

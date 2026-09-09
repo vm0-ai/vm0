@@ -139,8 +139,7 @@ impl ParkedIdleCandidateBuilder {
             workspace_promotion,
         } = self;
         let metadata = IdleSandboxMetadata {
-            kind: super::entry::IdleSandboxKind::Exact,
-            reuse_key,
+            identity: super::entry::IdleSandboxIdentity::Exact(reuse_key),
             sandbox_id,
             profile_name,
             device_rate_limits,

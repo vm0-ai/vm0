@@ -21,11 +21,13 @@ jq -e '
       select(startswith(".github/scripts/runner-behavior-"))];
   .jobs.detect as $detect |
   .jobs.check as $check |
+  .jobs["api-contracts-rust-bindings"] as $bindings |
   .jobs["runner-behavior-lane-a"] as $lane_a |
   .jobs["runner-behavior-lane-b"] as $lane_b |
   .jobs["runner-behavior-lane-c"] as $lane_c |
   .jobs["runner-behavior-lane-d"] as $lane_d |
   .jobs["host-cpu-fairness-test"] as $host_cpu |
+  .jobs["runner-rootfs-process-test"] as $rootfs_process |
   .jobs["ci-gate-crates"] as $gate |
   {
     "any-changed": "${{ steps.detect.outputs.any-changed }}",
@@ -37,9 +39,9 @@ jq -e '
     "ably-subscriber-changed": "${{ steps.detect.outputs.ably-subscriber-changed }}",
     "api-contracts-changed": "${{ steps.detect.outputs.api-contracts-changed }}",
     "runner-changed": "${{ steps.detect.outputs.runner-changed }}",
-    "sandbox-fc-changed": "${{ steps.detect.outputs.sandbox-fc-changed }}",
+    "sandbox-firecracker-changed": "${{ steps.detect.outputs.sandbox-firecracker-changed }}",
     "nbd-cow-changed": "${{ steps.detect.outputs.nbd-cow-changed }}",
-    "vsock-test-changed": "${{ steps.detect.outputs.vsock-test-changed }}",
+    "guest-control-tests-changed": "${{ steps.detect.outputs.guest-control-tests-changed }}",
     "crates-runner-consumer-needed": "${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}",
     "metal-job-ref": "${{ steps.runner-job-ref.outputs.job-ref }}",
     "runner-image-job-ref": "${{ steps.runner-job-ref.outputs.image-job-ref }}"
@@ -70,13 +72,20 @@ jq -e '
     .name == "Configure Git safe directory" and
     .run == "git config --global --add safe.directory \"$GITHUB_WORKSPACE\""
   ) and
+  $bindings.container.image == $check.container.image and
+  any($bindings.steps[]?;
+    .name == "Check API Contracts Bindings" and
+    (.run | contains("pnpm -F @okouai/api-contracts generate:rust")) and
+    (.run | contains("pnpm -F @okouai/api-contracts generate:python")) and
+    (.run | contains("git diff --exit-code"))
+  ) and
   ($host_cpu.needs | sort) == ([
     "detect",
     "runner-build"
   ] | sort) and
   ($host_cpu.if | contains("needs.runner-build.result")) and
   ($host_cpu.if | contains("needs.runner-behavior-lane-") | not) and
-  ($host_cpu.if | contains("needs.detect.outputs.sandbox-fc-changed")) and
+  ($host_cpu.if | contains("needs.detect.outputs.sandbox-firecracker-changed")) and
   ($host_cpu.if | contains("needs.detect.outputs.ci-changed")) and
   ([$lane_a, $lane_b, $lane_c, $lane_d] |
     all(.[]; .needs == ["runner-build"])) and
@@ -109,10 +118,24 @@ jq -e '
   ) and
   ($gate.needs | index("host-cpu-fairness-test")) != null and
   ($gate.needs | index("runner-behavior-lane-d")) != null and
+  $rootfs_process.needs == ["detect", "runner-host-groups"] and
+  $rootfs_process.defaults.run.shell == "bash" and
+  ($rootfs_process.if | contains("needs.detect.outputs.runner-changed")) and
+  ($rootfs_process.if | contains("needs.detect.outputs.ci-changed")) and
+  any($rootfs_process.steps[]?;
+    .name == "Run rootfs process ownership tests on metal" and
+    (.run | contains("sudo unshare --mount --pid --fork --kill-child --mount-proc")) and
+    (.run | contains("--ignored --exact")) and
+    (.run | contains("cmd::build::scripts::process_tests::rootfs_process_ownership")) and
+    (.run | contains("GITHUB_RUN_ATTEMPT")) and
+    (.run | contains("runner-host-architecture-groups.sh"))
+  ) and
+  ($gate.needs | index("runner-rootfs-process-test")) != null and
   any($gate.steps[]?;
     .name == "Validate CI results" and
     (.run | contains("needs.host-cpu-fairness-test.result")) and
-    (.run | contains("needs.runner-behavior-lane-d.result"))
+    (.run | contains("needs.runner-behavior-lane-d.result")) and
+    (.run | contains("needs.runner-rootfs-process-test.result"))
   )
 ' <<<"$crates_json" >/dev/null || fail "Crates workflow contract changed"
 

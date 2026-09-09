@@ -5,7 +5,7 @@ use sandbox::{DeviceRateLimits, SandboxId};
 use tokio::sync::watch;
 
 use crate::ids::RunId;
-use crate::status::IdleSandbox;
+use crate::status::{BlankSandbox, IdleSandbox};
 use crate::types::{HeldSandboxState, ReusableSandboxState};
 
 mod entry;
@@ -17,9 +17,9 @@ pub(crate) use entry::{
     ImmediateHandoffCandidate,
 };
 pub use entry::{
-    IdleDestroyJob, IdleEntry, IdleSandboxKind, IdleUnparkResult, ParkedIdleCandidate,
-    RejectedParkedIdleCandidate, ReservedIdleSandbox, RestoreReservedIdleResult,
-    ReusableIdleSandbox, ReusableIdleSandboxParts,
+    IdleDestroyJob, IdleEntry, IdleSandboxIdentity, IdleSandboxKind, IdleUnparkResult,
+    ParkedIdleCandidate, RejectedParkedIdleCandidate, ReservedIdleSandbox,
+    RestoreReservedIdleResult, ReusableIdleSandbox, ReusableIdleSandboxParts,
 };
 pub(crate) use entry::{SpeculativeIdleSandbox, SpeculativeIdleUnparkResult};
 pub(crate) use park_transition::{
@@ -44,20 +44,22 @@ pub struct IdlePoolConfig {
 ///
 /// Status writes happen after dropping the pool lock, so an older snapshot can
 /// otherwise complete after a newer drain/evict write and reintroduce stale
-/// `idle_sandboxes` in status.json.
-#[derive(Clone, Debug)]
+/// entries in either parked collection in status.json.
+#[derive(Clone, Debug, Default)]
 pub struct IdlePoolSnapshot {
     pub revision: u64,
     pub idle_sandboxes: Vec<IdleSandbox>,
+    pub blank_sandboxes: Vec<BlankSandbox>,
 }
 
-/// Pool of idle sandboxes keyed by reuse key.
+/// Shared parked inventory with separate exact reuse-key and blank sandbox-ID indexes.
 ///
 /// After a job reaches a terminal state that is proven reusable, its sandbox
 /// can be parked here instead of being destroyed. A subsequent job for the same
 /// reuse key can reuse the parked sandbox, skipping sandbox creation and startup.
 pub struct IdlePool {
-    entries: HashMap<String, IdleEntry>,
+    exact_entries: HashMap<String, IdleEntry>,
+    blank_entries: HashMap<SandboxId, IdleEntry>,
     config: IdlePoolConfig,
     revision: u64,
     changes: watch::Sender<u64>,
@@ -98,7 +100,8 @@ impl IdlePool {
     pub(crate) fn new_with_parking_gate(config: IdlePoolConfig, parking_gate: ParkingGate) -> Self {
         let (changes, _changes_rx) = watch::channel(0);
         Self {
-            entries: HashMap::new(),
+            exact_entries: HashMap::new(),
+            blank_entries: HashMap::new(),
             config,
             revision: 0,
             changes,
@@ -124,25 +127,25 @@ impl IdlePool {
     }
 
     fn park_at(&mut self, candidate: ParkedIdleCandidate, parked_at: Instant) -> ParkResult {
-        let reuse_key = candidate.reuse_key().to_string();
+        let identity = &candidate.metadata.identity;
         if !self.parking_gate.is_open() {
             return ParkResult::Rejected(candidate.into_rejected());
         }
         let mut capacity_evicted = None;
-        if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
-            // At capacity and this reuse key has no existing entry to replace.
-            if !self.entries.contains_key(&reuse_key) {
+        if self.config.max_idle > 0 && self.len() >= self.config.max_idle {
+            // At capacity and this identity has no existing entry to replace.
+            if !self.contains_identity(identity) {
                 if candidate.is_blank() {
                     return ParkResult::Rejected(candidate.into_rejected());
                 }
                 let Some(blank_key) = self.oldest_blank_key() else {
                     return ParkResult::Rejected(candidate.into_rejected());
                 };
-                capacity_evicted = self.entries.remove(&blank_key);
+                capacity_evicted = self.blank_entries.remove(&blank_key);
             }
         }
         let entry = candidate.into_idle_entry(parked_at);
-        let replaced = self.entries.insert(reuse_key, entry).or(capacity_evicted);
+        let replaced = self.insert_entry(entry).or(capacity_evicted);
         let result = match replaced {
             Some(entry) => ParkResult::Replaced(entry.into_destroy_job()),
             None => ParkResult::Parked,
@@ -152,7 +155,7 @@ impl IdlePool {
     }
 
     pub fn take(&mut self, reuse_key: &str) -> Option<IdleEntry> {
-        let entry = self.entries.remove(reuse_key);
+        let entry = self.exact_entries.remove(reuse_key);
         if entry.is_some() {
             self.bump_revision();
         }
@@ -160,9 +163,6 @@ impl IdlePool {
     }
 
     pub(crate) fn take_reserved(&mut self, reuse_key: &str) -> Option<ReservedIdleSandbox> {
-        if self.entries.get(reuse_key).is_some_and(IdleEntry::is_blank) {
-            return None;
-        }
         self.take(reuse_key)
             .map(|entry| ReservedIdleSandbox { entry })
     }
@@ -173,10 +173,8 @@ impl IdlePool {
         profile_name: &str,
         device_rate_limits: &Option<DeviceRateLimits>,
     ) -> bool {
-        self.entries.get(reuse_key).is_some_and(|entry| {
-            !entry.is_blank()
-                && entry.profile_name() == profile_name
-                && entry.device_rate_limits() == device_rate_limits
+        self.exact_entries.get(reuse_key).is_some_and(|entry| {
+            entry.profile_name() == profile_name && entry.device_rate_limits() == device_rate_limits
         })
     }
 
@@ -189,7 +187,7 @@ impl IdlePool {
         if !self.has_reusable(reuse_key, profile_name, device_rate_limits) {
             return None;
         }
-        let entry = self.entries.remove(reuse_key)?;
+        let entry = self.exact_entries.remove(reuse_key)?;
         self.bump_revision();
         Some(ReservedIdleSandbox { entry })
     }
@@ -217,7 +215,7 @@ impl IdlePool {
         device_rate_limits: &Option<DeviceRateLimits>,
         history_generation_run_id: RunId,
     ) -> Result<ReservedIdleSandbox, ExactIdleReservationMiss> {
-        let entry = match self.entries.entry(reuse_key.to_owned()) {
+        let entry = match self.exact_entries.entry(reuse_key.to_owned()) {
             Entry::Vacant(_) => return Err(ExactIdleReservationMiss::Absent),
             Entry::Occupied(entry) => {
                 if entry.get().profile_name() != profile_name {
@@ -257,11 +255,16 @@ impl IdlePool {
     }
 
     /// Order all current entries for pressure eviction without mutating them.
-    pub(crate) fn oldest_first_pressure_keys(&self) -> Vec<String> {
-        let mut ordered_entries: Vec<(bool, Instant, String)> = self
-            .entries
-            .iter()
-            .map(|(reuse_key, entry)| (!entry.is_blank(), entry.parked_at, reuse_key.clone()))
+    pub(crate) fn oldest_first_pressure_keys(&self) -> Vec<IdleSandboxIdentity> {
+        let mut ordered_entries: Vec<_> = self
+            .entries()
+            .map(|entry| {
+                (
+                    !entry.is_blank(),
+                    entry.parked_at,
+                    entry.metadata.identity.clone(),
+                )
+            })
             .collect();
         ordered_entries.sort_unstable();
         ordered_entries
@@ -276,25 +279,21 @@ impl IdlePool {
         device_rate_limits: &Option<DeviceRateLimits>,
     ) -> Option<ReservedIdleSandbox> {
         let key = self
-            .entries
+            .blank_entries
             .iter()
             .filter(|(_, entry)| {
-                entry.is_blank()
-                    && entry.profile_name() == profile_name
+                entry.profile_name() == profile_name
                     && entry.device_rate_limits() == device_rate_limits
             })
             .min_by_key(|(_, entry)| entry.parked_at)
-            .map(|(key, _)| key.clone())?;
-        let entry = self.entries.remove(&key)?;
+            .map(|(key, _)| *key)?;
+        let entry = self.blank_entries.remove(&key)?;
         self.bump_revision();
         Some(ReservedIdleSandbox { entry })
     }
 
     pub(crate) fn blank_len(&self) -> usize {
-        self.entries
-            .values()
-            .filter(|entry| entry.is_blank())
-            .count()
+        self.blank_entries.len()
     }
 
     /// Remove the oldest compatible exact entry that has been idle long enough
@@ -313,11 +312,10 @@ impl IdlePool {
         memory_mb: u32,
     ) -> Option<(IdleDestroyJob, Duration)> {
         let (reuse_key, parked_at) = self
-            .entries
+            .exact_entries
             .iter()
             .filter(|(_, entry)| {
-                !entry.is_blank()
-                    && entry.profile_name() == profile_name
+                entry.profile_name() == profile_name
                     && entry.device_rate_limits() == device_rate_limits
                     && entry.budget_lease.vcpu() == vcpu
                     && entry.budget_lease.memory_mb() == memory_mb
@@ -325,7 +323,7 @@ impl IdlePool {
             })
             .min_by_key(|(reuse_key, entry)| (entry.parked_at, reuse_key.as_str()))
             .map(|(reuse_key, entry)| (reuse_key.clone(), entry.parked_at))?;
-        let entry = self.entries.remove(&reuse_key)?;
+        let entry = self.exact_entries.remove(&reuse_key)?;
         self.bump_revision();
         Some((
             entry.into_destroy_job(),
@@ -338,25 +336,25 @@ impl IdlePool {
         reservation: ReservedIdleSandbox,
     ) -> RestoreReservedIdleResult {
         let entry = reservation.entry;
-        let reuse_key = entry.reuse_key().to_owned();
-        if !self.parking_gate.is_open() || self.entries.contains_key(&reuse_key) {
+        let identity = &entry.metadata.identity;
+        if !self.parking_gate.is_open() || self.contains_identity(identity) {
             return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
         }
 
         let mut displaced_blank = None;
-        if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
+        if self.config.max_idle > 0 && self.len() >= self.config.max_idle {
             let blank_key = (!entry.is_blank())
                 .then(|| self.oldest_blank_key())
                 .flatten();
             let Some(blank_key) = blank_key else {
                 return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
             };
-            displaced_blank = self.entries.remove(&blank_key);
+            displaced_blank = self.blank_entries.remove(&blank_key);
         }
 
         // Restore the original entry, including its idle age, while giving exact
         // reservations the same priority over blank inventory as newly parked runs.
-        self.entries.insert(reuse_key, entry);
+        self.insert_entry(entry);
         self.bump_revision();
         match displaced_blank {
             Some(blank) => RestoreReservedIdleResult::Replaced(Box::new(blank.into_destroy_job())),
@@ -366,39 +364,53 @@ impl IdlePool {
 
     /// Evict an entry selected by a pressure ordering captured under the same
     /// exclusive pool access.
-    pub(crate) fn evict_for_pressure(&mut self, reuse_key: &str) -> Option<IdleDestroyJob> {
-        let job = self
-            .entries
-            .remove(reuse_key)
-            .map(IdleEntry::into_destroy_job);
+    pub(crate) fn evict_for_pressure(
+        &mut self,
+        identity: &IdleSandboxIdentity,
+    ) -> Option<IdleDestroyJob> {
+        let entry = match identity {
+            IdleSandboxIdentity::Exact(reuse_key) => self.exact_entries.remove(reuse_key),
+            IdleSandboxIdentity::Blank(sandbox_id) => self.blank_entries.remove(sandbox_id),
+        };
+        let job = entry.map(IdleEntry::into_destroy_job);
         if job.is_some() {
             self.bump_revision();
         }
         job
     }
 
-    pub(crate) fn entry_kind(&self, reuse_key: &str) -> Option<IdleSandboxKind> {
-        self.entries.get(reuse_key).map(IdleEntry::kind)
-    }
-
-    /// Return a revisioned reuse-key-sorted snapshot suitable for status.json.
+    /// Capture both parked inventories under the same pool revision.
     ///
-    /// Produced in a single iteration so `reuse_key` and `sandbox_id` can never
-    /// drift out of pairing.
+    /// Exact entries are sorted by reuse key and blanks by sandbox ID. The
+    /// shared pool borrow keeps both projections consistent with the revision.
     pub fn status_snapshot(&self) -> IdlePoolSnapshot {
-        let mut sandboxes: Vec<IdleSandbox> =
-            self.entries.values().map(idle_sandbox_for_entry).collect();
+        let mut sandboxes: Vec<IdleSandbox> = self
+            .exact_entries
+            .iter()
+            .map(|(reuse_key, entry)| IdleSandbox {
+                reuse_key: reuse_key.clone(),
+                sandbox_id: entry.metadata.sandbox_id,
+            })
+            .collect();
+        let mut blank_sandboxes: Vec<_> = self
+            .blank_entries
+            .keys()
+            .map(|sandbox_id| BlankSandbox {
+                sandbox_id: *sandbox_id,
+            })
+            .collect();
+        blank_sandboxes.sort_unstable_by_key(|blank| blank.sandbox_id);
         sandboxes.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
         IdlePoolSnapshot {
             revision: self.revision,
             idle_sandboxes: sandboxes,
+            blank_sandboxes,
         }
     }
 
     /// Return true when the idle pool currently owns `sandbox_id`.
     pub fn contains_sandbox_id(&self, sandbox_id: SandboxId) -> bool {
-        self.entries
-            .values()
+        self.entries()
             .any(|entry| entry.metadata.sandbox_id == sandbox_id)
     }
 
@@ -417,12 +429,9 @@ impl IdlePool {
     /// sandbox IDs — it produces both views from a single iteration.
     pub fn held_sandbox_states(&self) -> Vec<HeldSandboxState> {
         let mut states: Vec<HeldSandboxState> = self
-            .entries
+            .exact_entries
             .iter()
             .filter_map(|(reuse_key, entry)| {
-                if entry.is_blank() {
-                    return None;
-                }
                 entry
                     .metadata
                     .last_completed_at
@@ -443,14 +452,14 @@ impl IdlePool {
 
     #[cfg(test)]
     pub fn held_reuse_keys(&self) -> Vec<String> {
-        let mut reuse_keys: Vec<String> = self.entries.keys().cloned().collect();
+        let mut reuse_keys: Vec<String> = self.exact_entries.keys().cloned().collect();
         reuse_keys.sort_unstable();
         reuse_keys
     }
 
-    /// Number of idle sandboxes in the pool.
+    /// Total exact and blank sandboxes owned by the pool.
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.exact_entries.len() + self.blank_entries.len()
     }
 
     /// Subscribe to pool ownership mutations. The revision is durable for each
@@ -477,9 +486,11 @@ impl IdlePool {
     /// [`crate::lifecycle::RunnerMode::Running`] becomes visible.
     pub fn drain(&mut self) -> Vec<IdleDestroyJob> {
         let jobs: Vec<IdleDestroyJob> = self
-            .entries
+            .exact_entries
             .drain()
-            .map(|(_, entry)| entry.into_destroy_job())
+            .map(|(_, entry)| entry)
+            .chain(self.blank_entries.drain().map(|(_, entry)| entry))
+            .map(IdleEntry::into_destroy_job)
             .collect();
         if !jobs.is_empty() {
             self.bump_revision();
@@ -487,24 +498,38 @@ impl IdlePool {
         jobs
     }
 
+    fn entries(&self) -> impl Iterator<Item = &IdleEntry> {
+        self.exact_entries
+            .values()
+            .chain(self.blank_entries.values())
+    }
+
+    fn contains_identity(&self, identity: &IdleSandboxIdentity) -> bool {
+        match identity {
+            IdleSandboxIdentity::Exact(reuse_key) => self.exact_entries.contains_key(reuse_key),
+            IdleSandboxIdentity::Blank(sandbox_id) => self.blank_entries.contains_key(sandbox_id),
+        }
+    }
+
+    fn insert_entry(&mut self, entry: IdleEntry) -> Option<IdleEntry> {
+        match &entry.metadata.identity {
+            IdleSandboxIdentity::Exact(reuse_key) => {
+                self.exact_entries.insert(reuse_key.clone(), entry)
+            }
+            IdleSandboxIdentity::Blank(sandbox_id) => self.blank_entries.insert(*sandbox_id, entry),
+        }
+    }
+
     fn bump_revision(&mut self) {
         self.revision = self.revision.saturating_add(1);
         self.changes.send_replace(self.revision);
     }
 
-    fn oldest_blank_key(&self) -> Option<String> {
-        self.entries
+    fn oldest_blank_key(&self) -> Option<SandboxId> {
+        self.blank_entries
             .iter()
-            .filter(|(_, entry)| entry.is_blank())
             .min_by_key(|(_, entry)| entry.parked_at)
-            .map(|(key, _)| key.clone())
-    }
-}
-
-fn idle_sandbox_for_entry(entry: &IdleEntry) -> IdleSandbox {
-    IdleSandbox {
-        reuse_key: entry.reuse_key().to_owned(),
-        sandbox_id: entry.metadata.sandbox_id,
+            .map(|(key, _)| *key)
     }
 }
 

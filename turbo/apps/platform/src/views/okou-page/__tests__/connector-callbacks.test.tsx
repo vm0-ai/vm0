@@ -88,7 +88,9 @@ test("Complete a GitHub connector authorization", async () => {
   );
   expect(image).toHaveAttribute("src", icon.url);
   expect(
-    screen.getByText("Connected as octocat. You can close this window."),
+    screen.getByText(
+      "Connected as octocat. Close this window and return to the original page to continue.",
+    ),
   ).toBeInTheDocument();
   await waitFor(() => {
     expect(pathname()).toBe("/connectors/github/callback/success");
@@ -113,7 +115,9 @@ test("Refreshing a completed connector callback does not reconnect it", async ()
     screen.findByRole("heading", { name: "GitHub connected" }),
   ).resolves.toBeInTheDocument();
   expect(
-    screen.getByText("Connected as octocat. You can close this window."),
+    screen.getByText(
+      "Connected as octocat. Close this window and return to the original page to continue.",
+    ),
   ).toBeInTheDocument();
 });
 

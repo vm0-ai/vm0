@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.13.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.6...guest-contracts-v0.13.7) (2026-09-09)
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+
+## [0.13.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.5...guest-contracts-v0.13.6) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** reduce workspace mount helper process fanout ([#32704](https://github.com/vm0-ai/vm0/issues/32704)) ([6948274](https://github.com/vm0-ai/vm0/commit/69482746ed271dfbce548e7a32ec86869d144172))
+
+## [0.13.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.4...guest-contracts-v0.13.5) (2026-09-08)
+
+## [0.13.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.3...guest-contracts-v0.13.4) (2026-09-08)
+
+## [0.13.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.2...guest-contracts-v0.13.3) (2026-09-08)
+
+## [0.13.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.1...guest-contracts-v0.13.2) (2026-09-08)
+
+
+### Documentation
+
+* **guest-contracts:** document read helper directory side effects ([#32476](https://github.com/vm0-ai/vm0/issues/32476)) ([1070d0e](https://github.com/vm0-ai/vm0/commit/1070d0e6e2cebebfd415d6618210fa83b1e91cd2))
+
+## [0.13.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.0...guest-contracts-v0.13.1) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.13.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.35...guest-contracts-v0.13.0) (2026-09-07)
 
 

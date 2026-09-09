@@ -11,10 +11,9 @@ user can observe. Keep page tests in the relevant `views/**/__tests__`
 directory with a `.test.tsx` or `.test.ts` suffix.
 
 Use a signal bootstrap test only when the behavior has no page-visible surface
-and still needs the production Platform bootstrap path. Direct pure tests are
-narrow exceptions for security-critical logic, complex algorithms, parsers or
-serializers with non-obvious invariants, and explicit protocol or state-machine
-contracts that cannot be expressed through a page.
+and still needs the production Platform bootstrap path. Follow the
+[external behavior boundary](testing-external-behavior.md) when a state cannot
+be constructed through a production interface.
 
 Do not add helper-only, component-only, or static-configuration unit tests when
 a rendered page can cover the behavior.
@@ -24,6 +23,12 @@ a rendered page can cover the behavior.
 `setupPage` is the canonical public helper that starts Platform. It initializes
 the requested locale, renders the complete Router, and resolves after the first
 page content is observable. Always await it before the first page assertion.
+
+Startup belongs to the test context's original abort signal. Cancelling that
+lifetime rejects `setupPage()` and a pending `startPage().ready`; cancellation
+is not page readiness. Tests that inspect blocked startup may leave
+`startPage().ready` unawaited: the shared helper owns its cancellation rejection
+and observer cleanup.
 
 Every page test follows this order:
 
@@ -71,7 +76,7 @@ test("A user confirms the billing upgrade", async () => {
   await setupPage({
     context,
     path: "/settings?tab=billing",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: {
       user: { id: "user_123", fullName: "Test User" },
       organization: {
@@ -247,3 +252,9 @@ store, an abort signal, and external mocks. Bind external resources to
 `context.signal`. Do not manually clear detached work, browser storage, spies,
 globals, or mocks in file-level cleanup hooks; the shared Vitest setup and test
 context own that lifecycle.
+
+`testContext` aborts the test's root signal. The existing global `afterEach` in
+`src/test/setup.ts` then calls `clearAllDetached()` before resetting MSW handlers.
+This is the single detached-work cleanup mechanism. Do not create a separate
+promise registry or call `clearAllDetached()` from test cases or their hooks.
+During the test, await the operation or its observable completion instead.

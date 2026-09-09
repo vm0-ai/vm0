@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { oomEvidenceSchema } from "@okouai/api-contracts/contracts/oom-evidence";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
@@ -1991,6 +1993,124 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
 });
 
 describe("WHCB-05: sandbox agent webhook boundaries", () => {
+  it("preserves same-attempt DNS timing, zero values, and legacy operations", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "DNS attempt attribution",
+    );
+    const timestamp = nowDate().toISOString();
+    const operations = [
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness",
+        duration_ms: 10,
+        success: true,
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 0,
+        success: false,
+        outcome: "process_timeout",
+        dns_readiness_attempt: 1,
+        dns_readiness_final_attempt: false,
+        dns_readiness_guest_duration_ms: 0,
+        dns_readiness_host_residual_ms: 0,
+        dns_readiness_timing: "paired",
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 10,
+        success: true,
+        outcome: "success",
+        dns_readiness_attempt: 2,
+        dns_readiness_final_attempt: true,
+        dns_readiness_guest_duration_ms: 7,
+        dns_readiness_host_residual_ms: 3,
+        dns_readiness_timing: "paired",
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 4,
+        success: false,
+        outcome: "host_cancelled",
+        dns_readiness_attempt: 1,
+        dns_readiness_final_attempt: true,
+        dns_readiness_timing: "unavailable",
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 2,
+        success: true,
+        outcome: "success",
+        dns_readiness_attempt: 1,
+        dns_readiness_final_attempt: true,
+        dns_readiness_guest_duration_ms: 10,
+        dns_readiness_timing: "inconsistent",
+      },
+    ] as const;
+    context.mocks.axiom.sdkIngest.mockClear();
+    await api.requestAgentTelemetry(
+      { runId, sandboxOperations: [...operations] },
+      headers,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledTimes(
+      operations.length,
+    );
+    for (const { ts, action_type: actionType, ...fields } of operations) {
+      expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+        "vm0-sandbox-op-log-dev",
+        [
+          {
+            _time: ts,
+            op_type: actionType,
+            source: "sandbox",
+            sandbox_type: "runner",
+            run_id: runId,
+            ...fields,
+          },
+        ],
+      );
+    }
+  });
+
+  it("rejects unbounded DNS attempt dimensions at the telemetry boundary", async () => {
+    const runId = randomUUID();
+    const headers = api.sandboxWebhookHeaders({ runId });
+    for (const invalid of [
+      { dns_readiness_attempt: 0 },
+      { dns_readiness_attempt: 4 },
+      { dns_readiness_guest_duration_ms: -1 },
+      { dns_readiness_host_residual_ms: -1 },
+      { dns_readiness_timing: "arbitrary-diagnostic" },
+      { dns_readiness_final_attempt: "false" },
+    ]) {
+      const response = await api.requestAgentTelemetryUnchecked(
+        {
+          runId,
+          sandboxOperations: [
+            {
+              ts: nowDate().toISOString(),
+              action_type:
+                "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+              duration_ms: 1,
+              success: true,
+              ...invalid,
+            },
+          ],
+        },
+        headers,
+        [400],
+      );
+      expectApiError(response.body);
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+    }
+  });
+
   it("returns 500 with structured diagnostics when telemetry ingest times out", async () => {
     const { runId, headers } = await createEventWebhookRun(
       "required Axiom telemetry deadline",
@@ -2124,6 +2244,124 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         );
       }),
     ).toBeFalsy();
+  });
+
+  it("ingests bounded OOM evidence from the Rust wire fixture and rejects cross-run or forged payloads", async () => {
+    const { actor, runId, headers } = await createEventWebhookRun(
+      `OOM evidence ${randomUUID()}`,
+    );
+    const fixture: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    const evidence = oomEvidenceSchema.parse(fixture);
+    const ingested: unknown[][] = [];
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", `xaat-oom-${randomUUID()}`);
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-metrics/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected telemetry event array");
+          }
+          ingested.push(events);
+          return HttpResponse.json(successfulAxiomIngestStatus(events.length));
+        },
+      ),
+    );
+    const response = await api.requestAgentTelemetry(
+      { runId, oomEvidence: evidence },
+      headers,
+      [200],
+    );
+    expect(response.body).toMatchObject({
+      success: true,
+      oomEvidenceVersion: 1,
+    });
+    expect(ingested[0]).toContainEqual(
+      expect.objectContaining({
+        type: "guest_oom_incident",
+        runId,
+        userId: actor.userId,
+        operation_id: evidence.operation_id,
+        guest_boot_id: evidence.guest_boot_id,
+        _time: evidence.incidents[0]?.captured_at,
+        incident_id: evidence.incidents[0]?.id,
+        groups: evidence.incidents[0]?.groups,
+        kernel_events: evidence.incidents[0]?.kernel_events,
+        kernel_status: "available",
+        before_cleanup: true,
+        after_observation: true,
+      }),
+    );
+    expect(ingested[0]).toContainEqual(
+      expect.objectContaining({
+        type: "guest_memory_snapshot",
+        sampled_at: evidence.sampled_at,
+        groups: evidence.groups,
+      }),
+    );
+    await api.requestAgentTelemetry(
+      { runId: randomUUID(), oomEvidence: evidence },
+      headers,
+      [401],
+    );
+    for (const altered of [
+      { ...evidence, prompt: "must never enter telemetry" },
+      {
+        ...evidence,
+        incidents: Array.from({ length: 5 }, () => {
+          return evidence.incidents[0];
+        }),
+      },
+      { ...evidence, operation_id: randomUUID() },
+      {
+        ...evidence,
+        incidents: evidence.incidents.map((incident) => {
+          return {
+            ...incident,
+            kernel_events: incident.kernel_events.map((event) => {
+              return { ...event, source: "host" };
+            }),
+          };
+        }),
+      },
+    ]) {
+      await api.requestAgentTelemetryUnchecked(
+        { runId, oomEvidence: altered },
+        headers,
+        [400],
+      );
+    }
+    expect(ingested).toHaveLength(1);
+  });
+
+  it("does not acknowledge OOM evidence when the Axiom destination is unavailable", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      `OOM unavailable ${randomUUID()}`,
+    );
+    const fixture: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", undefined);
+    const response = await api.requestAgentTelemetry(
+      { runId, oomEvidence: oomEvidenceSchema.parse(fixture) },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({ success: true, id: runId });
   });
 
   it("projects only present control-path metric fields", async () => {

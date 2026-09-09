@@ -173,12 +173,7 @@ async fn status_idle_reuse_keys_and_active_runs_if_exists(
 
 pub(in super::super) async fn publish_idle_status(pool: &SharedIdlePool, status: &StatusTracker) {
     let snapshot = pool.lock().await.status_snapshot();
-    assert!(
-        status
-            .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
-            .await
-            .unwrap()
-    );
+    assert!(status.set_idle_snapshot(snapshot.clone()).await.unwrap());
 }
 
 pub(in super::super) async fn wait_status_idle_empty_with_active_run(

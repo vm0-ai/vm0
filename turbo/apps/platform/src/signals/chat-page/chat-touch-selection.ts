@@ -7,7 +7,7 @@ import { onRef, resetSignal } from "../utils.ts";
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Quote interaction.
 export const FEEDBACK_SOURCE_SELECTOR =
-  ".okou-chat-bubble-assistant, [data-feedback-source]";
+  "[data-chat-selection-source], [data-feedback-source]";
 const THREAD_SELECTOR = "[data-chat-thread-container-id]";
 const INTERACTIVE_SELECTOR =
   'a, button, input, textarea, select, [role="button"], [contenteditable]:not([contenteditable="false"])';

@@ -3,6 +3,9 @@ import { once } from "node:events";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
+import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
+import { materializePiAgentModelConfig } from "./credential";
+
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 
 const OPENAI_TERRA = {
@@ -138,13 +141,20 @@ describe("Pi agent model adapter", () => {
     },
   ])(
     "projects $name catalog metadata onto Responses without Chat fields",
-    (config) => {
-      const model = resolvePiAgentModel({
-        ...config,
-        apiKey: "test-key",
-        api: "openai-completions",
-        dialect: "openai-responses",
+    async ({ name: _name, ...config }) => {
+      const materialized = await materializePiAgentModelConfig({
+        config: piModelConfigSchema.parse({
+          ...config,
+          api: "openai-completions",
+          apiKeyEnv: "OPENAI_API_KEY",
+          credentialSecretName: "OPENAI_API_KEY",
+        }),
+        target: "direct",
+        resolveCredential: () => {
+          return "test-key";
+        },
       });
+      const model = resolvePiAgentModel(materialized);
 
       expect(model).toMatchObject({
         id: config.model,

@@ -1,8 +1,13 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   browserContract,
   type BrowserSession,
 } from "@okouai/api-contracts/contracts/browser";
 import { screen, waitFor, within } from "@testing-library/react";
+import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import {
@@ -34,6 +39,42 @@ const SUSPENDED_SCREENSHOT_URL =
   "https://images.example.test/browser-suspended.png";
 const ACTIVE_BROWSER_URL = "https://browser.example.test/live/initial";
 const RESUMED_BROWSER_URL = "https://browser.example.test/live/resumed";
+const appStyles = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../../css/index.css"),
+  "utf8",
+);
+
+async function createRenderedAppStyles(
+  signal: AbortSignal,
+): Promise<(element: HTMLElement) => void> {
+  const sharedCardRule = appStyles.match(
+    /\.okou-app \.okou-chat-card,\s*\.okou-app \.okou-chat-frame\s*\{[^}]+\}/u,
+  )?.[0];
+  if (!sharedCardRule) {
+    throw new Error("The shared chat card style rule was not found");
+  }
+  const renderedSharedCardRule = sharedCardRule.replace(
+    "hsl(var(--gray-400))",
+    "rgb(128, 128, 128)",
+  );
+  const compiler = await compile("@tailwind utilities;");
+  const styleElement = document.createElement("style");
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
+
+  return (element) => {
+    styleElement.textContent = [
+      renderedSharedCardRule,
+      compiler.build([...element.classList]),
+    ].join("\n");
+  };
+}
 
 function managedBrowserSession(args: {
   readonly status: "active" | "suspended";
@@ -82,7 +123,7 @@ function connectorAuthorizationUrl(args: {
   readonly threadId?: string;
   readonly callbackPrompt?: string;
 }): string {
-  const url = new URL("/connectors/slack/authorize", "https://app.vm0.ai");
+  const url = new URL("/connectors/slack/authorize", "https://app.okou.ai");
   if (args.agentId !== undefined) {
     url.searchParams.set("agentId", args.agentId);
   }
@@ -121,14 +162,15 @@ function buttonsByName(
 }
 
 test("Follow a managed browser session from its chat card", async () => {
+  const sessionReady = context.mocks.deferred<void>();
   let browser = managedBrowserSession({
     status: "active",
     screenshotUrl: INITIAL_SCREENSHOT_URL,
     liveUrl: ACTIVE_BROWSER_URL,
   });
-  const trustedBrowserUrl = `https://app.vm0.ai/browsers/${RUN_THREAD_ID}`;
-  const foreignBrowserUrl = `https://app.vm0.ai/browsers/${OTHER_THREAD_ID}`;
-  const untrustedBrowserUrl = `https://app.vm0.ai.evil.test/browsers/${RUN_THREAD_ID}`;
+  const trustedBrowserUrl = `https://app.okou.ai/browsers/${RUN_THREAD_ID}`;
+  const foreignBrowserUrl = `https://app.okou.ai/browsers/${OTHER_THREAD_ID}`;
+  const untrustedBrowserUrl = `https://app.okou.ai.evil.test/browsers/${RUN_THREAD_ID}`;
   installCapabilityChat({
     events: completedConversation(
       [
@@ -138,8 +180,9 @@ test("Follow a managed browser session from its chat card", async () => {
       ].join("\n\n"),
     ),
   });
-  context.mocks.api(browserContract.get, ({ params, respond }) => {
+  context.mocks.api(browserContract.get, async ({ params, respond }) => {
     expect(params.threadId).toBe(RUN_THREAD_ID);
+    await sessionReady.promise;
     return respond(200, { browser });
   });
   context.mocks.api(browserContract.open, ({ params, respond }) => {
@@ -151,12 +194,26 @@ test("Follow a managed browser session from its chat card", async () => {
     return respond(200, { browser });
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
+  const renderAppStyles = await createRenderedAppStyles(context.signal);
+  const loadingCard = await screen.findByTestId("browser-session-card-loading");
+  renderAppStyles(loadingCard);
+  expect(getComputedStyle(loadingCard).borderTopWidth).toBe("1px");
+
+  sessionReady.resolve();
   const card = await findButton("Open Research browser");
+  renderAppStyles(card);
+  expect(getComputedStyle(card).borderTopWidth).toBe("1px");
+  expect(getComputedStyle(card).transitionProperty).toBe(
+    "background-color,border-color,transform",
+  );
   expect(card).toHaveTextContent("Cloud browser");
   expect(card).toHaveTextContent("Live");
+  const status = within(card).getByText("Live");
+  renderAppStyles(status);
+  expect(getComputedStyle(status).lineHeight).toBe("16px");
   expect(screen.getByTestId("browser-session-thumbnail")).toHaveAttribute(
     "src",
     INITIAL_SCREENSHOT_URL,
@@ -235,7 +292,7 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
   const assistantText = [
     `[Assistant plan action](${trustedPlan})`,
     `[Assistant computer action](${trustedComputer})`,
-    `[Forged action](${computerAuthorizationUrl("https://app.vm0.ai.evil.test", "forged")})`,
+    `[Forged action](${computerAuthorizationUrl("https://app.okou.ai.evil.test", "forged")})`,
     "Wrong agent:",
     connectorAuthorizationUrl({
       agentId: OTHER_AGENT_ID,
@@ -251,7 +308,7 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
     "Missing action context:",
     connectorAuthorizationUrl({}),
     "Unavailable agent:",
-    `https://app.vm0.ai/agents/${OTHER_AGENT_ID}/permissions?connectorSlug=slack&permission=messages.read`,
+    `https://app.okou.ai/agents/${OTHER_AGENT_ID}/permissions?connectorSlug=slack&permission=messages.read`,
   ].join("\n\n");
   installCapabilityChat({
     events: [
@@ -270,7 +327,7 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
     ],
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   await expect(
@@ -316,5 +373,5 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
   await expect(
     screen.findByRole("dialog", { name: "Choose a plan" }),
   ).resolves.toBeVisible();
-  expect(window.location.hostname).toBe("app.vm0.ai");
+  expect(window.location.hostname).toBe("app.okou.ai");
 });

@@ -40,37 +40,77 @@ case "$destination" in
     exit 1
     ;;
 esac
-cp -- "$1" "${MOCK_CASE_DIR}/remote-bin"
+mkdir -p "${MOCK_CASE_DIR}/upload"
+cp -- "$1" "${MOCK_CASE_DIR}/upload/${destination##*/}"
 FAKE_SCP
 
 cat >"${fake_bin}/ssh" <<'FAKE_SSH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-[ "$#" -ge 4 ] || {
-  echo "unexpected ssh invocation: $*" >&2
-  exit 1
+# Execute the real remote scripts, mapping only host filesystem boundaries.
+map_paths() {
+  local value=$1
+  value=${value//"/tmp/vm0-runner-behavior/host-cpu-fairness-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"/"${MOCK_CASE_DIR}/durable"}
+  value=${value//"/tmp/runner-host-cpu-fairness-"/"${MOCK_CASE_DIR}/upload/runner-host-cpu-fairness-"}
+  value=${value//"/run/lock/vm0-host-cpu-fairness"/"${MOCK_LOCK_ROOT}/pre-r5c"}
+  value=${value//"/run/lock/runner-host-cpu-fairness"/"${MOCK_LOCK_ROOT}/interim"}
+  value=${value//"/var/lib/vm0-runner/host-cpu-fairness"/"${MOCK_CASE_DIR}/base"}
+  value=${value//"/var/lib/vm0-runner/firecracker"/"${MOCK_FIXTURE_ROOT}/firecracker"}
+  value=${value//"/var/lib/vm0-runner/images"/"${MOCK_FIXTURE_ROOT}/images"}
+  printf '%s' "$value"
 }
-shift
-[ "$1" = bash ] && [ "$2" = -s ] && [ "$3" = -- ] || {
-  echo "unexpected ssh command: $*" >&2
-  exit 1
-}
-shift 3
 
-remote_arguments=("$@")
-case "${remote_arguments[0]:-}" in
-  /tmp/runner-host-cpu-fairness-*)
-    remote_arguments[0]="${MOCK_CASE_DIR}/remote-bin"
-    ;;
-esac
-remote_source=$(cat)
-remote_source=${remote_source//"/run/lock/vm0-host-cpu-fairness"/"${MOCK_LOCK_ROOT}/pre-r5c"}
-remote_source=${remote_source//"/run/lock/runner-host-cpu-fairness"/"${MOCK_LOCK_ROOT}/interim"}
-remote_source=${remote_source//"/var/lib/vm0-runner/host-cpu-fairness"/"${MOCK_CASE_DIR}/base"}
-remote_source=${remote_source//"/var/lib/vm0-runner/firecracker"/"${MOCK_FIXTURE_ROOT}/firecracker"}
-remote_source=${remote_source//"/var/lib/vm0-runner/images"/"${MOCK_FIXTURE_ROOT}/images"}
-bash -s -- "${remote_arguments[@]}" <<<"$remote_source"
+shift
+phase=cleanup
+if [ "$#" -eq 1 ]; then
+  case "$1" in
+    *worker.XXXXXX*) phase=stage ;;
+    "cat -- "*) phase=fetch ;;
+  esac
+elif [ "$#" -ge 10 ]; then
+  phase=launch
+elif [[ "${4:-}" == */status ]]; then
+  phase=state
+fi
+count_file="${MOCK_CASE_DIR}/${phase}-count"
+count=0
+[ ! -f "$count_file" ] || count=$(<"$count_file")
+count=$((count + 1))
+printf '%s\n' "$count" >"$count_file"
+if [ "${MOCK_SSH_FAILURES:-0}" = 1 ] && [ "$count" -eq 1 ] && [ "$phase" = state ]; then
+  exit 255
+fi
+
+if [ "$#" -eq 1 ]; then
+  command_source=$(map_paths "$1")
+  if [ "$phase" = stage ]; then
+    worker_source=$(cat)
+    worker_source=$(map_paths "$worker_source")
+    bash -c "$command_source" <<<"$worker_source"
+  else
+    bash -c "$command_source"
+  fi
+else
+  [ "$1" = bash ] && [ "$2" = -s ] && [ "$3" = -- ]
+  shift 3
+  remote_arguments=()
+  for argument in "$@"; do
+    if [ "$argument" = /tmp ]; then
+      remote_arguments+=("${MOCK_CASE_DIR}/upload")
+    else
+      remote_arguments+=("$(map_paths "$argument")")
+    fi
+  done
+  remote_source=$(cat)
+  bash -s -- "${remote_arguments[@]}" <<<"$remote_source"
+fi
+
+if [ "${MOCK_SSH_FAILURES:-0}" = 1 ] && [ "$count" -eq 1 ]; then
+  case "$phase" in
+    launch|fetch) exit 255 ;;
+  esac
+fi
 FAKE_SSH
 
 cat >"${fake_bin}/sudo" <<'FAKE_SUDO'
@@ -98,8 +138,25 @@ FAKE_SYSTEMD
 cat >"${fake_bin}/systemctl" <<'FAKE_SYSTEMCTL'
 #!/usr/bin/env bash
 set -euo pipefail
-exit 0
+case "$*" in
+  *--property=LoadState*)
+    if [ -f "${MOCK_CASE_DIR}/active" ]; then
+      echo loaded
+    else
+      echo not-found
+    fi
+    ;;
+  *--property=ActiveState*) echo active ;;
+  stop*) printf '%s\n' "$2" >>"${MOCK_CASE_DIR}/stopped-units" ;;
+  *) exit 2 ;;
+esac
 FAKE_SYSTEMCTL
+
+cat >"${fake_bin}/sleep" <<'FAKE_SLEEP'
+#!/usr/bin/env bash
+set -euo pipefail
+/bin/sleep 0.01
+FAKE_SLEEP
 
 cat >"${fake_bin}/modprobe" <<'FAKE_MODPROBE'
 #!/usr/bin/env bash
@@ -113,14 +170,43 @@ set -euo pipefail
 
 selected_cpu=""
 saw_wait=false
+owner=""
+after=""
+runtime_bound=""
+unit=""
+environment=()
 for argument in "$@"; do
   case "$argument" in
     --wait) saw_wait=true ;;
     --property=AllowedCPUs=*) selected_cpu=${argument##*=} ;;
+    --property=BindsTo=*) owner=${argument##*=} ;;
+    --property=After=*) after=${argument##*=} ;;
+    --property=RuntimeMaxSec=*) runtime_bound=${argument##*=} ;;
+    --unit=*) unit=${argument#*=} ;;
+    --setenv=*) environment+=("${argument#*=}") ;;
   esac
 done
-[ "$saw_wait" = true ] || {
-  echo "systemd-run did not wait for the child" >&2
+if [ "$saw_wait" = false ]; then
+  while [ "$#" -gt 0 ] && [ "$1" != /bin/bash ]; do
+    shift
+  done
+  [ "$#" -gt 0 ]
+  touch "${MOCK_CASE_DIR}/active"
+  (
+    exec 9>&-
+    status=0
+    env "${environment[@]}" "$@" || status=$?
+    printf '%s\n' "$status" >"${MOCK_CASE_DIR}/unit-status"
+    rm -f "${MOCK_CASE_DIR}/active"
+  ) </dev/null >/dev/null 2>&1 &
+  exit 0
+fi
+[ "$owner" = "$RUNNER_BEHAVIOR_DURABLE_UNIT" ] && [ "$after" = "$owner" ] || {
+  echo "delegated test unit is not ordered under its durable owner" >&2
+  exit 1
+}
+[ "$runtime_bound" = 180 ] || {
+  echo "delegated test unit has no bounded runtime" >&2
   exit 1
 }
 [ -n "$selected_cpu" ] || {
@@ -135,12 +221,15 @@ case " $* " in
     ;;
 esac
 printf '%s\n' "$selected_cpu" >"${MOCK_CASE_DIR}/child-cpu"
+printf '%s\n' "$unit" >>"${MOCK_CASE_DIR}/native-invocations"
 
 if [ -n "${MOCK_CHILD_ENTER_FIFO:-}" ]; then
   printf 'entered\n' >"$MOCK_CHILD_ENTER_FIFO"
   IFS= read -r release <"$MOCK_CHILD_RELEASE_FIFO"
   [ "$release" = release ]
 fi
+echo "native fairness result: ${MOCK_NATIVE_STATUS:-0}"
+exit "${MOCK_NATIVE_STATUS:-0}"
 FAKE_SYSTEMD_RUN
 
 printf '#!/usr/bin/env bash\nexit 0\n' >"$test_bin"
@@ -195,6 +284,8 @@ run_invocation() {
     MOCK_LSCPU_OUTPUT="$online_cpus" \
     MOCK_CHILD_ENTER_FIFO="${MOCK_CHILD_ENTER_FIFO:-}" \
     MOCK_CHILD_RELEASE_FIFO="${MOCK_CHILD_RELEASE_FIFO:-}" \
+    MOCK_SSH_FAILURES="${MOCK_SSH_FAILURES:-0}" \
+    MOCK_NATIVE_STATUS="${MOCK_NATIVE_STATUS:-0}" \
     METAL_USER=test-user \
     HOST=test-host \
     JOB_REF="$job_ref" \
@@ -206,15 +297,12 @@ run_invocation() {
 }
 
 assert_selected_cpu() {
-  local output_file=$1
-  local invocation_dir=$2
-  local expected_cpu=$3
-  local reason=$4
+  local invocation_dir=$1
+  local expected_cpu=$2
+  local reason=$3
 
-  grep -Fxq "HOST_CPU_SELECTED_CPU=${expected_cpu}" "$output_file" ||
-    fail "$reason"
   [ "$(cat "${invocation_dir}/child-cpu")" = "$expected_cpu" ] ||
-    fail "AllowedCPUs did not match selected CPU ${expected_cpu}"
+    fail "$reason"
 }
 
 assert_existing_lock_available() {
@@ -263,7 +351,7 @@ test_pre_r5c_holder() (
     fail "repaired invocation failed with a pre-R5c holder"
   }
   # The #31906 single-interim-namespace implementation selects CPU 1 here.
-  assert_selected_cpu "$output" "${case_root}/invocation" 2 \
+  assert_selected_cpu "${case_root}/invocation" 2 \
     "pre-R5c holder did not rotate selection to the free candidate"
   assert_existing_lock_available \
     "${case_root}/locks/pre-r5c/cpu-2.lock" \
@@ -309,7 +397,7 @@ test_interim_holder_and_partial_release() (
   }
   [ "$marker" = entered ] || fail "invalid child entry marker"
 
-  assert_selected_cpu "$output" "${case_root}/invocation" 2 \
+  assert_selected_cpu "${case_root}/invocation" 2 \
     "interim holder did not rotate selection to the free candidate"
   [ -e "${case_root}/locks/pre-r5c/cpu-1.lock" ] ||
     fail "legacy-first partial acquisition was not attempted"
@@ -379,7 +467,7 @@ test_repaired_holder() (
     fail "repaired holder child did not start"
   }
   [ "$marker" = entered ] || fail "invalid repaired holder entry marker"
-  assert_selected_cpu "$holder_output" "${case_root}/holder" 1 \
+  assert_selected_cpu "${case_root}/holder" 1 \
     "first repaired invocation did not select the first candidate"
   assert_lock_held "${case_root}/locks/pre-r5c/cpu-1.lock" \
     "repaired holder did not retain the pre-R5c lock"
@@ -391,7 +479,7 @@ test_repaired_holder() (
     sed 's/^/  /' "$contender_errors" >&2
     fail "contender failed while another repaired invocation held CPU 1"
   }
-  assert_selected_cpu "$contender_output" "${case_root}/contender" 2 \
+  assert_selected_cpu "${case_root}/contender" 2 \
     "another repaired holder did not force rotation"
 
   printf 'release\n' >&"$release_fd"
@@ -427,7 +515,7 @@ test_all_busy_failure() (
     >"$output" 2>"$errors"; then
     fail "all-busy invocation unexpectedly succeeded"
   fi
-  grep -Fq "no online host CPU is available for the fairness test" "$errors" || {
+  grep -Fq "no online host CPU is available for the fairness test" "$output" || {
     sed 's/^/  /' "$errors" >&2
     fail "all-busy failure was not visible"
   }
@@ -439,9 +527,52 @@ test_all_busy_failure() (
     "all-busy partial acquisition was not released"
 )
 
+test_durable_recovery() (
+  local native_status=$1
+  local case_root="${tmp_dir}/recovery-${native_status}"
+  local invocation_dir="${case_root}/invocation"
+  local output="${case_root}/invocation.out"
+  local errors="${case_root}/invocation.err"
+  local status=0
+  prepare_case "$case_root"
+
+  MOCK_SSH_FAILURES=1 MOCK_NATIVE_STATUS="$native_status" \
+    run_invocation "$case_root" invocation recovery 106 \
+    >"$output" 2>"$errors" || status=$?
+  [ "$status" -eq "$native_status" ] || {
+    sed 's/^/  /' "$output" "$errors" >&2
+    fail "lost SSH responses changed native result ${native_status} to ${status}"
+  }
+  [ "$(wc -l <"${invocation_dir}/native-invocations")" -eq 1 ] ||
+    fail "lost launch response replayed the native test"
+  [ "$(cat "${invocation_dir}/launch-count")" -eq 2 ] ||
+    fail "lost launch response was not recovered"
+  [ "$(cat "${invocation_dir}/state-count")" -ge 2 ] ||
+    fail "lost state response was not recovered"
+  [ "$(cat "${invocation_dir}/fetch-count")" -eq 2 ] ||
+    fail "lost log response was not recovered"
+  [ "$(grep -Fc "native fairness result: ${native_status}" "$output")" -eq 1 ] ||
+    fail "recovered log was missing or duplicated"
+  grep -q '^HOST_CPU_SELECTED_CPU=' "$output" || fail "CPU selection log was lost"
+  [ ! -e "${invocation_dir}/upload/runner-host-cpu-fairness-recovery-106-1" ] ||
+    fail "uploaded binary was not cleaned"
+  [ ! -e "${invocation_dir}/durable" ] || fail "durable result was not cleaned"
+  [ ! -d "${invocation_dir}/base/recovery-106-1" ] || fail "test state was not cleaned"
+  grep -Fxq "runner-host-cpu-managed-recovery-106-1.service" \
+    "${invocation_dir}/stopped-units" || fail "delegated unit was not stopped"
+  local selected_cpu
+  selected_cpu=$(cat "${invocation_dir}/child-cpu")
+  assert_existing_lock_available "${case_root}/locks/pre-r5c/cpu-${selected_cpu}.lock" \
+    "recovered test retained pre-R5c CPU lock"
+  assert_existing_lock_available "${case_root}/locks/interim/cpu-${selected_cpu}.lock" \
+    "recovered test retained interim CPU lock"
+)
+
 test_pre_r5c_holder
 test_interim_holder_and_partial_release
 test_repaired_holder
 test_all_busy_failure
+test_durable_recovery 0
+test_durable_recovery 37
 
 echo "runner-behavior-host-cpu-fairness-test: ok"

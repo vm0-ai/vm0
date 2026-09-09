@@ -9,7 +9,8 @@
 //! On Unix, reads open files with `O_NOFOLLOW`, `O_CLOEXEC`, and
 //! `O_NONBLOCK`, then validate the opened descriptor with `fstat` before
 //! reading. The post-open check rejects non-regular files and can optionally
-//! require ownership by the current effective uid through [`OwnerCheck`].
+//! require ownership by the current effective uid and reject group/other write
+//! permissions through [`OwnerCheck`].
 //! Non-Unix builds use a weaker fallback that keeps the byte limit but does
 //! not provide the Unix-specific open flags, file-type validation, or owner
 //! validation.
@@ -27,7 +28,7 @@ pub(crate) const PROXY_REGISTRY_MAX_BYTES: u64 = 16 * 1024 * 1024;
 pub(crate) const USAGE_PENDING_MAX_BYTES: u64 = 64 * 1024;
 pub(crate) const WORKSPACE_METADATA_MAX_BYTES: u64 = 1024 * 1024;
 
-/// Ownership policy for reading a runner state file.
+/// Ownership and write-trust policy for reading a runner state file.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OwnerCheck {
     /// Skip owner validation.
@@ -42,6 +43,11 @@ pub(crate) enum OwnerCheck {
     /// Use this for runner-owned files discovered from local process or state
     /// paths, where accepting a file owned by another uid would be suspicious.
     CurrentEuid,
+    /// Require the current effective uid and reject group/other write bits.
+    ///
+    /// Catalog consumers use these same Unix trust checks. Validate the opened
+    /// descriptor so an atomic path replacement cannot race a separate stat.
+    CurrentEuidNoUntrustedWrites,
 }
 
 /// Read an optional UTF-8 state file with a caller-supplied byte limit.
@@ -197,6 +203,14 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
         owner_check,
         path,
     )?;
+    if matches!(owner_check, OwnerCheck::CurrentEuidNoUntrustedWrites)
+        && stat.st_mode & (libc::S_IWGRP | libc::S_IWOTH) != 0
+    {
+        return Err(RunnerError::Internal(format!(
+            "{} is writable by group or other users",
+            path.display()
+        )));
+    }
     Ok(())
 }
 
@@ -207,7 +221,11 @@ fn validate_owner_uid(
     owner_check: OwnerCheck,
     path: &Path,
 ) -> RunnerResult<()> {
-    if matches!(owner_check, OwnerCheck::CurrentEuid) && stat_uid != expected_uid {
+    if matches!(
+        owner_check,
+        OwnerCheck::CurrentEuid | OwnerCheck::CurrentEuidNoUntrustedWrites
+    ) && stat_uid != expected_uid
+    {
         return Err(RunnerError::Internal(format!(
             "{} is owned by uid {}, but runner euid is {expected_uid}",
             path.display(),

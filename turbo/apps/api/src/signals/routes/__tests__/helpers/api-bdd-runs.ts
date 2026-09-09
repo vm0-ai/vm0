@@ -8,7 +8,6 @@ import {
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
@@ -472,11 +471,7 @@ export function createRunsApi(
       return { customerId, subscriptionId, invoiceId };
     },
 
-    async createRun(
-      actor: ApiTestUser,
-      body: AgentRunRequest,
-      publicBrand: PublicBrand = "vm0",
-    ) {
+    async createRun(actor: ApiTestUser, body: AgentRunRequest) {
       const response = await accept(
         runApp(
           context,
@@ -484,9 +479,6 @@ export function createRunsApi(
           systemSkillStorageResolution,
         )(runFixtureContract).create({
           headers: authenticate(context, actor),
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
           body,
         }),
         [201],
@@ -801,7 +793,6 @@ export function createRunsApi(
       actor: ApiTestUser,
       runId: string,
       capabilities: readonly Capability[],
-      publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
         throw new Error("Agent run tokens require an org-scoped actor");
@@ -813,7 +804,6 @@ export function createRunsApi(
         orgId: actor.orgId,
         runId,
         capabilities: [...capabilities],
-        ...(publicBrand === undefined ? {} : { publicBrand }),
         iat: seconds,
         exp: seconds + 3600,
       });

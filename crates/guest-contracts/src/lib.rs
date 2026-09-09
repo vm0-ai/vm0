@@ -2,7 +2,7 @@
 
 //! Shared contracts between the runner and guest binaries.
 //!
-//! Keep guest-only runtime helpers in `guest-common`. This crate is for names,
+//! Keep guest-only runtime helpers in `guest-telemetry`. This crate is for names,
 //! values, and filesystem layout helpers both sides must keep in lockstep.
 
 pub mod active_input;
@@ -21,6 +21,7 @@ pub mod exec_terminal;
 pub mod file_write;
 pub mod guest_binary;
 pub mod managed_command;
+pub mod oom_evidence;
 pub mod process_containment;
 pub mod reuse_preparation;
 pub mod runtime_paths;

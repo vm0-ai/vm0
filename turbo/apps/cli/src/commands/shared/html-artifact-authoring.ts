@@ -2,8 +2,6 @@ import type {
   GenerationOutputKind,
   GenerationTarget,
 } from "@okouai/core/resource-registry";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 
 /** Generation targets authored as static HTML from a target-specific resource index. */
 export type HtmlArtifactKind = Extract<
@@ -17,9 +15,9 @@ export type HtmlArtifactKind = Extract<
 >;
 
 const HTML_RESOURCE_INDEX_BASE_URL =
-  "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d";
+  "https://static.okou.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d";
 const WEBSITE_RESOURCE_INDEX_URL =
-  "https://static.vm0.io/html-resources/website/v1/d7138a8fc889c7fda5e57e463d178c37e97a1bb4fd752f56a793dc2e53c1935a/website.json";
+  "https://static.okou.io/html-resources/website/v1/d7138a8fc889c7fda5e57e463d178c37e97a1bb4fd752f56a793dc2e53c1935a/website.json";
 
 const HTML_RESOURCE_INDEX_URLS: Record<HtmlArtifactKind, string> = {
   website: WEBSITE_RESOURCE_INDEX_URL,
@@ -32,7 +30,6 @@ const HTML_RESOURCE_INDEX_URLS: Record<HtmlArtifactKind, string> = {
 
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
-  readonly publicBrand: PublicBrand;
   readonly prompt: string;
   readonly slugSource?: string;
   readonly siteSlug?: string;
@@ -117,10 +114,7 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const resourceIndexUrl = staticUrlForPublicBrand(
-    HTML_RESOURCE_INDEX_URLS[options.kind],
-    options.publicBrand,
-  );
+  const resourceIndexUrl = HTML_RESOURCE_INDEX_URLS[options.kind];
   const selectionSchema: HtmlArtifactSelectionOutputSchema = {
     skills: "string[]",
     templates: "string[]",
@@ -215,6 +209,8 @@ export function createHtmlArtifactAuthoringPacket(
     `- Write the artifact under \`${outputDir}/\`.`,
     `- The entry file must be \`${outputDir}/index.html\`.`,
     "- Keep every local asset inside the same output directory.",
+    "- For private generated media, use `okou web download-file --help` to download by file ID; never embed authenticated API references or expiring preview/provider signatures in HTML.",
+    "- Image batch results may be relative asset paths rooted at the batch state directory. Copy its optimized WebP assets into this output bundle, reference them with relative paths, and preserve image dimensions.",
     "- Do not reference files from another project path.",
     "- Use descriptive filenames and canonical HTML: close non-void tags and double-quote attributes.",
     "- Prefer a single self-contained HTML file unless the artifact genuinely needs separate assets.",
@@ -246,6 +242,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Publish",
     "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
+    "Return the exact URL from the host command. Private artifacts use an authenticated preview URL; hosting does not make them public.",
     `When everything is OK, publish it with:`,
     "",
     "```bash",

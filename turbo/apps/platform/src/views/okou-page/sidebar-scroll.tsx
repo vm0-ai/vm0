@@ -1,10 +1,4 @@
-import type {
-  CSSProperties,
-  FocusEventHandler,
-  PointerEventHandler,
-  ReactNode,
-  UIEvent,
-} from "react";
+import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { useSet } from "ccstate-react";
 import type { SidebarChatThreadScrollSignals } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
@@ -14,8 +8,6 @@ interface OverlayScrollAreaProps {
   readonly className?: string;
   readonly contentClassName?: string;
   readonly children: ReactNode;
-  readonly onFocus?: FocusEventHandler<HTMLDivElement>;
-  readonly onPointerDownCapture?: PointerEventHandler<HTMLDivElement>;
   readonly scrollSignals: SidebarChatThreadScrollSignals;
   readonly style?: CSSProperties;
   readonly "data-testid"?: string;
@@ -28,8 +20,6 @@ export function OverlayScrollArea({
   className,
   contentClassName,
   children,
-  onFocus,
-  onPointerDownCapture,
   scrollSignals,
   style,
   "data-testid": dataTestId,
@@ -52,8 +42,6 @@ export function OverlayScrollArea({
         ref={setViewportRef}
         className="h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         style={style}
-        onFocus={onFocus}
-        onPointerDownCapture={onPointerDownCapture}
         onScroll={handleScroll}
         tabIndex={tabIndex ?? -1}
         role={ariaLabel ? "region" : undefined}
@@ -64,11 +52,8 @@ export function OverlayScrollArea({
           {children}
         </ScrollArea.Content>
       </ScrollArea.Viewport>
-      {/* The track stays wide enough to grab; `justify-end` keeps the thumb
-          itself against the viewport's edge, clear of the trailing menu button
-          on the rows beside the workspace card. */}
       <ScrollArea.Scrollbar
-        className="m-px flex w-3 justify-end opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100 data-scrolling:duration-0"
+        className="pointer-events-none m-px flex w-3 justify-center opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0"
         data-testid="sidebar-scrollbar"
       >
         <ScrollArea.Thumb

@@ -14,7 +14,7 @@ import type {
   MailDraft,
   MailInlineImage,
 } from "@okouai/api-contracts/contracts/mail";
-import { Button } from "@okouai/ui";
+import { Button, cn } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -42,6 +42,7 @@ import {
   PreviewableFileAttachmentChip,
 } from "./attachment-chips.tsx";
 import { useGmailReconnect } from "./use-gmail-reconnect.ts";
+import { CHAT_TOUCH_SELECTION_CLASS } from "./chat-message-surface.tsx";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
@@ -1098,7 +1099,10 @@ function MailDraftDetail({
       })}
       data-chat-thread-container-id={signals.threadId}
       data-testid="mail-draft-sidebar"
-      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
+      className={cn(
+        "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
+        CHAT_TOUCH_SELECTION_CLASS,
+      )}
     >
       <MailDraftDetails close={close} draft={draft} signals={signals} />
       <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-4 py-3">

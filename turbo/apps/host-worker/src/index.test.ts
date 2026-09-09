@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import worker from "./index";
+import { fetchWorker } from "./test-helpers";
 
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
 type R2Object = NonNullable<
@@ -192,18 +193,18 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
 }
 
 describe("hosted site worker", () => {
-  it("allows the vm0 apex origin on preflight responses", async () => {
-    const response = await worker.fetch(
+  it("allows the okou apex origin on preflight responses", async () => {
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/", {
         method: "OPTIONS",
-        headers: { Origin: "https://vm0.ai" },
+        headers: { Origin: "https://okou.ai" },
       }),
       env(),
     );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "https://vm0.ai",
+      "https://okou.ai",
     );
     expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
       "GET, HEAD, OPTIONS",
@@ -211,20 +212,16 @@ describe("hosted site worker", () => {
     expect(response.headers.get("Vary")).toBe("Origin");
   });
 
-  it("allows vm0 subdomain origins on hosted file responses", async () => {
-    const response = await worker.fetch(
+  it("rejects the retired vm0.ai origins", async () => {
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/", {
-        headers: { Origin: "https://app.vm0.ai:8443" },
+        headers: { Origin: "https://app.vm0.ai" },
       }),
       env(),
     );
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("<!doctype html>ok");
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "https://app.vm0.ai:8443",
-    );
-    expect(response.headers.get("Vary")).toBe("Origin");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   it.each([
@@ -232,7 +229,7 @@ describe("hosted site worker", () => {
     "https://app.okou.ai",
     "https://staging-app.omby.ai",
   ])("allows product origin %s on hosted file responses", async (origin) => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/", {
         headers: { Origin: origin },
       }),
@@ -245,7 +242,7 @@ describe("hosted site worker", () => {
   });
 
   it("omits allow-origin for disallowed origins", async () => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/", {
         headers: { Origin: "https://attacker.example" },
       }),
@@ -258,7 +255,7 @@ describe("hosted site worker", () => {
   });
 
   it("marks hosted site responses as noindex", async () => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/"),
       env(),
     );
@@ -268,7 +265,7 @@ describe("hosted site worker", () => {
   });
 
   it("does not expose legacy unbranded sites on the Okou domain", async () => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.okou.app/"),
       env(),
     );
@@ -279,11 +276,11 @@ describe("hosted site worker", () => {
   it("serves Okou pointers only on the Okou domain", async () => {
     const workerEnv = env({ publicBrand: "okou" });
 
-    const okouResponse = await worker.fetch(
+    const okouResponse = await fetchWorker(
       new Request("https://demo.okou.app/"),
       workerEnv,
     );
-    const vm0Response = await worker.fetch(
+    const vm0Response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/"),
       workerEnv,
     );
@@ -294,7 +291,7 @@ describe("hosted site worker", () => {
   });
 
   it("rejects a manifest whose brand disagrees with its pointer", async () => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.okou.app/"),
       env({ publicBrand: "okou", manifestPublicBrand: "vm0" }),
     );
@@ -303,7 +300,7 @@ describe("hosted site worker", () => {
   });
 
   it("allows branded pointers on the shared preview host", async () => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm7.io/"),
       env({
         publicBrand: "okou",
@@ -317,7 +314,7 @@ describe("hosted site worker", () => {
   });
 
   it("serves default robots.txt when the active deployment omits it", async () => {
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/robots.txt"),
       env(),
     );
@@ -333,7 +330,7 @@ describe("hosted site worker", () => {
 
   it("serves an uploaded robots.txt when present", async () => {
     const customRobots = "User-agent: *\nAllow: /\n";
-    const response = await worker.fetch(
+    const response = await fetchWorker(
       new Request("https://demo.sites.vm0.io/robots.txt"),
       env({
         files: {
@@ -358,13 +355,13 @@ describe("hosted site worker", () => {
       },
     });
 
-    const immutableResponse = await worker.fetch(
+    const immutableResponse = await fetchWorker(
       new Request(
         `https://dpl-${immutableDeploymentId}.sites.vm0.io/index.html`,
       ),
       workerEnv,
     );
-    const aliasResponse = await worker.fetch(
+    const aliasResponse = await fetchWorker(
       new Request("https://demo.sites.vm0.io/index.html"),
       workerEnv,
     );
@@ -385,11 +382,11 @@ describe("hosted site worker", () => {
       },
     });
 
-    const okouResponse = await worker.fetch(
+    const okouResponse = await fetchWorker(
       new Request(`https://dpl-${immutableDeploymentId}.okou.app/`),
       workerEnv,
     );
-    const vm0Response = await worker.fetch(
+    const vm0Response = await fetchWorker(
       new Request(`https://dpl-${immutableDeploymentId}.sites.vm0.io/`),
       workerEnv,
     );

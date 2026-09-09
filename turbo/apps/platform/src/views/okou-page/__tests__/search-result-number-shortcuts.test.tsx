@@ -160,6 +160,7 @@ function installSearchResources() {
 
 test.each([
   {
+    caseId: 74,
     platform: "Mac Chrome",
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
@@ -168,6 +169,7 @@ test.each([
     firstHint: ["⌘1"],
   },
   {
+    caseId: 75,
     platform: "Mac Safari",
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
@@ -176,6 +178,7 @@ test.each([
     firstHint: ["⌘⌃1"],
   },
   {
+    caseId: 76,
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifiers: { metaKey: false, ctrlKey: true },
@@ -184,7 +187,7 @@ test.each([
   },
 ])(
   "Limit empty search to 25 current chats and open the ninth result on $platform",
-  async ({ userAgent, modifiers, numberModifiers, firstHint }) => {
+  async ({ caseId, userAgent, modifiers, numberModifiers, firstHint }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
       return (
@@ -196,14 +199,16 @@ test.each([
         pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
       });
     });
-    const workspace = await installContinuityWorkspace(context, {
-      caseId: 24,
+    const remoteChatList = context.mocks.deferred<void>();
+    const workspace = installContinuityWorkspace(context, {
+      caseId,
       threads,
+      chatListRemoteGate: remoteChatList.promise,
     });
     await setupPage({
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-      auth: workspace.auth,
+      ...workspace.pageOptions,
       featureSwitches,
     });
     const expectedTitles = [
@@ -213,11 +218,12 @@ test.each([
         return `Chat ${30 - index}`;
       }),
     ];
-    await waitFor(() => {
-      expect(sidebarThreadTitles().slice(0, 3)).toStrictEqual(
-        expectedTitles.slice(0, 3),
-      );
-    });
+    const chatThreads = await screen.findByLabelText("Chat threads");
+    await within(chatThreads).findByText(expectedTitles[0]!);
+    expect(sidebarThreadTitles().slice(0, 3)).toStrictEqual(
+      expectedTitles.slice(0, 3),
+    );
+    expect(remoteChatList.settled()).toBeFalsy();
     click(fastButton("Hide chat list"));
     const { dialog, search } = await openSearch(modifiers);
     await waitFor(() => {
@@ -283,7 +289,7 @@ test("Empty search follows the current agent and unread filter", async () => {
     agentId: "c7000000-0000-4000-a000-000000000002",
     pinnedAt: "2026-08-01T00:59:00.000Z",
   });
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 25,
     threads: [first, second, third, foreign],
   });
@@ -297,7 +303,7 @@ test("Empty search follows the current agent and unread filter", async () => {
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   await waitFor(() => {
@@ -344,7 +350,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
   const titleMatch = chatListThread(1, "Budget planning");
   const messageMatch = chatListThread(2, "Project notes");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 26,
     threads: [titleMatch, messageMatch],
   });
@@ -368,13 +374,12 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
               },
             ]
           : [],
-      hasMore: false,
     });
   });
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   const { dialog, search } = await openSearch();
@@ -416,14 +421,14 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
     );
   });
   const first = chatListThread(1, "First chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 27,
     threads: [first],
   });
   await setupPage({
     context,
     path: `/chats/${first.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   const { dialog, search } = await openSearch();
@@ -506,7 +511,7 @@ test.each([
       );
     });
     const titleMatch = chatListThread(1, "Budget planning");
-    const workspace = await installContinuityWorkspace(context, {
+    const workspace = installContinuityWorkspace(context, {
       caseId: 29,
       threads: [titleMatch],
     });
@@ -514,11 +519,8 @@ test.each([
     await setupPage({
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-      auth: workspace.auth,
-      featureSwitches: {
-        ...featureSwitches,
-        [FeatureSwitchKey.WorkspaceAgentSearch]: true,
-      },
+      ...workspace.pageOptions,
+      featureSwitches,
     });
     const { dialog, search } = await openSearch();
     await fill(search, "budget");
@@ -581,14 +583,14 @@ test("Disabling stable navigation restores activity order and workspace-wide sea
   const foreign = chatListThread(3, "Another agent's chat", {
     agentId: "c7000000-0000-4000-a000-000000000002",
   });
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 28,
     threads: [firstPin, secondPin, foreign],
   });
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches: {
       [FeatureSwitchKey.StableChatThreadNavigation]: false,
     },

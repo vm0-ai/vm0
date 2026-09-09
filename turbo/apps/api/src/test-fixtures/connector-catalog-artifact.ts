@@ -1345,6 +1345,7 @@ const connectors = [
         connectorSlug: "mercury",
         prefix: "MERCURY",
         tokenEnvironmentNames: ["MERCURY_TOKEN"],
+        scopes: ["read", "offline_access"],
       }),
     ],
   }),
@@ -1623,6 +1624,24 @@ const connectors = [
         connectorSlug: "posthog",
         prefix: "POSTHOG",
         tokenEnvironmentNames: ["POSTHOG_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "quickbooks",
+    label: "QuickBooks",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "quickbooks",
+        prefix: "QUICKBOOKS",
+        tokenEnvironmentNames: ["QUICKBOOKS_TOKEN"],
+        additionalValues: { realmId: variable("QUICKBOOKS_REALM_ID") },
+        scopes: [
+          "com.intuit.quickbooks.accounting",
+          "openid",
+          "profile",
+          "email",
+        ],
       }),
     ],
   }),

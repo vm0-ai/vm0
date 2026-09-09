@@ -555,7 +555,6 @@ export async function buildGithubUserConnectAuthorizationUrl(
     readonly userId: string;
     readonly orgId: string;
     readonly origin: string;
-    readonly publicBrand: PublicBrand;
     readonly authMethodId: ConnectorAuthMethodId;
     readonly method: ConnectorAuthMethodRuntimeConfig;
     readonly readEnv: ConnectorEnvReader;
@@ -573,7 +572,7 @@ export async function buildGithubUserConnectAuthorizationUrl(
     return null;
   }
 
-  const state = generateConnectorOAuthState(args.publicBrand);
+  const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/github/callback`;
   const authResult = normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrlWithMethod({

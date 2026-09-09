@@ -87,7 +87,7 @@ fn clear_api_token_env() {
 }
 
 fn capture_raw(log_path: &Path) -> Result<GuestConfigRaw, String> {
-    guest_common::log::clear_system_log_file();
+    guest_telemetry::log::clear_system_log_file();
     let raw = GuestConfigRaw::from_process_env();
     assert!(
         !log_path.exists(),

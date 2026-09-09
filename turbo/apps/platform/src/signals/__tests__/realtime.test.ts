@@ -1,9 +1,7 @@
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -13,11 +11,11 @@ import {
   setAblyLoop$,
   setAblyPayloadLoop$,
   setRealtimeDegradedNotifier$,
+  setSharedWorkerRealtimeBridge$,
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
 import { clerk$, setupClerk$ } from "../auth.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
-import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { setRootSignal$ } from "../root-signal.ts";
@@ -26,8 +24,21 @@ import { setAuthenticatedIdentity$ } from "../auth-context.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 import { now } from "../../lib/time.ts";
-import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentation-template-library.ts";
-import { detach, Reason } from "../utils.ts";
+import { createChildAbortController, detach, Reason } from "../utils.ts";
+import type { SharedDatabaseBridge } from "../../shared-database/bridge.ts";
+import type {
+  ComputedKey,
+  ComputedValue,
+} from "../../shared-database/computed-key.ts";
+import type {
+  SharedDatabaseDataKey,
+  SharedDatabaseQuery,
+  SharedDatabaseQueryResult,
+} from "../../shared-database/data-key.ts";
+import type {
+  SharedDatabaseRealtimeMessage,
+  SharedDatabaseRealtimeScope,
+} from "../../shared-database/protocol.ts";
 
 const context = testContext();
 
@@ -92,16 +103,92 @@ async function setupAuthAndRealtime(): Promise<void> {
 }
 
 function testSubscriber(): AbortController {
-  const controller = new AbortController();
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      controller.abort(context.signal.reason);
-    },
-    { once: true },
-  );
-  return controller;
+  return createChildAbortController(context.signal);
 }
+
+interface SharedWorkerRealtimeSubscription {
+  readonly listener: (message: SharedDatabaseRealtimeMessage) => void;
+  readonly scope: SharedDatabaseRealtimeScope;
+  readonly topic: string;
+}
+
+class TestSharedWorkerRealtimeBridge implements SharedDatabaseBridge {
+  readonly subscriptions = new Map<string, SharedWorkerRealtimeSubscription>();
+
+  registerTab(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  subscribeRealtime(
+    subscriptionId: string,
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    this.subscriptions.set(subscriptionId, { listener, scope, topic });
+    return Promise.resolve();
+  }
+
+  unsubscribeRealtime(subscriptionId: string): void {
+    this.subscriptions.delete(subscriptionId);
+  }
+
+  getComputed<TKey extends ComputedKey>(
+    _computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
+    return Promise.reject(new Error("Computed data is not configured"));
+  }
+
+  query<TKey extends SharedDatabaseDataKey>(
+    _query: SharedDatabaseQuery<TKey>,
+    _signal: AbortSignal,
+  ): Promise<SharedDatabaseQueryResult<TKey>> {
+    return Promise.reject(
+      new Error("Shared database queries are not configured"),
+    );
+  }
+
+  publish(
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    data: unknown,
+  ): void {
+    for (const subscription of this.subscriptions.values()) {
+      if (subscription.scope === scope && subscription.topic === topic) {
+        subscription.listener({ name: topic, data });
+      }
+    }
+  }
+}
+
+test("Route app subscriptions through the SharedWorker without an App Ably client", async () => {
+  mockSignedInUser();
+  const bridge = new TestSharedWorkerRealtimeBridge();
+  const subscriber = testSubscriber();
+  let runs = 0;
+  const loop$ = command((_ctx, _signal: AbortSignal) => {
+    runs += 1;
+    return true;
+  });
+
+  context.store.set(setSharedWorkerRealtimeBridge$, bridge);
+  await context.store.set(setupRealtime$, context.signal);
+  const loopPromise = context.store.set(
+    setAblyLoop$,
+    { topic: "connectorPermissionUpdated", loopCommand$: loop$ },
+    subscriber.signal,
+  );
+
+  await vi.waitFor(() => {
+    expect(bridge.subscriptions).toHaveLength(1);
+  });
+  expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(0);
+
+  bridge.publish("user", "connectorPermissionUpdated", { revision: 1 });
+  await expect(loopPromise).resolves.toBeUndefined();
+  expect(runs).toBe(1);
+  expect(bridge.subscriptions).toHaveLength(0);
+});
 
 test("A pending live-update listener starts after realtime connects", async () => {
   mockSignedInUser();
@@ -166,37 +253,6 @@ test("Workspace live updates stay in the active workspace", async () => {
 
   await expect(loopPromise).resolves.toBeUndefined();
   expect(runs).toBe(1);
-});
-
-test("A disabled workspace-template feature does not receive workspace updates", async () => {
-  mockSignedInUser();
-  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-    const switches = { [FeatureSwitchKey.PresentationTemplates]: false };
-    return respond(200, { switches, effectiveSwitches: switches });
-  });
-  await context.store.set(reloadFeatureSwitch$, context.signal);
-  const subscriber = testSubscriber();
-  const subscriptionPromise = context.store.set(
-    subscribePresentationTemplatesChanged$,
-    subscriber.signal,
-  );
-  detach(subscriptionPromise, Reason.Daemon, "test realtime subscription");
-
-  await setupAuthAndRealtime();
-  await waitFor(() => {
-    expect(
-      context.mocks.ably.hasSubscriptionOnChannel(
-        "user:test-user-123",
-        "presentationTemplatesChanged",
-      ),
-    ).toBeTruthy();
-  });
-  expect(
-    context.mocks.ably.hasSubscriptionOnChannel(
-      "org:test-org-123",
-      "presentationTemplatesChanged",
-    ),
-  ).toBeFalsy();
 });
 
 test("Realtime authentication failure does not leave stale live updates", async () => {

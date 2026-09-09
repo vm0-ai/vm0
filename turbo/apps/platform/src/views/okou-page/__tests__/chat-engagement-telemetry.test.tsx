@@ -1,15 +1,16 @@
-import { queryMessageBody } from "./chat-event-test-helpers.ts";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { click } from "../../../__tests__/page-helper.ts";
 import {
-  buttonByLabel,
   buttonByText,
   context,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
+import {
+  findWorkHistoryToggle,
+  getWorkHistoryToggle,
+} from "./chat-run-test-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 type Capture = (
@@ -27,7 +28,7 @@ type Unregister = (property: string) => void;
 
 const { posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_chat_engagement_telemetry_test");
-  window.location.href = "https://app.vm0.ai/";
+  window.location.href = "https://app.okou.ai/";
   return {
     posthog: {
       capture: vi.fn<Capture>(),
@@ -78,6 +79,27 @@ describe("chat engagement telemetry", () => {
           createdAt: "2026-09-04T10:00:10Z",
         },
         {
+          id: "msg-active-work-details",
+          role: "assistant",
+          content: "Checking the launch details.",
+          runId: "run-active-work-telemetry",
+          createdAt: "2026-09-04T10:00:12Z",
+        },
+        {
+          id: "msg-active-work-audience",
+          role: "assistant",
+          content: "Checking the launch audience.",
+          runId: "run-active-work-telemetry",
+          createdAt: "2026-09-04T10:00:14Z",
+        },
+        {
+          id: "msg-active-work-schedule",
+          role: "assistant",
+          content: "Checking the launch schedule.",
+          runId: "run-active-work-telemetry",
+          createdAt: "2026-09-04T10:00:16Z",
+        },
+        {
           id: "msg-active-work-visible",
           role: "assistant",
           content: "Checking the launch metrics.",
@@ -90,16 +112,11 @@ describe("chat engagement telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: true,
-      },
     });
 
-    const expandWork = await waitFor(() => {
-      return buttonByLabel("Expand work history");
-    });
-    expect(expandWork).toHaveTextContent(/^Working for /);
-    expect(queryMessageBody("Checking the launch brief.")).toBeNull();
+    const expandWork = await findWorkHistoryToggle("collapsed");
+    expect(screen.getByText(/^Working for /)).toBeVisible();
+    expect(screen.queryByText("Checking the launch brief.")).toBeNull();
 
     click(expandWork);
 
@@ -110,15 +127,15 @@ describe("chat engagement telemetry", () => {
       ["chat_work_history_expanded", { work_status: "active" }],
     ]);
 
-    click(buttonByLabel("Collapse work history"));
+    click(getWorkHistoryToggle("expanded"));
 
     await waitFor(() => {
-      expect(queryMessageBody("Checking the launch brief.")).toBeNull();
+      expect(screen.queryByText("Checking the launch brief.")).toBeNull();
     });
     expect(capturedEvents("chat_work_history_expanded")).toHaveLength(1);
   });
 
-  it("reports expanding completed work history through the legacy fold", async () => {
+  it("reports expanding completed work history through the range control", async () => {
     const threadId = "e7000000-0000-4000-a000-000000000102";
     mockChatLifecycle(context, {
       threadId,
@@ -138,6 +155,27 @@ describe("chat engagement telemetry", () => {
           createdAt: "2026-09-04T10:00:10Z",
         },
         {
+          id: "msg-completed-work-details",
+          role: "assistant",
+          content: "Checking the launch details.",
+          runId: "run-completed-work-telemetry",
+          createdAt: "2026-09-04T10:00:12Z",
+        },
+        {
+          id: "msg-completed-work-audience",
+          role: "assistant",
+          content: "Checking the launch audience.",
+          runId: "run-completed-work-telemetry",
+          createdAt: "2026-09-04T10:00:14Z",
+        },
+        {
+          id: "msg-completed-work-schedule",
+          role: "assistant",
+          content: "Checking the launch schedule.",
+          runId: "run-completed-work-telemetry",
+          createdAt: "2026-09-04T10:00:16Z",
+        },
+        {
           id: "msg-completed-work-result",
           role: "assistant",
           content: "The launch summary is ready.",
@@ -148,12 +186,13 @@ describe("chat engagement telemetry", () => {
       ],
     });
 
-    await setupPage({ context, path: `/chats/${threadId}` });
-
-    const expandWork = await waitFor(() => {
-      return buttonByLabel("Expand work history");
+    await setupPage({
+      context,
+      path: `/chats/${threadId}`,
     });
-    expect(expandWork).toHaveTextContent("Worked for 20s");
+
+    const expandWork = await findWorkHistoryToggle("collapsed");
+    expect(screen.getByText("Worked for 20s")).toBeVisible();
 
     click(expandWork);
 

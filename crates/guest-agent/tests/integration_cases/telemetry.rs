@@ -14,14 +14,14 @@ struct SandboxOpsOverrideGuard;
 
 impl SandboxOpsOverrideGuard {
     fn set(path: &str) -> Self {
-        guest_common::telemetry::set_sandbox_ops_log_file(path);
+        guest_telemetry::telemetry::set_sandbox_ops_log_file(path);
         Self
     }
 }
 
 impl Drop for SandboxOpsOverrideGuard {
     fn drop(&mut self) {
-        guest_common::telemetry::clear_sandbox_ops_log_file();
+        guest_telemetry::telemetry::clear_sandbox_ops_log_file();
     }
 }
 
@@ -140,7 +140,12 @@ async fn flush_is_incremental_between_calls() {
     );
 
     // Pre-checkpoint record → first flush captures it.
-    guest_common::telemetry::record_sandbox_op("first_op", Duration::from_millis(10), true, None);
+    guest_telemetry::telemetry::record_sandbox_op(
+        "first_op",
+        Duration::from_millis(10),
+        true,
+        None,
+    );
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await
@@ -148,7 +153,12 @@ async fn flush_is_incremental_between_calls() {
 
     // Simulates a checkpoint sub-op written AFTER the parallel pass read
     // the sandbox_ops file. The catch-up flush must pick it up.
-    guest_common::telemetry::record_sandbox_op("second_op", Duration::from_millis(20), true, None);
+    guest_telemetry::telemetry::record_sandbox_op(
+        "second_op",
+        Duration::from_millis(20),
+        true,
+        None,
+    );
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Final)
         .await
@@ -218,7 +228,7 @@ async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
         http_client!(),
     );
 
-    guest_common::log_warn!("sandbox:guest-agent", "{marker}");
+    guest_telemetry::log_warn!("sandbox:guest-agent", "{marker}");
     tokio::time::timeout(Duration::from_secs(5), telemetry.final_flush_and_shutdown())
         .await
         .expect(
@@ -291,7 +301,7 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     std::fs::write(system_log, format!("system log {session_id} {secret}\n"))
         .expect("system log should be written");
     let sandbox_error = format!("sandbox failure: {secret}");
-    guest_common::telemetry::record_sandbox_op(
+    guest_telemetry::telemetry::record_sandbox_op(
         "telemetry_secret_mask",
         Duration::from_millis(17),
         false,
@@ -439,7 +449,7 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
     // tick + final could both read the same pos and race on save_position;
     // post-refactor the select serialises them, so only the first sees a
     // non-empty delta and only one HTTP POST happens.
-    guest_common::telemetry::record_sandbox_op("only_op", Duration::from_millis(5), true, None);
+    guest_telemetry::telemetry::record_sandbox_op("only_op", Duration::from_millis(5), true, None);
 
     let (r1, r2, r3) = tokio::join!(
         telemetry.flush(guest_agent::telemetry::UploadMode::Live),
@@ -492,7 +502,7 @@ async fn flush_propagates_error_then_loop_recovers() {
     );
 
     // Force upload_telemetry to fire HTTP by writing a delta.
-    guest_common::telemetry::record_sandbox_op(
+    guest_telemetry::telemetry::record_sandbox_op(
         "first_attempt_op",
         Duration::from_millis(5),
         true,
@@ -927,4 +937,254 @@ async fn oversized_system_log_uploads_marker_without_raw_line_fragment() {
     raw_fragment_mock.delete_async().await;
     marker_mock.delete_async().await;
     remove_telemetry_files(paths);
+}
+
+fn oom_fixture() -> Result<guest_contracts::oom_evidence::OomEvidence, serde_json::Error> {
+    serde_json::from_str(include_str!(
+        "../../../guest-contracts/tests/fixtures/oom-evidence-v1.json"
+    ))
+}
+
+#[tokio::test]
+async fn urgent_oom_bypasses_log_backlog_and_keeps_live_positions() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let files = ExplicitTelemetryFiles::new("urgent-oom").unwrap();
+    let paths = &files.paths;
+    guest_agent::paths::write_private(paths.system_log_file(), "old log\n".repeat(100_000))
+        .unwrap();
+    let urgent = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes("oomEvidence")
+            .body_excludes("systemLog");
+        then.status(200).json_body(
+            serde_json::json!({"success":true,"id":"urgent-run","oomEvidenceVersion":1}),
+        );
+    });
+    let normal = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes("systemLog");
+        then.status(200);
+    });
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "urgent-run".into(),
+        paths,
+        Arc::new(SecretMasker::from_raw("")),
+        http_client!(),
+    );
+    telemetry.incident_reporter().record(oom_fixture().unwrap());
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .unwrap();
+    urgent.assert_calls_async(1).await;
+    let position = std::fs::read_to_string(paths.telemetry_system_log_pos_file())
+        .unwrap()
+        .parse::<usize>()
+        .unwrap();
+    assert!(position <= TELEMETRY_DELTA_READ_LIMIT);
+    assert!(position < std::fs::metadata(paths.system_log_file()).unwrap().len() as usize);
+    let retained =
+        std::fs::read_to_string(format!("{}.oom-evidence.json", paths.metrics_log_file())).unwrap();
+    assert_eq!(
+        serde_json::from_str::<guest_contracts::oom_evidence::OomEvidence>(&retained)
+            .unwrap()
+            .incidents,
+        oom_fixture().unwrap().incidents
+    );
+    telemetry.incident_reporter().record(oom_fixture().unwrap());
+    telemetry.final_flush_and_shutdown().await.unwrap();
+    urgent.assert_calls_async(1).await;
+    normal.assert_calls_async(2).await;
+    urgent.delete_async().await;
+    normal.delete_async().await;
+}
+
+#[tokio::test]
+async fn urgent_oom_retries_transient_failure_and_retains_unacknowledged_old_receiver_payload() {
+    for acknowledges in [true, false] {
+        let api = SharedApiMock::new().await;
+        let server = api.server();
+        let files = ExplicitTelemetryFiles::new("urgent-retry").unwrap();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let requests = calls.clone();
+        let upload = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("oomEvidence");
+            then.respond_with(move |_| {
+                let attempt = requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let body = if attempt > 0 && acknowledges {
+                    r#"{"success":true,"id":"retry","oomEvidenceVersion":1}"#
+                } else {
+                    r#"{"success":true,"id":"retry"}"#
+                };
+                json_http_response(
+                    if attempt == 0 { 503 } else { 200 },
+                    serde_json::from_str(body).unwrap(),
+                )
+            });
+        });
+        let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+            "retry".into(),
+            &files.paths,
+            Arc::new(SecretMasker::from_raw("")),
+            http_client!(),
+        );
+        telemetry.incident_reporter().record(oom_fixture().unwrap());
+        telemetry
+            .flush(guest_agent::telemetry::UploadMode::Live)
+            .await
+            .unwrap();
+        telemetry.incident_reporter().record(oom_fixture().unwrap());
+        telemetry.shutdown().await;
+        upload.assert_calls_async(2).await;
+        assert!(
+            std::fs::metadata(format!(
+                "{}.oom-evidence.json",
+                files.paths.metrics_log_file()
+            ))
+            .unwrap()
+            .len()
+                > 0
+        );
+        upload.delete_async().await;
+    }
+}
+
+#[tokio::test]
+async fn urgent_oom_arrives_while_normal_http_response_is_held_open() {
+    use tokio::io::AsyncWriteExt;
+    let files = ExplicitTelemetryFiles::new("urgent-inflight").unwrap();
+    guest_agent::paths::write_private(files.paths.system_log_file(), "normal backlog\n").unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let http = guest_agent::http::HttpClient::with_api_config(
+        format!("http://{}", listener.local_addr().unwrap()),
+        "test-token",
+        "",
+        "test-session",
+        Duration::ZERO,
+    )
+    .unwrap();
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "inflight".into(),
+        &files.paths,
+        Arc::new(SecretMasker::from_raw("")),
+        http,
+    );
+    let reporter = telemetry.incident_reporter();
+    let flush = tokio::spawn(async move {
+        telemetry
+            .flush(guest_agent::telemetry::UploadMode::Live)
+            .await
+            .unwrap();
+        telemetry
+    });
+    let (mut normal, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        super::http_client::read_raw_request(&mut normal),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    reporter.record(oom_fixture().unwrap());
+    // The first response has not been sent. A distinct incident request must
+    // arrive before that response is released, with no dependency on a tick.
+    let (mut urgent, _) = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        super::http_client::read_raw_request(&mut urgent),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(!flush.is_finished());
+    let body = r#"{"success":true,"id":"inflight","oomEvidenceVersion":1}"#;
+    urgent
+        .write_all(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    normal
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+        .await
+        .unwrap();
+    let telemetry = tokio::time::timeout(Duration::from_secs(5), flush)
+        .await
+        .unwrap()
+        .unwrap();
+    telemetry.shutdown().await;
+    assert_eq!(
+        std::fs::read_to_string(files.paths.telemetry_system_log_pos_file()).unwrap(),
+        "15"
+    );
+}
+
+#[tokio::test]
+async fn urgent_oom_stalled_http_has_two_bounded_attempts_and_retains_evidence() {
+    let files = ExplicitTelemetryFiles::new("urgent-stalled").unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let http = guest_agent::http::HttpClient::with_api_config(
+        format!("http://{}", listener.local_addr().unwrap()),
+        "test-token",
+        "",
+        "test-session",
+        Duration::ZERO,
+    )
+    .unwrap();
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "stalled".into(),
+        &files.paths,
+        Arc::new(SecretMasker::from_raw("")),
+        http,
+    );
+    telemetry.incident_reporter().record(oom_fixture().unwrap());
+    let server = tokio::spawn(async move {
+        let mut held = Vec::new();
+        for _ in 0..2 {
+            let (mut stream, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+                .await
+                .unwrap()
+                .unwrap();
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                super::http_client::read_raw_request(&mut stream),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            held.push(stream);
+        }
+        (listener, held)
+    });
+    tokio::time::timeout(Duration::from_secs(6), telemetry.final_flush_and_shutdown())
+        .await
+        .unwrap()
+        .unwrap();
+    let (listener, held) = server.await.unwrap();
+    assert_eq!(held.len(), 2);
+    assert!(
+        std::fs::metadata(format!(
+            "{}.oom-evidence.json",
+            files.paths.metrics_log_file()
+        ))
+        .unwrap()
+        .len()
+            > 0
+    );
+    drop(listener);
 }

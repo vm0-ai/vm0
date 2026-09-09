@@ -332,7 +332,6 @@ async function connectTeamsFixture(
   options: {
     readonly displayName?: string;
     readonly principalName?: string;
-    readonly publicBrand?: "vm0" | "okou";
   } = {},
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -344,9 +343,6 @@ async function connectTeamsFixture(
     client.connect({
       headers: {
         authorization: "Bearer clerk-session",
-        ...(options.publicBrand === "okou"
-          ? { origin: "https://app.okou.ai" }
-          : {}),
       },
       body: {
         tenantId: fixture.teamsTenantId,
@@ -365,13 +361,9 @@ async function connectTeamsFixture(
 
 async function setupConnectedTeamsActor(
   options: {
-    readonly publicBrand?: "vm0" | "okou";
     readonly okouDebug?: boolean;
   } = {},
 ): Promise<ConnectedTeamsActor> {
-  if (options.publicBrand === "okou") {
-    setupTeamsConnectTestEnv("https://app.vm0.ai");
-  }
   const fixture = await trackTeamsFixture(
     Promise.resolve(teamsConnectFixture()),
   );
@@ -408,13 +400,9 @@ async function setupConnectedTeamsActor(
     );
   }
   const setupTeamsApi = teamsApiMocks({ fixture });
-  await installTeamsForTest(
-    context.signal,
-    fixture,
-    options.publicBrand ?? "vm0",
-  );
+  await installTeamsForTest(context.signal, fixture);
   await flushWaitUntilForTest();
-  await connectTeamsFixture(fixture, options);
+  await connectTeamsFixture(fixture);
   await flushWaitUntilForTest();
   clearTeamsApiCalls(setupTeamsApi);
 
@@ -461,7 +449,7 @@ async function dispatchTeamsRun(args: {
     orgId: args.fixture.orgId,
     orgRole: "org:admin",
   });
-  return await runIdForPrompt(actor, args.text);
+  return await runIdForPrompt(actor, `@Zero ${args.text}`);
 }
 
 async function postTeamsPersonalMessage(args: {
@@ -702,7 +690,7 @@ describe("Teams chat callbacks", () => {
       teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
       teamsServiceUrl: teams.fixture.serviceUrl,
       teamsAppId: teams.fixture.teamsAppId,
-      teamsPublicBrand: "vm0",
+      teamsPublicBrand: "okou",
       teamsSenderUserId: teams.fixture.teamsUserId,
       teamsSenderDisplayName: "Ada Lovelace",
       teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,
@@ -1029,8 +1017,8 @@ describe("Teams chat callbacks", () => {
   });
 
   it("posts completed run replies and persists canonical Teams thread sessions", async () => {
+    setupTeamsConnectTestEnv("https://app.okou.ai");
     const teams = await setupConnectedTeamsActor({
-      publicBrand: "okou",
       okouDebug: true,
     });
     const teamsApi = teamsApiMocks({ fixture: teams.fixture });
@@ -1074,7 +1062,7 @@ describe("Teams chat callbacks", () => {
         userMessage: {
           version: 1,
           parts: [
-            { type: "text", text: "finish the task" },
+            { type: "text", text: "@Zero finish the task" },
             {
               type: "source",
               kind: "teams",
@@ -1128,7 +1116,7 @@ describe("Teams chat callbacks", () => {
       "Task completed successfully.",
     );
     expect(teamsApi.postedActivities[0]?.text).toContain(
-      `[Audit](https://app.vm0.ai/activities/${runId})`,
+      `[Audit](https://app.okou.ai/activities/${runId})`,
     );
     expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
     expect(teamsApi.reactionRequests).toStrictEqual([

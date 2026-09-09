@@ -19,15 +19,18 @@ import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
+  connectorConnectionPending$,
+  dismissConnectorConnectionProgress$,
+} from "../../../../signals/connector-connection-progress.ts";
+import { ConnectorConnectionDialogBody } from "../../../components/connector-connection-dialog-body.tsx";
+import {
   closeCustomConnectorDialog$,
   connectCustomConnectorAuthorization$,
-  connectCustomConnectorAccountAuthorization$,
   connectCustomConnectorAuthorizationForAgent$,
   customConnectorConnectForm$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
   setCustomConnectorValues$,
-  setCustomConnectorAccountValues$,
   setCustomConnectorValuesForAgent$,
 } from "../../../../signals/okou-page/settings/custom-connectors.ts";
 import { sanitizeTokenInputRecord } from "../../../../signals/okou-page/settings/token-input.ts";
@@ -163,15 +166,9 @@ function useCustomConnectorConnectionSubmitters(
   const [agentAuthorizationLoadable, submitAgentAuthorization] = useLoadableSet(
     connectCustomConnectorAuthorizationForAgent$,
   );
-  const [accountValuesLoadable, submitAccountValues] = useLoadableSet(
-    setCustomConnectorAccountValues$,
-  );
-  const [accountAuthorizationLoadable, submitAccountAuthorization] =
-    useLoadableSet(connectCustomConnectorAccountAuthorization$);
   const account = accountOptions.account;
   const usesDefaultProjection =
     accountOptions.useDefaultConnectorProjection === true;
-  const managesAccount = !usesDefaultProjection;
 
   const submitDeclaredValues = async (
     args: {
@@ -180,9 +177,6 @@ function useCustomConnectorConnectionSubmitters(
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
-    if (managesAccount) {
-      return await submitAccountValues({ ...args, account }, signal);
-    }
     if (agentId) {
       return await submitAgentValues({ ...args, agentId, account }, signal);
     }
@@ -192,12 +186,6 @@ function useCustomConnectorConnectionSubmitters(
     connectorId: string,
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
-    if (managesAccount) {
-      return await submitAccountAuthorization(
-        { id: connectorId, account },
-        signal,
-      );
-    }
     if (agentId) {
       return await submitAgentAuthorization(
         {
@@ -228,9 +216,7 @@ function useCustomConnectorConnectionSubmitters(
       valuesLoadable.state === "loading" ||
       agentValuesLoadable.state === "loading" ||
       authorizationLoadable.state === "loading" ||
-      agentAuthorizationLoadable.state === "loading" ||
-      accountValuesLoadable.state === "loading" ||
-      accountAuthorizationLoadable.state === "loading",
+      agentAuthorizationLoadable.state === "loading",
     submitDeclaredValues,
     submitAuthorizationMode,
   };
@@ -352,6 +338,19 @@ function CustomConnectorConnectForm({
   );
 }
 
+function useCloseCustomConnectorDialog(onClose: (() => void) | undefined) {
+  const resetForm = useSet(resetCustomConnectorConnectInput$);
+  const closeDialog = useSet(closeCustomConnectorDialog$);
+  return () => {
+    resetForm();
+    if (onClose) {
+      onClose();
+    } else {
+      closeDialog();
+    }
+  };
+}
+
 export function CustomConnectorConnectDialog({
   connector,
   agentId,
@@ -363,10 +362,15 @@ export function CustomConnectorConnectDialog({
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
   const setField = useSet(setCustomConnectorConnectField$);
-  const resetForm = useSet(resetCustomConnectorConnectInput$);
-  const closeDialog = useSet(closeCustomConnectorDialog$);
-  const { submitting, submitDeclaredValues, submitAuthorizationMode } =
-    useCustomConnectorConnectionSubmitters(agentId, accountOptions);
+  const close = useCloseCustomConnectorDialog(onClose);
+  const {
+    submitting: connectionSubmitting,
+    submitDeclaredValues,
+    submitAuthorizationMode,
+  } = useCustomConnectorConnectionSubmitters(agentId, accountOptions);
+  const pending = useGet(connectorConnectionPending$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
+  const submitting = connectionSubmitting || pending;
   const signal = useGet(pageSignal$);
   const authorization =
     connector.authMode === "oauth" || connector.authMode === "automatic";
@@ -394,15 +398,6 @@ export function CustomConnectorConnectDialog({
     connector.fields.length === 1 &&
     connector.fields[0]?.kind === "secret";
 
-  const close = () => {
-    resetForm();
-    if (onClose) {
-      onClose();
-    } else {
-      closeDialog();
-    }
-  };
-
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) {
@@ -429,7 +424,10 @@ export function CustomConnectorConnectDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        return !open && close();
+        if (!open) {
+          dismissProgress();
+          close();
+        }
       }}
     >
       <DialogContent
@@ -463,16 +461,18 @@ export function CustomConnectorConnectDialog({
             })}
           </p>
         )}
-        <CustomConnectorConnectForm
-          connector={connector}
-          accountMode={accountMode}
-          values={form.values}
-          setField={setField}
-          submitting={submitting}
-          canSubmit={canSubmit}
-          close={close}
-          onSubmit={onSubmit}
-        />
+        <ConnectorConnectionDialogBody>
+          <CustomConnectorConnectForm
+            connector={connector}
+            accountMode={accountMode}
+            values={form.values}
+            setField={setField}
+            submitting={submitting}
+            canSubmit={canSubmit}
+            close={close}
+            onSubmit={onSubmit}
+          />
+        </ConnectorConnectionDialogBody>
       </DialogContent>
     </Dialog>
   );

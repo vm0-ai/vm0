@@ -191,6 +191,93 @@ function connectProtocolTransport(
   };
 }
 
+test("share one Worker realtime subscription across registered tabs", async () => {
+  initializeWorker();
+  const firstOwner = createChildAbortController(context.signal);
+  const secondOwner = createChildAbortController(context.signal);
+  const first = connectProtocolTransport(firstOwner.signal);
+  const second = connectProtocolTransport(secondOwner.signal);
+  const firstMessages: unknown[] = [];
+  const secondMessages: unknown[] = [];
+  const topic = "connectorPermissionUpdated";
+  const channelName = `user:${identity().userId}`;
+
+  await first.bridge.registerTab(firstOwner.signal);
+  await second.bridge.registerTab(secondOwner.signal);
+  await Promise.all([
+    first.bridge.subscribeRealtime(
+      "first-subscription",
+      "user",
+      topic,
+      (message) => {
+        firstMessages.push(message.data);
+      },
+    ),
+    second.bridge.subscribeRealtime(
+      "second-subscription",
+      "user",
+      topic,
+      (message) => {
+        secondMessages.push(message.data);
+      },
+    ),
+  ]);
+
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
+    ).toBeTruthy();
+  });
+  context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 1 });
+  await vi.waitFor(() => {
+    expect(firstMessages).toStrictEqual([{ revision: 1 }]);
+    expect(secondMessages).toStrictEqual([{ revision: 1 }]);
+  });
+
+  firstOwner.abort(new DOMException("First tab closed", "AbortError"));
+  context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 2 });
+  await vi.waitFor(() => {
+    expect(secondMessages).toStrictEqual([{ revision: 1 }, { revision: 2 }]);
+  });
+  expect(firstMessages).toStrictEqual([{ revision: 1 }]);
+
+  secondOwner.abort(new DOMException("Second tab closed", "AbortError"));
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
+    ).toBeFalsy();
+  });
+});
+
+test("route workspace realtime subscriptions through the organization channel", async () => {
+  initializeWorker();
+  const owner = createChildAbortController(context.signal);
+  const { bridge } = connectProtocolTransport(owner.signal);
+  const messages: unknown[] = [];
+  const topic = "presentationTemplatesChanged";
+  const channelName = `org:${identity().orgId}`;
+
+  await bridge.registerTab(owner.signal);
+  await bridge.subscribeRealtime(
+    "workspace-subscription",
+    "org",
+    topic,
+    (message) => {
+      messages.push(message.data);
+    },
+  );
+
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
+    ).toBeTruthy();
+  });
+  context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 1 });
+  await vi.waitFor(() => {
+    expect(messages).toStrictEqual([{ revision: 1 }]);
+  });
+});
+
 test("preserve a rejected 401 through the port and allow a later query to succeed", async () => {
   initializeWorker();
   const { bridge } = connectProtocolTransport(context.signal);

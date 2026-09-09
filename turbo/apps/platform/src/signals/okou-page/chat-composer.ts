@@ -1,3 +1,4 @@
+import { fetchResource } from "../../lib/resource-fetch.ts";
 import { command, computed, state, type Command } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -14,6 +15,7 @@ import {
 } from "../../views/okou-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/okou-page/attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
+import { createExplainerVideoPickerSignals } from "./explainer-video-picker.ts";
 import { createImportedPresentationTemplateSignals } from "./presentation-template-library.ts";
 import { createModelPickerMenuSignals } from "./model-picker-menu.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
@@ -278,13 +280,12 @@ async function loadPresentationTemplateHtmlPreview(
   },
   signal: AbortSignal,
 ): Promise<PresentationPreviewDraft | null> {
-  const response = await fetch(
+  const response = await fetchResource(
     readableAttachmentResourceUrl(params.item.embedUrl),
     {
-      credentials: "omit",
       mode: "cors",
-      signal,
     },
+    signal,
   );
   if (!response.ok) {
     throw new Error(`Failed to load template HTML (${response.status})`);
@@ -390,22 +391,25 @@ function createVideoRunOptionsUiSignals() {
 }
 
 function createTemplatePickerDialogSignals() {
-  const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
-  const internalWebsiteTemplatePreviewLoaded$ = state(false);
+  const internalTemplatePickerMounted$ = state(false);
   const internalTemplatePickerOpen$ = state(false);
-  const internalTemplatePickerSkipEnterAnimation$ = state(false);
-  const templatePickerOpen$ = computed((get) => {
-    return (
-      get(internalTemplatePickerOpen$) &&
-      get(internalWebsiteTemplatePreviewId$) === null
-    );
+  const templatePickerMounted$ = computed((get) => {
+    return get(internalTemplatePickerMounted$);
   });
-  const templatePickerSkipEnterAnimation$ = computed((get) => {
-    return get(internalTemplatePickerSkipEnterAnimation$);
+  const templatePickerOpen$ = computed((get) => {
+    return get(internalTemplatePickerOpen$);
   });
   const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
-    set(internalTemplatePickerSkipEnterAnimation$, false);
+    if (open) {
+      set(internalTemplatePickerMounted$, true);
+    }
     set(internalTemplatePickerOpen$, open);
+  });
+  const completeTemplatePickerClose$ = command(({ get, set }) => {
+    if (get(internalTemplatePickerOpen$)) {
+      return;
+    }
+    set(internalTemplatePickerMounted$, false);
   });
 
   const internalTemplatePickerReferenceValue$ =
@@ -419,42 +423,57 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
+  const internalWebsiteTemplatePreviewLoaded$ = state(false);
+  const internalWebsiteTemplatePreviewOpen$ = state(false);
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
   const websiteTemplatePreviewLoaded$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewLoaded$);
   });
+  const websiteTemplatePreviewOpen$ = computed((get) => {
+    return get(internalWebsiteTemplatePreviewOpen$);
+  });
   const markWebsiteTemplatePreviewLoaded$ = command(({ set }) => {
     set(internalWebsiteTemplatePreviewLoaded$, true);
   });
   const openWebsiteTemplatePreview$ = command(({ set }, templateId: string) => {
-    set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalWebsiteTemplatePreviewLoaded$, false);
     set(internalWebsiteTemplatePreviewId$, templateId);
+    set(internalWebsiteTemplatePreviewOpen$, true);
   });
   const closeWebsiteTemplatePreview$ = command(({ set }) => {
-    set(internalTemplatePickerSkipEnterAnimation$, true);
+    set(internalWebsiteTemplatePreviewOpen$, false);
+  });
+  const completeWebsiteTemplatePreviewClose$ = command(({ get, set }) => {
+    if (get(internalWebsiteTemplatePreviewOpen$)) {
+      return;
+    }
     set(internalWebsiteTemplatePreviewLoaded$, false);
     set(internalWebsiteTemplatePreviewId$, null);
   });
 
   return {
+    templatePickerMounted$,
     templatePickerOpen$,
-    templatePickerSkipEnterAnimation$,
     setTemplatePickerOpen$,
+    completeTemplatePickerClose$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
+    websiteTemplatePreviewOpen$,
     markWebsiteTemplatePreviewLoaded$,
     openWebsiteTemplatePreview$,
     closeWebsiteTemplatePreview$,
+    completeWebsiteTemplatePreviewClose$,
   };
 }
 
 function createTemplatePickerListSignals() {
   const avatarTemplates = createAvatarTemplatePickerSignals();
+  const explainer = createExplainerVideoPickerSignals();
   const internalTemplatePickerCategory$ = state("slides");
   const templatePickerCategory$ = computed((get) => {
     return get(internalTemplatePickerCategory$);
@@ -525,6 +544,7 @@ function createTemplatePickerListSignals() {
 
   return {
     signals: {
+      explainer,
       templatePickerCategory$,
       setTemplatePickerCategory$,
       templatePickerSearch$,
@@ -551,6 +571,7 @@ function createOpenTemplatePickerDialogCommand(
     set(list.signals.setTemplatePickerSearch$, "");
     set(list.signals.setTemplatePickerPreviewSlug$, null);
     set(dialog.setTemplatePickerReferenceValue$, options.referenceValue);
+    set(list.signals.explainer.restore$, options.referenceValue);
     set(list.signals.setTemplatePickerCategory$, options.category);
     set(dialog.setTemplatePickerOpen$, true);
   });

@@ -1,3 +1,11 @@
+import type { ComputerUsePermissionQuery } from "./computer-use-permissions";
+import { createComputerUseDrain } from "./computer-use-lifecycle-deadline";
+import {
+  ComputerUseCommandBudget,
+  systemComputerUseCommandClock,
+  type ComputerUseCommandClock,
+} from "./computer-use-command-budget";
+import { ComputerUseNativeHelperError } from "./computer-use-native";
 import os from "node:os";
 import type {
   ComputerUseCommand,
@@ -19,6 +27,7 @@ import {
 } from "./computer-use-startup-gate";
 import { resolveComputerUseApiBaseUrl } from "./desktop-api-base-url";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
+import type { ComputerUseCommandSession } from "./computer-use-driver";
 
 const HEARTBEAT_POLL_MS = 2_000;
 const COMMAND_COLD_POLL_MS = 5_000;
@@ -31,7 +40,8 @@ const RECOVERY_RETRY_MAX_MS = 60_000;
 const RECOVERY_RETRY_AFTER_MAX_MS = 5 * 60_000;
 const HEARTBEAT_REQUEST_TIMEOUT_MS = 10_000;
 const COMMAND_POLL_REQUEST_TIMEOUT_MS = 30_000;
-const COMMAND_COMPLETION_REQUEST_TIMEOUT_MS = 60_000;
+// Reporting only: one hard cap includes every request and retry backoff.
+const COMMAND_REPORTING_TIMEOUT_MS = 5_000;
 const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
 const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
@@ -44,6 +54,8 @@ const LOCAL_COMMAND_LOG_OMITTED_RESULT_KEYS = new Set([
   "visibleElements",
 ]);
 
+class ComputerUseCapabilitiesPaused extends Error {}
+
 export type ComputerUseHostFetch = (
   input: string,
   init?: RequestInit,
@@ -52,6 +64,7 @@ export type ComputerUseHostFetch = (
 type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
+  readonly commandClock?: ComputerUseCommandClock;
   readonly platformUrl: URL;
   readonly installationId: string;
   readonly hostName: string;
@@ -59,18 +72,20 @@ interface ComputerUseHostRuntimeOptions {
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
   readonly addClientHeaders: DesktopClientHeaderInjector;
-  readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
+  readonly getPermissions: (
+    query?: ComputerUsePermissionQuery,
+  ) => MaybePromise<ComputerUsePermissionState>;
   readonly getSupportedCapabilities?: () => readonly string[];
-  readonly executeCommand: (
-    command: ComputerUseCommand,
-    permissions: ComputerUsePermissionState,
-  ) => Promise<ComputerUseCommandExecutionResult>;
+  readonly acquireCommand: () => ComputerUseCommandSession;
   readonly onCommandFailure?: (args: {
     readonly command: ComputerUseCommand;
     readonly failure: ComputerUseCommandFailure;
   }) => void;
   readonly onChange?: () => void;
-  readonly setTimeout?: typeof setTimeout;
+  readonly setTimeout?: (
+    callback: () => void,
+    delayMs: number,
+  ) => ReturnType<typeof setTimeout>;
   readonly clearTimeout?: typeof clearTimeout;
 }
 
@@ -177,7 +192,10 @@ function commandFailureFromError(
   return {
     status: "failed",
     error: {
-      code: "accessibility_unavailable",
+      code:
+        error instanceof ComputerUseNativeHelperError
+          ? error.code
+          : "accessibility_unavailable",
       message: errorMessage(error),
     },
   };
@@ -237,12 +255,13 @@ export class ComputerUseHostRuntime {
   private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
   private readonly getSupportedCapabilities: () => readonly string[];
-  private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
   private readonly onCommandFailure: NonNullable<
     ComputerUseHostRuntimeOptions["onCommandFailure"]
   >;
   private readonly onChange: () => void;
-  private readonly scheduleTimeout: typeof setTimeout;
+  private readonly scheduleTimeout: NonNullable<
+    ComputerUseHostRuntimeOptions["setTimeout"]
+  >;
   private readonly clearScheduledTimeout: typeof clearTimeout;
   private running = false;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -250,6 +269,11 @@ export class ComputerUseHostRuntime {
   private recoveryTimer: NodeJS.Timeout | null = null;
   private commandExecutionRunning = false;
   private draining = false;
+  private sessionGeneration = 0;
+  private pauseGeneration = 0;
+  private commandDrained = createComputerUseDrain();
+  private readonly commandRequests = new Set<Promise<unknown>>();
+  private readonly reportingControllers = new Set<AbortController>();
   private lastCommandActivityAtMs: number | null = null;
   private lastCommandCompletionAtMs: number | null = null;
   private hostToken: string | null = null;
@@ -266,6 +290,8 @@ export class ComputerUseHostRuntime {
   };
 
   constructor(options: ComputerUseHostRuntimeOptions) {
+    this.commandClock = options.commandClock ?? systemComputerUseCommandClock;
+    this.acquireCommand = options.acquireCommand;
     this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
     this.installationId = options.installationId;
     this.hostName = options.hostName;
@@ -279,21 +305,26 @@ export class ComputerUseHostRuntime {
       (() => {
         return SUPPORTED_COMPUTER_USE_CAPABILITIES;
       });
-    this.executeCommand = options.executeCommand;
     this.onCommandFailure = options.onCommandFailure ?? (() => {});
     this.onChange = options.onChange ?? (() => {});
     this.scheduleTimeout = options.setTimeout ?? setTimeout;
     this.clearScheduledTimeout = options.clearTimeout ?? clearTimeout;
   }
 
+  private readonly acquireCommand: ComputerUseHostRuntimeOptions["acquireCommand"];
+  private readonly commandClock: ComputerUseCommandClock;
+
   async start(): Promise<void> {
     if (this.running) {
       return;
     }
     this.running = true;
+    this.sessionGeneration++;
+    const generation = this.sessionGeneration;
     this.draining = false;
     try {
       const nextDelay = await this.startHost();
+      if (generation !== this.sessionGeneration) return;
       if (nextDelay === null) {
         this.running = false;
         return;
@@ -301,12 +332,16 @@ export class ComputerUseHostRuntime {
       this.scheduleHeartbeat(nextDelay);
       this.scheduleCommandPoll(this.commandPollDelayMs());
     } catch (error) {
-      this.handleRuntimeFailure("start", error);
+      if (generation === this.sessionGeneration)
+        this.handleRuntimeFailure("start", error);
     }
   }
 
   async stop(): Promise<void> {
     this.running = false;
+    for (const controller of this.reportingControllers) controller.abort();
+    this.sessionGeneration++;
+    this.pauseGeneration++;
     this.draining = false;
     this.clearHeartbeatTimer();
     this.clearCommandTimer();
@@ -332,27 +367,54 @@ export class ComputerUseHostRuntime {
   }
 
   async drainAndStop(): Promise<void> {
-    this.draining = true;
-    this.clearCommandTimer();
-    while (this.commandExecutionRunning) {
-      await new Promise<void>((resolve) => {
-        this.scheduleTimeout(resolve, 50);
-      });
-    }
+    await this.pauseAndDrainCommands();
     await this.stop();
+  }
+
+  /** Close admission synchronously, retaining heartbeat and host authorization. */
+  async pauseAndDrainCommands(): Promise<() => void> {
+    this.draining = true;
+    const pause = ++this.pauseGeneration;
+    const session = this.sessionGeneration;
+    this.clearCommandTimer();
+    if (this.state.recovery?.phase === "command_poll")
+      this.clearRecoveryTimer();
+    if (this.commandExecutionRunning) await this.commandDrained.promise;
+    // Request deadlines do not prove that the underlying transport retired.
+    await Promise.allSettled([...this.commandRequests]);
+    return () => {
+      if (
+        !this.running ||
+        session !== this.sessionGeneration ||
+        pause !== this.pauseGeneration
+      )
+        return;
+      this.draining = false;
+      this.clearRecoveryState("command_poll");
+      this.scheduleCommandPoll(0);
+    };
   }
 
   getState(): ComputerUseHostRuntimeState {
     return this.state;
   }
 
-  private async runtimeBody(): Promise<Record<string, unknown>> {
+  private async runtimeBody(
+    query?: ComputerUsePermissionQuery,
+  ): Promise<Record<string, unknown>> {
+    const permissions = await this.getPermissions(query);
+    const capabilities = this.getSupportedCapabilities();
+    if (capabilities.length === 0) {
+      if (this.draining) throw new ComputerUseCapabilitiesPaused();
+      await this.stop();
+      throw new Error("Computer Use has no available capabilities");
+    }
     return buildComputerUseRuntimeBody({
       installationId: this.installationId,
       hostName: this.hostName,
       appVersion: this.appVersion,
-      permissions: await this.getPermissions(),
-      supportedCapabilities: this.getSupportedCapabilities(),
+      permissions,
+      supportedCapabilities: capabilities,
     });
   }
 
@@ -404,6 +466,7 @@ export class ComputerUseHostRuntime {
   ): void {
     this.hostToken = null;
     this.running = false;
+    for (const controller of this.reportingControllers) controller.abort();
     this.clearHeartbeatTimer();
     this.clearCommandTimer();
     this.clearRecoveryTimer();
@@ -448,9 +511,11 @@ export class ComputerUseHostRuntime {
   private startLocalCommandLogEntry(
     command: ComputerUseCommand,
     startedAt: string,
+    driver: ComputerUseCommandSession["identity"],
   ): void {
     const app = command.payload.app;
     const entry: ComputerUseLocalCommandLogEntry = {
+      ...(command.kind !== "plugin.call" && driver ? { driver } : {}),
       commandId: command.id,
       kind: command.kind,
       app: typeof app === "string" ? app : null,
@@ -595,8 +660,10 @@ export class ComputerUseHostRuntime {
   }
 
   private async recoverStart(): Promise<void> {
+    const generation = this.sessionGeneration;
     try {
       const nextDelay = await this.startHost();
+      if (generation !== this.sessionGeneration) return;
       if (nextDelay === null) {
         this.running = false;
         return;
@@ -604,13 +671,17 @@ export class ComputerUseHostRuntime {
       this.scheduleHeartbeat(nextDelay);
       this.scheduleCommandPoll(this.commandPollDelayMs());
     } catch (error) {
-      this.handleRuntimeFailure("start", error);
+      if (generation === this.sessionGeneration)
+        this.handleRuntimeFailure("start", error);
     }
   }
 
   private async recoverHeartbeat(): Promise<void> {
+    const generation = this.sessionGeneration;
     try {
-      if (!this.hostToken || !(await this.heartbeat())) {
+      const online = this.hostToken && (await this.heartbeat());
+      if (generation !== this.sessionGeneration) return;
+      if (!online) {
         this.running = false;
         this.clearCommandTimer();
         return;
@@ -618,7 +689,8 @@ export class ComputerUseHostRuntime {
       this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
       this.scheduleCommandPoll(0);
     } catch (error) {
-      this.handleRuntimeFailure("heartbeat", error);
+      if (generation === this.sessionGeneration)
+        this.handleRuntimeFailure("heartbeat", error);
     }
   }
 
@@ -643,35 +715,68 @@ export class ComputerUseHostRuntime {
   }
 
   private async heartbeatLoop(): Promise<void> {
+    const generation = this.sessionGeneration;
     try {
-      if (!this.hostToken || !(await this.heartbeat())) {
+      // A bounded native replacement keeps this host registration. Never send
+      // an empty legacy capability list during its activation gap.
+      if (this.draining && this.getSupportedCapabilities().length === 0) {
+        this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
+        return;
+      }
+      const online = this.hostToken && (await this.heartbeat());
+      if (generation !== this.sessionGeneration) return;
+      if (!online) {
         this.running = false;
         this.clearCommandTimer();
         return;
       }
       this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
     } catch (error) {
-      this.handleRuntimeFailure("heartbeat", error);
+      if (
+        error instanceof ComputerUseCapabilitiesPaused &&
+        generation === this.sessionGeneration
+      ) {
+        this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
+        return;
+      }
+      if (generation === this.sessionGeneration)
+        this.handleRuntimeFailure("heartbeat", error);
     }
   }
 
   private async commandLoop(): Promise<void> {
-    if (this.commandExecutionRunning) {
+    if (
+      !this.running ||
+      this.draining ||
+      !this.hostToken ||
+      this.commandExecutionRunning
+    ) {
       return;
     }
     this.commandExecutionRunning = true;
+    const generation = this.sessionGeneration;
+    this.commandDrained = createComputerUseDrain();
+    let commandSession: ComputerUseCommandSession | undefined;
     let scheduleNextPoll = true;
     let pollImmediately = false;
     try {
-      pollImmediately = (await this.claimAndExecuteCommand()) === "completed";
+      commandSession = this.acquireCommand();
+      pollImmediately =
+        (await this.claimAndExecuteCommand(commandSession)) === "completed";
     } catch (error) {
       scheduleNextPoll =
+        generation === this.sessionGeneration &&
         this.handleRuntimeFailure("command_poll", error) !==
-        "scheduled_recovery";
+          "scheduled_recovery";
     } finally {
+      // Keep the generation leased even if a request's Promise.race timed out.
+      await Promise.allSettled([...this.commandRequests]);
+      commandSession?.release();
       this.commandExecutionRunning = false;
+      this.commandDrained.resolve();
       if (
         scheduleNextPoll &&
+        generation === this.sessionGeneration &&
         this.running &&
         !this.draining &&
         this.hostToken &&
@@ -702,17 +807,29 @@ export class ComputerUseHostRuntime {
   }
 
   private async startHost(): Promise<number | null> {
+    const generation = this.sessionGeneration;
     this.setState({ status: "connecting", lastError: null });
+    const runtimeBody = await this.runtimeBody();
+    if (!this.running || generation !== this.sessionGeneration) return null;
     const response = await this.sessionFetch(
       `${this.apiBaseUrl}/api/computer-use/hosts/start`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(await this.runtimeBody()),
+        body: JSON.stringify(runtimeBody),
       },
     );
+    if (!this.running || generation !== this.sessionGeneration) {
+      if (response.ok) {
+        const body = (await response.json()) as ComputerUseHostStartResponse;
+        await this.stopHost(body.hostToken);
+      }
+      return null;
+    }
     if (response.status === 401) {
-      if (await this.hasAuthenticatedSession()) {
+      const authenticated = await this.hasAuthenticatedSession();
+      if (!this.running || generation !== this.sessionGeneration) return null;
+      if (authenticated) {
         this.setState({
           status: "needs_organization",
           lastError: COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
@@ -751,6 +868,10 @@ export class ComputerUseHostRuntime {
     }
 
     const body = (await response.json()) as ComputerUseHostStartResponse;
+    if (!this.running || generation !== this.sessionGeneration) {
+      await this.stopHost(body.hostToken);
+      return null;
+    }
     this.hostToken = body.hostToken;
     this.lastCommandActivityAtMs = null;
     this.lastCommandCompletionAtMs = null;
@@ -775,22 +896,36 @@ export class ComputerUseHostRuntime {
     return response.ok;
   }
 
-  private async runHostRequestWithTimeout(args: {
+  private async runHostRequestWithTimeout<T>(args: {
     readonly label: string;
     readonly timeoutMs: number;
-    readonly request: (signal: AbortSignal) => Promise<Response>;
-  }): Promise<Response> {
+    readonly request: (signal: AbortSignal) => Promise<T>;
+    readonly commandRequest?: boolean;
+    readonly onLateResponse?: (response: T) => Promise<void>;
+  }): Promise<T> {
     const { label, timeoutMs, request } = args;
     const timeoutMessage = () => {
       return new Error(`Computer Use ${label} timed out after ${timeoutMs}ms`);
     };
     const controller = new AbortController();
-    const requestPromise = request(controller.signal).catch((error) => {
-      if (controller.signal.aborted) {
-        throw timeoutMessage();
-      }
-      throw error;
-    });
+    const requestPromise = request(controller.signal)
+      .then(async (response) => {
+        if (controller.signal.aborted) await args.onLateResponse?.(response);
+        return response;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) {
+          throw timeoutMessage();
+        }
+        throw error;
+      });
+    if (args.commandRequest) {
+      this.commandRequests.add(requestPromise);
+      void requestPromise.then(
+        () => this.commandRequests.delete(requestPromise),
+        () => this.commandRequests.delete(requestPromise),
+      );
+    }
     let timer: NodeJS.Timeout | null = null;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timer = this.scheduleTimeout(() => {
@@ -810,17 +945,23 @@ export class ComputerUseHostRuntime {
   }
 
   private async heartbeat(): Promise<boolean> {
+    const generation = this.sessionGeneration;
+    const deadline = performance.now() + HEARTBEAT_REQUEST_TIMEOUT_MS;
     const response = await this.runHostRequestWithTimeout({
       label: "heartbeat",
       timeoutMs: HEARTBEAT_REQUEST_TIMEOUT_MS,
       request: async (signal) => {
+        const body = await this.runtimeBody({ signal, deadline });
+        if (!this.running || generation !== this.sessionGeneration)
+          throw new Error("Computer Use heartbeat was superseded");
         return await this.hostFetch("/api/computer-use/heartbeat", {
           method: "POST",
-          body: JSON.stringify(await this.runtimeBody()),
+          body: JSON.stringify(body),
           signal,
         });
       },
     });
+    if (!this.running || generation !== this.sessionGeneration) return false;
     if (response.status === 401) {
       this.deactivateInvalidHostToken("heartbeat");
       return false;
@@ -853,54 +994,119 @@ export class ComputerUseHostRuntime {
     return true;
   }
 
-  private async claimAndExecuteCommand(): Promise<"idle" | "completed"> {
-    const next = await this.runHostRequestWithTimeout({
+  private async claimAndExecuteCommand(
+    commandSession: ComputerUseCommandSession,
+  ): Promise<"idle" | "completed"> {
+    const generation = this.sessionGeneration;
+    if (this.getSupportedCapabilities().length === 0) {
+      await this.stop();
+      return "idle";
+    }
+    const claimStartedAt = this.commandClock.monotonicNow();
+    const next = await this.runHostRequestWithTimeout<{
+      response: Response;
+      body: ComputerUseHostNextResponse | null;
+    }>({
       label: "command poll",
       timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
+      commandRequest: true,
+      onLateResponse: async ({ response, body: late }) => {
+        if (
+          !response.ok ||
+          late?.status !== "command" ||
+          !this.running ||
+          generation !== this.sessionGeneration
+        )
+          return;
+        await this.completeCommandWithRetry(
+          late.command.id,
+          {
+            status: "failed",
+            error: {
+              code: "command_timeout",
+              message:
+                "Claim arrived after the polling deadline; no native action was dispatched",
+            },
+          },
+          generation,
+        );
+      },
       request: async (signal) => {
-        return await this.hostFetch("/api/computer-use/host/commands/next", {
-          method: "POST",
-          body: JSON.stringify({
-            supportedCapabilities: [...this.getSupportedCapabilities()],
-          }),
-          signal,
-        });
+        const response = await this.hostFetch(
+          "/api/computer-use/host/commands/next",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              supportedCapabilities: [...this.getSupportedCapabilities()],
+            }),
+            signal,
+          },
+        );
+        // Keep body consumption inside the poll deadline and late-claim owner.
+        const body = response.ok
+          ? ((await response.json()) as ComputerUseHostNextResponse)
+          : null;
+        return { response, body };
       },
     });
-    if (next.status === 401) {
+    if (!this.running || generation !== this.sessionGeneration) return "idle";
+    if (next.response.status === 401) {
       this.deactivateInvalidHostToken("command_poll");
       return "idle";
     }
-    if (!next.ok) {
+    if (!next.response.ok) {
       throw new ComputerUseHttpError(
-        `Computer Use command claim failed: ${next.status}`,
-        next,
+        `Computer Use command claim failed: ${next.response.status}`,
+        next.response,
       );
     }
-    const body = (await next.json()) as ComputerUseHostNextResponse;
+    const body = next.body;
+    if (!body)
+      throw new Error("Computer Use claim response is missing its body");
     if (body.status === "idle") {
-      if (!this.running || !this.hostToken) {
+      if (
+        !this.running ||
+        generation !== this.sessionGeneration ||
+        !this.hostToken
+      ) {
         return "idle";
       }
       this.clearRecoveryState("command_poll");
       return "idle";
     }
 
-    const startedAtMs = Date.now();
+    const startedAtMs = this.commandClock.wallNow();
     this.lastCommandActivityAtMs = startedAtMs;
     const startedAt = new Date(startedAtMs).toISOString();
-    this.startLocalCommandLogEntry(body.command, startedAt);
+    this.startLocalCommandLogEntry(
+      body.command,
+      startedAt,
+      commandSession.identity,
+    );
 
     let completed: ComputerUseCommandExecutionResult;
+    const budget = new ComputerUseCommandBudget(
+      body.command,
+      claimStartedAt,
+      this.commandClock,
+    );
     try {
-      completed = await this.executeCommand(
-        body.command,
-        await this.getPermissions(),
+      completed = await budget.run(
+        async () => {
+          commandSession.beginCommand?.(budget);
+          const permissions = await commandSession.getPermissions(body.command);
+          if (!this.running || generation !== this.sessionGeneration)
+            throw new Error(
+              "Computer Use command was superseded; completion is unknown",
+            );
+          return commandSession.executeCommand(body.command, permissions);
+        },
+        () => commandSession.abort?.(),
       );
     } catch (error) {
       completed = commandFailureFromError(error);
     }
-    const completedAtMs = Date.now();
+    const completedAtMs = this.commandClock.wallNow();
     this.finishLocalCommandLogEntry({
       commandId: body.command.id,
       status: completed.status,
@@ -912,11 +1118,19 @@ export class ComputerUseHostRuntime {
     if (completed.status === "failed") {
       this.onCommandFailure({ command: body.command, failure: completed });
     }
-    if (!this.running || !this.hostToken) {
+    if (
+      !this.running ||
+      generation !== this.sessionGeneration ||
+      !this.hostToken
+    ) {
       return "idle";
     }
-    await this.completeCommandWithRetry(body.command.id, completed);
-    if (!this.running || !this.hostToken) {
+    await this.completeCommandWithRetry(body.command.id, completed, generation);
+    if (
+      !this.running ||
+      generation !== this.sessionGeneration ||
+      !this.hostToken
+    ) {
       return "idle";
     }
     const commandActivityAtMs = Date.now();
@@ -934,63 +1148,94 @@ export class ComputerUseHostRuntime {
   private async completeCommandWithRetry(
     commandId: string,
     completed: ComputerUseCommandExecutionResult,
+    generation: number,
   ): Promise<void> {
-    let lastError: Error | null = null;
-    for (
-      let attempt = 1;
-      attempt <= COMMAND_COMPLETION_MAX_ATTEMPTS;
-      attempt++
-    ) {
-      try {
-        const response = await this.runHostRequestWithTimeout({
-          label: "command completion",
-          timeoutMs: COMMAND_COMPLETION_REQUEST_TIMEOUT_MS,
-          request: async (signal) => {
-            return await this.hostFetch(
+    if (!this.running || generation !== this.sessionGeneration) return;
+    const controller = new AbortController();
+    this.reportingControllers.add(controller);
+    const timeout = new Error(
+      "Computer Use command reporting timed out after 5000ms",
+    );
+    const deadline =
+      this.commandClock.monotonicNow() + COMMAND_REPORTING_TIMEOUT_MS;
+    const expired = new Promise<never>((_resolve, reject) => {
+      controller.signal.addEventListener(
+        "abort",
+        () => reject(controller.signal.reason),
+        { once: true },
+      );
+    });
+    const timer = this.commandClock.setTimeout(
+      () => controller.abort(timeout),
+      COMMAND_REPORTING_TIMEOUT_MS,
+    );
+    let lastError: unknown = timeout;
+    try {
+      for (
+        let attempt = 1;
+        attempt <= COMMAND_COMPLETION_MAX_ATTEMPTS;
+        attempt++
+      ) {
+        if (!this.running || generation !== this.sessionGeneration) return;
+        if (this.commandClock.monotonicNow() >= deadline) throw timeout;
+        controller.signal.throwIfAborted();
+        try {
+          // A timed-out reporting transport has no native authority. Observe its
+          // late settlement, but never let it hold the command lease past this cap.
+          const response = await Promise.race([
+            this.hostFetch(
               `/api/computer-use/host/commands/${commandId}/complete`,
               {
                 method: "POST",
                 body: JSON.stringify(completed),
-                signal,
+                signal: controller.signal,
               },
-            );
-          },
-        });
-        if (response.ok) {
-          return;
+            ),
+            expired,
+          ]);
+          if (!this.running || generation !== this.sessionGeneration) return;
+          if (this.commandClock.monotonicNow() >= deadline) throw timeout;
+          controller.signal.throwIfAborted();
+          if (response.ok || response.status === 409) return;
+          if (response.status === 401) {
+            this.deactivateInvalidHostToken("command_poll");
+            return;
+          }
+          lastError = new ComputerUseHttpError(
+            `Computer Use command completion failed: ${response.status}`,
+            response,
+          );
+        } catch (error) {
+          lastError = error;
+          controller.signal.throwIfAborted();
         }
-        if (response.status === 401) {
-          this.deactivateInvalidHostToken("command_poll");
-          return;
+        if (attempt < COMMAND_COMPLETION_MAX_ATTEMPTS) {
+          const remaining = deadline - this.commandClock.monotonicNow();
+          if (remaining <= COMMAND_COMPLETION_RETRY_DELAY_MS) break;
+          let retryTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              new Promise<void>((resolve) => {
+                retryTimer = this.commandClock.setTimeout(
+                  resolve,
+                  COMMAND_COMPLETION_RETRY_DELAY_MS,
+                );
+              }),
+              expired,
+            ]);
+          } finally {
+            this.commandClock.clearTimeout(retryTimer);
+          }
         }
-        if (response.status === 409) {
-          return;
-        }
-        lastError = new ComputerUseHttpError(
-          `Computer Use command completion failed: ${response.status}`,
-          response,
-        );
-      } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error(
-                `Computer Use command completion failed: ${String(error)}`,
-              );
       }
-
-      if (attempt < COMMAND_COMPLETION_MAX_ATTEMPTS) {
-        await this.sleep(COMMAND_COMPLETION_RETRY_DELAY_MS);
-      }
+      throw lastError;
+    } finally {
+      this.commandClock.clearTimeout(timer);
+      this.reportingControllers.delete(controller);
+      // Also cancel fetches when a monotonic deadline is observed before its
+      // timer runs. This signal can only cancel delivery, never resume execution.
+      controller.abort(timeout);
     }
-
-    throw lastError ?? new Error("Computer Use command completion failed");
-  }
-
-  private sleep(delayMs: number): Promise<void> {
-    return new Promise((resolve) => {
-      this.scheduleTimeout(resolve, delayMs);
-    });
   }
 
   private hostFetch(path: string, init: RequestInit): Promise<Response> {

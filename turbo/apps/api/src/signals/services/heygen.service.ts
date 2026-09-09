@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { delay } from "signal-timers";
+import { z } from "zod";
 import {
   introVideoAvatarSchema,
   introVideoStyleSchema,
@@ -16,6 +17,7 @@ const L = logger("HeyGen");
 const HEYGEN_API_BASE_URL = "https://api.heygen.com/v3";
 const HEYGEN_AVATAR_LOOKS_URL = `${HEYGEN_API_BASE_URL}/avatars/looks`;
 const HEYGEN_VIDEOS_URL = `${HEYGEN_API_BASE_URL}/videos`;
+const HEYGEN_VIDEO_AGENTS_URL = `${HEYGEN_API_BASE_URL}/video-agents`;
 const HEYGEN_VIDEO_AGENT_STYLES_URL = `${HEYGEN_API_BASE_URL}/video-agents/styles`;
 const HEYGEN_VOICES_URL = `${HEYGEN_API_BASE_URL}/voices`;
 const HEYGEN_VOICE_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
@@ -31,7 +33,7 @@ interface HeyGenErrorBody {
   };
 }
 
-interface HeyGenErrorResponse {
+export interface HeyGenErrorResponse {
   readonly status: HeyGenErrorStatus;
   readonly body: HeyGenErrorBody;
 }
@@ -46,6 +48,65 @@ interface HeyGenAvatarVideoOptions {
 interface HeyGenAvatarVideoHandle {
   readonly videoId: string;
 }
+
+interface HeyGenVideoAgentOptions {
+  readonly prompt: string;
+  readonly styleId: string;
+  readonly avatarId?: string;
+  readonly voiceId?: string;
+  readonly orientation: "landscape" | "portrait";
+  readonly fileUrls: readonly string[];
+}
+
+export interface HeyGenVideoAgentSession {
+  readonly sessionId: string;
+  // Preserve unknown states so reconciliation can report them without resubmitting.
+  readonly status: string;
+  readonly videoId: string | null;
+}
+
+interface HeyGenAvatarLook {
+  readonly id: string;
+  readonly groupId: string | null;
+  readonly defaultVoiceId: string | null;
+}
+
+const heyGenVideoAgentSessionSchema = z.object({
+  data: z.object({
+    session_id: z.string().trim().min(1),
+    status: z.string().trim().min(1),
+    video_id: z.string().trim().min(1).nullish(),
+  }),
+});
+
+const heyGenVideoAgentCallbackSchema = z.object({
+  event_type: z.enum(["video_agent.success", "video_agent.fail"]),
+  callback_id: z.string().trim().min(1).nullish(),
+  event_data: z
+    .object({
+      callback_id: z.string().trim().min(1).nullish(),
+      session_id: z.string().trim().min(1).nullish(),
+      video_id: z.string().trim().min(1).nullish(),
+    })
+    .nullish(),
+});
+
+const heyGenAvatarLookSchema = z.object({
+  data: z.object({
+    id: z.string().trim().min(1),
+    group_id: z.string().trim().min(1).nullish(),
+    default_voice_id: z.string().trim().min(1).nullish(),
+    status: z.string().trim().min(1).nullish(),
+  }),
+});
+
+const heyGenVideoAgentVoiceSchema = z.object({
+  data: z.object({
+    voice_id: z.string().trim().min(1),
+    name: z.string().trim().min(1).nullish(),
+    status: z.string().trim().min(1).nullish(),
+  }),
+});
 
 export type HeyGenAvatarVideoStatus =
   | { readonly kind: "pending" }
@@ -596,6 +657,220 @@ export async function verifyHeyGenPublicAvatar(
   return false;
 }
 
+export async function getHeyGenAvatarLook(
+  avatarId: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenAvatarLook | null | HeyGenErrorResponse> {
+  const response = await requestHeyGen(
+    {
+      method: "GET",
+      url: `${HEYGEN_AVATAR_LOOKS_URL}/${encodeURIComponent(avatarId)}`,
+      retryRateLimit: true,
+    },
+    apiKey,
+    signal,
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  const parsed = heyGenAvatarLookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.data.id !== avatarId) {
+    return badGateway(
+      "HeyGen returned an invalid avatar look",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const look = parsed.data.data;
+  // Readiness is separate from ownership: a completed look still requires a
+  // positive match in the public catalog before shared credentials can use it.
+  if (look.status && look.status !== "completed") {
+    return null;
+  }
+  let token: string | undefined;
+  const seenTokens = new Set<string>();
+  do {
+    const url = new URL(HEYGEN_AVATAR_LOOKS_URL);
+    url.searchParams.set("ownership", "public");
+    url.searchParams.set("limit", String(HEYGEN_AVATAR_PAGE_SIZE));
+    if (look.group_id) {
+      url.searchParams.set("group_id", look.group_id);
+    }
+    if (token) {
+      url.searchParams.set("token", token);
+    }
+    const publicResponse = await requestHeyGen(
+      { method: "GET", url, retryRateLimit: true },
+      apiKey,
+      signal,
+    );
+    const publicBody = await readHeyGenResponse(publicResponse);
+    if (isHeyGenErrorResponse(publicBody)) {
+      return publicBody;
+    }
+    const page = parseHeyGenPage(publicBody);
+    if (isHeyGenErrorResponse(page)) {
+      return page;
+    }
+    // Membership is independent of the Avatar III presenter engine. The
+    // selected look's actual default voice still comes from its detail record.
+    if (
+      page.data.some((value) => {
+        return (
+          isRecord(value) &&
+          optionalString(value.id)?.trim() === look.id &&
+          (!look.group_id || value.group_id === look.group_id) &&
+          (value.status === undefined ||
+            value.status === null ||
+            value.status === "completed")
+        );
+      })
+    ) {
+      return {
+        id: look.id,
+        groupId: look.group_id ?? null,
+        defaultVoiceId: look.default_voice_id ?? null,
+      };
+    }
+    const nextToken = page.hasMore ? (page.nextToken ?? undefined) : undefined;
+    if (nextToken && seenTokens.has(nextToken)) {
+      return badGateway(
+        "HeyGen returned a repeated avatar catalog token",
+        "HEYGEN_BAD_RESPONSE",
+      );
+    }
+    if (nextToken) {
+      seenTokens.add(nextToken);
+    }
+    token = nextToken;
+  } while (token);
+  return null;
+}
+
+export async function verifyHeyGenPublicStyle(
+  styleId: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<boolean | HeyGenErrorResponse> {
+  let token: string | undefined;
+  const seenTokens = new Set<string>();
+  do {
+    const page = await listHeyGenPublicStyles(
+      { token, pageSize: 100 },
+      apiKey,
+      signal,
+    );
+    if (isHeyGenErrorResponse(page)) {
+      return page;
+    }
+    if (
+      page.styles.some((style) => {
+        return style.id === styleId;
+      })
+    ) {
+      return true;
+    }
+    const nextToken = page.hasMore ? (page.nextToken ?? undefined) : undefined;
+    if (nextToken && seenTokens.has(nextToken)) {
+      return badGateway(
+        "HeyGen returned a repeated style catalog token",
+        "HEYGEN_BAD_RESPONSE",
+      );
+    }
+    if (nextToken) {
+      seenTokens.add(nextToken);
+    }
+    token = nextToken;
+  } while (token);
+  return false;
+}
+
+export async function verifyHeyGenVideoAgentVoice(
+  voiceId: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<boolean | HeyGenErrorResponse> {
+  const response = await requestHeyGen(
+    {
+      method: "GET",
+      url: `${HEYGEN_VOICES_URL}/${encodeURIComponent(voiceId)}`,
+      retryRateLimit: true,
+    },
+    apiKey,
+    signal,
+  );
+  if (response.status === 404) {
+    return false;
+  }
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  const parsed = heyGenVideoAgentVoiceSchema.safeParse(body);
+  if (!parsed.success || parsed.data.data.voice_id !== voiceId) {
+    return badGateway(
+      "HeyGen returned an invalid voice",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const voice = parsed.data.data;
+  // Public catalog membership determines ownership independently of readiness.
+  // Do not restrict a public avatar's default voice to the standalone TTS engine.
+  if (!voice.name || (voice.status && voice.status !== "complete")) {
+    return false;
+  }
+  let token: string | undefined;
+  const seenTokens = new Set<string>();
+  do {
+    const url = new URL(HEYGEN_VOICES_URL);
+    url.searchParams.set("type", "public");
+    url.searchParams.set("limit", "100");
+    if (token) {
+      url.searchParams.set("token", token);
+    }
+    const publicResponse = await requestHeyGen(
+      { method: "GET", url, retryRateLimit: true },
+      apiKey,
+      signal,
+    );
+    const publicBody = await readHeyGenResponse(publicResponse);
+    if (isHeyGenErrorResponse(publicBody)) {
+      return publicBody;
+    }
+    const page = parseHeyGenPage(publicBody);
+    if (isHeyGenErrorResponse(page)) {
+      return page;
+    }
+    if (
+      page.data.some((value) => {
+        return (
+          isRecord(value) &&
+          value.type === "public" &&
+          optionalString(value.voice_id)?.trim() === voiceId
+        );
+      })
+    ) {
+      return true;
+    }
+    const nextToken = page.hasMore ? (page.nextToken ?? undefined) : undefined;
+    if (nextToken && seenTokens.has(nextToken)) {
+      return badGateway(
+        "HeyGen returned a repeated voice catalog token",
+        "HEYGEN_BAD_RESPONSE",
+      );
+    }
+    if (nextToken) {
+      seenTokens.add(nextToken);
+    }
+    token = nextToken;
+  } while (token);
+  return false;
+}
+
 export async function verifyHeyGenPublicVoice(
   voiceId: string,
   apiKey: string,
@@ -821,6 +1096,123 @@ export async function submitHeyGenAvatarVideo(
   return { videoId };
 }
 
+function parseHeyGenVideoAgentSession(
+  body: unknown,
+): HeyGenVideoAgentSession | HeyGenErrorResponse {
+  const parsed = heyGenVideoAgentSessionSchema.safeParse(body);
+  if (!parsed.success) {
+    return badGateway(
+      "HeyGen returned an invalid Video Agent session",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  return {
+    sessionId: parsed.data.data.session_id,
+    status: parsed.data.data.status,
+    videoId: parsed.data.data.video_id ?? null,
+  };
+}
+
+export function parseHeyGenVideoAgentCallback(
+  value: unknown,
+  generationId: string,
+): {
+  readonly sessionId: string | null;
+  readonly videoId: string | null;
+} | null {
+  // Native event names and callback_id echoing are documented, but native
+  // event_data fields are not guaranteed. These optional identity hints must
+  // be verified through the provider API; callback output is never trusted.
+  const parsed = heyGenVideoAgentCallbackSchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+  const { callback_id: callbackId, event_data: data } = parsed.data;
+  if (
+    (callbackId && callbackId !== generationId) ||
+    (data?.callback_id && data.callback_id !== generationId) ||
+    (callbackId !== generationId && data?.callback_id !== generationId)
+  ) {
+    return null;
+  }
+  const sessionId = data?.session_id ?? null;
+  const videoId = data?.video_id ?? null;
+  return sessionId || videoId ? { sessionId, videoId } : null;
+}
+
+export async function submitHeyGenVideoAgent(
+  options: HeyGenVideoAgentOptions,
+  args: {
+    readonly generationId: string;
+    readonly callbackUrl: string;
+  },
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenVideoAgentSession | HeyGenErrorResponse> {
+  const response = await requestHeyGen(
+    {
+      method: "POST",
+      url: HEYGEN_VIDEO_AGENTS_URL,
+      body: JSON.stringify({
+        prompt: options.prompt,
+        mode: "generate",
+        // Platform credentials are shared; each brief must not read or write
+        // provider account memory from another user or generation.
+        incognito_mode: true,
+        style_id: options.styleId,
+        ...(options.avatarId ? { avatar_id: options.avatarId } : {}),
+        ...(options.voiceId ? { voice_id: options.voiceId } : {}),
+        orientation: options.orientation,
+        files: options.fileUrls.map((url) => {
+          return { type: "url", url };
+        }),
+        callback_url: args.callbackUrl,
+        callback_id: args.generationId,
+      }),
+      // HeyGen does not document submission idempotency. Resume the durable
+      // generation on ambiguous outcomes instead of issuing another paid POST.
+      retryRateLimit: false,
+    },
+    apiKey,
+    signal,
+  );
+  const body = await readHeyGenResponse(response);
+  return isHeyGenErrorResponse(body)
+    ? body
+    : parseHeyGenVideoAgentSession(body);
+}
+
+export async function getHeyGenVideoAgentSession(
+  sessionId: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenVideoAgentSession | HeyGenErrorResponse> {
+  const response = await requestHeyGen(
+    {
+      method: "GET",
+      url: `${HEYGEN_VIDEO_AGENTS_URL}/${encodeURIComponent(sessionId)}`,
+      retryRateLimit: true,
+    },
+    apiKey,
+    signal,
+  );
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  const session = parseHeyGenVideoAgentSession(body);
+  if (isHeyGenErrorResponse(session)) {
+    return session;
+  }
+  if (session.sessionId !== sessionId) {
+    return badGateway(
+      "HeyGen returned a different Video Agent session",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  return session;
+}
+
 export async function getHeyGenAvatarVideoStatus(
   videoId: string,
   apiKey: string,
@@ -840,7 +1232,13 @@ export async function getHeyGenAvatarVideoStatus(
     return body;
   }
   const data = isRecord(body) && isRecord(body.data) ? body.data : null;
-  const status = data ? optionalString(data.status)?.toLowerCase() : undefined;
+  if (!data || optionalString(data.id) !== videoId) {
+    return badGateway(
+      "HeyGen returned an invalid video response",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const status = optionalString(data.status)?.toLowerCase();
   if (
     status === "waiting" ||
     status === "pending" ||
@@ -852,25 +1250,20 @@ export async function getHeyGenAvatarVideoStatus(
   if (status === "failed") {
     return {
       kind: "failed",
-      message:
-        (data && optionalString(data.failure_message)) ?? "Generation failed",
+      message: redactPresignedUrls(
+        optionalString(data.failure_message) ?? "Generation failed",
+      ),
     };
   }
-  if (status !== "completed" || !data) {
+  if (status !== "completed") {
     return badGateway(
       "HeyGen returned an invalid video status",
       "HEYGEN_BAD_RESPONSE",
     );
   }
-  const responseVideoId = optionalString(data.id);
-  const sourceUrl = optionalString(data.video_url);
+  const sourceUrl = optionalUrl(data.video_url);
   const durationSeconds = optionalNumber(data.duration);
-  if (
-    responseVideoId !== videoId ||
-    !sourceUrl ||
-    !durationSeconds ||
-    durationSeconds <= 0
-  ) {
+  if (!sourceUrl || !durationSeconds || durationSeconds <= 0) {
     return badGateway(
       "HeyGen returned an incomplete completed video",
       "HEYGEN_BAD_RESPONSE",
@@ -913,6 +1306,50 @@ export async function downloadHeyGenAvatarVideo(
   return {
     videoBytes,
     contentType: "video/webm",
+    sourceUrl: status.sourceUrl,
+    providerVideoId: status.videoId,
+    durationSeconds: status.durationSeconds,
+  };
+}
+
+export async function downloadHeyGenVideoAgentVideo(
+  status: Extract<HeyGenAvatarVideoStatus, { readonly kind: "completed" }>,
+  signal: AbortSignal,
+): Promise<
+  | {
+      readonly videoBytes: Buffer;
+      readonly contentType: "video/mp4";
+      readonly sourceUrl: string;
+      readonly providerVideoId: string;
+      readonly durationSeconds: number;
+    }
+  | HeyGenErrorResponse
+> {
+  const response = await fetch(status.sourceUrl, { method: "GET", signal });
+  if (!response.ok) {
+    return badGateway(
+      "Could not download the generated HeyGen Video Agent video",
+      "VIDEO_DOWNLOAD_FAILED",
+    );
+  }
+  const contentType = response.headers
+    .get("content-type")
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (contentType !== "video/mp4") {
+    return badGateway(
+      "HeyGen returned a non-MP4 Video Agent video",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const videoBytes = Buffer.from(await response.arrayBuffer());
+  if (videoBytes.byteLength === 0) {
+    return badGateway("HeyGen returned an empty video", "NO_VIDEO_RETURNED");
+  }
+  return {
+    videoBytes,
+    contentType: "video/mp4",
     sourceUrl: status.sourceUrl,
     providerVideoId: status.videoId,
     durationSeconds: status.durationSeconds,

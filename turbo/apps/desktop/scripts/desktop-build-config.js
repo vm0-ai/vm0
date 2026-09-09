@@ -4,7 +4,6 @@ const path = require("node:path");
 const desktopIdentities = require("../src/desktop-identities.json");
 const { readDesktopEnvironment } = require("./desktop-environment");
 
-const PRODUCTION_PLATFORM_HOSTNAMES = new Set(["app.vm0.ai", "app.okou.ai"]);
 const RUNTIME_CONFIG_PATH = path.resolve(
   __dirname,
   "..",
@@ -12,7 +11,7 @@ const RUNTIME_CONFIG_PATH = path.resolve(
 );
 
 function desktopProduct(value) {
-  if (value === "zero" || value === "okou") {
+  if (value === "okou") {
     return value;
   }
   throw new Error(`Unsupported desktop product: ${value}`);
@@ -25,6 +24,9 @@ function readRuntimeConfig() {
   const value = JSON.parse(fs.readFileSync(RUNTIME_CONFIG_PATH, "utf8"));
   if (typeof value !== "object" || value === null) {
     throw new Error("desktop-runtime-config.json must contain an object");
+  }
+  if (value.product !== undefined) {
+    desktopProduct(value.product);
   }
   return value;
 }
@@ -43,9 +45,11 @@ function resolveDesktopBuildConfig(options = {}) {
       fileConfig?.platformUrl ||
       desktopIdentities[product].defaultPlatformUrl,
   );
-  const identityKind = PRODUCTION_PLATFORM_HOSTNAMES.has(platformUrl.hostname)
-    ? "production"
-    : "development";
+  const identityKind =
+    platformUrl.hostname ===
+    new URL(desktopIdentities[product].defaultPlatformUrl).hostname
+      ? "production"
+      : "development";
 
   return {
     identity: desktopIdentities[product][identityKind],

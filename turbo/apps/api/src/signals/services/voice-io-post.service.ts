@@ -1069,6 +1069,7 @@ export const recordGeneratedSpeech$ = command(
       readonly userId: string;
       readonly runId: string | undefined;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly voice: string;
       readonly audioBytes: Uint8Array;
       readonly durationSeconds: number;
@@ -1081,6 +1082,8 @@ export const recordGeneratedSpeech$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "voice",
         extension: "wav",
         body: Buffer.from(params.audioBytes),

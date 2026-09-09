@@ -40,7 +40,7 @@ interface GoogleCalendarConnectorOAuthOptions {
 export function mockGoogleCalendarConnectorOAuth(
   options: GoogleCalendarConnectorOAuthOptions = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 
@@ -89,7 +89,7 @@ interface NotionConnectorOAuthOptions {
 export function mockNotionConnectorOAuth(
   options: NotionConnectorOAuthOptions = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-client-id");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-client-secret");
 

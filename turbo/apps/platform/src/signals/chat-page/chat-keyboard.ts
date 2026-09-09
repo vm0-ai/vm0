@@ -23,10 +23,7 @@ import {
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import {
-  chatThreadPinShortcutEnabled$,
-  voiceInputV2Enabled$,
-} from "../external/feature-switch.ts";
+import { voiceInputV2Enabled$ } from "../external/feature-switch.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -251,11 +248,7 @@ const setupChatPageShortcutActions$ = command(
       {
         actions: {
           canToggleThreadPin: (event) => {
-            return (
-              get(chatThreadPinShortcutEnabled$) &&
-              !event.isComposing &&
-              event.keyCode !== 229
-            );
+            return !event.isComposing && event.keyCode !== 229;
           },
           clearEmoji: async () => {
             const thread = focusedThread();
@@ -449,7 +442,7 @@ function createChatPageShortcutBindings({
   };
 }
 
-export const focusChatThreadContainer$ = command(
+export const chatThreadContainerElement$ = command(
   ({ get }, threadId: string) => {
     const leftThread = get(currentLeftThread$);
     const rightThread = get(currentRightThread$);
@@ -460,14 +453,9 @@ export const focusChatThreadContainer$ = command(
           ? leftThread
           : null;
     if (!thread) {
-      return false;
+      return null;
     }
-    const containerEl = get(thread.containerEl$);
-    if (!containerEl) {
-      return false;
-    }
-    containerEl.focus({ preventScroll: true });
-    return true;
+    return get(thread.containerEl$);
   },
 );
 

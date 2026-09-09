@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -9,7 +8,6 @@ import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.t
 import {
   context,
   mockChatLifecycleWithoutBrowserSession,
-  mockResizeObserver,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
 import { fillComposer } from "./chat-test-helpers.ts";
@@ -19,7 +17,7 @@ import {
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
 
-const APP_HOST = "app.vm0.ai";
+const APP_HOST = "app.okou.ai";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const VIEWPORT_TOP = 100;
 const VIEWPORT_HEIGHT = 360;
@@ -59,8 +57,9 @@ interface ChatScrollGeometry {
 function conversationEvents(
   prefix: string,
   label: string,
+  count = 6,
 ): MockChatEventInput[] {
-  return Array.from({ length: 6 }, (_, index) => {
+  return Array.from({ length: count }, (_, index) => {
     const item = index + 1;
     const runId = `${prefix}-run-${item.toString()}`;
     const userSecond = (item * 3 - 2).toString().padStart(2, "0");
@@ -436,13 +435,14 @@ async function expectAtLatestActivity(
 test("Restore the reading position during keyboard thread navigation", async () => {
   context.mocks.browser.userAgent(LINUX_CHROME_USER_AGENT);
   const user = userEvent.setup();
-  const resize = mockResizeObserver();
-  const currentEvents = conversationEvents("keyboard-current", "Current");
+  // Three exchanges keep the reading anchor between the top and tail. The
+  // neighboring threads only need content that proves navigation completed.
+  const currentEvents = conversationEvents("keyboard-current", "Current", 3);
   mockThreadStories(KEYBOARD_CURRENT_THREAD_ID, [
     {
       id: KEYBOARD_PREVIOUS_THREAD_ID,
       title: "Previous keyboard thread",
-      events: conversationEvents("keyboard-previous", "Previous"),
+      events: conversationEvents("keyboard-previous", "Previous", 1),
     },
     {
       id: KEYBOARD_CURRENT_THREAD_ID,
@@ -452,7 +452,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
     {
       id: KEYBOARD_NEXT_THREAD_ID,
       title: "Next keyboard thread",
-      events: conversationEvents("keyboard-next", "Next"),
+      events: conversationEvents("keyboard-next", "Next", 1),
     },
   ]);
 
@@ -462,7 +462,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
     path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
   });
 
-  const targetText = "Current message 3";
+  const targetText = "Current message 2";
   await waitForInteractiveThread(
     KEYBOARD_CURRENT_THREAD_ID,
     "Current keyboard thread",
@@ -471,7 +471,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
   const initialGeometry = installChatScrollGeometry(
     threadContainer(KEYBOARD_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(initialGeometry.atBottom()).toBeTruthy();
   });
@@ -483,7 +483,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
   await waitForInteractiveThread(
     KEYBOARD_PREVIOUS_THREAD_ID,
     "Previous keyboard thread",
-    "Previous message 6",
+    "Previous message 1",
   );
 
   await user.click(threadSection(KEYBOARD_PREVIOUS_THREAD_ID));
@@ -497,14 +497,13 @@ test("Restore the reading position during keyboard thread navigation", async () 
   const returnedGeometry = installChatScrollGeometry(
     threadContainer(KEYBOARD_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(returnedGeometry, targetText);
 });
 
 test("Restore the reading position after switching threads from the sidebar", async () => {
   const user = userEvent.setup();
-  const resize = mockResizeObserver();
   mockThreadStories(SIDEBAR_CURRENT_THREAD_ID, [
     {
       id: SIDEBAR_OTHER_THREAD_ID,
@@ -529,7 +528,7 @@ test("Restore the reading position after switching threads from the sidebar", as
   const initialGeometry = installChatScrollGeometry(
     threadContainer(SIDEBAR_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(initialGeometry.atBottom()).toBeTruthy();
   });
@@ -572,13 +571,12 @@ test("Restore the reading position after switching threads from the sidebar", as
   const returnedGeometry = installChatScrollGeometry(
     threadContainer(SIDEBAR_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(returnedGeometry, targetText);
 });
 
 test("Open a conversation at a linked message", async () => {
-  const resize = mockResizeObserver();
   const events = conversationEvents("deep-link", "Linked");
   mockChatLifecycleWithoutBrowserSession({
     threadId: DEEP_LINK_THREAD_ID,
@@ -598,7 +596,7 @@ test("Open a conversation at a linked message", async () => {
   const geometry = installChatScrollGeometry(
     threadContainer(DEEP_LINK_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(geometry, linkedText, 0);
   expect(geometry.viewportOffsetFor("Linked message 6")).toBeGreaterThan(
@@ -607,8 +605,49 @@ test("Open a conversation at a linked message", async () => {
   expect(buttonNamed("Scroll to bottom")).toBeInTheDocument();
 });
 
+test("Expand folded work when opening a linked message", async () => {
+  const linkedEventId = "folded-link-work-3";
+  const linkedText = "Linked work detail";
+  const events = conversationEvents("folded-link", "Linked")
+    .flatMap((event) => {
+      return event.id === "folded-link-assistant-3"
+        ? [{ ...event, id: linkedEventId, content: linkedText }, event]
+        : [event];
+    })
+    .map((event, index) => {
+      return {
+        ...event,
+        seqId: index + 1,
+        runGroupId:
+          event.runId === "folded-link-run-3" ||
+          event.runId === "folded-link-run-4"
+            ? "folded-link-group"
+            : undefined,
+      };
+    });
+  mockChatLifecycleWithoutBrowserSession({
+    threadId: DEEP_LINK_THREAD_ID,
+    threadTitle: "Linked folded conversation",
+    chatEvents: events,
+  });
+
+  await setupPage({
+    context,
+    host: APP_HOST,
+    path: `/chats/${DEEP_LINK_THREAD_ID}#event-${linkedEventId}`,
+  });
+
+  await waitForThreadMessage(DEEP_LINK_THREAD_ID, linkedText);
+  const geometry = installChatScrollGeometry(
+    threadContainer(DEEP_LINK_THREAD_ID),
+  );
+  fireEvent.resize(window);
+
+  await expectReadingPosition(geometry, linkedText, 0);
+  expect(buttonNamed("Scroll to bottom")).toBeInTheDocument();
+});
+
 test("Open a conversation safely when a linked message is unavailable", async () => {
-  const resize = mockResizeObserver();
   mockChatLifecycleWithoutBrowserSession({
     threadId: MISSING_LINK_THREAD_ID,
     threadTitle: "Available conversation",
@@ -626,7 +665,7 @@ test("Open a conversation safely when a linked message is unavailable", async ()
   const geometry = installChatScrollGeometry(
     threadContainer(MISSING_LINK_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectLatestActivity(geometry, latestText);
   expect(
@@ -636,7 +675,6 @@ test("Open a conversation safely when a linked message is unavailable", async ()
 
 test("Return to the latest message after sending from history", async () => {
   const user = userEvent.setup();
-  const resize = mockResizeObserver();
   const events = conversationEvents("send-history", "History");
   events.push({
     id: "send-history-active-user",
@@ -664,7 +702,7 @@ test("Return to the latest message after sending from history", async () => {
   const geometry = installChatScrollGeometry(
     threadContainer(SEND_FROM_HISTORY_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(geometry.atBottom()).toBeTruthy();
   });
@@ -681,13 +719,12 @@ test("Return to the latest message after sending from history", async () => {
     expect(screen.getByText(sentText)).toBeVisible();
   });
   geometry.refresh();
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectAtLatestActivity(geometry);
 });
 
 test("Preserve the reading position while entering and leaving sharing mode", async () => {
-  const resize = mockResizeObserver();
   mockChatLifecycleWithoutBrowserSession({
     threadId: SHARING_THREAD_ID,
     threadTitle: "Shareable research",
@@ -698,9 +735,6 @@ test("Preserve the reading position while entering and leaving sharing mode", as
     context,
     host: APP_HOST,
     path: `/chats/${SHARING_THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.SharedThreadSharing]: true,
-    },
   });
 
   const targetText = "Shareable message 3";
@@ -708,7 +742,7 @@ test("Preserve the reading position while entering and leaving sharing mode", as
   const geometry = installChatScrollGeometry(
     threadContainer(SHARING_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(geometry.atBottom()).toBeTruthy();
   });
@@ -721,7 +755,7 @@ test("Preserve the reading position while entering and leaving sharing mode", as
   });
   geometry.setViewportHeight(VIEWPORT_HEIGHT - 80);
   geometry.refresh();
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(geometry, targetText);
 
@@ -732,7 +766,7 @@ test("Preserve the reading position while entering and leaving sharing mode", as
   });
   geometry.setViewportHeight(VIEWPORT_HEIGHT);
   geometry.refresh();
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(geometry, targetText);
 });

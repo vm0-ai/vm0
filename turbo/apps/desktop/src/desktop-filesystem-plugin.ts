@@ -218,6 +218,16 @@ export class DesktopFilesystemPluginManager {
     this.onChange();
   }
 
+  /** Called by the authorized host owner before plugin-only registration. */
+  async prepareForHost(): Promise<void> {
+    this.hostRuntimeOnline = true;
+    if (this.shouldRun() && !this.runtime) {
+      await this.restartRuntime();
+      // Stop/auth changes can supersede preparation while MCP is connecting.
+      if (!this.shouldRun()) await this.stopRuntime();
+    }
+  }
+
   setEnabled(enabled: boolean): void {
     if (this.preferences.enabled === enabled) {
       return;

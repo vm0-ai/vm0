@@ -4,8 +4,10 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
+} from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
@@ -16,7 +18,6 @@ import type { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -115,11 +116,8 @@ function missingBotUsernameResponse(official: boolean) {
   );
 }
 
-function linkConflictResponse(
-  reason: LinkTelegramUserConflictReason,
-  publicBrand: PublicBrand,
-) {
-  const brandName = publicBrandPresentation(publicBrand).brandName;
+function linkConflictResponse(reason: LinkTelegramUserConflictReason) {
+  const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const message =
     reason === "telegram-user-linked"
       ? `This Telegram account is already connected to another ${brandName} account for this bot. Disconnect it before connecting a different account.`
@@ -132,15 +130,14 @@ function linkConflictResponse(
 
 function officialLinkConflictResponse(
   reason: LinkOfficialTelegramUserConflictReason,
-  publicBrand: PublicBrand,
   botUsername: string,
 ) {
-  const brandName = publicBrandPresentation(publicBrand).brandName;
+  const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const botLabel = `official Telegram bot @${botUsername}`;
   const message =
     reason === "telegram-user-linked"
       ? `This Telegram account is already connected to another ${brandName} organization through the ${botLabel}. Disconnect it before connecting a different account.`
-      : reason === "vm0-org-linked"
+      : reason === "org-linked"
         ? `Your ${brandName} account is already connected to another Telegram account for the ${botLabel} in this organization. Disconnect it before connecting a different Telegram account.`
         : "This official Telegram account link already exists. Disconnect it first and try again.";
 
@@ -180,10 +177,9 @@ function sendConnectSuccessMessage(args: {
   readonly botToken: string;
   readonly telegramUserId: string;
   readonly official: boolean;
-  readonly publicBrand: PublicBrand;
 }): void {
   const text = args.official
-    ? `✅ Account linked.\nSend me a message to start chatting with ${publicBrandPresentation(args.publicBrand).assistantName}.`
+    ? `✅ Account linked.\nSend me a message to start chatting with ${PUBLIC_BRAND_PRESENTATION.assistantName}.`
     : "✅ Account linked.\nSend me a message to start chatting with your agent.";
 
   waitUntil(
@@ -322,14 +318,11 @@ const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const linkOfficialInner$ = command(
   async (
-    { get, set },
+    { set },
     args: { readonly auth: OrganizationAuth; readonly body: TelegramLinkBody },
     signal: AbortSignal,
   ) => {
-    const publicBrand =
-      args.auth.tokenType === "agent"
-        ? args.auth.publicBrand
-        : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const config = getOfficialTelegramBotConfig();
     if (!config.botToken) {
       return errorResult(
@@ -371,11 +364,7 @@ const linkOfficialInner$ = command(
       signal.throwIfAborted();
 
       if (!result.ok) {
-        return officialLinkConflictResponse(
-          result.reason,
-          publicBrand,
-          config.botUsername,
-        );
+        return officialLinkConflictResponse(result.reason, config.botUsername);
       }
 
       return linkSuccessResponse(config.botUsername, telegramUserId);
@@ -418,18 +407,13 @@ const linkOfficialInner$ = command(
       signal.throwIfAborted();
 
       if (!result.ok) {
-        return officialLinkConflictResponse(
-          result.reason,
-          publicBrand,
-          config.botUsername,
-        );
+        return officialLinkConflictResponse(result.reason, config.botUsername);
       }
 
       sendConnectSuccessMessage({
         botToken: config.botToken,
         telegramUserId: connectSignature.telegramUserId,
         official: true,
-        publicBrand,
       });
 
       return linkSuccessResponse(
@@ -444,7 +428,7 @@ const linkOfficialInner$ = command(
 
 const linkCustomWithTelegramAuth$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly auth: OrganizationAuth;
       readonly body: TelegramLinkBody;
@@ -452,10 +436,6 @@ const linkCustomWithTelegramAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const publicBrand =
-      args.auth.tokenType === "agent"
-        ? args.auth.publicBrand
-        : get(publicBrand$);
     const telegramAuth = args.body.telegramAuth;
     if (!telegramAuth) {
       return missingAuthMethodResponse();
@@ -480,7 +460,7 @@ const linkCustomWithTelegramAuth$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return linkConflictResponse(result.reason, publicBrand);
+      return linkConflictResponse(result.reason);
     }
 
     return linkSuccessResponse(args.installation.botUsername, telegramUserId);
@@ -489,7 +469,7 @@ const linkCustomWithTelegramAuth$ = command(
 
 const linkCustomWithConnectSignature$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly auth: OrganizationAuth;
       readonly body: TelegramLinkBody;
@@ -497,10 +477,6 @@ const linkCustomWithConnectSignature$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const publicBrand =
-      args.auth.tokenType === "agent"
-        ? args.auth.publicBrand
-        : get(publicBrand$);
     const connectSignature = args.body.connectSignature;
     if (!connectSignature) {
       return missingAuthMethodResponse();
@@ -533,14 +509,13 @@ const linkCustomWithConnectSignature$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return linkConflictResponse(result.reason, publicBrand);
+      return linkConflictResponse(result.reason);
     }
 
     sendConnectSuccessMessage({
       botToken: args.installation.botToken,
       telegramUserId: connectSignature.telegramUserId,
       official: false,
-      publicBrand,
     });
 
     return linkSuccessResponse(

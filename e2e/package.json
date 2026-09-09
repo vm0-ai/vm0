@@ -1,7 +1,7 @@
 {
   "name": "e2e",
   "version": "1.0.0",
-  "description": "E2E tests for VM0 CLI",
+  "description": "E2E tests for Okou CLI",
   "packageManager": "pnpm@10.33.4",
   "main": "index.js",
   "directories": {
@@ -9,7 +9,8 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "test": "tsx --test playwright/lib/*.test.ts"
+    "test": "tsx --test playwright/lib/*.test.ts",
+    "style:migration": "tsx playwright/style-migration/run.ts"
   },
   "keywords": [],
   "author": "",
@@ -17,9 +18,11 @@
   "dependencies": {
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.3",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "pngjs": "7.0.0"
   },
   "devDependencies": {
+    "@types/pngjs": "6.0.5",
     "tsx": "^4.22.4",
     "typescript": "6.0.3"
   }

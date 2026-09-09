@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { ReactNode } from "react";
 import {
   useGet,
@@ -11,7 +12,10 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { Button, cn, useMediaQuery } from "@okouai/ui";
 import { Sidebar } from "./sidebar.tsx";
-import { AutomationMenuButton } from "./chat-thread-page.tsx";
+import {
+  AutomationMenuButton,
+  ChatThreadHeaderTitle,
+} from "./chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
@@ -29,14 +33,10 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/okou-page/mobile-breadcrumb.ts";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import {
-  closeSettingsModal$,
-  openSettingsDialogAt$,
-  settingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
+import { openSettingsDialogAt$ } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
+import { SettingsDialogMount } from "./components/settings/settings-dialog.tsx";
 import {
   InstallBanner,
   IosInstallModal,
@@ -54,6 +54,7 @@ import {
   shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
 import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
+import { WorkspaceInset } from "./workspace-inset.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -169,9 +170,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const phase = useGet(thread.sharing.phase$);
   const start = useSet(thread.sharing.start$);
   const pageSignal = useGet(pageSignal$);
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-  if (!enabled || phase !== "idle") {
+  if (phase !== "idle") {
     return null;
   }
   return (
@@ -267,6 +266,7 @@ function MobileTopBar() {
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
 
   const activeId = useGet(activeRoute$);
+  const thread = useCurrentThread();
 
   return (
     <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
@@ -287,7 +287,11 @@ function MobileTopBar() {
       >
         <Menu size={18} />
       </Button>
-      {breadcrumb && (
+      {activeId === "chat" ? (
+        <div className="flex-1 min-w-0">
+          {thread && <ChatThreadHeaderTitle thread={thread} />}
+        </div>
+      ) : breadcrumb ? (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
@@ -314,26 +318,11 @@ function MobileTopBar() {
             </div>
           </div>
         </div>
+      ) : (
+        <div className="flex-1" />
       )}
-      {!breadcrumb && <div className="flex-1" />}
       <MobileTopBarActions activeId={activeId} />
     </div>
-  );
-}
-
-function SettingsDialogMount() {
-  const dialogOpen = useGet(settingsDialogOpen$);
-  const closeSettingsModal = useSet(closeSettingsModal$);
-
-  return (
-    <SettingsDialog
-      open={dialogOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          closeSettingsModal();
-        }
-      }}
-    />
   );
 }
 
@@ -372,10 +361,10 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
   const shellDocumentAttributesRef = useSet(shellDocumentAttributesRef$);
 
-  return (
+  return withChatScrollLayout(
     <div
       ref={shellDocumentAttributesRef}
-      className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background"
+      className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background md:bg-sidebar"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
@@ -387,13 +376,13 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <AttachmentLightboxMount />
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 okou-workspace-bg okou-workspace-card">
+      <WorkspaceInset>
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}
         {children}
-      </div>
-    </div>
+      </WorkspaceInset>
+    </div>,
   );
 }
 

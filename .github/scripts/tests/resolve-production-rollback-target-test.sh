@@ -24,6 +24,18 @@ case "${1:-}" in
   merge-base)
     if [ "${3:-}" = "c093e0ffdab988d2a8a071809f90d87fa3e79f20" ]; then
       [ "${MOCK_READER_FLOOR_VALID:-1}" = "1" ]
+    elif [ "${3:-}" = "febec8a3399be74b0f14a89cb9f42e39dd5ce69f" ]; then
+      if [ "${4:-}" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ]; then
+        [ "${MOCK_BLANK_RUNNER_FLOOR_VALID:-1}" = "1" ]
+      else
+        [ "${MOCK_BLANK_TARGET_FLOOR_VALID:-1}" = "1" ]
+      fi
+    elif [ "${3:-}" = "6d391117e4fead19e2105136fb2792a6e77801d8" ]; then
+      # The retained Runner predates S1 even when the API target contains it.
+      if [ "${4:-}" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ]; then
+        exit 1
+      fi
+      [ "${MOCK_GOAL_TARGET_FLOOR_VALID:-1}" = "1" ]
     else
       [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
     fi
@@ -74,6 +86,7 @@ SH
 cat >"${fake_bin}/ssh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'ssh %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
 if [ "${1:-}" = "-n" ]; then shift; fi
 remote=$1
 host=${remote#*@}
@@ -115,12 +128,14 @@ assert_failure() {
   grep -q "$expected_message" "${tmp_dir}/failure.err" || fail "missing failure message: ${expected_message}"
 }
 
+# An S1-compatible API target must still resolve its valid pre-S1 Runner.
 : >"${tmp_dir}/boundaries.log"
 output_file="${tmp_dir}/success.output"
 run_resolver "$output_file" >"${tmp_dir}/success.log"
 grep -qx "target_commit=${target_commit}" "$output_file" || fail "missing target commit output"
 grep -qx "api_deployment_url=https://api-0.vercel.app" "$output_file" || fail "missing API deployment output"
 grep -qx "runner_version=1.2.3" "$output_file" || fail "missing Runner version output"
+grep -qx "runner_tag=runner-rs-v1.2.3" "$output_file" || fail "missing retained Runner tag output"
 runner_matrix=$(sed -n 's/^runner_matrix=//p' "$output_file")
 jq -e 'length == 2 and .[0].id == "arm64" and .[1].id == "x86_64"' >/dev/null <<<"$runner_matrix" || fail "unexpected Runner matrix"
 
@@ -153,6 +168,34 @@ assert_failure \
 [ ! -s "${tmp_dir}/reader-floor.output" ] || fail "incompatible reader target must not publish outputs"
 if grep -qE '^(curl|aws) ' "${tmp_dir}/boundaries.log"; then
   fail "reader-floor rejection must happen before artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Target commit predates the blank sandbox status reader" \
+  run_resolver "${tmp_dir}/blank-target-floor.output" MOCK_BLANK_TARGET_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/blank-target-floor.output" ] || fail "old blank reader target must not publish outputs"
+if grep -q '^curl ' "${tmp_dir}/boundaries.log"; then
+  fail "blank reader target rejection must precede artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Target commit predates the Okou Goal retirement boundary" \
+  run_resolver "${tmp_dir}/goal-target-floor.output" \
+  MOCK_READER_FLOOR_VALID=1 MOCK_BLANK_TARGET_FLOOR_VALID=1 MOCK_GOAL_TARGET_FLOOR_VALID=0
+grep -Fq "first compatible release is 1f68f182a2457ec3aea52d8063be2bd2d2263abd (API 1.571.1)" \
+  "${tmp_dir}/failure.err" || fail "Goal rejection must identify the first compatible API release"
+[ ! -s "${tmp_dir}/goal-target-floor.output" ] || fail "pre-S1 API target must not publish outputs"
+[ ! -s "${tmp_dir}/failure.out" ] || fail "pre-S1 API target must not print resolved targets"
+if grep -qE '^(curl|ssh|git (show|rev-list)) ' "${tmp_dir}/boundaries.log"; then
+  fail "Goal target rejection must precede API and Runner artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Runner release runner-rs-v1.2.3 predates the blank sandbox status reader" \
+  run_resolver "${tmp_dir}/blank-runner-floor.output" MOCK_BLANK_RUNNER_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/blank-runner-floor.output" ] || fail "old Runner artifact must not publish outputs"
+if grep -q 'api.github.com/repos/.*/releases/tags/' "${tmp_dir}/boundaries.log"; then
+  fail "blank reader artifact rejection must precede asset resolution"
 fi
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
@@ -332,7 +375,10 @@ assert_failure \
   bash "$release_tags_script"
 [ ! -s "$duplicate_release_tags_output" ] || fail "duplicate release tags must not publish an output"
 
-ruby -e '
+ruby - \
+  "${repo_root}/.github/workflows/rollback-production.yml" \
+  "${repo_root}/.github/workflows/release-please.yml" \
+  "${repo_root}/.github/workflows/turbo.yml" <<'RUBY'
   require "yaml"
   rollback_config = YAML.safe_load(File.read(ARGV[0]), aliases: true)
   release_config = YAML.safe_load(File.read(ARGV[1]), aliases: true)
@@ -441,9 +487,6 @@ ruby -e '
   artifact_upload_run = artifact_upload_step.fetch("run")
   raise "deploy-app must upload the archived App artifact" unless artifact_upload_run.include?("/dist.tar.gz")
   raise "deploy-app must not upload per-file App artifacts" if artifact_upload_run.include?("aws s3 cp turbo/apps/platform/dist")
-' \
-  "${repo_root}/.github/workflows/rollback-production.yml" \
-  "${repo_root}/.github/workflows/release-please.yml" \
-  "${repo_root}/.github/workflows/turbo.yml"
+RUBY
 
 echo "resolve-production-rollback-target tests passed"

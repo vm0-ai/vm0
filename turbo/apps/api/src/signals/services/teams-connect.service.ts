@@ -1,11 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -105,7 +100,6 @@ function setOptionalParam(
 }
 
 function buildTeamsBrowserConnectUrl(args: {
-  readonly publicBrand: PublicBrand;
   readonly tenantId: string;
   readonly tenantName?: string | null;
   readonly teamsUserId?: string | null;
@@ -145,18 +139,14 @@ function buildTeamsBrowserConnectUrl(args: {
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
   setOptionalParam(params, "botName", args.botName);
-  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/settings/teams?${params.toString()}`;
+  return `${env("APP_URL")}/settings/teams?${params.toString()}`;
 }
 
 function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
-  readonly publicBrand: PublicBrand;
 }): string {
-  const url = new URL(
-    "/api/teams/oauth/connect",
-    apiUrlForPublicBrand(internalApiBaseUrl(), args.publicBrand),
-  );
+  const url = new URL("/api/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
   return url.toString();
@@ -187,7 +177,6 @@ export function isTeamsInstallationActive(
 
 export function buildTeamsConnectUrlForActivity(args: {
   readonly activity: TeamsInboundActivity;
-  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): string | null {
   if (
@@ -199,7 +188,6 @@ export function buildTeamsConnectUrlForActivity(args: {
   }
 
   return buildTeamsBrowserConnectUrl({
-    publicBrand: args.publicBrand,
     tenantId: args.activity.tenantId,
     tenantName: args.activity.tenantName,
     teamsUserId: args.activity.sender.id,
@@ -551,7 +539,6 @@ function inactiveTeamsStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;
-  readonly publicBrand: PublicBrand;
 }): TeamsConnectStatus {
   return {
     isInstalled: false,
@@ -562,7 +549,6 @@ function inactiveTeamsStatus(args: {
       ? buildTeamsOauthConnectUrl({
           orgId: args.orgId,
           userId: args.userId,
-          publicBrand: args.publicBrand,
         })
       : null,
   };
@@ -602,7 +588,6 @@ function activeTeamsStatus(args: {
   readonly userId: string;
   readonly isAdmin: boolean;
   readonly connectedFields: ConnectedTeamsStatusFields | null;
-  readonly publicBrand: PublicBrand;
 }): TeamsConnectStatus {
   const status: TeamsConnectStatus = {
     isInstalled: true,
@@ -614,7 +599,6 @@ function activeTeamsStatus(args: {
       : buildTeamsOauthConnectUrl({
           orgId: args.orgId,
           userId: args.userId,
-          publicBrand: args.publicBrand,
         }),
     tenantId: args.installation.teamsTenantId,
     tenantName: args.installation.teamsTenantName,
@@ -640,7 +624,6 @@ export function teamsConnectStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;
-  readonly publicBrand: PublicBrand;
 }): Computed<Promise<TeamsConnectStatus>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -737,7 +720,6 @@ type ConnectTeamsInstallationArgs = {
   readonly orgId: string;
   readonly orgRole: "admin" | "member";
   readonly tenantId: string;
-  readonly publicBrand: PublicBrand;
   readonly tenantName?: string;
   readonly teamsUserId?: string;
   readonly teamsAadObjectId?: string;
@@ -760,9 +742,8 @@ type BindTeamsInstallationResult =
 
 function buildTeamsWelcomeCard(
   installation: TeamsInstallation,
-  publicBrand: PublicBrand,
 ): TeamsAdaptiveCard {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const mentionName = teamsBotDisplayName(installation.botName);
   return {
     type: "AdaptiveCard",
@@ -828,7 +809,6 @@ async function notifyTeamsConnect(
     readonly conversationType: string | undefined;
     readonly teamsUserId: string | undefined;
     readonly teamsUserDisplayName: string | undefined;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -867,10 +847,8 @@ async function notifyTeamsConnect(
       serviceUrl: args.serviceUrl,
       conversationId,
       tenantId: args.tenantId,
-      text: `You're connected to ${
-        publicBrandPresentation(args.publicBrand).assistantName
-      }!`,
-      card: buildTeamsWelcomeCard(args.installation, args.publicBrand),
+      text: `You're connected to ${PUBLIC_BRAND_PRESENTATION.assistantName}!`,
+      card: buildTeamsWelcomeCard(args.installation),
     },
     signal,
   );
@@ -969,7 +947,6 @@ async function finalizeTeamsConnection(
       conversationType: connectArgs.conversationType,
       teamsUserId: connectArgs.teamsUserId,
       teamsUserDisplayName: connectArgs.teamsUserDisplayName,
-      publicBrand: connectArgs.publicBrand,
     },
     signal,
   );

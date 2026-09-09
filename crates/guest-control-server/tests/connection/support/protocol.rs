@@ -1,0 +1,80 @@
+use std::io::{Read, Write};
+
+use guest_control_proto::{
+    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS,
+};
+
+pub(crate) fn read_message(stream: &mut impl Read) -> guest_control_proto::RawMessage {
+    read_message_with_context(stream, "read message")
+}
+
+pub(super) fn read_message_with_context(
+    stream: &mut impl Read,
+    context: &str,
+) -> guest_control_proto::RawMessage {
+    let mut hdr = [0u8; 4];
+    stream
+        .read_exact(&mut hdr)
+        .unwrap_or_else(|error| panic!("{context}: failed to read frame header: {error}"));
+    let body_len = u32::from_be_bytes(hdr) as usize;
+    let mut body = vec![0u8; body_len];
+    stream
+        .read_exact(&mut body)
+        .unwrap_or_else(|error| panic!("{context}: failed to read frame body: {error}"));
+
+    let mut full = Vec::with_capacity(4 + body_len);
+    full.extend_from_slice(&hdr);
+    full.extend_from_slice(&body);
+    let mut decoder = guest_control_proto::Decoder::new();
+    let msgs = decoder
+        .decode(&full)
+        .unwrap_or_else(|error| panic!("{context}: failed to decode frame: {error}"));
+    assert_eq!(msgs.len(), 1, "{context}: expected one decoded frame");
+    msgs.into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("{context}: decoded frame is missing"))
+}
+
+pub(crate) fn read_error_response(stream: &mut impl Read, seq: u32) -> String {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_ERROR);
+    assert_eq!(msg.seq, seq);
+    guest_control_proto::decode_error(&msg.payload)
+        .unwrap()
+        .to_owned()
+}
+
+pub(crate) fn assert_ping_pong<T>(stream: &mut T, seq: u32)
+where
+    T: Read + Write,
+{
+    let ping = guest_control_proto::encode(MSG_PING, seq, &[]).unwrap();
+    stream.write_all(&ping).unwrap();
+    let pong = read_message(stream);
+    assert_eq!(pong.msg_type, MSG_PONG);
+    assert_eq!(pong.seq, seq);
+    assert!(pong.payload.is_empty());
+}
+
+fn send_empty_control(stream: &mut impl Write, msg_type: u8, seq: u32) {
+    let msg = guest_control_proto::encode(msg_type, seq, &[]).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+pub(crate) fn send_control_payload(
+    stream: &mut impl Write,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+) {
+    let msg = guest_control_proto::encode(msg_type, seq, payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+pub(crate) fn send_quiesce_operations(stream: &mut impl Write, seq: u32) {
+    send_empty_control(stream, MSG_QUIESCE_OPERATIONS, seq);
+}
+
+pub(crate) fn send_resume_operations(stream: &mut impl Write, seq: u32) {
+    send_empty_control(stream, MSG_RESUME_OPERATIONS, seq);
+}

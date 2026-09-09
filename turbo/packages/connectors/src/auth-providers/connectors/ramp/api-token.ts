@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
+import { ProviderHttpError } from "../../provider-error";
+import { parseProviderTokenResponse } from "../../token-response";
 
 const TOKEN_URL = "https://api.ramp.com/developer/v1/token";
 
@@ -30,17 +31,16 @@ export async function fetchRampAccessToken(
       response.status,
     );
   }
-  const parsed = z
-    .object({
+  const data = await parseProviderTokenResponse(
+    response,
+    z.object({
       access_token: z.string().min(1),
       expires_in: z.number().positive(),
-    })
-    .safeParse(await response.json());
-  if (!parsed.success) {
-    throw new ProviderResponseError("Invalid Ramp access token response");
-  }
+    }),
+    "Invalid Ramp access token response",
+  );
   return {
-    accessToken: parsed.data.access_token,
-    expiresIn: parsed.data.expires_in,
+    accessToken: data.access_token,
+    expiresIn: data.expires_in,
   };
 }

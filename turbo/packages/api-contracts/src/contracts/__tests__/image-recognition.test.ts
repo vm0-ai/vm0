@@ -10,29 +10,14 @@ import {
 } from "../image-recognition";
 
 describe("image recognition contract", () => {
-  it("declares the canonical and compatibility API paths", () => {
+  it("declares the canonical API operation", () => {
     expect({
-      canonical: {
-        method: imageRecognitionContract.imageRecognition.method,
-        path: imageRecognitionContract.imageRecognition.path,
-      },
-      compatibility: {
-        method: imageRecognitionContract.recognize.method,
-        path: imageRecognitionContract.recognize.path,
-      },
+      method: imageRecognitionContract.imageRecognition.method,
+      path: imageRecognitionContract.imageRecognition.path,
     }).toStrictEqual({
-      canonical: { method: "POST", path: "/api/image-recognition" },
-      compatibility: { method: "POST", path: "/api/recognize" },
+      method: "POST",
+      path: "/api/image-recognition",
     });
-    expect(imageRecognitionContract.recognize.headers).toBe(
-      imageRecognitionContract.imageRecognition.headers,
-    );
-    expect(imageRecognitionContract.recognize.body).toBe(
-      imageRecognitionContract.imageRecognition.body,
-    );
-    expect(imageRecognitionContract.recognize.responses).toBe(
-      imageRecognitionContract.imageRecognition.responses,
-    );
   });
 
   it("accepts one owned file id and a trimmed prompt", () => {

@@ -300,7 +300,7 @@ describe("GitHub file integration routes", () => {
     });
     expect(response.body.uploadId).toMatch(/^[0-9a-f-]{36}$/u);
     expect(response.body.fileUrl).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.pdf$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.pdf$/u,
     );
     expect(response.body.fileUrl).not.toContain(fixture.userId);
 
@@ -310,7 +310,7 @@ describe("GitHub file integration routes", () => {
     expect(command).toHaveProperty("input.Bucket", "test-user-artifacts");
     expect(command).toHaveProperty(
       "input.Key",
-      response.body.fileUrl.replace("https://cdn.vm7.io/", ""),
+      `artifacts${new URL(response.body.fileUrl).pathname}`,
     );
   });
 

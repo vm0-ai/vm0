@@ -1,6 +1,5 @@
 import { computed } from "ccstate";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   artifactCatalogContract,
   type ArtifactSummary,
@@ -10,7 +9,6 @@ import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows"
 import { accept } from "../../lib/accept.ts";
 import { agents$ } from "../agent.ts";
 import { apiClient$ } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -25,14 +23,10 @@ interface ThreeColumnAgentSearchResult {
   readonly agents: readonly AgentResponse[];
 }
 
-export const workspaceAgentSearchEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.WorkspaceAgentSearch];
-});
-
 export const threeColumnAgentSearchResults$ = computed(
   async (get): Promise<ThreeColumnAgentSearchResult> => {
     const query = get(chatListQuery$).trim().toLowerCase();
-    if (!get(workspaceAgentSearchEnabled$) || !query) {
+    if (!query) {
       return { query, agents: [] };
     }
     const agents = await get(agents$);

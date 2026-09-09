@@ -58,6 +58,7 @@ const SLACK_BOT_SCOPES = JSON.stringify([
   "groups:read",
   "groups:history",
   "im:history",
+  "im:read",
   "im:write",
   "commands",
   "users:read",
@@ -216,11 +217,11 @@ async function seedBuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await acquireBuiltInModelKeyFixture(
     db,
     agentId,
-    vm0BuiltInModelKeyRows(agentId),
+    builtInModelKeyRows(agentId),
   );
 }
 
-function vm0BuiltInModelKeyRows(agentId: string) {
+function builtInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),

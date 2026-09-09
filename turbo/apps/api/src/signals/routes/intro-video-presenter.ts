@@ -1,18 +1,14 @@
+import { privateArtifactCreationEnabled } from "../services/private-artifact-storage.service";
 import { randomUUID } from "node:crypto";
 
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { userCache } from "@okouai/db/schema/user-cache";
-import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
-import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
@@ -57,7 +53,6 @@ import {
   recordGeneratedIntroVideoVoice$,
 } from "../services/intro-video-voice.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
 import {
   completeRunBuiltInAdmission$,
@@ -65,6 +60,11 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { onRejection } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
+import {
+  introVideoDisabled,
+  introVideoEnabled$,
+} from "../services/intro-video-access.service";
 
 const generateBody$ = bodyResultOf(introVideoPresenterContract.generate);
 const avatarsQuery$ = queryOf(introVideoPresenterContract.avatars);
@@ -73,56 +73,6 @@ const voicesQuery$ = queryOf(introVideoPresenterContract.voices);
 const voiceGenerateBody$ = bodyResultOf(
   introVideoPresenterContract.voiceGenerate,
 );
-
-const introVideoDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Intro Video is not enabled",
-      code: "FORBIDDEN" as const,
-    }),
-  }),
-});
-
-const introVideoEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const db = get(db$);
-  const clerk = get(clerk$);
-  const context = await loadUserFeatureSwitchContext(
-    db,
-    auth.orgId,
-    auth.userId,
-  );
-  if (isFeatureEnabled(FeatureSwitchKey.IntroVideo, context)) {
-    return true;
-  }
-
-  const [user] = await db
-    .select({ email: userCache.email })
-    .from(userCache)
-    .where(eq(userCache.userId, auth.userId))
-    .limit(1);
-  if (user?.email) {
-    return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
-      ...context,
-      email: user.email,
-    });
-  }
-
-  const users = await clerk.users.getUserList({
-    userId: [auth.userId],
-    limit: 1,
-  });
-  const profile = users.data[0];
-  const email =
-    profile?.emailAddresses.find((candidate) => {
-      return candidate.id === profile.primaryEmailAddressId;
-    })?.emailAddress ?? profile?.emailAddresses[0]?.emailAddress;
-  return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
-    ...context,
-    email,
-  });
-});
 
 function acceptedIntroVideoPresenterResponse(
   generationId: string,
@@ -176,7 +126,7 @@ const submitIntroVideoPresenterJob$ = command(
       return response;
     }
 
-    const [audioUrl] = await set(
+    const references = await set(
       resolveProviderReferenceUrls$,
       {
         orgId: args.orgId,
@@ -185,6 +135,15 @@ const submitIntroVideoPresenterJob$ = command(
       },
       signal,
     );
+    if ("status" in references) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: references.body.error },
+        signal,
+      );
+      return references;
+    }
+    const [audioUrl] = references;
     if (!audioUrl) {
       throw new Error("Expected one resolved Intro Video presenter audio URL");
     }
@@ -375,6 +334,11 @@ const postVoiceGenerateInner$ = command(
       return admission;
     }
 
+    const privateArtifacts = await get(
+      privateArtifactCreationEnabled(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+
     const response = await onRejection(
       (async () => {
         const speech = await generateHeyGenSpeech(options, apiKey, signal);
@@ -393,7 +357,8 @@ const postVoiceGenerateInner$ = command(
             orgId: auth.orgId,
             userId: auth.userId,
             runId: auth.runId,
-            publicBrand: auth.publicBrand,
+            publicBrand: PUBLIC_BRAND,
+            privateArtifacts,
             pricing,
             options,
             speech,
@@ -512,7 +477,7 @@ const postGenerateInner$ = command(
         runId: auth.runId,
         request: builtInGenerationRequestWithInternal(
           introVideoPresenterRequestRecord(options),
-          { admissionId: admission?.id, publicBrand: auth.publicBrand },
+          { admissionId: admission?.id, publicBrand: PUBLIC_BRAND },
         ),
       },
       signal,

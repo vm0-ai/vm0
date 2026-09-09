@@ -306,6 +306,7 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     .expect("workspace promotion should prepare");
 
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].sudo);
@@ -397,16 +398,14 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
             .unwrap_or_else(|error| panic!("invalid {field}: {error}; event={promotion_event:#?}"));
     }
     let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 3);
+    assert_eq!(exec_calls.len(), 2);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
     assert_eq!(exec_calls[0].timeout, Duration::from_secs(30));
     assert_eq!(
         exec_calls[0].env_keys,
         vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
     );
-    assert!(exec_calls[1].cmd.contains("rm -f --"));
-    assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
-    assert!(exec_calls[2].sudo);
+    assert!(exec_calls[1].sudo);
     let copy_calls = sandbox.copy_file_calls();
     assert_eq!(copy_calls.len(), 1);
     assert!(copy_calls[0].path.ends_with("/session-history-sidecar"));
@@ -725,13 +724,12 @@ async fn active_workspace_promotion_rejects_invalid_sidecar_metadata() {
         assert!(promoted, "{name}");
         assert!(sandbox.copy_file_calls().is_empty(), "{name}");
         let exec_calls = sandbox.exec_calls();
-        assert_eq!(exec_calls.len(), 3, "{name}");
+        assert_eq!(exec_calls.len(), 2, "{name}");
         assert!(
             exec_calls[0].cmd.contains("export-session-history-sidecar"),
             "{name}"
         );
-        assert!(exec_calls[1].cmd.contains("rm -f --"), "{name}");
-        assert!(exec_calls[2].sudo, "{name}");
+        assert!(exec_calls[1].sudo, "{name}");
         let event = captured_event(
             &events,
             "workspace image cache session history sidecar export returned invalid metadata",
@@ -803,6 +801,156 @@ async fn active_workspace_promotion_discards_sidecar_source_on_copy_error() {
         "copy-error",
     )
     .await;
+}
+
+#[tokio::test]
+async fn cancelled_workspace_promotion_preserves_session_history_sidecar() {
+    let history = br#"{"type":"message","content":"cancelled"}"#;
+    let identity = test_restored_session_identity("cancelled-session", history);
+    let fixture = WorkspacePromotionFixture::new_with_terminal_status(
+        "thread:cancelled-sidecar",
+        Some(&identity),
+        WorkspaceCacheTerminalStatus::Cancelled,
+    )
+    .await;
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+            representation: SessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        })
+        .unwrap(),
+        Vec::new(),
+    )));
+    sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    assert!(prepare_and_publish_workspace_image(&sandbox, fixture.promotion).await);
+    let lease = fixture
+        .cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                reuse_key: Some(&fixture.reuse_key),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
+    let sidecar = lease
+        .probe_session_history_sidecar(&identity)
+        .await
+        .unwrap();
+    assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn workspace_promotion_classifies_cancelled_sidecar_admission_rejections() {
+    use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
+
+    for (terminal_status, operation, host_io_failure) in [
+        (
+            WorkspaceCacheTerminalStatus::Cancelled,
+            SandboxOperation::Exec,
+            false,
+        ),
+        (
+            WorkspaceCacheTerminalStatus::Cancelled,
+            SandboxOperation::CopyFile,
+            false,
+        ),
+        (
+            WorkspaceCacheTerminalStatus::Cancelled,
+            SandboxOperation::CopyFile,
+            true,
+        ),
+        (
+            WorkspaceCacheTerminalStatus::Success,
+            SandboxOperation::Exec,
+            false,
+        ),
+        (
+            WorkspaceCacheTerminalStatus::Success,
+            SandboxOperation::CopyFile,
+            false,
+        ),
+    ] {
+        let history = br#"{"type":"message","content":"sidecar"}"#;
+        let identity = test_restored_session_identity("sidecar-admission", history);
+        let fixture = WorkspacePromotionFixture::new_with_terminal_status(
+            "thread:sidecar-admission",
+            Some(&identity),
+            terminal_status,
+        )
+        .await;
+        let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+        let error = if host_io_failure {
+            SandboxError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "host staging denied",
+            ))
+        } else {
+            SandboxError::Operation {
+                operation,
+                reason: SandboxOperationReason::GuestConnectionUnavailable,
+                message: "normal operation rejected".into(),
+            }
+        };
+        let message = if operation == SandboxOperation::Exec {
+            sandbox.push_exec_result(Err(error));
+            "workspace image cache session history sidecar export errored"
+        } else {
+            sandbox.push_exec_result(Ok(ExecResult::new(
+                0,
+                serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                    representation: SessionHistorySidecarRepresentation::Raw,
+                    encoded_size: history.len() as u64,
+                })
+                .unwrap(),
+                Vec::new(),
+            )));
+            sandbox.push_copy_file_result(Err(error));
+            "workspace image cache session history sidecar copy failed"
+        };
+        if !host_io_failure {
+            sandbox.push_exec_result(Err(SandboxError::Operation {
+                operation: SandboxOperation::Exec,
+                reason: SandboxOperationReason::GuestConnectionUnavailable,
+                message: "normal operation rejected".into(),
+            }));
+        }
+        let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+            &sandbox,
+            fixture.promotion,
+        ))
+        .await;
+        assert_eq!(promoted, host_io_failure);
+        let expected_level =
+            if terminal_status == WorkspaceCacheTerminalStatus::Cancelled && !host_io_failure {
+                Level::INFO
+            } else {
+                Level::WARN
+            };
+        assert_eq!(captured_event(&events, message).level, expected_level);
+        if !host_io_failure {
+            assert_eq!(
+                captured_event(
+                    &events,
+                    "workspace image cache promotion skipped because guest freeze failed"
+                )
+                .level,
+                expected_level
+            );
+            assert!(fixture.cache.held_workspace_states().await.is_empty());
+        }
+        for copy in sandbox.copy_file_calls() {
+            assert!(!copy.host_path.exists(), "failed copy must release staging");
+        }
+    }
 }
 
 #[tokio::test]
@@ -1017,7 +1165,7 @@ async fn active_workspace_promotion_classifies_sidecar_export_failures() {
             "{name}: {event:#?}"
         );
         let exec_calls = sandbox.exec_calls();
-        assert_eq!(exec_calls.len(), 3, "{name}");
+        assert_eq!(exec_calls.len(), 2, "{name}");
         assert!(exec_calls[0].expected_exit_codes.is_empty(), "{name}");
     }
 }
@@ -1228,6 +1376,7 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
     assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
@@ -1253,6 +1402,7 @@ async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert_eq!(
         WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
         WorkspaceCacheCheckoutResult::Miss
@@ -1324,6 +1474,7 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
     assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
@@ -1349,6 +1500,7 @@ async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
     assert!(fixture.cache.held_workspace_states().await.is_empty());
     let event = captured_event(

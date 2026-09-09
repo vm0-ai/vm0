@@ -8,7 +8,11 @@ import { and, eq, isNotNull, type SQL } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
-import { publishConnectorRuntimeSyncToRunnerGroup } from "../external/realtime";
+import { publishConnectorRuntimeSyncBatch } from "../external/realtime";
+import {
+  connectorRuntimeWakeupBatches,
+  type ConnectorRuntimeWakeup,
+} from "./connector-runtime-wakeup-batches";
 import { settle } from "../utils";
 
 const L = logger("ConnectorRuntimeWakeup");
@@ -39,12 +43,6 @@ export async function commitConnectorRuntimeMutation<T>(
     await publishConnectorRuntimeSyncWakeups(wakeup);
   }
   return result;
-}
-
-interface ConnectorRuntimeWakeup {
-  readonly runId: string;
-  readonly runnerGroup: string;
-  readonly target: ConnectorRuntimeTarget;
 }
 
 function uniqueConnectorRuntimeTargets(
@@ -106,28 +104,32 @@ async function publishConnectorRuntimeSyncWakeupsInner(
     }
   }
 
-  const outcomes = await Promise.all(
-    wakeups.map(async (wakeup) => {
-      const outcome = await settle(
-        publishConnectorRuntimeSyncToRunnerGroup(
-          wakeup.runnerGroup,
-          wakeup.runId,
-          wakeup.target,
-        ),
-      );
-      return { wakeup, outcome };
-    }),
-  );
+  const batches = connectorRuntimeWakeupBatches(wakeups);
+  const pending = batches.values();
+  let failedBatchCount = 0;
   let failedWakeupCount = 0;
   let firstFailure:
     | { readonly wakeup: ConnectorRuntimeWakeup; readonly error: unknown }
     | undefined;
-  for (const { wakeup, outcome } of outcomes) {
-    if (!outcome.ok) {
-      failedWakeupCount += 1;
-      firstFailure ??= { wakeup, error: outcome.error };
+  async function publishBatches(): Promise<void> {
+    for (const batch of pending) {
+      const outcome = await settle(
+        publishConnectorRuntimeSyncBatch(batch.runnerGroup, batch.messages),
+      );
+      if (!outcome.ok) {
+        failedBatchCount += 1;
+        failedWakeupCount += batch.wakeups.length;
+        const [wakeup] = batch.wakeups;
+        if (wakeup) {
+          firstFailure ??= { wakeup, error: outcome.error };
+        }
+      }
     }
   }
+  // Bound request concurrency per mutation; this is not a cross-instance rate limiter.
+  await Promise.all(
+    Array.from({ length: Math.min(4, batches.length) }, publishBatches),
+  );
 
   if (firstFailure) {
     L.warn("Failed to publish connector runtime sync wakeups", {
@@ -136,6 +138,8 @@ async function publishConnectorRuntimeSyncWakeupsInner(
       scopedToAgent: args.scope.agentId !== undefined,
       targetCount: targets.length,
       examinedRunCount: rows.length,
+      batchCount: batches.length,
+      failedBatchCount,
       failedWakeupCount,
       firstFailedRunId: firstFailure.wakeup.runId,
       firstFailedRunnerGroup: firstFailure.wakeup.runnerGroup,
@@ -152,6 +156,9 @@ async function publishConnectorRuntimeSyncWakeupsInner(
     matchedWakeupCount: wakeups.length,
     publishedWakeupCount: wakeups.length - failedWakeupCount,
     failedWakeupCount,
+    batchCount: batches.length,
+    publishedBatchCount: batches.length - failedBatchCount,
+    failedBatchCount,
   });
 }
 

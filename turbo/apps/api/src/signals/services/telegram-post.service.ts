@@ -2,10 +2,10 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { command, computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
-  agentDisplayNameForPublicBrand,
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-  publicBrandPresentation,
+  DEFAULT_AGENT_DISPLAY_NAME,
+  PUBLIC_BRAND_PRESENTATION,
+  agentDisplayName,
+  PUBLIC_BRAND,
 } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
@@ -39,7 +39,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { webUrl } from "../../lib/web-url";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -327,11 +327,8 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildTelegramWebhookUrl(
-  telegramBotId: string,
-  publicBrand: PublicBrand,
-): string {
-  return `${apiUrlForPublicBrand(webUrl(), publicBrand)}/api/telegram/webhook/${telegramBotId}`;
+function buildTelegramWebhookUrl(telegramBotId: string): string {
+  return `${webUrl()}/api/telegram/webhook/${telegramBotId}`;
 }
 
 function normalizeTelegramUsername(
@@ -352,7 +349,9 @@ function displayLabel(row: {
   readonly displayName: string | null;
   readonly name: string | null;
 }): string {
-  return row.displayName?.trim() || row.name?.trim() || "Zero";
+  return (
+    row.displayName?.trim() || row.name?.trim() || DEFAULT_AGENT_DISPLAY_NAME
+  );
 }
 
 async function getWorkspaceAgent(
@@ -386,14 +385,13 @@ async function getWorkspaceAgentDisplayLabel(
   composeId: string,
 ): Promise<string> {
   const agent = await getWorkspaceAgent(db, composeId);
-  return agent ? displayLabel(agent) : "Zero";
+  return agent ? displayLabel(agent) : DEFAULT_AGENT_DISPLAY_NAME;
 }
 
 async function getTelegramCommandAgentName(args: {
   readonly db: Db;
   readonly agentId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const displayName = await getWorkspaceAgentDisplayLabel(
     args.db,
@@ -405,11 +403,10 @@ async function getTelegramCommandAgentName(args: {
     .where(eq(orgMetadata.orgId, args.orgId))
     .limit(1);
   return (
-    agentDisplayNameForPublicBrand({
+    agentDisplayName({
       agentId: args.agentId,
       defaultAgentId: metadata?.defaultAgentId ?? null,
       displayName,
-      publicBrand: args.publicBrand,
     }) ?? displayName
   );
 }
@@ -467,7 +464,6 @@ async function configureTelegramBot(
     readonly webhookSecret: string;
     readonly agentId: string;
     readonly orgId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<ReturnType<typeof badGateway> | undefined> {
@@ -475,14 +471,13 @@ async function configureTelegramBot(
     db: args.db,
     agentId: args.agentId,
     orgId: args.orgId,
-    publicBrand: args.publicBrand,
   });
   signal.throwIfAborted();
   const webhookConfigured = await tapError(
     (async () => {
       await setWebhook(
         args.botToken,
-        buildTelegramWebhookUrl(args.telegramBotId, args.publicBrand),
+        buildTelegramWebhookUrl(args.telegramBotId),
         args.webhookSecret,
       );
       return true;
@@ -601,7 +596,6 @@ const handleExistingInstallation$ = command(
         webhookSecret,
         agentId: resolvedAgent.agentId,
         orgId: args.auth.orgId,
-        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -763,7 +757,6 @@ export const registerTelegramBot$ = command(
         webhookSecret,
         agentId: resolvedAgent.agentId,
         orgId: auth.orgId,
-        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -797,13 +790,8 @@ export const registerTelegramBot$ = command(
   },
 );
 
-function resolveProbeOrigin(
-  origin: string | undefined,
-  publicBrand: PublicBrand,
-): string {
-  const brandedOrigin = new URL(
-    appUrlForPublicBrand(env("APP_URL"), publicBrand),
-  ).origin;
+function resolveProbeOrigin(origin: string | undefined): string {
+  const brandedOrigin = new URL(env("APP_URL")).origin;
   if (!origin) {
     return brandedOrigin;
   }
@@ -833,7 +821,6 @@ export const setupTelegramStatus$ = command(
     { get, set },
     args: {
       readonly auth: OrganizationAuth;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -881,7 +868,7 @@ export const setupTelegramStatus$ = command(
 
     const domainConfigured = await checkTelegramDomain(
       botId,
-      resolveProbeOrigin(bodyResult.data.origin, args.publicBrand),
+      resolveProbeOrigin(bodyResult.data.origin),
     );
     signal.throwIfAborted();
 
@@ -1193,31 +1180,6 @@ function parseBotCommand(
   return undefined;
 }
 
-function stripBotMention(text: string, botUsername: string | null): string {
-  if (!botUsername) {
-    return text;
-  }
-  const mention = `@${botUsername}`;
-  const mentionLower = mention.toLowerCase();
-  const lower = text.toLowerCase();
-  let result = "";
-  let cursor = 0;
-  for (;;) {
-    const idx = lower.indexOf(mentionLower, cursor);
-    if (idx === -1) {
-      result += text.slice(cursor);
-      break;
-    }
-    result += text.slice(cursor, idx).trimEnd();
-    result += " ";
-    cursor = idx + mention.length;
-    while (cursor < text.length && /\s/u.test(text.charAt(cursor))) {
-      cursor += 1;
-    }
-  }
-  return result.trim();
-}
-
 function hasBotMention(
   message: TelegramMessage,
   botUsername: string | null,
@@ -1279,7 +1241,7 @@ function buildConnectUrl(args: {
   if (displayName) {
     params.set("tgDisplayName", displayName);
   }
-  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/telegram/connect?${params.toString()}`;
+  return `${env("APP_URL")}/telegram/connect?${params.toString()}`;
 }
 
 function buildTelegramConnectReplyMarkup(connectUrl: string) {
@@ -1720,20 +1682,15 @@ function rootMessageIdForAgentMessage(args: {
 function buildTelegramAgentPrompt(args: {
   readonly message: TelegramMessage;
   readonly botId: string;
-  readonly botUsername: string | null;
-  readonly isDM: boolean;
 }): {
   readonly prompt: string;
   readonly userInfoExtras: TelegramUserInfoExtras;
 } {
   const enriched = enrichTelegramPrompt(args.message);
-  const promptBase = args.isDM
-    ? enriched.prompt
-    : stripBotMention(enriched.prompt, args.botUsername);
   const replyQuote = formatReplyQuote(args.message.reply_to_message);
   const promptWithReply = replyQuote
-    ? `${replyQuote}\n\n${promptBase}`
-    : promptBase;
+    ? `${replyQuote}\n\n${enriched.prompt}`
+    : enriched.prompt;
   return {
     prompt: appendTelegramMessageContext(
       promptWithReply,
@@ -2038,7 +1995,7 @@ const handleTelegramAgentMessage$ = command(
         chatId,
         text:
           args.userLinkKind === "official"
-            ? `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(args.publicBrand).brandName} first.`
+            ? `The workspace default agent is not configured. Please choose an agent in ${PUBLIC_BRAND_PRESENTATION.brandName} first.`
             : "The agent is not available. Please contact the admin.",
         replyToMessageId: args.isDM ? undefined : args.message.message_id,
       });
@@ -2510,7 +2467,7 @@ const handleOfficialCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const presentation = publicBrandPresentation(args.publicBrand);
+    const presentation = PUBLIC_BRAND_PRESENTATION;
     const assistantName = presentation.assistantName;
     const reply = async (text: string, sig: AbortSignal): Promise<void> => {
       await postTelegramMessage({
@@ -3012,7 +2969,7 @@ const processOfficialWebhookMessage$ = command(
         fromUserId: String(args.message.from?.id ?? 0),
         telegramUsername: args.message.from?.username ?? null,
         telegramDisplayName: displayName,
-        agentName: publicBrandPresentation(args.publicBrand).assistantName,
+        agentName: PUBLIC_BRAND_PRESENTATION.assistantName,
         publicBrand: args.publicBrand,
         replyToMessageId:
           args.message.chat.type === "private"
@@ -3029,7 +2986,7 @@ const processOfficialWebhookMessage$ = command(
       await postTelegramMessage({
         botToken: config.botToken,
         chatId,
-        text: `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(args.publicBrand).brandName} first.`,
+        text: `The workspace default agent is not configured. Please choose an agent in ${PUBLIC_BRAND_PRESENTATION.brandName} first.`,
         replyToMessageId:
           args.message.chat.type === "private"
             ? undefined
@@ -3064,7 +3021,7 @@ export const telegramWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const apiStartTime = now();
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const { telegramBotId } = get(
       pathParamsOf(integrationsTelegramContract.webhook),
     );

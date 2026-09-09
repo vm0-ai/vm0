@@ -1,10 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import {
-  chatThreadPinShortcutEnabled$,
-  voiceInputV2Enabled$,
-} from "../../signals/external/feature-switch.ts";
+import { voiceInputV2Enabled$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   chatShortcutHelpOpen$,
@@ -114,34 +111,30 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
 function shortcutSectionsForRoute(
   route: RouteKey | null,
   voiceInputV2Enabled: boolean,
-  chatThreadPinShortcutEnabled: boolean,
 ): readonly ShortcutSectionDefinition[] {
-  const filterEnabledShortcuts = (
+  const removeVoiceInputShortcut = (
     sections: readonly ShortcutSectionDefinition[],
   ): readonly ShortcutSectionDefinition[] => {
-    if (voiceInputV2Enabled && chatThreadPinShortcutEnabled) {
+    if (voiceInputV2Enabled) {
       return sections;
     }
     return sections.map((section) => {
+      if (section.titleId !== "composer") {
+        return section;
+      }
       return {
         ...section,
         shortcuts: section.shortcuts.filter((shortcut) => {
-          if (shortcut.labelId === "voiceInput") {
-            return voiceInputV2Enabled;
-          }
-          if (shortcut.labelId === "togglePin") {
-            return chatThreadPinShortcutEnabled;
-          }
-          return true;
+          return shortcut.labelId !== "voiceInput";
         }),
       };
     });
   };
   if (route === "chat") {
-    return filterEnabledShortcuts(CHAT_THREAD_SHORTCUT_SECTIONS);
+    return removeVoiceInputShortcut(CHAT_THREAD_SHORTCUT_SECTIONS);
   }
   if (route === "agentChat" || route === "home") {
-    return filterEnabledShortcuts(AGENT_CHAT_SHORTCUT_SECTIONS);
+    return removeVoiceInputShortcut(AGENT_CHAT_SHORTCUT_SECTIONS);
   }
   return SIDEBAR_SHORTCUT_SECTIONS;
 }
@@ -248,13 +241,8 @@ export function ChatShortcutHelpDialog() {
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
   const activeRoute = useGet(activeRoute$);
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const chatThreadPinShortcutEnabled = useGet(chatThreadPinShortcutEnabled$);
   const shortcutSections = localizeShortcutSections(
-    shortcutSectionsForRoute(
-      activeRoute,
-      voiceInputV2Enabled,
-      chatThreadPinShortcutEnabled,
-    ),
+    shortcutSectionsForRoute(activeRoute, voiceInputV2Enabled),
   );
 
   return (

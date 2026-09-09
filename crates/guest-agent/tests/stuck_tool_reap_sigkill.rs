@@ -52,7 +52,7 @@ async fn stuck_tool_reap_escalates_to_sigkill_when_sigterm_ignored()
     .expect("execute_cli did not return within 15s - forced SIGKILL escalation likely broken")?;
 
     assert!(
-        tmp.path().join(".guest-mock-sigterm-ignored").exists(),
+        tmp.path().join(".claude-mock-sigterm-ignored").exists(),
         "mock did not install SIGTERM ignore marker"
     );
 

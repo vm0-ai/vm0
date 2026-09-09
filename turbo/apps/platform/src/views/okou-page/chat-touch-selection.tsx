@@ -19,7 +19,7 @@ export function ChatTouchSelection({
         {/* One filled path unions overlapping inline and text rectangles. It
             works on supported iOS 16.4 without the newer CSS Highlight API. */}
         <path
-          className="okou-chat-touch-highlight"
+          className="fill-brand-subtle/50"
           d={geometry.rects
             .map((rect) => {
               return `M${rect.left},${rect.top}h${rect.width}v${rect.height}h${-rect.width}Z`;

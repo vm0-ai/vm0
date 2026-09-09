@@ -98,6 +98,61 @@ test("One image keeps distinct link labels and image previews in the same messag
   ).resolves.toHaveAttribute("src", url);
 });
 
+test("Artifact links show image, video, and file kinds", async () => {
+  const imageUrl = publicArtifactUrl("screenshot.png");
+  const videoUrl = publicArtifactUrl("walkthrough.mp4");
+  const fileUrl = publicArtifactUrl("report.pdf");
+  const externalUrl = "https://media.example.com/reference.png";
+  installMessage(
+    [
+      `[Screenshot](${imageUrl})`,
+      `[Walkthrough](${videoUrl})`,
+      `[Report](${fileUrl})`,
+      `[Reference](${externalUrl})`,
+    ].join("\n\n"),
+  );
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  expect(
+    within(await findNamedLink("Screenshot")).getByTestId(
+      "markdown-artifact-link-icon-image",
+    ),
+  ).toBeVisible();
+  expect(
+    within(getNamedLink("Walkthrough")).getByTestId(
+      "markdown-artifact-link-icon-video",
+    ),
+  ).toBeVisible();
+  expect(
+    within(getNamedLink("Report")).getByTestId(
+      "markdown-artifact-link-icon-file",
+    ),
+  ).toBeVisible();
+  expect(
+    getNamedLink("Reference").querySelector(
+      "[data-testid^='markdown-artifact-link-icon-']",
+    ),
+  ).toBeNull();
+});
+
+test("An artifact text link uses the already-open artifacts sidebar", async () => {
+  const url = publicArtifactUrl("sidebar-evidence.png");
+  installMessage(`[Supporting evidence](${url})`);
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  const link = await findNamedLink("Supporting evidence");
+  click(getNamedButton("Open artifacts"));
+  await expect(
+    screen.findByTestId("thread-sidebar-artifacts"),
+  ).resolves.toBeVisible();
+  click(link);
+  await expect(
+    screen.findByTestId("artifact-sidebar-body-image"),
+  ).resolves.toHaveAttribute("src", url);
+  expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+});
+
 test("Bare platform URLs stay links and fenced URLs stay code", async () => {
   const url = publicArtifactUrl("bare-evidence.png");
   const site = "https://literal-site.sites.vm7.io";

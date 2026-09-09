@@ -9,6 +9,7 @@ import auth
 import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import (
     apply_requestheaders_auth_without_upstream_admission,
+    firewall_auth_response,
     handle_firewall_request_without_upstream_admission,
     make_allow,
 )
@@ -84,14 +85,10 @@ async def test_bulk_headers_preserve_semantics_without_per_header_rebuilds(
         "encryptedSecrets": "iv:tag:data",
         "billableFirewalls": [],
     }
-    token_meta = {
-        "headers": resolved_headers,
-        "resolved_secrets": ["VALUE"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers=resolved_headers,
+        resolved_secrets=["VALUE"],
+    )
     header_set_all_calls = 0
     original_set_all = http.Headers.set_all
 

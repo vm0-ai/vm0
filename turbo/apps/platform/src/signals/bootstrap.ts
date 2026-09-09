@@ -91,6 +91,7 @@ import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page
 import { updatePage$ } from "./react-router.ts";
 import { setupLegacySettingsRedirect$ } from "./okou-page/settings/legacy-settings-redirect.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
+import { setupSharedArtifact$ } from "./shared-artifact.ts";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./okou-page/nav.ts";
@@ -188,6 +189,11 @@ const ROUTE_CONFIG = [
     analytics: false,
   },
 
+  {
+    path: ROUTES.sharedArtifact,
+    setup: setupPageWrapper(setupSharedArtifact$),
+    analytics: false,
+  },
   {
     path: ROUTES.sharedThread,
     setup: setupSharedThreadPage$,

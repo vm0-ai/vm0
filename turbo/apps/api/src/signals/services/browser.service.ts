@@ -13,7 +13,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   browserSessionInstances,
   browserSessionResizeStates,
-  browserSessionScreenshotDeletions,
   browserSessionScreenshots,
   browserSessionTabSnapshots,
   browserSessions,
@@ -22,10 +21,7 @@ import {
 import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { command } from "ccstate";
 import {
   and,
@@ -49,7 +45,7 @@ import {
   publishChatThreadMessageCreatedSafely,
 } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { deleteS3Objects, putImmutableS3Object } from "../external/s3";
+import { putImmutableS3Object } from "../external/s3";
 import { settle, settleIncludingAbort, tapError } from "../utils";
 import {
   BrowserUseProviderError,
@@ -241,19 +237,18 @@ function conflict(message: string, code = "BROWSER_CONFLICT") {
 }
 
 function chatRunRequired(
-  publicBrand: PublicBrand,
   code: "BROWSER_RUN_REQUIRED" | "BROWSER_CHAT_THREAD_REQUIRED",
 ) {
   return serviceError(
     400,
     code,
-    `Managed browsers can only be started from a ${publicBrandPresentation(publicBrand).assistantName} chat run`,
+    `Managed browsers can only be started from an ${PUBLIC_BRAND_PRESENTATION.assistantName} chat run`,
   );
 }
 
-function browserReclaiming(publicBrand: PublicBrand) {
+function browserReclaiming() {
   return conflict(
-    `${publicBrandPresentation(publicBrand).assistantName} is still reclaiming this thread's previous managed browser; retry in a moment`,
+    `${PUBLIC_BRAND_PRESENTATION.assistantName} is still reclaiming this thread's previous managed browser; retry in a moment`,
     "BROWSER_STOPPING",
   );
 }
@@ -301,17 +296,13 @@ async function providerCall<T>(
     : providerFailure(result.error);
 }
 
-function browserViewerUrl(
-  chatThreadId: string,
-  publicBrand: PublicBrand,
-): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/browsers/${chatThreadId}`;
+function browserViewerUrl(chatThreadId: string): string {
+  return `${env("APP_URL")}/browsers/${chatThreadId}`;
 }
 
 function publicBrowser(
   row: BrowserSessionRow,
   presentation: {
-    readonly publicBrand: PublicBrand;
     readonly liveUrl: string | null;
     readonly screenshotUrl: string | null;
     readonly idleExpiresAt?: Date | null;
@@ -322,7 +313,7 @@ function publicBrowser(
     threadId: row.chatThreadId,
     name: row.name,
     status: row.status,
-    viewerUrl: browserViewerUrl(row.chatThreadId, presentation.publicBrand),
+    viewerUrl: browserViewerUrl(row.chatThreadId),
     liveUrl: presentation.liveUrl,
     screenshotUrl: presentation.screenshotUrl,
     proxyCountryCode: row.proxyCountryCode,
@@ -871,81 +862,30 @@ const captureAndStoreBrowserScreenshot$ = command(
     );
     signal.throwIfAborted();
 
-    const persisted = await settle(
-      db.transaction(async (tx) => {
-        await lockBrowserThread(tx, browser.chatThreadId);
-        const [previous] = await tx
-          .select({ objectKey: browserSessionScreenshots.objectKey })
-          .from(browserSessionScreenshots)
-          .where(
-            eq(browserSessionScreenshots.chatThreadId, browser.chatThreadId),
-          )
-          .limit(1);
-        await tx
-          .insert(browserSessionScreenshots)
-          .values({
-            chatThreadId: browser.chatThreadId,
+    await db.transaction(async (tx) => {
+      await lockBrowserThread(tx, browser.chatThreadId);
+      await tx
+        .insert(browserSessionScreenshots)
+        .values({
+          chatThreadId: browser.chatThreadId,
+          objectKey: artifact.key,
+          url: artifact.url,
+        })
+        .onConflictDoUpdate({
+          target: browserSessionScreenshots.chatThreadId,
+          set: {
             objectKey: artifact.key,
             url: artifact.url,
-          })
-          .onConflictDoUpdate({
-            target: browserSessionScreenshots.chatThreadId,
-            set: {
-              objectKey: artifact.key,
-              url: artifact.url,
-              updatedAt: nowDate(),
-            },
-          });
-        if (previous && previous.objectKey !== artifact.key) {
-          await tx
-            .insert(browserSessionScreenshotDeletions)
-            .values({
-              objectKey: previous.objectKey,
-              chatThreadId: browser.chatThreadId,
-            })
-            .onConflictDoNothing({
-              target: browserSessionScreenshotDeletions.objectKey,
-            });
-        }
-        return previous?.objectKey ?? null;
-      }),
-      signal,
-    );
-    if (!persisted.ok) {
-      await tapError(get(deleteS3Objects(bucket, [artifact.key])));
-      signal.throwIfAborted();
-      throw persisted.error;
-    }
+            updatedAt: nowDate(),
+          },
+        });
+    });
+    signal.throwIfAborted();
 
     await publishBrowserSessionChangedSafely(browser.userId, {
       threadId: browser.chatThreadId,
     });
     signal.throwIfAborted();
-    const previousObjectKey = persisted.value;
-    if (previousObjectKey !== null && previousObjectKey !== artifact.key) {
-      await tapError(
-        (async () => {
-          await get(deleteS3Objects(bucket, [previousObjectKey]));
-          signal.throwIfAborted();
-          await db
-            .delete(browserSessionScreenshotDeletions)
-            .where(
-              eq(
-                browserSessionScreenshotDeletions.objectKey,
-                previousObjectKey,
-              ),
-            );
-        })(),
-        (error) => {
-          L.warn("Managed browser queued screenshot cleanup failed", {
-            chatThreadId: browser.chatThreadId,
-            objectKey: previousObjectKey,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-    }
   },
 );
 
@@ -1000,7 +940,7 @@ async function resolveRunContext(
   actor: BrowserActor,
 ): Promise<BrowserServiceResult<BrowserRunContext>> {
   if (!actor.runId) {
-    return chatRunRequired(actor.publicBrand, "BROWSER_RUN_REQUIRED");
+    return chatRunRequired("BROWSER_RUN_REQUIRED");
   }
   const [run] = await db
     .select({
@@ -1020,7 +960,7 @@ async function resolveRunContext(
     )
     .limit(1);
   if (!run?.chatThreadId) {
-    return chatRunRequired(actor.publicBrand, "BROWSER_CHAT_THREAD_REQUIRED");
+    return chatRunRequired("BROWSER_CHAT_THREAD_REQUIRED");
   }
   if (isTerminalRunStatus(run.status)) {
     return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
@@ -1594,7 +1534,7 @@ async function createAndClaimProviderInstance(
       {
         profileId: args.profile.providerProfileId,
         proxyCountryCode: args.browser.proxyCountryCode,
-        // Zero owns reclamation through the idle lease, so the provider only
+        // Okou owns reclamation through the idle lease, so the provider only
         // needs to enforce the absolute upper bound.
         timeoutMinutes: BROWSER_PROVIDER_TIMEOUT_MINUTES,
       },
@@ -1724,7 +1664,6 @@ const startProviderInstance$ = command(
       kind: "ok",
       value: {
         browser: publicBrowser(claimed.browser, {
-          publicBrand: args.context.publicBrand,
           liveUrl: started.liveUrl,
           screenshotUrl,
           idleExpiresAt: claimed.instance.idleExpiresAt,
@@ -1952,7 +1891,6 @@ const inspectActiveConnection$ = command(
         kind: "ok",
         value: {
           browser: publicBrowser(owner ?? browser, {
-            publicBrand: args.context.publicBrand,
             liveUrl,
             screenshotUrl,
             idleExpiresAt: leased?.idleExpiresAt ?? instance.idleExpiresAt,
@@ -2027,7 +1965,7 @@ async function claimBrowserForResume(
           "BROWSER_STARTING",
         );
       }
-      return browserReclaiming(context.publicBrand);
+      return browserReclaiming();
     }
     const current = await loadCurrentBrowser(tx, context);
     if (!current) {
@@ -2088,7 +2026,7 @@ const reuseLiveThreadBrowser$ = command(
               "The managed browser is already starting",
               "BROWSER_STARTING",
             )
-          : browserReclaiming(args.context.publicBrand),
+          : browserReclaiming(),
       };
     }
     const inspected = await set(
@@ -2355,7 +2293,6 @@ const leaseInstanceForBrowser$ = command(
   async (
     { set },
     browser: BrowserSessionRow,
-    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
@@ -2378,7 +2315,6 @@ const leaseInstanceForBrowser$ = command(
     return {
       kind: "ok",
       value: publicBrowser(browser, {
-        publicBrand,
         liveUrl: null,
         screenshotUrl,
         idleExpiresAt: leased.idleExpiresAt,
@@ -2405,12 +2341,7 @@ export const leaseCurrentBrowser$ = command(
     if (!browser) {
       return notFound();
     }
-    return await set(
-      leaseInstanceForBrowser$,
-      browser,
-      context.value.publicBrand,
-      signal,
-    );
+    return await set(leaseInstanceForBrowser$, browser, signal);
   },
 );
 
@@ -2431,12 +2362,7 @@ export const leaseBrowserByThread$ = command(
     if (accessError) {
       return accessError;
     }
-    return await set(
-      leaseInstanceForBrowser$,
-      browser,
-      access.publicBrand,
-      signal,
-    );
+    return await set(leaseInstanceForBrowser$, browser, signal);
   },
 );
 
@@ -2540,7 +2466,6 @@ export const resizeBrowserByThread$ = command(
     return {
       kind: "ok",
       value: publicBrowser(browser, {
-        publicBrand: access.publicBrand,
         liveUrl: provider.value.liveUrl,
         screenshotUrl,
         idleExpiresAt: persisted.value.instance.idleExpiresAt,
@@ -2599,7 +2524,6 @@ export const getBrowser$ = command(
     return {
       kind: "ok",
       value: publicBrowser(row, {
-        publicBrand: access.publicBrand,
         liveUrl,
         screenshotUrl,
         idleExpiresAt,
@@ -2978,27 +2902,9 @@ async function claimExpiredInactiveBrowser(
     }
 
     if (screenshotSchemaReady) {
-      const [screenshot] = await tx
-        .select({ objectKey: browserSessionScreenshots.objectKey })
-        .from(browserSessionScreenshots)
-        .where(eq(browserSessionScreenshots.chatThreadId, target.chatThreadId))
-        .limit(1);
-      if (screenshot) {
-        await tx
-          .insert(browserSessionScreenshotDeletions)
-          .values({
-            objectKey: screenshot.objectKey,
-            chatThreadId: target.chatThreadId,
-          })
-          .onConflictDoNothing({
-            target: browserSessionScreenshotDeletions.objectKey,
-          });
-        await tx
-          .delete(browserSessionScreenshots)
-          .where(
-            eq(browserSessionScreenshots.chatThreadId, target.chatThreadId),
-          );
-      }
+      await tx
+        .delete(browserSessionScreenshots)
+        .where(eq(browserSessionScreenshots.chatThreadId, target.chatThreadId));
     }
     await tx
       .delete(browserSessionTabSnapshots)
@@ -3368,7 +3274,6 @@ async function reconcileOrphanedBrowserProfiles(
 
 async function reconcileOrphanedBrowserScreenshots(
   db: Db,
-  deleteObjects: (keys: readonly string[]) => Promise<void>,
   limit: number,
   chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
@@ -3403,21 +3308,14 @@ async function reconcileOrphanedBrowserScreenshots(
   let errors = 0;
   for (const screenshot of screenshots) {
     const result = await settleIncludingAbort(
-      (async () => {
-        await deleteObjects([screenshot.objectKey]);
-        signal.throwIfAborted();
-        await db
-          .delete(browserSessionScreenshots)
-          .where(
-            and(
-              eq(
-                browserSessionScreenshots.chatThreadId,
-                screenshot.chatThreadId,
-              ),
-              eq(browserSessionScreenshots.objectKey, screenshot.objectKey),
-            ),
-          );
-      })(),
+      db
+        .delete(browserSessionScreenshots)
+        .where(
+          and(
+            eq(browserSessionScreenshots.chatThreadId, screenshot.chatThreadId),
+            eq(browserSessionScreenshots.objectKey, screenshot.objectKey),
+          ),
+        ),
     );
     signal.throwIfAborted();
     if (result.ok) {
@@ -3432,64 +3330,6 @@ async function reconcileOrphanedBrowserScreenshots(
     }
   }
   return { checked: screenshots.length, cleaned, errors };
-}
-
-async function reconcileQueuedBrowserScreenshotDeletions(
-  db: Db,
-  deleteObjects: (keys: readonly string[]) => Promise<void>,
-  limit: number,
-  chatThreadIds: readonly string[] | null,
-  signal: AbortSignal,
-): Promise<{
-  readonly checked: number;
-  readonly cleaned: number;
-  readonly errors: number;
-}> {
-  const deletions = await db
-    .select({
-      chatThreadId: browserSessionScreenshotDeletions.chatThreadId,
-      objectKey: browserSessionScreenshotDeletions.objectKey,
-    })
-    .from(browserSessionScreenshotDeletions)
-    .where(
-      chatThreadIds === null
-        ? undefined
-        : inArray(
-            browserSessionScreenshotDeletions.chatThreadId,
-            chatThreadIds,
-          ),
-    )
-    .orderBy(browserSessionScreenshotDeletions.createdAt)
-    .limit(limit);
-  signal.throwIfAborted();
-
-  let cleaned = 0;
-  let errors = 0;
-  for (const deletion of deletions) {
-    const result = await settleIncludingAbort(
-      (async () => {
-        await deleteObjects([deletion.objectKey]);
-        signal.throwIfAborted();
-        await db
-          .delete(browserSessionScreenshotDeletions)
-          .where(
-            eq(browserSessionScreenshotDeletions.objectKey, deletion.objectKey),
-          );
-      })(),
-    );
-    signal.throwIfAborted();
-    if (result.ok) {
-      cleaned += 1;
-    } else {
-      errors += 1;
-      L.warn("Managed browser queued screenshot reconciliation failed", {
-        chatThreadId: deletion.chatThreadId,
-        objectKey: deletion.objectKey,
-        error: result.error,
-      });
-    }
-  }
-  return { checked: deletions.length, cleaned, errors };
 }
 
 const reconcileBrowserInstance$ = command(
@@ -3562,7 +3402,7 @@ const reconcileBrowserInstance$ = command(
 
 const reconcileBrowsersWithScope$ = command(
   async (
-    { get, set },
+    { set },
     chatThreadIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<BrowserReconcileResult> => {
@@ -3634,22 +3474,9 @@ const reconcileBrowsersWithScope$ = command(
       chatThreadIds,
       signal,
     );
-    const deleteScreenshotObjects = async (keys: readonly string[]) => {
-      await get(deleteS3Objects(env("R2_USER_ARTIFACTS_BUCKET_NAME"), keys));
-    };
-    const queuedScreenshotCleanup = screenshotSchemaReady
-      ? await reconcileQueuedBrowserScreenshotDeletions(
-          db,
-          deleteScreenshotObjects,
-          RECONCILE_BATCH_SIZE,
-          chatThreadIds,
-          signal,
-        )
-      : { checked: 0, cleaned: 0, errors: 0 };
     const orphanedScreenshotCleanup = screenshotSchemaReady
       ? await reconcileOrphanedBrowserScreenshots(
           db,
-          deleteScreenshotObjects,
           RECONCILE_BATCH_SIZE,
           chatThreadIds,
           signal,
@@ -3663,20 +3490,17 @@ const reconcileBrowsersWithScope$ = command(
         expiredBrowserCleanup.checked +
         expiredInstanceCleanup.checked +
         profileCleanup.checked +
-        queuedScreenshotCleanup.checked +
         orphanedScreenshotCleanup.checked,
       stopped:
         stopped +
         expiredBrowserCleanup.cleaned +
         expiredInstanceCleanup.cleaned +
         profileCleanup.cleaned +
-        queuedScreenshotCleanup.cleaned +
         orphanedScreenshotCleanup.cleaned,
       errors:
         errors +
         expiredBrowserCleanup.errors +
         profileCleanup.errors +
-        queuedScreenshotCleanup.errors +
         orphanedScreenshotCleanup.errors,
       healthy,
     };

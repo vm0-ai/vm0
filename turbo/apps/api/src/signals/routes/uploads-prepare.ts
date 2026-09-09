@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
-import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
 import {
   MAX_UPLOAD_SIZE_BYTES,
@@ -10,7 +9,6 @@ import {
 } from "../../lib/uploads-constants";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import {
   abortMultipartS3Upload,
@@ -19,10 +17,11 @@ import {
   generatePresignedUploadPartUrl,
   s3MetadataHeaders,
 } from "../external/s3";
-import { allocateArtifactObject$ } from "../services/artifact-storage.service";
+import { allocateUploadedArtifact$ } from "../services/uploaded-artifact.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 import { onRejection, tapError } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUT_URL_TTL_SECONDS = 3600;
 const MULTIPART_PART_SIZE_BYTES = 5 * 1024 * 1024;
@@ -52,17 +51,20 @@ const prepareUploadInner$ = command(
       }
     }
 
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const artifact = await set(
-      allocateArtifactObject$,
+      allocateUploadedArtifact$,
       {
         userId: auth.userId,
+        orgId: auth.orgId,
         filename,
-        publicBrand:
-          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+        contentType,
+        size,
+        publicBrand: PUBLIC_BRAND,
+        purpose: bodyResult.data.purpose,
       },
       signal,
     );
+    const bucket = artifact.bucket;
     const { id, key: s3Key, url, metadata } = artifact;
     const uploadHeaders = s3MetadataHeaders(metadata);
 

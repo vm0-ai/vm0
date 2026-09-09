@@ -166,6 +166,20 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
 
 test("Authorize an agent to use an already connected connector", async () => {
   mockConnectedConnector("gmail");
+  let authorized = false;
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs: authorized ? ["gmail"] : [],
+    });
+  });
+  context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
+    expect(body).toStrictEqual({
+      enabledConnectorSlugs: ["gmail"],
+      operation: "add",
+    });
+    authorized = true;
+    return respond(200, { enabledConnectorSlugs: ["gmail"] });
+  });
   const threadId = "00000000-0000-4000-a000-000000000101";
   const callbackPrompt = "Re-check Gmail, then continue";
   let continuationPrompt: string | null = null;
@@ -187,10 +201,10 @@ test("Authorize an agent to use an already connected connector", async () => {
   });
 
   await waitFor(() => {
-    expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+    expect(screen.getByText("Authorize Okou")).toBeInTheDocument();
   });
 
-  click(screen.getByText("Authorize Zero"));
+  click(screen.getByText("Authorize Okou"));
 
   await waitFor(() => {
     expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
@@ -200,6 +214,45 @@ test("Authorize an agent to use an already connected connector", async () => {
       version: 1,
       parts: [{ type: "text", text: callbackPrompt }],
     });
+  });
+});
+
+test("Wait for refreshed authorization state instead of updating optimistically", async () => {
+  mockConnectedConnector("gmail");
+  const releaseUpdate = context.mocks.deferred<void>();
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledConnectorSlugs: [] });
+  });
+  context.mocks.api(
+    userConnectorsContract.update,
+    async ({ body, respond }) => {
+      expect(body).toStrictEqual({
+        enabledConnectorSlugs: ["gmail"],
+        operation: "add",
+      });
+      await releaseUpdate.promise;
+      return respond(200, { enabledConnectorSlugs: ["gmail"] });
+    },
+  );
+
+  await setupPage({
+    context,
+    path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+  });
+
+  click(await screen.findByText("Authorize Okou"));
+
+  await waitFor(() => {
+    expect(screen.queryByText("Authorize Okou")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
+  });
+
+  releaseUpdate.resolve();
+
+  await waitFor(() => {
+    expect(screen.getByText("Authorize Okou")).toBeInTheDocument();
+    expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
+    expect(screen.queryByText("Authorized")).not.toBeInTheDocument();
   });
 });
 
@@ -217,8 +270,8 @@ test("Recover from an agent authorization lookup failure", async () => {
   });
 
   await waitFor(() => {
-    expect(screen.getByText("Zero needs Gmail to proceed")).toBeInTheDocument();
-    expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+    expect(screen.getByText("Okou needs Gmail to proceed")).toBeInTheDocument();
+    expect(screen.getByText("Authorize Okou")).toBeInTheDocument();
   });
 });
 
@@ -286,11 +339,11 @@ test("Connect a manual-token connector while authorizing an agent", async () => 
 
   await waitFor(() => {
     expect(
-      screen.getByText("Zero needs Public Axiom to proceed"),
+      screen.getByText("Okou needs Public Axiom to proceed"),
     ).toBeInTheDocument();
   });
 
-  click(getButtonByText("Authorize Zero"));
+  click(getButtonByText("Authorize Okou"));
 
   const axiomDialog = await screen.findByRole("dialog", {
     name: "Public Axiom",
@@ -361,8 +414,8 @@ test("Connect and authorize an agent through OpenID", async () => {
     path: `/connectors/steam/authorize?agentId=${AGENT_ID}`,
   });
 
-  await screen.findByText("Zero needs Steam to proceed");
-  click(getButtonByText("Authorize Zero"));
+  await screen.findByText("Okou needs Steam to proceed");
+  click(getButtonByText("Authorize Okou"));
 
   await waitFor(() => {
     expect(authWindow.location.href).toBe(
@@ -436,8 +489,8 @@ test("Connect and authorize an agent to use a no-auth connector", async () => {
     path: `/connectors/stripe/authorize?agentId=${AGENT_ID}`,
   });
 
-  await screen.findByText("Zero needs Public Stripe to proceed");
-  click(getButtonByText("Authorize Zero"));
+  await screen.findByText("Okou needs Public Stripe to proceed");
+  click(getButtonByText("Authorize Okou"));
 
   await waitFor(() => {
     expect(connectCalls).toBe(1);
@@ -469,19 +522,20 @@ test("Leave an agent unauthorized when OAuth is cancelled", async () => {
     path: `/connectors/github/authorize?agentId=${AGENT_ID}`,
   });
 
-  await screen.findByText("Zero needs GitHub to proceed");
-  click(getButtonByText("Authorize Zero"));
+  await screen.findByText("Okou needs GitHub to proceed");
+  click(getButtonByText("Authorize Okou"));
 
   await waitFor(() => {
     expect(authWindow.location.href).toBe(
       "https://oauth.test/github/authorize",
     );
   });
-  await screen.findByText("Connecting...");
+  await expect(screen.findByText("Connecting...")).resolves.toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
 
   authWindow.close();
 
-  await screen.findByText("Authorize Zero");
+  await screen.findByText("Authorize Okou");
   expect(updateCalls).toBe(0);
   expect(screen.queryByText("GitHub authorized")).not.toBeInTheDocument();
 });

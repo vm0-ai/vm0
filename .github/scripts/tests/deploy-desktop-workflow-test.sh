@@ -23,8 +23,8 @@ ruby -e '
 
   canonical_signing_identity = "OKOU_DESKTOP_SIGNING_IDENTITY"
   canonical_writer_counts = {
-    "OKOU_DESKTOP_PRODUCT" => [6, 2],
-    "OKOU_DESKTOP_PLATFORM_URL" => [9, 2],
+    "OKOU_DESKTOP_PRODUCT" => [8, 2],
+    "OKOU_DESKTOP_PLATFORM_URL" => [13, 2],
     canonical_signing_identity => [0, 5],
   }
   canonical_writer_counts.each do |name, expected_counts|
@@ -34,6 +34,23 @@ ruby -e '
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
+  {"default-configuration" => "default", "Okou production" => "production", "PR preview" => "preview"}.each do |variant, lane|
+    smoke = build.fetch("steps").find { |step| step["name"] == "Smoke test #{variant} artifact launch" }
+    probe = build.fetch("steps").find { |step| step["name"] == "Probe embedded CUA in #{variant} artifact" }
+    raise "Each packaged variant must run the real CUA probe" unless probe && probe.fetch("run").include?("--cua-probe --signed")
+    evidence_key = "OKOU_DESKTOP_SMOKE_EVIDENCE_PATH"
+    evidence_root = "${{ runner.temp }}/cua-evidence/#{lane}"
+    raise "Dormant evidence must stay outside the packaged app" unless smoke.fetch("env").fetch(evidence_key) == "#{evidence_root}/dormant.json"
+    raise "Probe evidence must stay separate from dormant evidence" unless probe.fetch("env").fetch(evidence_key) == "#{evidence_root}/probe.json"
+    smoke_environment = smoke.fetch("env").reject { |key, _| key == evidence_key }
+    probe_environment = probe.fetch("env").reject { |key, _| key == evidence_key }
+    raise "CUA probe must use the same canonical environment and conditions as ordinary smoke" unless probe_environment == smoke_environment && probe["if"] == smoke["if"]
+    forced = build.fetch("steps").find { |step| step["name"] == "Force blocked CUA cleanup in #{variant} artifact" }
+    raise "Each packaged variant must block real helper execution and prove forced cleanup" unless forced && forced.fetch("run").include?("--cua-forced-probe --signed")
+    raise "Forced evidence must stay separate from healthy lifecycle evidence" unless forced.fetch("env").fetch(evidence_key) == "#{evidence_root}/forced.json"
+    forced_environment = forced.fetch("env").reject { |key, _| key == evidence_key }
+    raise "Forced cleanup must use the same package environment and conditions" unless forced_environment == smoke_environment && forced["if"] == smoke["if"]
+  end
   deploy = desktop.fetch("deploy-desktop")
   raise "deploy-desktop must depend on version detection" unless deploy.fetch("needs") == "detect-desktop-version"
   raise "deploy-desktop must not use a GitHub environment" if deploy.key?("environment")
@@ -61,7 +78,6 @@ ruby -e '
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
   raise "Okou artifact must verify its packaged runtime config" unless okou_verify.include?("desktop-runtime-config.json")
-  raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
 
   preview = build.fetch("steps").find { |step| step["id"] == "preview" }
   preview_env = preview.fetch("env")
@@ -130,7 +146,6 @@ ruby -e '
   raise "Desktop DMG notarization must consume the canonical API credential triple" unless canonical_notarytool_arguments.all? { |argument| notarize_run.include?(argument) }
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
-  raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")
   raise "Desktop promotion must publish an independent Okou release" unless promote_text.include?("OKOU_RELEASE_TAG: okou-desktop-v")
   raise "Desktop promotion must publish Okou artifacts" unless promote_text.include?("Okou-darwin-arm64-")
   raise "Desktop promotion must smoke-test Okou installation" unless promote_text.include?("okou-install-smoke")

@@ -56,6 +56,7 @@ mod run_resolution;
 mod runner_dirname;
 mod runner_process_identity;
 mod runtime_overrides;
+mod ssh;
 mod state_file;
 mod status;
 mod status_file;
@@ -173,6 +174,9 @@ fn init_tracing_with_file(
         .with_filter(RUNNER_FMT_MAX_LEVEL);
     let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::filter_fn(
+            ssh::safe_log_metadata,
+        ))
         .with(fmt_layer)
         .with(axiom_layer)
         .init();
@@ -193,6 +197,9 @@ fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
         .with_filter(RUNNER_FMT_MAX_LEVEL);
     let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::filter_fn(
+            ssh::safe_log_metadata,
+        ))
         .with(fmt_layer)
         .with(axiom_layer)
         .init();
@@ -256,18 +263,22 @@ async fn main() -> ExitCode {
 
     let result = match cli.command {
         Command::Setup => cmd::run_setup().await.map(|()| ExitCode::SUCCESS),
-        Command::Build(args) => cmd::run_build(args, &sandbox_fc::FirecrackerSnapshotProvider)
-            .await
-            .map(|()| ExitCode::SUCCESS),
+        Command::Build(args) => {
+            cmd::run_build(args, &sandbox_firecracker::FirecrackerSnapshotProvider)
+                .await
+                .map(|()| ExitCode::SUCCESS)
+        }
         Command::Config(args) => cmd::run_config(args).await.map(|()| ExitCode::SUCCESS),
         Command::Benchmark(args) => {
-            cmd::run_benchmark(args, &sandbox_fc::FirecrackerRuntimeProvider).await
+            cmd::run_benchmark(args, &sandbox_firecracker::FirecrackerRuntimeProvider).await
         }
-        Command::Exec(args) => cmd::run_exec(args, &sandbox_fc::FirecrackerControl).await,
-        Command::Kill(args) => cmd::run_kill(args, &sandbox_fc::FirecrackerControl).await,
-        Command::Start(args) => cmd::run_start(*args, &sandbox_fc::FirecrackerRuntimeProvider)
-            .await
-            .map(|()| ExitCode::SUCCESS),
+        Command::Exec(args) => cmd::run_exec(args, &sandbox_firecracker::FirecrackerControl).await,
+        Command::Kill(args) => cmd::run_kill(args, &sandbox_firecracker::FirecrackerControl).await,
+        Command::Start(args) => {
+            cmd::run_start(*args, &sandbox_firecracker::FirecrackerRuntimeProvider)
+                .await
+                .map(|()| ExitCode::SUCCESS)
+        }
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
         Command::WorkspaceImageCache(args) => cmd::run_workspace_image_cache(args)

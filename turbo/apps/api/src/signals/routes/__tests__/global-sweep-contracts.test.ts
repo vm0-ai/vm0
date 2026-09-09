@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
+import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
 import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "../cron-drain-email-outbox";
 import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
@@ -21,6 +22,24 @@ const CRON_SECRET = "test-cron-secret";
 describe("production-global sweep route contracts", () => {
   beforeEach(() => {
     mockEnv("CRON_SECRET", CRON_SECRET);
+  });
+
+  it("rejects snapshot compaction requests without authorization", async () => {
+    expect.hasAssertions();
+    await expectGlobalSweepMissingAuth(
+      context,
+      cronCompactChatThreadSnapshotsRoutes,
+      "/api/cron/compact-chat-thread-snapshots",
+    );
+  });
+
+  it("rejects snapshot compaction requests with an invalid cron secret", async () => {
+    expect.hasAssertions();
+    await expectGlobalSweepWrongAuth(
+      context,
+      cronCompactChatThreadSnapshotsRoutes,
+      "/api/cron/compact-chat-thread-snapshots",
+    );
   });
 
   it("rejects cleanup-sandboxes requests with an invalid cron secret", async () => {

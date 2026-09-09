@@ -96,6 +96,7 @@ import { notionProvider } from "./connectors/notion/provider";
 import { netsuiteProvider } from "./connectors/netsuite/provider";
 import { optimizelyCmpProvider } from "./connectors/optimizely-cmp/provider";
 import { otoProvider } from "./connectors/oto/provider";
+import { noyoProvider } from "./connectors/noyo/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
 import { resourceGuruProvider } from "./connectors/resource-guru/provider";
@@ -1055,6 +1056,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     optimizelyCmpProvider,
   ),
   refreshProviderEntry("oto", "api-token", otoProvider),
+  refreshProviderEntry("noyo", "api-token", noyoProvider),
   authCodeRefreshProviderEntry("resource-guru", "oauth", resourceGuruProvider),
   authCodeRefreshProviderEntry(
     "outlook-calendar",

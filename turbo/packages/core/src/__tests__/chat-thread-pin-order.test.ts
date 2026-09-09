@@ -170,6 +170,7 @@ it("replays rank events without touching activity, pin time, or an unpinned thre
     selectedModel: null,
     serviceTier: null,
     computerUseHostId: null,
+    selectedVideoModel: null,
   };
   const event: ReplayChatThreadEvent = {
     id: "event",
@@ -182,6 +183,7 @@ it("replays rank events without touching activity, pin time, or an unpinned thre
     selectedModel: null,
     serviceTier: null,
     computerUseHostId: null,
+    selectedVideoModel: null,
   };
   const [ranked] = replayChatThreadEvents([snapshot], [event]);
   expect(ranked).toMatchObject({ ...snapshot, pinOrder: "a0" });

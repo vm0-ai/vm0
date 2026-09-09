@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ComputerUseCommandBudget } from "./computer-use-command-budget";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   resolveNativeHelperPath,
@@ -6,6 +7,7 @@ import {
 } from "./native-helper-path";
 import type {
   AccessibilityAppStateSnapshot,
+  ComputerUseCommand,
   ComputerUseCommandFailure,
   ComputerUseCoordinateBounds,
   ComputerUseMouseButton,
@@ -68,6 +70,14 @@ export interface ComputerUseNativeAppRecord {
 }
 
 export interface ComputerUseNativeBackend {
+  readonly isCleanupPending?: () => boolean;
+  readonly getRuntimeVersion?: () => string | null;
+  readonly validateCommand?: (command: ComputerUseCommand) => void;
+  readonly setCommandBudget?: (budget: ComputerUseCommandBudget | null) => void;
+  readonly supportsWindowScroll?: boolean;
+  readonly isAvailable?: () => boolean;
+  readonly forceStop?: () => Promise<void>;
+  readonly discoveryNote?: string;
   readonly dispose: (reason?: ComputerUseNativeShutdownReason) => Promise<void>;
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
   readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
@@ -179,6 +189,30 @@ export class ComputerUseNativeHelperError extends Error {
   }
 }
 
+/** Only a read-only native probe deadline is eligible for lifecycle recovery. */
+export class ComputerUseNativePermissionTimeoutError extends ComputerUseNativeHelperError {
+  constructor() {
+    super(
+      "accessibility_unavailable",
+      "Native Computer Use runtime timed out running permissions.state",
+    );
+  }
+}
+
+interface NativeRuntimePhase {
+  readonly phase:
+    | "spawn"
+    | "spawned"
+    | "dispatch"
+    | "response"
+    | "timeout"
+    | "protocol"
+    | "write"
+    | "close";
+  readonly elapsedMs: number;
+  readonly requestSequence?: number;
+}
+
 export interface ComputerUseNativeRuntimeErrorContext {
   readonly helperPath: string;
   readonly mode: "serve" | "oneshot";
@@ -196,6 +230,15 @@ export interface ComputerUseNativeRuntimeErrorContext {
   readonly terminationReason?: ComputerUseNativeTerminationReason;
   readonly pendingRequestCount?: number;
   readonly queuedRequestCount?: number;
+  readonly processSequence?: number;
+  readonly requestSequence?: number;
+  readonly elapsedMs?: number;
+  readonly helperUptimeMs?: number;
+  /** Timer overshoot is observed scheduling delay, not proof of OS sleep. */
+  readonly timerDelayMs?: number;
+  readonly exitKnown?: boolean;
+  readonly phases?: readonly NativeRuntimePhase[];
+  readonly stderrBytes?: number;
 }
 
 type ComputerUseNativeRuntimeErrorReporter = (
@@ -549,7 +592,10 @@ interface ComputerUseNativeRuntimeProcess {
   readonly closePromise: Promise<void>;
   readonly resolveClose: () => void;
   stdoutBuffer: string;
-  stderr: string;
+  readonly sequence: number;
+  readonly startedAt: number;
+  readonly phases: NativeRuntimePhase[];
+  stderrBytes: number;
   closed: boolean;
   terminalErrorReported: boolean;
   stopReason: ComputerUseNativeTerminationReason | null;
@@ -559,6 +605,8 @@ interface ComputerUseNativeRuntimeProcess {
 interface PendingRuntimeRequest {
   readonly kind: string;
   readonly runtime: ComputerUseNativeRuntimeProcess;
+  readonly sequence: number;
+  readonly dispatchedAt: number;
   readonly resolve: (result: Record<string, unknown>) => void;
   readonly reject: (error: Error) => void;
 }
@@ -578,13 +626,23 @@ function runtimePayload(
 // macOS funnels screen capture through a single WindowServer broker that fails
 // transiently when two captures overlap, so the helper must run one request at
 // a time. This is the backstop that keeps a wedged helper from blocking the
-// whole serialized queue forever; on timeout the helper is killed and respawned.
-const DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS = 60_000;
+// whole serialized queue forever. A timeout invalidates this backend; only the
+// generation owner may construct a replacement after proving retirement.
+export const COMPUTER_USE_NATIVE_PERMISSION_TIMEOUT_MS = 60_000;
+const DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS =
+  COMPUTER_USE_NATIVE_PERMISSION_TIMEOUT_MS;
 const DEFAULT_RUNTIME_SHUTDOWN_GRACE_MS = 1_000;
+
+function boundedElapsed(start: number): number {
+  return Math.min(120_000, Math.max(0, Math.round(performance.now() - start)));
+}
 
 class ComputerUseNativeRuntimeClient {
   private runtime: ComputerUseNativeRuntimeProcess | null = null;
+  private readonly retiringRuntimes =
+    new Set<ComputerUseNativeRuntimeProcess>();
   private requestCounter = 0;
+  private processCounter = 0;
   private state: ComputerUseNativeRuntimeClientState = "open";
   private readonly pending = new Map<string, PendingRuntimeRequest>();
   private queueTail: Promise<void> = Promise.resolve();
@@ -600,6 +658,17 @@ class ComputerUseNativeRuntimeClient {
       | undefined,
   ) {}
 
+  isAvailable(): boolean {
+    return this.state === "open";
+  }
+
+  isCleanupPending(): boolean {
+    return (
+      this.retiringRuntimes.size > 0 ||
+      (this.state === "closing" && !!this.runtime && !this.runtime.closed)
+    );
+  }
+
   request(request: ComputerUseNativeRequest): Promise<Record<string, unknown>> {
     if (this.state !== "open") {
       return Promise.reject(this.closedError());
@@ -608,7 +677,7 @@ class ComputerUseNativeRuntimeClient {
     // tracks completion only and swallows the outcome so a single rejected
     // request never poisons the chain for the requests queued behind it.
     this.queuedRequestCount += 1;
-    const run = this.queueTail.then(() => {
+    const run = this.queueTail.then(async () => {
       this.queuedRequestCount -= 1;
       // Disposal may start while this request is waiting behind another one.
       // Re-check at dispatch time so a queued request cannot respawn a helper
@@ -630,36 +699,41 @@ class ComputerUseNativeRuntimeClient {
   ): Promise<Record<string, unknown>> {
     const runtime = this.ensureRuntime();
     const id = `desktop_${(this.requestCounter += 1).toString()}`;
+    const sequence = this.requestCounter;
+    const dispatchedAt = performance.now();
+    this.recordPhase(runtime, "dispatch", sequence);
     return new Promise<Record<string, unknown>>((resolve, reject) => {
       const timer = setTimeout(() => {
-        if (!this.pending.delete(id)) {
+        const pending = this.pending.get(id);
+        if (!pending || pending.runtime !== runtime) {
           return;
         }
-        // A wedged helper would block every queued request behind it. Replace
-        // it so the next request starts on a fresh process. Mark ownership
-        // before signaling so the later close event cannot be misclassified.
-        if (this.runtime === runtime) {
-          this.runtime = null;
-        }
+        // Mark timeout ownership before signaling. The generation owner must
+        // prove retirement before allowing a replacement process.
         runtime.stopReason = "timeout_replace";
-        runtime.terminalErrorReported = true;
-        this.signalRuntime(runtime, "SIGKILL");
-        const helperError = new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          `Native Computer Use runtime timed out running ${request.kind}`,
-        );
+        const helperError =
+          request.kind === "permissions.state"
+            ? new ComputerUseNativePermissionTimeoutError()
+            : new ComputerUseNativeHelperError(
+                "accessibility_unavailable",
+                `Native Computer Use runtime timed out running ${request.kind}`,
+              );
+        this.recordPhase(runtime, "timeout", sequence);
         this.reportRuntimeError(helperError, {
           mode: "serve",
           requestKind: request.kind,
           stage: "timeout",
           terminationReason: "timeout_replace",
-          pendingRequestCount: this.pending.size + 1,
+          ...this.runtimeEvidence(runtime, pending),
+          timerDelayMs: boundedElapsed(dispatchedAt + this.requestTimeoutMs),
         });
-        reject(helperError);
+        this.failRuntime(runtime, helperError);
       }, this.requestTimeoutMs);
       this.pending.set(id, {
         kind: request.kind,
         runtime,
+        sequence,
+        dispatchedAt,
         resolve: (value) => {
           clearTimeout(timer);
           resolve(value);
@@ -669,26 +743,31 @@ class ComputerUseNativeRuntimeClient {
           reject(error);
         },
       });
-      runtime.child.stdin.write(
-        `${JSON.stringify({ id, kind: request.kind, payload: runtimePayload(request) })}\n`,
-        (error) => {
-          const pending = this.pending.get(id);
-          if (error && pending?.runtime === runtime) {
-            this.pending.delete(id);
-            clearTimeout(timer);
-            const helperError = new ComputerUseNativeHelperError(
-              "accessibility_unavailable",
-              `Unable to write to native Computer Use runtime: ${error.message}`,
-            );
-            this.reportRuntimeError(helperError, {
-              mode: "serve",
-              requestKind: request.kind,
-              stage: "write",
-            });
-            reject(helperError);
-          }
-        },
-      );
+      const failedWrite = (error: Error | null | undefined) => {
+        const pending = this.pending.get(id);
+        if (error && pending?.runtime === runtime) {
+          const helperError = new ComputerUseNativeHelperError(
+            "accessibility_unavailable",
+            "Unable to write to native Computer Use runtime",
+          );
+          this.recordPhase(runtime, "write", sequence);
+          this.reportRuntimeError(helperError, {
+            mode: "serve",
+            requestKind: request.kind,
+            stage: "write",
+            ...this.runtimeEvidence(runtime, pending),
+          });
+          this.failRuntime(runtime, helperError);
+        }
+      };
+      try {
+        runtime.child.stdin.write(
+          `${JSON.stringify({ id, kind: request.kind, payload: runtimePayload(request) })}\n`,
+          failedWrite,
+        );
+      } catch (error) {
+        failedWrite(runtimeErrorFromUnknown(error));
+      }
     });
   }
 
@@ -699,14 +778,18 @@ class ComputerUseNativeRuntimeClient {
     this.state = "closing";
     this.rejectAll(this.closedError());
     const runtime = this.runtime;
-    this.disposePromise = (
-      runtime ? this.stopRuntime(runtime, reason) : Promise.resolve()
-    ).finally(() => {
-      if (this.runtime === runtime) {
-        this.runtime = null;
-      }
-      this.state = "closed";
-    });
+    const runtimes = new Set(this.retiringRuntimes);
+    if (runtime) runtimes.add(runtime);
+    this.disposePromise = Promise.all(
+      [...runtimes].map((owned) => this.stopRuntime(owned, reason)),
+    )
+      .then(() => {})
+      .finally(() => {
+        if (this.runtime === runtime) {
+          this.runtime = null;
+        }
+        this.state = "closed";
+      });
     return this.disposePromise;
   }
 
@@ -733,13 +816,18 @@ class ComputerUseNativeRuntimeClient {
       closePromise,
       resolveClose,
       stdoutBuffer: "",
-      stderr: "",
+      sequence: ++this.processCounter,
+      startedAt: performance.now(),
+      phases: [],
+      stderrBytes: 0,
       closed: false,
       terminalErrorReported: false,
       stopReason: null,
       sentSignal: null,
     };
     this.runtime = runtime;
+    this.recordPhase(runtime, "spawn");
+    child.once("spawn", () => this.recordPhase(runtime, "spawned"));
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -747,7 +835,11 @@ class ComputerUseNativeRuntimeClient {
     });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
-      runtime.stderr += chunk;
+      // Count, never retain arbitrary helper stderr (which can contain app data).
+      runtime.stderrBytes = Math.min(
+        4096,
+        runtime.stderrBytes + Buffer.byteLength(chunk),
+      );
     });
     // Shutdown can close the pipe while a write callback is still pending.
     // The callback below owns request errors; this listener prevents the
@@ -770,8 +862,9 @@ class ComputerUseNativeRuntimeClient {
         mode: "serve",
         requestKind: "runtime",
         stage: "spawn",
+        ...this.runtimeEvidence(runtime),
       });
-      this.rejectRuntime(runtime, helperError);
+      this.failRuntime(runtime, helperError);
     });
     child.on("close", (code, signal) => {
       this.markRuntimeClosed(runtime);
@@ -785,13 +878,11 @@ class ComputerUseNativeRuntimeClient {
         return;
       }
       runtime.terminalErrorReported = true;
-      const stderr = runtime.stderr.trim();
       const helperError = new ComputerUseNativeHelperError(
         "accessibility_unavailable",
-        stderr ||
-          (signal
-            ? `Native Computer Use runtime terminated by ${signal}`
-            : `Native Computer Use runtime exited with status ${code ?? "null"}`),
+        signal
+          ? `Native Computer Use runtime terminated by ${signal}`
+          : `Native Computer Use runtime exited with status ${code ?? "null"}`,
       );
       this.reportRuntimeError(helperError, {
         mode: "serve",
@@ -799,10 +890,10 @@ class ComputerUseNativeRuntimeClient {
         stage: "exit",
         exitCode: code,
         signal,
-        stderr,
+        ...this.runtimeEvidence(runtime),
         terminationReason: "unexpected_exit",
       });
-      this.rejectRuntime(runtime, helperError);
+      this.failRuntime(runtime, helperError);
     });
     return runtime;
   }
@@ -811,6 +902,12 @@ class ComputerUseNativeRuntimeClient {
     runtime: ComputerUseNativeRuntimeProcess,
     chunk: string,
   ): void {
+    if (
+      runtime.terminalErrorReported ||
+      runtime.closed ||
+      this.runtime !== runtime
+    )
+      return;
     runtime.stdoutBuffer += chunk;
     while (true) {
       const newlineIndex = runtime.stdoutBuffer.indexOf("\n");
@@ -830,6 +927,7 @@ class ComputerUseNativeRuntimeClient {
     line: string,
   ): void {
     let requestKind = "runtime";
+    let correlated: PendingRuntimeRequest | undefined;
     try {
       const parsed = JSON.parse(line) as unknown;
       if (!isRecord(parsed) || typeof parsed.id !== "string") {
@@ -843,9 +941,25 @@ class ComputerUseNativeRuntimeClient {
         return;
       }
       requestKind = pending.kind;
-      this.pending.delete(parsed.id);
+      correlated = pending;
+      this.recordPhase(runtime, "response", pending.sequence);
       const response = parseHelperResponse(line);
       if (response.status === "failed") {
+        if (
+          pending.kind === "permissions.state" &&
+          response.error?.code === "target_app_unresponsive"
+        ) {
+          const error = new ComputerUseNativePermissionTimeoutError();
+          this.reportRuntimeError(error, {
+            mode: "serve",
+            requestKind,
+            stage: "timeout",
+            ...this.runtimeEvidence(runtime, pending),
+          });
+          this.failRuntime(runtime, error);
+          return;
+        }
+        this.pending.delete(parsed.id);
         pending.reject(
           new ComputerUseNativeHelperError(
             responseErrorCode(response.error?.code),
@@ -854,16 +968,33 @@ class ComputerUseNativeRuntimeClient {
         );
         return;
       }
-      pending.resolve(resultRecord(response.result ?? {}, pending.kind));
+      const result = resultRecord(response.result ?? {}, pending.kind);
+      if (
+        pending.kind === "permissions.state" ||
+        pending.kind === "permissions.request_accessibility" ||
+        pending.kind === "permissions.request_screen_recording"
+      ) {
+        resultPermissions(result);
+      }
+      // Keep correlation and settlement ownership until every validation succeeds.
+      this.pending.delete(parsed.id);
+      pending.resolve(result);
     } catch (error) {
-      const helperError = runtimeErrorFromUnknown(error);
+      const helperError =
+        error instanceof ComputerUseNativeHelperError
+          ? error
+          : new ComputerUseNativeHelperError(
+              "accessibility_unavailable",
+              "Native Computer Use runtime returned malformed JSON",
+            );
+      this.recordPhase(runtime, "protocol", correlated?.sequence);
       this.reportRuntimeError(helperError, {
         mode: "serve",
         requestKind,
         stage: "protocol",
-        stderr: runtime.stderr.trim(),
+        ...this.runtimeEvidence(runtime, correlated),
       });
-      this.rejectRuntime(runtime, helperError);
+      this.failRuntime(runtime, helperError);
     }
   }
 
@@ -896,19 +1027,18 @@ class ComputerUseNativeRuntimeClient {
     }
 
     runtime.terminalErrorReported = true;
-    this.reportRuntimeError(
-      new ComputerUseNativeHelperError(
-        "accessibility_unavailable",
-        "Native Computer Use runtime did not exit after SIGKILL",
-      ),
-      {
-        mode: "serve",
-        requestKind: "runtime",
-        stage: "shutdown",
-        terminationReason: reason,
-        stderr: runtime.stderr.trim(),
-      },
+    const error = new ComputerUseNativeHelperError(
+      "accessibility_unavailable",
+      "Native Computer Use runtime did not exit after SIGKILL",
     );
+    this.reportRuntimeError(error, {
+      mode: "serve",
+      requestKind: "runtime",
+      stage: "shutdown",
+      terminationReason: reason,
+      ...this.runtimeEvidence(runtime),
+    });
+    throw error;
   }
 
   private signalRuntime(
@@ -977,11 +1107,58 @@ class ComputerUseNativeRuntimeClient {
   }
 
   private markRuntimeClosed(runtime: ComputerUseNativeRuntimeProcess): void {
+    this.retiringRuntimes.delete(runtime);
     if (runtime.closed) {
       return;
     }
     runtime.closed = true;
+    this.recordPhase(runtime, "close");
+    runtime.stdoutBuffer = "";
     runtime.resolveClose();
+  }
+
+  private recordPhase(
+    runtime: ComputerUseNativeRuntimeProcess,
+    phase: NativeRuntimePhase["phase"],
+    requestSequence?: number,
+  ): void {
+    runtime.phases.push({
+      phase,
+      elapsedMs: boundedElapsed(runtime.startedAt),
+      ...(requestSequence === undefined ? {} : { requestSequence }),
+    });
+    if (runtime.phases.length > 12) runtime.phases.shift();
+  }
+
+  private runtimeEvidence(
+    runtime: ComputerUseNativeRuntimeProcess,
+    pending?: PendingRuntimeRequest,
+  ) {
+    return {
+      processSequence: runtime.sequence,
+      requestSequence: pending?.sequence,
+      elapsedMs: pending ? boundedElapsed(pending.dispatchedAt) : undefined,
+      helperUptimeMs: boundedElapsed(runtime.startedAt),
+      exitKnown: runtime.closed,
+      stderrBytes: runtime.stderrBytes,
+      phases: [...runtime.phases],
+    };
+  }
+
+  private failRuntime(
+    runtime: ComputerUseNativeRuntimeProcess,
+    error: Error,
+  ): void {
+    // A poisoned process cannot be replaced inside an old generation. Its owner
+    // must retire all leases and snapshots before constructing a new backend.
+    this.state = "closing";
+    runtime.terminalErrorReported = true;
+    runtime.stdoutBuffer = "";
+    if (!runtime.closed) {
+      this.retiringRuntimes.add(runtime);
+      this.signalRuntime(runtime, "SIGKILL");
+    }
+    this.rejectRuntime(runtime, error);
   }
 
   private reportRuntimeError(
@@ -1026,6 +1203,7 @@ class ComputerUseNativeRuntimeClient {
 export function createComputerUseNativeBackend(
   options: RunComputerUseHelperOptions = {},
 ): ComputerUseNativeBackend {
+  let commandBudget: ComputerUseCommandBudget | null = null;
   const helperPath = options.helperPath ?? resolveComputerUseHelperPath();
   const runtime =
     options.mode === "oneshot"
@@ -1039,12 +1217,28 @@ export function createComputerUseNativeBackend(
   const run = async (
     request: ComputerUseNativeRequest,
   ): Promise<Record<string, unknown>> => {
+    // I/O continuations can run before the host's expiry timer. Check the same
+    // grant at every helper dispatch, including post-action observation.
+    if (commandBudget && commandBudget.remaining() <= 0) {
+      throw new ComputerUseNativeHelperError(
+        "command_timeout",
+        "Computer Use total command budget expired before native dispatch; prior action completion may be unknown, do not replay",
+      );
+    }
     return runtime
       ? await runtime.request(request)
       : await runComputerUseHelper(request, { ...options, helperPath });
   };
 
   return {
+    isAvailable: () => runtime?.isAvailable() ?? true,
+    isCleanupPending: () => runtime?.isCleanupPending() ?? false,
+    forceStop: async () => {
+      await runtime?.dispose();
+    },
+    setCommandBudget: (budget) => {
+      commandBudget = budget;
+    },
     dispose: async (reason) => {
       await runtime?.dispose(reason);
     },

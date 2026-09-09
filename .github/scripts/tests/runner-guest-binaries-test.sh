@@ -23,7 +23,7 @@ cat >"$RUNNER_GUEST_INVENTORY_PATH" <<'JSON'
     "destination": "/usr/local/bin/guest one"
   },
   {
-    "package": "guest-two",
+    "package": "service-client",
     "binary": "guest-two",
     "pathEnv": "GUEST_TWO_PATH",
     "bundledEnv": "BUNDLED_GUEST_TWO",
@@ -36,6 +36,7 @@ runner_guest_binaries_load
 
 [ "${#RUNNER_GUEST_PACKAGES[@]}" -eq 2 ] || fail "expected two guest packages"
 [ "${RUNNER_GUEST_PACKAGES[0]}" = "guest-one" ] || fail "expected first package"
+[ "${RUNNER_GUEST_PACKAGES[1]}" = "service-client" ] || fail "expected package independent of binary name"
 [ "${RUNNER_GUEST_BINARIES[1]}" = "guest-two" ] || fail "expected second binary"
 [ "${RUNNER_GUEST_PATH_ENVS[0]}" = "GUEST_ONE_PATH" ] || fail "expected first path env"
 

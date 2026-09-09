@@ -1,3 +1,10 @@
+import { z } from "zod";
+import {
+  slackHistoryMessageSchema,
+  type SlackChannelListQuery,
+  type SlackHistoryQuery,
+} from "@okouai/api-contracts/contracts/integrations-slack-read";
+
 interface SlackApiError {
   ok: false;
   error: string;
@@ -8,6 +15,7 @@ class SlackApiClientError extends Error {
     readonly method: string,
     readonly code: string,
     readonly statusCode?: number,
+    readonly retryAfterSeconds?: number,
   ) {
     super(
       statusCode
@@ -57,10 +65,18 @@ async function callSlackApi<T>(
   });
 
   if (!response.ok) {
+    const retryAfter = response.headers.get("retry-after");
+    const retryAfterSeconds =
+      retryAfter === null ? undefined : Number(retryAfter);
     throw new SlackApiClientError(
       method,
       response.statusText || "http_error",
       response.status,
+      retryAfterSeconds !== undefined &&
+        Number.isInteger(retryAfterSeconds) &&
+        retryAfterSeconds >= 0
+        ? retryAfterSeconds
+        : undefined,
     );
   }
 
@@ -74,54 +90,89 @@ async function callSlackApi<T>(
   return data as T;
 }
 
-interface SlackConversation {
-  id: string;
-  name: string;
-  is_channel: boolean;
-  is_group: boolean;
-  is_im: boolean;
-  is_member: boolean;
-  is_archived: boolean;
-}
+const sharedChannelPageSchema = z.object({
+  channels: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      is_private: z.boolean(),
+    }),
+  ),
+  response_metadata: z
+    .object({ next_cursor: z.string().optional() })
+    .optional(),
+});
 
-interface ConversationsListResponse {
-  ok: true;
-  channels: SlackConversation[];
-  response_metadata?: { next_cursor?: string };
-}
+const sharedConversationPageSchema = z.object({
+  channels: z.array(z.object({ id: z.string() })),
+  response_metadata: z
+    .object({ next_cursor: z.string().optional() })
+    .optional(),
+});
 
-export async function listConversations(
+const historyPageSchema = z.object({
+  messages: z.array(slackHistoryMessageSchema),
+  has_more: z.boolean().optional(),
+  response_metadata: z
+    .object({ next_cursor: z.string().optional() })
+    .optional(),
+});
+
+// For bot tokens, Slack defines `user` as an intersection with the bot's own
+// memberships, including private conversations shared by both identities.
+export async function listSharedSlackChannelsPage(
   token: string,
-  options?: {
-    types?: string;
-    excludeArchived?: boolean;
-    limit?: number;
-  },
+  slackUserId: string,
+  query: SlackChannelListQuery,
+  signal?: AbortSignal,
+) {
+  return sharedChannelPageSchema.parse(
+    await callSlackApi<unknown>(
+      token,
+      "users.conversations",
+      {
+        ...query,
+        user: slackUserId,
+        types: "public_channel,private_channel",
+        exclude_archived: true,
+      },
+      signal,
+    ),
+  );
+}
+
+export async function readSlackHistoryPage(
+  token: string,
+  query: SlackHistoryQuery,
+  signal: AbortSignal,
+) {
+  return historyPageSchema.parse(
+    await callSlackApi<unknown>(token, "conversations.history", query, signal),
+  );
+}
+
+export async function listSharedSlackChannels(
+  token: string,
+  slackUserId: string,
   signal?: AbortSignal,
 ): Promise<{ id: string; name: string }[]> {
   const channels: { id: string; name: string }[] = [];
   let cursor: string | undefined;
 
   do {
-    const result = await callSlackApi<ConversationsListResponse>(
+    const result = await listSharedSlackChannelsPage(
       token,
-      "conversations.list",
-      {
-        types: options?.types ?? "public_channel,private_channel",
-        exclude_archived: options?.excludeArchived ?? true,
-        limit: options?.limit ?? 200,
-        cursor,
-      },
+      slackUserId,
+      { limit: 200, cursor },
       signal,
     );
 
-    for (const ch of result.channels ?? []) {
-      if (ch.is_member && ch.id && ch.name) {
-        channels.push({ id: ch.id, name: ch.name });
-      }
-    }
-
-    cursor = result.response_metadata?.next_cursor;
+    channels.push(
+      ...result.channels.map((channel) => {
+        return { id: channel.id, name: channel.name };
+      }),
+    );
+    cursor = result.response_metadata?.next_cursor || undefined;
   } while (cursor);
 
   channels.sort((a, b) => {
@@ -129,6 +180,44 @@ export async function listConversations(
   });
 
   return channels;
+}
+
+export async function isSlackConversationShared(
+  token: string,
+  slackUserId: string,
+  conversationId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const types = conversationId.startsWith("D")
+    ? "im"
+    : "public_channel,private_channel";
+  let cursor: string | undefined;
+
+  do {
+    const result = sharedConversationPageSchema.parse(
+      await callSlackApi<unknown>(
+        token,
+        "users.conversations",
+        {
+          user: slackUserId,
+          types,
+          limit: 200,
+          cursor,
+        },
+        signal,
+      ),
+    );
+    if (
+      result.channels.some((channel) => {
+        return channel.id === conversationId;
+      })
+    ) {
+      return true;
+    }
+    cursor = result.response_metadata?.next_cursor || undefined;
+  } while (cursor);
+
+  return false;
 }
 
 interface SlackFileInfo {

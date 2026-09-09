@@ -17,6 +17,7 @@ import mitm_addon
 import terminal_usage
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
@@ -246,15 +247,11 @@ def _auth_url_rewrite_flow(real_flow):
 
 
 def _auth_url_rewrite_token_meta() -> dict[str, object]:
-    return {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    return firewall_auth_response(
+        headers={},
+        base="https://real.example.com/webhook",
+        resolved_secrets=["WEBHOOK_URL"],
+    )
 
 
 def test_repeated_eligibility_checks_keep_one_usage_flow_in_flight(

@@ -16,6 +16,12 @@ import {
   readChatEventContextFixture,
   readRunUsageEventsFixture,
 } from "../../../test-fixtures/chat-events";
+import {
+  countPiMemoryStage1CandidatesFixture,
+  readmitPiMemoryStage1CandidateFixture,
+  readPiConversationIdentityFixture,
+  readPiMemoryStage1CandidateFixture,
+} from "../../../test-fixtures/pi-memory-stage1-candidates";
 import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-skill-archive";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -73,6 +79,10 @@ interface SlackEphemeralBody {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function signedSlackOAuthStateText(location: string | null): string {
+  return new URL(location ?? "").searchParams.get("state") ?? "";
 }
 
 function decodeSignedSlackOAuthState(state: string): unknown {
@@ -762,7 +772,10 @@ function piResponsesToolSse(sequence: number): string {
     .join("");
 }
 
+type SlackPiModel = "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.6-luna";
+
 interface SlackPiActorSetup {
+  readonly selectedModel: SlackPiModel;
   readonly actor: ReturnType<typeof bdd.user>;
   readonly orgId: string;
   readonly runnerGroup: ReturnType<typeof runs.configureRunnerGroup>;
@@ -773,7 +786,9 @@ interface PiProviderRequest {
   readonly body: unknown;
 }
 
-async function configureCanonicalSlackPiActor(): Promise<SlackPiActorSetup> {
+async function configureCanonicalSlackPiActor(
+  selectedModel: SlackPiModel,
+): Promise<SlackPiActorSetup> {
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected canonical Slack Pi actor to belong to an org");
@@ -802,7 +817,7 @@ async function configureCanonicalSlackPiActor(): Promise<SlackPiActorSetup> {
       modelProviderId: anthropicProviderId,
     },
     {
-      model: "gpt-5.6-terra",
+      model: selectedModel,
       isDefault: false,
       defaultProviderType: "openai-api-key",
       credentialScope: "org",
@@ -815,7 +830,7 @@ async function configureCanonicalSlackPiActor(): Promise<SlackPiActorSetup> {
     { [FeatureSwitchKey.PiLoop]: false },
   );
   await integrations.updateUserModelPreference(actor, "claude-sonnet-5");
-  return { actor, orgId, runnerGroup };
+  return { actor, orgId, runnerGroup, selectedModel };
 }
 
 async function establishCanonicalSlackHistory(args: SlackPiActorSetup) {
@@ -885,7 +900,7 @@ async function establishCanonicalSlackHistory(args: SlackPiActorSetup) {
   await chat.updateThreadModelSelection(
     args.actor,
     chatThreadId,
-    "gpt-5.6-terra",
+    args.selectedModel,
   );
   await updateFeatureSwitchesForUser(
     context,
@@ -913,10 +928,16 @@ function mockCanonicalSlackPiProvider(): PiProviderRequest[] {
         authorization: request.headers.get("authorization"),
         body: await request.json(),
       });
-      return new HttpResponse(
+      const answer =
         sequence === 0
-          ? piResponsesTextSse("Canonical Slack Pi answer", sequence)
-          : piResponsesToolSse(sequence),
+          ? "Canonical Slack Pi answer"
+          : sequence === 2
+            ? "Continued Slack Pi answer"
+            : null;
+      return new HttpResponse(
+        answer === null
+          ? piResponsesToolSse(sequence)
+          : piResponsesTextSse(answer, sequence),
         { headers: { "content-type": "text/event-stream" } },
       );
     }),
@@ -973,7 +994,12 @@ async function expectFirstSlackPiExecution(args: {
   expect(args.providerRequests).toHaveLength(1);
   expect(args.providerRequests[0]).toMatchObject({
     authorization: "Bearer bdd-slack-terra-api-key",
-    body: { model: "gpt-5.6-terra", store: false, stream: true },
+    body: {
+      model: args.scenario.selectedModel,
+      store: false,
+      stream: true,
+      reasoning: { effort: "max" },
+    },
   });
   const providerInput = JSON.stringify(args.providerRequests[0]?.body);
   expect(providerInput).toContain("establish non-Pi Slack history");
@@ -993,9 +1019,10 @@ async function expectFirstSlackPiExecution(args: {
   return binding.agent_session_id;
 }
 
-async function expectFirstSlackPiOwnership(args: {
+async function expectSlackPiOwnership(args: {
   readonly scenario: CanonicalSlackPiScenario;
   readonly runId: string;
+  readonly assistantText: string;
 }): Promise<void> {
   await expect
     .poll(async () => {
@@ -1034,7 +1061,7 @@ async function expectFirstSlackPiOwnership(args: {
     expect.objectContaining({
       channel: args.scenario.channelId,
       thread_ts: args.scenario.threadTs,
-      text: "Canonical Slack Pi answer",
+      text: args.assistantText,
     }),
   );
   await expect(readRunUsageEventsFixture(args.runId)).resolves.toStrictEqual(
@@ -1055,7 +1082,7 @@ async function expectFirstSlackPiOwnership(args: {
       return (
         event.runId === args.runId &&
         event.eventType === "output.message" &&
-        event.content === "Canonical Slack Pi answer"
+        event.content === args.assistantText
       );
     }),
   ).toHaveLength(1);
@@ -1176,6 +1203,116 @@ async function cancelContinuedSlackPiTurn(args: {
     );
   });
   expect(terminalEvents).toHaveLength(1);
+}
+
+async function runSuccessfulContinuedSlackPiTurn(args: {
+  readonly scenario: CanonicalSlackPiScenario;
+  readonly providerRequests: readonly PiProviderRequest[];
+  readonly firstPrompt: string;
+  readonly firstSessionId: string;
+}) {
+  context.mocks.slack.chat.postMessage.mockClear();
+  const prompt = "complete a newer canonical Slack Pi history";
+  await integrations.postSlackEvent(args.scenario.teamId, {
+    type: "app_mention",
+    user: args.scenario.slackUserId,
+    text: prompt,
+    ts: "2912.000400",
+    thread_ts: args.scenario.threadTs,
+    channel: args.scenario.channelId,
+    channel_type: "channel",
+  });
+  let runId: string | undefined;
+  await expect
+    .poll(async () => {
+      const state = await integrations.readSlackTestState(args.scenario.teamId);
+      runId = state.recent_runs.find((run) => {
+        return run.promptPreview?.includes(prompt) === true;
+      })?.id;
+      return runId;
+    })
+    .toStrictEqual(expect.any(String));
+  if (!runId) {
+    throw new Error("Expected the continued canonical Slack Pi run");
+  }
+  const completedRunId = runId;
+  await expect
+    .poll(async () => {
+      return (await runs.readRun(args.scenario.actor, completedRunId)).status;
+    })
+    .toBe("completed");
+  await flushWaitUntilForTest();
+
+  expect(args.providerRequests).toHaveLength(3);
+  const providerInput = JSON.stringify(args.providerRequests[2]?.body);
+  expect(providerInput).toContain(args.firstPrompt);
+  expect(providerInput).toContain("Canonical Slack Pi answer");
+  expect(providerInput).toContain(prompt);
+  await expect(
+    readRunLaunchSnapshotFixture(context, completedRunId),
+  ).resolves.toMatchObject({ launch_snapshot: { framework: "pi" } });
+  const binding = await readThreadSessionBinding(
+    context,
+    args.scenario.chatThreadId,
+  );
+  expect(binding.agent_session_id).toBe(args.firstSessionId);
+  return { prompt, runId: completedRunId };
+}
+
+async function expectSlackPiMemoryCandidate(args: {
+  readonly scenario: CanonicalSlackPiScenario;
+  readonly runId: string;
+  readonly outcome: "created" | "replaced";
+}) {
+  // Stage 1 candidates intentionally have no production read API. Observe the
+  // private identity only after real Slack ingress and completion own the run.
+  const conversation = await readPiConversationIdentityFixture(args.runId);
+  const run = await runs.readRun(args.scenario.actor, args.runId);
+  if (!run.completedAt) {
+    throw new Error("Expected completed Slack Pi run timestamp");
+  }
+  const candidate = await readPiMemoryStage1CandidateFixture({
+    orgId: args.scenario.orgId,
+    userId: args.scenario.actor.userId,
+  });
+  if (!candidate) {
+    throw new Error("Expected Slack Pi history to create a memory candidate");
+  }
+  expect(candidate).toMatchObject({
+    orgId: args.scenario.orgId,
+    userId: args.scenario.actor.userId,
+    memoryStorageName: "memory",
+    piSessionId: args.scenario.chatThreadId,
+    sourceRunId: args.runId,
+    sourceHistoryHash: conversation.sourceHistoryHash,
+    sourceCompletedAt: new Date(run.completedAt),
+    status: "pending",
+    retryCount: 0,
+    usageCount: 0,
+  });
+  expect(conversation.piSessionId).toBe(args.scenario.chatThreadId);
+  expect(candidate.memoryStorageS3Prefix).toBe(
+    `${args.scenario.orgId}/${candidate.memoryStorageId}`,
+  );
+  expect(
+    candidate.eligibleAt.getTime() - candidate.sourceCompletedAt.getTime(),
+  ).toBe(60_000);
+  expect(sandboxOperationEventsForRun(args.runId)).toContainEqual(
+    expect.objectContaining({
+      op_type: "pi_memory_stage1_candidate_admission",
+      candidate_outcome: args.outcome,
+      memory_storage_id: candidate.memoryStorageId,
+      pi_session_id: args.scenario.chatThreadId,
+      source_history_hash: conversation.sourceHistoryHash,
+    }),
+  );
+  await expect(
+    countPiMemoryStage1CandidatesFixture({
+      memoryStorageId: candidate.memoryStorageId,
+      piSessionId: candidate.piSessionId,
+    }),
+  ).resolves.toBe(1);
+  return candidate;
 }
 
 function telegramDomainProbe() {
@@ -1861,6 +1998,10 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       isAdmin: true,
     });
 
+    const installStart = await integrations.requestSlackOauthInstall(
+      { orgId, userId: admin.userId, prompt: "install prompt" },
+      [307],
+    );
     context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
       slackBotOauthResponse({
         accessToken: "xoxb-bdd-slack",
@@ -1874,12 +2015,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const installed = await integrations.requestSlackOauthCallback(
       {
         code: "install-code",
-        state: JSON.stringify({
-          orgId,
-          userId: admin.userId,
-          prompt: "install prompt",
-          publicBrand: "vm0",
-        }),
+        state: signedSlackOAuthStateText(installStart.headers.get("location")),
       },
       [307],
     );
@@ -1987,6 +2123,10 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       isConnected: false,
       isAdmin: false,
     });
+    const wrongTeamStart = await integrations.requestSlackOauthConnect(
+      { orgId, userId: disconnectedMember.userId },
+      [307],
+    );
     context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
       slackUserOauthResponse({
         workspaceId: "T_OTHER_BDD_SLACK",
@@ -1996,12 +2136,9 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const wrongTeam = await integrations.requestSlackOauthCallback(
       {
         code: "wrong-team-code",
-        state: JSON.stringify({
-          orgId,
-          userId: disconnectedMember.userId,
-          flow: "connect",
-          publicBrand: "vm0",
-        }),
+        state: signedSlackOAuthStateText(
+          wrongTeamStart.headers.get("location"),
+        ),
       },
       [307],
     );
@@ -2099,7 +2236,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       eventBody,
       integrations.signedSlackIngressHeaders(eventBody),
       [200],
-      "vm0",
     );
     await flushWaitUntilForTest();
 
@@ -2140,6 +2276,61 @@ describe("INT-01: Slack app deep webhook flows", () => {
       },
     });
     expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
+  });
+
+  it("preserves a mention-only Slack request with the preceding link and image", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      { installerSlackUserId: slackUserId },
+    );
+    const threadTs = "2900.000100";
+    const messageTs = "2900.000200";
+    context.mocks.slack.conversations.replies.mockResolvedValue({
+      ok: true,
+      messages: [
+        {
+          ts: threadTs,
+          user: slackUserId,
+          text: "This article is still broken: https://example.com/article",
+          files: [
+            {
+              id: "F_ARTICLE_SCREENSHOT",
+              name: "article.png",
+              mimetype: "image/png",
+            },
+          ],
+        },
+        { ts: messageTs, user: slackUserId, text: `<@${botUserId}>` },
+      ],
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: `<@${botUserId}>`,
+      channel: "C_BDD_MENTION_CONTEXT",
+      thread_ts: threadTs,
+      ts: messageTs,
+    });
+    const runId = await pollSlackRun(runnerGroup);
+    const claim = await runs.claimRunnerJob(runId);
+    expect(claim.prompt).toBe(`@Slack User (${botUserId})`);
+    expect(claim.appendSystemPrompt).toContain("https://example.com/article");
+    expect(claim.appendSystemPrompt).toContain("[ID] F_ARTICLE_SCREENSHOT");
+    await completeSlackTriggeredRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      cliAgentType: claim.cliAgentType,
+      assistantText: "Investigating the article and screenshot",
+    });
   });
 
   it("deduplicates canonical Slack retries", async () => {
@@ -2195,7 +2386,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       eventBody,
       integrations.signedSlackIngressHeaders(eventBody),
       [200],
-      "vm0",
     );
     for (const retryNum of ["1", "2", "3"]) {
       await integrations.requestSlackEvent(
@@ -2205,7 +2395,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
           "x-slack-retry-num": retryNum,
         },
         [200],
-        "vm0",
       );
     }
     await flushWaitUntilForTest();
@@ -2222,7 +2411,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(state.chat_ingress[0]).toMatchObject({
       eventId,
       payload: eventBody,
-      publicBrand: "vm0",
+      publicBrand: "okou",
       routeId: state.chat_thread_routes[0]?.id,
       status: "processed",
       retryCount: 3,
@@ -2287,7 +2476,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       requireCanonicalSlackInputAssetId(visibleMessages);
     const canonicalInputMessage = slackInputMessageByText(
       visibleMessages,
-      "admit this event once with @Slack User",
+      "@Slack User admit this event once with @Slack User",
     );
     if (!canonicalInputMessage) {
       throw new Error("Expected the canonical Slack input message");
@@ -2299,8 +2488,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       readChatEventContextFixture(canonicalInputMessage.id),
     ).resolves.toMatchObject({
       slackBotUserId: botUserId,
-      slackPublicBrand: "vm0",
-      slackMessageText: `admit this event once with <@${mentionedSlackUserId}>`,
+      slackPublicBrand: "okou",
+      slackMessageText: `<@${botUserId}> admit this event once with <@${mentionedSlackUserId}>`,
       slackMessageAssets: [
         {
           assetId: canonicalInputAssetId,
@@ -2328,7 +2517,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
                 filenameSnapshot: "source-notes.txt",
                 contentType: "text/plain",
               },
-              { type: "text", text: "admit this event once with @Slack User" },
+              {
+                type: "text",
+                text: "@Slack User admit this event once with @Slack User",
+              },
               {
                 type: "source",
                 kind: "slack",
@@ -2357,7 +2549,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toBe(
-      `admit this event once with @Slack User (${mentionedSlackUserId})\n\n[Web file] source-notes.txt (text/plain)\n   [ID] ${canonicalInputAssetId}`,
+      `@Slack User (${botUserId}) admit this event once with @Slack User (${mentionedSlackUserId})\n\n[Web file] source-notes.txt (text/plain)\n   [ID] ${canonicalInputAssetId}`,
     );
     expect(canonicalInputRun.appendSystemPrompt).toContain(
       `# Current Integration\nYou are currently running inside: Slack\nYour bot user ID: ${botUserId}\nChannel ID: ${channelId}\nChannel type: Channel\nThread ID: ${threadTs}`,
@@ -2393,7 +2585,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       return callback.internalKind === "slack:chat";
     });
     expect(deliveryCallback).toMatchObject({
-      payload: { publicBrand: "vm0" },
+      payload: {},
     });
   });
 
@@ -2803,31 +2995,84 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
-  it("admits canonical Slack turns into one Pi session without duplicate ownership", async () => {
-    const scenario = await establishCanonicalSlackHistory(
-      await configureCanonicalSlackPiActor(),
-    );
-    const providerRequests = mockCanonicalSlackPiProvider();
-    const firstTurn = await runFirstCanonicalSlackPiTurn(scenario);
-    const firstSessionId = await expectFirstSlackPiExecution({
-      scenario,
-      providerRequests,
-      turn: firstTurn,
-    });
-    await expectFirstSlackPiOwnership({ scenario, runId: firstTurn.runId });
-    const continuedTurn = await claimContinuedSlackPiTurn({
-      scenario,
-      providerRequests,
-      firstPrompt: firstTurn.prompt,
-      firstSessionId,
-    });
-    await cancelContinuedSlackPiTurn({
-      scenario,
-      providerRequests,
-      turn: continuedTurn,
-    });
-    expect(providerRequests).toHaveLength(2);
-  }, 90_000);
+  it.each(["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"] as const)(
+    "admits canonical Slack %s turns into one Pi session without duplicate ownership",
+    async (selectedModel) => {
+      mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+      const scenario = await establishCanonicalSlackHistory(
+        await configureCanonicalSlackPiActor(selectedModel),
+      );
+      const providerRequests = mockCanonicalSlackPiProvider();
+      const firstTurn = await runFirstCanonicalSlackPiTurn(scenario);
+      const firstSessionId = await expectFirstSlackPiExecution({
+        scenario,
+        providerRequests,
+        turn: firstTurn,
+      });
+      await expectSlackPiOwnership({
+        scenario,
+        runId: firstTurn.runId,
+        assistantText: "Canonical Slack Pi answer",
+      });
+      const firstCandidate = await expectSlackPiMemoryCandidate({
+        scenario,
+        runId: firstTurn.runId,
+        outcome: "created",
+      });
+      const continuedTurn = await claimContinuedSlackPiTurn({
+        scenario,
+        providerRequests,
+        firstPrompt: firstTurn.prompt,
+        firstSessionId,
+      });
+      await cancelContinuedSlackPiTurn({
+        scenario,
+        providerRequests,
+        turn: continuedTurn,
+      });
+      await expect(
+        readPiMemoryStage1CandidateFixture({
+          orgId: scenario.orgId,
+          userId: scenario.actor.userId,
+        }),
+      ).resolves.toStrictEqual(firstCandidate);
+
+      const successfulContinuation = await runSuccessfulContinuedSlackPiTurn({
+        scenario,
+        providerRequests,
+        firstPrompt: firstTurn.prompt,
+        firstSessionId,
+      });
+      await expectSlackPiOwnership({
+        scenario,
+        runId: successfulContinuation.runId,
+        assistantText: "Continued Slack Pi answer",
+      });
+      const replacedCandidate = await expectSlackPiMemoryCandidate({
+        scenario,
+        runId: successfulContinuation.runId,
+        outcome: "replaced",
+      });
+      expect(replacedCandidate).toMatchObject({
+        memoryStorageId: firstCandidate.memoryStorageId,
+        piSessionId: firstCandidate.piSessionId,
+      });
+      expect(replacedCandidate.sourceHistoryHash).not.toBe(
+        firstCandidate.sourceHistoryHash,
+      );
+      await expect(
+        readmitPiMemoryStage1CandidateFixture(successfulContinuation.runId),
+      ).resolves.toMatchObject({ outcome: "exact_retry" });
+      const afterExactRetry = await readPiMemoryStage1CandidateFixture({
+        orgId: scenario.orgId,
+        userId: scenario.actor.userId,
+      });
+      expect(afterExactRetry?.updatedAt).toStrictEqual(
+        replacedCandidate.updatedAt,
+      );
+    },
+    90_000,
+  );
 
   it("keeps canonical Slack status stable across failed delivery and cancellation", async () => {
     const actor = bdd.user();
@@ -3395,7 +3640,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
             parts: [
               {
                 type: "text",
-                text: "recover this event after admission conflict",
+                text: "@Slack User recover this event after admission conflict",
               },
               {
                 type: "source",
@@ -4206,18 +4451,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect(helpJson).toContain(`<@${botUserId}>`);
     }
 
-    const vm0HostHelp = await integrations.postSlackCommand({
-      teamId,
-      userId: slackUserId,
-      channelId: "C_BDD_CMD",
-      text: "help",
-      publicBrand: "vm0",
-    });
-    const vm0HostHelpJson = JSON.stringify(vm0HostHelp);
-    expect(vm0HostHelpJson).toContain(`<@${botUserId}> Slack Bot Help`);
-    expect(vm0HostHelpJson).toContain("Connect to Zero");
-    expect(vm0HostHelpJson).toContain(`<@${botUserId}>`);
-
     const alreadyConnected = await integrations.postSlackCommand({
       teamId,
       userId: slackUserId,
@@ -4699,23 +4932,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
     integrations.clearSlackCallHistory();
     const teamId = install.teamId;
 
-    await integrations.postSlackEvent(
-      teamId,
-      {
-        type: "app_home_opened",
-        user: slackUserId,
-        tab: "home",
-        channel: "D_BDD_HOME",
-      },
-      "vm0",
-    );
+    await integrations.postSlackEvent(teamId, {
+      type: "app_home_opened",
+      user: slackUserId,
+      tab: "home",
+      channel: "D_BDD_HOME",
+    });
     await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
         expect.objectContaining({ user_id: slackUserId }),
       );
       expect(
         JSON.stringify(context.mocks.slack.views.publish.mock.calls),
-      ).toContain("Connected to Zero");
+      ).toContain("Connected to Okou");
     });
 
     context.mocks.slack.views.publish.mockClear();
@@ -4759,15 +4988,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
       actions: [{ action_id: "home_disconnect", block_id: "home" }],
     };
     mockEnv("APP_URL", "https://app.okou.ai");
-    const disconnected = await integrations.postSlackInteractive(
-      homeDisconnect,
-      "vm0",
-    );
+    const disconnected =
+      await integrations.postSlackInteractive(homeDisconnect);
     expect(disconnected).toBe("");
     expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
     expect(
       JSON.stringify(context.mocks.slack.views.publish.mock.calls),
-    ).toContain("https://app.vm0.ai/settings/slack");
+    ).toContain("https://app.okou.ai/settings/slack");
     mockEnv("APP_URL", "https://app.vm0.test");
     const disconnectedStatus = await integrations.requestSlackConnectStatus(
       actor,
@@ -5083,7 +5310,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     integrations.acceptSlackSessionHistoryDownloads();
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
@@ -5093,7 +5320,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const slackUser1 = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUser1,
-      publicBrand: "okou",
     });
     integrations.clearSlackCallHistory();
 
@@ -5530,7 +5756,7 @@ describe("INT-02: Telegram integration", () => {
     expect(noContentMessage.body).toBe("OK");
   });
 
-  it("keeps official Telegram missing-agent guidance on the webhook Host brand", async () => {
+  it("uses Okou app links in official Telegram missing-agent guidance", async () => {
     const officialToken = "123456:bdd-official-okou-token";
     const officialUsername = "bdd_official_okou_bot";
     mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", officialToken);
@@ -5575,7 +5801,6 @@ describe("INT-02: Telegram integration", () => {
         }),
       },
       [200],
-      "okou",
     );
     await bdd.deleteAgent(actor, onboarding.defaultAgentId);
 
@@ -5596,7 +5821,6 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
       [200],
-      "okou",
     );
     expect(inbound.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -5606,7 +5830,7 @@ describe("INT-02: Telegram integration", () => {
   });
 
   it("registers and manages a Telegram bot through API-visible state", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const telegramProviderBodies: unknown[] = [];
     server.use(
       telegramDomainProbe(),
@@ -5752,7 +5976,6 @@ describe("INT-02: Telegram integration", () => {
         defaultAgentId: agent.agentId,
       },
       [201],
-      "okou",
     );
     expect(registered.body).toMatchObject({
       id: botId,
@@ -5818,7 +6041,6 @@ describe("INT-02: Telegram integration", () => {
         "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
       },
       [200],
-      "okou",
     );
     expect(customConnectPrompt.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -6061,7 +6283,7 @@ describe("INT-02: Telegram integration", () => {
   });
 
   it("keeps Telegram Fast footers bound to the originating run", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -6115,7 +6337,6 @@ describe("INT-02: Telegram integration", () => {
       actor,
       { botToken: telegramBotToken, defaultAgentId: agent.agentId },
       [201],
-      "okou",
     );
     if (!webhookSecret) {
       throw new Error(
@@ -6155,7 +6376,6 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": webhookSecret },
       [200],
-      "okou",
     );
     expect(inbound.body).toBe("OK");
 
@@ -6364,9 +6584,9 @@ describe("INT-02: Telegram integration", () => {
 
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
 
@@ -6421,34 +6641,13 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       throw new Error("Expected app sign-in redirect");
     }
     const unauthenticatedUrl = new URL(unauthenticatedLocation);
-    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.ai");
+    expect(unauthenticatedUrl.origin).toBe("https://app.okou.ai");
     expect(unauthenticatedUrl.pathname).toBe("/sign-in");
     const redirectUrl = unauthenticatedUrl.searchParams.get("redirect_url");
     if (!redirectUrl) {
       throw new Error("Expected redirect_url query parameter");
     }
     expect(new URL(redirectUrl).pathname).toBe("/api/github/oauth/connect");
-
-    const untrustedOkouConnect = await integrations.requestGithubOauthConnect(
-      null,
-      { publicBrand: "okou" },
-      [307],
-    );
-    const untrustedOkouUrl = new URL(
-      untrustedOkouConnect.headers.get("location") ?? "",
-    );
-    expect(untrustedOkouUrl.origin).toBe("https://app.vm0.ai");
-
-    const trustedOkouConnect = await integrations.requestGithubOauthConnect(
-      null,
-      { publicBrand: "vm0" },
-      [307],
-      "okou",
-    );
-    const trustedOkouUrl = new URL(
-      trustedOkouConnect.headers.get("location") ?? "",
-    );
-    expect(trustedOkouUrl.origin).toBe("https://app.okou.ai");
 
     const actor = integrations.user();
     const invalidSignedConnect = await integrations.requestGithubOauthConnect(
@@ -6517,9 +6716,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         });
       }),
     );
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "bdd-github-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "bdd-github-client-secret");
@@ -6543,7 +6742,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "bdd-github-client-id",
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://api.vm0.ai/api/connectors/github/callback",
+      "https://api.okou.ai/api/connectors/github/callback",
     );
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toMatch(/^[0-9a-f]{64}$/u);
@@ -6556,55 +6755,25 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       account_mutation: { intent: "add" },
     });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    const vm0Callback = await connectors.completeOauthCallback(
+    const callback = await connectors.completeOauthCallback(
       "github",
-      { code: "bdd-vm0-github-code", state },
-      { baseUrl: "https://api.vm0.ai" },
-    );
-    const vm0CallbackLocation = new URL(
-      vm0Callback.headers.get("location") ?? "",
-    );
-    expect(vm0CallbackLocation.origin).toBe("https://app.vm0.ai");
-    expect(vm0CallbackLocation.searchParams.get("message")).toBeNull();
-    expect(vm0CallbackLocation.pathname).toBe("/connector/success");
-
-    const okouResponse = await integrations.requestGithubOauthConnect(
-      actor,
-      { publicBrand: "vm0" },
-      [307],
-      "okou",
-    );
-    const okouAuthorizationUrl = new URL(
-      okouResponse.headers.get("location") ?? "",
-    );
-    expect(okouAuthorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://api.okou.ai/api/connectors/github/callback",
-    );
-    const okouState = okouAuthorizationUrl.searchParams.get("state");
-    expect(okouState).toMatch(/^okou\.[0-9a-f]{64}$/u);
-    if (!okouState) {
-      throw new Error("Expected Okou GitHub authorization state");
-    }
-    const okouCallback = await connectors.completeOauthCallback(
-      "github",
-      { code: "bdd-okou-github-code", state: okouState },
+      { code: "bdd-github-code", state },
       { baseUrl: "https://api.okou.ai" },
     );
-    const okouCallbackLocation = new URL(
-      okouCallback.headers.get("location") ?? "",
-    );
-    expect(okouCallbackLocation.origin).toBe("https://app.okou.ai");
-    expect(okouCallbackLocation.pathname).toBe("/connector/success");
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.origin).toBe("https://app.okou.ai");
+    expect(callbackLocation.searchParams.get("message")).toBeNull();
+    expect(callbackLocation.pathname).toBe("/connector/success");
+
     expect(tokenRedirectUris).toStrictEqual([
-      "https://api.vm0.ai/api/connectors/github/callback",
       "https://api.okou.ai/api/connectors/github/callback",
     ]);
   });
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     integrations.configureGithubAppInstallProvider();
 
@@ -6615,7 +6784,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     const okouInstall = await integrations.requestGithubOauthInstall(
       installQuery,
       [307],
-      "okou",
     );
     const okouStateString =
       new URL(okouInstall.headers.get("location") ?? "").searchParams.get(
@@ -6631,24 +6799,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
 
-    const vm0Install = await integrations.requestGithubOauthInstall(
-      installQuery,
-      [307],
-    );
-    const vm0StateString =
-      new URL(vm0Install.headers.get("location") ?? "").searchParams.get(
-        "state",
-      ) ?? "";
-    expect(vm0StateString).not.toBe("");
-    const vm0State: unknown = JSON.parse(vm0StateString);
-    expect(vm0State).toMatchObject({
-      publicBrand: "vm0",
-      publicBrandSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
-      callbackRedirectUri: "https://api.vm0.ai/api/github/app/setup/callback",
-      callbackRedirectUriSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
-      sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
-    });
-
     integrations.configureGithubAppCallbackProvider();
     const okouError = await integrations.requestGithubAppSetupCallback(
       {
@@ -6657,51 +6807,17 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: okouStateString,
       },
       [307],
-      "okou",
     );
     expect(new URL(okouError.headers.get("location") ?? "").origin).toBe(
       "https://app.okou.ai",
     );
 
-    const vm0CallbackQuery = {
-      code: "exact-code",
-      error: "access_denied",
-      error_description: "Provider denied access",
-      installation_id: "12345",
-      setup_action: "install" as const,
-      state: vm0StateString,
-    };
-    const vm0Ingress = await integrations.requestGithubAppSetupCallback(
-      vm0CallbackQuery,
-      [307],
-      "okou",
-    );
-    const vm0ReplayUrl = new URL(vm0Ingress.headers.get("location") ?? "");
-    expect(vm0ReplayUrl.origin).toBe("https://api.vm0.ai");
-    expect(vm0ReplayUrl.pathname).toBe("/api/github/app/setup/callback");
-    expect(Object.fromEntries(vm0ReplayUrl.searchParams)).toStrictEqual({
-      code: "exact-code",
-      error: "access_denied",
-      error_description: "Provider denied access",
-      installation_id: "12345",
-      setup_action: "install",
-      state: vm0StateString,
-    });
-
-    const vm0Error = await integrations.requestGithubAppSetupCallback(
-      vm0CallbackQuery,
-      [307],
-    );
-    expect(new URL(vm0Error.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
-    );
-
-    if (!isRecord(vm0State)) {
-      throw new Error("Expected VM0 GitHub OAuth state to be an object");
+    if (!isRecord(okouState)) {
+      throw new Error("Expected Okou GitHub OAuth state to be an object");
     }
     const tamperedState = JSON.stringify({
-      ...vm0State,
-      publicBrand: "okou",
+      ...okouState,
+      publicBrand: "vm0",
       publicBrandSig: "0".repeat(64),
     });
     const tamperedError = await integrations.requestGithubAppSetupCallback(
@@ -6711,14 +6827,13 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: tamperedState,
       },
       [307],
-      "okou",
     );
     expect(new URL(tamperedError.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
 
     const tamperedCallbackState = JSON.stringify({
-      ...vm0State,
+      ...okouState,
       callbackRedirectUri: "https://attacker.example/callback",
     });
     const tamperedCallback = await integrations.requestGithubAppSetupCallback(
@@ -6728,17 +6843,16 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: tamperedCallbackState,
       },
       [307],
-      "okou",
     );
     expect(new URL(tamperedCallback.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
   });
 
   it("keeps GitHub app setup callback errors visible through redirects", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     const unconfiguredSetup = await integrations.requestGithubAppSetupCallback(
       {},
@@ -6872,9 +6986,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
@@ -6962,7 +7076,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
-      publicBrand: "vm0",
+      publicBrand: "okou",
     });
 
     const invalidConnect = await integrations.requestConnectAgentPhone(
@@ -7052,7 +7166,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps AgentPhone start-link, unlink, and webhook boundaries visible through APIs", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const actor = integrations.user();
     integrations.clearAgentPhoneProvider();
 
@@ -7104,7 +7218,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       actor,
       { phoneHandle },
       [200],
-      "okou",
     );
     expect(sent.body).toStrictEqual({
       phoneHandle,
@@ -7143,20 +7256,10 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
           : undefined,
       publicBrandSignature: connectParams.get("brandSig") ?? undefined,
     };
-    const crossBrandConnect = await integrations.requestConnectAgentPhone(
-      actor,
-      connectBody,
-      [400],
-      "vm0",
-    );
-    expect(crossBrandConnect.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
     const connected = await integrations.requestConnectAgentPhone(
       actor,
       connectBody,
       [200],
-      "okou",
     );
     expect(connected.body).toStrictEqual({ phoneHandle });
 
@@ -7218,35 +7321,11 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       integrations.user(),
       connectBody,
       [409],
-      "okou",
     );
     expect(duplicateConnect.body).toMatchObject({
       error: { code: "CONFLICT" },
     });
 
-    mockOptionalEnv(
-      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
-      String(connectBody.timestamp),
-    );
-    const legacyConnect = await integrations.requestConnectAgentPhone(
-      integrations.user(),
-      {
-        phoneHandle: connectBody.phoneHandle,
-        agentphoneAgentId: connectBody.agentphoneAgentId,
-        timestamp: connectBody.timestamp,
-        signature: connectBody.signature,
-        channel: connectBody.channel,
-      },
-      [409],
-    );
-    expect(legacyConnect.body).toMatchObject({
-      error: { code: "CONFLICT" },
-    });
-
-    mockOptionalEnv(
-      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
-      String(connectBody.timestamp - 1),
-    );
     const strippedNewConnect = await integrations.requestConnectAgentPhone(
       integrations.user(),
       {
@@ -7257,7 +7336,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         channel: connectBody.channel,
       },
       [400],
-      "vm0",
     );
     expect(strippedNewConnect.body).toMatchObject({
       error: { code: "BAD_REQUEST" },
@@ -7283,7 +7361,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
-      publicBrand: "vm0",
+      publicBrand: "okou",
     });
 
     const missingUnlink = await integrations.requestUnlinkAgentPhone(

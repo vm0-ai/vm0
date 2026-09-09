@@ -20,7 +20,7 @@ const context = testContext();
 test("Recover saved draft attachments safely", async () => {
   const thread = continuityThread(6, 1, "Available attachment draft");
   const attachment = continuityAttachment(6, 1, "available-brief.txt");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 6,
     threads: [thread],
     drafts: new Map([
@@ -34,7 +34,7 @@ test("Recover saved draft attachments safely", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -50,7 +50,7 @@ test("Recover saved draft attachments safely", async () => {
 test("Remove an unavailable saved draft attachment without losing text", async () => {
   const thread = continuityThread(7, 1, "Unavailable attachment draft");
   const attachment = continuityAttachment(7, 1, "missing-brief.txt");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 7,
     threads: [thread],
     drafts: new Map([
@@ -64,7 +64,7 @@ test("Remove an unavailable saved draft attachment without losing text", async (
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });

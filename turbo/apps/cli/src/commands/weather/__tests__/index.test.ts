@@ -1,27 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
-import { mkdtempSync } from "node:fs";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 import { HttpResponse, http } from "msw";
 
 import { server } from "../../../mocks/server";
 import { weatherCommand } from "../index";
-
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "weather-home-"));
 const WEATHER_ATTRIBUTION = "Source: Includes weather data from Google";
 const AIR_QUALITY_ATTRIBUTION = "Source: Includes air quality data from Google";
-
-vi.mock("node:os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("node:os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
 
 describe("okou weather command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -32,19 +16,17 @@ describe("okou weather command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-okou-token");
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
   it("posts current-condition requests and renders a readable summary", async () => {

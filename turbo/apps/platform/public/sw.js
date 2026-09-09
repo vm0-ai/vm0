@@ -1,16 +1,3 @@
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
-const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
-  /^(?:staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u;
-
-function defaultNotificationTitle() {
-  const hostname = self.location.hostname.toLowerCase();
-  const isOkou =
-    OKOU_ROOT_DOMAINS.some((domain) => {
-      return hostname === domain || hostname.endsWith(`.${domain}`);
-    }) || OKOU_APP_WORKER_PREVIEW_HOST_PATTERN.test(hostname);
-  return isOkou ? "Okou" : "VM0";
-}
-
 self.addEventListener("install", (_event) => {
   self.skipWaiting();
 });
@@ -35,10 +22,7 @@ self.addEventListener("push", (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(
-      data.title ?? defaultNotificationTitle(),
-      options,
-    ),
+    self.registration.showNotification(data.title ?? "Okou", options),
   );
 });
 

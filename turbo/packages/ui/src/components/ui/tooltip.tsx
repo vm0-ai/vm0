@@ -4,6 +4,7 @@ import * as React from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { asChildRender } from "../../lib/base-ui-compat";
+import { anchoredPopupTransitionClassName } from "./popup-motion";
 import { cn } from "../../lib/utils";
 
 interface TooltipProviderProps extends Omit<
@@ -114,7 +115,8 @@ const TooltipContent = React.forwardRef<HTMLDivElement, TooltipContentProps>(
             ref={ref}
             data-slot="tooltip-content"
             className={cn(
-              "max-w-xs origin-[var(--transform-origin)] overflow-hidden rounded-md px-2 py-1 text-xs transition-[transform,opacity] duration-100 ease-out data-starting-style:opacity-0 data-starting-style:[transform:scale(0.98)] data-ending-style:opacity-0 data-ending-style:[transform:scale(0.98)] data-instant:transition-none motion-reduce:transition-none",
+              anchoredPopupTransitionClassName,
+              "max-w-xs overflow-hidden rounded-md px-2 py-1 text-xs data-instant:transition-none",
               className,
             )}
             style={

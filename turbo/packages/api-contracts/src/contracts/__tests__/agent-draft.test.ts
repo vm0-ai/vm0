@@ -6,20 +6,6 @@ import {
 } from "../agent-draft";
 
 describe("agent draft contract", () => {
-  it("rejects agent drafts that only carry the retired rich-input field", () => {
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Resume agent work" }],
-    };
-
-    expect(
-      agentDraftResponseSchema.safeParse({
-        draftStructuredPrompt: userMessage,
-        draftAttachments: null,
-      }).success,
-    ).toBe(false);
-  });
-
   it("accepts canonical agent draft responses", () => {
     const response = {
       draftUserMessage: {

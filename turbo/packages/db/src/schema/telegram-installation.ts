@@ -14,7 +14,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
  * Stores bot-level tokens and default agent for Telegram bot integrations.
  * One record per Telegram bot. Each bot has exactly one default agent.
  *
- * Ownership model: each installation is owned by an individual VM0 user.
+ * Ownership model: each installation is owned by an individual Okou user.
  * A user may register multiple bots; different users' bots are isolated.
  */
 export const telegramInstallations = pgTable(
@@ -33,7 +33,7 @@ export const telegramInstallations = pgTable(
       },
       { onDelete: "cascade" },
     ),
-    // Owner: the VM0 user who registered the bot (Clerk user ID).
+    // Owner: the Okou user who registered the bot (Clerk user ID).
     ownerUserId: text("owner_user_id").notNull(),
     // Org anchor: snapshot of the owner's current org at registration time.
     orgId: text("org_id").notNull(),

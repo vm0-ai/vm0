@@ -1,3 +1,5 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
@@ -55,6 +57,8 @@ const FAL_STATUS_URL =
 const FAL_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/response";
 const FAL_VIDEO_URL = "https://v3b.fal.media/files/video-output.mp4";
+const FAL_FAILURE_LOG_MESSAGE =
+  "Fal built-in generation webhook reported failed generation";
 const KLING_V3_4K_MODEL = "fal-ai/kling-video/v3/4k/text-to-video";
 const KLING_V3_4K_QUEUE_URL = `https://queue.fal.run/${KLING_V3_4K_MODEL}`;
 const KLING_STATUS_URL =
@@ -337,11 +341,22 @@ async function postFalWebhook(
   requestUrl: string | null,
   payload: unknown,
 ): Promise<void> {
+  await postFalWebhookEnvelope(app, requestUrl, {
+    status: "COMPLETED",
+    payload,
+  });
+}
+
+async function postFalWebhookEnvelope(
+  app: ReturnType<typeof createVideoIoTestApp>,
+  requestUrl: string | null,
+  payload: unknown,
+): Promise<void> {
   const url = new URL(readFalWebhookUrl(requestUrl));
   const response = await app.request(`${url.pathname}${url.search}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "COMPLETED", payload }),
+    body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
 }
@@ -409,7 +424,6 @@ function okouToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly "file:write"[];
-  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -418,7 +432,6 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: args.capabilities ?? ["file:write"],
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -583,6 +596,97 @@ describe("POST /api/video-io/generate", () => {
     });
     expect(calledBytePlus).toBeFalsy();
   });
+
+  it.each([
+    {
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      firstFrameImageUrl: "https://example.com/first.png",
+      videoUrls: ["https://example.com/reference.mp4"],
+    },
+    {
+      firstFrameImageUrl: "https://example.com/first.png",
+      audioUrls: ["https://example.com/reference.mp3"],
+    },
+    {
+      lastFrameImageUrl: "https://example.com/last.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      lastFrameImageUrl: "https://example.com/last.png",
+      videoUrls: ["https://example.com/reference.mp4"],
+    },
+    {
+      lastFrameImageUrl: "https://example.com/last.png",
+      audioUrls: ["https://example.com/reference.mp3"],
+    },
+    {
+      first_frame_image_url: " https://example.com/first.png ",
+      reference_video_urls: ["https://example.com/reference.mp4"],
+    },
+    {
+      model: "dreamina-seedance-2.5",
+      firstFrameImageUrl: "https://example.com/first.png",
+      lastFrameImageUrl: "https://example.com/last.png",
+      imageUrls: ["https://example.com/reference.png"],
+      videoUrls: ["https://example.com/reference.mp4"],
+      audioUrls: ["https://example.com/reference.mp3"],
+    },
+    {
+      model: "dreamina-seedance-2.0-fast",
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      model: "dreamina-seedance-2.0-mini",
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      model: "seedance-1.5-pro",
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+  ])(
+    "rejects conflicting BytePlus frame and reference inputs %# before starting a job",
+    async (inputs) => {
+      const fixture = await seedVideoFixture({ credits: 0 });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      let calledBytePlus = false;
+      server.use(
+        http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+          calledBytePlus = true;
+          return HttpResponse.json({ id: "unexpected-byteplus-task" });
+        }),
+      );
+
+      const app = createVideoIoTestApp(fixture.pricingResolution);
+      const response = await app.request("/api/video-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          prompt: "animate the supplied media",
+          ...inputs,
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: {
+          code: "BAD_REQUEST",
+          message:
+            "BytePlus frame images and reference media cannot be combined. Choose either first/last frames or reference images, videos, and audio.",
+        },
+      });
+      expect(calledBytePlus).toBeFalsy();
+      expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+      expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+      expect(context.mocks.s3.send).not.toHaveBeenCalled();
+      await expect(orgCredits(fixture)).resolves.toBe(0);
+    },
+  );
 
   it("returns 402 when the org has no spendable credits", async () => {
     const fixture = await seedVideoFixture({ credits: 0 });
@@ -1205,177 +1309,197 @@ describe("POST /api/video-io/generate", () => {
     expect(calledBytePlus).toBeFalsy();
   });
 
-  it("generates video files with BytePlus and charges actual callback token usage", async () => {
-    const fixture = await seedVideoFixture();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
+  it.each([false, true])(
+    "generates BytePlus video using the submission policy (private=%s)",
+    async (privateArtifacts) => {
+      const fixture = await seedVideoFixture();
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
+      });
+      const { composeId } = await store.set(
+        seedCompose$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      );
+      const { runId } = await store.set(
+        seedRun$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          composeId,
+          triggerSource: "web",
+        },
+        context.signal,
+      );
+
+      let observedAuthorization: string | null = null;
+      let observedBody: unknown = null;
+      server.use(
+        http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+          observedAuthorization = request.headers.get("authorization");
+          observedBody = await request.json();
+          return HttpResponse.json({
+            id: "byteplus-video-task",
+            status: "queued",
+          });
+        }),
+        http.get(BYTEPLUS_VIDEO_URL, () => {
+          return new HttpResponse(VIDEO_BYTES, {
+            headers: { "content-type": "video/mp4" },
+          });
+        }),
+      );
+
+      const token = okouToken({
         userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
+        orgId: fixture.orgId,
+        runId,
+      });
+      const app = createVideoIoTestApp(fixture.pricingResolution);
+      const response = await app.request("/api/video-io/generate", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          prompt: "a cinematic tracking shot through a neon market",
+          duration: "8s",
+          resolution: "720p",
+          aspectRatio: "16:9",
+          generateAudio: true,
+        }),
+      });
 
-    let observedAuthorization: string | null = null;
-    let observedBody: unknown = null;
-    server.use(
-      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
-        observedAuthorization = request.headers.get("authorization");
-        observedBody = await request.json();
-        return HttpResponse.json({
-          id: "byteplus-video-task",
-          status: "queued",
-        });
-      }),
-      http.get(BYTEPLUS_VIDEO_URL, () => {
-        return new HttpResponse(VIDEO_BYTES, {
-          headers: { "content-type": "video/mp4" },
-        });
-      }),
-    );
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "video",
+        fixture.userId,
+      );
 
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId,
-      publicBrand: "okou",
-    });
-    const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/video-io/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        prompt: "a cinematic tracking shot through a neon market",
-        duration: "8s",
-        resolution: "720p",
-        aspectRatio: "16:9",
-        generateAudio: true,
-      }),
-    });
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.PrivateArtifacts]: !privateArtifacts,
+      });
+      const callbackUrl = readCallbackUrl(observedBody);
+      await postBytePlusWebhook(app, callbackUrl, {
+        id: "byteplus-video-task",
+        model: VIDEO_IO_MODEL,
+        status: "succeeded",
+        content: {
+          video_url: BYTEPLUS_VIDEO_URL,
+        },
+        usage: {
+          completion_tokens: 123_456,
+        },
+      });
+      await flushWaitUntilForTest();
+      const webhookUrl = new URL(callbackUrl);
+      expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+      expect(webhookUrl.pathname).toBe(
+        `/api/webhooks/built-in-generations/byteplus/${generationId}`,
+      );
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `built-in-generation:${generationId}`,
+        expect.objectContaining({
+          generationId,
+          type: "video",
+          status: "completed",
+        }),
+      );
 
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "video",
-      fixture.userId,
-    );
-
-    const callbackUrl = readCallbackUrl(observedBody);
-    await postBytePlusWebhook(app, callbackUrl, {
-      id: "byteplus-video-task",
-      model: VIDEO_IO_MODEL,
-      status: "succeeded",
-      content: {
-        video_url: BYTEPLUS_VIDEO_URL,
-      },
-      usage: {
-        completion_tokens: 123_456,
-      },
-    });
-    await flushWaitUntilForTest();
-    const webhookUrl = new URL(callbackUrl);
-    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
-    expect(webhookUrl.pathname).toBe(
-      `/api/webhooks/built-in-generations/byteplus/${generationId}`,
-    );
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `built-in-generation:${generationId}`,
-      expect.objectContaining({
+      const statusResponse = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      expect(statusResponse.status).toBe(200);
+      const statusBody: unknown = await statusResponse.json();
+      expect(statusBody).toMatchObject({
         generationId,
         type: "video",
         status: "completed",
-      }),
-    );
+      });
+      const body = readGenerationResult(statusBody);
+      expect(body).toMatchObject({
+        contentType: "video/mp4",
+        size: VIDEO_BYTES.byteLength,
+        creditsCharged: 1081,
+        model: VIDEO_IO_MODEL,
+        aspectRatio: "16:9",
+        duration: "8s",
+        durationSeconds: 8,
+        resolution: "720p",
+        generateAudio: true,
+        ...(privateArtifacts ? {} : { sourceUrl: BYTEPLUS_VIDEO_URL }),
+        requestId: "byteplus-video-task",
+      });
+      expect(observedAuthorization).toBe("Bearer test-byteplus-key");
+      expect(observedBody).toMatchObject({
+        model: VIDEO_IO_MODEL,
+        content: [
+          {
+            type: "text",
+            text: "a cinematic tracking shot through a neon market",
+          },
+        ],
+        callback_url: callbackUrl,
+        resolution: "720p",
+        ratio: "16:9",
+        duration: 8,
+        generate_audio: true,
+      });
 
-    const statusResponse = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: { authorization: `Bearer ${token}` } },
-    );
-    expect(statusResponse.status).toBe(200);
-    const statusBody: unknown = await statusResponse.json();
-    expect(statusBody).toMatchObject({
-      generationId,
-      type: "video",
-      status: "completed",
-    });
-    const body = readGenerationResult(statusBody);
-    expect(body).toMatchObject({
-      contentType: "video/mp4",
-      size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1081,
-      model: VIDEO_IO_MODEL,
-      aspectRatio: "16:9",
-      duration: "8s",
-      durationSeconds: 8,
-      resolution: "720p",
-      generateAudio: true,
-      sourceUrl: BYTEPLUS_VIDEO_URL,
-      requestId: "byteplus-video-task",
-    });
-    expect(observedAuthorization).toBe("Bearer test-byteplus-key");
-    expect(observedBody).toMatchObject({
-      model: VIDEO_IO_MODEL,
-      content: [
-        {
-          type: "text",
-          text: "a cinematic tracking shot through a neon market",
-        },
-      ],
-      callback_url: callbackUrl,
-      resolution: "720p",
-      ratio: "16:9",
-      duration: 8,
-      generate_audio: true,
-    });
+      if (
+        !(
+          typeof body === "object" &&
+          body !== null &&
+          "id" in body &&
+          "filename" in body &&
+          "url" in body
+        )
+      ) {
+        throw new Error("Expected video response id, filename, and url");
+      }
+      const fileId = String(body.id);
+      const filename = String(body.filename);
+      const url = String(body.url);
+      expect(filename).toBe(`video-${fileId.slice(0, 8)}.mp4`);
 
-    if (
-      !(
-        typeof body === "object" &&
-        body !== null &&
-        "id" in body &&
-        "filename" in body &&
-        "url" in body
-      )
-    ) {
-      throw new Error("Expected video response id, filename, and url");
-    }
-    const fileId = String(body.id);
-    const filename = String(body.filename);
-    const url = String(body.url);
-    expect(filename).toBe(`video-${fileId.slice(0, 8)}.mp4`);
+      const putInput = putObjectInput();
+      if (privateArtifacts) {
+        expect(body).not.toHaveProperty("sourceUrl");
+        expect(putInput.Bucket).toBe("test-private-artifacts");
+        expect(putInput.Key).toBe(`private-artifacts/${fileId}/${filename}`);
+        expect(url).toBe(
+          `${WEB_ORIGIN}/api/web/download-file?file_id=${fileId}&filename=${filename}`,
+        );
+        expect(
+          JSON.stringify(context.mocks.ably.publish.mock.calls),
+        ).not.toContain(BYTEPLUS_VIDEO_URL);
+      } else {
+        expect(putInput.Bucket).toBe(TEST_BUCKET);
+        expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.mp4$/u);
+        expect(url).toBe(
+          `https://a.okou.io/${String(putInput.Key).replace(/^artifacts\//u, "")}`,
+        );
+        expect(putInput.Metadata).toStrictEqual({
+          "artifact-id": fileId,
+          filename: encodeURIComponent(filename),
+          "public-brand": "okou",
+          "user-id": encodeURIComponent(fixture.userId),
+        });
+      }
+      expect(putInput.ContentType).toBe("video/mp4");
+      const putBody = putInput.Body;
+      expect(Buffer.isBuffer(putBody)).toBeTruthy();
+      if (!Buffer.isBuffer(putBody)) {
+        throw new Error("Expected S3 put body to be a Buffer");
+      }
+      expect(putBody).toStrictEqual(VIDEO_BYTES);
 
-    const putInput = putObjectInput();
-    expect(putInput.Bucket).toBe(TEST_BUCKET);
-    expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.mp4$/u);
-    expect(url).toBe(
-      `https://a.okou.io/${String(putInput.Key).replace(/^artifacts\//u, "")}`,
-    );
-    expect(putInput.Metadata).toStrictEqual({
-      "artifact-id": fileId,
-      filename: encodeURIComponent(filename),
-      "public-brand": "okou",
-      "user-id": encodeURIComponent(fixture.userId),
-    });
-    expect(putInput.ContentType).toBe("video/mp4");
-    const putBody = putInput.Body;
-    expect(Buffer.isBuffer(putBody)).toBeTruthy();
-    if (!Buffer.isBuffer(putBody)) {
-      throw new Error("Expected S3 put body to be a Buffer");
-    }
-    expect(putBody).toStrictEqual(VIDEO_BYTES);
-
-    // The callback-token charge (123,456 tokens at the no-video 720p rate) is
-    // asserted through the result body above and the exact org balance drop,
-    // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
-  });
+      // The callback-token charge (123,456 tokens at the no-video 720p rate) is
+      // asserted through the result body above and the exact org balance drop,
+      // observed on the product billing surface.
+      await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
+    },
+  );
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
     const fixture = await seedVideoFixture();
@@ -1757,16 +1881,74 @@ describe("POST /api/video-io/generate", () => {
     expect(asRecord(content[1]).role).toBeUndefined();
   });
 
+  it("submits Dreamina first and last frames without reference media", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const firstFrame = ownedArtifactReference(fixture.userId, "first.png");
+    const lastFrame = ownedArtifactReference(fixture.userId, "last.png");
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "dreamina-frame-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const response = await createVideoIoTestApp(
+      fixture.pricingResolution,
+    ).request("/api/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "animate between the opening and closing frames",
+        firstFrameImageUrl: firstFrame.url,
+        lastFrameImageUrl: lastFrame.url,
+        imageUrls: [],
+        videoUrls: [],
+        audioUrls: [],
+        generateAudio: true,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      generate_audio: true,
+      content: [
+        {
+          type: "text",
+          text: "animate between the opening and closing frames",
+        },
+        {
+          type: "image_url",
+          image_url: { url: expect.any(String) },
+          role: "first_frame",
+        },
+        {
+          type: "image_url",
+          image_url: { url: expect.any(String) },
+          role: "last_frame",
+        },
+      ],
+    });
+    const content = asRecord(observedBody).content;
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expectPresignedArtifactReference(
+      asRecord(asRecord(content[1]).image_url).url,
+      firstFrame.key,
+    );
+    expectPresignedArtifactReference(
+      asRecord(asRecord(content[2]).image_url).url,
+      lastFrame.key,
+    );
+  });
+
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await seedVideoFixture({ credits: 10_000 });
-    const firstFrameReference = ownedArtifactReference(
-      fixture.userId,
-      "first.png",
-    );
-    const lastFrameReference = ownedArtifactReference(
-      fixture.userId,
-      "last.png",
-    );
     const imageReference = ownedArtifactReference(
       fixture.userId,
       "reference.png",
@@ -1829,8 +2011,6 @@ describe("POST /api/video-io/generate", () => {
         imageUrls: [imageReference.url],
         videoUrls: [videoReference.url],
         audioUrls: [audioReference.url],
-        firstFrameImageUrl: firstFrameReference.url,
-        lastFrameImageUrl: lastFrameReference.url,
         seed: 42,
       }),
     });
@@ -1873,16 +2053,6 @@ describe("POST /api/video-io/generate", () => {
         {
           type: "image_url",
           image_url: { url: expect.any(String) },
-          role: "first_frame",
-        },
-        {
-          type: "image_url",
-          image_url: { url: expect.any(String) },
-          role: "last_frame",
-        },
-        {
-          type: "image_url",
-          image_url: { url: expect.any(String) },
           role: "reference_image",
         },
         {
@@ -1903,22 +2073,14 @@ describe("POST /api/video-io/generate", () => {
     }
     expectPresignedArtifactReference(
       asRecord(asRecord(providerContent[1]).image_url).url,
-      firstFrameReference.key,
-    );
-    expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[2]).image_url).url,
-      lastFrameReference.key,
-    );
-    expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[3]).image_url).url,
       imageReference.key,
     );
     expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[4]).video_url).url,
+      asRecord(asRecord(providerContent[2]).video_url).url,
       videoReference.key,
     );
     expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[5]).audio_url).url,
+      asRecord(asRecord(providerContent[3]).audio_url).url,
       audioReference.key,
     );
 
@@ -2359,9 +2521,143 @@ describe("POST /api/video-io/generate", () => {
       requestId: "video-request",
     });
 
+    await postFalWebhookEnvelope(app, observedRequestUrl, {
+      status: "ERROR",
+      error: "Invalid status code: 422",
+      payload: { detail: [{ type: "file_download_error" }] },
+    });
+    const afterLateFailure = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(afterLateFailure.status).toBe(200);
+    await expect(afterLateFailure.json()).resolves.toMatchObject({
+      status: "completed",
+      result: body,
+    });
+    for (const level of ["info", "warn", "debug"] as const) {
+      expect(
+        context.mocks.axiomLogging[level].mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        }),
+      ).toHaveLength(0);
+    }
+
     // creditsCharged 1504 = 8 seconds at the audio rate (188/s); the silent
     // rate would charge 1000, so the exact balance drop pins the category.
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1504);
+  });
+
+  it("retains safe Fal video failure diagnostics without changing the public error or charging", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json({
+          request_id: "private-fal-video-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+    );
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "private-video-prompt",
+        model: "veo3.1-fast",
+        duration: "8s",
+      }),
+    });
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const payload = {
+      status: "ERROR",
+      error: "Invalid status code: 422",
+      request_id: "private-fal-video-request",
+      payload: {
+        detail: [
+          {
+            type: "file_download_error",
+            msg: "private-video-provider-message",
+            input: { url: "https://private.example/input-video.mp4" },
+          },
+        ],
+      },
+    };
+    await postFalWebhookEnvelope(app, observedRequestUrl, payload);
+    await postFalWebhookEnvelope(app, observedRequestUrl, payload);
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    const expectedError = {
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Generation failed",
+    };
+    expect(statusBody).toMatchObject({
+      generationId,
+      status: "failed",
+      error: expectedError,
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({ status: "failed", error: expectedError }),
+    );
+    const failureLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message]) => {
+        return message === FAL_FAILURE_LOG_MESSAGE;
+      },
+    );
+    expect(failureLogs).toStrictEqual([
+      [
+        FAL_FAILURE_LOG_MESSAGE,
+        expect.objectContaining({
+          provider: "fal",
+          generationId,
+          type: "video",
+          providerHttpStatus: 422,
+          providerErrorType: "file_download_error",
+          failureKind: "unknown",
+          publicErrorCode: "INTERNAL_SERVER_ERROR",
+          expected: false,
+        }),
+      ],
+    ]);
+    for (const level of ["info", "debug"] as const) {
+      expect(
+        context.mocks.axiomLogging[level].mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        }),
+      ).toHaveLength(0);
+    }
+    const publicAndLogSurfaces = JSON.stringify({
+      statusBody,
+      realtime: context.mocks.ably.publish.mock.calls,
+      failureLogs,
+    });
+    for (const privateValue of [
+      "private-video-prompt",
+      "private-video-provider-message",
+      "private-fal-video-request",
+      "private.example",
+      "Invalid status code:",
+    ]) {
+      expect(publicAndLogSurfaces).not.toContain(privateValue);
+    }
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    await expect(orgCredits(fixture)).resolves.toBe(10_000);
   });
 
   it("generates video files with the recommended Kling 4K model", async () => {

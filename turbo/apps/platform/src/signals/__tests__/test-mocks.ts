@@ -187,7 +187,7 @@ interface ImageDimensionsMockValue {
   height: number;
 }
 
-type ImageDimensionsMockResult = ImageDimensionsMockValue | null;
+type ImageDimensionsMockResult = ImageDimensionsMockValue | null | "pending";
 
 interface ImageDimensionsMock {
   readonly createdUrls: string[];
@@ -252,6 +252,29 @@ type OmitFirst<T extends readonly unknown[]> = T extends readonly [
 ]
   ? Rest
   : never;
+
+/**
+ * Every page test now runs on an okou.ai host, where the theme preference is
+ * persisted in a cookie. happy-dom keeps cookies for the whole file, so clear
+ * them whenever a test navigates to a new page.
+ */
+function clearBrowserCookies(): void {
+  const domainAttributes = new Set<string>([""]);
+  const labels = window.location.hostname.split(".");
+  for (let index = 0; index < labels.length - 1; index += 1) {
+    domainAttributes.add(`; Domain=.${labels.slice(index).join(".")}`);
+  }
+  for (const entry of document.cookie.split(";")) {
+    const name = entry.split("=")[0]?.trim();
+    if (!name) {
+      continue;
+    }
+    for (const domainAttribute of domainAttributes) {
+      // oxlint-disable-next-line unicorn/no-document-cookie -- expiring a cookie requires the document setter.
+      document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax; Secure${domainAttribute}`;
+    }
+  }
+}
 
 export function createTestMocks(getSignal: () => AbortSignal) {
   let originalBrowserUrl: string | null = null;
@@ -378,6 +401,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           });
         }
         window.location.href = url;
+        clearBrowserCookies();
         ownedApiOriginMarker?.remove();
         ownedApiOriginMarker = null;
 
@@ -524,6 +548,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
+        vi.spyOn(navigator, "languages", "get").mockReturnValue([language]);
+      },
+      languages: (languages: readonly string[]): void => {
+        vi.spyOn(navigator, "languages", "get").mockReturnValue([...languages]);
       },
       visibilityState: (
         visibilityState: DocumentVisibilityState,
@@ -577,6 +605,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           | readonly ImageDimensionsMockResult[],
       ): ImageDimensionsMock => {
         return mockImageDimensions(getSignal(), results);
+      },
+      requestCacheMode: (): void => {
+        mockRequestCacheMode(getSignal());
       },
       canvasRendering: (): CanvasRenderingMock => {
         return mockCanvasRendering(getSignal());
@@ -1321,19 +1352,32 @@ function mockImageDimensions(
   class TestImage extends EventTarget {
     naturalWidth = 0;
     naturalHeight = 0;
+    private source: string | undefined;
 
-    set src(_value: string) {
+    set src(value: string) {
+      this.source = value;
       const result =
         pendingResults.length > 1
           ? pendingResults.shift()
           : (pendingResults[0] ?? null);
+      if (result === "pending") {
+        return;
+      }
       if (result) {
         this.naturalWidth = result.width;
         this.naturalHeight = result.height;
       }
       queueMicrotask(() => {
-        this.dispatchEvent(new Event(result ? "load" : "error"));
+        if (this.source) {
+          this.dispatchEvent(new Event(result ? "load" : "error"));
+        }
       });
+    }
+
+    removeAttribute(name: string): void {
+      if (name === "src") {
+        this.source = undefined;
+      }
     }
   }
 
@@ -1452,6 +1496,33 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
   return { clipCircles, imageDraws, renders };
 }
 
+function mockRequestCacheMode(signal: AbortSignal): void {
+  const NativeRequest = window.Request;
+  class RequestWithCacheMode extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      super(input, init);
+      Object.defineProperty(this, "cache", {
+        configurable: true,
+        enumerable: true,
+        value:
+          init?.cache ??
+          (input instanceof NativeRequest ? input.cache : "default"),
+      });
+    }
+  }
+
+  // Happy DOM does not expose Request.cache yet. Preserve it so HTTP boundary
+  // mocks can cover cache-sensitive browser behavior without mocking fetch.
+  const descriptor = defineWindowProperty(
+    window,
+    "Request",
+    RequestWithCacheMode,
+  );
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(window, "Request", descriptor);
+  });
+}
+
 function defineWindowProperty(
   target: object,
   property: string,
@@ -1485,9 +1556,6 @@ function productionApiOriginForUrl(url: string): string | null {
   const hostname = new URL(url, window.location.href).hostname;
   if (hostname === "app.okou.ai") {
     return "https://api.okou.ai";
-  }
-  if (hostname === "app.vm0.ai") {
-    return "https://api.vm0.ai";
   }
   return null;
 }

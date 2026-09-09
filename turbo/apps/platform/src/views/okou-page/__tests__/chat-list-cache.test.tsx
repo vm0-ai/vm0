@@ -14,13 +14,13 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
+  cachedChatListEvents,
   chatListAuth,
   chatListEvent,
   chatListThread,
   fastButton,
   installChatListAgent,
   installChatListStream,
-  seedChatListCache,
   sidebarThreadLinks,
   sidebarThreadTitles,
 } from "./chat-list-test-helpers.ts";
@@ -33,10 +33,9 @@ test("Cached conversations appear before remote synchronization", async () => {
   const rename = chatListEvent(1, 2, "renamed", cached.id, {
     title: "Latest cached title",
   });
-  await seedChatListCache(1, auth, [cached], [rename]);
   const remote = context.mocks.deferred<void>();
   const agents = context.mocks.deferred<void>();
-  const { eventsRequested } = installChatListStream(context, {
+  installChatListStream(context, {
     caseId: 1,
     snapshot: [cached],
     events: [rename],
@@ -48,13 +47,10 @@ test("Cached conversations appear before remote synchronization", async () => {
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(1, [cached], [rename]),
   });
-  // Catch-up starts after cache hydration; its response remains blocked.
-  await eventsRequested;
-
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toStrictEqual(["Latest cached title"]);
-  });
+  await screen.findByText("Latest cached title");
+  expect(sidebarThreadTitles()).toStrictEqual(["Latest cached title"]);
   expect(remote.settled()).toBeFalsy();
   expect(agents.settled()).toBeFalsy();
 });
@@ -65,7 +61,6 @@ test("A complete cached conversation list remains navigable", async () => {
     const index = offset + 1;
     return chatListThread(index, `Cached conversation ${index}`);
   });
-  await seedChatListCache(3, auth, cached);
   const remote = context.mocks.deferred<void>();
   installChatListStream(context, {
     caseId: 3,
@@ -78,14 +73,13 @@ test("A complete cached conversation list remains navigable", async () => {
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(3, cached),
   });
-
   const expected = Array.from({ length: 26 }, (_, offset) => {
     return `Cached conversation ${26 - offset}`;
   });
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toStrictEqual(expected);
-  });
+  await screen.findByText("Cached conversation 26");
+  expect(sidebarThreadTitles()).toStrictEqual(expected);
   const links = sidebarThreadLinks();
   expect(links).toHaveLength(26);
   expect(
@@ -102,7 +96,6 @@ test("Rename dialog uses the latest cached title", async () => {
   const rename = chatListEvent(11, 2, "renamed", cached.id, {
     title: "Cached renamed title",
   });
-  await seedChatListCache(11, auth, [cached], [rename]);
   const remote = context.mocks.deferred<void>();
   const detail = context.mocks.deferred<void>();
   installChatListStream(context, {
@@ -126,11 +119,10 @@ test("Rename dialog uses the latest cached title", async () => {
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(11, [cached], [rename]),
   });
-
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toStrictEqual(["Cached renamed title"]);
-  });
+  await screen.findByText("Cached renamed title");
+  expect(sidebarThreadTitles()).toStrictEqual(["Cached renamed title"]);
   const row = sidebarThreadLinks()[0]?.closest(".group");
   if (!(row instanceof HTMLElement)) {
     throw new Error("Expected the cached conversation row");
@@ -183,7 +175,7 @@ test("Signed-out pages do not sync private conversations", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByRole("heading", { name: "Sign in to VM0" }),
+      screen.getByRole("heading", { name: "Sign in to Okou" }),
     ).toBeVisible();
     expect(window.location.pathname).toBe("/sign-in");
   });
@@ -197,7 +189,6 @@ test("The unread filter applies to cached conversations", async () => {
   const auth = chatListAuth(16);
   const unread = chatListThread(15, "Unread cached conversation");
   const read = chatListThread(16, "Read cached conversation");
-  await seedChatListCache(16, auth, [unread, read]);
   const remote = context.mocks.deferred<void>();
   installChatListStream(context, {
     caseId: 16,
@@ -215,14 +206,13 @@ test("The unread filter applies to cached conversations", async () => {
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(16, [unread, read]),
   });
-
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toStrictEqual([
-      "Read cached conversation",
-      "Unread cached conversation",
-    ]);
-  });
+  await screen.findByText("Read cached conversation");
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "Read cached conversation",
+    "Unread cached conversation",
+  ]);
   await userEvent.click(fastButton("Open chat list menu"));
   const unreadOnly = queryAllByRoleFast("menuitem", document).find((item) => {
     return item.textContent?.trim() === "Unread only";

@@ -41,7 +41,7 @@ const DEFAULT_TENANT_NAME = "E2E Test Tenant";
 const DEFAULT_TEAM_NAME = "E2E Test Team";
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const DEFAULT_BOT_ID = "28:e2e-test-bot";
-const DEFAULT_BOT_NAME = "Zero";
+const DEFAULT_BOT_NAME = "Okou";
 const DEFAULT_AGENT_NAME = "e2e-teams-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
@@ -257,11 +257,11 @@ async function seedBuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await db.delete(builtInModelKeys).where(eq(builtInModelKeys.label, agentId));
   await db
     .insert(builtInModelKeys)
-    .values(vm0BuiltInModelKeyRows(agentId))
+    .values(builtInModelKeyRows(agentId))
     .onConflictDoNothing({ target: builtInModelKeys.vendor });
 }
 
-function vm0BuiltInModelKeyRows(agentId: string) {
+function builtInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
@@ -294,7 +294,7 @@ async function deleteBuiltInModelKeysForSeededDefaultAgent(
     return;
   }
 
-  const apiKeys = vm0BuiltInModelKeyRows(agent.id).map((row) => {
+  const apiKeys = builtInModelKeyRows(agent.id).map((row) => {
     return row.apiKey;
   });
   await db

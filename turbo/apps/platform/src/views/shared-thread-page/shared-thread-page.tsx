@@ -10,11 +10,10 @@ import type { Root } from "hast";
 import { Copy, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
-
-import type { BrandName } from "../../signals/branding.ts";
+  ASSISTANT_NAME,
+  BRAND_NAME,
+  type BrandName,
+} from "../../signals/branding.ts";
 import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -215,14 +214,17 @@ function SharedAssistantGroup({
         <div className="relative flex min-w-0 flex-col gap-2">
           {group.messages.map((message) => {
             return (
-              <ChatAssistantMessageBody key={message.messageIndex}>
+              <ChatAssistantMessageBody
+                key={message.messageIndex}
+                className="@[900px]:h-auto @[900px]:min-h-9 @[900px]:py-[calc((2.25rem-1lh)/2)] @[900px]:leading-[1.59375rem]"
+              >
                 {message.tree === undefined && richContent !== undefined ? (
                   <SharedRichMessageBody
                     messageIndex={message.messageIndex}
                     richContent={richContent}
                   />
                 ) : (
-                  <MarkdownEventBody tree={message.tree} mediaPreview />
+                  <MarkdownEventBody tree={message.tree} mediaPreview="link" />
                 )}
               </ChatAssistantMessageBody>
             );
@@ -264,7 +266,9 @@ function SharedRichMessageBody({
           );
         }
       : undefined;
-  return <MarkdownEventBody tree={tree} mediaPreview onRetry={onRetry} />;
+  return (
+    <MarkdownEventBody tree={tree} mediaPreview="link" onRetry={onRetry} />
+  );
 }
 
 function SharedThreadHandoff({
@@ -355,7 +359,7 @@ function SharedThreadHeader({
           aria-label={brandName}
           className="shrink-0 text-foreground transition-opacity hover:opacity-70"
         >
-          <ProductBrandMark brandName={brandName} size="small" />
+          <ProductBrandMark size="small" />
         </a>
         {title !== null ? (
           <h1 className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -485,9 +489,9 @@ export function SharedThreadPage({
 }) {
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
-  const publicBrand = sharedThread?.publicBrand ?? "vm0";
-  const presentation = publicBrandPresentation(publicBrand);
-  const homeUrl = appUrlForPublicBrand(window.location.origin, publicBrand);
+  // Threads shared under the retired brand keep their stored value, but only
+  // okou.ai serves this page, so it always presents the Okou brand.
+  const homeUrl = window.location.origin;
   const shareUrl = sharedThread
     ? `${window.location.origin}/share/threads/${encodeURIComponent(sharedThread.id)}`
     : null;
@@ -511,7 +515,7 @@ export function SharedThreadPage({
   return (
     <div className="okou-app okou-workspace-bg flex h-full min-h-0 flex-col text-foreground">
       <SharedThreadHeader
-        brandName={presentation.brandName}
+        brandName={BRAND_NAME}
         homeUrl={homeUrl}
         shareUrl={shareUrl}
         signInUrl={signInUrl.toString()}
@@ -521,12 +525,12 @@ export function SharedThreadPage({
       {sharedThread ? (
         <>
           <SharedThreadTranscript
-            assistantName={presentation.assistantName}
+            assistantName={ASSISTANT_NAME}
             groups={groups}
             richContent={sharedThread.richContent}
           />
           <SharedThreadHandoff
-            assistantName={presentation.assistantName}
+            assistantName={ASSISTANT_NAME}
             handoffUrl={handoffUrl.toString()}
             signInUrl={signInUrl.toString()}
           />

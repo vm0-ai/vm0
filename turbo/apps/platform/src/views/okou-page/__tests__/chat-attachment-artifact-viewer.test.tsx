@@ -1,3 +1,4 @@
+import { hostContract } from "@okouai/api-contracts/contracts/host";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
@@ -458,4 +459,54 @@ test("Image navigation remains inside its split-view chat", async () => {
     "src",
     "https://private-files.example/left-second.png",
   );
+});
+
+test("Private HTML links open an isolated preview and refresh without exposing a share URL", async () => {
+  const deploymentId = "00000000-0000-4000-8000-000000000009";
+  const canonicalUrl = `http://localhost/api/host/private-deployments/${deploymentId}/view#slide-2`;
+  const firstPreview = `https://pv-${"a".repeat(48)}.sites.vm7.io/`;
+  const nextPreview = `https://pv-${"b".repeat(48)}.sites.vm7.io/`;
+  let currentPreview = firstPreview;
+  const visibility = context.mocks.browser.visibilityState("visible");
+  mockAttachmentChat(context, {
+    chatEvents: [assistantMessage(`[Private report](${canonicalUrl})`)],
+    artifacts: [
+      artifactFile("private-report.html", {
+        id: "private-html",
+        contentType: "text/html",
+        url: canonicalUrl,
+        artifactKind: "hosted-site",
+      }),
+    ],
+  });
+  context.mocks.api(hostContract.privatePreview, ({ respond }) => {
+    return respond(200, {
+      url: currentPreview,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+  });
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+  click(await findNamedLink("Private report"));
+  await waitFor(() => {
+    expect(getPreviewFrame("artifact-dialog-site-frame")).toHaveAttribute(
+      "src",
+      `${firstPreview}#slide-2`,
+    );
+  });
+  expect(document.querySelector('a[aria-label="Share"]')).toBeNull();
+  click(await findNamedButton("Open in split view"));
+  const sidebar = await screen.findByTestId("artifact-sidebar");
+  await waitFor(() => {
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toHaveAttribute("src", `${firstPreview}#slide-2`);
+  });
+  currentPreview = nextPreview;
+  visibility.changeTo("hidden");
+  visibility.changeTo("visible");
+  await waitFor(() => {
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toHaveAttribute("src", `${nextPreview}#slide-2`);
+  });
 });

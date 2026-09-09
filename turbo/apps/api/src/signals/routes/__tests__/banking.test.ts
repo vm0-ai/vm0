@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createStore } from "ccstate";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
@@ -25,6 +26,7 @@ import {
   seedBankingState,
 } from "./helpers/banking-state";
 import { bankingRoutes } from "../banking";
+import { seedRun$ } from "./helpers/usage-state";
 
 const context = testContext();
 
@@ -115,20 +117,35 @@ async function seedBankingFixture(
     visibility: "private",
   });
 
-  const run = args.triggerSource
-    ? await api.createDirectRun(actor, {
-        agentId: agent.agentId,
-        prompt: "banking automation precondition",
-        modelProviderType: "anthropic-api-key",
-        triggerSource: args.triggerSource,
-        vars: { OKOU_AGENT_ID: agent.agentId },
-        secrets: { OKOU_TOKEN: "bdd-banking-okou-token" },
-      })
-    : await api.createRun(actor, {
-        agentId: agent.agentId,
-        prompt: "banking precondition",
-        modelProvider: "anthropic-api-key",
-      });
+  // Existing Goal runs retain their banking grant boundary while draining.
+  const run =
+    args.triggerSource === "goal"
+      ? await createStore().set(
+          seedRun$,
+          {
+            orgId: actor.orgId,
+            userId: actor.userId,
+            composeId: agent.agentId,
+            triggerSource: "goal",
+            status: "running",
+            startedAt: new Date(now()),
+          },
+          context.signal,
+        )
+      : args.triggerSource
+        ? await api.createDirectRun(actor, {
+            agentId: agent.agentId,
+            prompt: "banking automation precondition",
+            modelProviderType: "anthropic-api-key",
+            triggerSource: args.triggerSource,
+            vars: { OKOU_AGENT_ID: agent.agentId },
+            secrets: { OKOU_TOKEN: "bdd-banking-okou-token" },
+          })
+        : await api.createRun(actor, {
+            agentId: agent.agentId,
+            prompt: "banking precondition",
+            modelProvider: "anthropic-api-key",
+          });
 
   const providerCustomerId = randomProviderId("customer");
   const enabledAccountId = randomProviderId("acct-enabled");
@@ -716,7 +733,7 @@ describe("banking access request lifecycle", () => {
   });
 
   it("uses branded Mastercard redirect origins without changing the webhook origin", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockEnv(
       "FINICITY_WEBHOOK_BASE_URL",
       "https://public-api-tunnel.example.test",
@@ -738,8 +755,8 @@ describe("banking access request lifecycle", () => {
     );
     const brandCases = [
       {
-        origin: "https://app.vm0.ai",
-        redirectUri: "https://app.vm0.ai/banking/connect/return",
+        origin: "https://app.okou.ai",
+        redirectUri: "https://app.okou.ai/banking/connect/return",
       },
       {
         origin: "https://app.okou.ai",
@@ -932,35 +949,20 @@ describe("banking access request lifecycle", () => {
     expect(response.status).toBe(401);
   });
 
-  it.each([
-    {
-      apiOrigin: "https://api.vm0.ai",
-      assistantName: "Zero",
-      otherAssistantName: "Okou",
-    },
-    {
-      apiOrigin: "https://api.okou.ai",
-      assistantName: "Okou",
-      otherAssistantName: "Zero",
-    },
-  ] as const)(
-    "serves the $assistantName Finicity browser return from the API",
-    async ({ apiOrigin, assistantName, otherAssistantName }) => {
-      const response = await createApp({
-        signal: context.signal,
-        routes: bankingRoutes,
-      }).request(
-        `${apiOrigin}/api/banking/connect/return?reason=complete&code=200&reportData=null`,
-      );
+  it("serves the Okou Finicity browser return from the API", async () => {
+    const response = await createApp({
+      signal: context.signal,
+      routes: bankingRoutes,
+    }).request(
+      "https://api.okou.ai/api/banking/connect/return?reason=complete&code=200&reportData=null",
+    );
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe(
-        "text/html; charset=utf-8",
-      );
-      const html = await response.text();
-      expect(html).toContain(`<title>Return to ${assistantName}</title>`);
-      expect(html).toContain(`continue in ${assistantName} Chat.`);
-      expect(html).not.toContain(`Return to ${otherAssistantName}`);
-    },
-  );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "text/html; charset=utf-8",
+    );
+    const html = await response.text();
+    expect(html).toContain("<title>Return to Okou</title>");
+    expect(html).toContain("continue in Okou Chat.");
+  });
 });

@@ -1,4 +1,5 @@
 import type { ChatTeamsMessageFile } from "@okouai/db/jsonb-contracts/chat-teams-context";
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
 
 type TeamsPromptFile = Pick<
   ChatTeamsMessageFile,
@@ -56,6 +57,8 @@ export function buildTeamsPrompt(args: {
   readonly threadContext: string;
 }): string {
   return [
+    CONVERSATION_GUIDANCE,
+    "",
     "# Current Integration",
     "You are currently running inside: Microsoft Teams",
     `Tenant ID: ${args.tenantId}`,

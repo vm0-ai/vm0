@@ -1,3 +1,5 @@
+import { ComputerUseDriverController } from "./computer-use-driver";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -14,7 +16,7 @@ import { createDesktopComputerUseHostRuntime } from "./desktop-computer-use-api"
 import type { ComputerUseHostRuntime } from "./computer-use-host";
 import type { ComputerUsePermissionState } from "./computer-use-types";
 
-const api = "https://api.vm0.ai";
+const api = "https://api.okou.ai";
 const startUrl = `${api}/api/computer-use/hosts/start`;
 const permissions = { accessibility: true, screenRecording: true };
 const server = setupServer();
@@ -35,29 +37,16 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function createDesktop(product: "okou" | "zero" = "okou") {
-  const config = resolveDesktopConfig(undefined, product);
+function createDesktop() {
+  const config = resolveDesktopConfig();
   const windows: DesktopAuthWindowRequest[] = [];
   const replies: Promise<string | null>[] = [];
-  const cookieReads: string[] = [];
   const requests: Request[] = [];
-  const nativeSession = {
-    cookies: {
-      get: async ({ url }: { url: string }) => {
-        cookieReads.push(url);
-        return [{ name: "__session", value: "legacy-user" }];
-      },
-    },
-  };
   const addClientHeaders = createDesktopClientHeaderInjector({
-    product,
     clientVersion: "1.2.3",
   });
   const authSession = new DesktopAuthSession({
-    product,
     apiBaseUrl: api,
-    cookieUrls: [config.webUrl, config.platformUrl],
-    cookieSource: nativeSession,
     addClientHeaders,
     tokenUrl: buildDesktopAuthTokenUrl(config.authUrl),
     selectOrgUrl: buildDesktopAuthSelectOrgUrl(config.authUrl, true),
@@ -104,11 +93,13 @@ function createDesktop(product: "okou" | "zero" = "okou") {
         addClientHeaders,
         hostFetch: (input, init) => fetch(input, init),
         getPermissions: options.getPermissions ?? (() => permissions),
-        executeCommand: async () => ({ status: "succeeded", result: {} }),
+        driver: new ComputerUseDriverController({
+          id: "okou",
+          createBackend: () => createComputerUseNativeBackend(),
+        }),
+        executePluginCommand: async () => ({ status: "succeeded", result: {} }),
       },
       {
-        product: config.identity.product,
-        session: nativeSession,
         getAuthSession: () => authSession,
       },
     );
@@ -119,7 +110,6 @@ function createDesktop(product: "okou" | "zero" = "okou") {
     authSession,
     windows,
     replies,
-    cookieReads,
     requests,
     createRuntime,
   };
@@ -142,13 +132,12 @@ function expectAppRequest(request: Request) {
 }
 
 describe("production Okou Computer Use session wiring", () => {
-  it("leaves host start and the auth probe unauthenticated with only native cookies", async () => {
+  it("requires an App token before host start or the auth probe", async () => {
     const desktop = createDesktop();
     const runtime = desktop.createRuntime();
     await runtime.start();
     expect(runtime.getState().status).toBe("unauthenticated");
     expect(desktop.requests).toEqual([]);
-    expect(desktop.cookieReads).toEqual([]);
     expect(desktop.windows.map((window) => window.url)).toEqual([
       "https://app.okou.ai/desktop-auth/token",
     ]);
@@ -170,7 +159,6 @@ describe("production Okou Computer Use session wiring", () => {
       expectAppRequest(request);
       expect(request.headers.get("authorization")).toBe("Bearer app-token");
     }
-    expect(desktop.cookieReads).toEqual([]);
   });
 
   it.each(["fresh", null, "rejected"])(
@@ -214,7 +202,6 @@ describe("production Okou Computer Use session wiring", () => {
         "https://app.okou.ai/desktop-auth/token",
         "https://app.okou.ai/desktop-auth/token",
       ]);
-      expect(desktop.cookieReads).toEqual([]);
     },
   );
 
@@ -236,14 +223,13 @@ describe("production Okou Computer Use session wiring", () => {
     expect(runtime.getState().hostId).toBeNull();
     expect(runtime.getState().status).not.toBe("online");
     expect(leaked).toEqual([]);
-    expect(desktop.cookieReads).toEqual([]);
   });
 
   it("pins a runtime request to the auth session's exact API origin", async () => {
     const desktop = createDesktop();
     desktop.replies.push(Promise.resolve("app-token"));
     const runtime = desktop.createRuntime({
-      platformUrl: new URL("https://api.vm0.ai:444"),
+      platformUrl: new URL("https://api.okou.ai:444"),
     });
     await runtime.start();
     expect(runtime.getState()).toMatchObject({
@@ -254,7 +240,6 @@ describe("production Okou Computer Use session wiring", () => {
       `${api}/api/auth/me`,
       `${api}/api/org`,
     ]);
-    expect(desktop.cookieReads).toEqual([]);
   });
 
   it("blocks an existing runtime after synchronous sign-out while startup is awaiting permissions", async () => {
@@ -277,7 +262,6 @@ describe("production Okou Computer Use session wiring", () => {
     await starting;
     expect(runtime.getState().status).toBe("unauthenticated");
     expect(desktop.requests).toEqual([]);
-    expect(desktop.cookieReads).toEqual([]);
     expect(desktop.windows).toHaveLength(1);
   });
 
@@ -310,7 +294,6 @@ describe("production Okou Computer Use session wiring", () => {
     expect(runtime.getState().status).toBe("unauthenticated");
     expect(starts).toHaveLength(1);
     expect(desktop.requests).toEqual([]);
-    expect(desktop.cookieReads).toEqual([]);
   });
 
   it("discards a late refresh delivery after sign-out before runtime teardown", async () => {
@@ -338,63 +321,6 @@ describe("production Okou Computer Use session wiring", () => {
     expect(desktop.authSession.getCachedToken()).toBeNull();
     expect(starts).toBe(1);
     expect(desktop.requests).toEqual([]);
-    expect(desktop.cookieReads).toEqual([]);
     expect(desktop.windows[1]?.signal.aborted).toBe(true);
   });
-});
-
-describe("production Zero Computer Use session wiring", () => {
-  it("retains cookie-only host registration without App restoration", async () => {
-    const desktop = createDesktop("zero");
-    const runtime = desktop.createRuntime();
-    await runtime.start();
-    expect(runtime.getState().status).toBe("online");
-    expect(desktop.windows).toEqual([]);
-    expect(desktop.cookieReads).toEqual(["https://app.vm0.ai/", startUrl]);
-    expect(desktop.requests).toHaveLength(1);
-    expect(desktop.requests[0]?.headers.get("authorization")).toBeNull();
-    expect(desktop.requests[0]?.headers.get("cookie")).toBe(
-      "__session=legacy-user",
-    );
-  });
-
-  it.each([null, "expired"])(
-    "retains cookies on the initial %s bearer attempt and the WWW refresh retry",
-    async (initial) => {
-      const desktop = createDesktop("zero");
-      if (initial) {
-        desktop.replies.push(Promise.resolve(initial));
-        await desktop.authSession.getToken();
-      }
-      desktop.replies.push(Promise.resolve("fresh"));
-      const starts: Request[] = [];
-      server.use(
-        http.post(startUrl, ({ request }) => {
-          starts.push(request);
-          return request.headers.get("authorization") === "Bearer fresh"
-            ? hostStarted()
-            : new HttpResponse(null, { status: 401 });
-        }),
-      );
-      const runtime = desktop.createRuntime();
-      await runtime.start();
-      expect(runtime.getState().status).toBe("online");
-      expect(
-        starts.map((request) => request.headers.get("authorization")),
-      ).toEqual([initial ? `Bearer ${initial}` : null, "Bearer fresh"]);
-      expect(starts.map((request) => request.headers.get("cookie"))).toEqual([
-        "__session=legacy-user",
-        "__session=legacy-user",
-      ]);
-      expect(desktop.windows.map((window) => window.url)).toEqual(
-        Array(initial ? 2 : 1).fill("https://www.vm0.ai/desktop-auth/token"),
-      );
-      expect(desktop.cookieReads).toEqual([
-        "https://app.vm0.ai/",
-        startUrl,
-        "https://app.vm0.ai/",
-        startUrl,
-      ]);
-    },
-  );
 });

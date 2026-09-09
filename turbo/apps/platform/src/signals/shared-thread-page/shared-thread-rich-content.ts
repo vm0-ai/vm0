@@ -32,6 +32,7 @@ export interface SharedThreadRichContentSignals {
  */
 export function createSharedThreadRichContentSignals(
   messages: readonly SharedMessage[],
+  mathEnabled: boolean,
   ownerSignal: AbortSignal,
 ): SharedThreadRichContentSignals {
   const mermaidDiagrams = createMermaidDiagramRegistry(ownerSignal);
@@ -57,6 +58,7 @@ export function createSharedThreadRichContentSignals(
         const next = new Map<number, Root>();
         for (const message of messages) {
           const tree = parseMarkdownTree(message.content, {
+            math: mathEnabled,
             mermaid: true,
           });
           embedMermaidSignals(tree, (code) => {

@@ -89,12 +89,12 @@ describe("POST /api/uploads/prepare", () => {
     );
     expect(response.body.url).toMatch(/^https?:\/\//);
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.txt$/u,
     );
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("uses the agent token brand instead of the request origin", async () => {
+  it("returns Okou artifact metadata for run uploads", async () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;
@@ -106,7 +106,6 @@ describe("POST /api/uploads/prepare", () => {
       orgId,
       runId,
       capabilities: ["file:write"],
-      publicBrand: "okou",
       iat: seconds,
       exp: seconds + 60,
     });
@@ -116,7 +115,7 @@ describe("POST /api/uploads/prepare", () => {
     ).prepare({
       body: validBody(),
       headers: { authorization: `Bearer ${token}` },
-      extraHeaders: { origin: "https://app.vm0.ai" },
+      extraHeaders: { origin: "https://app.okou.ai" },
     });
 
     expect(response.status).toBe(200);
@@ -131,7 +130,7 @@ describe("POST /api/uploads/prepare", () => {
     });
   });
 
-  it("uses the trusted request brand when no agent token is present", async () => {
+  it("returns Okou artifact metadata for browser uploads", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -250,13 +249,13 @@ describe("POST /api/uploads/prepare", () => {
     });
     expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.txt$/,
     );
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(response.body.uploadHeaders).toMatchObject({
       "x-amz-meta-artifact-id": response.body.id,
       "x-amz-meta-filename": "hello.txt",
-      "x-amz-meta-public-brand": "vm0",
+      "x-amz-meta-public-brand": "okou",
       "x-amz-meta-user-id": encodeURIComponent(userId),
     });
   });
@@ -282,14 +281,14 @@ describe("POST /api/uploads/prepare", () => {
     }
 
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.pdf$/,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.pdf$/,
     );
     expect(response.body.url).not.toContain(peer.userId);
     expect(response.body).toMatchObject({
       uploadHeaders: {
         "x-amz-meta-artifact-id": response.body.id,
         "x-amz-meta-filename": encodeURIComponent("财务 报告.PDF"),
-        "x-amz-meta-public-brand": "vm0",
+        "x-amz-meta-public-brand": "okou",
         "x-amz-meta-user-id": encodeURIComponent(peer.userId),
       },
     });
@@ -304,7 +303,7 @@ describe("POST /api/uploads/prepare", () => {
       Metadata: {
         "artifact-id": response.body.id,
         filename: encodeURIComponent("财务 报告.PDF"),
-        "public-brand": "vm0",
+        "public-brand": "okou",
         "user-id": encodeURIComponent(peer.userId),
       },
     });
@@ -358,7 +357,7 @@ describe("POST /api/uploads/prepare", () => {
     expect(prefixes).toHaveLength(2);
     expect(prefixes[1]).not.toBe(prefixes[0]);
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.txt$/,
     );
   });
 
@@ -536,7 +535,7 @@ describe("POST /api/uploads/prepare", () => {
     expect(command.input.Key).not.toContain(userId);
     expect(command.input.Metadata).toMatchObject({
       filename: encodeURIComponent("my file (1).txt"),
-      "public-brand": "vm0",
+      "public-brand": "okou",
       "user-id": encodeURIComponent(userId),
     });
   });

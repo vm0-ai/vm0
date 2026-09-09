@@ -1,8 +1,11 @@
+mod native;
+
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::constants::runners::{
     PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+    PI_MODEL_CONFIG_NATIVE_GENERATION,
 };
 use api_contracts::generated::types::runners::{
     runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig, PiModelConfigV2, PiModelConfigV3},
@@ -136,6 +139,7 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     validate_resume_session_id(context)?;
     validate_model_provider_env_placeholders(context)?;
     validate_pi_execution_context(context)?;
+    native::validate_environment(context)?;
     validate_user_environment_for_guest(context)?;
     let prepared_run_payload =
         prepare_run_payload_for_run(context).map_err(|error| match error {
@@ -560,6 +564,11 @@ fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
         {
             validate_pi_model_config_v3(value)
         }
+        Some(serde_json::Value::Number(generation))
+            if generation.as_u64() == Some(u64::from(PI_MODEL_CONFIG_NATIVE_GENERATION)) =>
+        {
+            native::validate(value)
+        }
         Some(_) => Err("Pi model config generation is unsupported".to_string()),
     }
 }
@@ -787,10 +796,7 @@ pub(super) fn guest_connector_account_context_file_path(run_id: RunId) -> Runner
     })
 }
 
-pub(super) async fn write_connector_account_context_file(
-    sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
-) -> RunnerResult<String> {
+fn build_connector_account_context(context: &ExecutionContext) -> RunConnectorAccountContext {
     let targets = context
         .connector_runtime_targets
         .iter()
@@ -813,54 +819,55 @@ pub(super) async fn write_connector_account_context_file(
             },
         })
         .collect();
-    let payload = serde_json::to_vec(&RunConnectorAccountContext {
+    RunConnectorAccountContext {
         schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
         targets,
-    })
-    .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
-    let file_path = guest_connector_account_context_file_path(context.run_id)?;
-    sandbox.write_private_file(&file_path, &payload).await?;
-    Ok(file_path)
+    }
 }
 
 pub(super) struct RequiredAgentFiles {
-    pub(super) user_env_file: Option<String>,
+    pub(super) user_env_file: String,
     pub(super) run_payload_file: String,
 }
 
 pub(super) async fn write_required_agent_files(
     sandbox: &dyn Sandbox,
-    run_id: RunId,
-    user_env: &HashMap<String, String>,
+    context: &ExecutionContext,
+    user_env: &mut HashMap<String, String>,
     run_payload: &guest_contracts::env::RunPayload,
 ) -> RunnerResult<RequiredAgentFiles> {
-    let run_payload_file = guest_run_payload_file_path(run_id)?;
+    let connector_context_file = guest_connector_account_context_file_path(context.run_id)?;
+    let connector_context_bytes = serde_json::to_vec(&build_connector_account_context(context))
+        .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
+    user_env.insert(
+        guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.to_string(),
+        connector_context_file.clone(),
+    );
+    let user_env_file = guest_user_env_file_path(context.run_id)?;
+    let user_env_bytes = serde_json::to_vec(user_env)
+        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+    let run_payload_file = guest_run_payload_file_path(context.run_id)?;
     let run_payload_bytes = serde_json::to_vec(run_payload)
         .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
 
-    let user_env_file = if user_env.is_empty() {
-        sandbox
-            .write_private_file(&run_payload_file, &run_payload_bytes)
-            .await?;
-        None
-    } else {
-        let user_env_file = guest_user_env_file_path(run_id)?;
-        let user_env_bytes = serde_json::to_vec(user_env)
-            .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-        sandbox
-            .write_private_files(&[
-                WriteFileEntry {
-                    path: &user_env_file,
-                    content: &user_env_bytes,
-                },
-                WriteFileEntry {
-                    path: &run_payload_file,
-                    content: &run_payload_bytes,
-                },
-            ])
-            .await?;
-        Some(user_env_file)
-    };
+    // All bootstrap inputs are required. Keep context first so a failed account
+    // projection write prevents later writes, including in oversized fallback.
+    sandbox
+        .write_private_files(&[
+            WriteFileEntry {
+                path: &connector_context_file,
+                content: &connector_context_bytes,
+            },
+            WriteFileEntry {
+                path: &user_env_file,
+                content: &user_env_bytes,
+            },
+            WriteFileEntry {
+                path: &run_payload_file,
+                content: &run_payload_bytes,
+            },
+        ])
+        .await?;
 
     Ok(RequiredAgentFiles {
         user_env_file,

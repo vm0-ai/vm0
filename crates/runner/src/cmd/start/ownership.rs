@@ -159,12 +159,16 @@ fn idle_snapshot_contains_sandbox_id(
         .idle_sandboxes
         .iter()
         .any(|idle_sandbox| idle_sandbox.sandbox_id == sandbox_id)
+        || idle_snapshot
+            .blank_sandboxes
+            .iter()
+            .any(|blank| blank.sandbox_id == sandbox_id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::status::IdleSandbox;
+    use crate::status::{BlankSandbox, IdleSandbox};
 
     async fn status_idle_reuse_keys_and_active_runs(
         status_path: &std::path::Path,
@@ -205,6 +209,7 @@ mod tests {
     fn idle_snapshot(reuse_key: &str, sandbox_id: SandboxId) -> IdlePoolSnapshot {
         IdlePoolSnapshot {
             revision: 1,
+            blank_sandboxes: vec![],
             idle_sandboxes: vec![IdleSandbox {
                 reuse_key: reuse_key.to_string(),
                 sandbox_id,
@@ -353,7 +358,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orphan_idle_owned_requires_idle_snapshot_membership() {
+    async fn orphan_idle_owned_requires_exact_or_blank_snapshot_membership() {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
@@ -382,5 +387,27 @@ mod tests {
             vec![(run_id.to_string(), sandbox_id.to_string())]
         );
         assert_eq!(orphans.len(), 1);
+
+        let reconciled = transitions
+            .orphan_reconciled_idle_owned(
+                &orphans,
+                [RunSandbox::new(run_id, sandbox_id)],
+                IdlePoolSnapshot {
+                    revision: 2,
+                    idle_sandboxes: vec![],
+                    blank_sandboxes: vec![BlankSandbox { sandbox_id }],
+                },
+            )
+            .await;
+        assert_eq!(reconciled, vec![RunSandbox::new(run_id, sandbox_id)]);
+        assert_eq!(orphans.len(), 0);
+        let persisted = tokio::fs::read_to_string(&status_path).await.unwrap();
+        let persisted: serde_json::Value = serde_json::from_str(&persisted).unwrap();
+        assert_eq!(persisted["active_runs"], serde_json::json!([]));
+        assert!(persisted.get("idle_sandboxes").is_none());
+        assert_eq!(
+            persisted["blank_sandboxes"],
+            serde_json::json!([{ "sandbox_id": sandbox_id.to_string() }])
+        );
     }
 }

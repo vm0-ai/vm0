@@ -64,7 +64,6 @@ interface AgentPhoneInboundMessage {
   readonly mediaUrl?: string;
   readonly mentions?: readonly Readonly<Record<string, unknown>>[];
   readonly recentHistory?: readonly Readonly<Record<string, unknown>>[];
-  readonly publicBrand?: PublicBrand;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -217,7 +216,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
       rawBody,
       agentPhoneWebhookHeaders(rawBody, `evt-bdd-agentphone-${randomUUID()}`),
       [200],
-      message.publicBrand ?? "vm0",
     );
     // Webhook handling is waitUntil-detached; drain it so follow-up steps
     // cannot observe provider sends before thread/session state is persisted.
@@ -271,21 +269,14 @@ export function createAgentPhoneBddApi(context: TestContext) {
       actor: ApiTestUser,
       phone: string,
       capture: AgentPhoneSendCapture,
-      publicBrand: PublicBrand = "vm0",
     ): Promise<void> {
       await postAgentPhoneInboundMessage({
         channel: "sms",
         from: phone,
         body: "hi",
-        publicBrand,
       });
       const connectBody = harvestConnectBody(capture);
-      await integrations.requestConnectAgentPhone(
-        actor,
-        connectBody,
-        [200],
-        publicBrand,
-      );
+      await integrations.requestConnectAgentPhone(actor, connectBody, [200]);
       const welcome = capture.messages.at(-1);
       if (
         welcome?.toNumber !== phone ||

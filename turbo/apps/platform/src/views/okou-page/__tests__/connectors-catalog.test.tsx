@@ -253,12 +253,12 @@ test("Navigate the connector catalog with a keyboard", async () => {
   });
   ai.focus();
   await user.keyboard("{Enter}");
-  const models = getConnectorAction("button", "General Models and Reasoning");
+  const models = getConnectorAction("button", "General models and reasoning");
   models.focus();
   await user.keyboard("{Enter}");
   const engineering = getConnectorAction(
     "button",
-    "Engineering and Team Execution",
+    "Engineering and team execution",
   );
   engineering.focus();
   await user.keyboard("{Enter}");
@@ -287,7 +287,7 @@ test("Require an application update before using connectors", async () => {
 
   const dialog = await screen.findByRole("dialog", { name: "Update required" });
   expect(dialog).toHaveTextContent(
-    "This version of VM0 is no longer supported.",
+    "This version of Okou is no longer supported.",
   );
   expect(screen.queryByText("HTTP 426")).not.toBeInTheDocument();
 });
@@ -427,8 +427,10 @@ test("Present a connector with no accounts", async () => {
   });
 
   click(connect);
-  await waitFor(() => {
-    expect(getConnectorAction("button", "Connect GitHub")).toBeDisabled();
-  });
+  await expect(
+    screen.findByRole("status", { name: "Connecting..." }),
+  ).resolves.toBeVisible();
+  expect(connect).toBeDisabled();
+  expect(screen.queryByRole("dialog")).toBeNull();
   oauthStarted.resolve();
 });

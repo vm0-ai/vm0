@@ -1,5 +1,11 @@
 import type { FormEvent, ReactNode } from "react";
-import { useGet, useLoadable, useSet, type Loadable } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLoadable,
+  useSet,
+  type Loadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { EllipsisVertical } from "lucide-react";
@@ -58,7 +64,7 @@ interface ConnectorAccountManagerDialogProps {
   readonly icon: ReactNode;
   readonly connectionActionsEnabled: boolean;
   readonly onClose: () => void;
-  readonly onAdd: () => void;
+  readonly onAdd?: () => void;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
   readonly onReviewScopes?: (account: ConnectorAccountConnection) => void;
 }
@@ -431,13 +437,13 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
     );
   };
   return (
-    <form className="px-1 py-4" onSubmit={submit}>
-      <label className="text-sm font-medium" htmlFor="account-rename">
-        {t(($) => {
-          return $.connectors.accounts.accountName;
-        })}
-      </label>
-      <div className="mt-2 flex gap-2">
+    <form className="space-y-4 px-5 py-4" onSubmit={submit}>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium" htmlFor="account-rename">
+          {t(($) => {
+            return $.connectors.accounts.accountName;
+          })}
+        </label>
         <Input
           id="account-rename"
           value={draft.displayName}
@@ -446,14 +452,16 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
           }}
           maxLength={255}
         />
-        <Button type="submit" disabled={renameLoadable.state === "loading"}>
-          {t(($) => {
-            return $.connectors.actions.save;
-          })}
-        </Button>
+      </div>
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={clear}>
           {t(($) => {
             return $.connectors.actions.cancel;
+          })}
+        </Button>
+        <Button type="submit" disabled={renameLoadable.state === "loading"}>
+          {t(($) => {
+            return $.connectors.actions.save;
           })}
         </Button>
       </div>
@@ -607,7 +615,7 @@ export function ConnectorAccountManagerDialog({
   onReviewScopes,
 }: ConnectorAccountManagerDialogProps) {
   const { t } = useTranslation();
-  const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
+  const accountsLoadable = useLastLoadable(settingsConnectorAccounts.accounts$);
   const summariesLoadable = useLoadable(connectorAccountSummaryByTarget$);
   const search = useGet(settingsConnectorAccounts.search$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
@@ -699,24 +707,26 @@ export function ConnectorAccountManagerDialog({
             </Button>
           ) : null}
         </div>
-        <DialogFooter className="shrink-0">
-          <Button
-            type="button"
-            disabled={
-              !connectionActionsEnabled ||
-              accountsLoadable.state === "hasError" ||
-              (accountsLoadable.state === "hasData" &&
-                !accountsLoadable.data.available)
-            }
-            onClick={() => {
-              return leave(onAdd);
-            }}
-          >
-            {t(($) => {
-              return $.connectors.accounts.addAccount;
-            })}
-          </Button>
-        </DialogFooter>
+        {onAdd ? (
+          <DialogFooter className="shrink-0">
+            <Button
+              type="button"
+              disabled={
+                !connectionActionsEnabled ||
+                accountsLoadable.state === "hasError" ||
+                (accountsLoadable.state === "hasData" &&
+                  !accountsLoadable.data.available)
+              }
+              onClick={() => {
+                return leave(onAdd);
+              }}
+            >
+              {t(($) => {
+                return $.connectors.accounts.addAccount;
+              })}
+            </Button>
+          </DialogFooter>
+        ) : null}
         <DeleteAccountConfirmation target={target} />
       </DialogContent>
     </Dialog>

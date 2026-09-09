@@ -19,7 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub use sandbox_fc::SnapshotOutputPaths as SnapshotPaths;
+pub use sandbox_firecracker::SnapshotOutputPaths as SnapshotPaths;
 use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;
@@ -103,7 +103,7 @@ pub fn touch_mtime(dir: &Path) {
 /// Guest paths (must match rootfs layout).
 pub mod guest {
     pub const STORAGE_MANIFEST: &str = guest_contracts::runtime_paths::STORAGE_MANIFEST_PATH;
-    pub const DOWNLOAD_BIN: &str = guest_contracts::guest_binary::DOWNLOAD_PATH;
+    pub const STORAGE_APPLY_BIN: &str = guest_contracts::guest_binary::STORAGE_APPLY_PATH;
     pub const RUN_AGENT: &str = guest_contracts::guest_binary::AGENT_PATH;
 }
 
@@ -448,6 +448,7 @@ define_per_run_logs! {
     system_log => ("system-", ".log"),
     system_stream_log => ("system-stream-", ".log"),
     metrics_log => ("metrics-", ".jsonl"),
+    oom_evidence_log => ("oom-evidence-", ".json"),
     sandbox_ops_log => ("sandbox-ops-", ".jsonl"),
 }
 
@@ -744,6 +745,7 @@ mod tests {
             lp.system_log(id),
             lp.system_stream_log(id),
             lp.metrics_log(id),
+            lp.oom_evidence_log(id),
             lp.sandbox_ops_log(id),
             lp.proxy_log(id),
         ];

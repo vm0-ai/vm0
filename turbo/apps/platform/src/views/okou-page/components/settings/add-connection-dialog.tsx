@@ -54,7 +54,6 @@ import {
   manualGrantFormValuesFor$,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
-  hasConnectorStatusBrowserAuthGrant,
   manualGrantInputValuesForMethod,
   type ConnectorConnectionResult,
   type ConnectorExternalCodeState,
@@ -66,6 +65,8 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 import { i18n } from "../../../../i18n/index.ts";
+import { dismissConnectorConnectionProgress$ } from "../../../../signals/connector-connection-progress.ts";
+import { ConnectorConnectionDialogBody } from "../../../components/connector-connection-dialog-body.tsx";
 import type {
   ConnectorAccountConnectMode,
   ConnectorAccountMutationOptions,
@@ -385,17 +386,28 @@ function UnavailableConnectMethodsContent() {
   );
 }
 
-function getOAuthAuthCodeProgressContent({
-  isPolling,
-  settling,
-}: {
-  isPolling: boolean;
-  settling: boolean;
-}) {
+function useConnectorProgressContent(
+  connectorSlug: ConnectorSlug,
+  pending: {
+    readonly browser: boolean;
+    readonly device: boolean;
+    readonly external: boolean;
+  },
+) {
+  const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const deviceAuthState = useGet(connectorOAuthDeviceAuthState$);
+  const externalCodeState = useGet(connectorExternalCodeState$);
+  const isPolling = pollingConnectorSlug === connectorSlug;
+  const settling =
+    pending.browser ||
+    (pending.device &&
+      !connectorOAuthDeviceAuthFlowIsActive(deviceAuthState, connectorSlug)) ||
+    (pending.external &&
+      !connectorExternalCodeFlowIsActive(externalCodeState, connectorSlug));
   // While browser authorization is in progress, only show connecting state.
   if (isPolling) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p role="status" className="text-sm text-muted-foreground">
         {i18n.t(($) => {
           return $.connectors.connectDialog.progress.connecting;
         })}
@@ -405,7 +417,7 @@ function getOAuthAuthCodeProgressContent({
 
   if (settling) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p role="status" className="text-sm text-muted-foreground">
         {i18n.t(($) => {
           return $.connectors.connectDialog.progress.savingPermissions;
         })}
@@ -1376,7 +1388,7 @@ function ConnectModalContent({
   const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
   );
-  const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
+  const [deviceAuthLoadable, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
     connectConnectorOAuthDeviceAuthAndSettle$,
   );
   const [, connectExternalCodeCommand] = useLoadableSet(
@@ -1403,13 +1415,10 @@ function ConnectModalContent({
   };
   const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
   const pageSignal = useGet(pageSignal$);
-  const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
-  const settling = settleLoadable.state === "loading";
   const externalCodeCompleting =
     completeExternalCodeLoadable.state === "loading";
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const noAuthSubmitting = noAuthLoadable.state === "loading";
-  const isPolling = pollingConnectorSlug === item.slug;
   const entries = getConnectEntries(item, accountMode, reconnectAuthMethod);
   const onConnectSuccess = async (connectionId: string | null) => {
     await runConnectSuccess(item.slug, onSuccess, connectionId, pageSignal);
@@ -1460,12 +1469,11 @@ function ConnectModalContent({
     await connectNoAuthAndSettleCommand(args, signal);
   };
 
-  const progressContent = hasConnectorStatusBrowserAuthGrant(item)
-    ? getOAuthAuthCodeProgressContent({
-        isPolling,
-        settling,
-      })
-    : null;
+  const progressContent = useConnectorProgressContent(item.slug, {
+    browser: settleLoadable.state === "loading",
+    device: deviceAuthLoadable.state === "loading",
+    external: externalCodeCompleting,
+  });
   if (progressContent) {
     return progressContent;
   }
@@ -1522,6 +1530,7 @@ export function ConnectModal({
   const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
   const connectorExternalCodeState = useGet(connectorExternalCodeState$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
 
   const selectedConnectorSlug = item.slug;
 
@@ -1550,6 +1559,7 @@ export function ConnectModal({
           return;
         }
         if (!open) {
+          dismissProgress();
           clearConnectorOAuthDeviceAuth();
           clearConnectorExternalCode();
           onClose();
@@ -1572,20 +1582,22 @@ export function ConnectModal({
           </p>
         )}
 
-        <ConnectModalContent
-          item={item}
-          agentId={agentId}
-          authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
-          accountOptions={accountOptions}
-          accountMode={accountMode}
-          reconnectAuthMethod={reconnectAuthMethod}
-          onSuccess={async (connectionId) => {
-            await onSuccess?.(connectionId);
-            clearConnectorOAuthDeviceAuth();
-            clearConnectorExternalCode();
-            onClose();
-          }}
-        />
+        <ConnectorConnectionDialogBody>
+          <ConnectModalContent
+            item={item}
+            agentId={agentId}
+            authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
+            accountOptions={accountOptions}
+            accountMode={accountMode}
+            reconnectAuthMethod={reconnectAuthMethod}
+            onSuccess={async (connectionId) => {
+              await onSuccess?.(connectionId);
+              clearConnectorOAuthDeviceAuth();
+              clearConnectorExternalCode();
+              onClose();
+            }}
+          />
+        </ConnectorConnectionDialogBody>
       </DialogContent>
     </Dialog>
   );

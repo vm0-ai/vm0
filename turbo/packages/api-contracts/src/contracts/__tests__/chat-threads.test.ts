@@ -80,30 +80,6 @@ describe("google drive artifact recovery contract", () => {
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";
 
-  it("rejects legacy automation metadata", () => {
-    const parsed = chatEventSchema.safeParse({
-      id: "message-1",
-      threadId: "thread-1",
-      eventType: "input.prompt",
-      content: null,
-      userMessage: {
-        version: 1,
-        parts: [{ type: "text", text: "Run the workflow" }],
-      },
-      seqId: 1,
-      createdAt: "2026-07-13T00:00:00.000Z",
-      automationId: "legacy-automation-id",
-      automationTitle: "Legacy automation",
-      automationSnapshot: {
-        id: "legacy-automation-id",
-        title: "Legacy automation",
-        description: null,
-      },
-    });
-
-    expect(parsed.success).toBe(false);
-  });
-
   it("rejects API messages without a sequence ID", () => {
     const parsed = chatEventSchema.safeParse({
       id: "message-1",
@@ -168,20 +144,6 @@ describe("chat message response contract", () => {
     expect(send).toMatchObject({ success: true, data: { userMessage } });
   });
 
-  it("rejects thread drafts that only carry the retired rich-input field", () => {
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Resume the draft" }],
-    };
-
-    expect(
-      chatThreadDraftSchema.safeParse({
-        draftStructuredPrompt: userMessage,
-        draftAttachments: null,
-      }).success,
-    ).toBe(false);
-  });
-
   it("accepts canonical thread draft responses", () => {
     const response = {
       draftUserMessage: {
@@ -237,72 +199,47 @@ describe("chat thread event sequence contract", () => {
     });
   });
 
-  it("accepts image model events and pre-field browser snapshots", () => {
+  it("accepts video model fields and pre-image-model payloads", () => {
     const selectedImageModel = imageModelIdSchema.parse("fal-ai/qwen-image");
     const createdAt = "2026-08-17T00:00:00.000Z";
+    const imageModelEvent = {
+      id: "11111111-1111-4111-8111-111111111111",
+      seqId: 1,
+      kind: "image_model_updated" as const,
+      chatThreadId: "22222222-2222-4222-8222-222222222222",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      title: null,
+      selectedVideoModel: null,
+      selectedImageModel,
+      createdAt,
+    };
 
-    expect(
-      chatThreadEventSchema.parse({
-        id: "11111111-1111-4111-8111-111111111111",
-        seqId: 1,
-        kind: "image_model_updated",
-        chatThreadId: "22222222-2222-4222-8222-222222222222",
-        agentId: "33333333-3333-4333-8333-333333333333",
-        title: null,
-        selectedImageModel,
-        createdAt,
-      }),
-    ).toMatchObject({
+    expect(chatThreadEventSchema.parse(imageModelEvent)).toMatchObject({
       kind: "image_model_updated",
       selectedImageModel,
     });
 
-    expect(
-      chatThreadsContract.snapshot.responses[200].safeParse({
-        chatThreads: [
-          {
-            id: "22222222-2222-4222-8222-222222222222",
-            agentId: "33333333-3333-4333-8333-333333333333",
-            title: "Cached before image model persistence",
-            sortAt: createdAt,
-            createdAt,
-            updatedAt: createdAt,
-            pinnedAt: null,
-            renamedAt: null,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      }).success,
-    ).toBe(true);
-  });
-
-  it("rejects retired UUID-cursor API responses", () => {
-    const legacyEvent = {
-      id: "11111111-1111-4111-8111-111111111111",
-      kind: "renamed",
-      chatThreadId: "22222222-2222-4222-8222-222222222222",
+    const snapshotThread = {
+      id: "22222222-2222-4222-8222-222222222222",
       agentId: "33333333-3333-4333-8333-333333333333",
-      title: "Legacy cursor title",
-      selectedModel: null,
-      serviceTier: null,
-      computerUseHostId: null,
-      createdAt: "2026-07-28T00:00:00.000Z",
+      title: "Cached before image model persistence",
+      sortAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      pinnedAt: null,
+      renamedAt: null,
+      selectedVideoModel: null,
+    };
+    const snapshotResponse = {
+      chatThreads: [snapshotThread],
+      latestEventId: null,
+      latestSeqId: null,
     };
 
     expect(
-      chatThreadsContract.snapshot.responses[200].safeParse({
-        chatThreads: [],
-        latestEventId: legacyEvent.id,
-      }).success,
-    ).toBe(false);
-    expect(
-      chatThreadsContract.events.responses[200].safeParse({
-        events: [legacyEvent],
-        hasMore: false,
-      }).success,
-    ).toBe(false);
-    expect(chatThreadEventSchema.safeParse(legacyEvent).success).toBe(false);
+      chatThreadsContract.snapshot.responses[200].safeParse(snapshotResponse)
+        .success,
+    ).toBe(true);
   });
 });
 

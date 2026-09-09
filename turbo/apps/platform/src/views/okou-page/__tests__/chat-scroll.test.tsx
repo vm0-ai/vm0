@@ -1,9 +1,13 @@
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
-import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import userEvent from "@testing-library/user-event";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -15,7 +19,6 @@ import {
   chatScrollContainer,
   context,
   mockChatLifecycleWithoutBrowserSession,
-  mockResizeObserver,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
 import { selectPassage } from "./chat-capability-test-helpers.ts";
@@ -251,6 +254,17 @@ function completedHistoryEvents(turnCount: number): MockChatEventInput[] {
   }).flat();
 }
 
+function historyWithLateImage(turnCount: number): MockChatEventInput[] {
+  return completedHistoryEvents(turnCount).map((event) => {
+    return event.id === "scroll-assistant-4"
+      ? {
+          ...event,
+          content: `${event.content}\n\n![Late history image](https://example.com/history.png)`,
+        }
+      : event;
+  });
+}
+
 function mockMutableConversation(
   threadId: string,
   initialEvents: readonly MockChatEventInput[],
@@ -289,7 +303,7 @@ async function openConversation(
   await setupPage({
     context,
     path: `/chats/${threadId}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
   const loadedMessage = await screen.findByText(loadedText);
   expect(loadedMessage).toBeVisible();
@@ -358,8 +372,7 @@ async function expectHistoryPositionHeld(): Promise<void> {
 }
 
 test("Preserve the visible message when earlier content grows", async () => {
-  const resize = mockResizeObserver();
-  mockMutableConversation(THREAD_IDS.growingHistory, completedHistoryEvents(8));
+  mockMutableConversation(THREAD_IDS.growingHistory, historyWithLateImage(8));
   const container = await openConversation(
     THREAD_IDS.growingHistory,
     "History answer 8",
@@ -373,7 +386,7 @@ test("Preserve the visible message when earlier content grows", async () => {
 
   geometry.growBeforeMessages(75);
   act(() => {
-    resize.automationAll();
+    fireEvent.load(screen.getByAltText("Late history image"));
   });
 
   await waitFor(() => {
@@ -384,7 +397,6 @@ test("Preserve the visible message when earlier content grows", async () => {
 });
 
 test("Keep passage actions until the selection moves beyond the scroll buffer", async () => {
-  const resize = mockResizeObserver();
   mockMutableConversation(
     THREAD_IDS.selectedPassage,
     completedHistoryEvents(8),
@@ -434,7 +446,7 @@ test("Keep passage actions until the selection moves beyond the scroll buffer", 
   container.scrollTop += 75;
   fireEvent.scroll(container);
   act(() => {
-    resize.automationAll();
+    window.dispatchEvent(new Event("resize"));
   });
   await waitFor(() => {
     expect(
@@ -469,7 +481,7 @@ test("Keep passage actions until the selection moves beyond the scroll buffer", 
   });
 });
 
-test("Keep expanded work in place when its run completes", async () => {
+test("Keep a visible work message in place when its run completes", async () => {
   const activeRunId = "scroll-expanded-work-run";
   const conversation = mockMutableConversation(
     THREAD_IDS.expandedWork,
@@ -505,8 +517,7 @@ test("Keep expanded work in place when its run completes", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.expandedWork}`,
-    host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+    host: "app.okou.ai",
   });
   await screen.findByText("Reading the rollout health report");
   await waitFor(() => {
@@ -521,9 +532,9 @@ test("Keep expanded work in place when its run completes", async () => {
   const geometry = installChatScrollGeometry(container);
   scrollFromUser(container, geometry.bottomScrollTop() - 150);
   await expectHistoryPositionHeld();
-  const readingTop = anchorById(
+  const historyMessageTop = anchorById(
     container,
-    "scroll-expanded-work-reading",
+    "scroll-expanded-work-earlier",
   ).getBoundingClientRect().top;
 
   act(() => {
@@ -556,9 +567,9 @@ test("Keep expanded work in place when its run completes", async () => {
     expect(
       anchorById(
         container,
-        "scroll-expanded-work-reading",
+        "scroll-expanded-work-earlier",
       ).getBoundingClientRect().top,
-    ).toBe(readingTop);
+    ).toBe(historyMessageTop);
   });
 });
 
@@ -629,8 +640,7 @@ test("Preserve the reading position when new messages are added", async () => {
 });
 
 test("Keep following the latest message while rich content finishes rendering", async () => {
-  const resize = mockResizeObserver();
-  const richEvents = completedHistoryEvents(5).map((event) => {
+  const richEvents = historyWithLateImage(5).map((event) => {
     return event.id === "scroll-assistant-5"
       ? {
           ...event,
@@ -653,7 +663,7 @@ test("Keep following the latest message while rich content finishes rendering", 
 
   geometry.growBeforeMessages(120);
   act(() => {
-    resize.automationAll();
+    fireEvent.load(screen.getByAltText("Late history image"));
   });
 
   await waitFor(() => {
@@ -692,7 +702,6 @@ test("Keep following the latest message while rich content finishes rendering", 
 });
 
 test("Preserve reading intent when the chat layout changes size", async () => {
-  const resize = mockResizeObserver();
   mockMutableConversation(THREAD_IDS.layoutResize, completedHistoryEvents(8));
   const container = await openConversation(
     THREAD_IDS.layoutResize,
@@ -708,7 +717,7 @@ test("Preserve reading intent when the chat layout changes size", async () => {
   const readingTop = readingAnchor.getBoundingClientRect().top;
   geometry.resizeViewport(220);
   act(() => {
-    resize.automationAll();
+    window.dispatchEvent(new Event("resize"));
   });
 
   await waitFor(() => {
@@ -724,7 +733,7 @@ test("Preserve reading intent when the chat layout changes size", async () => {
   });
   geometry.resizeViewport(180);
   act(() => {
-    resize.automationAll();
+    window.dispatchEvent(new Event("resize"));
   });
 
   await waitFor(() => {
@@ -758,7 +767,6 @@ test("Keep the current message in place while older history loads", async () => 
 });
 
 test("Desktop resize does not trigger mobile scroll correction", async () => {
-  const resize = mockResizeObserver();
   mockPointerDevice("desktop");
   mockMutableConversation(THREAD_IDS.desktopResize, completedHistoryEvents(8));
   const container = await openConversation(
@@ -774,7 +782,7 @@ test("Desktop resize does not trigger mobile scroll correction", async () => {
 
   geometry.resizeViewport(220);
   act(() => {
-    resize.automationAll();
+    window.dispatchEvent(new Event("resize"));
   });
 
   await waitFor(() => {
@@ -786,8 +794,7 @@ test("Desktop resize does not trigger mobile scroll correction", async () => {
 });
 
 test("An empty history load does not cause a later scroll jump", async () => {
-  const resize = mockResizeObserver();
-  mockMutableConversation(THREAD_IDS.emptyHistory, completedHistoryEvents(5));
+  mockMutableConversation(THREAD_IDS.emptyHistory, historyWithLateImage(5));
   const container = await openConversation(
     THREAD_IDS.emptyHistory,
     "History answer 5",
@@ -803,7 +810,7 @@ test("An empty history load does not cause a later scroll jump", async () => {
 
   geometry.growBeforeMessages(75);
   act(() => {
-    resize.automationAll();
+    fireEvent.load(screen.getByAltText("Late history image"));
   });
 
   await waitFor(() => {
@@ -842,7 +849,6 @@ test("Loading older messages preserves the reading position", async () => {
 });
 
 test("A mobile history reader keeps their position when the viewport shrinks", async () => {
-  const resize = mockResizeObserver();
   mockPointerDevice("touch");
   mockMutableConversation(THREAD_IDS.mobileHistory, completedHistoryEvents(8));
   const container = await openConversation(
@@ -858,7 +864,7 @@ test("A mobile history reader keeps their position when the viewport shrinks", a
 
   geometry.resizeViewport(180);
   act(() => {
-    resize.automationAll();
+    window.dispatchEvent(new Event("resize"));
   });
 
   await waitFor(() => {
@@ -870,7 +876,6 @@ test("A mobile history reader keeps their position when the viewport shrinks", a
 });
 
 test("A mobile user at the bottom stays with the latest message", async () => {
-  const resize = mockResizeObserver();
   mockPointerDevice("touch");
   mockMutableConversation(THREAD_IDS.mobileLatest, completedHistoryEvents(8));
   const container = await openConversation(
@@ -882,7 +887,7 @@ test("A mobile user at the bottom stays with the latest message", async () => {
 
   geometry.resizeViewport(180);
   act(() => {
-    resize.automationAll();
+    window.dispatchEvent(new Event("resize"));
   });
 
   await waitFor(() => {
@@ -890,4 +895,51 @@ test("A mobile user at the bottom stays with the latest message", async () => {
   });
   expect(screen.getByText("History answer 8")).toBeVisible();
   expect(queryButtonByLabel("Scroll to bottom")).toBeNull();
+});
+
+test("Deleting composer text keeps following the tail after a transient viewport resize", async () => {
+  mockMutableConversation(THREAD_IDS.incomingLatest, completedHistoryEvents(8));
+  const container = await openConversation(
+    THREAD_IDS.incomingLatest,
+    "History answer 8",
+  );
+  const composer = await screen.findByLabelText("Message");
+  await fill(composer, "1\n2\n3\n4");
+  const geometry = installChatScrollGeometry(container);
+  // Native contenteditable editing can temporarily enlarge the sibling viewport
+  // and clamp scrollTop, then restore exactly the original dimensions. No resize
+  // notification is delivered for that final, unchanged size.
+  geometry.resizeViewport(INITIAL_VIEWPORT_HEIGHT_PX + 16);
+  geometry.resizeViewport(INITIAL_VIEWPORT_HEIGHT_PX);
+  expect(container.scrollTop).toBe(geometry.bottomScrollTop() - 16);
+  await userEvent.keyboard("{Backspace}");
+  expect(composer).not.toHaveTextContent("4");
+  fireEvent.scroll(container);
+  await waitFor(() => {
+    expect(container.scrollTop).toBe(geometry.bottomScrollTop());
+    expect(queryButtonByLabel("Scroll to bottom")).toBeNull();
+  });
+});
+
+test("Editing the composer preserves the message being read", async () => {
+  mockMutableConversation(
+    THREAD_IDS.incomingHistory,
+    completedHistoryEvents(8),
+  );
+  const container = await openConversation(
+    THREAD_IDS.incomingHistory,
+    "History answer 8",
+  );
+  const composer = await screen.findByLabelText("Message");
+  await fill(composer, "1\n2\n3\n4");
+  const geometry = installChatScrollGeometry(container);
+  scrollFromUser(container, 240);
+  await expectHistoryPositionHeld();
+  const readingAnchor = geometry.firstVisibleAnchor();
+  const readingTop = readingAnchor.getBoundingClientRect().top;
+  geometry.resizeViewport(180);
+  await userEvent.keyboard("{Backspace}");
+  expect(composer).not.toHaveTextContent("4");
+  expect(readingAnchor.getBoundingClientRect().top).toBe(readingTop);
+  expect(queryButtonByLabel("Scroll to bottom")).toBeVisible();
 });

@@ -5,7 +5,6 @@ import {
   type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   computerUseAuthorizationRequestsContract,
@@ -56,6 +55,10 @@ interface RequiredAuthHeaders {
 type ComputerUseAuth = ApiTestUser | { readonly bearer: string } | null;
 
 interface ComputerUseHostStartOptions {
+  readonly permissions?: {
+    readonly accessibility: boolean;
+    readonly screenRecording: boolean;
+  };
   readonly clientProduct?: DesktopProduct;
   readonly installationId?: string;
   readonly hostName?: string;
@@ -250,7 +253,10 @@ function hostRuntimeBody(options: ComputerUseHostStartOptions = {}) {
       ...(options.supportedCapabilities ??
         DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES),
     ],
-    permissions: { accessibility: true, screenRecording: true },
+    permissions: options.permissions ?? {
+      accessibility: true,
+      screenRecording: true,
+    },
   };
 }
 
@@ -323,7 +329,6 @@ export function computerUseToken(args: {
   readonly capabilities: readonly Capability[];
   readonly runId?: string;
   readonly computerUseHostId?: string;
-  readonly publicBrand?: PublicBrand;
 }): { readonly token: string; readonly runId: string } {
   const seconds = Math.floor(now() / 1000);
   const runId = args.runId ?? `run_${randomUUID()}`;
@@ -333,9 +338,6 @@ export function computerUseToken(args: {
     orgId: args.orgId,
     runId,
     capabilities: [...args.capabilities],
-    ...(args.publicBrand === undefined
-      ? {}
-      : { publicBrand: args.publicBrand }),
     ...(args.computerUseHostId
       ? { computerUseHostId: args.computerUseHostId }
       : {}),

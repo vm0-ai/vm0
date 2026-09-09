@@ -1,6 +1,11 @@
 import { cn } from "@okouai/ui";
 import type { HTMLAttributes } from "react";
 
+// Pointer mode is set synchronously so hybrid devices keep native mouse
+// selection. Editable controls and links retain their browser interactions.
+export const CHAT_TOUCH_SELECTION_CLASS =
+  "data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])]:select-none data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])]:[-webkit-touch-callout:none] data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])_:is(a,button,input,textarea,select,[contenteditable]:not([contenteditable=false]))]:select-text data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])_:is(a,button,input,textarea,select,[contenteditable]:not([contenteditable=false]))]:[-webkit-touch-callout:default]";
+
 export const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 
@@ -11,15 +16,21 @@ export const CHAT_THREAD_MESSAGE_LIST_CLASS =
 // use 4px. Section spacing must not become the density of a history/list row.
 export const CHAT_THREAD_RESPONSE_STACK_CLASS = "flex min-w-0 flex-col gap-2";
 export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
-  "flex min-w-0 flex-col gap-2 group-data-[run-work-folding]/chat:gap-1";
+  "flex min-w-0 flex-col gap-1";
 
-// Standalone response lines share a 36px frame around the original 15px * 1.7
-// line. Dense history previews and follow-up items keep their own line metrics.
+// Response lines use a 36px frame at every width. Follow-up items keep their
+// own line metrics.
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
-  "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
+  "h-auto min-h-9 py-[calc((2.25rem-1lh)/2)] leading-[1.59375rem]";
 
+// Bare response icons share the 28px action-button rail.
+export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
+  "inline-flex w-7 shrink-0 items-center justify-center";
+
+// Keep the entry animation, but do not let its duration also animate the
+// responsive margin: that would continue changing layout after resize.
 export const CHAT_THREAD_USER_MESSAGE_ROW_CLASS =
-  "flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
+  "flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 transition-none @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS =
   "flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300";
@@ -28,7 +39,7 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS =
   "flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
 export const CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS =
-  "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:mt-0.5 @[900px]:h-9 @[900px]:w-9 @[900px]:group-data-[run-work-folding]/chat:mt-0";
+  "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:h-9 @[900px]:w-9";
 
 export const CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS =
   "h-7 w-7 rounded-full object-cover object-top @[900px]:h-9 @[900px]:w-9";
@@ -40,7 +51,7 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS =
   "@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS =
-  "flex items-center justify-between gap-2 -ml-1";
+  "flex items-center justify-between gap-2";
 
 // Consecutive user messages read as one burst. The copy button already sits
 // `mt-1` below its message, so this pull keeps the gap below it equally tight.
@@ -67,6 +78,7 @@ export function ChatAssistantMessageBody({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-chat-selection-source
       className={cn(
         "okou-chat-bubble-assistant p-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
         className,

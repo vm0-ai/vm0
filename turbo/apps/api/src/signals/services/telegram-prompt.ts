@@ -1,3 +1,5 @@
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
+
 export function buildTelegramPrompt(
   opts: {
     readonly botId?: string;
@@ -35,5 +37,7 @@ export function buildTelegramPrompt(
   if (opts.messageThreadId) {
     headerParts.push(`Message thread ID: ${opts.messageThreadId}`);
   }
-  return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
+  return [CONVERSATION_GUIDANCE, headerParts.join("\n"), threadContext]
+    .filter(Boolean)
+    .join("\n\n");
 }

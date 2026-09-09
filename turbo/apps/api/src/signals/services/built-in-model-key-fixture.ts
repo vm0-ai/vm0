@@ -7,7 +7,7 @@ import type { Db } from "../external/db";
 import { safeJsonParse } from "../utils";
 
 const BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND = "runtime-state-fixture";
-const vm0BuiltInModelKeyFixtureLabelSchema = z.object({
+const builtInModelKeyFixtureLabelSchema = z.object({
   kind: z.literal(BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND),
   fixtureIds: z.array(z.string().uuid()).min(1),
   preservedLabel: z.string().nullable().optional(),
@@ -18,7 +18,7 @@ interface BuiltInModelKeyRow {
   readonly apiKey: string;
 }
 
-function vm0BuiltInModelKeyFixtureLabel(
+function builtInModelKeyFixtureLabel(
   fixtureIds: readonly string[],
   preservedLabel?: string | null,
 ): string {
@@ -33,14 +33,14 @@ function parseBuiltInModelKeyFixtureLabel(label: string | null) {
   if (!label) {
     return null;
   }
-  const parsed = vm0BuiltInModelKeyFixtureLabelSchema.safeParse(
+  const parsed = builtInModelKeyFixtureLabelSchema.safeParse(
     safeJsonParse(label),
   );
   return parsed.success ? parsed.data : null;
 }
 
 /**
- * Acquires fixture ownership of vendor-scoped VM0 keys.
+ * Acquires fixture ownership of vendor-scoped built-in model keys.
  *
  * No product API provisions this platform-managed table. Test routes from
  * different integrations share each vendor row, so every owner must be
@@ -58,7 +58,7 @@ export async function acquireBuiltInModelKeyFixture(
         .insert(builtInModelKeys)
         .values({
           ...value,
-          label: vm0BuiltInModelKeyFixtureLabel([fixtureId]),
+          label: builtInModelKeyFixtureLabel([fixtureId]),
         })
         .onConflictDoUpdate({
           target: builtInModelKeys.vendor,
@@ -74,7 +74,7 @@ export async function acquireBuiltInModelKeyFixture(
         });
       if (!row) {
         throw new Error(
-          `Expected VM0 built-in key for vendor: ${value.vendor}`,
+          `Expected built-in model key for vendor: ${value.vendor}`,
         );
       }
 
@@ -93,7 +93,7 @@ export async function acquireBuiltInModelKeyFixture(
       await tx
         .update(builtInModelKeys)
         .set({
-          label: vm0BuiltInModelKeyFixtureLabel(fixtureIds, preservedLabel),
+          label: builtInModelKeyFixtureLabel(fixtureIds, preservedLabel),
           updatedAt: nowDate(),
         })
         .where(eq(builtInModelKeys.id, row.id));
@@ -129,7 +129,7 @@ export async function releaseBuiltInModelKeyFixture(
         await tx
           .update(builtInModelKeys)
           .set({
-            label: vm0BuiltInModelKeyFixtureLabel(
+            label: builtInModelKeyFixtureLabel(
               remainingFixtureIds,
               fixtureLabel.preservedLabel,
             ),

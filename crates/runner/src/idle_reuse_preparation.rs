@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
+use guest_contracts::guest_binary::WORKSPACE_MOUNT_PATH;
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
@@ -16,7 +17,7 @@ use crate::helper_exec::{
 };
 use crate::ids::RunId;
 use crate::paths::guest;
-use crate::workspace_mount::{WORKSPACE_MOUNT_TIMEOUT, workspace_mount_command};
+use crate::workspace_mount::WORKSPACE_MOUNT_TIMEOUT;
 
 const REUSE_PREPARATION_TIMEOUT: Duration = Duration::from_secs(10);
 const MIN_REUSE_ROOTFS_AVAILABLE_BYTES: u64 = 128 * 1024 * 1024;
@@ -111,9 +112,8 @@ impl IdleReusePreparation {
                 format!("serialize reuse-preparation request: {error}"),
             )
         })?;
-        let mount_command = workspace_mount_command();
         let helper_command = format!("{} prepare-for-reuse", guest::RUN_AGENT);
-        let command = compose_reuse_preparation_command(&helper_command, &mount_command);
+        let command = compose_reuse_preparation_command(&helper_command, WORKSPACE_MOUNT_PATH);
         Ok(Self {
             operation_run_id,
             sandbox_id: sandbox_id.to_owned(),
@@ -473,7 +473,7 @@ mod tests {
             .expect("reuse helper command");
         let mount_position = calls[0]
             .cmd
-            .find("workspace_device=")
+            .find(WORKSPACE_MOUNT_PATH)
             .expect("workspace mount command");
         assert!(helper_position < mount_position);
         let request: ReusePreparationRequest = serde_json::from_slice(

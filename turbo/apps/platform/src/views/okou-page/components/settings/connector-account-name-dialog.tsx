@@ -17,17 +17,17 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { renameConnectorAccount$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
 import {
   closeConnectorAccountNamePrompt$,
-  connectorAccountNamePrompt$,
   connectorAccountNamePromptValue$,
   setConnectorAccountNamePromptValue$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { visibleConnectorAccountNamePrompt$ } from "../../../../signals/okou-page/settings/connector-account-name-prompt.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { useConnectorAccountLabel } from "./use-connector-account-label.ts";
 
 export function ConnectorAccountNameDialog() {
   const { t } = useTranslation();
   const accountLabel = useConnectorAccountLabel();
-  const prompt = useGet(connectorAccountNamePrompt$);
+  const prompt = useGet(visibleConnectorAccountNamePrompt$);
   const value = useGet(connectorAccountNamePromptValue$);
   const setValue = useSet(setConnectorAccountNamePromptValue$);
   const close = useSet(closeConnectorAccountNamePrompt$);

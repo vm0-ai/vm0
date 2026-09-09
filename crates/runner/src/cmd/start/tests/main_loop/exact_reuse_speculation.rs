@@ -57,7 +57,10 @@ fn timezone_correction_commands(overrides: &sandbox_mock::MockSandboxOverrides) 
     overrides
         .exec_calls()
         .into_iter()
-        .filter(|call| call.cmd.starts_with("/sbin/guest-reseed --sync-timezone "))
+        .filter(|call| {
+            call.cmd
+                .starts_with("/sbin/guest-state-restore --sync-timezone ")
+        })
         .map(|call| call.cmd)
         .collect()
 }
@@ -220,7 +223,7 @@ async fn assert_timezone_transition_with(
             assert_eq!(corrections.len(), 1);
             assert_eq!(
                 corrections[0],
-                format!("/sbin/guest-reseed --sync-timezone {zone}")
+                format!("/sbin/guest-state-restore --sync-timezone {zone}")
             );
         }
         None => assert!(corrections.is_empty()),
@@ -295,7 +298,7 @@ async fn assert_timezone_correction_failure_remains_best_effort(
         .await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "/sbin/guest-reseed --sync-timezone Europe/London".into(),
+        pattern: "/sbin/guest-state-restore --sync-timezone Europe/London".into(),
         exit_code,
         stdout: b"timezone stdout".to_vec(),
         stderr: stderr.to_vec(),
@@ -1354,7 +1357,7 @@ async fn speculative_guest_restore_failure_destroys_before_fresh_fallback() {
             overrides.push_guest_state_restore_result(Ok(sandbox::ExecResult::new(
                 1,
                 Vec::new(),
-                b"guest-reseed failed".to_vec(),
+                b"guest-state-restore failed".to_vec(),
             )));
         },
     )
@@ -1396,7 +1399,7 @@ async fn timezone_correction_panic_destroys_before_fresh_fallback() {
         Some("Europe/London"),
         |overrides| {
             overrides.add_exec_panic_matcher(
-                "/sbin/guest-reseed --sync-timezone Europe/London",
+                "/sbin/guest-state-restore --sync-timezone Europe/London",
                 "simulated timezone correction panic",
             );
         },

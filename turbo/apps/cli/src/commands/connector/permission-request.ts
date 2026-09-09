@@ -15,7 +15,8 @@ import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { createBrowserAuthorizationRequest } from "../../lib/api/domains/browser";
 import { createComputerUseAuthorizationRequest } from "../../lib/api/domains/computer-use";
 import { diagnoseConnectorCheck } from "../../lib/api/domains/connectors";
-import { getOkouAgentId, getOkouToken } from "../../lib/okou-env";
+import { getOkouToken } from "../../lib/okou-env";
+import { resolveConnectorAgentId } from "./agent-context";
 import {
   connectorActionCallbackAvailable,
   finalizeActionUrl,
@@ -25,7 +26,11 @@ import {
   buildConnectorUrlDiagnosticRequest,
   resolveConnectorCheckDiagnostic,
   type ResolvedDiagnostic,
-} from "./check";
+} from "./check-diagnostic";
+import {
+  customConnectorIdFromSelector,
+  customConnectorSettingsGuidance,
+} from "./custom-connector-guidance";
 
 function permissionDescription(permission: string): string {
   return permission === UNKNOWN_PERMISSION_GRANT
@@ -305,7 +310,7 @@ export const permissionRequestCommand = new Command()
   .addOption(
     new Option(
       "--agent <id>",
-      "Agent ID whose permission page should be opened (defaults to OKOU_AGENT_ID)",
+      "Agent ID whose permission page should be opened (must match OKOU_AGENT_ID inside a run)",
     ),
   )
   .addOption(
@@ -335,7 +340,9 @@ Notes:
   - Use the exact permission-request command printed by connector check
   - A platform URL is output only when that request maps to a denied or approval-required permission
   - Use --permission __unknown__ to request access to unknown endpoints
-  - Use --agent to request a permission for another agent; defaults to OKOU_AGENT_ID
+  - Custom connectors use Connectors > agent access > Permissions, not this builtin approval flow
+  - Inside a run, --agent must match the current Agent; omit it to use OKOU_AGENT_ID
+  - Outside a run, use --agent to select the Agent whose permission page should be opened
   - The user chooses the permission duration on the confirmation page
 ${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
   )
@@ -351,6 +358,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           callbackPrompt?: string;
         },
       ) => {
+        const agentId = resolveConnectorAgentId(opts.agent);
         if (
           isBrowserPermissionTarget({
             connectorSlug,
@@ -380,7 +388,16 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           return;
         }
 
-        const agentId = opts.agent ?? getOkouAgentId();
+        const customConnectorId = customConnectorIdFromSelector(connectorSlug);
+        if (customConnectorId !== undefined) {
+          throw new Error(
+            customConnectorSettingsGuidance(
+              customConnectorId,
+              await getPlatformOrigin(),
+              opts.permission,
+            ),
+          );
+        }
         if (opts.url === undefined) {
           throw new Error(
             "--url is required for connector permission requests. Run okou connector check --url <FAILED_URL> --method <METHOD> and use the permission-request command it prints.",
@@ -390,13 +407,18 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         const diagnosticRequest = buildConnectorUrlDiagnosticRequest({
           url: opts.url,
           method: opts.method,
-          connectorSlug,
+          connector: connectorSlug,
         });
         const diagnostic = await diagnoseConnectorCheck(diagnosticRequest);
         const result = resolveConnectorCheckDiagnostic(
           diagnosticRequest,
           diagnostic,
         );
+        if (result.connector.target.kind !== "builtin") {
+          throw new Error(
+            "Builtin permission requests require a builtin diagnostic target.",
+          );
+        }
         const policy = permissionPolicyForDiagnostic({
           result,
           permission: opts.permission,
@@ -411,7 +433,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         });
 
         await outputPermissionRequestMessage(
-          result.connector.connectorSlug,
+          result.connector.target.connectorSlug,
           result.connector.label,
           opts.permission,
           agentId,

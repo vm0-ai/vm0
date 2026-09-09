@@ -1,0 +1,17 @@
+[package]
+name = "guest-telemetry"
+version = "0.3.68"
+edition.workspace = true
+
+[dependencies]
+chrono = { workspace = true, features = ["clock", "std"] }
+guest-contracts.workspace = true
+libc = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+tempfile = { workspace = true, features = ["getrandom"] }
+
+[lints]
+workspace = true

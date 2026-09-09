@@ -317,6 +317,12 @@ function CommandLogRow({
       </button>
       {expanded && (
         <div className="command-log-details">
+          {entry.driver && (
+            <p className="row-meta">
+              Driver: {entry.driver.id} · generation {entry.driver.generation} ·
+              version {entry.driver.version ?? "Unavailable"}
+            </p>
+          )}
           <CommandLogSection title="Parameters" icon={<Code size={15} />}>
             <KeyValueList
               value={entry.payload}

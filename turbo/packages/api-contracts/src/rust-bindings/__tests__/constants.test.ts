@@ -1,4 +1,8 @@
 import {
+  PI_MODEL_CONFIG_NATIVE_GENERATION,
+  PI_NATIVE_CREDENTIAL_PLACEHOLDER,
+} from "../../contracts/pi-native";
+import {
   normalizeConstantBindings,
   renderRustConstants,
   type NormalizedConstantBinding,
@@ -68,12 +72,12 @@ const canonicalGuestHomeDirDoc = [
 ] as const;
 
 const canonicalClaudeConfigDirDoc = [
-  "Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+  "Canonical directory for Okou-managed Claude Code configuration and session state inside runner guests.",
   "Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.",
 ] as const;
 
 const canonicalCodexHomeDirDoc = [
-  "Canonical directory for VM0-managed Codex state inside runner guests.",
+  "Canonical directory for Okou-managed Codex state inside runner guests.",
   "Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.",
 ] as const;
 
@@ -201,6 +205,31 @@ function placeholderRustDoc(name: string): readonly string[] {
 }
 
 const expectedBindings = [
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "PI_MODEL_CONFIG_NATIVE_GENERATION",
+    value: rustU32(PI_MODEL_CONFIG_NATIVE_GENERATION),
+    rustDoc: [
+      "Native Messages and Bedrock reader generation; activation is separate.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "PI_NATIVE_CREDENTIAL_PLACEHOLDER",
+    value: rustString(PI_NATIVE_CREDENTIAL_PLACEHOLDER),
+    rustDoc: [
+      "Opaque native Pi sandbox marker; never a real signing credential.",
+    ],
+  },
+
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "OFFICIAL_RUNNER_TOKEN_PREFIX",
+    rustDoc: [
+      "Official token kind; the API still authenticates the secret and winning claim.",
+    ],
+    value: { kind: "string", value: "vm0_official_" },
+  },
   {
     rustModulePath: ["client", "headers"],
     rustConstName: "CLIENT_VERSION_HEADER",
@@ -593,13 +622,13 @@ describe("Rust constant bindings", () => {
       `pub const CANONICAL_GUEST_HOME_DIR: &str = "${CANONICAL_GUEST_HOME_DIR}";`,
     );
     expect(firstRender).toContain(
-      "/// Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+      "/// Canonical directory for Okou-managed Claude Code configuration and session state inside runner guests.",
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_CLAUDE_CONFIG_DIR: &str = "${CANONICAL_CLAUDE_CONFIG_DIR}";`,
     );
     expect(firstRender).toContain(
-      "/// Canonical directory for VM0-managed Codex state inside runner guests.",
+      "/// Canonical directory for Okou-managed Codex state inside runner guests.",
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_CODEX_HOME_DIR: &str = "${CANONICAL_CODEX_HOME_DIR}";`,

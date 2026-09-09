@@ -3,26 +3,21 @@ import { useGet, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
-import {
-  closeSettingsModal$,
-  settingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { Link } from "../router/link.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
-import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
+import { SettingsDialogMount } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   colorTheme$,
   shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
+import { WorkspaceInset } from "./workspace-inset.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleAccountAction$);
-  const dialogOpen = useGet(settingsDialogOpen$);
-  const closeSettingsModal = useSet(closeSettingsModal$);
   const colorTheme = useGet(colorTheme$);
   const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
@@ -32,32 +27,20 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="okou-app okou-viewport-shell flex w-full bg-background"
+      className="okou-app okou-viewport-shell flex w-full bg-background md:bg-sidebar"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
-      <SettingsDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeSettingsModal();
-          }
-        }}
-      />
+      <SettingsDialogMount />
       <CreditPurchaseConfirmDialog />
       <SubscriptionPurchaseConfirmDialog />
       <aside className="okou-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
         <div className="flex-1" />
         <div className="p-2">
-          <AccountDropdown
-            onAccountAction={onAccountAction}
-            settingsOwnerId="minimal-sidebar"
-          />
+          <AccountDropdown onAccountAction={onAccountAction} />
         </div>
       </aside>
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 okou-workspace-bg okou-workspace-card">
-        {children}
-      </div>
+      <WorkspaceInset>{children}</WorkspaceInset>
     </div>
   );
 }

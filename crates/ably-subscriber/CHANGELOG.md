@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.1.0...ably-subscriber-v1.1.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** batch connector runtime sync wakeups ([#32798](https://github.com/vm0-ai/vm0/issues/32798)) ([8db8218](https://github.com/vm0-ai/vm0/commit/8db8218568b4735afc314b1ce4a5ba9b5498eee5))
+
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.21...ably-subscriber-v1.1.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
+## [1.0.21](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.20...ably-subscriber-v1.0.21) (2026-09-08)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** keep subscribe logs off stdout ([#32552](https://github.com/vm0-ai/vm0/issues/32552)) ([97367e4](https://github.com/vm0-ai/vm0/commit/97367e4a420913227406e6c31c9a325abb86cd7f))
+
 ## [1.0.20](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.19...ably-subscriber-v1.0.20) (2026-08-28)
 
 

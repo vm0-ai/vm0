@@ -1,8 +1,6 @@
 import { command } from "ccstate";
-import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
@@ -27,7 +25,8 @@ import {
   abortPiApiFirstTurnAfterCanonicalCancellation,
   lockPiApiFirstTurnLifecycle,
 } from "./pi-api-first-turn-lifecycle.service";
-import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
+import { cancelLockedRun } from "./agent-run-cancellation-transition.service";
+import { lockPiMemoryPhase2MaintenanceCleanupProtection } from "./pi-memory-phase2-maintenance.service";
 
 const L = logger("RunCancel");
 
@@ -92,6 +91,8 @@ export const cancelRun$ = command(
       readonly orgId: string;
       readonly runnerCancellationMode: RunnerCancellationMode;
       readonly apiStartTime?: number;
+      /** Keep exact live Phase 2 maintenance leases out of generic cleanup. */
+      readonly protectActivePiMemoryPhase2Maintenance?: true;
     },
     signal: AbortSignal,
   ): Promise<
@@ -149,24 +150,25 @@ export const cancelRun$ = command(
         );
       }
 
-      const [updated] = await transitionAgentRunsToTerminal(tx, {
-        values: {
-          status: "cancelled",
-          completedAt: new Date(apiStartTime),
-        },
-        conditions: [
-          eq(agentRuns.id, args.runId),
-          eq(agentRuns.status, run.status),
-        ],
-      });
-      if (!updated) {
-        throw new Error("Locked cancellable run was not updated");
+      if (args.protectActivePiMemoryPhase2Maintenance) {
+        const protectedByMaintenance =
+          await lockPiMemoryPhase2MaintenanceCleanupProtection(tx, {
+            runId: run.id,
+            orgId: run.orgId,
+            userId: run.userId,
+          });
+        if (protectedByMaintenance) {
+          return runNotCancellable(
+            "Run cannot be cancelled while Phase 2 maintenance is active",
+          );
+        }
       }
 
-      await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.runId));
-      await tx
-        .delete(runnerJobQueue)
-        .where(eq(runnerJobQueue.runId, args.runId));
+      await cancelLockedRun(tx, {
+        runId: args.runId,
+        status: run.status,
+        completedAt: new Date(apiStartTime),
+      });
 
       return {
         apiStartTime,

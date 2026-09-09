@@ -21,15 +21,13 @@ function createDeferredQuitConfirmation(): DeferredQuitConfirmation {
 
 describe("desktop quit confirmation", () => {
   it("builds a cancel-default quit confirmation dialog", () => {
-    expect(
-      buildDesktopQuitConfirmationOptions("Zero Computer Use"),
-    ).toStrictEqual({
+    expect(buildDesktopQuitConfirmationOptions("Okou")).toStrictEqual({
       type: "question",
       buttons: ["Quit", "Cancel"],
       defaultId: 1,
       cancelId: 1,
-      title: "Quit Zero Computer Use?",
-      message: "Quit Zero Computer Use?",
+      title: "Quit Okou?",
+      message: "Quit Okou?",
       detail: "Computer Use will stop running until you reopen the app.",
     });
   });

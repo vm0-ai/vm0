@@ -7,7 +7,7 @@ import type {
 } from "../../lib/event-consumer/verify";
 import { eventDeliveryUnavailable } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { isForeignKeyViolation } from "../../lib/pg-errors";
+import { isForeignKeyViolation, isLockNotAvailable } from "../../lib/pg-errors";
 import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
@@ -214,11 +214,20 @@ export const receiveAgentEvents$ = command(
           },
         };
       }
-      L.error("Required database run output projection failed", {
-        runId: payload.runId,
-        ...range,
-        error: projectionResult.error,
-      });
+      if (isLockNotAvailable(projectionResult.error)) {
+        L.info("Required database run output projection backpressured", {
+          runId: payload.runId,
+          ...range,
+          errorCode: "55P03",
+          retryable: true,
+        });
+      } else {
+        L.error("Required database run output projection failed", {
+          runId: payload.runId,
+          ...range,
+          error: projectionResult.error,
+        });
+      }
       return {
         response: eventDeliveryUnavailable(
           "Agent event delivery is temporarily unavailable",

@@ -647,12 +647,18 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        *o.lifecycle.stop_calls.lock_ignoring_poison() += 1;
         wait_lifecycle_gate(&o.lifecycle.stop_gate).await;
         o.lifecycle.stop_behaviors.next_result(())
     }
 
     async fn kill(&mut self) -> Result<()> {
-        Ok(())
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        *o.lifecycle.kill_calls.lock_ignoring_poison() += 1;
+        wait_lifecycle_gate(&o.lifecycle.kill_gate).await;
+        o.lifecycle.kill_behaviors.next_result(())
     }
 
     /// Mock park: bumps the override `park_calls` counter on every call (so
@@ -675,6 +681,13 @@ impl Sandbox for MockSandbox {
             self.run_control_id = None;
         }
         result
+    }
+
+    async fn park_for_blank_pool(&mut self) -> Result<SandboxParkOutcome> {
+        if let Some(o) = &self.overrides {
+            *o.lifecycle.blank_park_calls.lock_ignoring_poison() += 1;
+        }
+        self.park().await
     }
 
     async fn final_exec_and_park(
@@ -755,6 +768,13 @@ impl Sandbox for MockSandbox {
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
         wait_lifecycle_gate(&o.lifecycle.unpark_gate).await;
         o.lifecycle.unpark_behaviors.next_result(())
+    }
+
+    async fn unpark_for_terminal_operations(&mut self) -> Result<()> {
+        if let Some(o) = &self.overrides {
+            *o.lifecycle.terminal_unpark_calls.lock_ignoring_poison() += 1;
+        }
+        self.unpark().await
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
@@ -838,11 +858,21 @@ impl Sandbox for MockSandbox {
                 .storage_manifest_calls
                 .lock_ignoring_poison()
                 .push(call);
+            wait_lifecycle_gate(&overrides.exec.storage_manifest_gate).await;
         }
         let result = self
             .exec_results
             .lock_ignoring_poison()
             .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .exec
+                        .storage_manifest_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
+            })
             .unwrap_or_else(|| Ok(default_exec_result()))?;
         Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
     }
@@ -1321,8 +1351,10 @@ impl Sandbox for MockSandbox {
                 .start_process_calls
                 .lock_ignoring_poison()
                 .push(StartProcessCall {
+                    timeout_is_expected: request.timeout_is_expected,
                     cmd: request.cmd.to_string(),
                     timeout: request.timeout,
+                    start_timeout: request.start_timeout,
                     env: request
                         .env
                         .iter()
@@ -1362,8 +1394,10 @@ impl Sandbox for MockSandbox {
                 });
         }
         let process_request = StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "",
             timeout: request.timeout,
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             env: request.env,
             sudo: false,
             output: request.output,

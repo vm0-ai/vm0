@@ -6,7 +6,6 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -21,25 +20,13 @@ const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
 /**
  * Handles that address the assistant in a group conversation. Every public
  * brand answers to all of them, because group members do not know which brand
- * the deployment presents and the VM0 brand still calls the assistant "Zero".
- *
- * Detection and stripping must stay in agreement, so both derive from this one
- * pattern. If they drift, a message either wakes the agent with the mention
- * still in the prompt, or is stripped without waking it.
+ * the deployment presents. Retired names remain accepted for inbound compatibility.
  */
 const AGENTPHONE_MENTION_PATTERN = /(^|\s)@(zero|vm0|okou)\b/iu;
 
 /** Whether free-form message text addresses the assistant by handle. */
 export function isAgentPhoneMentionText(value: string): boolean {
   return AGENTPHONE_MENTION_PATTERN.test(value);
-}
-
-/** Removes the addressing handle so it never reaches the run prompt. */
-export function stripAgentPhoneMention(text: string): string {
-  return text
-    .replace(new RegExp(AGENTPHONE_MENTION_PATTERN.source, "giu"), " ")
-    .replace(/[ \t]{2,}/gu, " ")
-    .trim();
 }
 
 export function isAgentPhoneChannel(value: string): value is AgentPhoneChannel {
@@ -225,9 +212,7 @@ function displayLabel(row: {
   readonly agentDisplayName: string | null;
   readonly agentName: string;
 }): string {
-  return (
-    plainLabel(row.agentDisplayName) ?? plainLabel(row.agentName) ?? "zero"
-  );
+  return plainLabel(row.agentDisplayName) ?? row.agentName;
 }
 
 async function resolveComposeLabel(
@@ -283,7 +268,6 @@ export async function resolveAgentPhoneAuditLogsUrl(
     readonly orgId: string;
     readonly userId: string;
     readonly runId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string | undefined> {
@@ -297,5 +281,5 @@ export async function resolveAgentPhoneAuditLogsUrl(
   if (!enabled) {
     return undefined;
   }
-  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }

@@ -1,12 +1,10 @@
 import Ably, { type CapabilityOp } from "ably";
+import type { RunnerSshInvalidate } from "@okouai/api-contracts/contracts/runner-ssh";
 import type {
   BrowserSessionChangedPayload,
   UserPreferenceChangedPayload,
 } from "@okouai/api-contracts/contracts/realtime";
-import type {
-  ConnectorRuntimeTarget,
-  RunnerPreference,
-} from "@okouai/api-contracts/contracts/runners";
+import type { RunnerPreference } from "@okouai/api-contracts/contracts/runners";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 
 import { env } from "../../lib/env";
@@ -372,16 +370,37 @@ export async function publishCancelToRunnerGroup(
   L.debug(`Published ${mode} cancel ${runId} to runner-group:${group}`);
 }
 
-export async function publishConnectorRuntimeSyncToRunnerGroup(
+export async function publishConnectorRuntimeSyncBatch(
   group: string,
-  runId: string,
-  target: ConnectorRuntimeTarget,
+  messages: Ably.Message[],
+): Promise<void> {
+  const channel = `runner-group:${group}`;
+  const batch = await ablyClient().batchPublish({
+    channels: [channel],
+    messages,
+  });
+  const [result] = batch.results;
+  if (result && "error" in result) {
+    throw result.error;
+  }
+  if (
+    batch.successCount !== 1 ||
+    batch.failureCount !== 0 ||
+    batch.results.length !== 1 ||
+    result?.channel !== channel
+  ) {
+    throw new Error(
+      "Ably did not acknowledge the connector runtime sync batch",
+    );
+  }
+}
+
+export async function publishSshInvalidationToRunnerGroup(
+  group: string,
+  notification: RunnerSshInvalidate,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("connector-runtime-sync", { runId, target });
-  L.debug(
-    `Published connector runtime sync ${runId}/${target.kind} to runner-group:${group}`,
-  );
+  await channel.publish("ssh-authority-invalidated", notification);
 }
 
 export async function publishActiveInputToRunnerGroup(

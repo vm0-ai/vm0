@@ -7,6 +7,7 @@ import {
 } from "@okouai/db/schema/hosted-site";
 import { and, eq, isNull } from "drizzle-orm";
 
+import { badRequestMessage } from "../../lib/error";
 import { env } from "../../lib/env";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
@@ -15,6 +16,8 @@ import {
 } from "../external/s3";
 import { safeUriComponentDecode, safeUrlParse } from "../utils";
 import { resolveOwnedPublicArtifactKey$ } from "./artifact-storage.service";
+import { artifactFileReference } from "./private-artifact-storage.service";
+import { uploadedArtifactObject } from "./uploaded-artifact.service";
 
 const PROVIDER_REFERENCE_URL_TTL_SECONDS = 60 * 60;
 const IMMUTABLE_DEPLOYMENT_HOST_PATTERN =
@@ -192,10 +195,39 @@ export const resolveProviderReferenceUrls$ = command(
     { get, set },
     args: ProviderReferenceUrlsArgs,
     signal: AbortSignal,
-  ): Promise<readonly string[]> => {
+  ): Promise<readonly string[] | ReturnType<typeof badRequestMessage>> => {
     const db = get(db$);
     const resolved: string[] = [];
     for (const url of args.urls) {
+      const reference = artifactFileReference(url);
+      if (reference) {
+        const object = await get(
+          uploadedArtifactObject({
+            id: reference.id,
+            userId: args.userId,
+            orgId: args.orgId,
+          }),
+        );
+        signal.throwIfAborted();
+        if (!object) {
+          return badRequestMessage(
+            "Artifact reference is not available to the current user and organization",
+          );
+        }
+        resolved.push(
+          await get(
+            generatePresignedGetUrl(
+              object.bucket,
+              object.key,
+              PROVIDER_REFERENCE_URL_TTL_SECONDS,
+              undefined,
+              true,
+            ),
+          ),
+        );
+        signal.throwIfAborted();
+        continue;
+      }
       const artifactKey = await set(
         resolveOwnedPublicArtifactKey$,
         { userId: args.userId, url },

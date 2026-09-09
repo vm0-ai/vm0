@@ -1,5 +1,9 @@
 import { stopAndTranscribe$ } from "../voice-io/voice-io-stt.ts";
 import {
+  createComposerTaskChipsSignals,
+  type ComposerTaskChipsSignals,
+} from "./composer-task-chips.ts";
+import {
   createComposerVoiceInputSignals,
   type ComposerVoiceInputSignals,
 } from "./composer-voice-input.ts";
@@ -8,8 +12,10 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
+import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { i18n } from "../../i18n/index.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
@@ -30,7 +36,14 @@ import {
   semanticChatEventsFromChatEvents,
   type ChatRunModelSelection,
 } from "../chat-page/chat-event-state.ts";
-import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
+import {
+  createEditorDocumentSnapshot,
+  messageDocumentToDisplayText,
+} from "./user-message-document-codec.ts";
+import {
+  createComposerCreateSignals,
+  type ComposerCreateSignals,
+} from "./composer-create.ts";
 import {
   createWorkflowComposerSignals,
   type WorkflowComposerSignals,
@@ -234,12 +247,6 @@ interface ComposerQueueSignals {
   >;
 }
 
-interface ComposerGoalSignals {
-  readonly activeGoalObjective$: Computed<Promise<string | null>>;
-  readonly cancelActiveGoal$: Command<Promise<void>, [AbortSignal]>;
-  readonly openActiveGoal$: Command<void, []>;
-}
-
 interface ComposerTemplateSignals
   extends ComposerTemplateEditorSignals, ComposerTemplateUiSignals {
   readonly generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
@@ -250,6 +257,8 @@ interface ComposerTemplateSignals
 }
 
 export interface ComposerSignals {
+  readonly create: ComposerCreateSignals;
+  readonly taskChips: ComposerTaskChipsSignals;
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
@@ -265,7 +274,6 @@ export interface ComposerSignals {
   readonly computer: ComposerComputerSignals;
   readonly submission: ComposerSubmissionSignals;
   readonly queue: ComposerQueueSignals;
-  readonly goal: ComposerGoalSignals;
   readonly template: ComposerTemplateSignals;
   readonly imageAnnotation: ImageAnnotationSignals;
   readonly setImageAnnotationLifecycleRef$: Command<
@@ -304,8 +312,6 @@ interface CreateComposerSignalsOptions {
   readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
   readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
   readonly removeAutomationEvent$: ComposerQueueSignals["removeAutomationEvent$"];
-  readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
-  readonly openActiveGoal$: ComposerGoalSignals["openActiveGoal$"];
 }
 
 function createComposerFileInputSignals() {
@@ -542,6 +548,10 @@ export function createComposerSignals(
     },
     feedback,
   );
+  const create = createComposerCreateSignals(workflowComposer, ui, {
+    image: options.imageModel !== undefined,
+    video: options.videoModel !== undefined,
+  });
   const voice = createComposerVoiceInput(
     options,
     workflowComposer,
@@ -552,7 +562,7 @@ export function createComposerSignals(
     eventSignals,
     workflowComposer,
     ui.videoOptions,
-    voice,
+    { voice, create },
   );
   const fileInput = createComposerFileInputSignals();
   const workflowPrompt = createComposerWorkflowPromptSignals(
@@ -590,6 +600,8 @@ export function createComposerSignals(
 
   return {
     agentId: options.agentId,
+    create,
+    taskChips: createComposerTaskChipsSignals(create),
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,
@@ -633,11 +645,6 @@ export function createComposerSignals(
         workflowComposer,
       ),
       removeAutomationEvent$: options.removeAutomationEvent$,
-    },
-    goal: {
-      activeGoalObjective$: eventSignals.activeGoalObjective$,
-      cancelActiveGoal$: options.cancelActiveGoal$,
-      openActiveGoal$: options.openActiveGoal$,
     },
     template: {
       ...composerTemplateSignals(workflowComposer),
@@ -739,16 +746,12 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
       );
     },
   );
-  const activeGoalObjective$ = computed((get): Promise<string | null> => {
-    return Promise.resolve(foldActiveChatGoalObjective(get(chatEvents$)));
-  });
   return {
     lastAssistantMessage$,
     actionsLoading$,
     sending$,
     runningModelSelection$,
     pendingEvents$,
-    activeGoalObjective$,
     hasEvents$,
   };
 }
@@ -781,6 +784,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
   readonly voiceState$: ComposerVoiceInputSignals["state$"];
+  readonly choosingCreateType$: ComposerCreateSignals["choosing$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
   const { options, eventSignals, workflowComposer } = args;
   const draft = options.draft.signals;
@@ -796,7 +800,8 @@ function createComposerPrimaryActionSignal(args: {
     const attachments = get(draft.attachments$);
     const hasContent =
       get(workflowComposer.hasInput$) || attachments.length > 0;
-    const canSend = uploadsReady && hasContent;
+    const canSend =
+      !get(args.choosingCreateType$) && uploadsReady && hasContent;
     const sending = await get(eventSignals.sending$);
     if (sending && !canSend) {
       return "stop";
@@ -811,34 +816,20 @@ function createComposerPrimaryActionSignal(args: {
   });
 }
 
-function createComposerSubmissionSignals(
+function createSubmitCurrentInput(
   options: CreateComposerSignalsOptions,
-  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
   voice: ComposerVoiceInputSignals,
+  create: ComposerCreateSignals,
 ) {
-  const { state$: voiceState$, owner$ } = voice;
   const draft = options.draft.signals;
+  const voiceState$ = voice.state$;
   const readVideoRunOptions$ = createVideoRunOptionsSignal(
     options.videoModel,
     videoOptions,
   );
-  const invocation$ = state<{
-    readonly owner: AbortController;
-    readonly action: ComposerPrimaryAction;
-  } | null>(null);
-  const hasCurrentInvocation$ = computed((get) => {
-    const invocation = get(invocation$);
-    return invocation !== null && invocation.owner === get(owner$);
-  });
-  const primaryAction$ = createComposerPrimaryActionSignal({
-    options,
-    eventSignals,
-    workflowComposer,
-    voiceState$,
-  });
-  const submitCurrentInput$ = command(
+  return command(
     async (
       { get, set },
       action: ComposerPrimaryAction,
@@ -863,6 +854,28 @@ function createComposerSubmissionSignals(
         signal,
       );
       signal.throwIfAborted();
+      if (get(featureSwitch$)[FeatureSwitchKey.IntroVideo] !== true) {
+        const message = submission.editorDocument.toMessageDocument({
+          selectedTemplate: get(draft.generationTemplate$),
+        });
+        if (
+          message?.parts.some((part) => {
+            return (
+              part.type === "template" &&
+              part.template.type === "video" &&
+              part.template.selection.stylePresetId ===
+                EXPLAINER_VIDEO_TEMPLATE_ID
+            );
+          })
+        ) {
+          toast.error(
+            i18n.t(($) => {
+              return $.artifacts.templates.explainerUnavailable;
+            }),
+          );
+          return false;
+        }
+      }
       const visiblePrompt = submission.prompt.trim();
       if (visiblePrompt.length === 0 && get(draft.attachments$).length === 0) {
         return false;
@@ -870,19 +883,79 @@ function createComposerSubmissionSignals(
       if (!get(draft.attachmentUploadsReady$)) {
         return false;
       }
-      const videoRunOptions = await set(readVideoRunOptions$, signal);
+      const mode = get(create.mode$);
+      const videoRunOptions =
+        mode !== null && mode !== "video"
+          ? undefined
+          : await set(readVideoRunOptions$, signal);
+      signal.throwIfAborted();
+      const instruction = mode
+        ? `Create ${mode === "image" ? "an" : "a"} ${mode}.`
+        : null;
+      const document = submission.editorDocument.toEditorDocument();
+      const editorDocument = instruction
+        ? createEditorDocumentSnapshot(
+            workflowComposer.editor.schema.nodeFromJSON({
+              ...document,
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: instruction }],
+                },
+                ...(document.content ?? []),
+              ],
+            }),
+          )
+        : submission.editorDocument;
       return await set(
         options.submitMessage$,
         action,
         {
-          prompt: visiblePrompt,
+          prompt: instruction
+            ? `${instruction}\n\n${visiblePrompt}`
+            : visiblePrompt,
           generationTemplate: get(draft.generationTemplate$),
-          editorDocument: submission.editorDocument,
+          editorDocument,
           videoRunOptions,
         },
         signal,
       );
     },
+  );
+}
+
+function createComposerSubmissionSignals(
+  options: CreateComposerSignalsOptions,
+  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
+  workflowComposer: WorkflowComposerSignals,
+  videoOptions: ComposerVideoOptionsSignals,
+  {
+    voice,
+    create,
+  }: { voice: ComposerVoiceInputSignals; create: ComposerCreateSignals },
+) {
+  const { state$: voiceState$, owner$ } = voice;
+  const invocation$ = state<{
+    readonly owner: AbortController;
+    readonly action: ComposerPrimaryAction;
+  } | null>(null);
+  const hasCurrentInvocation$ = computed((get) => {
+    const invocation = get(invocation$);
+    return invocation !== null && invocation.owner === get(owner$);
+  });
+  const primaryAction$ = createComposerPrimaryActionSignal({
+    options,
+    eventSignals,
+    workflowComposer,
+    voiceState$,
+    choosingCreateType$: create.choosing$,
+  });
+  const submitCurrentInput$ = createSubmitCurrentInput(
+    options,
+    workflowComposer,
+    videoOptions,
+    voice,
+    create,
   );
   const activatePrimaryAction$ = command(
     async (

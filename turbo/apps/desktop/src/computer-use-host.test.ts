@@ -103,7 +103,7 @@ function createRuntime(
       return jsonResponse({ status: "idle" });
     });
   const runtime = new ComputerUseHostRuntime({
-    platformUrl: new URL("https://app.vm0.ai"),
+    platformUrl: new URL("https://app.okou.ai"),
     installationId: INSTALLATION_ID,
     hostName: "lancy-macbook-pro.local",
     appVersion: "1.2.3",
@@ -113,12 +113,18 @@ function createRuntime(
     getPermissions() {
       return { accessibility: true, screenRecording: false };
     },
-    async executeCommand(command, permissions) {
-      if (options.executeCommand) {
-        return options.executeCommand(command, permissions);
-      }
-      return { status: "succeeded", result: {} };
-    },
+    acquireCommand: () => ({
+      getPermissions: async () => ({
+        accessibility: true,
+        screenRecording: false,
+      }),
+      async executeCommand(command, permissions) {
+        if (options.executeCommand)
+          return options.executeCommand(command, permissions);
+        return { status: "succeeded", result: {} };
+      },
+      release() {},
+    }),
     ...(options.onCommandFailure
       ? { onCommandFailure: options.onCommandFailure }
       : {}),
@@ -137,12 +143,10 @@ describe("ComputerUseHostRuntime", () => {
       .spyOn(os, "hostname")
       .mockReturnValue(" lancy-macbook-pro.local ");
 
-    expect(readSystemHostName("Zero Computer Use")).toBe(
-      "lancy-macbook-pro.local",
-    );
+    expect(readSystemHostName("Okou")).toBe("lancy-macbook-pro.local");
 
     hostname.mockReturnValue(" ");
-    expect(readSystemHostName("Zero Computer Use")).toBe("Zero Computer Use");
+    expect(readSystemHostName("Okou")).toBe("Okou");
   });
 
   it("does not register a host until manually started", async () => {
@@ -170,7 +174,7 @@ describe("ComputerUseHostRuntime", () => {
       throw new Error("Expected Computer Use host registration request");
     }
     const [url, init] = call;
-    expect(url).toBe("https://api.vm0.ai/api/computer-use/hosts/start");
+    expect(url).toBe("https://api.okou.ai/api/computer-use/hosts/start");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toMatchObject({
       installationId: INSTALLATION_ID,
@@ -236,7 +240,7 @@ describe("ComputerUseHostRuntime", () => {
       installationId: INSTALLATION_ID,
     });
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/computer-use/hosts/start",
+      "https://api.okou.ai/api/computer-use/hosts/start",
     );
 
     await runtime.stop();
@@ -400,6 +404,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({
           status: "command",
           command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: new Date().toISOString(),
             id: "cmd-1",
             kind: "app.state",
             payload: { app: "Safari" },
@@ -445,6 +452,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({
           status: "claimed",
           command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: new Date().toISOString(),
             id: "cmd-1",
             kind: "app.state",
             payload: { app: "Things" },
@@ -510,6 +520,9 @@ describe("ComputerUseHostRuntime", () => {
     });
     expect(executeCommand).toHaveBeenCalledWith(
       {
+        timeoutMs: 60_000,
+        createdAt: expect.any(String),
+        claimedAt: expect.any(String),
         id: "cmd-1",
         kind: "app.state",
         payload: { app: "Things" },
@@ -557,6 +570,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({
           status: "command",
           command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: new Date().toISOString(),
             id: `cmd-${nextCommandId.toString()}`,
             kind: "keyboard.press_key",
             payload: { app: "Terminal", key: "Enter" },
@@ -587,6 +603,9 @@ describe("ComputerUseHostRuntime", () => {
   it("notifies command failures without moving the runtime offline", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
+      timeoutMs: 60_000,
+      createdAt: new Date().toISOString(),
+      claimedAt: new Date().toISOString(),
       id: "cmd-1",
       kind: "element.set_value",
       payload: { app: "com.google.Chrome", value: "https://example.com" },
@@ -654,6 +673,9 @@ describe("ComputerUseHostRuntime", () => {
   it("keeps heartbeats running while a command is executing", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
+      timeoutMs: 60_000,
+      createdAt: new Date().toISOString(),
+      claimedAt: new Date().toISOString(),
       id: "cmd-1",
       kind: "keyboard.type_text",
       payload: { app: "Chrome", text: "https://mail.google.com/" },
@@ -693,7 +715,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(executeCommand).toHaveBeenCalledOnce();
     expect(completeCalls).toBe(0);
 
-    await vi.advanceTimersByTimeAsync(90_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const heartbeatCalls = hostFetch.mock.calls.filter(([url]) => {
       return url.endsWith("/api/computer-use/heartbeat");
@@ -712,6 +734,9 @@ describe("ComputerUseHostRuntime", () => {
   it("drains an active command before stopping without claiming more work", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
+      timeoutMs: 60_000,
+      createdAt: new Date().toISOString(),
+      claimedAt: new Date().toISOString(),
       id: "cmd-1",
       kind: "keyboard.type_text",
       payload: { app: "Chrome", text: "okou" },
@@ -783,6 +808,9 @@ describe("ComputerUseHostRuntime", () => {
           ? jsonResponse({
               status: "command",
               command: {
+                timeoutMs: 60_000,
+                createdAt: new Date().toISOString(),
+                claimedAt: new Date().toISOString(),
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -830,6 +858,9 @@ describe("ComputerUseHostRuntime", () => {
           ? jsonResponse({
               status: "command",
               command: {
+                timeoutMs: 60_000,
+                createdAt: new Date().toISOString(),
+                claimedAt: new Date().toISOString(),
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -885,6 +916,9 @@ describe("ComputerUseHostRuntime", () => {
           return jsonResponse({
             status: "command",
             command: {
+              timeoutMs: 60_000,
+              createdAt: new Date().toISOString(),
+              claimedAt: new Date().toISOString(),
               id: "cmd-1",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -896,6 +930,9 @@ describe("ComputerUseHostRuntime", () => {
           return jsonResponse({
             status: "command",
             command: {
+              timeoutMs: 60_000,
+              createdAt: new Date().toISOString(),
+              claimedAt: new Date().toISOString(),
               id: "cmd-2",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -962,7 +999,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("retries hung command completion requests with a request timeout", async () => {
+  it("bounds hung command reporting without renewing the execution grant", async () => {
     vi.useFakeTimers();
     let nextCalls = 0;
     let completeCalls = 0;
@@ -976,6 +1013,9 @@ describe("ComputerUseHostRuntime", () => {
           ? jsonResponse({
               status: "command",
               command: {
+                timeoutMs: 120_000,
+                createdAt: new Date().toISOString(),
+                claimedAt: new Date().toISOString(),
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -998,19 +1038,14 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(completeCalls).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(60_000);
-    await vi.advanceTimersByTimeAsync(1_999);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(completeCalls).toBe(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-
-    expect(completeCalls).toBe(2);
     expect(runtime.getState()).toMatchObject({
-      status: "online",
-      lastError: null,
+      status: "recovering",
+      lastError: "Computer Use command reporting timed out after 5000ms",
     });
-    expect(runtime.getState().lastCommandAt).toEqual(expect.any(String));
+    expect(runtime.getState().lastCommandAt).toBeNull();
 
     await runtime.stop();
   });
@@ -1218,6 +1253,9 @@ describe("ComputerUseHostRuntime", () => {
           return jsonResponse({
             status: "command",
             command: {
+              timeoutMs: 60_000,
+              createdAt: new Date().toISOString(),
+              claimedAt: new Date().toISOString(),
               id: "cmd-1",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -1399,7 +1437,7 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(hostFetch).toHaveBeenCalledOnce();
     expect(hostFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/computer-use/heartbeat",
+      "https://api.okou.ai/api/computer-use/heartbeat",
     );
     expect(runtime.getState()).toMatchObject({
       status: "error",
@@ -1428,10 +1466,10 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(sessionFetch).toHaveBeenCalledTimes(2);
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/computer-use/hosts/start",
+      "https://api.okou.ai/api/computer-use/hosts/start",
     );
     expect(sessionFetch.mock.calls[1]?.[0]).toBe(
-      "https://api.vm0.ai/api/auth/me",
+      "https://api.okou.ai/api/auth/me",
     );
     expect(runtime.getState()).toMatchObject({
       status: "unauthenticated",

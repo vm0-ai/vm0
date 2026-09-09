@@ -256,7 +256,6 @@ async function resolveAgentPhonePresentation(
     readonly db: Db;
     readonly runId: string;
     readonly run: AgentPhoneChatRunContext;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -275,7 +274,6 @@ async function resolveAgentPhonePresentation(
         orgId: args.run.orgId,
         userId: args.run.userId,
         runId: args.runId,
-        publicBrand: args.publicBrand,
         getFeatureOverrides: () => {
           return Promise.resolve(featureContext.overrides ?? {});
         },
@@ -332,7 +330,6 @@ async function deliverClaimedAgentPhoneChatCallback(
       db: args.db,
       runId: args.callback.runId,
       run,
-      publicBrand: payload.publicBrand,
     },
     signal,
   );

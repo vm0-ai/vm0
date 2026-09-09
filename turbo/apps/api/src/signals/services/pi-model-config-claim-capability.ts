@@ -1,15 +1,19 @@
+import { piNativeContextHasExactEgress } from "@okouai/api-contracts/contracts/pi-native-firewall";
+import type { ExecutionFirewalls } from "@okouai/connectors/firewall-types";
 import {
   PI_MODEL_CONFIG_CURRENT_GENERATION,
   PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
   PI_MODEL_CONFIG_LEGACY_GENERATION,
+  PI_MODEL_CONFIG_NATIVE_GENERATION,
   piModelConfigLegacySchema,
   piModelConfigSchema,
   piModelConfigV2Schema,
   piModelConfigV3Schema,
+  piModelConfigV4Schema,
   type PiModelConfig,
   type RunnerClaimCapabilities,
 } from "@okouai/api-contracts/contracts/runners";
-import type { z } from "zod";
+import { z } from "zod";
 
 type PiModelConfigClaimResolution =
   | {
@@ -62,6 +66,8 @@ export function resolvePiModelConfigForClaim(args: {
   readonly cliAgentType: string;
   readonly modelConfig: unknown;
   readonly capabilities: RunnerClaimCapabilities | undefined;
+  readonly environment?: Readonly<Record<string, string>> | null;
+  readonly firewalls?: ExecutionFirewalls;
 }): PiModelConfigClaimResolution {
   if (args.cliAgentType !== "pi") {
     return { status: "compatible", modelConfig: undefined };
@@ -87,6 +93,25 @@ export function resolvePiModelConfigForClaim(args: {
   }
   if (generation === PI_MODEL_CONFIG_DIALECT_TIER_GENERATION) {
     const parsed = piModelConfigV3Schema.safeParse(args.modelConfig);
+    return parsed.success
+      ? { status: "compatible", modelConfig: parsed.data }
+      : { status: "invalid", error: parsed.error };
+  }
+  if (generation === PI_MODEL_CONFIG_NATIVE_GENERATION) {
+    const parsed = piModelConfigV4Schema.safeParse(args.modelConfig);
+    if (parsed.success && !piNativeContextHasExactEgress(parsed.data, args)) {
+      return {
+        status: "invalid",
+        error: new z.ZodError([
+          {
+            code: "custom",
+            path: ["piModelConfig"],
+            message:
+              "Native Pi context must carry its exact egress authority and opaque environment",
+          },
+        ]),
+      };
+    }
     return parsed.success
       ? { status: "compatible", modelConfig: parsed.data }
       : { status: "invalid", error: parsed.error };

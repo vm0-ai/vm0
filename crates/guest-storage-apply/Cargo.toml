@@ -1,0 +1,21 @@
+[package]
+name = "guest-storage-apply"
+version = "0.23.73"
+edition.workspace = true
+
+[dependencies]
+flate2 = { workspace = true, features = ["runtime_detection", "rust_backend"] }
+guest-contracts.workspace = true
+libc = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+tar = { workspace = true, features = ["xattr"] }
+ureq = { workspace = true, features = ["gzip", "platform-verifier", "rustls"] }
+guest-telemetry.workspace = true
+
+[dev-dependencies]
+httpmock = { workspace = true, features = ["cookies"] }
+tempfile = { workspace = true, features = ["getrandom"] }
+
+[lints]
+workspace = true

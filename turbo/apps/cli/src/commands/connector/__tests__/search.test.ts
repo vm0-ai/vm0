@@ -25,6 +25,7 @@ import {
 } from "../../__tests__/helpers/connector-catalog";
 import {
   customConnector,
+  customMcpConnector,
   stubAgentCustomConnectors,
   stubCustomConnectors,
 } from "../../__tests__/helpers/custom-connectors";
@@ -36,6 +37,7 @@ import {
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 const RUN_CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
+const THREAD_UUID = "22222222-2222-4222-8222-222222222222";
 
 const connectedGithub = {
   id: "1",
@@ -138,12 +140,14 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
 }
 
 function findDataRows(lines: readonly string[]): string[] {
-  return lines.filter((line) => {
+  const contextIndex = lines.indexOf("Connection context:");
+  const tableLines = contextIndex === -1 ? lines : lines.slice(0, contextIndex);
+  return tableLines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed) return false;
     if (trimmed.startsWith("SLUG")) return false;
     if (trimmed.startsWith("No exact match")) return false;
-    if (trimmed.startsWith("Too many results")) return false;
+    if (trimmed.startsWith("Supported connector matches")) return false;
     if (trimmed.startsWith("No matches found")) return false;
     return true;
   });
@@ -167,6 +171,10 @@ describe("okou connector search command", () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);
+    searchCommand.setOptionValue("agent", undefined);
+    searchCommand.setOptionValue("limit", undefined);
+    searchCommand.setOptionValue("callbackPrompt", undefined);
+    searchCommand.setOptionValue("json", false);
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
@@ -176,6 +184,245 @@ describe("okou connector search command", () => {
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  describe("JSON output", () => {
+    it("identifies all three connector types and separates current connection from Agent grants", async () => {
+      const custom = customConnector({ connectedAccountId: RUN_CONNECTION_ID });
+      const mcp = customMcpConnector();
+      server.use(
+        stubConnectorCatalogStatus([
+          catalogStatusItem({ connectorSlug: "acme", label: "Acme Builtin" }),
+        ]),
+        stubCustomConnectors([custom, mcp]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, ["acme"]),
+        stubAgentCustomConnectors([
+          { customConnectorId: custom.id, permissionNames: [] },
+        ]),
+      );
+      chalk.level = 3;
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        " Acme ",
+        "--agent",
+        AGENT_UUID,
+        "--json",
+      ]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      const json: unknown = JSON.parse(output);
+      expect(json).toMatchObject({
+        context: "current",
+        query: { keyword: "Acme", limit: null },
+        agent: { agentId: AGENT_UUID },
+        total: 3,
+        exactMatch: true,
+        connectors: expect.arrayContaining([
+          expect.objectContaining({
+            connectorType: "builtin",
+            kind: "builtin",
+            target: { kind: "builtin", connectorSlug: "acme" },
+            connected: false,
+            authorized: true,
+          }),
+          expect.objectContaining({
+            connectorType: "custom-http",
+            kind: "custom",
+            id: custom.id,
+            connectionId: RUN_CONNECTION_ID,
+            authorized: true,
+          }),
+          expect.objectContaining({
+            connectorType: "custom-mcp",
+            target: { kind: "custom", customConnectorId: mcp.id },
+            authorized: false,
+          }),
+        ]),
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+      expect(output).not.toContain("\u001b[");
+    });
+
+    it("retains the total match count when results are limited", async () => {
+      server.use(
+        stubAvailableConnectors([
+          "google-ads",
+          "google-calendar",
+          "google-docs",
+        ]),
+      );
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "google",
+        "--limit",
+        "1",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        total: 3,
+        query: { limit: 1 },
+        connectors: [expect.objectContaining({ slug: expect.any(String) })],
+      });
+    });
+
+    it("returns a parseable empty result without guidance prose", async () => {
+      server.use(stubConnectors([]));
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "not-a-real-service-xyz",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        context: "current",
+        total: 0,
+        exactMatch: false,
+        connectors: [],
+        actions: [],
+      });
+    });
+
+    it("reports the exact reconnect-required run account independently of current grants", async () => {
+      const target = { kind: "builtin", connectorSlug: "github" } as const;
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      writeRunConnectorAccountContext(contextPath, [
+        { ...target, connectionId: RUN_CONNECTION_ID },
+      ]);
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, []),
+        stubRunConnectorAccountInspection([
+          {
+            kind: "available",
+            target,
+            connectionId: RUN_CONNECTION_ID,
+            authMethod: "oauth",
+            displayName: "Selected account",
+            externalId: "selected",
+            externalUsername: null,
+            externalEmail: null,
+            connectionStatus: "reconnect-required",
+            reconnectReason: "authorization_expired_or_revoked",
+          },
+        ]),
+      );
+      await searchCommand.parseAsync(["node", "cli", "github", "--json"]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      const json: unknown = JSON.parse(output);
+      expect(json).toMatchObject({
+        context: "run",
+        connectors: [
+          {
+            connectorType: "builtin",
+            target,
+            account: {
+              state: "available",
+              connectionId: RUN_CONNECTION_ID,
+              metadata: { connectionStatus: "reconnect-required" },
+            },
+            availableForRun: false,
+            authorized: false,
+          },
+        ],
+        actions: [
+          {
+            url: expect.stringContaining(
+              `/connectors/github/reconnect/${RUN_CONNECTION_ID}`,
+            ),
+          },
+        ],
+      });
+      expect(output).not.toContain("octocat");
+    });
+
+    it.each([
+      "not-admitted",
+      "context-unavailable",
+      "metadata-unavailable",
+    ] as const)("preserves the %s run state in JSON", async (state) => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      if (state === "not-admitted") {
+        writeRunConnectorAccountContext(contextPath, []);
+      } else if (state === "context-unavailable") {
+        vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+      } else {
+        writeRunConnectorAccountContext(contextPath, [
+          {
+            kind: "builtin",
+            connectorSlug: "github",
+            connectionId: RUN_CONNECTION_ID,
+          },
+        ]);
+      }
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+        stubRunConnectorAccountInspection([]),
+      );
+      await searchCommand.parseAsync(["node", "cli", "github", "--json"]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        context: "run",
+        connectors: [
+          {
+            account: { state },
+            availableForRun: state === "context-unavailable" ? null : false,
+            authorized: true,
+          },
+        ],
+      });
+      if (state === "metadata-unavailable") {
+        expect(json).toMatchObject({
+          connectors: [{ account: { connectionId: RUN_CONNECTION_ID } }],
+        });
+      }
+    });
+
+    it("preserves the callback URL and task inside the JSON action", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_UUID);
+      writeRunConnectorAccountContext(contextPath, []);
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--limit",
+        "1",
+        "--callback-prompt",
+        "Continue issue review",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        actions: [
+          { supportsCallback: true, url: expect.stringContaining(THREAD_UUID) },
+        ],
+      });
+      expect(json).toMatchObject({
+        actions: [{ url: expect.stringContaining("Continue") }],
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("keyword validation", () => {
@@ -191,15 +438,17 @@ describe("okou connector search command", () => {
   });
 
   describe("without agent context", () => {
-    it("returns github first for an exact slug match with no banner", async () => {
+    it("returns github first for an exact slug match", async () => {
       await searchCommand.parseAsync(["node", "cli", "github"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
       expect(output).not.toContain("No exact match");
-      expect(output).not.toContain("Too many results");
+      expect(output).toContain("Supported connector matches:");
+      expect(output).not.toContain("Showing top");
       expect(output).not.toContain("AUTHORIZED FOR");
       expect(output).not.toContain("LABEL");
+      expect(output).toContain("AVAILABLE");
       expect(output).toContain("CONNECTED AS");
 
       const dataRows = findDataRows(lines);
@@ -303,12 +552,28 @@ describe("okou connector search command", () => {
       );
     });
 
-    it("caps at --limit and prefixes with Too many results", async () => {
+    it("returns every supported match by default", async () => {
+      server.use(
+        stubAvailableConnectors(["sheet-alpha", "sheet-beta", "sheet-gamma"]),
+      );
+
+      await searchCommand.parseAsync(["node", "cli", "sheet"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const output = lines.join("\n");
+      expect(output).toContain("Supported connector matches: 3.");
+      expect(output).not.toContain("Showing top");
+      expect(findDataRows(lines)).toHaveLength(3);
+    });
+
+    it("caps at --limit and reports the supported match count", async () => {
       await searchCommand.parseAsync(["node", "cli", "api", "--limit", "3"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
-      expect(output).toMatch(/Too many results \(top 3 of \d+\):/);
+      expect(output).toMatch(
+        /Supported connector matches: \d+\. Showing top 3:/,
+      );
       const dataRows = findDataRows(lines);
       expect(dataRows).toHaveLength(3);
     });
@@ -367,54 +632,60 @@ describe("okou connector search command", () => {
       expect(githubRow).toMatch(/✓/);
     });
 
-    it("adds AUTHORIZED FOR column when OKOU_AGENT_ID is set", async () => {
-      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
-      writeRunConnectorAccountContext(contextPath, [
-        {
-          kind: "builtin",
-          connectorSlug: "github",
-          connectionId: RUN_CONNECTION_ID,
-        },
-      ]);
-      server.use(
-        stubConnectorCatalog([
-          catalogItem({
-            connectorSlug: "github",
-            label: "GitHub",
-            tags: ["vcs"],
-            authMethods: [authCodeMethod("oauth")],
-          }),
-        ]),
-        stubRunConnectorAccountInspection([
+    it.each([
+      { selector: "omitted", args: [] },
+      { selector: "matching", args: ["--agent", AGENT_UUID] },
+    ])(
+      "uses the run Agent and account with $selector --agent",
+      async ({ args }) => {
+        vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+        writeRunConnectorAccountContext(contextPath, [
           {
-            kind: "available",
+            kind: "builtin",
+            connectorSlug: "github",
             connectionId: RUN_CONNECTION_ID,
-            target: { kind: "builtin", connectorSlug: "github" },
-            authMethod: "oauth",
-            displayName: "Run account B",
-            externalId: "run-b",
-            externalUsername: "run-b",
-            externalEmail: "run-b@example.com",
-            connectionStatus: "connected",
-            reconnectReason: null,
           },
-        ]),
-        stubAgent(AGENT_UUID, "maya"),
-        stubUserConnectors(AGENT_UUID, []),
-      );
+        ]);
+        server.use(
+          stubConnectorCatalog([
+            catalogItem({
+              connectorSlug: "github",
+              label: "GitHub",
+              tags: ["vcs"],
+              authMethods: [authCodeMethod("oauth")],
+            }),
+          ]),
+          stubRunConnectorAccountInspection([
+            {
+              kind: "available",
+              connectionId: RUN_CONNECTION_ID,
+              target: { kind: "builtin", connectorSlug: "github" },
+              authMethod: "oauth",
+              displayName: "Run account B",
+              externalId: "run-b",
+              externalUsername: "run-b",
+              externalEmail: "run-b@example.com",
+              connectionStatus: "connected",
+              reconnectReason: null,
+            },
+          ]),
+          stubAgent(AGENT_UUID, "maya"),
+          stubUserConnectors(AGENT_UUID, []),
+        );
 
-      await searchCommand.parseAsync(["node", "cli", "github"]);
+        await searchCommand.parseAsync(["node", "cli", "github", ...args]);
 
-      const lines = mockConsoleLog.mock.calls.flat() as string[];
-      const output = lines.join("\n");
-      expect(output).toContain("AUTHORIZED FOR maya");
-      expect(output).toContain("ACCOUNT USED BY THIS RUN");
-      expect(output).toContain("Run account B");
-      const githubRow = findDataRows(lines).find((line) => {
-        return line.startsWith("github");
-      });
-      expect(githubRow).toMatch(/-/);
-    });
+        const lines = mockConsoleLog.mock.calls.flat() as string[];
+        const output = lines.join("\n");
+        expect(output).toContain("AUTHORIZED FOR maya");
+        expect(output).toContain("ACCOUNT USED BY THIS RUN");
+        expect(output).toContain("Run account B");
+        const githubRow = findDataRows(lines).find((line) => {
+          return line.startsWith("github");
+        });
+        expect(githubRow).toMatch(/-/);
+      },
+    );
 
     it("uses the full UUID as the header when displayName is null", async () => {
       server.use(
@@ -432,26 +703,6 @@ describe("okou connector search command", () => {
 
       const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
       expect(output).toContain(`AUTHORIZED FOR ${AGENT_UUID}`);
-    });
-
-    it("--agent overrides OKOU_AGENT_ID", async () => {
-      vi.stubEnv("OKOU_AGENT_ID", ALT_AGENT_UUID);
-      server.use(
-        stubAgent(AGENT_UUID, "from-flag"),
-        stubUserConnectors(AGENT_UUID, ["github"]),
-      );
-
-      await searchCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--agent",
-        AGENT_UUID,
-      ]);
-
-      const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
-      expect(output).toContain("AUTHORIZED FOR from-flag");
-      expect(output).not.toContain(ALT_AGENT_UUID);
     });
 
     it("renders custom connector authorization for the agent", async () => {
@@ -501,6 +752,9 @@ describe("okou connector search command", () => {
 
       const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
       expect(output).toContain("(not connected)");
+      expect(output).toContain(
+        "http://localhost:3000/connectors/github/connect",
+      );
     });
 
     it("renders reconnect-needed state", async () => {
@@ -587,8 +841,13 @@ describe("okou connector search command", () => {
       await searchCommand.parseAsync(["node", "cli", "github"]);
 
       const text = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
+      expect(text).toContain("AVAILABLE THIS RUN");
       expect(text).toContain("ACCOUNT USED BY THIS RUN");
-      expect(text).toContain("Run account B (reconnect needed)");
+      expect(text).toContain("Run account B");
+      expect(text).toContain("no (reconnect needed)");
+      expect(text).toContain(
+        `http://localhost:3000/connectors/github/reconnect/${RUN_CONNECTION_ID}?agentId=${AGENT_UUID}`,
+      );
       expect(text).not.toContain("default-account-a");
       expect(defaultStatusRequests).toBe(0);
     });
@@ -635,28 +894,50 @@ describe("okou connector search command", () => {
       ).toContain("Custom run account B");
     });
 
-    it("distinguishes a not-admitted connector from owner disconnection", async () => {
+    it("returns every supported run match and distinguishes availability", async () => {
       vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       writeRunConnectorAccountContext(contextPath, [
         {
           kind: "builtin",
-          connectorSlug: "github",
-          connectionId: null,
+          connectorSlug: "google-sheets",
+          connectionId: RUN_CONNECTION_ID,
         },
       ]);
       server.use(
         stubConnectorCatalog([
-          catalogItem({ connectorSlug: "github", label: "GitHub" }),
+          catalogItem({
+            connectorSlug: "google-sheets",
+            label: "Google Sheets",
+          }),
+          catalogItem({ connectorSlug: "sheetdb", label: "SheetDB" }),
+        ]),
+        stubRunConnectorAccountInspection([
+          {
+            kind: "available",
+            connectionId: RUN_CONNECTION_ID,
+            target: { kind: "builtin", connectorSlug: "google-sheets" },
+            authMethod: "oauth",
+            displayName: "Sheets account",
+            externalId: "sheets-account",
+            externalUsername: null,
+            externalEmail: "sheets@example.com",
+            connectionStatus: "connected",
+            reconnectReason: null,
+          },
         ]),
         stubAgent(AGENT_UUID, "maya"),
-        stubUserConnectors(AGENT_UUID, ["github"]),
+        stubUserConnectors(AGENT_UUID, ["google-sheets"]),
       );
 
-      await searchCommand.parseAsync(["node", "cli", "github"]);
+      await searchCommand.parseAsync(["node", "cli", "sheet"]);
 
-      expect(
-        (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
-      ).toContain("(not admitted for this run)");
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const output = lines.join("\n");
+      expect(output).toContain("Supported connector matches: 2.");
+      expect(output).toContain("AVAILABLE THIS RUN");
+      expect(findDataRows(lines)).toHaveLength(2);
+      expect(output).toMatch(/google-sheets\s+yes\s+Sheets account/u);
+      expect(output).toMatch(/sheetdb\s+no \(not admitted\)\s+-/u);
     });
 
     it("retains a deleted exact ID and fails closed for missing legacy context", async () => {
@@ -678,16 +959,164 @@ describe("okou connector search command", () => {
       );
 
       await searchCommand.parseAsync(["node", "cli", "github"]);
-      expect(
-        (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
-      ).toContain(`${RUN_CONNECTION_ID} (metadata unavailable or deleted)`);
+      const metadataUnavailableOutput = (
+        mockConsoleLog.mock.calls.flat() as string[]
+      ).join("\n");
+      expect(metadataUnavailableOutput).toContain(RUN_CONNECTION_ID);
+      expect(metadataUnavailableOutput).toContain(
+        "no (metadata unavailable or deleted)",
+      );
+      expect(metadataUnavailableOutput).toContain(
+        `[Review GitHub accounts and agent access](http://localhost:3000/connectors?agentId=${AGENT_UUID})`,
+      );
+      expect(metadataUnavailableOutput).not.toContain(
+        "/connectors/github/connect",
+      );
 
       mockConsoleLog.mockClear();
       vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
       await searchCommand.parseAsync(["node", "cli", "github"]);
       expect(
         (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
-      ).toContain("(run account unavailable)");
+      ).toContain("unknown (run context unavailable)");
+    });
+  });
+
+  describe("connection guidance", () => {
+    beforeEach(() => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_UUID);
+      writeRunConnectorAccountContext(contextPath, []);
+      server.use(
+        stubConnectorCatalog([
+          catalogItem({
+            connectorSlug: "google-sheets",
+            label: "Google Sheets",
+          }),
+          catalogItem({ connectorSlug: "sheetdb", label: "SheetDB" }),
+        ]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+    });
+
+    it("offers connection links for supported services that are not admitted to the run", async () => {
+      await searchCommand.parseAsync(["node", "cli", "sheet"]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(
+        `[Connect or authorize Google Sheets](http://localhost:3000/connectors/google-sheets/connect?agentId=${AGENT_UUID})`,
+      );
+      expect(output).toContain(
+        `[Connect or authorize SheetDB](http://localhost:3000/connectors/sheetdb/connect?agentId=${AGENT_UUID})`,
+      );
+      expect(output).toContain("--callback-prompt");
+      expect(output).not.toContain("callbackPrompt=");
+    });
+
+    it("preserves the task in a callback link scoped to the current chat and configured app origin", async () => {
+      vi.stubEnv("OKOU_APP_URL", "https://app.example.com");
+      const callbackPrompt =
+        "Check Google Sheets access, then review the user's Q3 budget & summarize it.";
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "google-sheets",
+        "--limit",
+        "1",
+        "--callback-prompt",
+        callbackPrompt,
+      ]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      const link = output.match(
+        /\[Connect or authorize Google Sheets\]\(([^)]+)\)/u,
+      );
+      expect(link).not.toBeNull();
+      const url = new URL(link![1]!);
+      expect(url.origin).toBe("https://app.example.com");
+      expect(url.pathname).toBe("/connectors/google-sheets/connect");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        agentId: AGENT_UUID,
+        threadId: THREAD_UUID,
+        callbackPrompt,
+      });
+      expect(output).not.toContain("/connectors/sheetdb/");
+    });
+
+    it("rejects a callback when the search matches multiple connectors", async () => {
+      await expect(
+        searchCommand.parseAsync([
+          "node",
+          "cli",
+          "sheet",
+          "--callback-prompt",
+          "Continue reviewing the spreadsheet",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        "--callback-prompt requires a single connector match",
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+        "callbackPrompt=",
+      );
+    });
+
+    it("rejects callback links for another agent", async () => {
+      await expect(
+        searchCommand.parseAsync([
+          "node",
+          "cli",
+          "google-sheets",
+          "--limit",
+          "1",
+          "--agent",
+          ALT_AGENT_UUID,
+          "--callback-prompt",
+          "Continue reviewing the spreadsheet",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        `--agent ${ALT_AGENT_UUID} conflicts with the current run's Agent ${AGENT_UUID}`,
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+        "callbackPrompt=",
+      );
+    });
+
+    it("uses connector settings for custom connector setup", async () => {
+      const connector = customConnector();
+      server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));
+
+      await searchCommand.parseAsync(["node", "cli", connector.slug]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(
+        `[Review ${connector.displayName} accounts and agent access](http://localhost:3000/connectors?agentId=${AGENT_UUID})`,
+      );
+      expect(output).not.toContain(`/connectors/${connector.slug}/authorize`);
+    });
+
+    it("offers authorization for a connected service when inspecting an agent outside a run", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "");
+      server.use(stubConnectors([connectedGithub]));
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+        "--limit",
+        "1",
+      ]);
+
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `http://localhost:3000/connectors/github/authorize?agentId=${AGENT_UUID}`,
+      );
     });
   });
 

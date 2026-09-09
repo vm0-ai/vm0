@@ -5,7 +5,6 @@ import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import {
   updateUserPreferences$,
@@ -28,7 +27,6 @@ const getUserPreferencesInner$ = computed(async (get): Promise<unknown> => {
 const updateUserPreferencesInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
     const body = await get(updateUserPreferencesBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -41,7 +39,6 @@ const updateUserPreferencesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         preferences: body.data,
-        publicBrand,
       },
       signal,
     );

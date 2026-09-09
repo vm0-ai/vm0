@@ -121,7 +121,7 @@ export const chatThreads = pgTable(
       { onDelete: "set null" },
     ),
     /**
-     * Whether this thread may use Zero's managed cloud browser.
+     * Whether this thread may use Okou's managed cloud browser.
      * Mutually exclusive with computerUseHostId at application boundaries.
      */
     cloudBrowserEnabled: boolean("cloud_browser_enabled")

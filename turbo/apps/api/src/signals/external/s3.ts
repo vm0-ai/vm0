@@ -3,6 +3,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
@@ -161,10 +162,40 @@ const userArtifactsPublicS3Client$ = computed((get): S3Client => {
   return createS3Client(publicEndpoint, userArtifactsS3Credentials());
 });
 
+function privateArtifactsS3Credentials(): S3Credentials {
+  const accessKeyId = env("R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID");
+  const secretAccessKey = env("R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY");
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      "R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID and R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY must be configured",
+    );
+  }
+  return { accessKeyId, secretAccessKey };
+}
+
+const privateArtifactsS3Client$ = computed((): S3Client => {
+  return createS3Client(
+    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
+    privateArtifactsS3Credentials(),
+  );
+});
+
+const privateArtifactsPublicS3Client$ = computed((get): S3Client => {
+  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
+  return publicEndpoint
+    ? createS3Client(publicEndpoint, privateArtifactsS3Credentials())
+    : get(privateArtifactsS3Client$);
+});
+
 function s3ClientForBucket(
   bucket: string,
   usePublicEndpoint = false,
 ): Computed<S3Client> {
+  if (bucket === env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME")) {
+    return usePublicEndpoint
+      ? privateArtifactsPublicS3Client$
+      : privateArtifactsS3Client$;
+  }
   if (bucket === env("R2_USER_ARTIFACTS_BUCKET_NAME")) {
     return usePublicEndpoint
       ? userArtifactsPublicS3Client$
@@ -775,7 +806,13 @@ export function generatePresignedGetUrl(
     bucket,
     key,
     expiresIn,
-    filename,
+    {
+      filename,
+      responseCacheControl:
+        bucket === env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME")
+          ? "private, no-store"
+          : undefined,
+    },
   );
 }
 
@@ -784,15 +821,23 @@ function generatePresignedGetUrlWithClient(
   bucket: string,
   key: string,
   expiresIn: number,
-  filename?: string,
+  options?: {
+    readonly filename?: string;
+    readonly responseCacheControl?: string;
+  },
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
     const client = get(client$);
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      ...(filename
-        ? { ResponseContentDisposition: `attachment; filename="${filename}"` }
+      ...(options?.responseCacheControl
+        ? { ResponseCacheControl: options.responseCacheControl }
+        : {}),
+      ...(options?.filename
+        ? {
+            ResponseContentDisposition: `attachment; filename="${options.filename}"`,
+          }
         : {}),
     });
     return getSignedUrl(client, command, { expiresIn });
@@ -913,6 +958,70 @@ export function putImmutableS3Object(
     if (!uploaded.ok && !isS3PreconditionFailedError(uploaded.error)) {
       throw uploaded.error;
     }
+  });
+}
+
+/** Server-side immutable sharing copies never receive upload credentials. */
+export function copyArtifactShareObject(
+  bucket: string,
+  sourceKey: string,
+  targetKey: string,
+  hosted: boolean,
+  signal: AbortSignal,
+): Computed<Promise<void>> {
+  return computed(async (get) => {
+    const client = get(
+      hosted ? hostedSitesS3Client$ : s3ClientForBucket(bucket),
+    );
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        Key: targetKey,
+        CopySource: `${bucket}/${sourceKey.split("/").map(encodeURIComponent).join("/")}`,
+      }),
+      { abortSignal: signal },
+    );
+  });
+}
+
+/** Read the body and revision validator from the same strongly consistent read. */
+export function readArtifactSharePolicyObject(
+  bucket: string,
+  key: string,
+  signal: AbortSignal,
+) {
+  return computed(async (get) => {
+    const response = await get(hostedSitesS3Client$).send(
+      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      { abortSignal: signal },
+    );
+    const buffer = await readS3ObjectBody(response, key, {}, signal);
+    if (!response.ETag) {
+      throw new Error("Artifact sharing policy has no storage revision");
+    }
+    return { buffer, etag: response.ETag };
+  });
+}
+
+/** A delayed writer cannot overwrite a policy acknowledged by a newer writer. */
+export function writeArtifactSharePolicyObject(
+  bucket: string,
+  key: string,
+  body: string,
+  etag: string | null,
+  signal: AbortSignal,
+) {
+  return computed(async (get): Promise<void> => {
+    await get(hostedSitesS3Client$).send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: "application/json",
+        ...(etag === null ? { IfNoneMatch: "*" } : { IfMatch: etag }),
+      }),
+      { abortSignal: signal },
+    );
   });
 }
 

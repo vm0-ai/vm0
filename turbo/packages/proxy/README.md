@@ -132,4 +132,4 @@ packages/proxy/
 
 ## License
 
-Private - Part of VM0 monorepo
+Private - Part of Okou monorepo

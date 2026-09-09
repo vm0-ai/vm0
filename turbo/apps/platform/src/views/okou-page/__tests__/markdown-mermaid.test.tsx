@@ -55,6 +55,12 @@ function diagramButtons(container: ParentNode = document.body): HTMLElement[] {
 }
 
 test("A Mermaid diagram can move from chat into artifact split view", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    900,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    600,
+  );
   const chat = createMarkdownChatFixture(context);
   const source = [
     "```mermaid",
@@ -77,7 +83,7 @@ test("A Mermaid diagram can move from chat into artifact split view", async () =
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const [inlineImages, expandActions] = await waitFor(() => {
@@ -167,7 +173,7 @@ test("Completed Mermaid diagrams remain accessible and inspectable", async () =>
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const pendingActions = await waitFor(() => {
@@ -232,7 +238,7 @@ test("A streaming Mermaid diagram stays readable until complete", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(

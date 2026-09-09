@@ -3,8 +3,8 @@
 
 @custom-variant pointer-coarse (@media (pointer: coarse));
 
-/* Include @okouai/ui components in Tailwind's content scanning */
-@source "../../../../../packages/ui/src/**/*.tsx";
+/* Include @okouai/ui class recipes in Tailwind's content scanning. */
+@source "../../../../../packages/ui/src/**/*.{ts,tsx}";
 
 @theme {
   /* Font families */
@@ -35,6 +35,13 @@
   --color-usage-kind-video: #008d76;
   --color-usage-kind-connector: #779aad;
   --color-usage-kind-other: #c8b800;
+
+  /* Artifact-type icon foregrounds, shared by type choices, selected labels,
+     and their menus. These glyph colors retain contrast on light and dark
+     surfaces; they are not body-text colors. */
+  --color-artifact-presentation: #8175a8;
+  --color-artifact-video: #ad775f;
+  --color-artifact-image: #638b80;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
@@ -121,10 +128,6 @@ body {
     display: block;
     height: var(--okou-keyboard-scroll-reserve, 0px);
     pointer-events: none;
-  }
-
-  [data-chat-composer] .okou-composer {
-    scroll-margin-block-end: 16px;
   }
 }
 
@@ -436,7 +439,7 @@ body {
   );
 }
 
-/* Zero app: inherits global neutral tokens; only card-specific tokens defined here */
+/* Okou app: inherits global neutral tokens; only card-specific tokens defined here */
 .okou-app {
   --okou-card-radius: 1.25rem;
   /* Cards rendered inside a chat message sit one level in from the page, so
@@ -454,10 +457,10 @@ body {
   --okou-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* A grey veil is invisible on a dark page, so the dark theme casts the same
-   shape in black instead. The border step carries the state either way. */
+/* A wide black shadow reads as a page gradient on dark surfaces. The border
+   step carries the focus state without adding another layer behind the card. */
 :where([data-theme="dark"]) .okou-app {
-  --okou-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+  --okou-composer-focus-veil: none;
 }
 
 .okou-app[data-gradient-color-themes] {
@@ -469,7 +472,7 @@ body {
 }
 
 :where([data-theme="dark"]) .okou-app[data-gradient-color-themes] {
-  --okou-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+  --okou-composer-focus-veil: none;
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
@@ -570,7 +573,7 @@ body {
   background-color: hsl(var(--gray-0));
 }
 
-/* Zero chip-style gray (tone options, skill tags, Add skill) */
+/* Chip-style gray (tone options, skill tags, Add skill) */
 .okou-app .okou-chip {
   background-color: hsl(var(--gray-50));
   border: 0.7px solid hsl(var(--gray-400));
@@ -583,13 +586,12 @@ body {
   border-color: hsl(var(--gray-400));
 }
 
-/* Zero left nav */
+/* Left nav */
 .okou-nav {
   --color-sidebar-border: hsl(var(--gray-200));
 }
 
-/* The sidebars take the site's own two greys and the chat column doubles as the
-   frame around the workspace card. */
+/* The sidebars take the site's own two greys. */
 .okou-app {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-rail: hsl(var(--sidebar-rail));
@@ -700,7 +702,7 @@ body {
 }
 
 /* Cards inside the chat transcript: notice cards, action cards, artifact and
-   media frames. One surface, one hairline, one shadow, one radius — before this
+   media frames. One surface, one border, one shadow, one radius — before this
    the transcript carried two radii, four border tokens and three fills.
 
    `okou-chat-frame` is the same recipe without the fill, for the frames that
@@ -715,7 +717,8 @@ body {
 @layer components {
   .okou-app .okou-chat-card,
   .okou-app .okou-chat-frame {
-    border: 0.7px solid hsl(var(--gray-400));
+    /* Fractional borders visibly repaint when card contents resolve. */
+    border: 1px solid hsl(var(--gray-400));
     border-radius: var(--okou-chat-card-radius);
     box-shadow: var(--okou-chat-card-shadow);
   }
@@ -743,7 +746,7 @@ body {
   );
 }
 
-/* Message bubble (e.g. Meet Zero tone samples) */
+/* Message bubble (e.g. Meet Okou tone samples) */
 .okou-app .okou-bubble-cool {
   background-color: hsl(var(--gray-100) / 0.95);
   color: hsl(var(--foreground));
@@ -757,39 +760,10 @@ body {
   color: hsl(var(--foreground));
 }
 
-/* Chat: assistant (Zero) message bubble */
+/* Chat: assistant message bubble */
 .okou-app .okou-chat-bubble-assistant {
   background-color: transparent;
   border: none;
-}
-
-/* Touch passages use an app-owned Range and overlay, never a DOM Selection:
-   iOS/PWA text-edit menus cannot reliably be cancelled with touch-callout alone.
-   The mode is set synchronously from pointerdown, including on hybrid devices. */
-[data-chat-selection-mode="touch"]
-  :is(.okou-chat-bubble-assistant, [data-feedback-source]) {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
-[data-chat-selection-mode="touch"]
-  :is(.okou-chat-bubble-assistant, [data-feedback-source])
-  :is(
-    a,
-    button,
-    input,
-    textarea,
-    select,
-    [contenteditable]:not([contenteditable="false"])
-  ) {
-  -webkit-user-select: text;
-  user-select: text;
-  -webkit-touch-callout: default;
-}
-
-.okou-chat-touch-highlight {
-  fill: hsl(var(--brand-subtle) / 0.5);
 }
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
@@ -1362,7 +1336,7 @@ details > summary {
   transition: color 0.15s ease;
 }
 
-/* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
+/* Okou workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
 .okou-workspace-bg {
   position: relative;
@@ -1448,36 +1422,6 @@ details > summary {
 
 .tiptap:focus {
   outline: none;
-}
-
-/* Sheet / side drawer animations */
-@keyframes sheet-slide-in-right {
-  0% {
-    transform: translateX(100%);
-  }
-  70% {
-    transform: translateX(-2%);
-  }
-  100% {
-    transform: translateX(0);
-  }
-}
-
-@keyframes sheet-slide-out-right {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.sheet-content[data-side="right"][data-open] {
-  animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.sheet-content[data-side="right"][data-ending-style] {
-  animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1938,70 +1882,6 @@ details > summary {
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-/* A dialog scrim blurs the page behind it, and that blur only stays cached
-   while the page holds still — one moving pixel re-blurs the whole viewport,
-   every frame, for as long as the dialog is open. These are the app's
-   always-on animations, so park them while a scrim is mounted. Anything
-   rendered inside the dialog keeps running. */
-html:has(.okou-dialog-overlay)
-  :is(
-    .okou-shimmer-text,
-    .okou-blocks span,
-    .okou-thinking-spinner,
-    .mic-starting-spinner,
-    .owf-diagram-beam
-  ):not(.okou-dialog-content *) {
-  animation-play-state: paused;
-}
-
-/* Workspace card: the routed page is a white sheet laid over the shell's grey
-   rather than a white half of the window. The gap runs on all four sides, so
-   the chat column's surface continues around the sheet and reads as one frame.
-   Padding insets the content and `inset` insets the paint by the same amount.
-
-   The fill sits on `::before` at `z-index: -1`, so it paints behind content.
-   That is only enough while the corner triangles stay transparent, and a page
-   whose last child is flush with the content box and carries its own opaque
-   background -- the chat composer footer, for one -- squares them off again
-   and hides the border along that edge with them.
-
-   So the two jobs are split. `::before` keeps the fill behind content and
-   nothing else; `::after` owns the border and repaints the gutter over
-   content. The ring spreads by exactly the gap, which is the only region
-   padding already reserves, so it can only ever cover the triangles the radius
-   cuts away. Clipping the card would do the same job and take every popover
-   that has to escape it with it.
-
-   The border belongs to one pseudo-element only. While both drew it, the two
-   0.7px strokes stacked wherever content was transparent and the top corners
-   came out half again as heavy as the bottom ones, which sit over the footer.
-
-   Desktop only. Below the sidebar breakpoint the columns are gone and a frame
-   would just spend width the page does not have. */
-@media (min-width: 48rem) {
-  .okou-workspace-card {
-    --okou-workspace-card-gap: 8px;
-    --okou-workspace-card-radius: 12px;
-    background-color: hsl(var(--sidebar));
-    padding: var(--okou-workspace-card-gap);
-  }
-
-  .okou-workspace-card.okou-workspace-bg::before {
-    inset: var(--okou-workspace-card-gap);
-    border-radius: var(--okou-workspace-card-radius);
-  }
-
-  .okou-workspace-card.okou-workspace-bg::after {
-    content: "";
-    position: absolute;
-    inset: var(--okou-workspace-card-gap);
-    border: 0.7px solid hsl(var(--border));
-    border-radius: var(--okou-workspace-card-radius);
-    box-shadow: 0 0 0 var(--okou-workspace-card-gap) hsl(var(--sidebar));
-    pointer-events: none;
-  }
 }
 
 /* Dark carries the brand hue instead of a lighter neutral. The light ring can

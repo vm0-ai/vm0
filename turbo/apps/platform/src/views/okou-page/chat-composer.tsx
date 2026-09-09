@@ -1,7 +1,17 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
+import {
+  useComposerConnectorActions,
+  type ComposerConnectorActions,
+} from "./composer-connector-actions.ts";
 import {
   useComposerActions,
   type ComposerActions,
 } from "./composer-actions.ts";
+import {
+  ComposerCreateControls,
+  ComposerCreateImageModelPicker,
+  ComposerCreateVideoModelPicker,
+} from "./composer-create.tsx";
 import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
@@ -25,9 +35,16 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import { explainerVideoTemplateOptions } from "@okouai/core/explainer-video-template";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { ExplainerVideoPicker } from "./explainer-video-picker.tsx";
+import {
+  avatarSelectionLabel,
+  styleSelectionLabel,
+  voiceSelectionLabel,
+} from "./explainer-video-selection-labels.ts";
 import {
   importPresentationTemplateDeck$,
-  presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/okou-page/presentation-template-import.ts";
 import type {
@@ -41,7 +58,6 @@ import type {
   PresentationTemplateSummary,
 } from "../../signals/okou-page/presentation-template-library.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
-import { equalArrays } from "../../lib/equality.ts";
 import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
@@ -70,7 +86,6 @@ import {
   SlidersHorizontal,
   Square,
   SwatchBook,
-  Target,
   Trash2,
   User,
   UserCheck,
@@ -152,11 +167,25 @@ import {
   safePreviewGround,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
-import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
-import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import {
+  type IllustrationTemplateItem,
+  ILLUSTRATION_TEMPLATE_ITEMS,
+} from "@okouai/core/illustration-template-items";
+import {
+  type PresentationTemplateItem,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+} from "@okouai/core/presentation-template-items";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
-import type { VideoTemplateItem } from "@okouai/core/video-template-items";
-import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
+import {
+  type VideoTemplateItem,
+  VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+} from "@okouai/core/video-template-items";
+import {
+  type WebsiteTemplateItem,
+  WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+} from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
@@ -197,20 +226,14 @@ import {
   defaultCustomConnectorAccountOptions,
   type DefaultConnectorAccountMutationOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
-import {
-  connectConnectorNoAuth$,
-  connectConnectorOAuthAuthCode$,
-  connectFlowConnectorSlug$,
-  matchesConnectorSearch,
-  justConnectedSlugs$,
-  pollingOAuthAuthCodeConnectorSlug$,
-  pollingOAuthDeviceAuthConnectorSlug$,
-} from "../../signals/okou-page/settings/connectors.ts";
+import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import { ConnectorDirectoryDialog } from "./connector-directory-dialog.tsx";
+import { resetCustomConnectorConnectInput$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
-  customConnectors$,
-  resetCustomConnectorConnectInput$,
-} from "../../signals/okou-page/settings/custom-connectors.ts";
+  dismissConnectorConnectionProgress$,
+  registerConnectorConnectionDialog$,
+} from "../../signals/connector-connection-progress.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -227,11 +250,11 @@ import {
   userModelPreference$,
 } from "../../signals/external/user-model-preference.ts";
 import {
-  chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
   modelPickerMenuEnabled$,
   customConnectorMcpEnabled$,
   voiceInputV2Enabled$,
+  featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -241,7 +264,6 @@ import {
 } from "../../signals/okou-page/computer-use-hosts.ts";
 import { computerUseHostsFromWorker$ } from "../../signals/shared-database.ts";
 import { computerUseProductName$ } from "../../signals/branding.ts";
-import type { ComposerConnectorAuthorizationState } from "../../signals/okou-page/connectors.ts";
 import {
   CONNECTOR_ACCOUNT_SEARCH_THRESHOLD,
   connectorAccountTargetKey,
@@ -276,6 +298,7 @@ import {
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
+import { ComposerPresentationOptions } from "./composer-presentation-options.tsx";
 import {
   localizedWorkflowTemplate,
   localizedWorkflowTemplateCategory,
@@ -301,15 +324,6 @@ import {
   toAvatarGenerationTemplate,
 } from "../../signals/okou-page/avatar-template-selection.ts";
 import { resolveModelFirstUserDefaultSelection } from "../../signals/okou-page/model-default-selection.ts";
-import { platformPublicStaticUrl } from "../../lib/static-assets.ts";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-  findVideoTemplateItem,
-  findWebsiteTemplateItem,
-} from "../../lib/platform-template-items.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 
@@ -329,17 +343,6 @@ function isHappyDomTestEnvironment(): boolean {
 interface ChatComposerProps {
   readonly signals: ComposerSignals;
   readonly showPendingItems?: boolean;
-}
-
-interface ComposerConnectorReadState {
-  readonly relatedCatalogItems: Loadable<
-    readonly PlatformConnectorCatalogStatusItem[]
-  >;
-  readonly addDialogCatalogItems: Loadable<
-    readonly PlatformConnectorCatalogStatusItem[]
-  >;
-  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
-  readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
 interface ComposerComputerUseHost {
@@ -380,9 +383,8 @@ const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
   width: 224,
   height: 126,
 } as const;
-const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
-  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04",
-);
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
+  "https://static.okou.io/web/assets/presentation-gallery/2026-07-04";
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT = 16;
@@ -440,139 +442,89 @@ function ComposerQueueGlyph() {
   );
 }
 
-// A single strip row — a queued message, automation event, or active goal. All
-// share one layout so they read as the same kind of pending item; only the
-// leading icon distinguishes them. Goals open a modal because their full
-// objective is fetched lazily by thread.
+// Queued messages and automation events share a pending-item layout.
 function ComposerStripRow({
   kind,
   text,
   onRemove,
-  onOpenDetail,
   removeAriaLabel,
   cancellationRecoveryPending,
 }: {
-  kind: "queued" | "automation-event" | "goal";
+  kind: "queued" | "automation-event";
   text: string;
   onRemove?: () => void;
-  onOpenDetail?: () => void;
   removeAriaLabel: string;
   cancellationRecoveryPending?: boolean;
 }) {
   const { t } = useTranslation();
-  const isGoal = kind === "goal";
   const isAutomationEvent = kind === "automation-event";
-  const itemAriaLabel = isGoal
+  const itemAriaLabel = isAutomationEvent
     ? t(($) => {
-        return $.chat.queue.activeGoal;
+        return $.chat.queue.pendingAutomationEvent;
+      })
+    : t(($) => {
+        return $.chat.queue.queuedMessage;
+      });
+  const aboutAriaLabel = isAutomationEvent
+    ? t(($) => {
+        return $.chat.queue.aboutAutomationEvent;
+      })
+    : t(($) => {
+        return $.chat.queue.aboutQueuedMessage;
+      });
+  const itemTitle = isAutomationEvent
+    ? t(($) => {
+        return $.chat.queue.automationEvent;
+      })
+    : t(($) => {
+        return $.chat.queue.queuedMessage;
+      });
+  const itemDescription = cancellationRecoveryPending
+    ? t(($) => {
+        return $.chat.queue.cancellationRecoveryPending;
       })
     : isAutomationEvent
       ? t(($) => {
-          return $.chat.queue.pendingAutomationEvent;
+          return $.chat.queue.automationEventDescription;
         })
       : t(($) => {
-          return $.chat.queue.queuedMessage;
+          return $.chat.queue.queuedMessageDescription;
         });
-  const aboutAriaLabel = isGoal
-    ? t(($) => {
-        return $.chat.queue.aboutGoal;
-      })
-    : isAutomationEvent
-      ? t(($) => {
-          return $.chat.queue.aboutAutomationEvent;
-        })
-      : t(($) => {
-          return $.chat.queue.aboutQueuedMessage;
-        });
-  const itemTitle = isGoal
-    ? t(($) => {
-        return $.chat.queue.goal;
-      })
-    : isAutomationEvent
-      ? t(($) => {
-          return $.chat.queue.automationEvent;
-        })
-      : t(($) => {
-          return $.chat.queue.queuedMessage;
-        });
-  const itemDescription =
-    cancellationRecoveryPending && !isGoal
-      ? t(($) => {
-          return $.chat.queue.cancellationRecoveryPending;
-        })
-      : isGoal
-        ? t(($) => {
-            return $.chat.queue.goalDescription;
-          })
-        : isAutomationEvent
-          ? t(($) => {
-              return $.chat.queue.automationEventDescription;
-            })
-          : t(($) => {
-              return $.chat.queue.queuedMessageDescription;
-            });
   return (
     <div
       role="listitem"
       aria-label={itemAriaLabel}
       className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-state-hover"
     >
-      {isGoal && onOpenDetail ? (
-        // This target spans almost the whole row, so it deliberately paints no
-        // background of its own — the row's hover carries the highlight and a
-        // second, near-coextensive surface would read as a box inside a box.
-        // Its icon sits in the same p-1 slot the other rows' leading button
-        // uses, keeping every row's glyph and text on one column.
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onOpenDetail}
-          aria-label={t(($) => {
-            return $.chat.queue.openGoalDetails;
-          })}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-state-selected-hover focus-visible:bg-state-selected-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={aboutAriaLabel}
+          >
+            {isAutomationEvent ? (
+              <Bolt size={16} aria-hidden="true" />
+            ) : (
+              <ComposerQueueGlyph />
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-80 rounded-lg p-3"
         >
-          <span className="flex shrink-0 p-1 text-emerald-800">
-            <Target size={16} aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1 truncate py-1">{text}</span>
-        </button>
-      ) : (
-        <>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-state-selected-hover focus-visible:bg-state-selected-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={aboutAriaLabel}
-              >
-                {isGoal ? (
-                  <Target size={16} aria-hidden="true" />
-                ) : isAutomationEvent ? (
-                  <Bolt size={16} aria-hidden="true" />
-                ) : (
-                  <ComposerQueueGlyph />
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-80 rounded-lg p-3"
-            >
-              <p className="text-xs font-semibold text-foreground">
-                {itemTitle}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {itemDescription}
-              </p>
-              <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
-                {text}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <span className="min-w-0 flex-1 truncate">{text}</span>
-        </>
-      )}
+          <p className="text-xs font-semibold text-foreground">{itemTitle}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {itemDescription}
+          </p>
+          <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
+            {text}
+          </div>
+        </PopoverContent>
+      </Popover>
+      <span className="min-w-0 flex-1 truncate">{text}</span>
       <IconTooltipButton
         type="button"
         className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -615,19 +567,13 @@ function PendingItemsStripHeader({
 
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled = useGet(chatRunWorkFoldingEnabled$);
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
   const cancellationRecoveryPending =
     useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
-  const activeGoalObjective = useLastResolved(
-    signals.goal.activeGoalObjective$,
-  );
   const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
   const removeAutomationEvent = useSet(signals.queue.removeAutomationEvent$);
-  const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
-  const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
   const queued = pendingEvents.filter((event) => {
     return event.kind === "message";
@@ -635,10 +581,6 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const events = pendingEvents.filter((event) => {
     return event.kind === "automation";
   });
-  const activeGoal =
-    !runWorkFoldingEnabled && activeGoalObjective
-      ? { objective: activeGoalObjective }
-      : undefined;
   const count = queued.length + events.length;
   const messageLabel = t(
     ($) => {
@@ -675,21 +617,16 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             items: queued.length > 0 ? messageLabel : eventLabel,
           },
         );
-  if (count === 0 && !activeGoal) {
-    return null;
+  if (count === 0) {
+    return withChatScrollLayout(null);
   }
-  return (
+  return withChatScrollLayout(
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 ? (
-        <PendingItemsStripHeader
-          label={label}
-          cancellationRecoveryPending={cancellationRecoveryPending}
-        />
-      ) : null}
-      <div
-        className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1"
-        role={count > 0 || activeGoal ? "list" : undefined}
-      >
+      <PendingItemsStripHeader
+        label={label}
+        cancellationRecoveryPending={cancellationRecoveryPending}
+      />
+      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
         {queued.map((item) => {
           return (
             <ComposerStripRow
@@ -733,24 +670,8 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             />
           );
         })}
-        {/* The active goal sits last — below queued messages and automation events
-            — because it only runs once the queue drains. Like other pending
-            items it can be cancelled from the strip. */}
-        {activeGoal ? (
-          <ComposerStripRow
-            kind="goal"
-            text={activeGoal.objective}
-            onOpenDetail={openActiveGoal}
-            onRemove={() => {
-              detach(cancelActiveGoal(pageSignal), Reason.DomCallback);
-            }}
-            removeAriaLabel={t(($) => {
-              return $.chat.queue.cancelGoal;
-            })}
-          />
-        ) : null}
       </div>
-    </div>
+    </div>,
   );
 }
 
@@ -4411,8 +4332,14 @@ function IllustrationTemplateCard({
   );
 }
 
-function resolveTemplatePickerCategory(category: string): string {
+function resolveTemplatePickerCategory(
+  category: string,
+  explainerEnabled: boolean,
+): string {
   switch (category) {
+    case "explainer": {
+      return explainerEnabled ? category : "video";
+    }
     case "slides":
     case "website":
     case "illustration":
@@ -4429,9 +4356,11 @@ function resolveTemplatePickerCategory(category: string): string {
 
 function TemplatePickerCategoryNav({
   selectedCategory,
+  explainerEnabled,
   onChange,
 }: {
   selectedCategory: string;
+  explainerEnabled: boolean;
   onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
@@ -4464,10 +4393,23 @@ function TemplatePickerCategoryNav({
     {
       value: "video",
       label: t(($) => {
-        return $.artifacts.kinds.video;
+        return explainerEnabled
+          ? $.artifacts.templates.creativeVideo
+          : $.artifacts.kinds.video;
       }),
       Icon: Video,
     },
+    ...(explainerEnabled
+      ? [
+          {
+            value: "explainer",
+            label: t(($) => {
+              return $.artifacts.templates.explainerVideo;
+            }),
+            Icon: Presentation,
+          },
+        ]
+      : []),
     {
       value: "avatar",
       label: t(($) => {
@@ -4678,9 +4620,11 @@ function IllustrationTemplateGrid({
 function PptImportCard({
   signals,
   onImported,
+  compact = false,
 }: {
   signals: ComposerSignals;
   onImported: () => void;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
@@ -4698,6 +4642,7 @@ function PptImportCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "block aspect-video bg-muted/40 transition-colors duration-150 group-hover/tile:bg-muted/60 group-active/tile:bg-muted/80 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+          compact && "bg-gray-50 group-hover/tile:bg-state-hover",
         )}
       >
         <Plus
@@ -4725,7 +4670,12 @@ function PptImportCard({
           }}
         />
       </span>
-      <span className={TEMPLATE_TILE_CAPTION}>
+      <span
+        className={cn(
+          TEMPLATE_TILE_CAPTION,
+          compact && "flex-col items-stretch gap-0.5",
+        )}
+      >
         <span className={TEMPLATE_TILE_NAME}>{label}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {t(($) => {
@@ -5854,6 +5804,134 @@ function useImportedPresentationTemplates(
   });
 }
 
+function ComposerPresentationSuggestion({
+  title,
+  children,
+  onSelect,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="quiet"
+      className="group/tile block h-auto min-w-0 rounded-xl p-0 text-left font-normal hover:bg-gray-50"
+      onClick={onSelect}
+    >
+      <span
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "block aspect-video group-hover/tile:opacity-90",
+        )}
+      >
+        {children}
+      </span>
+      <span className={cn(TEMPLATE_TILE_CAPTION, "block")}>
+        <span className={cn(TEMPLATE_TILE_NAME, "block")} title={title}>
+          {title}
+        </span>
+      </span>
+    </Button>
+  );
+}
+
+export function ComposerPresentationRecommendations({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const picker = useComposerTemplatePicker(signals);
+  const imported = useImportedPresentationTemplatePickerItems(signals).slice(
+    0,
+    3,
+  );
+  const builtIn = PRESENTATION_TEMPLATE_PICKER_ITEMS.slice(
+    0,
+    3 - imported.length,
+  );
+  const openTemplates = useSet(signals.template.openTemplatePicker$);
+  const setMode = useSet(signals.create.setMode$);
+  return (
+    <div
+      className="flex flex-col gap-2"
+      role="group"
+      aria-label={t(($) => {
+        return $.chat.taskChips.presentationTemplates;
+      })}
+    >
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="quiet"
+          size="xs"
+          className="font-normal hover:bg-gray-50"
+          onClick={() => {
+            openTemplates({ kind: "insert", category: "slides" });
+          }}
+        >
+          {t(($) => {
+            return $.chat.taskChips.moreTemplates;
+          })}
+        </Button>
+      </div>
+      <div className="grid min-w-0 grid-cols-2 items-start gap-4 sm:grid-cols-4">
+        <PptImportCard
+          signals={signals}
+          compact
+          onImported={() => {
+            setMode(null);
+          }}
+        />
+        {imported.map(({ imageBuffers, template }) => {
+          return (
+            <ComposerPresentationSuggestion
+              key={template.id}
+              title={template.title}
+              onSelect={() => {
+                picker.onChange(
+                  toImportedPresentationGenerationTemplate(template),
+                );
+              }}
+            >
+              <ImportedPptImage
+                imageSignals={imageBuffers.card}
+                label=""
+                loading="eager"
+                fetchPriority="high"
+                size={TEMPLATE_CARD_PREVIEW_SIZE}
+                placeholder={<ImageIcon size={24} aria-hidden />}
+                className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover"
+              />
+            </ComposerPresentationSuggestion>
+          );
+        })}
+        {builtIn.map((item) => {
+          return (
+            <ComposerPresentationSuggestion
+              key={item.slug}
+              title={item.title}
+              onSelect={() => {
+                picker.onChange(toPresentationGenerationTemplate(item));
+              }}
+            >
+              <img
+                src={presentationTemplateCardSlideImage(item, 0)}
+                alt=""
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            </ComposerPresentationSuggestion>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PptTemplateGrid({
   items,
   runtime,
@@ -5875,16 +5953,13 @@ function PptTemplateGrid({
   onImported: () => void;
   signals: ComposerSignals;
 }) {
-  const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
   const importedTemplateItems =
     useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {importEnabled ? (
-        <PptImportCard signals={signals} onImported={onImported} />
-      ) : null}
+      <PptImportCard signals={signals} onImported={onImported} />
       {importedTemplateItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard
@@ -5923,7 +5998,8 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
-  skipEnterAnimation,
+  onCloseComplete,
+  open,
   presentationItems,
   runtime,
   signals,
@@ -5931,7 +6007,8 @@ function TemplatePickerDialog({
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
-  skipEnterAnimation: boolean;
+  onCloseComplete: () => void;
+  open: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
@@ -6022,7 +6099,6 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? importedPreviewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    skipEnterAnimation && "data-open:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
   // A persona pill filters the grid, ideation-gallery style.
@@ -6039,7 +6115,12 @@ function TemplatePickerDialog({
     search,
   });
 
-  const selectedCategory = resolveTemplatePickerCategory(category);
+  const features = useGet(featureSwitch$);
+  const explainerEnabled = features[FeatureSwitchKey.IntroVideo] === true;
+  const selectedCategory = resolveTemplatePickerCategory(
+    category,
+    explainerEnabled,
+  );
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar";
 
@@ -6074,11 +6155,15 @@ function TemplatePickerDialog({
   };
 
   const closeTemplatePicker = () => {
+    onClose();
+  };
+
+  const completeTemplatePickerClose = () => {
     releasePreviewResources(runtime);
     resetImportedTemplatePicker();
     clearAvatarVoiceSelection();
     setPresentationGridScrollTop(0);
-    onClose();
+    onCloseComplete();
   };
 
   const handleSelectPresentation = (
@@ -6270,9 +6355,9 @@ function TemplatePickerDialog({
 
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) {
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           if (importedPreviewItem !== null) {
             closeImportedPreview();
             return;
@@ -6284,27 +6369,28 @@ function TemplatePickerDialog({
           closeTemplatePicker();
         }
       }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeTemplatePickerClose();
+          return;
+        }
+        ownPreviewResources(runtime, pageSignal);
+        if (!isPreviewing) {
+          prewarmTemplatePreviewsForCategory(selectedCategory);
+        }
+      }}
     >
       <DialogContent
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
         className={dialogContentClassName}
-        overlayClassName={
-          skipEnterAnimation ? "okou-dialog-overlay-instant" : undefined
-        }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
           isPreviewing ? handleTemplateDetailTabKeyDown : undefined
         }
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          ownPreviewResources(runtime, pageSignal);
-          if (!isPreviewing) {
-            prewarmTemplatePreviewsForCategory(selectedCategory);
-          }
-        }}
+        initialFocus={false}
       >
         <div
           inert={isPreviewing}
@@ -6324,55 +6410,73 @@ function TemplatePickerDialog({
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
             <TemplatePickerCategoryNav
               selectedCategory={selectedCategory}
+              explainerEnabled={explainerEnabled}
               onChange={handleCategoryChange}
             />
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              <div
-                className={cn(
-                  "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                  showTemplatePickerSearch || showAvatarPickerToolbar
-                    ? "flex"
-                    : "hidden sm:flex",
-                )}
-              >
-                {showTemplatePickerSearch ? (
-                  <TemplatePickerWorkflowSearch
-                    search={search}
-                    onSearchChange={handleSearchChange}
+              {selectedCategory === "explainer" ? (
+                <ExplainerVideoPicker
+                  signals={signals.template.explainer}
+                  onCancel={closeTemplatePicker}
+                  onSelect={(template) => {
+                    onChange(template);
+                    closeTemplatePicker();
+                  }}
+                />
+              ) : (
+                <>
+                  <div
+                    className={cn(
+                      "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                      showTemplatePickerSearch || showAvatarPickerToolbar
+                        ? "flex"
+                        : "hidden sm:flex",
+                    )}
+                  >
+                    {showTemplatePickerSearch ? (
+                      <TemplatePickerWorkflowSearch
+                        search={search}
+                        onSearchChange={handleSearchChange}
+                      />
+                    ) : null}
+                    {showAvatarPickerToolbar ? (
+                      <AvatarTemplatePickerToolbar signals={signals} />
+                    ) : null}
+                  </div>
+                  <TemplatePickerCategoryContent
+                    signals={signals}
+                    selectedCategory={selectedCategory}
+                    pptItems={presentationItems}
+                    websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                    illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                    videoItems={VIDEO_TEMPLATE_ITEMS}
+                    videoGenerationAllowed={videoGenerationAllowed}
+                    workflowCatalog={workflowCatalog}
+                    value={value}
+                    illustrationVariantIndex={illustrationVariantIndex}
+                    onPresentationScroll={setPresentationGridScrollTop}
+                    onRestorePresentationScroll={
+                      restorePresentationGridScrollNode
+                    }
+                    onSelectPresentation={handleSelectPresentation}
+                    onSelectImportedPresentation={
+                      handleSelectImportedPresentation
+                    }
+                    onPreviewPresentation={handlePreview}
+                    onPreviewImportedPresentation={handlePreviewImported}
+                    onImportedPresentation={closeTemplatePicker}
+                    onSelectWebsite={handleSelectWebsite}
+                    onPreviewWebsite={handlePreviewWebsite}
+                    onSelectIllustration={handleSelectIllustration}
+                    onIllustrationVariantChange={setIllustrationVariantIndex}
+                    onSelectVideo={handleSelectVideo}
+                    onSelectAvatar={handleSelectAvatar}
+                    onWorkflowCategoryChange={setWorkflowCategoryFilter}
+                    onSelectWorkflow={handleSelectWorkflow}
+                    runtime={runtime}
                   />
-                ) : null}
-                {showAvatarPickerToolbar ? (
-                  <AvatarTemplatePickerToolbar signals={signals} />
-                ) : null}
-              </div>
-              <TemplatePickerCategoryContent
-                signals={signals}
-                selectedCategory={selectedCategory}
-                pptItems={presentationItems}
-                websiteItems={WEBSITE_TEMPLATE_ITEMS}
-                illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
-                videoItems={VIDEO_TEMPLATE_ITEMS}
-                videoGenerationAllowed={videoGenerationAllowed}
-                workflowCatalog={workflowCatalog}
-                value={value}
-                illustrationVariantIndex={illustrationVariantIndex}
-                onPresentationScroll={setPresentationGridScrollTop}
-                onRestorePresentationScroll={restorePresentationGridScrollNode}
-                onSelectPresentation={handleSelectPresentation}
-                onSelectImportedPresentation={handleSelectImportedPresentation}
-                onPreviewPresentation={handlePreview}
-                onPreviewImportedPresentation={handlePreviewImported}
-                onImportedPresentation={closeTemplatePicker}
-                onSelectWebsite={handleSelectWebsite}
-                onPreviewWebsite={handlePreviewWebsite}
-                onSelectIllustration={handleSelectIllustration}
-                onIllustrationVariantChange={setIllustrationVariantIndex}
-                onSelectVideo={handleSelectVideo}
-                onSelectAvatar={handleSelectAvatar}
-                onWorkflowCategoryChange={setWorkflowCategoryFilter}
-                onSelectWorkflow={handleSelectWorkflow}
-                runtime={runtime}
-              />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -6395,6 +6499,7 @@ function TemplatePickerDialog({
             signals={signals}
           />
         ) : null}
+        <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </DialogContent>
     </Dialog>
   );
@@ -6603,6 +6708,25 @@ function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
 ): ComposerTemplateAttachment | undefined {
+  const explainer = explainerVideoTemplateOptions(value);
+  if (explainer) {
+    return {
+      type: "video",
+      category: "explainer",
+      title: [
+        i18n.t(($) => {
+          return $.artifacts.templates.explainerVideo;
+        }),
+        styleSelectionLabel(i18n.t, explainer.style),
+        avatarSelectionLabel(i18n.t, explainer.avatar),
+        voiceSelectionLabel(i18n.t, explainer.voice, explainer.avatar),
+      ].join(" · "),
+      previewImageUrl:
+        explainer.style.kind === "catalog"
+          ? explainer.style.style.thumbnailUrl
+          : undefined,
+    };
+  }
   const avatar = avatarTemplateSelection(value);
   if (avatar) {
     return {
@@ -6703,19 +6827,38 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const mounted = useGet(signals.template.templatePickerMounted$);
   const open = useGet(signals.template.templatePickerOpen$);
-  const skipEnterAnimation = useGet(
-    signals.template.templatePickerSkipEnterAnimation$,
-  );
   const category = useGet(signals.template.templatePickerCategory$);
+  const explainerEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
+  const createMode = useGet(signals.create.mode$);
+  const templateMode = createMode === "image" ? "illustration" : createMode;
+  const templateLabel =
+    templateMode === "illustration"
+      ? t(($) => {
+          return $.chat.composer.create.addStyle;
+        })
+      : templateMode
+        ? t(($) => {
+            return $.chat.composer.create.addTemplate;
+          })
+        : t(($) => {
+            return $.artifacts.templates.template;
+          });
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const completeClose = useSet(signals.template.completeTemplatePickerClose$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
   );
   const openTemplatePicker = useSet(signals.template.openTemplatePicker$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const selectedCategory = resolveTemplatePickerCategory(category);
+  const selectedCategory =
+    templateMode === "presentation"
+      ? "slides"
+      : (templateMode ??
+        resolveTemplatePickerCategory(category, explainerEnabled));
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -6735,12 +6878,14 @@ function TemplatePickerButton({
             <Button
               type="button"
               variant="quiet"
-              size="icon-sm"
+              size={templateMode ? "sm" : "icon-sm"}
               iconSize="md"
-              className="shrink-0"
-              aria-label={t(($) => {
-                return $.artifacts.templates.template;
-              })}
+              className={
+                templateMode
+                  ? "min-w-0 max-w-[13rem] gap-1 font-normal"
+                  : "shrink-0"
+              }
+              aria-label={templateLabel}
               aria-pressed={false}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
@@ -6753,25 +6898,33 @@ function TemplatePickerButton({
                 });
               }}
             >
-              <SwatchBook size={18} aria-hidden="true" />
+              {templateMode ? (
+                <>
+                  <Plus size={16} className="shrink-0" aria-hidden />
+                  <span className="min-w-0 truncate">{templateLabel}</span>
+                </>
+              ) : (
+                <SwatchBook size={18} aria-hidden="true" />
+              )}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {t(($) => {
-              return $.artifacts.templates.template;
-            })}
+            {templateLabel}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {open && (
+      {mounted && (
         <TemplatePickerDialog
           value={referenceValue ?? undefined}
           onChange={picker.onChange}
+          open={open}
           onClose={() => {
-            setReferenceValue(null);
             setOpen(false);
           }}
-          skipEnterAnimation={skipEnterAnimation}
+          onCloseComplete={() => {
+            setReferenceValue(null);
+            completeClose();
+          }}
           presentationItems={presentationItems}
           runtime={runtime}
           signals={signals}
@@ -6883,7 +7036,7 @@ function ConnectorTriggerIcons({
               (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background okou-border sm:h-7 sm:w-7">
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
               ) : (
@@ -6899,14 +7052,14 @@ function ConnectorTriggerIcons({
       })}
       {hasComputerUse && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background text-brand-text sm:h-7 sm:w-7">
             <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background text-brand-text sm:h-7 sm:w-7">
             <Globe size={16} />
           </span>
         </span>
@@ -7001,7 +7154,7 @@ function AddConnectorsDialog({
   signals,
   unconnected,
   unconnectedCustom,
-  busyConnectorSlug,
+  connecting,
   connectHandlers,
   onConnectCustom,
   onClose,
@@ -7009,7 +7162,7 @@ function AddConnectorsDialog({
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
   unconnectedCustom: CustomConnectorResponse[];
-  busyConnectorSlug: ConnectorSlug | null;
+  connecting: boolean;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
@@ -7022,6 +7175,8 @@ function AddConnectorsDialog({
   const resetCustomConnectorConnectInput = useSet(
     resetCustomConnectorConnectInput$,
   );
+  const registerConnectionDialog = useSet(registerConnectorConnectionDialog$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -7029,16 +7184,20 @@ function AddConnectorsDialog({
   const filteredCustom = unconnectedCustom.filter((item) => {
     return matchesCustomConnectorSearch(search, item);
   });
-  const connectorCount = unconnected.length + unconnectedCustom.length;
+  const visibleConnectorCount = filtered.length + filteredCustom.length;
 
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        return !open && onClose();
+        if (!open) {
+          dismissProgress();
+          onClose();
+        }
       }}
     >
       <DialogContent
+        ref={registerConnectionDialog}
         className="okou-app max-w-2xl flex max-h-[80vh] flex-col"
         aria-describedby={undefined}
       >
@@ -7048,11 +7207,20 @@ function AddConnectorsDialog({
               ($) => {
                 return $.chat.connectors.available;
               },
-              {
-                count: connectorCount,
-              },
+              { count: visibleConnectorCount },
             )}
           </DialogTitle>
+          {connecting && (
+            <p
+              role="status"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              {t(($) => {
+                return $.connectors.actions.connecting;
+              })}
+            </p>
+          )}
         </DialogHeader>
         <div className="shrink-0">
           <Input
@@ -7075,7 +7243,7 @@ function AddConnectorsDialog({
                   key={item.slug}
                   variant="catalog"
                   connector={item}
-                  busy={busyConnectorSlug === item.slug}
+                  busy={connecting}
                   connect={connectHandlers(item)}
                 />
               );
@@ -7387,7 +7555,7 @@ function ComposerConnectorAccessRow({
       className="flex h-10 shrink-0 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
     >
       {actions ? (
-        <span className="order-2 flex shrink-0 items-center gap-2">
+        <span className="order-2 flex shrink-0 items-center gap-2 empty:hidden">
           {actions}
         </span>
       ) : null}
@@ -7414,6 +7582,7 @@ function ComposerConnectorAccessRow({
 
 function ComposerConnectorAccountMenu({
   signals,
+  actions,
   target,
   connectorLabel,
   selectedConnection,
@@ -7421,6 +7590,7 @@ function ComposerConnectorAccountMenu({
   explicit,
 }: {
   readonly signals: ComposerSignals;
+  readonly actions: ComposerConnectorActions;
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
   readonly selectedConnection: ConnectorAccountConnection | undefined;
@@ -7497,6 +7667,7 @@ function ComposerConnectorAccountMenu({
       >
         <ComposerConnectorAccountMenuContent
           signals={signals}
+          actions={actions}
           target={target}
           connectorLabel={connectorLabel}
         />
@@ -7717,10 +7888,12 @@ function ComposerConnectorAccountChoices({
 
 function ComposerConnectorAccountMenuContent({
   signals,
+  actions,
   target,
   connectorLabel,
 }: {
   readonly signals: ComposerSignals;
+  readonly actions: ComposerConnectorActions;
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
 }) {
@@ -7731,13 +7904,14 @@ function ComposerConnectorAccountMenuContent({
   const summariesLoadable = useLastLoadable(
     signals.connector.accounts.summaryByTarget$,
   );
-  const accountsLoadable = useLoadable(signals.connector.accounts.accounts$);
+  const accountsLoadable = useLastLoadable(
+    signals.connector.accounts.accounts$,
+  );
   const search = useGet(signals.connector.accounts.search$);
-  const savingTargetKey = useGet(signals.connector.accounts.savingTargetKey$);
   const closeMenu = useSet(signals.connector.accounts.closeMenu$);
   const setSearch = useSet(signals.connector.accounts.setSearch$);
-  const selectAccount = useSet(signals.connector.accounts.selectAccount$);
-  const clearAccountSelection = useSet(signals.connector.accounts.useDefault$);
+  const selectAccount = actions.selectAccount;
+  const clearAccountSelection = actions.useDefaultAccount;
   const [loadMoreLoadable, loadMore] = useLoadableSet(
     signals.connector.accounts.loadMore$,
   );
@@ -7776,7 +7950,7 @@ function ComposerConnectorAccountMenuContent({
     search.length > 0 ||
     (summary?.accountCount ?? 0) > CONNECTOR_ACCOUNT_SEARCH_THRESHOLD ||
     accountList.nextCursor !== null;
-  const saving = savingTargetKey === targetKey;
+  const saving = actions.savingAccount;
   const selectAndClose = (connection: ConnectorAccountConnection): void => {
     detach(
       (async () => {
@@ -7937,6 +8111,55 @@ function deriveComposerConnectorPopoverState(args: {
   return { visibleConnectors, permissionConnector };
 }
 
+function ComposerConnectorAccountAction({
+  signals,
+  actions,
+  item,
+}: {
+  readonly signals: ComposerSignals;
+  readonly actions: ComposerConnectorActions;
+  readonly item: ComposerPopoverConnectorItem;
+}) {
+  const preference = useLastResolved(
+    signals.connector.accounts.preferenceState$,
+  );
+  const summaries = useLastResolved(
+    signals.connector.accounts.summaryByTarget$,
+  );
+  const target = composerPopoverConnectorTarget(item);
+  const targetKey = connectorAccountTargetKey(target);
+  const summary = summaries?.get(targetKey);
+  if (
+    !item.connector.authorized ||
+    (item.kind === "custom" &&
+      isIntegrationManagedCustomConnector(item.connector)) ||
+    !summary ||
+    summary.accountCount <= 1
+  ) {
+    return null;
+  }
+  const selection = preference?.selections.find((candidate) => {
+    return connectorAccountTargetKey(candidate.target) === targetKey;
+  });
+  return (
+    <ComposerConnectorAccountMenu
+      signals={signals}
+      actions={actions}
+      target={target}
+      connectorLabel={
+        item.kind === "builtin"
+          ? item.connector.label
+          : item.connector.displayName
+      }
+      explicit={selection !== undefined}
+      selectedConnection={preference?.selectedConnections.find((connection) => {
+        return connection.id === selection?.connectionId;
+      })}
+      defaultConnection={summary.defaultConnection}
+    />
+  );
+}
+
 function ConnectorsPopoverButton({
   signals,
   agentId,
@@ -7944,8 +8167,7 @@ function ConnectorsPopoverButton({
   agentConnectors,
   agentCustomConnectors,
   connectorsLoading,
-  savingConnectorSlug,
-  savingCustomConnectorId,
+  actions,
   computerUse,
   onOpenAddDialog,
   onToggle,
@@ -7957,8 +8179,7 @@ function ConnectorsPopoverButton({
   agentConnectors: ComposerConnectorItem[];
   agentCustomConnectors: ComposerCustomConnectorItem[];
   connectorsLoading: boolean;
-  savingConnectorSlug: ConnectorSlug | null;
-  savingCustomConnectorId: string | null;
+  actions: ComposerConnectorActions;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (
@@ -7973,12 +8194,6 @@ function ConnectorsPopoverButton({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
-  const accountPreferenceLoadable = useLastLoadable(
-    signals.connector.accounts.preferenceState$,
-  );
-  const accountSummariesLoadable = useLastLoadable(
-    signals.connector.accounts.summaryByTarget$,
-  );
   const accountMenuOpen = useGet(signals.connector.accounts.menuOpen$);
   const closeAccountMenu = useSet(signals.connector.accounts.closeMenu$);
   const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
@@ -8000,24 +8215,6 @@ function ConnectorsPopoverButton({
     }),
   ];
   const showSearch = connectorItems.length > 20;
-  const accountPreference =
-    accountPreferenceLoadable.state === "hasData"
-      ? accountPreferenceLoadable.data
-      : { selections: [], selectedConnections: [] };
-  const accountSummaries =
-    accountSummariesLoadable.state === "hasData"
-      ? accountSummariesLoadable.data
-      : new Map();
-  const selectionByTarget = new Map(
-    accountPreference.selections.map((selection) => {
-      return [connectorAccountTargetKey(selection.target), selection];
-    }),
-  );
-  const selectedConnectionById = new Map(
-    accountPreference.selectedConnections.map((connection) => {
-      return [connection.id, connection];
-    }),
-  );
   const { visibleConnectors, permissionConnector } =
     deriveComposerConnectorPopoverState({
       connectorItems,
@@ -8027,49 +8224,6 @@ function ConnectorsPopoverButton({
       permissionConnectorSlug,
       agentConnectors,
     });
-  const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
-    if (
-      !item.connector.authorized ||
-      (item.kind === "custom" &&
-        isIntegrationManagedCustomConnector(item.connector))
-    ) {
-      return undefined;
-    }
-    const summary = accountSummaries.get(
-      connectorAccountTargetKey(composerPopoverConnectorTarget(item)),
-    );
-    if (!summary || summary.accountCount <= 1) {
-      return undefined;
-    }
-    return summary;
-  };
-  const accountModeButton = (item: ComposerPopoverConnectorItem) => {
-    const summary = accountSummaryForItem(item);
-    if (!summary) {
-      return null;
-    }
-    const target = composerPopoverConnectorTarget(item);
-    const targetKey = connectorAccountTargetKey(target);
-    const selection = selectionByTarget.get(targetKey);
-    return (
-      <ComposerConnectorAccountMenu
-        signals={signals}
-        target={target}
-        connectorLabel={
-          item.kind === "builtin"
-            ? item.connector.label
-            : item.connector.displayName
-        }
-        explicit={selection !== undefined}
-        selectedConnection={
-          selection
-            ? selectedConnectionById.get(selection.connectionId)
-            : undefined
-        }
-        defaultConnection={summary.defaultConnection}
-      />
-    );
-  };
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
@@ -8084,7 +8238,6 @@ function ConnectorsPopoverButton({
 
   return (
     <Popover
-      defaultOpen
       onOpenChange={(open, eventDetails) => {
         if (
           !open &&
@@ -8112,12 +8265,14 @@ function ConnectorsPopoverButton({
                   return $.chat.connectors.title;
                 })}
               >
-                <ConnectorTriggerIcons
-                  connectors={agentConnectors}
-                  customConnectors={agentCustomConnectors}
-                  hasComputerUse={Boolean(computerUse?.selectedHostId)}
-                  hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
-                />
+                {!connectorsLoading && (
+                  <ConnectorTriggerIcons
+                    connectors={agentConnectors}
+                    customConnectors={agentCustomConnectors}
+                    hasComputerUse={Boolean(computerUse?.selectedHostId)}
+                    hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
+                  />
+                )}
               </button>
             </TooltipTrigger>
           </PopoverTrigger>
@@ -8192,12 +8347,18 @@ function ConnectorsPopoverButton({
                           />
                         }
                         connectorLabel={connector.displayName}
-                        actions={accountModeButton(item)}
+                        actions={
+                          <ComposerConnectorAccountAction
+                            signals={signals}
+                            actions={actions}
+                            item={item}
+                          />
+                        }
                         checked={connector.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
                           await onToggleCustom(connector.id, checked);
                         })}
-                        loading={savingCustomConnectorId === connector.id}
+                        loading={actions.savingAuthorization}
                         ariaLabel={
                           connector.authorized
                             ? t(
@@ -8221,7 +8382,13 @@ function ConnectorsPopoverButton({
                     );
                   }
                   const connector = item.connector;
-                  const accountAction = accountModeButton(item);
+                  const accountAction = connector.authorized ? (
+                    <ComposerConnectorAccountAction
+                      signals={signals}
+                      actions={actions}
+                      item={item}
+                    />
+                  ) : null;
                   const showPermissionAction =
                     Boolean(agentId) &&
                     connector.authorized &&
@@ -8267,7 +8434,7 @@ function ConnectorsPopoverButton({
                       onCheckedChange={onDomEventFn(async (checked) => {
                         await onToggle(connector.slug, checked);
                       })}
-                      loading={savingConnectorSlug === connector.slug}
+                      loading={actions.savingAuthorization}
                       ariaLabel={
                         connector.authorized
                           ? t(
@@ -8298,20 +8465,22 @@ function ConnectorsPopoverButton({
           {(connectorItems.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-            onClick={() => {
-              return onOpenAddDialog();
-            }}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-              <Plus size={13} />
-            </span>
-            {t(($) => {
-              return $.chat.connectors.addConnectors;
-            })}
-          </button>
+          <PopoverClose asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+              onClick={() => {
+                return onOpenAddDialog();
+              }}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                <Plus size={13} />
+              </span>
+              {t(($) => {
+                return $.chat.connectors.addConnectors;
+              })}
+            </button>
+          </PopoverClose>
         </div>
         {computerUse && (
           <ComputerUseConnectorMenuSection
@@ -8534,11 +8703,9 @@ function MicButton({
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
 
   const signal = useGet(pageSignal$);
-  const disabled =
-    starting ||
-    transcribing ||
-    (voiceInputV2Enabled && voiceDraftStatus === undefined) ||
-    (!recording && !quotaResolved);
+  const draftLoading = voiceInputV2Enabled && voiceDraftStatus === undefined;
+  const actionDisabled =
+    starting || transcribing || (!recording && !quotaResolved);
   const status = {
     recording,
     starting,
@@ -8563,14 +8730,15 @@ function MicButton({
             variant="quiet"
             size="icon-sm"
             iconSize="md"
-            className={cn(
-              "relative shrink-0",
-              (recording || starting || transcribing) &&
-                "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
-            )}
+            className={cn("relative shrink-0", {
+              // Background draft checks should not dim the mic on thread switches.
+              "disabled:opacity-100": draftLoading && !actionDisabled,
+              "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white":
+                recording || starting || transcribing,
+            })}
             data-composer-voice-toggle
             onClick={handleClick}
-            disabled={disabled}
+            disabled={actionDisabled || draftLoading}
             aria-label={micButtonAriaLabel(status)}
             aria-busy={starting || transcribing}
             aria-keyshortcuts={
@@ -9635,6 +9803,18 @@ function ComposerExistingMediaModelPickerSlot({
 }
 
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+  const createMode = useGet(signals.create.mode$);
+  if (createMode === "image" && signals.imageModel) {
+    return <ComposerCreateImageModelPicker model={signals.imageModel} />;
+  }
+  if (createMode === "video" && signals.videoModel) {
+    return (
+      <ComposerCreateVideoModelPicker
+        model={signals.videoModel}
+        signals={signals}
+      />
+    );
+  }
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
   if (imageModelSignals && videoModelSignals) {
@@ -9749,7 +9929,7 @@ function ComposerTemporaryModelNotice({
     !defaultSelection ||
     (!modelChanged && !serviceTierChanged)
   ) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const updating = updateLoadable.state === "loading";
   const modelName = getModelDisplayName(selection.selectedModel);
@@ -9776,7 +9956,7 @@ function ComposerTemporaryModelNotice({
       Reason.DomCallback,
     );
   };
-  return (
+  return withChatScrollLayout(
     <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.modelForThisChat;
@@ -9784,7 +9964,7 @@ function ComposerTemporaryModelNotice({
       model={scopedModelLabel}
       updating={updating}
       onUseForFutureChats={useForFutureChats}
-    />
+    />,
   );
 }
 
@@ -9803,12 +9983,12 @@ function ComposerTemporaryVideoModelNotice({
   );
   const pageSignal = useGet(pageSignal$);
   if (!userPreference) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const defaultVideoModel =
     userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
   if (!selection || selection === defaultVideoModel) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const updating = updateLoadable.state === "loading";
   const useForFutureChats = () => {
@@ -9817,7 +9997,7 @@ function ComposerTemporaryVideoModelNotice({
     }
     detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
   };
-  return (
+  return withChatScrollLayout(
     <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.videoModelForThisChat;
@@ -9825,7 +10005,7 @@ function ComposerTemporaryVideoModelNotice({
       model={getModelDisplayName(selection)}
       updating={updating}
       onUseForFutureChats={useForFutureChats}
-    />
+    />,
   );
 }
 
@@ -9842,12 +10022,12 @@ function ComposerTemporaryImageModelNotice({
   );
   const pageSignal = useGet(pageSignal$);
   if (!userPreference) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const defaultImageModel =
     userPreference.selectedImageModel ?? DEFAULT_IMAGE_MODEL;
   if (!selection || selection === defaultImageModel) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const updating = updateLoadable.state === "loading";
   const useForFutureChats = () => {
@@ -9856,7 +10036,7 @@ function ComposerTemporaryImageModelNotice({
     }
     detach(updateDefaultImageModel(selection, pageSignal), Reason.DomCallback);
   };
-  return (
+  return withChatScrollLayout(
     <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.imageModelForThisChat;
@@ -9864,7 +10044,7 @@ function ComposerTemporaryImageModelNotice({
       model={IMAGE_MODEL_CONFIGS[selection].label}
       updating={updating}
       onUseForFutureChats={useForFutureChats}
-    />
+    />,
   );
 }
 
@@ -9878,104 +10058,32 @@ function ComposerTemporaryModelNoticeSlot({
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
   if (!enabled) {
-    return null;
+    return withChatScrollLayout(null);
   }
   // One card at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
   if (imageModelSignals && mediaModelCategory === "image") {
-    return (
+    return withChatScrollLayout(
       <ComposerTemporaryImageModelNotice
         imageModelSignals={imageModelSignals}
-      />
+      />,
     );
   }
   if (videoModelSignals && mediaModelCategory === "video") {
-    return (
+    return withChatScrollLayout(
       <ComposerTemporaryVideoModelNotice
         videoModelSignals={videoModelSignals}
-      />
+      />,
     );
   }
-  return <ComposerTemporaryModelNotice signals={signals} />;
+  return withChatScrollLayout(
+    <ComposerTemporaryModelNotice signals={signals} />,
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
-
-function equalComposerConnectorAuthorizationState(
-  left: ComposerConnectorAuthorizationState,
-  right: ComposerConnectorAuthorizationState,
-): boolean {
-  return (
-    left.agentId === right.agentId &&
-    equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs) &&
-    equalCustomConnectorGrants(
-      left.customConnectorGrants,
-      right.customConnectorGrants,
-    )
-  );
-}
-
-function equalCustomConnectorGrants(
-  left: readonly AgentCustomConnectorGrant[],
-  right: readonly AgentCustomConnectorGrant[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((grant, index) => {
-      const other = right[index];
-      return (
-        other !== undefined &&
-        grant.customConnectorId === other.customConnectorId &&
-        equalArrays(grant.permissionNames, other.permissionNames)
-      );
-    })
-  );
-}
-
-function useComposerConnectorReadState(
-  signals: ComposerSignals,
-): ComposerConnectorReadState {
-  return {
-    relatedCatalogItems: useLastLoadable(
-      signals.connector.relatedCatalogItems$,
-    ),
-    addDialogCatalogItems: useLastLoadable(
-      signals.connector.addDialogCatalogItems$,
-    ),
-    customConnectors: useLastLoadable(customConnectors$),
-    authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
-      equalityFn: equalComposerConnectorAuthorizationState,
-    }),
-  };
-}
-
-function matchingAuthorizedConnectorSlugs(
-  agentId: string,
-  authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly ConnectorSlug[] | null {
-  if (authorization.state !== "hasData") {
-    return null;
-  }
-  if (authorization.data.agentId !== agentId) {
-    return null;
-  }
-  return authorization.data.enabledConnectorSlugs;
-}
-
-function matchingCustomConnectorGrants(
-  agentId: string,
-  authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly AgentCustomConnectorGrant[] | null {
-  if (authorization.state !== "hasData") {
-    return null;
-  }
-  if (authorization.data.agentId !== agentId) {
-    return null;
-  }
-  return authorization.data.customConnectorGrants;
-}
 
 interface ResolvedComposerConnectorCollections {
   readonly authorizedSet: ReadonlySet<ConnectorSlug>;
@@ -9996,41 +10104,32 @@ function resolveComposerConnectorCollections({
   customConnectors,
   authorizedConnectorSlugs,
   customConnectorGrants,
-  optimisticConnected,
   selectedCustomConnectorId,
   mcpEnabled,
 }: {
-  relatedCatalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
-  addDialogCatalogItems: Loadable<
-    readonly PlatformConnectorCatalogStatusItem[]
-  >;
-  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  relatedCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
+  addDialogCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
+  customConnectors: readonly CustomConnectorResponse[];
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
-  optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
   mcpEnabled: boolean;
 }): ResolvedComposerConnectorCollections {
-  const resolvedRelatedCatalogItems =
-    relatedCatalogItems.state === "hasData" ? relatedCatalogItems.data : [];
-  const resolvedAddDialogCatalogItems =
-    addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
+  const resolvedRelatedCatalogItems = relatedCatalogItems;
+  const resolvedAddDialogCatalogItems = addDialogCatalogItems;
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
   const authorizedCustomSet = new Set(
     customConnectorGrants?.map((grant) => {
       return grant.customConnectorId;
     }) ?? [],
   );
-  const resolvedCustomConnectors =
-    customConnectors.state === "hasData"
-      ? customConnectors.data.filter((connector) => {
-          return (
-            connector.kind === "http" ||
-            mcpEnabled ||
-            authorizedCustomSet.has(connector.id)
-          );
-        })
-      : [];
+  const resolvedCustomConnectors = customConnectors.filter((connector) => {
+    return (
+      connector.kind === "http" ||
+      mcpEnabled ||
+      authorizedCustomSet.has(connector.id)
+    );
+  });
   const connectorMap = new Map(
     [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
       (connector) => {
@@ -10040,7 +10139,7 @@ function resolveComposerConnectorCollections({
   );
   const unconnectedConnectors = resolvedAddDialogCatalogItems.filter(
     (connector) => {
-      return !connector.connected && !optimisticConnected.has(connector.slug);
+      return !connector.connected;
     },
   );
   const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
@@ -10054,7 +10153,7 @@ function resolveComposerConnectorCollections({
   );
   const agentConnectors = resolvedRelatedCatalogItems
     .filter((connector) => {
-      return connector.connected || optimisticConnected.has(connector.slug);
+      return connector.connected;
     })
     .map((connector) => {
       return {
@@ -10122,9 +10221,9 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   const notifyDraftChanged = useComposerDraftChange(signals);
 
   if (attachments.length === 0) {
-    return null;
+    return withChatScrollLayout(null);
   }
-  return (
+  return withChatScrollLayout(
     <AttachmentChips
       attachments={attachments}
       annotationSignals={signals.imageAnnotation}
@@ -10133,7 +10232,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
         removeAttachment(attachment);
         notifyDraftChanged();
       }}
-    />
+    />,
   );
 }
 
@@ -10233,104 +10332,34 @@ function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   };
 }
 
-function ComposerConnectorsActivator({
-  computerUse,
-  onActivate,
-}: {
-  readonly computerUse: ComposerComputerUse;
-  readonly onActivate: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-            )}
-            aria-label={t(($) => {
-              return $.chat.connectors.title;
-            })}
-            onClick={onActivate}
-          >
-            <ConnectorTriggerIcons
-              connectors={[]}
-              customConnectors={[]}
-              hasComputerUse={Boolean(computerUse.selectedHostId)}
-              hasCloudBrowser={computerUse.cloudBrowserEnabled}
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {t(($) => {
-            return $.chat.connectors.title;
-          })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function ActivatedComposerConnectorsSlot({
+function ComposerConnectorsSlot({
   signals,
-  computerUse,
+  actions,
 }: {
-  readonly signals: ComposerSignals;
-  readonly computerUse: ComposerComputerUse;
+  signals: ComposerSignals;
+  actions: ComposerConnectorActions;
 }) {
+  const computerUse = useComposerComputerUse(signals);
   const { t } = useTranslation();
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
-  const connectorReadState = useComposerConnectorReadState(signals);
+  const connectorDirectoryEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorDirectory] === true;
+  const connectorData = useLastResolved(signals.connector.data$);
+  const addDialogCatalogItems =
+    useLastResolved(signals.connector.addDialogCatalogItems$) ?? [];
   const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
 
-  // Connectors: connected (org-level) + authorized (agent-level) → available
-  const relatedCatalogItemsLoadable = connectorReadState.relatedCatalogItems;
-  const addDialogCatalogItemsLoadable =
-    connectorReadState.addDialogCatalogItems;
-  const customConnectorsLoadable = connectorReadState.customConnectors;
-  const authorizationLoadable = connectorReadState.authorization;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
-  const pendingConnectorSlug = connectorUi.pendingConnectorSlug;
   const selectedCustomConnectorId = connectorUi.selectedCustomConnectorId;
-  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
-  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
-  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
-  const busyConnectorSlug =
-    connectFlowSlug ?? pollingAuthCodeSlug ?? pollingDeviceAuthSlug;
-  const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
-  const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const setConnectorAuthorization = useSet(
-    signals.connector.setConnectorAuthorization$,
-  );
-  const optimisticConnected = useGet(justConnectedSlugs$);
-  const savingConnectorSlug = connectorUi.savingConnectorSlug;
-  const savingCustomConnectorId = connectorUi.savingCustomConnectorId;
+  const setConnectorAuthorization = actions.setAuthorization;
   const agentRecordId = signals.agentId;
   const displayName =
     agents.find((agent) => {
       return agent.agentId === agentRecordId;
     })?.displayName ?? "";
-
-  const authorizedConnectors = matchingAuthorizedConnectorSlugs(
-    agentRecordId,
-    authorizationLoadable,
-  );
-  const customConnectorGrants = matchingCustomConnectorGrants(
-    agentRecordId,
-    authorizationLoadable,
-  );
-
-  const connectorsLoading =
-    relatedCatalogItemsLoadable.state !== "hasData" ||
-    customConnectorsLoadable.state !== "hasData" ||
-    authorizedConnectors === null ||
-    customConnectorGrants === null;
 
   const {
     authorizedSet,
@@ -10341,12 +10370,13 @@ function ActivatedComposerConnectorsSlot({
     agentCustomConnectors,
     selectedCustomConnector,
   } = resolveComposerConnectorCollections({
-    relatedCatalogItems: relatedCatalogItemsLoadable,
-    addDialogCatalogItems: addDialogCatalogItemsLoadable,
-    customConnectors: customConnectorsLoadable,
-    authorizedConnectorSlugs: authorizedConnectors,
-    customConnectorGrants,
-    optimisticConnected,
+    relatedCatalogItems: connectorData?.relatedCatalogItems ?? [],
+    addDialogCatalogItems,
+    customConnectors: connectorData?.customConnectors ?? [],
+    authorizedConnectorSlugs:
+      connectorData?.authorization.enabledConnectorSlugs ?? null,
+    customConnectorGrants:
+      connectorData?.authorization.customConnectorGrants ?? null,
     selectedCustomConnectorId,
     mcpEnabled,
   });
@@ -10360,35 +10390,11 @@ function ActivatedComposerConnectorsSlot({
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
-    const authorized = await tapError(
-      (async () => {
-        await setConnectorAuthorization(
-          { kind: "builtin", connectorSlug },
-          true,
-          pageSignal,
-        );
-        return true;
-      })(),
-      () => {
-        toast.error(
-          t(
-            ($) => {
-              return $.chat.connectors.authorizationFailed;
-            },
-            {
-              connectorName: label,
-              agentName: displayName,
-            },
-          ),
-          {
-            id: `connector-save-error-${connectorSlug}`,
-          },
-        );
-      },
+    await setConnectorAuthorization(
+      { kind: "builtin", connectorSlug },
+      true,
+      pageSignal,
     );
-    if (authorized !== true) {
-      return false;
-    }
     toast.success(
       t(
         ($) => {
@@ -10403,21 +10409,18 @@ function ActivatedComposerConnectorsSlot({
         id: `connector-connected-${connectorSlug}`,
       },
     );
-    return true;
   };
 
   const completeConnectorAddition = async (
     connectorSlug: ConnectorSlug,
   ): Promise<void> => {
-    if (!authorizedSet.has(connectorSlug)) {
-      const authorized = await handleConnectSuccess(connectorSlug);
-      if (!authorized) {
-        updateConnectorUi({ pendingConnectorSlug: null });
-        return;
-      }
+    if (
+      connectorData?.authorization.agentId !== agentRecordId ||
+      !authorizedSet.has(connectorSlug)
+    ) {
+      await handleConnectSuccess(connectorSlug);
     }
     updateConnectorUi({
-      pendingConnectorSlug: null,
       showAddDialog: false,
     });
   };
@@ -10430,42 +10433,42 @@ function ActivatedComposerConnectorsSlot({
     return {
       openModal: () => {
         updateConnectorUi({
-          pendingConnectorSlug: connectorSlug,
+          showAddDialog: false,
           selectedConnectorSlug: connectorSlug,
         });
       },
       connectBrowserAuth: async (authMethod) => {
         if (!accountOptions) {
-          return false;
+          return;
         }
-        updateConnectorUi({ pendingConnectorSlug: connectorSlug });
-        const connected = await connectBrowserAuth(
-          connectorSlug,
-          authMethod,
+        await actions.connectBrowserAuth(
           {
-            connectorLabel: connector.label,
-            connectorIcon: connector.icon,
-            agentId: agentRecordId,
-            ...accountOptions,
+            connectorSlug,
+            method: authMethod,
+            options: {
+              connectorLabel: connector.label,
+              connectorIcon: connector.icon,
+              agentId: agentRecordId,
+              ...accountOptions,
+            },
+            onSuccess: () => {
+              return completeConnectorAddition(connectorSlug);
+            },
           },
           pageSignal,
         );
-        if (connected) {
-          await completeConnectorAddition(connectorSlug);
-        } else {
-          updateConnectorUi({ pendingConnectorSlug: null });
-        }
-        return connected;
       },
       connectNoAuth: async (authMethod) => {
         if (!accountOptions) {
-          return false;
+          return;
         }
-        updateConnectorUi({ pendingConnectorSlug: connectorSlug });
-        const connected = await connectNoAuth(
+        await actions.connectNoAuth(
           {
             connectorSlug,
             authMethod,
+            onSuccess: () => {
+              return completeConnectorAddition(connectorSlug);
+            },
             options: {
               connectorLabel: connector.label,
               agentId: agentRecordId,
@@ -10474,12 +10477,6 @@ function ActivatedComposerConnectorsSlot({
           },
           pageSignal,
         );
-        if (connected) {
-          await completeConnectorAddition(connectorSlug);
-        } else {
-          updateConnectorUi({ pendingConnectorSlug: null });
-        }
-        return connected;
       },
     };
   };
@@ -10488,15 +10485,11 @@ function ActivatedComposerConnectorsSlot({
     connectorSlug: ConnectorSlug,
     checked: boolean,
   ) => {
-    updateConnectorUi({ savingConnectorSlug: connectorSlug });
-    await bestEffort(
-      setConnectorAuthorization(
-        { kind: "builtin", connectorSlug },
-        checked,
-        pageSignal,
-      ),
+    await setConnectorAuthorization(
+      { kind: "builtin", connectorSlug },
+      checked,
+      pageSignal,
     );
-    updateConnectorUi({ savingConnectorSlug: null });
   };
 
   const handleCustomToggle = async (connectorId: string, checked: boolean) => {
@@ -10506,19 +10499,15 @@ function ActivatedComposerConnectorsSlot({
     if (checked && connector?.permissionBundleRef) {
       return;
     }
-    updateConnectorUi({ savingCustomConnectorId: connectorId });
-    await bestEffort(
-      setConnectorAuthorization(
-        {
-          kind: "custom",
-          connectorId,
-          permissionBundleRef: connector?.permissionBundleRef ?? null,
-        },
-        checked,
-        pageSignal,
-      ),
+    await setConnectorAuthorization(
+      {
+        kind: "custom",
+        connectorId,
+        permissionBundleRef: connector?.permissionBundleRef ?? null,
+      },
+      checked,
+      pageSignal,
     );
-    updateConnectorUi({ savingCustomConnectorId: null });
   };
 
   return (
@@ -10529,9 +10518,8 @@ function ActivatedComposerConnectorsSlot({
         agentDisplayName={displayName}
         agentConnectors={agentConnectors}
         agentCustomConnectors={agentCustomConnectors}
-        connectorsLoading={connectorsLoading}
-        savingConnectorSlug={savingConnectorSlug}
-        savingCustomConnectorId={savingCustomConnectorId}
+        connectorsLoading={connectorData === undefined}
+        actions={actions}
         computerUse={computerUse}
         onOpenAddDialog={() => {
           return updateConnectorUi({ showAddDialog: true });
@@ -10551,7 +10539,7 @@ function ActivatedComposerConnectorsSlot({
           updateConnectorUi({ selectedConnectorSlug: null });
         }}
         onBuiltinSuccess={async () => {
-          const connectorSlug = pendingConnectorSlug ?? selectedConnectorSlug;
+          const connectorSlug = selectedConnectorSlug;
           if (connectorSlug) {
             await completeConnectorAddition(connectorSlug);
           }
@@ -10560,67 +10548,71 @@ function ActivatedComposerConnectorsSlot({
           updateConnectorUi({ selectedCustomConnectorId: null });
         }}
       />
-      {connectorUi.showAddDialog && (
-        <AddConnectorsDialog
-          signals={signals}
-          unconnected={unconnectedConnectors}
-          unconnectedCustom={unconnectedCustomConnectors}
-          busyConnectorSlug={busyConnectorSlug}
-          connectHandlers={connectorConnectHandlers}
-          onConnectCustom={(connector) => {
-            updateConnectorUi({
-              showAddDialog: false,
-              selectedCustomConnectorId: connector.id,
-            });
-          }}
-          onClose={() => {
-            return updateConnectorUi({
-              pendingConnectorSlug: null,
-              showAddDialog: false,
-            });
-          }}
-        />
-      )}
+      {connectorUi.showAddDialog &&
+        (connectorDirectoryEnabled ? (
+          <ConnectorDirectoryDialog
+            state={connectorUi}
+            onUpdateState={updateConnectorUi}
+            connected={agentConnectors}
+            unconnected={unconnectedConnectors}
+            connectedCustom={agentCustomConnectors}
+            unconnectedCustom={unconnectedCustomConnectors}
+            connecting={actions.connecting}
+            connectHandlers={connectorConnectHandlers}
+            onConnectCustom={(connector) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                selectedCustomConnectorId: connector.id,
+              });
+            }}
+            onConfigurePermissions={(connectorSlug) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                permissionConnectorSlug: connectorSlug,
+              });
+            }}
+            onClose={() => {
+              return updateConnectorUi({
+                showAddDialog: false,
+              });
+            }}
+          />
+        ) : (
+          <AddConnectorsDialog
+            signals={signals}
+            unconnected={unconnectedConnectors}
+            unconnectedCustom={unconnectedCustomConnectors}
+            connecting={actions.connecting}
+            connectHandlers={connectorConnectHandlers}
+            onConnectCustom={(connector) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                selectedCustomConnectorId: connector.id,
+              });
+            }}
+            onClose={() => {
+              return updateConnectorUi({
+                showAddDialog: false,
+              });
+            }}
+          />
+        ))}
     </>
-  );
-}
-
-function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
-  const computerUse = useComposerComputerUse(signals);
-  const connectorUi = useGet(signals.connector.connectorUiState$);
-  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
-  const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
-
-  if (connectorUi.connectorDataActivated) {
-    return (
-      <ActivatedComposerConnectorsSlot
-        signals={signals}
-        computerUse={computerUse}
-      />
-    );
-  }
-
-  return (
-    <ComposerConnectorsActivator
-      computerUse={computerUse}
-      onActivate={() => {
-        updateConnectorUi({
-          connectorDataActivated: true,
-          popoverSortOrder: [],
-        });
-        openAccountsPopover();
-      }}
-    />
   );
 }
 
 function ComposerFooter({
   signals,
   actions,
+  connectorActions,
 }: {
   signals: ComposerSignals;
   actions: ComposerActions;
+  connectorActions: ComposerConnectorActions;
 }) {
+  const createMode = useGet(signals.create.mode$);
+  const narrowVideoGap =
+    createMode === "video" ? "@max-[344px]/composer:gap-0" : undefined;
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraft = useResolved(signals.voice.state$);
   const capture = useGet(signals.voice.capture$);
@@ -10634,8 +10626,14 @@ function ComposerFooter({
           : capture
             ? "recording"
             : voiceDraft?.status;
-  return (
-    <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
+  return withChatScrollLayout(
+    <div
+      className={cn(
+        "flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2",
+        narrowVideoGap,
+        createMode === "video" && "@max-[344px]/composer:px-3",
+      )}
+    >
       {voiceInputV2Enabled &&
       status &&
       status !== "idle" &&
@@ -10649,29 +10647,44 @@ function ComposerFooter({
         />
       ) : (
         <>
-          <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-1 text-muted-foreground sm:gap-1.5",
+              narrowVideoGap,
+            )}
+          >
             <ComposerAttachButton signals={signals} />
             <ComposerTemplatePickerSlot signals={signals} />
             <ComposerWorkflowPromptSlot signals={signals} />
-            <ComposerConnectorsSlot signals={signals} />
+            <ComposerConnectorsSlot
+              signals={signals}
+              actions={connectorActions}
+            />
             {/* Sits with the other input-scoped controls rather than beside
                 the model picker: it configures the message being written,
                 not which model the composer points at. */}
             <ComposerVideoOptionsChip signals={signals} />
+            <ComposerPresentationOptions signals={signals} />
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-1 sm:gap-2",
+              narrowVideoGap,
+            )}
+          >
             <ComposerModelPickerSlot signals={signals} />
             <MicButton signals={signals} actions={actions} />
             <ComposerSendControl signals={signals} actions={actions} />
           </div>
         </>
       )}
-    </div>
+    </div>,
   );
 }
 
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
   const actions = useComposerActions(signals);
+  const connectorActions = useComposerConnectorActions(signals.connector);
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
@@ -10679,8 +10692,13 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
 
   return (
     <Card
+      data-slot="chat-composer-card"
       className={cn(
-        "okou-composer relative z-10 overflow-visible",
+        // Paint focus on the existing border. A separately promoted border
+        // with a negative inset can snap differently from the card and SVGs.
+        "@container/composer relative z-10 overflow-visible rounded-3xl border-gray-400 bg-card shadow-[var(--okou-card-shadow)] transition-[border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] focus-within:border-surface-focus motion-reduce:transition-none",
+        "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:opacity-0 after:shadow-[var(--okou-composer-focus-veil)] after:transition-opacity after:duration-[220ms] after:ease-[cubic-bezier(0.4,0,0.2,1)] after:content-[''] focus-within:after:opacity-100 motion-reduce:after:transition-none",
+        "[@media(display-mode:standalone)]:[[data-chat-composer]_&]:scroll-mb-4",
         dragOver && "outline outline-2 outline-blue-400/60",
       )}
       onDrop={(event) => {
@@ -10712,7 +10730,11 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}
-          <ComposerFooter signals={signals} actions={actions} />
+          <ComposerFooter
+            signals={signals}
+            actions={actions}
+            connectorActions={connectorActions}
+          />
         </div>
       </CardContent>
     </Card>
@@ -10734,10 +10756,10 @@ export function ChatComposer({
         className="relative flex w-full min-w-0 flex-col"
       >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
+        <ComposerCreateControls signals={signals} />
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
-        <WebsiteTemplatePreviewDialogSlot signals={signals} />
         <ImageAnnotationEditor signals={signals.imageAnnotation} />
       </div>
     </>

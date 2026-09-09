@@ -16,11 +16,12 @@ import {
 import { writeDb$ } from "../external/db";
 import {
   getStripeClient,
+  stripeErrorInfo,
   type StripeClient,
   type StripeRef,
 } from "../external/stripe-client";
 import { nowDate } from "../../lib/time";
-import { tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { logger } from "../../lib/log";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
@@ -93,6 +94,42 @@ async function resolvePaymentMethod(
     },
   );
   return null;
+}
+
+async function payAutoRechargeInvoice(
+  stripe: StripeClient,
+  invoiceId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const invoice = await stripe.invoices.finalizeInvoice(invoiceId);
+  signal.throwIfAborted();
+  if (invoice.status === "paid") {
+    return;
+  }
+  if (invoice.status !== "open") {
+    throw new Error(
+      `Auto-recharge invoice ${invoiceId} cannot be paid from status ${invoice.status}`,
+    );
+  }
+
+  const payment = await settle(stripe.invoices.pay(invoiceId), signal);
+  if (payment.ok) {
+    if (payment.value.status !== "paid") {
+      throw new Error(`Auto-recharge invoice ${invoiceId} was not paid`);
+    }
+    return;
+  }
+  if (stripeErrorInfo(payment.error)?.type !== "StripeInvalidRequestError") {
+    throw payment.error;
+  }
+
+  // Stripe request errors can omit a code; only a confirmed paid invoice
+  // turns a rejected payment request into success.
+  const paidInvoice = await stripe.invoices.retrieve(invoiceId);
+  signal.throwIfAborted();
+  if (paidInvoice.status !== "paid") {
+    throw payment.error;
+  }
 }
 
 /**
@@ -222,10 +259,7 @@ export const triggerAutoRecharge$ = command(
         });
         signal.throwIfAborted();
 
-        await stripe.invoices.finalizeInvoice(invoice.id);
-        signal.throwIfAborted();
-        await stripe.invoices.pay(invoice.id);
-        signal.throwIfAborted();
+        await payAutoRechargeInvoice(stripe, invoice.id, signal);
 
         L.debug("Auto-recharge invoice created and paid", {
           orgId,

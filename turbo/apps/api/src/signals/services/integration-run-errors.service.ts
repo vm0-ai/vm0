@@ -1,6 +1,4 @@
 import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -8,13 +6,13 @@ import { db$ } from "../external/db";
 import { getMemberRoleAndUpdateCache$ } from "./auth.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
-function addCreditsUrl(publicBrand: PublicBrand): string {
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+function addCreditsUrl(): string {
+  const appUrl = env("APP_URL");
   return `${appUrl}/?settings=billing&billingView=credits`;
 }
 
-function comparePlansUrl(publicBrand: PublicBrand): string {
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+function comparePlansUrl(): string {
+  const appUrl = env("APP_URL");
   return `${appUrl}/?settings=billing&billingView=plans`;
 }
 
@@ -26,7 +24,6 @@ export const formatIntegrationRunError$ = command(
       readonly userId: string;
       readonly code: string;
       readonly message: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<string> => {
@@ -51,8 +48,8 @@ export const formatIntegrationRunError$ = command(
       insufficientCredits: {
         canManageBilling: membership?.role === "admin",
         ...(canBuyCredits
-          ? { addCreditsUrl: addCreditsUrl(args.publicBrand) }
-          : { comparePlansUrl: comparePlansUrl(args.publicBrand) }),
+          ? { addCreditsUrl: addCreditsUrl() }
+          : { comparePlansUrl: comparePlansUrl() }),
       },
     });
   },

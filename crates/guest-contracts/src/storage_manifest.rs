@@ -2,7 +2,7 @@
 //!
 //! In the normal runner lifecycle, storage planning and cache-source resolution produce a
 //! [`Manifest`]. The runner serializes it for stdin or fallback-file transport to
-//! `guest-download`, which deserializes it before building its filesystem execution plan.
+//! `guest-storage-apply`, which deserializes it before building its filesystem execution plan.
 //!
 //! ## Execution projection and canonical JSON
 //!

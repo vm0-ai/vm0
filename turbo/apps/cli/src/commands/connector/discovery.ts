@@ -7,6 +7,7 @@ import type {
 } from "../../lib/api/domains/connectors";
 import type { ConnectorDiscoveryAgentContext } from "./agent-context";
 import { renderConnectedAsCell } from "./connected-as";
+import { connectorInspectionType } from "./inspection";
 
 interface CatalogConnectorDiscoveryDefinition {
   readonly kind: "catalog";
@@ -122,6 +123,41 @@ export function renderConnectorDiscoveryConnectedAsCell(
   return chalk.yellow(
     `missing ${connector.customConnector.missingRequiredFields.join(", ")}`,
   );
+}
+
+export function connectorDiscoveryJson(
+  connector: ConnectorDiscoveryItem,
+  agentContext: ConnectorDiscoveryAgentContext | null,
+) {
+  const target = connectorDiscoveryTarget(connector);
+  const identity = {
+    target,
+    connectorType: connectorInspectionType(
+      target,
+      connector.kind === "custom" ? connector.customConnector : null,
+    ),
+    slug: connector.slug,
+    label: connector.label,
+    authorized: agentContext
+      ? isConnectorDiscoveryAuthorized(connector, agentContext)
+      : null,
+  };
+  return connector.kind === "catalog"
+    ? {
+        ...identity,
+        kind: "builtin" as const,
+        connected: connector.catalogConnector.connected,
+        connectionStatus: connector.catalogConnector.connectionStatus,
+        connection: connector.catalogConnector.connection,
+      }
+    : {
+        ...identity,
+        kind: "custom" as const,
+        id: connector.customConnector.id,
+        connected: connector.customConnector.connected,
+        connectionId: connector.customConnector.connectedAccountId ?? null,
+        missingRequiredFields: connector.customConnector.missingRequiredFields,
+      };
 }
 
 export function isConnectorDiscoveryAuthorized(

@@ -43,6 +43,9 @@ import {
 } from "./chat-touch-selection.ts";
 
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const SELECTION_ACTIONS_DISABLED_SELECTOR =
+  "[data-chat-selection-actions-disabled]";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
@@ -165,7 +168,37 @@ function closestFeedbackSource(node: Node | null): Element | null {
   return element?.closest(FEEDBACK_SOURCE_SELECTOR) ?? null;
 }
 
-function resolveSelectionSource(range: Range): Element | null {
+function closestExpandedFeedbackSource(node: Node | null): Element | null {
+  if (!node) {
+    return null;
+  }
+  const element = node instanceof Element ? node : node.parentElement;
+  if (element?.closest(SELECTION_ACTIONS_DISABLED_SELECTOR)) {
+    return null;
+  }
+  return (
+    element?.closest(ASSISTANT_GROUP_SELECTOR) ??
+    element?.closest("[data-feedback-source]") ??
+    null
+  );
+}
+
+function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
+  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
+}
+
+function resolveSelectionSource(
+  range: Range,
+  expandToAssistantReply: boolean,
+): Element | null {
+  if (expandToAssistantReply) {
+    const startSource = closestExpandedFeedbackSource(range.startContainer);
+    const endSource = closestExpandedFeedbackSource(range.endContainer);
+    return startSource !== null && startSource === endSource
+      ? startSource
+      : null;
+  }
+
   const commonSource = closestFeedbackSource(range.commonAncestorContainer);
   if (commonSource) {
     return commonSource;
@@ -307,6 +340,7 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
 }
 
 function readFeedbackSelection(
+  expandToAssistantReply: boolean,
   touchRange?: Range,
 ): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
@@ -328,7 +362,10 @@ function readFeedbackSelection(
   if (!text) {
     return null;
   }
-  const sourceElement = resolveSelectionSource(range);
+  const sourceElement = resolveSelectionSource(
+    range,
+    !touchRange && expandToAssistantReply,
+  );
   if (!sourceElement) {
     return null;
   }
@@ -381,7 +418,12 @@ function createSelectionReconciliation({
     if (!currentSelection) {
       return;
     }
-    const selection = readFeedbackSelection(currentSelection.touchRange);
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+      currentSelection.touchRange,
+    );
     if (
       !selection ||
       selection.threadId !== threadId ||
@@ -461,7 +503,12 @@ function createSelectionState(threadId: string) {
     return get(internalSelection$)?.touchRange ?? null;
   });
   const capture$ = command(({ get, set }, touchRange?: Range) => {
-    const selection = readFeedbackSelection(touchRange);
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+      touchRange,
+    );
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -792,6 +839,21 @@ function createToolbarRef({
   );
 }
 
+function createNativeSelectionCapture(
+  selection$: State<CapturedFeedbackSelection | null>,
+  capture$: Command<void, []>,
+) {
+  const captureNativeSelection$ = command(
+    ({ get, set }, signal: AbortSignal) => {
+      signal.throwIfAborted();
+      if (!get(selection$)?.touchRange) {
+        set(capture$);
+      }
+    },
+  );
+  return debounceCommand(captureNativeSelection$, 0);
+}
+
 function createListenersRef({
   selection$,
   close$,
@@ -805,15 +867,7 @@ function createListenersRef({
   reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
-  const captureNativeSelection$ = command(
-    ({ get, set }, signal: AbortSignal) => {
-      signal.throwIfAborted();
-      if (!get(selection$)?.touchRange) {
-        set(capture$);
-      }
-    },
-  );
-  const debouncedCapture$ = debounceCommand(captureNativeSelection$, 0);
+  const debouncedCapture$ = createNativeSelectionCapture(selection$, capture$);
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const doc = el.ownerDocument;
@@ -862,7 +916,11 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            closestFeedbackSource(event.target) !== null;
+            (shouldExpandSelectionToAssistantReply(
+              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+            )
+              ? closestExpandedFeedbackSource(event.target)
+              : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;
           if (
             mouseSelectionInProgress &&

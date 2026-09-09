@@ -6,8 +6,6 @@ import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
 } from "@okouai/api-contracts/contracts/computer-use";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
@@ -96,11 +94,8 @@ function isUuid(value: string): boolean {
   );
 }
 
-function authorizationUrl(
-  requestToken: string,
-  publicBrand: PublicBrand,
-): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/computer-use/authorize/${encodeURIComponent(
+function authorizationUrl(requestToken: string): string {
+  return `${env("APP_URL")}/computer-use/authorize/${encodeURIComponent(
     requestToken,
   )}`;
 }
@@ -423,7 +418,6 @@ export const createComputerUseAuthorizationRequest$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<CreateComputerUseAuthorizationRequestResult> => {
@@ -462,7 +456,7 @@ export const createComputerUseAuthorizationRequest$ = command(
 
     return {
       status: "created",
-      authorizationUrl: authorizationUrl(requestToken, args.publicBrand),
+      authorizationUrl: authorizationUrl(requestToken),
       source: scope.source,
       expiresAt: expiresAt.toISOString(),
     };

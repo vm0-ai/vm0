@@ -1,5 +1,4 @@
 import { authMeRoutes } from "./routes/auth-me";
-import { appBootstrapRoutes } from "./routes/app-bootstrap";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
@@ -96,6 +95,7 @@ import { featureSwitchesRoutes } from "./routes/feature-switches";
 import { financeRoutes } from "./routes/finance";
 import { seoRoutes } from "./routes/seo";
 import { goalsRoutes } from "./routes/goals";
+import { artifactShareRoutes } from "./routes/artifact-shares";
 import { hostRoutes } from "./routes/host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { imageIoGenerateRoutes } from "./routes/image-io-generate";
@@ -133,6 +133,7 @@ import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
 import { socialRoutes } from "./routes/social";
 import { sshConnectionsRoutes } from "./routes/ssh-connections";
+import { runnerSshRoutes } from "./routes/runner-ssh";
 import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
@@ -151,6 +152,7 @@ import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github
 import { integrationsFeishuFileRoutes } from "./routes/integrations-feishu-files";
 import { integrationsSlackRoutes } from "./routes/integrations-slack";
 import { integrationsSlackMessageRoutes } from "./routes/integrations-slack-message";
+import { integrationsSlackReadRoutes } from "./routes/integrations-slack-read";
 import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
 import { integrationsSlackUploadCompleteRoutes } from "./routes/integrations-slack-upload-complete";
 import { integrationsSlackUploadInitRoutes } from "./routes/integrations-slack-upload-init";
@@ -187,6 +189,7 @@ import { userPreferencesRoutes } from "./routes/user-preferences";
 import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { avatarVideoRoutes } from "./routes/avatar-video";
+import { introVideoAgentRoutes } from "./routes/intro-video-agent";
 import { introVideoPresenterRoutes } from "./routes/intro-video-presenter";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
 import { voiceIoPolishRoutes } from "./routes/voice-io-polish";
@@ -200,7 +203,6 @@ import { webFileUrlRoutes } from "./routes/web-file-url";
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
   ...buildInfoRoutes,
-  ...appBootstrapRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
@@ -294,10 +296,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...seoRoutes,
   ...goalsRoutes,
   ...hostRoutes,
+  ...artifactShareRoutes,
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
   ...avatarVideoRoutes,
   ...introVideoPresenterRoutes,
+  ...introVideoAgentRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
   ...mailRoutes,
@@ -310,6 +314,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webSearchRoutes,
   ...socialRoutes,
   ...sshConnectionsRoutes,
+  ...runnerSshRoutes,
   ...browserRoutes,
   ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,
@@ -374,6 +379,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsFeishuFileRoutes,
   ...integrationsSlackRoutes,
   ...integrationsSlackMessageRoutes,
+  ...integrationsSlackReadRoutes,
   ...integrationsFeishuMessageRoutes,
   ...integrationsSlackUploadCompleteRoutes,
   ...integrationsSlackUploadInitRoutes,

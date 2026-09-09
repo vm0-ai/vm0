@@ -50,6 +50,9 @@ vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
 vi.stubEnv("R2_ACCOUNT_ID", "test-account");
 vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
 vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
+vi.stubEnv("R2_PRIVATE_ARTIFACTS_BUCKET_NAME", "test-private-artifacts");
+vi.stubEnv("R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID", "test-private-access-key");
+vi.stubEnv("R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY", "test-private-secret-key");
 vi.stubEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-user-artifacts");
 vi.stubEnv("R2_USER_ARTIFACTS_ACCESS_KEY_ID", "test-artifacts-access-key");
 vi.stubEnv("R2_USER_ARTIFACTS_SECRET_ACCESS_KEY", "test-artifacts-secret-key");
@@ -59,6 +62,7 @@ vi.stubEnv("R2_HOSTED_SITES_BUCKET_NAME", "test-hosted-sites");
 vi.stubEnv("R2_HOSTED_SITES_ACCESS_KEY_ID", "test-hosted-sites-access-key");
 vi.stubEnv("R2_HOSTED_SITES_SECRET_ACCESS_KEY", "test-hosted-sites-secret-key");
 vi.stubEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
+vi.stubEnv("OKOU_HOST_SCHEME", "https");
 vi.stubEnv("ZERO_HOST_DOMAIN", "sites.example.com");
 vi.stubEnv("ZERO_HOST_SCHEME", "https");
 vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
@@ -67,7 +71,7 @@ stubTestWebUrlEnvironment("http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
   "CLI_PKG_URL",
-  "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+  "https://static.okou.io/okou-cli/test-commit/package.tgz",
 );
 vi.stubEnv("RESEND_API_KEY", "test-resend-key");
 vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test");

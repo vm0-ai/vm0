@@ -2,9 +2,7 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/workflows";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   workflowUserAutomationThreads,
   workflowAutomations,
@@ -69,11 +67,8 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function workflowWebhookUrlForToken(
-  token: string,
-  publicBrand: PublicBrand,
-): string {
-  const baseUrl = apiUrlForPublicBrand(webUrl(), publicBrand);
+function workflowWebhookUrlForToken(token: string): string {
+  const baseUrl = webUrl();
   return `${baseUrl}/api/webhooks/workflow-automations/${encodeURIComponent(
     token,
   )}`;
@@ -125,12 +120,10 @@ export async function buildWorkflowWebhookSummaryFields(
     | {
         readonly webhookToken: string;
         readonly webhookSecret: string;
-        readonly publicBrand: PublicBrand;
       }
     | {
         readonly webhookToken?: undefined;
         readonly webhookSecret?: undefined;
-        readonly publicBrand?: undefined;
       }
   ),
 ): Promise<{
@@ -154,10 +147,7 @@ export async function buildWorkflowWebhookSummaryFields(
   return {
     ...(args.webhookToken
       ? {
-          webhookUrl: workflowWebhookUrlForToken(
-            args.webhookToken,
-            args.publicBrand,
-          ),
+          webhookUrl: workflowWebhookUrlForToken(args.webhookToken),
         }
       : {}),
     secretLastFour: webhook.secretLastFour,
@@ -173,7 +163,6 @@ export async function revealWorkflowWebhookSecretFields(
   db: ReadonlyDb,
   args: {
     readonly automation: AutomationRow;
-    readonly publicBrand: PublicBrand;
   },
 ): Promise<{ readonly webhookUrl: string; readonly webhookSecret: string }> {
   const [webhook] = await db
@@ -195,7 +184,7 @@ export async function revealWorkflowWebhookSecretFields(
     decryptWorkflowWebhookSecret(webhook.encryptedSecret, context),
   ]);
   return {
-    webhookUrl: workflowWebhookUrlForToken(token, args.publicBrand),
+    webhookUrl: workflowWebhookUrlForToken(token),
     webhookSecret: secret,
   };
 }

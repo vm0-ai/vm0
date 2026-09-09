@@ -16,22 +16,22 @@ test("A brand-only public title is not repeated", async () => {
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
     return respond(200, {
       ...sharedThread(),
-      title: "VM0",
+      title: "Okou",
       publicBrand: "vm0",
     });
   });
 
-  await setupSharedThreadPage(context, { host: "app.vm0.ai" });
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
 
   await expect(
-    screen.findByRole("heading", { name: "VM0" }),
+    screen.findByRole("heading", { name: "Okou" }),
   ).resolves.toBeInTheDocument();
   await waitFor(() => {
-    expect(document.title).toBe("VM0");
+    expect(document.title).toBe("Okou");
   });
 });
 
-test("A missing public conversation uses neutral VM0 presentation", async () => {
+test("A missing public conversation uses the Okou presentation", async () => {
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
     return respond(404, {
       error: { code: "NOT_FOUND", message: "Not found" },
@@ -45,11 +45,11 @@ test("A missing public conversation uses neutral VM0 presentation", async () => 
       name: "Shared conversation not found",
     }),
   ).resolves.toBeInTheDocument();
-  const brandLink = getLinkByName("VM0");
-  expect(brandLink).toHaveAttribute("href", "https://app.vm0.ai");
+  const brandLink = getLinkByName("Okou");
+  expect(brandLink).toHaveAttribute("href", "https://app.okou.ai");
   expect(getLinkByName("Sign up")).toHaveAttribute(
     "href",
-    expect.stringContaining("https://app.vm0.ai/sign-up"),
+    expect.stringContaining("https://app.okou.ai/sign-up"),
   );
 });
 
@@ -118,4 +118,22 @@ test("A public conversation hides owner and agent identity", async () => {
   );
   expect(screen.queryByText("Owner")).not.toBeInTheDocument();
   expect(screen.queryByText("Agent")).not.toBeInTheDocument();
+});
+
+test("An intact public Goal archive displays its original literal text", async () => {
+  const content =
+    "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: paused\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\nBefore <oai-mem-citation>literal objective</oai-mem-citation> after\n`<oai-mem-citation>`\nUnclosed <oai-mem-citation>keep the rest 🧭\n\n";
+  context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+    return respond(
+      200,
+      sharedThread({
+        messages: [{ messageIndex: 0, role: "assistant", content }],
+      }),
+    );
+  });
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
+  const message = await screen.findByText(
+    /Before <oai-mem-citation>literal objective/,
+  );
+  expect(message.textContent).toBe(content);
 });

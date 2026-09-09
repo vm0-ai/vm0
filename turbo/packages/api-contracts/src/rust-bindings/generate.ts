@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -15,6 +16,7 @@ import {
   rustDecodePathBindings,
 } from "./decode-paths";
 import { type RustRouteBinding, rustRouteBindings } from "./routes";
+import { generatePublicDestinationPolicy } from "./public-destination";
 import {
   type RustTypeModuleDoc,
   type RustTypeBinding,
@@ -105,6 +107,7 @@ export interface NormalizedTypeBinding {
   readonly rustModulePath: readonly string[];
   readonly rustTypeName: string;
   readonly fieldTypeOverrides: Readonly<Record<string, string>>;
+  readonly sensitive: boolean;
   readonly declarationDocs: ReadonlyMap<string, NormalizedTypeDeclarationDoc>;
 }
 
@@ -184,6 +187,7 @@ interface RenderTypeContext {
   readonly label: string;
   readonly moduleIndentWidth: number;
   readonly fieldTypeOverrides: Readonly<Record<string, string>>;
+  readonly sensitive: boolean;
   readonly declarationDocs: ReadonlyMap<string, NormalizedTypeDeclarationDoc>;
   readonly declarations: RustDeclaration[];
   readonly declarationNames: Set<string>;
@@ -376,6 +380,7 @@ export function normalizeTypeBindings(
       rustModulePath,
       rustTypeName,
       fieldTypeOverrides: binding.fieldTypeOverrides ?? {},
+      sensitive: binding.sensitive ?? false,
       declarationDocs: normalizeTypeDeclarationDocs(binding, label),
     });
   }
@@ -536,6 +541,7 @@ export function renderGeneratedMod(): string {
   return [
     "pub mod constants;",
     "pub mod decode_paths;",
+    "pub mod public_destination_policy;",
     "pub mod routes;",
     "pub mod types;",
     "",
@@ -554,7 +560,13 @@ export async function generateRustBindings(): Promise<void> {
   await generateRustTypesFile();
   await generateRustConstantsFile();
   await generateRustDecodePathsFile();
+  await generatePublicDestinationPolicy();
   await generateRustGeneratedModFile();
+  // Format the module tree once, including generated deserialization visitors.
+  // Generation and the repository's Cargo formatting check must agree.
+  execFileSync("rustfmt", ["--edition", "2024", generatedModPath], {
+    stdio: "inherit",
+  });
 }
 
 function routeLabel(binding: RustRouteBinding): string {
@@ -1375,6 +1387,7 @@ function renderTypeBinding(
     label: rustTypeName(binding),
     moduleIndentWidth: binding.rustModulePath.length * 4,
     fieldTypeOverrides: binding.fieldTypeOverrides,
+    sensitive: binding.sensitive,
     declarationDocs: binding.declarationDocs,
     declarations,
     declarationNames: new Set(),
@@ -1619,8 +1632,12 @@ function renderStruct(
   const seenRustFields = new Map<string, string>();
   const lines = [
     ...renderOuterRustDoc(declarationDoc.rustDoc, ""),
-    "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
-    '#[serde(rename_all = "camelCase")]',
+    context.sensitive
+      ? "#[derive(serde::Deserialize)]"
+      : "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
+    context.sensitive
+      ? '#[serde(rename_all = "camelCase", deny_unknown_fields)]'
+      : '#[serde(rename_all = "camelCase")]',
     `pub struct ${typeName} {`,
   ];
 
@@ -1763,11 +1780,168 @@ function renderStringEnum(
   return typeName;
 }
 
+function renderSensitiveTaggedEnum(
+  union: TaggedUnion,
+  typeName: string,
+  context: RenderTypeContext,
+): string {
+  if (context.declarationNames.has(typeName)) {
+    throw new Error(
+      `${context.label} has duplicate Rust type name: ${typeName}`,
+    );
+  }
+  context.declarationNames.add(typeName);
+  const doc = typeDeclarationDoc(context, typeName);
+  const fields = new Map<string, { rustName: string; rustType: string }>();
+  const lines = [
+    ...renderOuterRustDoc(doc.rustDoc, ""),
+    `pub enum ${typeName} {`,
+  ];
+  for (const variant of union.variants) {
+    lines.push(
+      ...renderOuterRustDoc(
+        typeVariantDoc(context, typeName, variant.value, doc),
+        "    ",
+      ),
+    );
+    const name = toRustVariantName(variant.value);
+    const entries = Object.entries(variant.properties);
+    if (entries.length === 0) {
+      lines.push(`    ${name},`);
+      continue;
+    }
+    lines.push(`    ${name} {`);
+    for (const [wireName, schema] of entries) {
+      if (
+        !isJsonObject(schema) ||
+        fields.has(wireName) ||
+        !variant.required.includes(wireName)
+      ) {
+        throw new Error(
+          `${context.label}: sensitive variants require distinct, required fields`,
+        );
+      }
+      const rustName = toRustFieldName(wireName);
+      const rustType =
+        context.fieldTypeOverrides[wireName] ??
+        rustTypeForSchema(
+          schema,
+          nestedTypeNameForField(`${typeName}${name}`, wireName, schema),
+          context,
+        );
+      fields.set(wireName, { rustName, rustType });
+      lines.push(
+        ...renderOuterRustDoc(
+          typeFieldDoc(context, typeName, wireName, doc),
+          "        ",
+        ),
+      );
+      lines.push(`        ${rustName}: ${rustType},`);
+    }
+    lines.push("    },");
+  }
+  lines.push(
+    "}",
+    "",
+    `impl<'de> serde::Deserialize<'de> for ${typeName} {`,
+    "    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {",
+    "        // Decode fields directly: serde's internally tagged Content buffer would copy secrets.",
+    "        #[derive(serde::Deserialize)]",
+    "        enum Kind {",
+  );
+  for (const variant of union.variants) {
+    lines.push(
+      `            #[serde(rename = ${rustStringLiteral(variant.value)})]`,
+      `            ${toRustVariantName(variant.value)},`,
+    );
+  }
+  lines.push(
+    "        }",
+    "        #[derive(serde::Deserialize)]",
+    "        #[serde(field_identifier)]",
+    "        enum Field {",
+    `            #[serde(rename = ${rustStringLiteral(union.tag)})]`,
+    "            Outcome,",
+  );
+  for (const wireName of fields.keys()) {
+    lines.push(
+      `            #[serde(rename = ${rustStringLiteral(wireName)})]`,
+      `            ${toPascalCase(wireName)},`,
+    );
+  }
+  lines.push(
+    "        }",
+    "        struct Visitor;",
+    "        impl<'de> serde::de::Visitor<'de> for Visitor {",
+    `            type Value = ${typeName};`,
+    "            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {",
+    '                formatter.write_str("a private authority response object")',
+    "            }",
+    "            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {",
+    "                let mut outcome = None::<Kind>;",
+  );
+  for (const { rustName, rustType } of fields.values()) {
+    lines.push(`                let mut ${rustName} = None::<${rustType}>;`);
+  }
+  lines.push(
+    "                while let Some(field) = map.next_key::<Field>()? {",
+    "                    match field {",
+  );
+  for (const [name, rustName] of [
+    ["Outcome", "outcome"],
+    ...Array.from(fields, ([wireName, field]) => {
+      return [toPascalCase(wireName), field.rustName];
+    }),
+  ]) {
+    lines.push(
+      `                        Field::${name} => {`,
+      `                            if ${rustName}.is_some() {`,
+      '                                return Err(serde::de::Error::custom("duplicate authority field"));',
+      "                            }",
+      `                            ${rustName} = Some(map.next_value()?);`,
+      "                        }",
+    );
+  }
+  lines.push("                    }", "                }");
+  const fieldList = [...fields.values()]
+    .map((field) => {
+      return field.rustName;
+    })
+    .join(", ");
+  lines.push(`                match (outcome, ${fieldList}) {`);
+  for (const variant of union.variants) {
+    const name = toRustVariantName(variant.value);
+    const values = [...fields].map(([wireName, field]) => {
+      return wireName in variant.properties
+        ? `Some(${field.rustName})`
+        : "None";
+    });
+    const members = Object.keys(variant.properties).map(toRustFieldName);
+    lines.push(
+      `                    (Some(Kind::${name}), ${values.join(", ")}) => Ok(${typeName}::${name}${members.length > 0 ? ` { ${members.join(", ")} }` : ""}),`,
+    );
+  }
+  lines.push(
+    '                    _ => Err(serde::de::Error::custom("invalid authority outcome fields")),',
+    "                }",
+    "            }",
+    "        }",
+    "        deserializer.deserialize_map(Visitor)",
+    "    }",
+    "}",
+  );
+  context.declarations.push({ name: typeName, lines });
+  return typeName;
+}
+
 function renderTaggedEnum(
   union: TaggedUnion,
   typeName: string,
   context: RenderTypeContext,
 ): string {
+  if (context.sensitive) {
+    return renderSensitiveTaggedEnum(union, typeName, context);
+  }
   if (context.declarationNames.has(typeName)) {
     throw new Error(
       `${context.label} has duplicate Rust type name: ${typeName}`,

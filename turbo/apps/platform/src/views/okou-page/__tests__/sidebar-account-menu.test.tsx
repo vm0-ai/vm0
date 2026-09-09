@@ -28,6 +28,8 @@ import {
 import {
   mockedClerk,
   mockSignInResource,
+  mockSignUpConfiguration,
+  mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -266,7 +268,6 @@ interface MockAdminBillingStatusOptions {
     readonly onStarted: () => void;
     readonly waitUntil: Promise<void>;
   };
-  readonly onRequest?: () => void;
 }
 
 function mockAdminBillingStatus(
@@ -278,7 +279,6 @@ function mockAdminBillingStatus(
     billingStatusContract.get,
     async ({ respond, withSignal }) => {
       requestCount += 1;
-      options.onRequest?.();
       if (requestCount === 1 && options.firstRequestGate) {
         options.firstRequestGate.onStarted();
         await withSignal(options.firstRequestGate.waitUntil);
@@ -292,6 +292,7 @@ function mockAdminBillingStatus(
         });
       }
       return respond(200, {
+        showUsagePack: false,
         tier: "pro",
         credits,
         onboardingPaymentPending: false,
@@ -505,6 +506,7 @@ test("Show a member’s latest package credits in the account menu", async () =>
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
+      showUsagePack: true,
       credits: 12_500,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -703,15 +705,9 @@ test("Refresh account balances when the menu opens", async () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  const refreshRequested = context.mocks.deferred<void>();
-  mockAdminBillingStatus(250, {
-    onRequest: () => {
-      refreshRequested.resolve(undefined);
-    },
-  });
+  mockAdminBillingStatus(250);
 
   menu = await openAccountMenu();
-  await refreshRequested.promise;
   await waitFor(() => {
     expect(within(menu).getByText("250 credits")).toBeInTheDocument();
   });
@@ -1107,13 +1103,13 @@ test("Open personal Settings and manage account security from the production sat
     expect(settingsDialog).toContainElement(activeElement as HTMLElement);
   });
 
-  const satelliteProfileLink = linkByText("Manage");
-  expect(satelliteProfileLink).toHaveAttribute(
+  const profileLink = linkByText("Manage");
+  expect(profileLink).toHaveAttribute(
     "href",
-    "https://accounts.vm0.ai/user",
+    "https://accounts.example.test/user",
   );
-  expect(satelliteProfileLink).toHaveAttribute("target", "_blank");
-  expect(satelliteProfileLink).toHaveAttribute("rel", "noreferrer");
+  expect(profileLink).toHaveAttribute("target", "_blank");
+  expect(profileLink).toHaveAttribute("rel", "noreferrer");
 });
 
 test("Toggle network-body capture in Debug settings", async () => {
@@ -1228,7 +1224,7 @@ test("Restore page interaction after closing Settings", async () => {
     ).not.toBeInTheDocument();
   });
 
-  expect(document.querySelector(".okou-dialog-overlay")).toBeNull();
+  expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
   expect(document.body.style.pointerEvents).not.toBe("none");
 
   const chatList = await screen.findByTestId("chat-list-column");
@@ -1465,6 +1461,109 @@ test("Continue or restart organization selection while adding an account", async
   expect(window.location.href).toBe(originalUrl);
 });
 
+async function signInToSecurityTask(dialog: HTMLElement, sessionId: string) {
+  mockSignInResource({
+    status: "needs_first_factor",
+    supportedFirstFactors: [{ strategy: "password" }],
+  });
+  mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
+  await fill(
+    await within(dialog).findByLabelText("Email address"),
+    `${sessionId}@example.test`,
+  );
+  click(buttonByText("Continue", dialog));
+  const password = await within(dialog).findByLabelText("Password");
+  mockedClerk.signInAttemptFirstFactor.mockImplementation(() => {
+    mockUser(
+      {
+        id: sessionId,
+        fullName: sessionId,
+        clientSessions: [
+          {
+            id: sessionId,
+            status: "pending",
+            currentTask: { key: "setup-mfa" },
+            user: { organizationMemberships: [] },
+          },
+        ],
+      },
+      { token: "test-token" },
+    );
+    mockSignInResource({ status: "complete", createdSessionId: sessionId });
+    return Promise.resolve(mockedClerk.client.signIn);
+  });
+  await fill(password, "correct-password");
+  click(buttonByText("Continue", dialog));
+  await within(dialog).findByLabelText("Phone number");
+}
+
+test("Restarting Add account isolates unfinished MFA resources between sessions", async () => {
+  mockSignUpConfiguration({
+    attributes: {
+      authenticator_app: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+      },
+      phone_number: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+        used_for_second_factor: true,
+      },
+    },
+  });
+  mockedClerk.userCreateTOTP
+    .mockResolvedValueOnce({
+      secret: "FIRST-SETUP-KEY",
+      backupCodes: ["first-account-recovery-code"],
+    })
+    .mockResolvedValueOnce({ secret: "SECOND-SETUP-KEY" });
+  mockedClerk.userVerifyTOTP.mockResolvedValue({});
+  type Phone = Awaited<ReturnType<typeof mockedClerk.userCreatePhoneNumber>>;
+  const prepare = vi
+    .fn<Phone["prepareVerification"]>()
+    .mockRejectedValueOnce(new Error("SMS delivery failed"))
+    .mockResolvedValue(undefined);
+  mockedClerk.userCreatePhoneNumber.mockResolvedValue({
+    id: "phone_created",
+    phoneNumber: "+15555550123",
+    verification: { status: "unverified" },
+    prepareVerification: prepare,
+    attemptVerification: vi.fn<Phone["attemptVerification"]>(),
+    setReservedForSecondFactor: vi.fn<Phone["setReservedForSecondFactor"]>(),
+  });
+  await setupAddAccountPage();
+  const dialog = await openAuthV2AddAccountDialog();
+  await signInToSecurityTask(dialog, "session_first");
+  click(buttonByText("Use an authenticator app", dialog));
+  await within(dialog).findByText("FIRST-SETUP-KEY");
+  await fill(within(dialog).getByLabelText("Phone number"), "+15555550123");
+  click(buttonByText("Send code", dialog));
+  await within(dialog).findByRole("alert");
+  expect(mockedClerk.userCreatePhoneNumber).toHaveBeenCalledTimes(1);
+  click(buttonByText("Sign out", dialog));
+  await within(dialog).findByLabelText("Email address");
+  expect(mockedClerk.signOut).toHaveBeenCalledWith({
+    sessionId: "session_first",
+  });
+
+  await signInToSecurityTask(dialog, "session_second");
+  await fill(within(dialog).getByLabelText("Phone number"), "+15555550123");
+  click(buttonByText("Send code", dialog));
+  await within(dialog).findByLabelText("Verification code");
+  expect(mockedClerk.userCreatePhoneNumber).toHaveBeenCalledTimes(2);
+  click(buttonByText("Use an authenticator app", dialog));
+  await within(dialog).findByText("SECOND-SETUP-KEY");
+  await fill(within(dialog).getByLabelText("Verification code"), "123456");
+  click(buttonByText("Verify", dialog));
+  await within(dialog).findByText(
+    "Your security settings are saved. Continue to finish signing in.",
+  );
+  expect(dialog).not.toHaveTextContent("first-account-recovery-code");
+  expect(dialog).not.toHaveTextContent("FIRST-SETUP-KEY");
+});
+
 test("Cancel an unfinished Add account sign-in", async () => {
   await setupAddAccountPage();
   const originalUrl = window.location.href;
@@ -1542,7 +1641,7 @@ test("Sign out from the account menu", async () => {
       expect.objectContaining({
         sessionId: "test-session-id",
         redirectUrl: expect.stringMatching(
-          /(?=.*\/sign-in#\/\?)(?=.*redirect_url=)(?=.*__clerk_synced%3Dfalse)/,
+          /(?=.*\/sign-in#\/\?)(?=.*redirect_url=)/,
         ),
       }),
     );

@@ -21,7 +21,7 @@ async fn heartbeat_panic_reap_escalates_to_sigkill_when_sigterm_ignored()
     let runtime = common::guest_runtime_from_process_env()?;
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
-    let sigterm_ignored_marker = tmp.path().join(".guest-mock-sigterm-ignored");
+    let sigterm_ignored_marker = tmp.path().join(".claude-mock-sigterm-ignored");
     let heartbeat = common::spawn_heartbeat_monitor(async move {
         common::wait_for_path(&sigterm_ignored_marker, Duration::from_secs(5))
             .await

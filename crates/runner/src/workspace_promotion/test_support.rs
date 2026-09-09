@@ -62,12 +62,32 @@ impl WorkspacePromotionFixture {
         reuse_key: &str,
         restored_session_identity: Option<&RestoredSessionIdentity>,
     ) -> Self {
+        Self::new_with_terminal_status(
+            reuse_key,
+            restored_session_identity,
+            WorkspaceCacheTerminalStatus::Success,
+        )
+        .await
+    }
+
+    pub(crate) async fn new_with_terminal_status(
+        reuse_key: &str,
+        restored_session_identity: Option<&RestoredSessionIdentity>,
+        terminal_status: WorkspaceCacheTerminalStatus,
+    ) -> Self {
         let dir = Arc::new(tempfile::tempdir().unwrap());
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = WorkspaceImageCache::new(paths.clone());
 
-        Self::new_with_cache(dir, cache, reuse_key, restored_session_identity).await
+        Self::new_with_cache_and_terminal_status(
+            dir,
+            cache,
+            reuse_key,
+            restored_session_identity,
+            terminal_status,
+        )
+        .await
     }
 
     pub(crate) async fn new_with_restored_session_identity_and_export_capacity(
@@ -89,6 +109,23 @@ impl WorkspacePromotionFixture {
         cache: WorkspaceImageCache,
         reuse_key: &str,
         restored_session_identity: Option<&RestoredSessionIdentity>,
+    ) -> Self {
+        Self::new_with_cache_and_terminal_status(
+            dir,
+            cache,
+            reuse_key,
+            restored_session_identity,
+            WorkspaceCacheTerminalStatus::Success,
+        )
+        .await
+    }
+
+    async fn new_with_cache_and_terminal_status(
+        dir: Arc<tempfile::TempDir>,
+        cache: WorkspaceImageCache,
+        reuse_key: &str,
+        restored_session_identity: Option<&RestoredSessionIdentity>,
+        terminal_status: WorkspaceCacheTerminalStatus,
     ) -> Self {
         let paths = cache.paths().clone();
         let run_id = RunId::new_v4();
@@ -120,7 +157,7 @@ impl WorkspacePromotionFixture {
                 run_id,
                 sandbox_id,
                 restored_session_identity,
-                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                terminal_status,
                 completed_at: TEST_COMPLETED_AT.into(),
                 storage_fingerprints: StorageFingerprints::default(),
             })

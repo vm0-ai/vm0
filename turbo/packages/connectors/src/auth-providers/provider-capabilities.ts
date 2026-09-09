@@ -45,7 +45,7 @@ interface ConnectorAuthProviderMethodRegistration {
   readonly contract: ConnectorAuthProviderMethodContract;
 }
 
-// This is VM0's executable compatibility contract, not connector catalog data.
+// This is Okou's executable compatibility contract, not connector catalog data.
 // Keep it limited to facts required to select and validate provider handlers.
 export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
   {
@@ -1354,6 +1354,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
         kind: "refresh-token",
         inputNames: ["refreshToken"],
         outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
+    connectorSlug: "noyo",
+    authMethodId: "api-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["clientId", "clientSecret"],
+        outputNames: ["accessToken"],
         platformSecrets: [],
       },
       revoke: {

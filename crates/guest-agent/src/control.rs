@@ -19,7 +19,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::active_input::{ActiveInputControlOutcome, ActiveInputController};
-use guest_common::{log_info, log_warn};
+use guest_telemetry::{log_info, log_warn};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";

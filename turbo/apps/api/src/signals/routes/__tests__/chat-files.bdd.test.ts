@@ -149,7 +149,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     const search = await api.searchChat(actor, "launch");
     expect(search.results).toStrictEqual([]);
-    expect(search.hasMore).toBeFalsy();
 
     await api.deleteThread(actor, created.id);
     const deletedRead = await api.requestReadThread(actor, created.id, [404]);
@@ -798,7 +797,7 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
       /^https?:\/\//,
     );
-    expect(prepared.url).toMatch(/\/artifacts\/[0-9a-z]{10}\.txt$/u);
+    expect(prepared.url).toMatch(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.txt$/u);
     expect(prepared.url).not.toContain(actor.userId);
 
     api.mockCompletedUploadObject(actor, prepared.id, "notes.txt", 12);

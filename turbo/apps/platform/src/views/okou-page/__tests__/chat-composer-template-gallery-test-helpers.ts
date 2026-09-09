@@ -33,8 +33,6 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 export { AGENT_ID, THREAD_ID, context };
 
-export const TEMPLATE_FEATURES = { presentationTemplates: true } as const;
-
 interface TemplateChatCapture {
   readonly sentMessages: UserMessageDocument[];
   readonly selectedTemplates: GenerationTemplateRequest[];
@@ -103,7 +101,13 @@ export function mockTemplateChat(options?: {
 
 export async function openTemplatePicker(
   user: ReturnType<typeof userEvent.setup>,
-  category?: "Presentation" | "Website" | "Illustration" | "Video" | "Avatar",
+  category?:
+    | "Presentation"
+    | "Website"
+    | "Illustration"
+    | "Video"
+    | "Creative video"
+    | "Avatar",
 ): Promise<HTMLElement> {
   click(
     await waitFor(() => {
@@ -123,7 +127,7 @@ export function mockTemplateObjectUrls(): void {
   let nextUrl = 0;
   mockUrlObjectMethods(() => {
     nextUrl += 1;
-    return `blob:https://app.vm0.ai/presentation-preview-${nextUrl}`;
+    return `blob:https://app.okou.ai/presentation-preview-${nextUrl}`;
   });
 }
 
@@ -164,7 +168,7 @@ export async function sendComposerMessage(
 ): Promise<void> {
   const editor = await waitFor(() => {
     const candidate = document.querySelector<HTMLElement>(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!candidate) {
       throw new Error("Composer editor not found");

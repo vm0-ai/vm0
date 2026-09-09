@@ -1,3 +1,4 @@
+import { stoppedOkouDriverState } from "./test/desktop-driver-state";
 import type { DesktopAuthState } from "./desktop-bridge";
 import type {
   ComputerUseHostRuntimeState,
@@ -71,6 +72,7 @@ function computerUseState(
   },
 ): DesktopComputerUseState {
   return {
+    driver: stoppedOkouDriverState,
     platform: "darwin",
     supported: true,
     permissions,
@@ -161,7 +163,6 @@ describe("desktop tray menu", () => {
   it("uses Okou copy for the Okou product", () => {
     const menu = buildDesktopTrayMenuItems(
       {
-        brandName: "Okou",
         computerUse: computerUseState(),
         auth: { status: "signed_out", user: null, organization: null },
         authError: null,
@@ -187,14 +188,14 @@ describe("desktop tray menu", () => {
     );
 
     expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
-      "Open Zero",
+      "Open Okou",
       "Workspace: Max & Zoe",
       "Computer Use: Online",
       "Keep Mac Awake",
       "No Recent Commands",
       "Quit",
     ]);
-    expect(findItem(menu, "Open Zero")).toBeDefined();
+    expect(findItem(menu, "Open Okou")).toBeDefined();
     expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
       label: "Keep Mac Awake",
       type: "checkbox",
@@ -315,7 +316,7 @@ describe("desktop tray menu", () => {
     );
 
     expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
-    click(findItem(computerUseMenu, "Sign in to Zero"));
+    click(findItem(computerUseMenu, "Sign in to Okou"));
     expect(openSignIn).toHaveBeenCalledOnce();
   });
 
@@ -357,7 +358,7 @@ describe("desktop tray menu", () => {
       false,
     );
     expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
-    expect(findItem(menu, "Signing in to Zero...")).toBeDefined();
+    expect(findItem(menu, "Signing in to Okou...")).toBeDefined();
   });
 
   it("shows permission actions when Computer Use is blocked locally", () => {
@@ -471,8 +472,8 @@ describe("desktop tray menu", () => {
       trayActions({ openSignIn }),
     );
 
-    const authMenu = submenu(findItem(menu, "Sign in to Zero"));
-    click(findItem(authMenu, "Sign in to Zero"));
+    const authMenu = submenu(findItem(menu, "Sign in to Okou"));
+    click(findItem(authMenu, "Sign in to Okou"));
 
     expect(openSignIn).toHaveBeenCalledOnce();
   });
@@ -489,13 +490,13 @@ describe("desktop tray menu", () => {
       trayActions({ openSignIn, refreshStatus }),
     );
 
-    const authMenu = submenu(findItem(menu, "Sign in to Zero"));
+    const authMenu = submenu(findItem(menu, "Sign in to Okou"));
     expect(
       menu.some((item) => {
         return item.label?.includes("Unknown") ?? false;
       }),
     ).toBe(false);
-    click(findItem(authMenu, "Sign in to Zero"));
+    click(findItem(authMenu, "Sign in to Okou"));
     click(findItem(authMenu, "Refresh Account Status"));
 
     expect(openSignIn).toHaveBeenCalledOnce();
@@ -512,7 +513,7 @@ describe("desktop tray menu", () => {
       trayActions(),
     );
 
-    expect(findItem(menu, "Sign in to Zero")).toBeDefined();
+    expect(findItem(menu, "Sign in to Okou")).toBeDefined();
     expect(
       menu.some((item) => {
         return item.label === "Workspace: Max & Zoe";

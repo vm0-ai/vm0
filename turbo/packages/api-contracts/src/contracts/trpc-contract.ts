@@ -1,5 +1,5 @@
-const noBodySymbol: unique symbol = Symbol("vm0.noBody");
-const typeSymbol: unique symbol = Symbol("vm0.type");
+const noBodySymbol: unique symbol = Symbol("contract.noBody");
+const typeSymbol: unique symbol = Symbol("contract.type");
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 

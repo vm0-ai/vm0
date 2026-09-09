@@ -34,7 +34,7 @@ const PIDS_MAX_FILE: &str = "pids.max";
 ///
 /// The kernel has already mounted `/dev/vda` as root (`root=/dev/vda rw`)
 /// and devtmpfs on `/dev` (`CONFIG_DEVTMPFS_MOUNT=y`).
-/// Errors returned here are fatal to PID 1 before it forks `vsock-guest`.
+/// Errors returned here are fatal to PID 1 before it forks `guest-control-server`.
 pub fn init_filesystem() -> Result<(), InitError> {
     eprintln!("[guest-init] Starting filesystem initialization");
 
@@ -161,7 +161,7 @@ impl std::error::Error for InitError {}
 /// Cgroup v2 is mounted at `CGROUP_V2_MOUNT_PATH`. The exec base at
 /// `EXEC_CGROUP_BASE_PATH` must be empty, distribute the `cpu`, `memory`, and
 /// `pids` controllers, and carry the ancestor `memory.min` required for
-/// effective control-process protection. `vsock-guest` creates an empty
+/// effective control-process protection. `guest-control-server` creates an empty
 /// operation parent and two controlled leaves beneath it for each exec
 /// operation.
 fn initialize_process_containment() -> Result<(), InitError> {

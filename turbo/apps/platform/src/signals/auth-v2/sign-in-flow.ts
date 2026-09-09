@@ -163,7 +163,6 @@ interface SignInResourceSnapshot {
   readonly secondFactorVerificationStrategy: string | null;
   readonly identifierMode: AuthV2ExternalCapabilities["identifierMode"];
   readonly transferable: boolean;
-  readonly unknownFactorStrategies: readonly string[];
 }
 
 interface AuthV2SignInFlowDependencies {
@@ -172,6 +171,8 @@ interface AuthV2SignInFlowDependencies {
   readonly isOAuthCallbackRoute: boolean;
   readonly navigation: AuthV2Navigation;
 }
+
+type GoogleOneTapStage = "prompt" | "exchange" | "sign-up" | "continuation";
 
 export interface AuthV2SignInSignals {
   readonly backFromHelp$: Command<void, []>;
@@ -183,6 +184,7 @@ export interface AuthV2SignInSignals {
   readonly code$: Computed<string>;
   readonly confirmPassword$: Computed<string>;
   readonly error$: Computed<AuthV2SignInError | null>;
+  readonly googleOneTapStage$: Computed<GoogleOneTapStage | null>;
   readonly identifier$: Computed<string>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly initializeExternalStrategies$: Command<Promise<void>, [AbortSignal]>;
@@ -291,7 +293,6 @@ function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
 
 interface FactorDiscovery {
   readonly factors: readonly AuthV2SignInFactor[];
-  readonly unknownStrategies: readonly string[];
 }
 
 function oauthFactor(
@@ -312,11 +313,10 @@ function discoverFactors(
   passkeyCapability: AuthV2PasskeyCapability,
 ): FactorDiscovery {
   if (!factors) {
-    return { factors: [], unknownStrategies: [] };
+    return { factors: [] };
   }
 
   const discovered: AuthV2SignInFactor[] = [];
-  const unknownStrategies: string[] = [];
   for (const factor of factors) {
     if (factor.strategy === "password") {
       discovered.push({ id: "password", kind: "password" });
@@ -340,11 +340,9 @@ function discoverFactors(
       if (passkeyCapability !== "unavailable") {
         discovered.push({ id: "passkey", kind: "passkey" });
       }
-    } else {
-      unknownStrategies.push(factor.strategy);
     }
   }
-  return { factors: discovered, unknownStrategies };
+  return { factors: discovered };
 }
 
 function entryFactors(
@@ -370,7 +368,7 @@ function snapshotSignInResource(
   // exposes transferability on its future view, so keep that SDK detail
   // isolated in this adapter rather than leaking it into the flow or view.
   const discovered = isAuthV2SecondFactorStatus(resource.status)
-    ? { factors: discoverAuthV2SecondFactors(resource), unknownStrategies: [] }
+    ? { factors: discoverAuthV2SecondFactors(resource) }
     : discoverFactors(
         resource.supportedFirstFactors,
         capabilities.lastUsedOAuthStrategy,
@@ -409,7 +407,6 @@ function snapshotSignInResource(
       resource.secondFactorVerification?.strategy ?? null,
     identifierMode: capabilities.identifierMode,
     transferable: resource.__internal_future.isTransferable,
-    unknownFactorStrategies: discovered.unknownStrategies,
   };
 }
 
@@ -647,10 +644,7 @@ function deriveFirstFactorState(
   snapshot: SignInResourceSnapshot,
   options: DeriveSignInFlowOptions,
 ): AuthV2SignInState {
-  if (
-    snapshot.factors.length === 0 ||
-    snapshot.unknownFactorStrategies.length > 0
-  ) {
+  if (snapshot.factors.length === 0) {
     return unsupportedFactorState(snapshot);
   }
   const currentFactor = selectedFactorForSnapshot(
@@ -1469,12 +1463,58 @@ function createSessionSelectionCommand(
   );
 }
 
-function createGoogleOneTapCommand(
+function createGoogleOneTapSignUpCommand(
+  atoms: SignInFlowAtoms,
+  stage$: State<GoogleOneTapStage | null>,
+  navigation: AuthV2Navigation,
+): Command<Promise<void>, [string, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      credential: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      if (!clerk.client) {
+        throw new Error(
+          "Loaded Clerk instance did not provide a client resource",
+        );
+      }
+      set(stage$, "sign-up");
+      const signUp = await settle(
+        clerk.client.signUp.create({
+          strategy: "google_one_tap",
+          token: credential,
+        }),
+        signal,
+      );
+      if (!signUp.ok) {
+        set(atoms.error$, normalizeClerkError(signUp.error, "general"));
+        return;
+      }
+      // The sign-up route resumes this Clerk resource, including missing legal
+      // consent or verification, and owns activation and the sign-up redirect.
+      window.location.assign(navigation.href("sign-up"));
+    },
+  );
+}
+
+function createGoogleOneTapCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
   dependencies: AuthV2SignInFlowDependencies,
-): Command<Promise<void>, [AbortSignal]> {
+): {
+  readonly run$: Command<Promise<void>, [AbortSignal]>;
+  readonly stage$: Computed<GoogleOneTapStage | null>;
+} {
+  const stage$ = state<GoogleOneTapStage | null>(null);
+  const signUp$ = createGoogleOneTapSignUpCommand(
+    atoms,
+    stage$,
+    dependencies.navigation,
+  );
   const exchangeCredentialOperation$ = command(
     async (
       { get, set },
@@ -1484,6 +1524,7 @@ function createGoogleOneTapCommand(
       const resource = await get(clerkSignInResource$);
       signal.throwIfAborted();
       set(atoms.error$, null);
+      set(stage$, "exchange");
       const exchange = await settle(
         resource.create({
           signUpIfMissing: false,
@@ -1493,9 +1534,15 @@ function createGoogleOneTapCommand(
         signal,
       );
       if (!exchange.ok) {
-        set(atoms.error$, normalizeClerkError(exchange.error, "general"));
+        const error = normalizeClerkError(exchange.error, "general");
+        if (error.clerkCode === "external_account_not_found") {
+          await set(signUp$, credential, signal);
+          return;
+        }
+        set(atoms.error$, error);
         return;
       }
+      set(stage$, "continuation");
       await set(applyResource$, exchange.value, signal);
       signal.throwIfAborted();
     },
@@ -1531,6 +1578,7 @@ function createGoogleOneTapCommand(
   );
   const promptOperation$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      set(stage$, null);
       if (!dependencies.isBaseRoute) {
         return;
       }
@@ -1541,6 +1589,7 @@ function createGoogleOneTapCommand(
       if (!clientId) {
         return;
       }
+      set(stage$, "prompt");
       const credential = await settle(
         requestGoogleOneTapCredential(clientId, signal),
         signal,
@@ -1559,7 +1608,12 @@ function createGoogleOneTapCommand(
       signal.throwIfAborted();
     },
   );
-  return createCoalescedOperation$(runtime, "one-tap", promptOperation$);
+  return {
+    run$: createCoalescedOperation$(runtime, "one-tap", promptOperation$),
+    stage$: computed((get) => {
+      return get(stage$);
+    }),
+  };
 }
 
 function createResendCodeOperation$(
@@ -1662,7 +1716,6 @@ function createEntryNavigationCommands(
       secondFactorVerificationStrategy: null,
       identifierMode: get(atoms.capabilities$).identifierMode,
       transferable: false,
-      unknownFactorStrategies: [],
     });
     set(atoms.selectedFactor$, null);
     set(atoms.passwordRecovery$, false);
@@ -1857,7 +1910,7 @@ export function createAuthV2SignInSignals(
     applyResource$,
     startCooldown$,
   );
-  const runGoogleOneTap$ = createGoogleOneTapCommand(
+  const googleOneTap = createGoogleOneTapCommands(
     atoms,
     runtime,
     applyResource$,
@@ -1874,11 +1927,12 @@ export function createAuthV2SignInSignals(
     error$: computed((get) => {
       return get(atoms.error$);
     }),
+    googleOneTapStage$: googleOneTap.stage$,
     identifier$: computed((get) => {
       return get(atoms.identifier$);
     }),
     initialize$,
-    initializeExternalStrategies$: runGoogleOneTap$,
+    initializeExternalStrategies$: googleOneTap.run$,
     newPassword$: computed((get) => {
       return get(atoms.newPassword$);
     }),

@@ -57,8 +57,6 @@ test("Cloud-browser authorization uses the current app's brand", async () => {
     "src",
     platformOkouWordmarkDarkImg,
   );
-  expect(screen.queryByText("VM0")).toBeNull();
-  expect(screen.queryByLabelText("VM0")).toBeNull();
 });
 
 test("A user can enable the cloud browser for one conversation", async () => {
@@ -84,7 +82,7 @@ test("A user can enable the cloud browser for one conversation", async () => {
   ).resolves.toBeVisible();
   expect(
     screen.getByText(
-      "Zero will use an isolated cloud browser profile for this chat thread. Enabling it disconnects Computer Use for the thread.",
+      "Okou will use an isolated cloud browser profile for this chat thread. Enabling it disconnects Computer Use for the thread.",
     ),
   ).toBeVisible();
   click(getButton("Enable for this thread"));

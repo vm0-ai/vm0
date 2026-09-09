@@ -584,7 +584,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
       runId: sandbox.runId,
     });
 
-    const memberOkou = cfg.okouBearer(okouMember, ["file:read"], "okou");
+    const memberOkou = cfg.okouBearer(okouMember, ["file:read"]);
     cfg.mockMembership(okouMember, "org:member");
     const memberProbe = await cfg.probeAuth(
       { authorization: `Bearer ${memberOkou.token}` },
@@ -598,7 +598,6 @@ describe("AUTH-01 sandbox and agent bearers", () => {
       orgRole: "member",
       runId: memberOkou.runId,
       capabilities: ["file:read"],
-      publicBrand: "okou",
     });
 
     const adminOkou = cfg.okouBearer(okouAdmin, ["file:read", "file:write"]);
@@ -615,7 +614,6 @@ describe("AUTH-01 sandbox and agent bearers", () => {
       orgRole: "admin",
       runId: adminOkou.runId,
       capabilities: ["file:read", "file:write"],
-      publicBrand: "vm0",
     });
 
     const orphanOkou = cfg.okouBearer(okouOrphan, ["file:read"]);
@@ -629,7 +627,6 @@ describe("AUTH-01 sandbox and agent bearers", () => {
       tokenType: "agent",
       userId: okouOrphan.userId,
       runId: orphanOkou.runId,
-      publicBrand: "vm0",
     });
 
     const badSignature = await cfg.probeAuth(

@@ -12,7 +12,6 @@ import {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   presentationTemplatesContract,
 } from "@okouai/api-contracts/contracts/presentation-templates";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { getPresentationTemplateStorageName } from "@okouai/core/storage-names";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -22,7 +21,6 @@ import { mockEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { presentationTemplatesRoutes } from "../presentation-templates";
 
@@ -248,17 +246,6 @@ function webHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-async function enablePresentationTemplates(actor: ApiTestUser): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Presentation template tests require an organization");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId: actor.orgId },
-    { [FeatureSwitchKey.PresentationTemplates]: true },
-  );
-}
-
 function guidance(): readonly { path: string; content: string }[] {
   return [
     { path: "SKILL.md", content: "# Use this template\n" },
@@ -318,7 +305,6 @@ beforeEach(() => {
 describe("presentation template publish", () => {
   it("publishes an analysed deck as a ready template", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(actor, fixture, tarGz(guidance()));
 
@@ -405,7 +391,6 @@ describe("presentation template publish", () => {
 
   it("publishes a legacy PowerPoint source without conversion", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(actor, fixture, tarGz(guidance()), {
       filename: "legacy-deck.ppt",
@@ -436,8 +421,6 @@ describe("presentation template publish", () => {
       orgId: owner.orgId,
       orgRole: "org:member",
     });
-    await enablePresentationTemplates(owner);
-    await enablePresentationTemplates(member);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(owner, fixture, tarGz(guidance()));
 
@@ -595,7 +578,6 @@ describe("presentation template publish", () => {
 
   it("deletes a template exactly once when two requests race", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(actor, fixture, tarGz(guidance()));
 
@@ -647,7 +629,6 @@ describe("presentation template publish", () => {
 
   it("refuses a package that omits its required guidance", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(
       actor,
@@ -675,7 +656,6 @@ describe("presentation template publish", () => {
 
   it("refuses a package path that escapes its root", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(
       actor,
@@ -696,7 +676,6 @@ describe("presentation template publish", () => {
 
   it("refuses a package that unpacks past the size cap", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     // Compresses to a few hundred kilobytes, so the stored object clears every
     // size check that reads the upload's own size. Only a cap on the
@@ -726,8 +705,6 @@ describe("presentation template publish", () => {
   it("refuses uploads that belong to someone else", async () => {
     const owner = bdd.user();
     const stranger = bdd.user();
-    await enablePresentationTemplates(owner);
-    await enablePresentationTemplates(stranger);
     const fixture = installS3Fixture();
     const inputs = await uploadInputs(owner, fixture, tarGz(guidance()));
 

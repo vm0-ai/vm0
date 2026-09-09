@@ -8,7 +8,6 @@ import { createRunResponseSchema } from "@okouai/api-contracts/contracts/runs";
 import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
@@ -20,7 +19,7 @@ const c = initContract();
 export const runFixtureContract = c.router({
   create: {
     method: "POST",
-    path: "/api/test/zero-run-fixture",
+    path: "/api/test/agent-run-fixture",
     headers: authHeadersSchema,
     body: runCreateBodySchema,
     responses: {
@@ -63,7 +62,6 @@ const createAgentRunFixture$ = command(
           auth,
           body: body.data,
           apiStartTime,
-          publicBrand: get(publicBrand$),
           piExecution: false,
           timing,
         };

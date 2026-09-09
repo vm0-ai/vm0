@@ -2,9 +2,18 @@ import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
+  ConnectorCheckRequestBody,
+  ConnectorCheckResponseBody,
+  ConnectorCheckTargetAwareDiagnosticResult,
+  ConnectorCheckTargetAwareUrlRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import {
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
+  connectorRuntimeTargetKey,
+  type ConnectorRuntimeTarget,
+  type ConnectorRuntimeTargetRegistration,
+} from "@okouai/api-contracts/contracts/runners";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -14,12 +23,19 @@ import {
   matchFirewallRequestDecision,
   type FirewallRequestDecision,
 } from "@okouai/connectors/firewall-rule-matcher";
-import type { NetworkPolicies } from "@okouai/connectors/firewall-types";
+import type {
+  NetworkPolicies,
+  NetworkPolicy,
+} from "@okouai/connectors/firewall-types";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { connectors } from "@okouai/db/schema/connector";
 import { variables } from "@okouai/db/schema/variable";
 import { command } from "ccstate";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { type Db, writeDb$ } from "../external/db";
 import { pgTextDecoder } from "../../lib/db-structured-result";
@@ -34,13 +50,16 @@ import {
   type ParsedConnectorDiagnosticRequest,
 } from "./connector-diagnostic-runtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { runContext } from "./run-detail.service";
 import {
   getConnectorRuntimeConnector,
   listConnectorRuntimeVisibleSlugs,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import {
+  resolveConnectorRuntimeDiagnosticTargets,
+  type ConnectorRuntimeDiagnosticResult,
+} from "./connector-runtime-sync.service";
 import type { FirewallRoutingRouteMetadata } from "./connector-server-firewall-catalog.service";
 import {
   connectorCredentialVariableReadCondition,
@@ -50,17 +69,27 @@ import {
 
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
-interface ConnectorCheckIdentity {
+interface ConnectorCheckLegacyIdentity {
   readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly visibility: "available" | "unavailable";
   readonly credentialResolution: "network-boundary" | "none";
 }
 
+interface ConnectorCheckTargetIdentity {
+  readonly target: ConnectorRuntimeTarget;
+  readonly label: string;
+  readonly visibility: "available" | "unavailable";
+  readonly credentialResolution: "network-boundary" | "none";
+}
+
 interface ConnectorCheckRoutingConfig {
-  readonly connectorSlug: ConnectorSlug;
+  readonly target: ConnectorRuntimeTarget;
+  readonly label: string;
+  readonly credentialResolution: "network-boundary" | "none";
   readonly candidates: readonly ConnectorDiagnosticBaseCandidate[];
   readonly hasUnresolvedDynamicBase: boolean;
+  readonly networkPolicy: NetworkPolicy | null | undefined;
 }
 
 interface StoredRuntimeState {
@@ -82,12 +111,26 @@ interface PendingStoredConnectorRuntime {
   readonly storageNameByRuntimeName: ReadonlyMap<string, string>;
 }
 
+type ConnectorCheckTargetUnavailableReason = Extract<
+  ConnectorCheckTargetAwareDiagnosticResult,
+  { readonly outcome: "target-unavailable" }
+>["reason"];
+
+interface RunDiagnosticState {
+  readonly configs: readonly ConnectorCheckRoutingConfig[];
+  readonly admittedTargetKeys: ReadonlySet<string>;
+  readonly unavailableReasonByTargetKey: ReadonlyMap<
+    string,
+    ConnectorCheckTargetUnavailableReason
+  >;
+}
+
 type ConnectorCheckTimeline =
   | { readonly kind: "stored"; readonly state: StoredRuntimeState }
-  | { readonly kind: "run"; readonly context: RunContextResponse };
+  | { readonly kind: "run"; readonly state: RunDiagnosticState };
 
 interface ResolveConnectorCheckArgs {
-  readonly request: ConnectorCheckRequest;
+  readonly request: ConnectorCheckRequestBody;
   readonly orgId: string;
   readonly userId: string;
   readonly stateSource:
@@ -98,7 +141,7 @@ interface ResolveConnectorCheckArgs {
 type ResolveConnectorCheckResult =
   | {
       readonly kind: "ok";
-      readonly diagnostic: ConnectorCheckDiagnosticResult;
+      readonly diagnostic: ConnectorCheckResponseBody;
     }
   | { readonly kind: "not-found" };
 
@@ -106,19 +149,6 @@ interface DecisionPermission {
   readonly name: string;
   readonly rules: readonly string[];
 }
-
-type RunContextFirewall = RunContextResponse["firewalls"][number];
-type RunContextBuiltinFirewall = Extract<
-  RunContextFirewall,
-  { kind: "builtin" }
->;
-type RunContextInlineFirewall = Extract<RunContextFirewall, { apis: unknown }>;
-type RunContextInlinePermission =
-  RunContextInlineFirewall["apis"][number]["permissions"] extends
-    | readonly (infer Permission)[]
-    | undefined
-    ? Permission
-    : never;
 
 interface ConnectorCheckCatalogContext {
   readonly snapshot: ConnectorRuntimeSnapshot;
@@ -146,10 +176,10 @@ function connectorCredentialResolution(
     : "none";
 }
 
-function connectorIdentity(
+function builtinTargetIdentity(
   connectorSlug: ConnectorSlug,
   catalogContext: ConnectorCheckCatalogContext,
-): ConnectorCheckIdentity {
+): ConnectorCheckTargetIdentity {
   const connector = getConnectorRuntimeConnector(
     catalogContext.snapshot,
     connectorSlug,
@@ -158,7 +188,7 @@ function connectorIdentity(
     throw new Error(`Missing connector runtime metadata: ${connectorSlug}`);
   }
   return {
-    connectorSlug,
+    target: { kind: "builtin", connectorSlug },
     label: connector.catalogConnector.label,
     visibility: catalogContext.visibleConnectorSlugs.has(connectorSlug)
       ? "available"
@@ -167,6 +197,21 @@ function connectorIdentity(
       catalogContext.snapshot,
       connectorSlug,
     ),
+  };
+}
+
+function targetIdentity(
+  config: ConnectorCheckRoutingConfig,
+  catalogContext: ConnectorCheckCatalogContext,
+): ConnectorCheckTargetIdentity {
+  if (config.target.kind === "builtin") {
+    return builtinTargetIdentity(config.target.connectorSlug, catalogContext);
+  }
+  return {
+    target: config.target,
+    label: config.label,
+    visibility: "available",
+    credentialResolution: config.credentialResolution,
   };
 }
 
@@ -364,7 +409,7 @@ function configsToDecisionFirewalls(
 ) {
   return configs.map((config) => {
     return {
-      name: config.connectorSlug,
+      name: connectorRuntimeTargetKey(config.target),
       apis: config.candidates.map((candidate) => {
         return {
           base: candidate.decisionBase,
@@ -380,162 +425,258 @@ function configFromCatalogView(
   view: ConnectorDiagnosticCatalogView,
   baseUrlVars: Readonly<Record<string, string>> | null,
   allowStructuralDynamic: boolean,
+  networkPolicy?: NetworkPolicy | null,
 ): ConnectorCheckRoutingConfig {
   const result = buildConnectorDiagnosticBaseCandidates(view, baseUrlVars, {
     allowStructuralDynamic,
   });
   return {
-    connectorSlug: view.connectorSlug,
+    target: { kind: "builtin", connectorSlug: view.connectorSlug },
+    label: view.label,
+    credentialResolution:
+      view.executionMetadata.secretPlaceholderNames.length > 0
+        ? "network-boundary"
+        : "none",
     candidates: result.candidates,
     hasUnresolvedDynamicBase: result.hasUnresolvedDynamicBase,
+    networkPolicy,
   };
 }
 
-function runContextPermissionRoutes(
-  permissions: readonly RunContextInlinePermission[] | undefined,
+function customDiagnosticRoutes(
+  permissions: Extract<
+    ConnectorRuntimeDiagnosticResult,
+    {
+      readonly target: { readonly kind: "custom" };
+      readonly state: "available";
+    }
+  >["apis"][number]["permissions"],
 ): FirewallRoutingRouteMetadata[] {
-  const routes: FirewallRoutingRouteMetadata[] = [];
-  const seenPermissionNames = new Set<string>();
-  for (const permission of permissions ?? []) {
-    if (seenPermissionNames.has(permission.name)) {
-      continue;
-    }
-    seenPermissionNames.add(permission.name);
-    for (const rule of permission.rules) {
-      routes.push({ permissionName: permission.name, rule });
-    }
-  }
-  return routes;
-}
-
-function sameStrings(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => {
-      return value === right[index];
-    })
-  );
-}
-
-function inlineApiEnvironmentNames(
-  base: string,
-  view: ConnectorDiagnosticCatalogView | null,
-): readonly string[] | null {
-  if (!view) {
-    return null;
-  }
-  const matches = view.apis.filter((api) => {
-    return api.base === base;
+  return permissions.flatMap((permission) => {
+    return permission.rules.map((rule) => {
+      return { permissionName: permission.name, rule };
+    });
   });
-  const [first, ...others] = matches;
-  if (!first) {
-    return null;
-  }
-  return others.every((api) => {
-    return sameStrings(first.environmentNames, api.environmentNames);
-  })
-    ? first.environmentNames
-    : null;
 }
 
-function configFromInlineRunContext(
-  firewall: RunContextInlineFirewall,
-  connectorSlug: ConnectorSlug,
-  view: ConnectorDiagnosticCatalogView | null,
+function configFromCustomRuntime(
+  runtime: Extract<
+    ConnectorRuntimeDiagnosticResult,
+    {
+      readonly target: { readonly kind: "custom" };
+      readonly state: "available";
+    }
+  >,
 ): ConnectorCheckRoutingConfig {
   return {
-    connectorSlug,
-    candidates: firewall.apis.map((api) => {
+    target: runtime.target,
+    label: runtime.label,
+    credentialResolution: runtime.credentialResolution,
+    candidates: runtime.apis.map((api) => {
       return {
         sourceBase: api.base,
         decisionBase: api.base,
         displayBase: baseKey(api.base),
-        routes: runContextPermissionRoutes(api.permissions),
-        environmentNames: inlineApiEnvironmentNames(api.base, view),
+        routes: customDiagnosticRoutes(api.permissions),
+        environmentNames: null,
       };
     }),
     hasUnresolvedDynamicBase: false,
+    networkPolicy: runtime.networkPolicy,
   };
 }
 
-function completeRunBaseUrlVars(
-  firewall: RunContextBuiltinFirewall,
-  requiredNames: readonly string[],
-): Readonly<Record<string, string>> | null {
-  if (requiredNames.length === 0) {
-    return {};
-  }
-  if (!("baseUrlVars" in firewall) || !firewall.baseUrlVars) {
-    return null;
-  }
-  const values: Record<string, string> = {};
-  for (const name of requiredNames) {
-    const value = firewall.baseUrlVars[name];
-    if (!value) {
-      return null;
-    }
-    values[name] = value;
-  }
-  return values;
+interface RunDiagnosticRegistration {
+  readonly agentId: string;
+  readonly targets: readonly ConnectorRuntimeTargetRegistration[];
 }
 
-async function loadRunRoutingConfigs(
-  runContext: RunContextResponse,
-  snapshot: ConnectorRuntimeSnapshot,
-): Promise<ConnectorCheckRoutingConfig[]> {
-  const viewPromises = new Map<
-    ConnectorSlug,
-    Promise<ConnectorDiagnosticCatalogView | null>
-  >();
-  const loadView = (
-    connectorSlug: ConnectorSlug,
-  ): Promise<ConnectorDiagnosticCatalogView | null> => {
-    let promise = viewPromises.get(connectorSlug);
-    if (!promise) {
-      promise = loadConnectorDiagnosticCatalogView(
-        snapshot.serverFirewalls,
-        connectorSlug,
-      );
-      viewPromises.set(connectorSlug, promise);
+type LoadRunDiagnosticRegistrationResult =
+  | {
+      readonly kind: "available";
+      readonly registration: RunDiagnosticRegistration;
     }
-    return promise;
-  };
+  | { readonly kind: "missing" }
+  | { readonly kind: "not-found" };
 
-  const configs: ConnectorCheckRoutingConfig[] = [];
-  for (const firewall of runContext.firewalls) {
-    if (!snapshot.serverFirewalls.has(firewall.name)) {
-      continue;
-    }
-    const connectorSlug = firewall.name;
-    const view = await loadView(connectorSlug);
-    if ("apis" in firewall) {
-      configs.push(configFromInlineRunContext(firewall, connectorSlug, view));
-      continue;
-    }
-    if (!view) {
-      throw new Error(`Missing builtin firewall metadata for ${connectorSlug}`);
-    }
-    const baseUrlVars = completeRunBaseUrlVars(firewall, view.baseUrlVarNames);
-    configs.push(configFromCatalogView(view, baseUrlVars, false));
+async function loadRunDiagnosticRegistration(
+  db: Db,
+  args: {
+    readonly runId: string;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<LoadRunDiagnosticRegistrationResult> {
+  const [row] = await db
+    .select({
+      agentId: agents.id,
+      registrationRunId: agentRunConnectorDiagnosticRegistrations.runId,
+      payload: agentRunConnectorDiagnosticRegistrations.payload,
+    })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
+    .leftJoin(
+      agentRunConnectorDiagnosticRegistrations,
+      eq(agentRunConnectorDiagnosticRegistrations.runId, agentRuns.id),
+    )
+    .where(
+      and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+        eq(agentRuns.orgId, args.orgId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    return { kind: "not-found" };
   }
+  if (row.registrationRunId === null) {
+    return { kind: "missing" };
+  }
+  const payload = agentRunConnectorDiagnosticRegistrationPayloadSchema.parse(
+    row.payload,
+  );
+  return {
+    kind: "available",
+    registration: { agentId: row.agentId, targets: payload.targets },
+  };
+}
 
-  const merged = new Map<ConnectorSlug, ConnectorCheckRoutingConfig>();
-  for (const config of configs) {
-    const existing = merged.get(config.connectorSlug);
-    merged.set(config.connectorSlug, {
-      connectorSlug: config.connectorSlug,
-      candidates: existing
-        ? [...existing.candidates, ...config.candidates]
-        : config.candidates,
-      hasUnresolvedDynamicBase:
-        (existing?.hasUnresolvedDynamicBase ?? false) ||
-        config.hasUnresolvedDynamicBase,
+function targetAwareUrlRequest(
+  request: ConnectorCheckRequestBody,
+): request is ConnectorCheckTargetAwareUrlRequest {
+  return (
+    request.mode === "url" &&
+    ("includeCustomConnectors" in request || "target" in request)
+  );
+}
+
+function runtimeTargetsForRequest(
+  registration: RunDiagnosticRegistration,
+  request: ConnectorCheckRequestBody,
+): readonly ConnectorRuntimeTargetRegistration[] {
+  if (!targetAwareUrlRequest(request)) {
+    return registration.targets.filter((target) => {
+      return target.kind === "builtin";
     });
   }
-  return [...merged.values()];
+  const includeCustomConnectors =
+    request.includeCustomConnectors === true ||
+    request.target?.kind === "custom";
+  return registration.targets.filter((target) => {
+    return target.kind === "builtin" || includeCustomConnectors;
+  });
+}
+
+function unavailableRuntimeReason(
+  runtime: Exclude<
+    ConnectorRuntimeDiagnosticResult,
+    { readonly state: "available" }
+  >,
+): ConnectorCheckTargetUnavailableReason {
+  return runtime.reason;
+}
+
+function isBuiltinDiagnosticRuntime(
+  runtime: ConnectorRuntimeDiagnosticResult,
+): runtime is Extract<
+  ConnectorRuntimeDiagnosticResult,
+  { readonly target: { readonly kind: "builtin" } }
+> {
+  return runtime.target.kind === "builtin";
+}
+
+function isCustomAvailableDiagnosticRuntime(
+  runtime: ConnectorRuntimeDiagnosticResult,
+): runtime is Extract<
+  ConnectorRuntimeDiagnosticResult,
+  { readonly label: string }
+> {
+  return "label" in runtime;
+}
+
+async function loadRunDiagnosticState(args: {
+  readonly db: Db;
+  readonly scope: RunDiagnosticRegistration;
+  readonly request: ConnectorCheckRequestBody;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly snapshot: ConnectorRuntimeSnapshot;
+}): Promise<RunDiagnosticState> {
+  const targets = runtimeTargetsForRequest(args.scope, args.request);
+  const runtimes =
+    targets.length === 0
+      ? []
+      : await resolveConnectorRuntimeDiagnosticTargets({
+          db: args.db,
+          scope: {
+            orgId: args.orgId,
+            userId: args.userId,
+            agentId: args.scope.agentId,
+          },
+          targets,
+        });
+  const runtimeByTargetKey = new Map(
+    runtimes.map((runtime) => {
+      return [connectorRuntimeTargetKey(runtime.target), runtime] as const;
+    }),
+  );
+
+  const configs: ConnectorCheckRoutingConfig[] = [];
+  const unavailableReasonByTargetKey = new Map<
+    string,
+    ConnectorCheckTargetUnavailableReason
+  >();
+  for (const registration of targets) {
+    const key = connectorRuntimeTargetKey(registration);
+    const runtime = runtimeByTargetKey.get(key);
+    if (!runtime) {
+      throw new Error(`Missing connector runtime diagnostic result: ${key}`);
+    }
+    if (isCustomAvailableDiagnosticRuntime(runtime)) {
+      configs.push(configFromCustomRuntime(runtime));
+      continue;
+    }
+    if (!isBuiltinDiagnosticRuntime(runtime)) {
+      unavailableReasonByTargetKey.set(key, unavailableRuntimeReason(runtime));
+      continue;
+    }
+    const connectorSlug = runtime.target.connectorSlug;
+    const view = await loadConnectorDiagnosticCatalogView(
+      args.snapshot.serverFirewalls,
+      connectorSlug,
+    );
+    if (!view) {
+      unavailableReasonByTargetKey.set(key, "connector-unavailable");
+      continue;
+    }
+    const networkPolicy =
+      runtime.state === "available" ? runtime.networkPolicy : null;
+    if (runtime.state !== "available") {
+      unavailableReasonByTargetKey.set(key, unavailableRuntimeReason(runtime));
+    }
+    configs.push(
+      configFromCatalogView(
+        view,
+        registration.kind === "builtin"
+          ? (registration.baseUrlVars ?? null)
+          : null,
+        false,
+        networkPolicy,
+      ),
+    );
+  }
+  return {
+    configs,
+    admittedTargetKeys: new Set(
+      args.scope.targets.map((target) => {
+        return connectorRuntimeTargetKey(target);
+      }),
+    ),
+    unavailableReasonByTargetKey,
+  };
 }
 
 async function catalogConfig(
@@ -766,36 +907,42 @@ function runStatus(
 
 function unavailablePolicy(
   timeline: ConnectorCheckTimeline,
-  configured: boolean,
+  config: ConnectorCheckRoutingConfig | undefined,
 ): ConnectorCheckPolicy | null {
   if (timeline.kind === "stored") {
     return { outcome: "unavailable", basis: "not-run-scoped" };
   }
-  if (!configured) {
+  if (!config) {
     return { outcome: "unavailable", basis: "connector-not-configured" };
   }
-  if (timeline.context.networkPolicies === null) {
+  if (config.networkPolicy === null) {
     return { outcome: "unavailable", basis: "policies-unavailable" };
+  }
+  if (config.networkPolicy === undefined) {
+    throw new Error("Missing run-scoped connector policy state");
   }
   return null;
 }
 
 function permissionPolicy(
-  connectorSlug: ConnectorSlug,
+  config: ConnectorCheckRoutingConfig | undefined,
   permission: string,
   timeline: ConnectorCheckTimeline,
-  configured: boolean,
 ): ConnectorCheckPolicy {
-  const unavailable = unavailablePolicy(timeline, configured);
+  const unavailable = unavailablePolicy(timeline, config);
   if (unavailable) {
     return unavailable;
   }
-  if (timeline.kind !== "run" || timeline.context.networkPolicies === null) {
+  if (
+    timeline.kind !== "run" ||
+    !config ||
+    config.networkPolicy === undefined
+  ) {
     throw new Error("Missing resolved run policy timeline");
   }
-  const policy = timeline.context.networkPolicies[connectorSlug];
-  if (!policy) {
-    return { outcome: "allow", basis: "no-policy" };
+  const policy = config.networkPolicy;
+  if (policy === null) {
+    throw new Error("Missing available connector policy");
   }
   if (policy.deny.includes(permission)) {
     return { outcome: "deny", basis: "deny-list" };
@@ -810,20 +957,19 @@ function permissionPolicy(
 }
 
 function unknownPolicy(
-  connectorSlug: ConnectorSlug,
+  config: ConnectorCheckRoutingConfig,
   timeline: ConnectorCheckTimeline,
-  configured: boolean,
 ): ConnectorCheckPolicy {
-  const unavailable = unavailablePolicy(timeline, configured);
+  const unavailable = unavailablePolicy(timeline, config);
   if (unavailable) {
     return unavailable;
   }
-  if (timeline.kind !== "run" || timeline.context.networkPolicies === null) {
+  if (timeline.kind !== "run" || config.networkPolicy === undefined) {
     throw new Error("Missing resolved run policy timeline");
   }
-  const policy = timeline.context.networkPolicies[connectorSlug];
-  if (!policy) {
-    return { outcome: "allow", basis: "no-policy" };
+  const policy = config.networkPolicy;
+  if (policy === null) {
+    throw new Error("Missing available connector policy");
   }
   switch (policy.unknownPolicy) {
     case "allow": {
@@ -839,7 +985,7 @@ function unknownPolicy(
 }
 
 function decisionPermissionResult(
-  connectorSlug: ConnectorSlug,
+  config: ConnectorCheckRoutingConfig,
   decision: Exclude<
     FirewallRequestDecision,
     { readonly kind: "no_match" | "ambiguous" }
@@ -850,7 +996,7 @@ function decisionPermissionResult(
     if (decision.permission === undefined) {
       return {
         kind: "unknown-endpoint" as const,
-        policy: unknownPolicy(connectorSlug, timeline, true),
+        policy: unknownPolicy(config, timeline),
       };
     }
     return {
@@ -858,12 +1004,7 @@ function decisionPermissionResult(
       permissions: [
         {
           name: decision.permission,
-          policy: permissionPolicy(
-            connectorSlug,
-            decision.permission,
-            timeline,
-            true,
-          ),
+          policy: permissionPolicy(config, decision.permission, timeline),
         },
       ],
     };
@@ -872,7 +1013,7 @@ function decisionPermissionResult(
   if (decision.reason === "unknown_endpoint") {
     return {
       kind: "unknown-endpoint" as const,
-      policy: unknownPolicy(connectorSlug, timeline, true),
+      policy: unknownPolicy(config, timeline),
     };
   }
   if (decision.reason !== "permission_denied") {
@@ -881,16 +1022,18 @@ function decisionPermissionResult(
     );
   }
   const permissions = [...new Set(decision.permissions)].sort().map((name) => {
-    const policy = permissionPolicy(connectorSlug, name, timeline, true);
+    const policy = permissionPolicy(config, name, timeline);
     if (policy.outcome !== "deny" && policy.outcome !== "ask") {
       throw new Error(
-        `Inconsistent blocked permission policy for ${connectorSlug}`,
+        `Inconsistent blocked permission policy for ${connectorRuntimeTargetKey(config.target)}`,
       );
     }
     return { name, policy };
   });
   if (permissions.length === 0) {
-    throw new Error(`Missing blocked permissions for ${connectorSlug}`);
+    throw new Error(
+      `Missing blocked permissions for ${connectorRuntimeTargetKey(config.target)}`,
+    );
   }
   return { kind: "matched" as const, permissions };
 }
@@ -904,7 +1047,7 @@ function displayBaseForDecision(
   });
   if (!candidate) {
     throw new Error(
-      `Missing diagnostic display base for ${config.connectorSlug}`,
+      `Missing diagnostic display base for ${connectorRuntimeTargetKey(config.target)}`,
     );
   }
   return publicConnectorDiagnosticBase(candidate.displayBase);
@@ -932,24 +1075,53 @@ function connectorSlugForEnvironmentName(
 }
 
 function policyMap(timeline: ConnectorCheckTimeline): NetworkPolicies | null {
-  return timeline.kind === "run" ? timeline.context.networkPolicies : null;
+  if (timeline.kind === "stored") {
+    return null;
+  }
+  return Object.fromEntries(
+    timeline.state.configs.flatMap((config) => {
+      return config.networkPolicy
+        ? [[connectorRuntimeTargetKey(config.target), config.networkPolicy]]
+        : [];
+    }),
+  );
 }
 
 function noMatchDiagnostic(
-  requestedConnectorSlug: ConnectorSlug | undefined,
+  requestedTarget: ConnectorRuntimeTarget | undefined,
   configs: readonly ConnectorCheckRoutingConfig[],
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
-): ConnectorCheckDiagnosticResult {
-  const selectedConfig = requestedConnectorSlug
+  targetAware: boolean,
+): ConnectorCheckTargetAwareDiagnosticResult {
+  const selectedConfig = requestedTarget
     ? configs.find((config) => {
-        return config.connectorSlug === requestedConnectorSlug;
+        return (
+          connectorRuntimeTargetKey(config.target) ===
+          connectorRuntimeTargetKey(requestedTarget)
+        );
       })
     : undefined;
-  if (requestedConnectorSlug && selectedConfig?.hasUnresolvedDynamicBase) {
+  if (requestedTarget && selectedConfig?.hasUnresolvedDynamicBase) {
     return {
       outcome: "unresolved-dynamic-base",
-      connector: connectorIdentity(requestedConnectorSlug, catalogContext),
+      connector: targetIdentity(selectedConfig, catalogContext),
+    };
+  }
+  if (
+    targetAware &&
+    requestedTarget &&
+    !selectedConfig &&
+    timeline.kind === "run"
+  ) {
+    const key = connectorRuntimeTargetKey(requestedTarget);
+    return {
+      outcome: "target-unavailable",
+      target: requestedTarget,
+      reason: timeline.state.admittedTargetKeys.has(key)
+        ? (timeline.state.unavailableReasonByTargetKey.get(key) ??
+          "connector-unavailable")
+        : "not-admitted",
     };
   }
   return {
@@ -960,24 +1132,20 @@ function noMatchDiagnostic(
 
 function ambiguousDiagnostic(
   decision: Extract<FirewallRequestDecision, { readonly kind: "ambiguous" }>,
-  catalogContext: ConnectorCheckCatalogContext,
-): ConnectorCheckDiagnosticResult {
+  configs: readonly ConnectorCheckRoutingConfig[],
+): ConnectorCheckTargetAwareDiagnosticResult {
   return {
     outcome: "ambiguous",
     candidates: decision.candidates.map((candidate) => {
-      if (!isConnectorSlug(catalogContext.snapshot, candidate)) {
-        throw new Error("Matched an unknown connector firewall");
-      }
-      const connector = getConnectorRuntimeConnector(
-        catalogContext.snapshot,
-        candidate,
-      );
-      if (!connector) {
-        throw new Error(`Missing connector runtime metadata: ${candidate}`);
+      const config = configs.find((entry) => {
+        return connectorRuntimeTargetKey(entry.target) === candidate;
+      });
+      if (!config) {
+        throw new Error(`Matched an unknown connector target: ${candidate}`);
       }
       return {
-        connectorSlug: candidate,
-        label: connector.catalogConnector.label,
+        target: config.target,
+        label: config.label,
       };
     }),
   };
@@ -990,16 +1158,15 @@ type UrlEnvironmentSelection =
     }
   | {
       readonly kind: "diagnostic";
-      readonly diagnostic: ConnectorCheckDiagnosticResult;
+      readonly diagnostic: ConnectorCheckTargetAwareDiagnosticResult;
     };
 
 function selectUrlEnvironmentNames(args: {
   readonly catalogContext: ConnectorCheckCatalogContext;
-  readonly connectorSlug: ConnectorSlug;
   readonly config: ConnectorCheckRoutingConfig;
   readonly parsed: ParsedConnectorDiagnosticRequest;
   readonly requestedEnvironmentName: string | undefined;
-  readonly identity: ConnectorCheckIdentity;
+  readonly identity: ConnectorCheckTargetIdentity;
 }): UrlEnvironmentSelection {
   const environmentNames = environmentNamesForWinningCandidates(
     args.config,
@@ -1012,9 +1179,19 @@ function selectUrlEnvironmentNames(args: {
         environmentNames === null ? null : [...environmentNames],
     };
   }
+  if (args.config.target.kind === "custom") {
+    return {
+      kind: "diagnostic",
+      diagnostic: {
+        outcome: "environment-not-owned",
+        connector: args.identity,
+      },
+    };
+  }
+  const connectorSlug = args.config.target.connectorSlug;
   const owned = connectorEnvironmentBindings(
     args.catalogContext.snapshot,
-    args.connectorSlug,
+    connectorSlug,
   ).some((entry) => {
     return entry.envName === args.requestedEnvironmentName;
   });
@@ -1031,7 +1208,7 @@ function selectUrlEnvironmentNames(args: {
     environmentNames !== null &&
     !environmentNameSupportsRoute(
       args.catalogContext.snapshot,
-      args.connectorSlug,
+      connectorSlug,
       args.requestedEnvironmentName,
       environmentNames,
     )
@@ -1052,7 +1229,10 @@ function selectUrlEnvironmentNames(args: {
 }
 
 interface ResolvedUrlDiagnosticArgs {
-  readonly request: Extract<ConnectorCheckRequest, { readonly mode: "url" }>;
+  readonly request: Extract<
+    ConnectorCheckRequestBody,
+    { readonly mode: "url" }
+  >;
   readonly parsed: ParsedConnectorDiagnosticRequest;
   readonly decision: Exclude<
     FirewallRequestDecision,
@@ -1065,7 +1245,7 @@ interface ResolvedUrlDiagnosticArgs {
 
 function resolvedUrlDiagnostic(
   args: ResolvedUrlDiagnosticArgs,
-): ConnectorCheckDiagnosticResult {
+): ConnectorCheckTargetAwareDiagnosticResult {
   const { request, parsed, decision, configs, timeline, catalogContext } = args;
   if (decision.kind === "block" && decision.reason === "unsafe_path") {
     return { outcome: "unsafe-input", reason: "unsafe-path" };
@@ -1079,32 +1259,29 @@ function resolvedUrlDiagnostic(
       `Invalid connector diagnostic decision: ${decision.reason}`,
     );
   }
-  if (!isConnectorSlug(catalogContext.snapshot, decision.firewallName)) {
-    throw new Error("Matched an unknown connector firewall");
-  }
-  const connectorSlug = decision.firewallName;
-  if (
-    request.connectorSlug !== undefined &&
-    connectorSlug !== request.connectorSlug
-  ) {
-    return {
-      outcome: "connector-mismatch",
-      connector: connectorIdentity(connectorSlug, catalogContext),
-    };
-  }
   const config = configs.find((entry) => {
-    return entry.connectorSlug === connectorSlug;
+    return connectorRuntimeTargetKey(entry.target) === decision.firewallName;
   });
   if (!config) {
     throw new Error(
-      `Missing selected connector routing config for ${connectorSlug}`,
+      `Missing selected connector routing config for ${decision.firewallName}`,
     );
   }
+  const requestedTarget = requestedUrlTarget(request);
+  if (
+    requestedTarget &&
+    connectorRuntimeTargetKey(config.target) !==
+      connectorRuntimeTargetKey(requestedTarget)
+  ) {
+    return {
+      outcome: "connector-mismatch",
+      connector: targetIdentity(config, catalogContext),
+    };
+  }
 
-  const identity = connectorIdentity(connectorSlug, catalogContext);
+  const identity = targetIdentity(config, catalogContext);
   const environmentSelection = selectUrlEnvironmentNames({
     catalogContext,
-    connectorSlug,
     config,
     parsed,
     requestedEnvironmentName: request.environmentName,
@@ -1122,18 +1299,35 @@ function resolvedUrlDiagnostic(
     method: parsed.method,
     base: displayBaseForDecision(config, decision.base),
     relativePath: decision.relativePath,
-    permission: decisionPermissionResult(connectorSlug, decision, timeline),
+    permission: decisionPermissionResult(config, decision, timeline),
   };
 }
 
+function requestedUrlTarget(
+  request: Extract<ConnectorCheckRequestBody, { readonly mode: "url" }>,
+): ConnectorRuntimeTarget | undefined {
+  if (targetAwareUrlRequest(request)) {
+    return request.target;
+  }
+  return request.connectorSlug
+    ? { kind: "builtin", connectorSlug: request.connectorSlug }
+    : undefined;
+}
+
 async function resolveUrlMode(
-  request: Extract<ConnectorCheckRequest, { readonly mode: "url" }>,
+  request: Extract<ConnectorCheckRequestBody, { readonly mode: "url" }>,
   parsed: ParsedConnectorDiagnosticRequest,
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
-): Promise<ConnectorCheckDiagnosticResult> {
-  const requestedConnectorSlug = request.connectorSlug;
+): Promise<ConnectorCheckTargetAwareDiagnosticResult> {
+  const targetAware = targetAwareUrlRequest(request);
+  const requestedTarget = requestedUrlTarget(request);
+  const requestedConnectorSlug =
+    requestedTarget?.kind === "builtin"
+      ? requestedTarget.connectorSlug
+      : undefined;
   if (
+    !targetAware &&
     requestedConnectorSlug !== undefined &&
     !isConnectorSlug(catalogContext.snapshot, requestedConnectorSlug)
   ) {
@@ -1142,33 +1336,56 @@ async function resolveUrlMode(
 
   const configs =
     timeline.kind === "run"
-      ? await loadRunRoutingConfigs(timeline.context, catalogContext.snapshot)
+      ? timeline.state.configs
       : await loadGlobalCatalogConfigs(
           parsed,
           requestedConnectorSlug,
           timeline.state,
           catalogContext.snapshot,
         );
+  if (
+    targetAware &&
+    requestedTarget &&
+    timeline.kind === "run" &&
+    !configs.some((config) => {
+      return (
+        connectorRuntimeTargetKey(config.target) ===
+        connectorRuntimeTargetKey(requestedTarget)
+      );
+    })
+  ) {
+    return noMatchDiagnostic(
+      requestedTarget,
+      configs,
+      timeline,
+      catalogContext,
+      targetAware,
+    );
+  }
   const decision = matchFirewallRequestDecision(
     configsToDecisionFirewalls(configs),
     parsed.method,
     parsed.url,
     policyMap(timeline),
-    requestedConnectorSlug
-      ? { status: "present", value: requestedConnectorSlug }
+    requestedTarget
+      ? {
+          status: "present",
+          value: connectorRuntimeTargetKey(requestedTarget),
+        }
       : { status: "absent" },
   );
 
   if (decision.kind === "no_match") {
     return noMatchDiagnostic(
-      requestedConnectorSlug,
+      requestedTarget,
       configs,
       timeline,
       catalogContext,
+      targetAware,
     );
   }
   if (decision.kind === "ambiguous") {
-    return ambiguousDiagnostic(decision, catalogContext);
+    return ambiguousDiagnostic(decision, configs);
   }
   return resolvedUrlDiagnostic({
     request,
@@ -1180,11 +1397,11 @@ async function resolveUrlMode(
   });
 }
 
-async function resolveEnvironmentMode(
+function resolveEnvironmentMode(
   request: Extract<ConnectorCheckRequest, { readonly mode: "environment" }>,
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
-): Promise<ConnectorCheckDiagnosticResult> {
+): ConnectorCheckTargetAwareDiagnosticResult {
   const connectorSlug = connectorSlugForEnvironmentName(
     catalogContext.snapshot,
     request.environmentName,
@@ -1192,34 +1409,115 @@ async function resolveEnvironmentMode(
   if (!connectorSlug) {
     return { outcome: "unknown-environment" };
   }
-  const configs =
-    timeline.kind === "run"
-      ? await loadRunRoutingConfigs(timeline.context, catalogContext.snapshot)
-      : [];
+  const configs = timeline.kind === "run" ? timeline.state.configs : [];
   const config = configs.find((entry) => {
-    return entry.connectorSlug === connectorSlug;
+    return (
+      entry.target.kind === "builtin" &&
+      entry.target.connectorSlug === connectorSlug
+    );
   });
   return {
     outcome: "resolved",
     mode: "environment",
-    connector: connectorIdentity(connectorSlug, catalogContext),
+    connector: builtinTargetIdentity(connectorSlug, catalogContext),
     environmentName: request.environmentName,
     run: runStatus(timeline, config),
     permission:
       request.permission === undefined
         ? null
-        : permissionPolicy(
-            connectorSlug,
-            request.permission,
-            timeline,
-            config !== undefined,
-          ),
+        : permissionPolicy(config, request.permission, timeline),
   };
+}
+
+function legacyIdentity(
+  identity: ConnectorCheckTargetIdentity,
+): ConnectorCheckLegacyIdentity {
+  if (identity.target.kind !== "builtin") {
+    throw new Error(
+      "Legacy connector diagnostics cannot contain custom targets",
+    );
+  }
+  return {
+    connectorSlug: identity.target.connectorSlug,
+    label: identity.label,
+    visibility: identity.visibility,
+    credentialResolution: identity.credentialResolution,
+  };
+}
+
+function legacyDiagnostic(
+  diagnostic: ConnectorCheckTargetAwareDiagnosticResult,
+): ConnectorCheckDiagnosticResult {
+  switch (diagnostic.outcome) {
+    case "resolved": {
+      return diagnostic.mode === "url"
+        ? {
+            outcome: diagnostic.outcome,
+            mode: diagnostic.mode,
+            connector: legacyIdentity(diagnostic.connector),
+            environmentNames: diagnostic.environmentNames,
+            run: diagnostic.run,
+            method: diagnostic.method,
+            base: diagnostic.base,
+            relativePath: diagnostic.relativePath,
+            permission: diagnostic.permission,
+          }
+        : {
+            outcome: diagnostic.outcome,
+            mode: diagnostic.mode,
+            connector: legacyIdentity(diagnostic.connector),
+            environmentName: diagnostic.environmentName,
+            run: diagnostic.run,
+            permission: diagnostic.permission,
+          };
+    }
+    case "ambiguous": {
+      return {
+        outcome: diagnostic.outcome,
+        candidates: diagnostic.candidates.map((candidate) => {
+          if (candidate.target.kind !== "builtin") {
+            throw new Error(
+              "Legacy connector diagnostics cannot contain custom candidates",
+            );
+          }
+          return {
+            connectorSlug: candidate.target.connectorSlug,
+            label: candidate.label,
+          };
+        }),
+      };
+    }
+    case "connector-mismatch":
+    case "environment-not-owned":
+    case "unresolved-dynamic-base": {
+      return {
+        outcome: diagnostic.outcome,
+        connector: legacyIdentity(diagnostic.connector),
+      };
+    }
+    case "environment-not-used": {
+      return {
+        outcome: diagnostic.outcome,
+        connector: legacyIdentity(diagnostic.connector),
+        environmentNames: diagnostic.environmentNames,
+      };
+    }
+    case "target-unavailable": {
+      throw new Error("Legacy connector diagnostics cannot be target-aware");
+    }
+    case "unsafe-input":
+    case "unknown-connector":
+    case "unknown-environment":
+    case "no-match":
+    case "run-context-unavailable": {
+      return diagnostic;
+    }
+  }
 }
 
 export const resolveConnectorCheck$ = command(
   async (
-    { get, set },
+    { set },
     args: ResolveConnectorCheckArgs,
     signal: AbortSignal,
   ): Promise<ResolveConnectorCheckResult> => {
@@ -1236,26 +1534,44 @@ export const resolveConnectorCheck$ = command(
     }
 
     const db = set(writeDb$);
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
-    signal.throwIfAborted();
-
-    let timeline: ConnectorCheckTimeline;
+    let runRegistration: RunDiagnosticRegistration | undefined;
     if (args.stateSource.kind === "run") {
-      const runContextResult = await get(
-        runContext(args.stateSource.runId, args.userId, args.orgId),
-      );
+      const registration = await loadRunDiagnosticRegistration(db, {
+        runId: args.stateSource.runId,
+        userId: args.userId,
+        orgId: args.orgId,
+      });
       signal.throwIfAborted();
-      if (runContextResult.kind === "not-found") {
+      if (registration.kind === "not-found") {
         return { kind: "not-found" };
       }
-      if (runContextResult.kind === "no-snapshot") {
+      if (registration.kind === "missing") {
         return {
           kind: "ok",
           diagnostic: { outcome: "run-context-unavailable" },
         };
       }
-      timeline = { kind: "run", context: runContextResult.context };
+      runRegistration = registration.registration;
+    }
+
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
+    let timeline: ConnectorCheckTimeline;
+    if (runRegistration) {
+      const state = await loadRunDiagnosticState({
+        db,
+        scope: runRegistration,
+        request: args.request,
+        orgId: args.orgId,
+        userId: args.userId,
+        snapshot,
+      });
+      signal.throwIfAborted();
+      timeline = { kind: "run", state };
     } else {
+      if (args.stateSource.kind !== "stored") {
+        throw new Error("Missing active run diagnostic registration");
+      }
       const state =
         args.request.mode === "url"
           ? await loadStoredRuntimeState(db, {
@@ -1283,7 +1599,7 @@ export const resolveConnectorCheck$ = command(
       snapshot,
       visibleConnectorSlugs: new Set(visibleConnectorSlugs),
     };
-    let diagnostic: ConnectorCheckDiagnosticResult;
+    let diagnostic: ConnectorCheckTargetAwareDiagnosticResult;
     if (args.request.mode === "url") {
       if (!parsed) {
         throw new Error("Missing parsed connector diagnostic request");
@@ -1302,6 +1618,11 @@ export const resolveConnectorCheck$ = command(
       );
     }
     signal.throwIfAborted();
-    return { kind: "ok", diagnostic };
+    return {
+      kind: "ok",
+      diagnostic: targetAwareUrlRequest(args.request)
+        ? diagnostic
+        : legacyDiagnostic(diagnostic),
+    };
   },
 );

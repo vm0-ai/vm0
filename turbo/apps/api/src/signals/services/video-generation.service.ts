@@ -290,7 +290,7 @@ interface RecordedVideo {
   readonly duration: VideoDuration;
   readonly resolution: VideoResolution;
   readonly generateAudio: boolean;
-  readonly sourceUrl: string;
+  readonly sourceUrl: string | undefined;
   readonly requestId: string | undefined;
 }
 
@@ -505,7 +505,7 @@ function readVideoProviderError(value: unknown): VideoProviderError | null {
       readProviderString(value, ["code", "error_code", "errorCode", "type"]);
     const param = readProviderString(source, ["param", "parameter"]);
     return {
-      message: param ? `${message} (${param})` : message,
+      message: redactPresignedUrls(param ? `${message} (${param})` : message),
       code: code ?? "VIDEO_GENERATION_FAILED",
     };
   }
@@ -2014,6 +2014,7 @@ export const recordGeneratedVideo$ = command(
       readonly userId: string;
       readonly runId: string | undefined;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly pricing: VideoPricing;
       readonly generation: ParsedVideoGeneration;
       readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
@@ -2025,6 +2026,8 @@ export const recordGeneratedVideo$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "video",
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,
@@ -2050,7 +2053,9 @@ export const recordGeneratedVideo$ = command(
         metadata: compactObject({
           generatedBy: "zero-official-video",
           model: params.generation.model,
-          sourceUrl: params.generation.sourceUrl,
+          sourceUrl: artifact.isPrivate
+            ? undefined
+            : params.generation.sourceUrl,
           requestId: params.generation.requestId,
           aspectRatio: params.generation.aspectRatio,
           duration: params.generation.duration,
@@ -2129,7 +2134,7 @@ export const recordGeneratedVideo$ = command(
       duration: params.generation.duration,
       resolution: params.generation.resolution,
       generateAudio: params.generation.generateAudio,
-      sourceUrl: params.generation.sourceUrl,
+      sourceUrl: artifact.isPrivate ? undefined : params.generation.sourceUrl,
       requestId: params.generation.requestId,
     };
   },

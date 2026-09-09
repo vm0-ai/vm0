@@ -21,7 +21,7 @@ interface BrowserSessionCardProps {
 const BROWSER_SESSION_CARD_SHELL_CLASS =
   "inline-flex w-[min(100%,400px)] align-top";
 const BROWSER_SESSION_CARD_CLASS =
-  "okou-chat-card flex w-full flex-col overflow-hidden text-left text-foreground transition-all duration-200";
+  "okou-chat-card flex w-full flex-col overflow-hidden text-left text-foreground transition-[background-color,border-color,transform] duration-200";
 const BROWSER_SESSION_CARD_HOVER_CLASS =
   "hover:scale-[1.015] hover:border-gray-500";
 
@@ -45,7 +45,7 @@ function BrowserSessionStatus({ live }: { readonly live: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium",
+        "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium leading-[16px]",
         live
           ? "text-emerald-700 dark:text-emerald-300"
           : "text-muted-foreground",

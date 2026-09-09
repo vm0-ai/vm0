@@ -5,6 +5,7 @@ import {
   type SourceType,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { command } from "ccstate";
+import { normalizeGoogleAdsAttributionParams } from "../../lib/google-ads-attribution.ts";
 import { registerPostHogAttribution } from "../../lib/posthog.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 
@@ -66,9 +67,10 @@ function collectAttributionParams(
   searchParams: URLSearchParams,
 ): URLSearchParams {
   const attributionParams = new URLSearchParams();
+  const normalized = normalizeGoogleAdsAttributionParams(searchParams);
 
   for (const param of AD_ATTRIBUTION_PARAMS) {
-    for (const value of searchParams.getAll(param)) {
+    for (const value of normalized.getAll(param)) {
       attributionParams.append(param, value);
     }
   }
@@ -121,11 +123,9 @@ function googleAnalyticsClientIdFromCookie(
   return /^\d+\.\d+$/.test(clientId) ? clientId : undefined;
 }
 
-// First-touch attribution forwarded across the www.vm0.ai -> app.vm0.ai hop in
-// the shared .vm0.ai cookie. A satellite on another registrable domain cannot
-// read this cookie, so its URL params remain the handoff mechanism and are
-// recorded before any primary-domain auth redirect. Re-collected through the
-// whitelist so only known params are persisted.
+// First-touch attribution forwarded across the www -> app hop in the shared
+// registrable-domain cookie. Re-collected through the whitelist so only known
+// params are persisted.
 function collectAttributionFromCookie(cookieString: string): string {
   const stored = readCookie(ACQUISITION_ATTRIBUTION_COOKIE, cookieString);
   if (!stored) {
@@ -167,7 +167,7 @@ export const recordAdAttribution$ = command(
     }
 
     // Prefer params on the current URL (an ad pointing straight at the app),
-    // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
+    // otherwise fall back to the shared cookie set by the marketing site.
     const serializedAttribution =
       collectAttributionParams(searchParams).toString() ||
       collectAttributionFromCookie(cookieString);
@@ -186,11 +186,13 @@ export const applyStoredAdAttribution$ = command(({ get }, url: URL): void => {
     return;
   }
 
-  const attributionParams = new URLSearchParams(storedAttribution);
+  const attributionParams = collectAttributionParams(
+    new URLSearchParams(storedAttribution),
+  );
+  url.searchParams.delete("okou_campaign_id");
+  url.searchParams.delete("okou_ad_group_id");
   for (const param of AD_ATTRIBUTION_PARAMS) {
-    if (url.searchParams.has(param)) {
-      continue;
-    }
+    url.searchParams.delete(param);
 
     for (const value of attributionParams.getAll(param)) {
       url.searchParams.append(param, value);
@@ -202,7 +204,9 @@ function adAttributionMetadataFromStoredValue(
   storedAttribution: string | null,
   cookieString: string,
 ): AdAttributionMetadata | undefined {
-  const attributionParams = new URLSearchParams(storedAttribution ?? "");
+  const attributionParams = collectAttributionParams(
+    new URLSearchParams(storedAttribution ?? ""),
+  );
   const metadata: AdAttributionMetadata = {};
 
   const sourceType = attributionParams.get("source_type");

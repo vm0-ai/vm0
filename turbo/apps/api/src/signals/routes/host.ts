@@ -1,10 +1,11 @@
 import { command } from "ccstate";
+import { hostPrivatePreviewRoutes } from "./host-private-preview";
 import { hostContract } from "@okouai/api-contracts/contracts/host";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
+import { setResHeader$ } from "../context/hono";
 import {
   completeHostedSiteDeployment$,
   getHostedSiteDeployments$,
@@ -14,6 +15,7 @@ import {
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function internalError(message: string) {
   return {
@@ -27,8 +29,7 @@ function internalError(message: string) {
 const prepareBody$ = bodyResultOf(hostContract.prepare);
 const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
 
   const bodyResult = await get(prepareBody$);
   signal.throwIfAborted();
@@ -84,6 +85,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     completeHostedSiteDeployment$,
     {
       orgId: auth.orgId,
+      userId: auth.userId,
       runId: "runId" in auth ? auth.runId : undefined,
       deploymentId: params.deploymentId,
     },
@@ -108,6 +110,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  set(setResHeader$, "Cache-Control", "private, no-store");
   const auth = get(organizationAuthContext$);
   const params = get(filesParams$);
   const query = get(filesQuery$);
@@ -116,6 +119,7 @@ const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     getHostedSiteFiles$,
     {
       orgId: auth.orgId,
+      userId: auth.userId,
       publicSlug: params.publicSlug,
       version: query.version,
     },
@@ -143,6 +147,7 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     getHostedSiteDeployments$,
     {
       orgId: auth.orgId,
+      userId: auth.userId,
       runId: "runId" in auth ? auth.runId : undefined,
       site: params.site,
     },
@@ -157,6 +162,7 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 export const hostRoutes: readonly RouteEntry[] = [
+  ...hostPrivatePreviewRoutes,
   {
     route: hostContract.prepare,
     handler: authRoute(

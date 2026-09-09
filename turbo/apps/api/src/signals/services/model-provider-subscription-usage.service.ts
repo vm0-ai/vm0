@@ -8,6 +8,10 @@ import { secrets } from "@okouai/db/schema/secret";
 import { modelProviderAccountSecrets } from "@okouai/db/schema/model-provider-account";
 import { and, eq, inArray } from "drizzle-orm";
 
+import {
+  invalidateCodexResetCreditExpiry,
+  prepareCodexResetCreditExpiryRead,
+} from "./codex-reset-credit-expiry.service";
 import { logger } from "../../lib/log";
 import { type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
@@ -178,6 +182,10 @@ async function refreshCodexProvider(
   },
   signal: AbortSignal,
 ): Promise<ModelProviderResponse> {
+  const readResetCreditExpiry = prepareCodexResetCreditExpiryRead(
+    { scope: "personal", orgId: args.orgId, userId: args.userId },
+    args.provider.modelProviderId ? args.provider.id : null,
+  );
   const accountMetadata = {
     sourceType: "model-provider" as const,
     sourceUserId: args.userId,
@@ -234,6 +242,7 @@ async function refreshCodexProvider(
       accessToken: accessTokenResult.value,
       accountId,
       idToken,
+      readResetCreditExpiry,
     },
     signal,
   );
@@ -336,6 +345,7 @@ export const refreshPersonalModelProviderSubscriptionUsage$ = command(
               signal,
             ),
             (error) => {
+              signal.throwIfAborted();
               L.warn(
                 "failed to refresh personal model provider subscription usage",
                 {
@@ -431,6 +441,13 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
       );
     }
 
+    const invalidateExpiry = () => {
+      invalidateCodexResetCreditExpiry(
+        { scope: "personal", orgId: args.orgId, userId: args.userId },
+        { binding: args.modelProviderAccountId ?? null },
+      );
+    };
+    invalidateExpiry();
     return await consumeCodexRateLimitResetCredit(
       {
         accessToken: accessTokenResult.value,
@@ -438,6 +455,6 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
         idempotencyKey: args.idempotencyKey,
       },
       signal,
-    );
+    ).finally(invalidateExpiry);
   },
 );

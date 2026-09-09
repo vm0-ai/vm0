@@ -1,20 +1,23 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
-    SandboxCreateObserver, SandboxCreateStage, SandboxError, SandboxFactory, SandboxId,
-    SandboxInitializationPhase, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
-    SandboxNbdNetlinkConnectStage, SandboxOperation, SandboxOperationReason,
-    SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage, StartProcessRequest,
-    WriteFileEntry,
+    SandboxCreateObserver, SandboxCreateStage, SandboxError, SandboxFactory,
+    SandboxGuestConnectionPhase, SandboxId, SandboxInitializationPhase, SandboxNbdCowCreateOutcome,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxOperation,
+    SandboxOperationReason, SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage,
+    StartProcessRequest, WriteFileEntry,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
 use super::super::env::guest_connector_account_context_file_path;
+use super::super::storage_baseline_observation::{
+    BaselineObservationTestEvent, StorageBaselineObserver,
+};
 use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_startup_boundaries,
     record_reuse_result,
@@ -379,7 +382,44 @@ impl Sandbox for ObservedStartSandbox {
                 continue;
             }
             let success = self.failed_stage != Some(stage);
+            if stage == SandboxStartStage::GuestDnsReadiness {
+                for (attempt, duration, guest_duration_ms, outcome) in [
+                    (1, 4, 0, sandbox::SandboxDnsReadinessOutcome::ProcessTimeout),
+                    (
+                        2,
+                        9,
+                        6,
+                        if success {
+                            sandbox::SandboxDnsReadinessOutcome::Success
+                        } else {
+                            sandbox::SandboxDnsReadinessOutcome::WaitFailed
+                        },
+                    ),
+                ] {
+                    observer.record_dns_readiness_attempt(sandbox::SandboxDnsReadinessAttempt {
+                        attempt,
+                        final_attempt: attempt == 2,
+                        duration: Duration::from_millis(duration),
+                        guest_duration_ms: Some(guest_duration_ms),
+                        outcome,
+                        completed_at: std::time::SystemTime::now(),
+                    });
+                }
+            }
             observer.record_stage(stage, Duration::from_millis(index as u64 + 30), success);
+            if stage == SandboxStartStage::GuestConnectionWait && !self.omit_optional_stages {
+                for (index, phase) in SandboxGuestConnectionPhase::ALL.into_iter().enumerate() {
+                    if !success && phase == SandboxGuestConnectionPhase::ClientSetup {
+                        continue;
+                    }
+                    observer.record_guest_connection_phase(
+                        phase,
+                        Duration::from_millis(index as u64 + 1),
+                        Duration::from_millis(u64::from(index >= 5)),
+                        success || phase != SandboxGuestConnectionPhase::Pong,
+                    );
+                }
+            }
             if !success {
                 return Err(SandboxError::Start {
                     message: "observed mock start failure".to_string(),
@@ -702,6 +742,17 @@ const FRESH_SANDBOX_START_STAGE_ACTIONS: &[&str] = &[
     "runner_fresh_sandbox_start_guest_connection_wait",
     "runner_fresh_sandbox_start_guest_dns_readiness",
     "runner_fresh_sandbox_start_runtime_finalize",
+];
+
+const GUEST_CONNECTION_PHASE_NAMES: [&str; 8] = [
+    "task_schedule",
+    "listener_setup",
+    "accept",
+    "ready",
+    "ping",
+    "pong",
+    "client_setup",
+    "task_handoff",
 ];
 
 const RUNNER_PRE_SPAWN_PHASE_CASES: &[(RunnerPreSpawnPhase, &str, u64)] = &[
@@ -1183,7 +1234,7 @@ async fn execute_job_observes_exact_baseline_stability_per_profile_and_framework
 }
 
 #[tokio::test]
-async fn execute_job_serializes_concurrent_baseline_observations() {
+async fn execute_job_shares_baseline_observations_across_sequential_jobs() {
     const STABILITY: &str = "runner_storage_baseline_candidate_stability";
 
     let dir = tempfile::tempdir().unwrap();
@@ -1199,16 +1250,99 @@ async fn execute_job_serializes_concurrent_baseline_observations() {
         vec![baseline_storage("seed", "/seed", "version")],
     );
 
-    let (first, second) = tokio::join!(
-        execute_cancelled_observation(&config, first_context, &first_params),
-        execute_cancelled_observation(&config, second_context, &second_params),
+    let first = execute_cancelled_observation(&config, first_context, &first_params).await;
+    let second = execute_cancelled_observation(&config, second_context, &second_params).await;
+    assert_eq!(successful_bounded_outcome(&first, STABILITY), "first");
+    assert_eq!(successful_bounded_outcome(&second, STABILITY), "same");
+}
+
+#[test]
+fn baseline_observation_serializes_parallel_callers() {
+    const WAIT: Duration = Duration::from_secs(5);
+    const STABILITY: &str = "runner_storage_baseline_candidate_stability";
+
+    let (events, observations) = mpsc::channel();
+    let (release_first, first_release) = mpsc::channel();
+    let first_release = Mutex::new(Some(first_release));
+    let observer = StorageBaselineObserver::with_test_probe(move |event| match event {
+        BaselineObservationTestEvent::BeforeLock { .. } => events.send(event).unwrap(),
+        BaselineObservationTestEvent::BeforeFirstInsert => {
+            // Pause only the first caller, even if a split-lock regression lets
+            // another caller also observe a missing key.
+            let release = first_release.lock().unwrap().take();
+            if let Some(release) = release {
+                events.send(event).unwrap();
+                assert_ne!(
+                    release.recv_timeout(WAIT),
+                    Err(mpsc::RecvTimeoutError::Timeout)
+                );
+            }
+        }
+    });
+    let context = context_with_baseline(
+        "claude-code",
+        vec![baseline_storage("seed", "/seed", "version")],
     );
+    let params = default_params();
+    let record = |mut telemetry: JobTelemetry| {
+        observer.record(&context, &params, &mut telemetry);
+        telemetry
+    };
+    // Keep HTTP-client construction outside the coordinated contention window.
+    let first_telemetry = new_telemetry();
+    let second_telemetry = new_telemetry();
+
+    let (first, second) = std::thread::scope(|scope| {
+        // Own the sender inside the scope callback: unwinding disconnects the
+        // paused worker before scope cleanup joins it.
+        let release_first = release_first;
+        let first = scope.spawn(|| record(first_telemetry));
+        assert_eq!(
+            observations.recv_timeout(WAIT).unwrap(),
+            BaselineObservationTestEvent::BeforeLock { contended: false }
+        );
+        assert_eq!(
+            observations.recv_timeout(WAIT).unwrap(),
+            BaselineObservationTestEvent::BeforeFirstInsert
+        );
+
+        // The first caller has read the absent key but has not inserted it.
+        // A separate OS thread now enters the same production observer.
+        let second = scope.spawn(|| record(second_telemetry));
+        let second_entry = observations.recv_timeout(WAIT);
+        let released = release_first.send(());
+        drop(release_first);
+        let first = first.join();
+        let second = second.join();
+
+        assert_eq!(
+            second_entry.unwrap(),
+            BaselineObservationTestEvent::BeforeLock { contended: true },
+            "the first observation must hold the state lock between lookup and insertion"
+        );
+        released.unwrap();
+        (first.unwrap(), second.unwrap())
+    });
+
     let mut outcomes = [
         successful_bounded_outcome(&first, STABILITY),
         successful_bounded_outcome(&second, STABILITY),
     ];
     outcomes.sort();
     assert_eq!(outcomes, ["first", "same"]);
+
+    let subsequent = record(new_telemetry());
+    assert_eq!(successful_bounded_outcome(&subsequent, STABILITY), "same");
+    for telemetry in [&first, &second, &subsequent] {
+        for (action, expected) in [
+            ("runner_storage_baseline_candidate_count", "1"),
+            ("runner_storage_baseline_added_count", "0"),
+            ("runner_storage_baseline_removed_count", "0"),
+            ("runner_storage_baseline_changed_at_path_count", "0"),
+        ] {
+            assert_eq!(successful_bounded_outcome(telemetry, action), expected);
+        }
+    }
 }
 
 #[tokio::test]
@@ -1302,6 +1436,16 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     for (index, action) in FRESH_SANDBOX_START_STAGE_ACTIONS.iter().enumerate() {
         assert_action_success(&telemetry, action, true);
         assert_action_duration(&telemetry, action, index as u64 + 30);
+    }
+    for (index, phase) in GUEST_CONNECTION_PHASE_NAMES.into_iter().enumerate() {
+        for (kind, duration) in [
+            ("full", index as u64 + 1),
+            ("remaining", u64::from(index >= 5)),
+        ] {
+            let action = format!("runner_fresh_sandbox_start_guest_connection_{phase}_{kind}");
+            assert_action_once_with_duration(&telemetry, &action, duration);
+            assert_action_success(&telemetry, &action, true);
+        }
     }
     let operations = telemetry.pending_ops_with_duration_snapshot();
     for action in FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS {
@@ -1508,6 +1652,48 @@ async fn execute_job_records_exact_reuse_speculation_timing() {
 }
 
 #[tokio::test]
+async fn execute_job_keeps_dns_attempt_failures_inside_the_successful_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+    let attempts: Vec<_> = telemetry
+        .pending_ops_with_duration_snapshot()
+        .into_iter()
+        .filter(|(action, _, _, _)| {
+            action == "runner_fresh_sandbox_start_guest_dns_readiness_attempt"
+        })
+        .map(|(_, duration, success, error)| (duration, success, error))
+        .collect();
+    assert_eq!(
+        attempts,
+        vec![(4, false, Some("process_timeout".into())), (9, true, None)]
+    );
+    assert_action_duration(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness",
+        33,
+    );
+    assert_action_success(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness",
+        true,
+    );
+    assert_action_success(&telemetry, "runner_agent_start_process", true);
+}
+
+#[tokio::test]
 async fn execute_job_omits_inapplicable_sandbox_start_stages() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -1539,7 +1725,19 @@ async fn execute_job_omits_inapplicable_sandbox_start_stages() {
         "runner_fresh_sandbox_start_snapshot_load_resume",
     );
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
+    assert_lacks_action(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+    );
     assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
+    for phase in GUEST_CONNECTION_PHASE_NAMES {
+        for kind in ["full", "remaining"] {
+            assert_lacks_action(
+                &telemetry,
+                &format!("runner_fresh_sandbox_start_guest_connection_{phase}_{kind}"),
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -1586,6 +1784,23 @@ async fn execute_job_records_failed_sandbox_start_stage_timing() {
         "runner_fresh_sandbox_start_guest_connection_wait",
         32,
     );
+    for kind in ["full", "remaining"] {
+        assert_action_outcome(
+            &telemetry,
+            &format!("runner_fresh_sandbox_start_guest_connection_pong_{kind}"),
+            false,
+            Some("sandbox_start_stage_failed"),
+        );
+        assert_lacks_action(
+            &telemetry,
+            &format!("runner_fresh_sandbox_start_guest_connection_client_setup_{kind}"),
+        );
+        assert_action_success(
+            &telemetry,
+            &format!("runner_fresh_sandbox_start_guest_connection_task_handoff_{kind}"),
+            true,
+        );
+    }
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_runtime_finalize");
     assert_action_outcome(
@@ -1901,7 +2116,6 @@ async fn assert_reused_private_write_timeout_telemetry(
     let source_ip = sandbox.source_ip().to_string();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
-    overrides.push_private_write_file_result(Ok(()));
     overrides.push_private_write_files_result(Err(SandboxError::OperationTimeout {
         operation: SandboxOperation::WriteFile,
         stage,
@@ -1938,11 +2152,11 @@ async fn assert_reused_private_write_timeout_telemetry(
     );
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_agent_process_calls().is_empty());
-    assert_eq!(overrides.private_write_file_calls().len(), 1);
+    assert!(overrides.private_write_file_calls().is_empty());
     assert_eq!(overrides.private_write_files_calls().len(), 1);
 }
 
-async fn assert_reused_connector_account_context_failure(
+async fn assert_reused_required_private_batch_failure(
     error: SandboxError,
     expected_outcome: Option<&str>,
 ) {
@@ -1950,9 +2164,9 @@ async fn assert_reused_connector_account_context_failure(
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     let expected_failure = format!("sandbox error: {error}");
-    overrides.push_private_write_file_result(Err(error));
+    overrides.push_private_write_files_result(Err(error));
     let sandbox = Box::new(MockSandbox::with_overrides(
-        "connector-account-context-failure",
+        "required-private-batch-failure",
         Arc::clone(&overrides),
     ));
     let source_ip = sandbox.source_ip().to_string();
@@ -1982,7 +2196,7 @@ async fn assert_reused_connector_account_context_failure(
     let operations = telemetry.pending_ops_with_outcome_snapshot();
     let matching: Vec<_> = operations
         .iter()
-        .filter(|operation| operation.0 == "runner_connector_account_context_write")
+        .filter(|operation| operation.0 == "runner_required_private_files_write")
         .collect();
     assert_eq!(matching.len(), 1);
     assert!(!matching[0].1);
@@ -1990,32 +2204,35 @@ async fn assert_reused_connector_account_context_failure(
     assert_eq!(matching[0].3, None);
     assert_action_outcome(
         &telemetry,
-        "runner_connector_account_context_write",
+        "runner_required_private_files_write",
         false,
-        Some("connector account context unavailable"),
+        None,
     );
 
     assert!(outcome.sandbox.is_some());
     let failure = outcome
         .failure
-        .expect("connector context failure should stop the run");
+        .expect("required private batch failure should stop the run");
     assert_eq!(failure.error, expected_failure);
     assert_eq!(
         outcome.sandbox_reuse_disposition,
         SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
     );
-    assert_lacks_action(&telemetry, "runner_required_private_files_write");
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_agent_process_calls().is_empty());
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
-    assert_eq!(private_writes[0].path, expected_connector_context_path);
-    assert!(overrides.private_write_files_calls().is_empty());
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
+    assert_eq!(
+        private_batches[0].files[0].path,
+        expected_connector_context_path
+    );
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_guest_failure_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_guest_failure_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::Operation {
             operation: SandboxOperation::WriteFile,
             reason: SandboxOperationReason::Guest,
@@ -2027,8 +2244,8 @@ async fn reused_connector_account_context_guest_failure_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_before_frame_timeout_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_before_frame_timeout_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
             stage: SandboxOperationTimeoutStage::BeforeFrameWrite,
@@ -2040,8 +2257,8 @@ async fn reused_connector_account_context_before_frame_timeout_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_frame_write_timeout_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_frame_write_timeout_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
             stage: SandboxOperationTimeoutStage::FrameWrite,
@@ -2053,8 +2270,8 @@ async fn reused_connector_account_context_frame_write_timeout_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_terminal_response_timeout_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_terminal_response_timeout_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
             stage: SandboxOperationTimeoutStage::AwaitingTerminalResponse,
@@ -2066,8 +2283,8 @@ async fn reused_connector_account_context_terminal_response_timeout_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_backend_crash_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_backend_crash_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::Operation {
             operation: SandboxOperation::WriteFile,
             reason: SandboxOperationReason::BackendCrashed,

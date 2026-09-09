@@ -142,6 +142,31 @@ function emptyDataForSeoResponse() {
   };
 }
 
+function noSearchResultsResponse(cost: number) {
+  const response = dataForSeoResponse(cost, [
+    {
+      keyword: "site:example.com",
+      type: "organic",
+      location_code: 2840,
+      language_code: "en",
+      se_results_count: 0,
+      pages_count: 1,
+      items_count: 0,
+      items: null,
+    },
+  ]);
+  return {
+    ...response,
+    tasks: response.tasks.map((task) => {
+      return {
+        ...task,
+        status_code: 40_102,
+        status_message: "No Search Results.",
+      };
+    }),
+  };
+}
+
 describe("SEO routes", () => {
   it("rejects agent tokens without the seo capability", async () => {
     const actor = await seedActor();
@@ -321,6 +346,127 @@ describe("SEO routes", () => {
       code: "DATAFORSEO_ACCOUNT_UNVERIFIED",
       message: "DataForSEO account requires verification",
     });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it.each([
+    { engine: "google", cost: 0.002, billingQuantity: 2000, creditsCharged: 3 },
+    { engine: "bing", cost: 0.002, billingQuantity: 2000, creditsCharged: 3 },
+    { engine: "google", cost: 0, billingQuantity: 0, creditsCharged: 0 },
+    { engine: "bing", cost: 0, billingQuantity: 0, creditsCharged: 0 },
+  ] as const)(
+    "returns $engine no-search-results at cost $cost without retrying",
+    async ({ engine, cost, billingQuantity, creditsCharged }) => {
+      const actor = await seedActor();
+      configureProviders();
+      const beforeCredits = await credits(actor);
+      const providerResponse = noSearchResultsResponse(cost);
+      let providerRequests = 0;
+      server.use(
+        http.post(
+          `${DATAFORSEO_BASE_URL}/v3/serp/${engine}/organic/live/advanced`,
+          () => {
+            providerRequests += 1;
+            return HttpResponse.json(providerResponse);
+          },
+        ),
+      );
+
+      const response = await accept(
+        client(actor.usagePricingResolution)(seoContract).serp({
+          headers: authenticate(actor),
+          body: {
+            query: "site:example.com",
+            provider: "dataforseo",
+            engine,
+            location: "United States",
+            languageCode: "en",
+            device: "desktop",
+            limit: 10,
+          },
+        }),
+        [200],
+      );
+
+      expect(response.body).toStrictEqual({
+        operation: "serp",
+        provider: "dataforseo",
+        billingCategory: "provider_cost_usd_micros",
+        billingQuantity,
+        providerCostUsd: cost,
+        creditsCharged,
+        result: providerResponse,
+      });
+      expect(providerRequests).toBe(1);
+      expect(beforeCredits - (await credits(actor))).toBe(creditsCharged);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+        "DataForSEO task failed",
+        expect.anything(),
+      );
+    },
+  );
+
+  it.each([
+    { failure: "HTTP errors", httpStatus: 500, tasksError: 0 },
+    { failure: "task errors", httpStatus: 200, tasksError: 1 },
+  ])(
+    "does not hide $failure behind a no-search-results task",
+    async ({ httpStatus, tasksError }) => {
+      const actor = await seedActor();
+      configureProviders();
+      const beforeCredits = await credits(actor);
+      server.use(
+        http.post(
+          `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
+          () => {
+            return HttpResponse.json(
+              { ...noSearchResultsResponse(0.002), tasks_error: tasksError },
+              { status: httpStatus },
+            );
+          },
+        ),
+      );
+
+      const response = await accept(
+        client(actor.usagePricingResolution)(seoContract).serp({
+          headers: authenticate(actor),
+          body: {
+            query: "site:example.com",
+            provider: "dataforseo",
+            engine: "google",
+            location: "United States",
+            languageCode: "en",
+            device: "desktop",
+            limit: 10,
+          },
+        }),
+        [502],
+      );
+
+      expect(response.body.error.code).toBe("DATAFORSEO_UPSTREAM_ERROR");
+      await expect(credits(actor)).resolves.toBe(beforeCredits);
+    },
+  );
+
+  it("does not treat no-search-results as success outside SERP", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(`${DATAFORSEO_BASE_URL}/v3/backlinks/summary/live`, () => {
+        return HttpResponse.json(noSearchResultsResponse(0.002));
+      }),
+    );
+
+    const response = await accept(
+      client(actor.usagePricingResolution)(seoContract).backlinksSummary({
+        headers: authenticate(actor),
+        body: { target: "example.com", includeSubdomains: false },
+      }),
+      [502],
+    );
+
+    expect(response.body.error.code).toBe("DATAFORSEO_UPSTREAM_ERROR");
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 

@@ -578,7 +578,7 @@ describe("custom model provider gateway routes", () => {
         },
       });
       expect(deepseekClaim.appendSystemPrompt).toContain(
-        'okou recognize --file <image-path> --prompt "<instruction>"',
+        'okou image-recognition --file <image-path> --prompt "<instruction>"',
       );
 
       await runs.requestCancelRun(actor, deepseekRunId, [200]);

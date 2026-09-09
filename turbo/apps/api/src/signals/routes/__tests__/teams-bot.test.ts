@@ -71,13 +71,13 @@ const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
-  "Please connect your account to use Zero in this Teams workspace.";
+  "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "Please connect your account to use Zero in this Teams workspace.";
+  "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_WELCOME_TEXT = [
   "Hi, I'm Zero. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
   "",
-  "To get started, use `connect` to link this Teams workspace to VM0. An org admin may need to complete workspace setup first.",
+  "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
   "",
   "Commands: `help`, `connect`, `disconnect`, `switch`, `model`. Mention `@Zero` with a task or send a DM to work privately.",
 ].join("\n");
@@ -1155,7 +1155,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const fixture = await trackedBotFixture();
     botFrameworkHandlers();
     const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const botName = "Tenant Helper";
 
     const response = await postTeamsActivity({
@@ -1743,7 +1743,7 @@ describe("POST /api/webhooks/teams/bot", () => {
               filenameSnapshot: "spec.png",
               contentType: "image/png",
             },
-            { type: "text", text: "please inspect this" },
+            { type: "text", text: "@Zero please inspect this" },
             {
               type: "source",
               kind: "teams",
@@ -2882,7 +2882,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       activity: teamsMessageActivity(fixture, {
         id: channelContextActivityId,
         replyToId: null,
-        text: "<at>Zero</at> start another topic",
+        text: "<at>Zero</at>",
       }),
       token: teamsToken(),
     });
@@ -2900,10 +2900,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
-    const channelContextRunId = await runIdForPrompt(
-      actor,
-      "start another topic",
-    );
+    const channelContextRunId = await runIdForPrompt(actor, "@Zero");
     await runsApi.heartbeatRunner(runnerGroup);
     const channelContextClaim =
       await runsApi.claimRunnerJob(channelContextRunId);
@@ -2913,7 +2910,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       channelContextAppendSystemPrompt,
       "# Recent Channel Messages",
     );
-    expect(channelContextClaim.prompt).toBe("start another topic");
+    expect(channelContextClaim.prompt).toBe("@Zero");
     expect(graphRequests).toContain("channel-messages");
     expect(recentChannelContext).toContain("api channel planning");
     expect(recentChannelContext).not.toContain("start another topic");
@@ -3025,7 +3022,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       expect.objectContaining({
         payload: expect.objectContaining({
           teamsDelivery: expect.objectContaining({
-            publicBrand: "vm0",
+            publicBrand: "okou",
             files: expect.arrayContaining([
               expect.objectContaining({ name: "current-task.txt" }),
               expect.objectContaining({ name: "deployment-plan.pdf" }),

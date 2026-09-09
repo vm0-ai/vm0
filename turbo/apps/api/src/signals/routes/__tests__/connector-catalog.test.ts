@@ -278,20 +278,6 @@ describe("GET /api/connector-catalog", () => {
       invertInDarkMode: false,
       scale: 2,
     });
-
-    const okouResponse = await accept(
-      client.list({
-        headers,
-        extraHeaders: { origin: "https://app.okou.ai" },
-      }),
-      [200],
-    );
-    const okouOpenai = okouResponse.body.connectors.find((connector) => {
-      return connector.slug === "openai";
-    });
-    expect(okouOpenai?.icon.url).toBe(
-      "https://static.okou.io/test-fixtures/connectors/openai.svg",
-    );
   });
 
   it("accepts an Okou run token carrying connector:read", async () => {

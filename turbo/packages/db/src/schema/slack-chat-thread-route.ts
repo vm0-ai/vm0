@@ -11,7 +11,7 @@ import { chatThreads } from "./chat-thread";
 import { slackOrgConnections } from "./slack-org-connection";
 
 /**
- * Sticky canonical chat ownership for one VM0 user's view of a physical Slack
+ * Sticky canonical chat ownership for one Okou user's view of a physical Slack
  * thread.
  */
 export const slackChatThreadRoutes = pgTable(

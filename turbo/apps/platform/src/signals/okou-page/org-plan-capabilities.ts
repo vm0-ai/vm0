@@ -11,6 +11,7 @@ export interface OrgPlanCapabilities {
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
   readonly memberInviteUsagePackRequired: boolean;
+  readonly showUsagePack: boolean;
   readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
@@ -20,7 +21,7 @@ export interface OrgPlanCapabilities {
 }
 
 const LEGACY_TIER_CAPABILITIES: Readonly<
-  Record<BillingTier, OrgPlanCapabilities>
+  Record<BillingTier, Omit<OrgPlanCapabilities, "showUsagePack">>
 > = {
   free: {
     canBuyConcurrency: false,
@@ -102,6 +103,7 @@ export function orgPlanCapabilitiesFromBilling(
     memberInviteUsagePackRequired:
       billing.memberInviteUsagePackRequired ??
       fallback.memberInviteUsagePackRequired,
+    showUsagePack: billing.showUsagePack,
     memberInvitationAllowed:
       billing.memberInvitationAllowed ?? fallback.memberInvitationAllowed,
     autoRechargeAllowed:

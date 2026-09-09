@@ -14,8 +14,7 @@ import {
   type NotionPageContentUpdatedScope,
   type NotionPageReference,
 } from "@okouai/api-contracts/contracts/workflows";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import {
   notionWebhookEvents,
   notionWebhookSecrets,
@@ -679,7 +678,6 @@ export async function prepareNotionChildPageEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
-    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionChildPageCreatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -725,7 +723,7 @@ export async function prepareNotionChildPageEventConfigForPersist(
   if (pageResult.kind === "not_found" || pageResult.kind === "unauthorized") {
     return {
       kind: "bad-request",
-      message: `${publicBrandPresentation(args.publicBrand).assistantName} cannot access this Notion page`,
+      message: `${PUBLIC_BRAND_PRESENTATION.assistantName} cannot access this Notion page`,
     };
   }
   if (pageResult.kind !== "ok") {
@@ -761,7 +759,6 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
-    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionDatabaseItemCreatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -822,7 +819,7 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
     ) {
       return {
         kind: "bad-request",
-        message: `${publicBrandPresentation(args.publicBrand).assistantName} cannot access this Notion database`,
+        message: `${PUBLIC_BRAND_PRESENTATION.assistantName} cannot access this Notion database`,
       };
     }
     if (dataSourceResult.kind !== "ok") {
@@ -863,7 +860,7 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
   ) {
     return {
       kind: "bad-request",
-      message: `${publicBrandPresentation(args.publicBrand).assistantName} cannot access this Notion database`,
+      message: `${PUBLIC_BRAND_PRESENTATION.assistantName} cannot access this Notion database`,
     };
   }
   if (dataSourceResult.kind !== "ok") {
@@ -894,7 +891,6 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
-    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionPageContentUpdatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -912,7 +908,6 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
         orgId: args.orgId,
         userId: args.userId,
         connectorId: args.connectorId,
-        publicBrand: args.publicBrand,
         eventConfig: {
           provider: "notion",
           event: "child_page_created",
@@ -951,7 +946,6 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.connectorId,
-      publicBrand: args.publicBrand,
       eventConfig: {
         provider: "notion",
         event: "database_item_created",

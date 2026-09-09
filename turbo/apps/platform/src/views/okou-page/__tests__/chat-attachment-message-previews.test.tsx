@@ -4,7 +4,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   click,
@@ -151,6 +151,12 @@ test("A short Okou artifact link opens as a rich preview", async () => {
 });
 
 test("Image navigation stays within the current message", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    1600,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    900,
+  );
   const first = publicArtifactUrl("gallery-first.png");
   const second = publicArtifactUrl("gallery-second.png");
   const third = publicArtifactUrl("gallery-third.png");
@@ -186,7 +192,7 @@ test("Image navigation stays within the current message", async () => {
   expect(queryNamedButton("Previous image artifact")).toBeNull();
   expect(getNamedButton("Next image artifact")).toBeVisible();
 
-  click(getNamedButton("Zoom in"));
+  click(await findNamedButton("Zoom in"));
   fireEvent.keyDown(document, { key: "ArrowRight" });
   await waitFor(() => {
     expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(

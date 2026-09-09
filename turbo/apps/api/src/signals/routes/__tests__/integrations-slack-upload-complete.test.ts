@@ -19,7 +19,6 @@ import {
   chatThreadArtifactsContract,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -141,7 +140,6 @@ function okouToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly string[];
-  readonly publicBrand?: PublicBrand;
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
@@ -150,7 +148,6 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: (args.capabilities ?? ["slack:write"]) as never,
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -486,7 +483,6 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       userId,
       orgId,
       runId,
-      publicBrand: "okou",
     });
     context.mocks.slack.files.getUploadURLExternal.mockClear();
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
@@ -710,13 +706,13 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       ),
     );
     mocks.clerk.session(userId, orgId);
-    const vm0DriveClient = setupApp({
-      baseUrl: "https://api.vm0.ai",
+    const driveClient = setupApp({
+      baseUrl: "https://api.okou.ai",
       context,
       routes: chatThreadsArtifactsSyncRoutes,
     })(chatThreadArtifactsContract);
     const driveSync = await accept(
-      vm0DriveClient.syncGoogleDrive({
+      driveClient.syncGoogleDrive({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId },
         body: { runId, fileId: canonicalAssetId },
@@ -729,32 +725,24 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       webViewLink: "https://drive.google.com/file/d/drive-canonical-asset/view",
     });
 
-    const okouDriveClient = setupApp({
-      baseUrl: "https://api.okou.ai",
-      context,
-      routes: chatThreadsArtifactsSyncRoutes,
-    })(chatThreadArtifactsContract);
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const okouDriveSync = await accept(
-        okouDriveClient.syncGoogleDrive({
-          headers: { authorization: "Bearer clerk-session" },
-          params: { threadId },
-          body: { runId, fileId: canonicalAssetId },
-        }),
-        [200],
-      );
-      expect(okouDriveSync.body.name).toBe("report.csv");
-    }
+    const retryDriveSync = await accept(
+      driveClient.syncGoogleDrive({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
+      [200],
+    );
+    expect(retryDriveSync.body.name).toBe("report.csv");
 
-    const okouRunDriveSync = await accept(
-      vm0DriveClient.syncGoogleDrive({
+    const runDriveSync = await accept(
+      driveClient.syncGoogleDrive({
         headers: {
           authorization: `Bearer ${okouToken({
             userId,
             orgId,
             runId,
             capabilities: ["file:write"],
-            publicBrand: "okou",
           })}`,
         },
         params: { threadId },
@@ -762,27 +750,9 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       }),
       [200],
     );
-    expect(okouRunDriveSync.body.name).toBe("report.csv");
+    expect(runDriveSync.body.name).toBe("report.csv");
 
-    const vm0RunDriveSync = await accept(
-      okouDriveClient.syncGoogleDrive({
-        headers: {
-          authorization: `Bearer ${okouToken({
-            userId,
-            orgId,
-            runId,
-            capabilities: ["file:write"],
-            publicBrand: "vm0",
-          })}`,
-        },
-        params: { threadId },
-        body: { runId, fileId: canonicalAssetId },
-      }),
-      [200],
-    );
-    expect(vm0RunDriveSync.body.name).toBe("report.csv");
-
-    expect(driveFolders).toHaveLength(4);
+    expect(driveFolders).toHaveLength(2);
     expect(
       driveFolders
         .filter((folder) => {
@@ -791,11 +761,10 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
         .map((folder) => {
           return folder.name;
         }),
-    ).toStrictEqual(["vm0-artifact", "Okou Artifacts"]);
-    expect(driveUploadBodies).toHaveLength(5);
-    expect(driveUploadBodies[3]).toContain('"parents":["drive-folder-4"]');
-    expect(driveUploadBodies[4]).toContain('"parents":["drive-folder-2"]');
+    ).toStrictEqual(["Okou Artifacts"]);
+    expect(driveUploadBodies).toHaveLength(3);
     for (const body of driveUploadBodies) {
+      expect(body).toContain('"parents":["drive-folder-2"]');
       expect(body).toContain(`"vm0Artifact":"true"`);
       expect(body).toContain(`"vm0ThreadId":"${threadId}"`);
       expect(body).toContain(`"vm0RunId":"${runId}"`);
@@ -950,10 +919,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       throw new Error("Expected canonical Slack upload initialization");
     }
     const canonicalAssetId = initialized.body.assetId;
-    const storageKey = new URL(initialized.body.url).pathname.replace(
-      /^\/+/u,
-      "",
-    );
+    const storageKey = `artifacts${new URL(initialized.body.url).pathname}`;
     objectStore.addObject({
       bucket: "test-user-artifacts",
       key: storageKey,
@@ -1056,10 +1022,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       throw new Error("Expected canonical Slack upload initialization");
     }
     const canonicalAssetId = initialized.body.assetId;
-    const storageKey = new URL(initialized.body.url).pathname.replace(
-      /^\/+/u,
-      "",
-    );
+    const storageKey = `artifacts${new URL(initialized.body.url).pathname}`;
     objectStore.addObject({
       bucket: "test-user-artifacts",
       key: storageKey,
@@ -1183,7 +1146,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("uses the VM0 run brand for a Slack video", async () => {
+  it("stores a Slack video preview in the configured artifact host", async () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     const permalink = `https://slack.example/files/${fileId}`;
@@ -1203,7 +1166,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     const frameRequests: string[] = [];
     server.use(
       http.get(
-        /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
+        /^https:\/\/a\.okou\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
         ({ request }) => {
           frameRequests.push(request.url);
           return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
@@ -1216,7 +1179,6 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       userId,
       orgId,
       runId,
-      publicBrand: "vm0",
     });
 
     const client = setupApp({
@@ -1233,7 +1195,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toStrictEqual([
-      `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
+      `https://a.okou.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
     ]);
     expect(
       objectStore.puts.some((put) => {
@@ -1241,7 +1203,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
           put.bucket === "test-user-artifacts" &&
           /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key) &&
           put.contentType === "image/jpeg" &&
-          put.metadata?.["public-brand"] === "vm0"
+          put.metadata?.["public-brand"] === "okou"
         );
       }),
     ).toBeTruthy();
@@ -1255,7 +1217,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     expect(files[0]).toMatchObject({
       id: fileId,
       previewImageUrl: expect.stringMatching(
-        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+        /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.jpg$/u,
       ),
     });
   });

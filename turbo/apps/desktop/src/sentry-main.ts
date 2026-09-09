@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/electron/main";
 import type { ComputerUseNativeRuntimeErrorContext } from "./computer-use-native";
+import type { ComputerUsePermissionRecoveryDiagnostic } from "./computer-use-runtime-controller";
 
 declare const __DESKTOP_VERSION__: string;
 declare const __DESKTOP_SENTRY_DSN__: string;
@@ -74,7 +75,27 @@ export function captureDesktopNativeHelperError(
       terminationReason: context.terminationReason,
       pendingRequestCount: context.pendingRequestCount,
       queuedRequestCount: context.queuedRequestCount,
+      processSequence: context.processSequence,
+      requestSequence: context.requestSequence,
+      elapsedMs: context.elapsedMs,
+      helperUptimeMs: context.helperUptimeMs,
+      timerDelayMs: context.timerDelayMs,
+      exitKnown: context.exitKnown,
+      phases: context.phases,
+      stderrBytes: context.stderrBytes,
     });
     Sentry.captureException(error);
+  });
+}
+
+export function captureDesktopNativePermissionRecovery(
+  diagnostic: ComputerUsePermissionRecoveryDiagnostic,
+): void {
+  if (!sentryDsn) return;
+  Sentry.addBreadcrumb({
+    category: "computer-use-helper",
+    message: "Native permission recovery",
+    level: diagnostic.outcome === "failed" ? "warning" : "info",
+    data: { ...diagnostic },
   });
 }

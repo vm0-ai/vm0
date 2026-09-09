@@ -9,7 +9,7 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "../../../lib/platform-template-items.ts";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
 import {
   buttonContainingText,
   expectTextBefore,
@@ -18,7 +18,6 @@ import {
 } from "./chat-composer-test-helpers.ts";
 import {
   AGENT_ID,
-  TEMPLATE_FEATURES,
   THREAD_ID,
   context,
   createUploadedTemplate,
@@ -145,8 +144,7 @@ test("A closed composer does not load uploaded template covers", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -179,8 +177,7 @@ test("Use an uploaded presentation template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   const picker = await openTemplatePicker(user, "Presentation");
@@ -244,8 +241,7 @@ test("Keep the loaded slide visible during rapid preview navigation", async () =
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   const picker = await openTemplatePicker(user, "Presentation");
@@ -323,8 +319,7 @@ test("Keep uploaded-template browsing stable during changes", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   const picker = await openTemplatePicker(user, "Presentation");
@@ -422,8 +417,7 @@ test("Keep workspace template availability current", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await openTemplatePicker(user, "Presentation");

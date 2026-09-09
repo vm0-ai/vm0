@@ -130,6 +130,7 @@
         "diskPressure": "रनर पर डिस्क दबाव के कारण कार्यस्थान का पुन: उपयोग छोड़ दिया गया।",
         "environment": "परिवेश",
         "featureDisabled": "इस रन के लिए सैंडबॉक्स का पुन: उपयोग अक्षम है।",
+        "framework": "फ़्रेमवर्क",
         "generation": "जनरेशन",
         "hostname": "होस्टनाम",
         "invalidMetadata": "कैश किए गए कार्यस्थान का मेटाडेटा अमान्य था।",
@@ -577,6 +578,11 @@
       "unavailable": "{{kind}} पूर्वावलोकन अनुपलब्ध है.",
       "videoLabel": "{{filename}} के लिए वीडियो पूर्वावलोकन"
     },
+    "sharing": {
+      "shareOrganization": "संगठन के साथ शेयर करें",
+      "sharePublic": "सार्वजनिक रूप से शेयर करें",
+      "unavailable": "यह आर्टिफ़ैक्ट उपलब्ध नहीं है या आपके पास इसका ऐक्सेस नहीं है।"
+    },
     "sidebar": {
       "openSharedConversation": "साझा बातचीत खोलें",
       "panelTitle": "आर्टिफ़ैक्ट",
@@ -592,6 +598,9 @@
       "categories": "टेम्पलेट श्रेणियां",
       "category": "टेम्पलेट श्रेणी",
       "chooseVoice": "{{title}} के लिए आवाज़ चुनें",
+      "creativeVideo": "क्रिएटिव वीडियो",
+      "explainerUnavailable": "यह वीडियो टेम्पलेट अब उपलब्ध नहीं है। अपना संदेश भेजने के लिए इसे हटाएँ।",
+      "explainerVideo": "व्याख्यात्मक वीडियो",
       "filters": {
         "age": "आयु",
         "all": "सभी",
@@ -1036,19 +1045,35 @@
       "continuation": {
         "activationErrorDescription": "हम आपका साइन-इन पूरा नहीं कर सके। फिर से शुरू करके दोबारा कोशिश करें।",
         "activationErrorTitle": "साइन-इन पूरा नहीं हो सका",
+        "backupDescription": "इन कोड को सुरक्षित रखें। फ़ोन का ऐक्सेस खोने पर हर कोड का एक बार उपयोग कर सकते हैं।",
+        "backupTitle": "अपने बैकअप कोड सहेजें",
         "chooseOrganizationDescription": "{{brandName}} पर जारी रखने के लिए कोई संगठन चुनें।",
         "chooseOrganizationTitle": "कोई संगठन चुनें",
         "completeDescription": "आपको {{brandName}} पर ले जाया जा रहा है।",
         "completeTitle": "साइन-इन पूरा हुआ",
+        "createOrganization": "संगठन बनाएँ",
+        "invitationError": "यह आमंत्रण स्वीकार नहीं किया जा सका। फिर कोशिश करें, या लिंक की समय-सीमा समाप्त होने पर नया आमंत्रण माँगें।",
+        "joinOrganization": "{{organizationName}} से जुड़ें",
         "loadingDescription": "जाँचा जा रहा है कि आपके खाते के लिए आगे क्या आवश्यक है।",
         "loadingTitle": "साइन-इन पूरा किया जा रहा है",
         "noOrganizationsDescription": "इस खाते के लिए कोई संगठन उपलब्ध नहीं है। संगठन व्यवस्थापक से पहुँच माँगें, फिर दोबारा शुरू करें।",
         "noOrganizationsTitle": "कोई संगठन उपलब्ध नहीं है",
+        "organizationName": "संगठन का नाम",
+        "passwordTaskError": "आपका पासवर्ड अपडेट नहीं हो सका। अधिक मज़बूत पासवर्ड चुनें और फिर कोशिश करें।",
+        "phoneNumberLabel": "फ़ोन नंबर",
         "recoveryAction": "फिर से शुरू करें",
+        "savedCodes": "मैंने अपने कोड सहेज लिए हैं",
         "secondFactorDescription": "इस साइन-इन के लिए एक अतिरिक्त सत्यापन चरण आवश्यक है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "secondFactorTitle": "अतिरिक्त सत्यापन आवश्यक है",
+        "securityDescription": "अपनी पहचान सत्यापित करने का दूसरा तरीका जोड़ें।",
+        "securityTitle": "दो-चरणीय सत्यापन सेट करें",
         "selectOrganization": "{{organizationName}} के साथ जारी रखें",
+        "sendCode": "कोड भेजें",
+        "setupKey": "सेटअप कुंजी",
+        "setupKeyDescription": "इस सेटअप कुंजी को अपने ऑथेंटिकेटर ऐप में जोड़ें, फिर उससे बना कोड दर्ज करें।",
         "signedInAs": "{{identifier}} के रूप में साइन इन किया गया",
+        "taskComplete": "आपकी सुरक्षा सेटिंग सहेज दी गई हैं। साइन इन पूरा करने के लिए जारी रखें।",
+        "taskError": "यह चरण पूरा नहीं हो सका। अपनी जानकारी जाँचें और फिर कोशिश करें।",
         "unsupportedDescription": "आपके खाते ने ऐसा प्रमाणीकरण चरण लौटाया है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "unsupportedTitle": "साइन-इन चरण उपलब्ध नहीं है"
       },
@@ -1855,6 +1880,25 @@
     "composer": {
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
+      "create": {
+        "addStyle": "शैली जोड़ें",
+        "addTemplate": "टेम्पलेट जोड़ें",
+        "chooseType": "एक प्रकार चुनें",
+        "description": "प्रेज़ेंटेशन, वीडियो और इमेज",
+        "exit": "बनाने के मोड से बाहर निकलें",
+        "image": "छवि बनाएँ",
+        "imagePlaceholder": "आप जो छवि बनाना चाहते हैं उसका वर्णन करें…",
+        "presentation": "प्रस्तुति बनाएँ",
+        "presentationPlaceholder": "आपकी प्रस्तुति का विषय क्या है?",
+        "question": "आप क्या साकार करना चाहेंगे?",
+        "settingsAdjusted": "इस मॉडल के लिए कुछ वीडियो सेटिंग समायोजित की गई हैं",
+        "slideCount": "स्लाइड की संख्या",
+        "slideCountAuto": "स्वचालित",
+        "slideCountRange": "{{range}} स्लाइड",
+        "title": "बनाएँ",
+        "video": "वीडियो बनाएँ",
+        "videoPlaceholder": "आप जो वीडियो बनाना चाहते हैं उसका वर्णन करें…"
+      },
       "createWorkflow": "वर्कफ़्लो बनाएँ",
       "imageModelForThisChat": "इस चैट के लिए इमेज मॉडल",
       "message": "संदेश",
@@ -1912,7 +1956,6 @@
       "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
       "addConnectors": "कनेक्टर्स जोड़ें",
-      "authorizationFailed": "{{connectorName}} कनेक्ट हुआ लेकिन {{agentName}} के लिए अधिकृत नहीं किया जा सका",
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
@@ -1920,6 +1963,41 @@
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
       "defaultAccountFor": "{{connector}} · डिफ़ॉल्ट खाता उपयोग हो रहा है: {{account}}",
+      "directory": {
+        "allCategories": "सभी",
+        "askAdmin": "इसे चालू करने के लिए एडमिन से कहें",
+        "browse": "कनेक्टर्स देखें",
+        "configure": "कॉन्फ़िगर करें",
+        "connected": "कनेक्टेड",
+        "createCustom": "कस्टम बनाएँ",
+        "customBadge": "कस्टम",
+        "detailAccounts": "खाते",
+        "detailCategory": "श्रेणी",
+        "detailConnection": "कनेक्शन",
+        "detailMethod": "तरीका",
+        "detailPermissions": "अनुमतियाँ",
+        "emptyCustomBody": "किसी भी HTTP API या MCP सर्वर से एक बनाएँ, और Okou उसे बाकी कनेक्टर्स की तरह इस्तेमाल कर सकेगा।",
+        "emptyCustomTitle": "अभी कोई कस्टम कनेक्टर नहीं है",
+        "emptyYoursBody": "कोई ऐप कनेक्ट करें और Okou आपके लिए उसमें पढ़ और काम कर सकेगा।",
+        "emptyYoursTitle": "आपने अभी तक कुछ नहीं जोड़ा है",
+        "matchCount_one": "{{count}} परिणाम",
+        "matchCount_other": "{{count}} परिणाम",
+        "moreAccounts_one": "+{{count}}",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "ध्यान देने की ज़रूरत",
+        "noResultsBody": "किसी प्रोडक्ट का नाम आज़माएँ, या API या MCP सर्वर से अपना बनाएँ।",
+        "noResultsTitle": "“{{query}}” से मेल खाता कोई कनेक्टर नहीं",
+        "openDetailAria": "{{connector}} का विवरण खोलें",
+        "otherCategory": "अन्य",
+        "permissionCount_one": "{{count}} अनुमति",
+        "permissionCount_other": "{{count}} अनुमतियाँ",
+        "searchYours": "अपने कनेक्टर्स खोजें",
+        "showAll_one": "सभी {{count}} देखें",
+        "showAll_other": "सभी {{count}} देखें",
+        "tabCustom": "कस्टम",
+        "tabDiscover": "खोजें",
+        "tabYours": "आपके कनेक्टर्स"
+      },
       "fallsBackTo": "{{account}} पर वापस जाता है",
       "find": "कनेक्टर ढूंढें...",
       "noUsableAccount": "कोई उपयोग योग्य खाता नहीं",
@@ -1958,6 +2036,20 @@
       },
       "runCancelled": "विचार के बीच में रुका हुआ - जब भी हो, इसे वापस उठा लें।"
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "अपने कंटेंट के अनुकूल आवाज़ खोजें।",
+      "avatarVoice": "अवतार की आवाज़",
+      "changeAvatar": "अवतार बदलें",
+      "chooseStyle": "शैली चुनें",
+      "chooseStyleAndVoice": "एक शैली और आवाज़ चुनें।",
+      "noMatches": "कोई परिणाम नहीं मिला। दूसरी खोज या श्रेणी आज़माएँ।",
+      "ready": "इस्तेमाल के लिए तैयार। चैट में अपना कंटेंट जोड़ें।",
+      "searchAvatars": "अवतार खोजें",
+      "searchStyles": "शैलियाँ खोजें",
+      "settings": "व्याख्यात्मक वीडियो की सेटिंग",
+      "style": "शैली",
+      "useSelection": "चयन इस्तेमाल करें"
+    },
     "feedback": {
       "emailDraftDescription": "एक ईमेल ड्राफ्ट (मेल ड्राफ्ट ID: {{id}})",
       "partHeading": "आपके उत्तर के इस भाग पर प्रतिक्रिया:",
@@ -1988,50 +2080,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "स्वचालित · Okou चुनेगा",
-        "autoDescription": "अनुरोध के अनुसार HeyGen का सार्वजनिक प्रस्तुतकर्ता चुनें",
         "heading": "अवतार चुनें",
         "label": "अवतार",
         "none": "कोई अवतार नहीं",
-        "noneDescription": "बिना प्रस्तुतकर्ता के वीडियो बनाएँ",
         "previewLook": "{{name}} रूप का पूर्वावलोकन"
       },
-      "cardDescription": "विचार या सामग्री को तैयार वीडियो में बदलें",
       "catalog": {
-        "empty": "HeyGen के सार्वजनिक विकल्प उपलब्ध नहीं हैं।",
-        "error": "HeyGen कैटलॉग लोड नहीं हो सका।",
+        "error": "कैटलॉग लोड नहीं हो सका।",
         "loading": "और विकल्प लोड हो रहे हैं",
         "reload": "कैटलॉग फिर लोड करें",
         "retry": "फिर से कोशिश करें"
       },
-      "description": "सामग्री जोड़ें, अपनी ज़रूरत बताएँ और चाहें तो HeyGen की शैली, अवतार और आवाज़ चुनें।",
-      "errors": {
-        "sendFailed": "चैट थ्रेड नहीं बन सका। आपका अनुरोध अभी भी यहाँ है, आप फिर से कोशिश कर सकते हैं।",
-        "uploadFailed": "एक या अधिक फ़ाइलें अपलोड नहीं हो सकीं। उन्हें हटाएँ या फिर से कोशिश करें।"
-      },
       "footer": {
-        "cancel": "रद्द करें",
-        "create": "वीडियो बनाएँ",
-        "hint": "निर्देश, फ़ाइलें या दोनों जोड़ें"
-      },
-      "format": {
-        "auto": "स्वचालित",
-        "output": "आउटपुट फ़ॉर्मैट"
-      },
-      "heading": "अपना इंट्रो वीडियो बनाएँ",
-      "help": "सामग्री जोड़ें, अपनी ज़रूरत बताएँ या दोनों करें। बाकी काम Okou संभालेगा।",
-      "prompt": {
-        "label": "वीडियो से क्या संदेश देना है?",
-        "placeholder": "उद्देश्य, दर्शक, भाषा, लहजा या अन्य ज़रूरी बातें बताएँ"
-      },
-      "source": {
-        "drop": "फ़ाइलें यहाँ छोड़ें या अपलोड करने के लिए क्लिक करें",
-        "remove": "{{filename}} हटाएँ"
+        "cancel": "रद्द करें"
       },
       "style": {
         "auto": "Okou को चुनने दें",
         "browseGroups": "शैली के अनुसार देखें",
-        "description": "शैली दृश्य, ट्रांज़िशन, टेक्स्ट ओवरले और गति तय करती है।",
         "groups": {
           "cinematic": "फ़िल्म और फ़ोटोग्राफ़ी",
           "handmade": "हस्तकला और सामग्री",
@@ -2041,25 +2106,16 @@
           "print": "मुद्रण और प्रकाशन",
           "retro-tech": "रेट्रो तकनीक और इंटरफ़ेस"
         },
-        "heading": "शैली संदर्भ चुनें",
-        "label": "शैली संदर्भ",
         "preview": "{{title}} का पूर्वावलोकन",
         "previewUnavailable": "इस शैली का वीडियो पूर्वावलोकन उपलब्ध नहीं है।"
       },
-      "title": "इंट्रो वीडियो बनाएँ",
       "voice": {
         "auto": "Okou को चुनने दें",
-        "autoDescription": "Okou, HeyGen की उपयुक्त सार्वजनिक आवाज़ चुनता है",
-        "default": "डिफ़ॉल्ट · अवतार के अनुसार",
         "defaultDescription": "चुने गए अवतार की डिफ़ॉल्ट आवाज़ इस्तेमाल करें",
-        "defaultForAvatar": "डिफ़ॉल्ट · {{avatar}}",
-        "defaultForAvatarDescription": "{{avatar}} की डिफ़ॉल्ट HeyGen आवाज़ इस्तेमाल करें",
         "heading": "आवाज़ चुनें",
         "label": "आवाज़",
         "none": "बिना वॉइसओवर",
-        "noneDescription": "नरेशन न जोड़ें; म्यूट करने को न कहने पर मूल ऑडियो बनाए रखें।",
-        "original": "मूल ऑडियो",
-        "originalDescription": "चुना गया मूल ऑडियो बनाए रखें और जनरेट की गई आवाज़ न जोड़ें"
+        "noneDescription": "नरेशन न जोड़ें; म्यूट करने को न कहने पर मूल ऑडियो बनाए रखें।"
       }
     },
     "mail": {
@@ -2139,26 +2195,17 @@
     "promptDocumentTitle": "प्रॉम्प्ट",
     "queue": {
       "aboutAutomationEvent": "इस ऑटोमेशन इवेंट के बारे में",
-      "aboutGoal": "इस लक्ष्य के बारे में",
       "aboutQueuedMessage": "इस पंक्तिबद्ध संदेश के बारे में",
-      "activeGoal": "सक्रिय लक्ष्य",
       "automationEvent": "ऑटोमेशन घटना",
       "automationEventDescription": "पंक्तिबद्ध संदेशों के पीछे प्रतीक्षा करता है और वर्तमान रन समाप्त होने पर चलता है।",
-      "cancelGoal": "लक्ष्य रद्द करें",
       "cancellationRecoveryPending": "पंक्तिबद्ध कार्य जारी रखने से पहले रद्द किए गए रन को अंतिम रूप दिया जा रहा है।",
       "event_one": "{{count}} घटना",
       "event_other": "{{count}} घटनाएँ",
       "goal": "लक्ष्य",
-      "goalDescription": "कतार ख़त्म होने के बाद चलता है और तब तक चलता रहता है जब तक आप इसे रद्द नहीं कर देते।",
-      "goalLoadFailed": "यह लक्ष्य लोड नहीं किया जा सका",
-      "goalRetry": "संवाद बंद करें और पुनः प्रयास करने के लिए इसे दोबारा खोलें।",
-      "goalUnavailable": "यह लक्ष्य अब उपलब्ध नहीं है.",
       "itemsWaiting": "{{items}} प्रतीक्षा कर रहा है",
       "itemsWaitingTogether": "{{messages}} और {{events}} प्रतीक्षारत हैं",
-      "loadingGoal": "लक्ष्य लोड हो रहा है...",
       "message_one": "{{count}} संदेश",
       "message_other": "{{count}} संदेश",
-      "openGoalDetails": "लक्ष्य विवरण खोलें",
       "pendingAutomationEvent": "लंबित ऑटोमेशन कार्यक्रम",
       "queuedMessage": "पंक्तिबद्ध संदेश",
       "queuedMessageDescription": "लाइन में प्रतीक्षा करता है और वर्तमान रन समाप्त होने पर भेजता है।",
@@ -2170,8 +2217,6 @@
       "title": "कंपोज़र ड्राफ्ट बदलें?"
     },
     "run": {
-      "automatedRun": "स्वचालित रन",
-      "collapseGroupedHistory": "समूहीकृत रन इतिहास को संक्षिप्त करें",
       "collapseWorkHistory": "कार्य इतिहास संक्षिप्त करें",
       "creditUsage": "क्रेडिट उपयोग",
       "done": {
@@ -2186,33 +2231,27 @@
         "wrappedUp": "{{time}} पर समाप्त हुआ"
       },
       "duration": {
-        "hour_one": "{{count}} घंटा",
-        "hour_other": "{{count}} घंटे",
         "hoursShort_one": "{{count}}h",
         "hoursShort_other": "{{count}}h",
-        "minute_one": "{{count}} मि",
-        "minute_other": "{{count}} मिनट",
         "minutesShort_one": "{{count}}m",
         "minutesShort_other": "{{count}}m",
         "secondsShort_one": "{{count}}s",
         "secondsShort_other": "{{count}}s"
       },
-      "durationFor": "{{label}} के लिए {{duration}}",
-      "expandGroupedHistory": "समूहीकृत रन इतिहास का विस्तार करें",
       "expandWorkHistory": "कार्य इतिहास का विस्तार करें",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "फ़ास्ट मोड बंद",
       "fastModeOn": "फ़ास्ट मोड चालू",
       "fastModeWillBeOff": "फ़ास्ट मोड बंद होगा",
       "fastModeWillBeOn": "फ़ास्ट मोड चालू होगा",
-      "goalFor": "{{label}} के लिए लक्ष्य",
-      "groupedRunsFor_one": "{{count}} रन {{source}} के लिए",
-      "groupedRunsFor_other": "{{count}} रन {{source}} के लिए",
       "justNow": "बस अब",
       "keepGoing": "जारी रखें",
       "keepGoingAt": "चलते रहें · {{timestamp}}",
       "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
       "queueEllipsis": "कतार...",
+      "relatedArtifactCount_one": "{{formattedCount}} आर्टिफ़ैक्ट",
+      "relatedArtifactCount_other": "{{formattedCount}} आर्टिफ़ैक्ट",
+      "relatedArtifacts": "संबंधित आर्टिफ़ैक्ट",
       "selectedModelAppliesAfterCurrentRun": "आपका चुना हुआ {{model}} मॉडल इस रन के बाद लागू होगा",
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",
@@ -2229,7 +2268,6 @@
       "viewActivityLogs": "गतिविधि लॉग देखें",
       "viewLogs": "रन लॉग देखें",
       "waitingIn": "प्रतीक्षा कर रहा है",
-      "worked": "काम किया",
       "workedFor": "{{duration}} के लिए काम किया",
       "workingFor": "{{duration}} से काम जारी"
     },
@@ -2269,13 +2307,9 @@
       "openChatMenu": "चैट मेनू खोलें",
       "openListMenu": "चैट सूची मेनू खोलें",
       "pin": "चैट पिन करें",
-      "pinDropAfter": "{{title}} के बाद छोड़ें",
-      "pinDropBefore": "{{title}} से पहले छोड़ें",
       "pinned": "पिन की गई",
       "rename": "चैट का नाम बदलें",
       "renameDescription": "इस चैट थ्रेड के लिए एक नया नाम दर्ज करें।",
-      "reorderInstructions": "क्रम बदलने के लिए खींचें। चुनने के लिए स्पेस, स्थान बदलने के लिए तीर वाली कुंजियाँ, छोड़ने के लिए स्पेस या रद्द करने के लिए Esc दबाएँ।",
-      "reorderThread": "{{title}} का क्रम बदलें",
       "titlePlaceholder": "चैट शीर्षक",
       "unpin": "चैट अनपिन करें",
       "unread": "अपठित",
@@ -2312,6 +2346,199 @@
       "openTemplatesAria": "टेम्पलेट ब्राउज़ करें",
       "startWithPrompt": "बनाएं",
       "templates": "टेम्पलेट"
+    },
+    "taskChips": {
+      "chooseTask": "काम चुनें",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "जन्मदिन का निमंत्रण डिज़ाइन करें",
+            "prompt": "जन्मदिन का निमंत्रण डिज़ाइन करें"
+          },
+          "brandCharacter": {
+            "label": "मेरे ब्रांड के लिए किरदार बनाएँ",
+            "prompt": "मेरे ब्रांड के लिए किरदार बनाएँ"
+          },
+          "businessLogo": {
+            "label": "मेरे व्यवसाय के लिए लोगो बनाएँ",
+            "prompt": "मेरे व्यवसाय के लिए लोगो बनाएँ"
+          },
+          "cafeMenu": {
+            "label": "मेरे कैफ़े का मेन्यू डिज़ाइन करें",
+            "prompt": "मेरे कैफ़े का मेन्यू डिज़ाइन करें"
+          },
+          "eventPoster": {
+            "label": "मेरे कार्यक्रम के लिए पोस्टर डिज़ाइन करें",
+            "prompt": "मेरे कार्यक्रम के लिए पोस्टर डिज़ाइन करें"
+          },
+          "finishedSketch": {
+            "label": "मेरे स्केच को तैयार चित्र में बदलें",
+            "prompt": "मेरे स्केच को तैयार चित्र में बदलें"
+          },
+          "greetingCard": {
+            "label": "एक निजी शुभकामना कार्ड बनाएँ",
+            "prompt": "एक निजी शुभकामना कार्ड बनाएँ"
+          },
+          "headshot": {
+            "label": "काम के लिए पेशेवर प्रोफ़ाइल फ़ोटो बनाएँ",
+            "prompt": "काम के लिए पेशेवर प्रोफ़ाइल फ़ोटो बनाएँ"
+          },
+          "infographic": {
+            "label": "विचार को इन्फ़ोग्राफ़िक में बदलें",
+            "prompt": "विचार को इन्फ़ोग्राफ़िक में बदलें"
+          },
+          "newsletterCover": {
+            "label": "मेरे न्यूज़लेटर का कवर बनाएँ",
+            "prompt": "मेरे न्यूज़लेटर का कवर बनाएँ"
+          },
+          "packaging": {
+            "label": "मेरे उत्पाद की पैकेजिंग के विकल्प देखें",
+            "prompt": "मेरे उत्पाद की पैकेजिंग के विकल्प देखें"
+          },
+          "photoLighting": {
+            "label": "मेरी फ़ोटो की रोशनी सुधारें",
+            "prompt": "मेरी फ़ोटो की रोशनी सुधारें"
+          },
+          "presentationVisual": {
+            "label": "मेरी प्रस्तुति के लिए चित्र बनाएँ",
+            "prompt": "मेरी प्रस्तुति के लिए चित्र बनाएँ"
+          },
+          "productScene": {
+            "label": "मेरे उत्पाद को नए दृश्य में दिखाएँ",
+            "prompt": "मेरे उत्पाद को नए दृश्य में दिखाएँ"
+          },
+          "profileBanner": {
+            "label": "मेरा प्रोफ़ाइल बैनर नया बनाएँ",
+            "prompt": "मेरा प्रोफ़ाइल बैनर नया बनाएँ"
+          },
+          "roomDesign": {
+            "label": "मेरे कमरे का नया रूप देखें",
+            "prompt": "मेरे कमरे का नया रूप देखें"
+          },
+          "storePhoto": {
+            "label": "मेरी दुकान के लिए फ़ोटो तैयार करें",
+            "prompt": "मेरी दुकान के लिए फ़ोटो तैयार करें"
+          },
+          "websiteImage": {
+            "label": "मेरी वेबसाइट के लिए चित्र बनाएँ",
+            "prompt": "मेरी वेबसाइट के लिए चित्र बनाएँ"
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "फ़ोटो को वीडियो में बदलें",
+            "prompt": "मेरी दी हुई फ़ोटो में प्राकृतिक गति जोड़ें। विषय की पहचान बनाए रखें और पूछें कि क्या चलना चाहिए।"
+          },
+          "brandIntro": {
+            "label": "मेरे ब्रांड का परिचय वीडियो बनाएँ",
+            "prompt": "मेरे लोगो और ब्रांड की जानकारी से छोटा शुरुआती वीडियो बनाएँ। माहौल चुनने में मदद करें।"
+          },
+          "eventPromo": {
+            "label": "मेरे कार्यक्रम का प्रचार करें",
+            "prompt": "मेरे कार्यक्रम के लिए छोटा प्रचार वीडियो बनाएँ। कार्यक्रम, दर्शकों और शामिल करने वाली जानकारी के बारे में पूछें।"
+          },
+          "loopingBackground": {
+            "label": "लूप में चलने वाली पृष्ठभूमि बनाएँ",
+            "prompt": "हल्की गति वाली वीडियो पृष्ठभूमि बनाएँ जो बिना रुकावट दोहराई जाए। मनचाहा दृश्य और माहौल पूछें।"
+          },
+          "productDemo": {
+            "label": "मेरे उत्पाद को गति में दिखाएँ",
+            "prompt": "मेरे उत्पाद की फ़ोटो से छोटा प्रदर्शन वीडियो बनाएँ। उसका रूप बनाए रखें और मेरे चुने गुण को प्रमुखता दें।"
+          },
+          "socialClip": {
+            "label": "सोशल मीडिया के लिए क्लिप बनाएँ",
+            "prompt": "सोशल मीडिया के लिए छोटा वीडियो बनाएँ। मेरे दर्शकों के लिए स्पष्ट संदेश और उपयुक्त दृश्य शैली चुनने में मदद करें।"
+          },
+          "videoGreeting": {
+            "label": "वीडियो में शुभकामना संदेश बनाएँ",
+            "prompt": "जन्मदिन, त्योहार या उत्सव के लिए छोटा शुभकामना वीडियो बनाएँ। अवसर, पाने वाले व्यक्ति और संदेश के बारे में पूछें।"
+          },
+          "visualExplainer": {
+            "label": "विचार को वीडियो से समझाएँ",
+            "prompt": "एक विचार को आसानी से समझाने वाला छोटा वीडियो बनाएँ। विचार और दर्शकों के बारे में पूछें।"
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "मेरी सेवाएँ बुक करने का पेज बनाएँ",
+            "prompt": "मेरी सेवाओं और बुकिंग के तरीके का पेज बनाएँ। मेरा मौजूदा बुकिंग लिंक इस्तेमाल करें और सेवाओं की जानकारी पूछें।"
+          },
+          "businessSite": {
+            "label": "मेरे व्यवसाय के लिए वेबसाइट बनाएँ",
+            "prompt": "मेरे व्यवसाय, सेवाओं और संपर्क के तरीकों की वेबसाइट बनाएँ। पहले व्यवसाय और दर्शकों की जानकारी पूछें।"
+          },
+          "cafeMenu": {
+            "label": "मेरे कैफ़े का मेन्यू ऑनलाइन डालें",
+            "prompt": "मेरी जानकारी और फ़ोटो से कैफ़े की वेबसाइट बनाएँ जिसमें मेन्यू, कीमतें, खुलने का समय और स्थान हों।"
+          },
+          "coursePage": {
+            "label": "मेरे कोर्स के लिए पेज बनाएँ",
+            "prompt": "मेरे कोर्स, लक्षित विद्यार्थियों और सीखने के नतीजों का पेज बनाएँ। पंजीकरण के लिए मेरा दिया हुआ लिंक इस्तेमाल करें।"
+          },
+          "eventPage": {
+            "label": "मेरे कार्यक्रम के लिए पेज बनाएँ",
+            "prompt": "मेरी दी हुई तारीख, स्थान, कार्यक्रम और पंजीकरण लिंक से कार्यक्रम का पेज बनाएँ। अधूरी जानकारी पूछें।"
+          },
+          "linkPage": {
+            "label": "मेरे लिंक एक पेज पर लाएँ",
+            "prompt": "मेरे परिचय, काम और सोशल लिंक का एक सरल पेज बनाएँ। पूछें कि कौन से लिंक शामिल करने हैं।"
+          },
+          "portfolio": {
+            "label": "मेरे काम का पोर्टफ़ोलियो बनाएँ",
+            "prompt": "मेरे काम के लिए पोर्टफ़ोलियो वेबसाइट बनाएँ। प्रोजेक्ट, परिचय और संपर्क जानकारी व्यवस्थित करने में मदद करें।"
+          },
+          "productLaunch": {
+            "label": "मेरे उत्पाद का पेज बनाएँ",
+            "prompt": "मेरे उत्पाद के लाभ, चित्र और स्पष्ट अगला कदम दिखाने वाला पेज बनाएँ। उत्पाद और दर्शकों के बारे में पूछें।"
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "हर सुबह ज़रूरी ईमेल का सारांश पाएँ",
+            "prompt": "हर सुबह ज़रूरी ईमेल, लंबित जवाब और करने वाले कामों का सारांश दें। पहले इनबॉक्स और सारांश मिलने का समय पूछें।"
+          },
+          "fileOrganization": {
+            "label": "नई आने वाली फ़ाइलें व्यवस्थित करें",
+            "prompt": "तय नामकरण और वर्गीकरण नियमों के अनुसार नई फ़ाइलें व्यवस्थित करें। पहले स्रोत, लक्ष्य फ़ोल्डर और श्रेणियाँ पूछें।"
+          },
+          "meetingActions": {
+            "label": "बैठक के नोट्स से कामों की सूची बनाएँ",
+            "prompt": "नए बैठक नोट्स आने पर काम, ज़िम्मेदार व्यक्ति और समयसीमा निकालें। अधूरी जानकारी बताएँ और नोट्स का स्थान पूछें।"
+          },
+          "meetingPrep": {
+            "label": "मेरी बैठकों की तैयारी में मदद करें",
+            "prompt": "बैठक से पहले प्रतिभागियों, पृष्ठभूमि और चर्चा के बिंदुओं की जानकारी तैयार करें। कैलेंडर, सामग्री और याद दिलाने का समय पूछें।"
+          },
+          "numbersBrief": {
+            "label": "मेरे आँकड़ों का दैनिक सारांश दें",
+            "prompt": "मेरे चुने आँकड़ों और पिछले अपडेट से हुए बदलावों का रोज़ सारांश दें। डेटा स्रोत, संकेतक और भेजने का समय पूछें।"
+          },
+          "progressRecap": {
+            "label": "मेरी प्रगति और अगले कदमों का सारांश दें",
+            "prompt": "पूरे हुए काम, बाकी काम और अगली प्राथमिकताओं का नियमित सारांश दें। काम के रिकॉर्ड का स्रोत और दैनिक या साप्ताहिक आवृत्ति पूछें।"
+          },
+          "replyWatch": {
+            "label": "ईमेल का जवाब आने पर बताएँ",
+            "prompt": "किसी एक ईमेल के जवाब पर नज़र रखें और जवाब आने पर उसका सारांश देकर मुझे बताएँ। पहले संबंधित ईमेल पूछें।"
+          },
+          "topicUpdates": {
+            "label": "पसंद के विषय की नई जानकारी पाएँ",
+            "prompt": "मेरी पसंद के विषय पर नज़र रखें और स्रोतों सहित महत्वपूर्ण नई जानकारी दें। पहले विषय और अपडेट की आवृत्ति पूछें।"
+          }
+        }
+      },
+      "ideasLabel": "शुरुआती सुझाव",
+      "label": "शुरू करने के लिए काम",
+      "moreIdeas": "और सुझाव",
+      "moreTemplates": "और टेम्पलेट",
+      "presentationTemplates": "प्रस्तुति टेम्पलेट",
+      "tasks": {
+        "image": "चित्र",
+        "presentation": "स्लाइड",
+        "video": "वीडियो",
+        "website": "वेबसाइट",
+        "workflow": "वर्कफ़्लो"
+      }
     },
     "templates": {
       "categories": {
@@ -2511,8 +2738,8 @@
     },
     "callback": {
       "connected": "{{connector}} कनेक्ट हुआ",
-      "connectedAs": "{{username}} के रूप में जुड़ा हुआ है। आप इस विंडो को बंद कर सकते हैं।",
-      "connectedDescription": "आपका खाता कनेक्ट कर दिया गया है. आप इस विंडो को बंद कर सकते हैं।",
+      "connectedAs": "{{username}} के रूप में कनेक्ट हो गया है। जारी रखने के लिए यह विंडो बंद करें और मूल पेज पर लौटें।",
+      "connectedDescription": "आपका खाता कनेक्ट हो गया है। जारी रखने के लिए यह विंडो बंद करें और मूल पेज पर लौटें।",
       "connecting": "{{connector}} कनेक्ट हो रहा है…",
       "connectingDescription": "कृपया तब तक प्रतीक्षा करें जब तक हम आपका खाता कनेक्ट करना समाप्त नहीं कर लेते।",
       "customConnectorLabel": "कस्टम कनेक्टर",
@@ -2679,6 +2906,10 @@
         "title": "कनेक्शन विधियाँ अनुपलब्ध हैं"
       }
     },
+    "connectionProgress": {
+      "description": "यदि अनुमति माँगी जाए, तो उसे पूरा करें। कनेक्शन सेटअप पूरा होने तक कृपया प्रतीक्षा करें।",
+      "title": "आपका खाता कनेक्ट हो रहा है"
+    },
     "custom": {
       "connect": {
         "configured": "कॉन्फ़िगर किया गया",
@@ -2747,7 +2978,7 @@
         "prefixesHint": "(प्रति पंक्ति एक, केवल https)",
         "recommended": "(अनुशंसित)",
         "redirectCopy": "रीडायरेक्ट URL कॉपी करें",
-        "redirectHint": "(इस URL को प्रोवाइडर के OAuth ऐप्लिकेशन में रजिस्टर करें। पहले से रजिस्टर किया गया VM0 या Okou रीडायरेक्ट URL भी बनाए रखें।)",
+        "redirectHint": "(इस URL को प्रोवाइडर के OAuth ऐप्लिकेशन में रजिस्टर करें।)",
         "redirectUrl": "URL को पुनर्निर्देशित करें",
         "removeApiAuthentication": "API प्रमाणीकरण हटाएँ",
         "removeAutomatic": "स्वचालित प्रमाणीकरण हटाएँ",
@@ -5446,7 +5677,7 @@
     "displayNames": {
       "avatar": "अवतार",
       "finance": "वित्त",
-      "imageRecognize": "छवि पहचान",
+      "imageRecognition": "छवि पहचान",
       "maps": "एमएपीएस",
       "peopleSearch": "लोग खोजें",
       "seo": "SEO",
@@ -5508,6 +5739,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "कार्रवाई आवश्यक — डिलीवरी रोकी गई",
         "addAction": "कैलेंडर ऑटोमेशन जोड़ें",
         "addAria": "Google Calendar ऑटोमेशन जोड़ें",
         "addDescriptionCancelled": "Google Calendar ईवेंट रद्द होने पर इस वर्कफ़्लो को चलाएँ।",
@@ -5516,16 +5748,29 @@
         "addTitle": "Google Calendar ऑटोमेशन जोड़ें",
         "calendarId": "कैलेंडर ID",
         "calendarIdPlaceholder": "प्राथमिक",
+        "calendarNotFoundDescription": "यह कैलेंडर अब उपलब्ध नहीं है। इस ऑटोमेशन को फिर से शुरू करने के लिए कोई दूसरा कैलेंडर चुनें।",
         "cancelledDescription": "कैलेंडर ईवेंट रद्द होने पर चलाएँ।",
         "cancelledRule": "जब कैलेंडर {{calendar}} ईवेंट रद्द हो जाता है",
         "cancelledTitle": "Google Calendar इवेंट रद्द कर दिया गया",
+        "cancelRecovery": "रद्द करें",
+        "changeAria": "Google Calendar ऑटोमेशन बदलें",
+        "changeCalendar": "कैलेंडर बदलें",
+        "checkingRecovery": "जाँच की जा रही है कि यह ऑटोमेशन फिर शुरू हो सकता है या नहीं…",
+        "checkRecoveryStatus": "स्थिति जाँचें",
         "createdDescription": "कैलेंडर ईवेंट बनने पर चलाएँ।",
         "createdRule": "जब कैलेंडर {{calendar}} को एक नया ईवेंट मिलता है",
         "createdTitle": "Google Calendar इवेंट बनाया गया",
+        "enabledIntent": "सक्षम",
+        "reconnectDescription": "इस ऑटोमेशन के फिर से शुरू होने से पहले Google Calendar को दोबारा कनेक्ट करना होगा।",
+        "reconnectGoogleCalendar": "Google Calendar दोबारा कनेक्ट करें",
+        "recoveryStatus": "Google Calendar की बहाली",
+        "recoveryUnconfirmed": "बहाली की पुष्टि नहीं हुई है। इस ऑटोमेशन की चेतावनी देखें, फिर इसकी स्थिति दोबारा जाँचें।",
+        "saveCalendar": "कैलेंडर सेव करें",
         "summary": "कैलेंडर {{calendar}}",
         "updatedDescription": "कैलेंडर ईवेंट अपडेट होने पर चलाएँ।",
         "updatedRule": "जब कैलेंडर {{calendar}} इवेंट अपडेट किया जाता है",
-        "updatedTitle": "Google Calendar इवेंट अपडेट किया गया"
+        "updatedTitle": "Google Calendar इवेंट अपडेट किया गया",
+        "updateError": "हम इस कैलेंडर को बदल नहीं सके। फिर से कोशिश करें।"
       },
       "chat": {
         "addAction": "चैट ऑटोमेशन जोड़ें",
@@ -5623,7 +5868,7 @@
         "branches": "शाखाएँ",
         "branchesPlaceholder": "मुख्य, रिहाई",
         "commentPrefixes": "टिप्पणी उपसर्ग",
-        "commentPrefixesPlaceholder": "/शून्य, /सत्यापित, /तैनाती",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "निष्कर्ष",
         "conclusionsSummary": "निष्कर्ष {{values}}",
         "creators": "रचनाकारों",
@@ -6101,6 +6346,7 @@
       }
     },
     "list": {
+      "actionRequired": "कार्रवाई आवश्यक",
       "agentEmpty": "इस एजेंट के रूप में अभी तक कोई वर्कफ़्लो नहीं चलता है।",
       "all": "सभी",
       "allAgents": "सभी एजेंट",
@@ -6118,6 +6364,7 @@
       },
       "noWorkflows": "कोई वर्कफ़्लो नहीं",
       "open": "{{title}} खोलें",
+      "openRecovery": "{{title}} की रिकवरी खोलें",
       "runsAs": "के रूप में चलता है",
       "runsAsAria": "{{agent}} के रूप में चलता है",
       "section": {

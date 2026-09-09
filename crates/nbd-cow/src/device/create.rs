@@ -13,24 +13,27 @@ use uuid::Uuid;
 use super::NbdCowDevice;
 use super::connection::{
     ConnectedDevice, OwnedDisconnectState, connect_device_with_state_critical_section,
-    disconnect_connected_if_owned, disconnect_connected_if_owned_result_critical_section,
-    disconnect_connected_if_owned_result_with_lease_critical_section,
+    disconnect_connected_if_owned_result_with_kernel,
+    disconnect_connected_if_owned_result_with_lease_and_kernel,
+    disconnect_connected_if_owned_with_kernel,
 };
 use super::create_timing::{
     NbdCowCreateObserver, NbdCowCreateStage, NbdCowCreateTiming, NbdNetlinkConnectTiming,
 };
+use super::kernel::{CreateKernel, NativeKernel};
 
 const MAX_SIZE_RETRIES: u32 = 5;
 const MAX_EBUSY_RETRIES: u32 = 16;
 const SIZE_RETRY_DELAY: Duration = Duration::from_millis(200);
 
-struct CreateAttemptGuard {
+struct CreateAttemptGuard<K: CreateKernel = NativeKernel> {
     pool: pool::DevicePoolHandle,
     device_index: u32,
     lease: Option<pool::DeviceLease>,
     shutdown: CancellationToken,
     server_handles: Vec<JoinHandle<()>>,
     connected: Option<ConnectedDevice>,
+    kernel: K,
 }
 
 #[derive(Clone, Copy)]
@@ -65,21 +68,23 @@ impl CreateDisconnectStatus {
     }
 }
 
-struct CreateContext<'a, 'observer> {
+struct CreateContext<'a, 'observer, K: CreateKernel> {
     device_pool: &'a pool::DevicePoolHandle,
     cow_file: &'a Path,
     cow: cow_io::CowIo,
     size: u64,
     timing: &'a mut NbdCowCreateTiming<'observer>,
+    kernel: K,
 }
 
-impl<'a, 'observer> CreateContext<'a, 'observer> {
+impl<'a, 'observer, K: CreateKernel> CreateContext<'a, 'observer, K> {
     fn new(
         device_pool: &'a pool::DevicePoolHandle,
         cow_file: &'a Path,
         cow: cow_io::CowIo,
         size: u64,
         timing: &'a mut NbdCowCreateTiming<'observer>,
+        kernel: K,
     ) -> Self {
         Self {
             device_pool,
@@ -87,6 +92,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             cow,
             size,
             timing,
+            kernel,
         }
     }
 
@@ -98,7 +104,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             let device_index = attempt.device_index();
 
             let verify_started_at = Instant::now();
-            let size_matches = netlink::verify_device_size(device_index, self.size).await;
+            let size_matches = self.kernel.verify_size(device_index, self.size).await;
             self.timing.record_stage(
                 NbdCowCreateStage::SizeVerify,
                 verify_started_at,
@@ -135,7 +141,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
         ))))
     }
 
-    async fn acquire_connected_attempt(&mut self) -> Result<CreateAttemptGuard> {
+    async fn acquire_connected_attempt(&mut self) -> Result<CreateAttemptGuard<K>> {
         let mut ebusy_count: u32 = 0;
 
         loop {
@@ -149,7 +155,11 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             let acquisition = acquisition?;
             let (lease, source, scan_duration) = acquisition.into_parts();
             self.timing.record_acquisition(source, scan_duration);
-            let mut attempt = CreateAttemptGuard::new(self.device_pool.clone(), lease);
+            let mut attempt = CreateAttemptGuard::with_kernel(
+                self.device_pool.clone(),
+                lease,
+                self.kernel.clone(),
+            );
             let device_index = attempt.device_index();
 
             let setup_started_at = Instant::now();
@@ -241,7 +251,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
         }
     }
 
-    fn setup_dispatch_servers(&self, attempt: &mut CreateAttemptGuard) -> Result<Vec<OwnedFd>> {
+    fn setup_dispatch_servers(&self, attempt: &mut CreateAttemptGuard<K>) -> Result<Vec<OwnedFd>> {
         let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
 
         for _ in 0..NUM_CONNECTIONS {
@@ -263,7 +273,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
 
     async fn connect_attempt(
         &mut self,
-        attempt: &mut CreateAttemptGuard,
+        attempt: &mut CreateAttemptGuard<K>,
         client_fds: Vec<OwnedFd>,
     ) -> ConnectAttemptResult {
         let device_index = attempt.device_index();
@@ -285,6 +295,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             BLOCK_SIZE as u64,
             self.device_pool.clone(),
             lease,
+            self.kernel.clone(),
         )
         .await;
         let (timing, critical_result) = critical_section.into_parts();
@@ -303,8 +314,15 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
     }
 }
 
+#[cfg(test)]
 impl CreateAttemptGuard {
     fn new(pool: pool::DevicePoolHandle, lease: pool::DeviceLease) -> Self {
+        Self::with_kernel(pool, lease, NativeKernel)
+    }
+}
+
+impl<K: CreateKernel> CreateAttemptGuard<K> {
+    fn with_kernel(pool: pool::DevicePoolHandle, lease: pool::DeviceLease, kernel: K) -> Self {
         let device_index = lease.index();
         Self {
             pool,
@@ -313,6 +331,7 @@ impl CreateAttemptGuard {
             shutdown: CancellationToken::new(),
             server_handles: Vec::with_capacity(NUM_CONNECTIONS),
             connected: None,
+            kernel,
         }
     }
 
@@ -413,10 +432,11 @@ impl CreateAttemptGuard {
     ) -> CreateDisconnectStatus {
         match self.take_lease() {
             Some(lease) => {
-                match disconnect_connected_if_owned_result_with_lease_critical_section(
+                match disconnect_connected_if_owned_result_with_lease_and_kernel(
                     connected,
                     self.pool.clone(),
                     lease,
+                    self.kernel.clone(),
                 )
                 .await
                 {
@@ -436,7 +456,12 @@ impl CreateAttemptGuard {
                     }
                 }
             }
-            None => match disconnect_connected_if_owned_result_critical_section(connected).await {
+            None => match disconnect_connected_if_owned_result_with_kernel(
+                connected,
+                self.kernel.clone(),
+            )
+            .await
+            {
                 Ok(disconnect_state) => {
                     self.owned_disconnect_status(mode, connected, Ok(disconnect_state))
                 }
@@ -588,14 +613,14 @@ fn log_owned_disconnect_foreign(mode: CreateDisconnectCleanupMode, connected: Co
     }
 }
 
-impl Drop for CreateAttemptGuard {
+impl<K: CreateKernel> Drop for CreateAttemptGuard<K> {
     fn drop(&mut self) {
         self.shutdown.cancel();
         for handle in self.server_handles.drain(..) {
             handle.abort();
         }
         if let Some(connected) = self.connected.take() {
-            disconnect_connected_if_owned(connected);
+            disconnect_connected_if_owned_with_kernel(connected, &self.kernel);
         }
         if let Some(lease) = self.lease.take() {
             let device_index = lease.index();
@@ -631,6 +656,25 @@ impl NbdCowDevice {
         device_pool: &pool::DevicePoolHandle,
         observer: Option<&mut dyn NbdCowCreateObserver>,
     ) -> Result<(Self, pool::DeviceLease)> {
+        Self::create_with_kernel(
+            base_image,
+            cow_file,
+            size,
+            device_pool,
+            observer,
+            NativeKernel,
+        )
+        .await
+    }
+
+    async fn create_with_kernel(
+        base_image: &Path,
+        cow_file: &Path,
+        size: u64,
+        device_pool: &pool::DevicePoolHandle,
+        observer: Option<&mut dyn NbdCowCreateObserver>,
+        kernel: impl CreateKernel,
+    ) -> Result<(Self, pool::DeviceLease)> {
         let mut timing = NbdCowCreateTiming::new(observer);
         let result = async {
             let cow_started_at = Instant::now();
@@ -647,7 +691,8 @@ impl NbdCowDevice {
                 cow_layer.is_ok(),
             );
             let cow = cow_io::CowIo::new(cow_layer?);
-            let mut context = CreateContext::new(device_pool, cow_file, cow, size, &mut timing);
+            let mut context =
+                CreateContext::new(device_pool, cow_file, cow, size, &mut timing, kernel);
 
             context.create_with_size_retries().await
         }
@@ -656,6 +701,9 @@ impl NbdCowDevice {
         result
     }
 }
+
+#[cfg(test)]
+mod size_retry_tests;
 
 async fn abort_server_handles(handles: Vec<JoinHandle<()>>) {
     for handle in &handles {

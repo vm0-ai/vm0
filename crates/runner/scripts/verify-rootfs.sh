@@ -79,7 +79,7 @@ MOUNT_DIR=""
 unmount_with_retries() {
   local target="$1"
   local attempt
-  for attempt in 1 2 3; do
+  for ((attempt = 0; attempt < 3; attempt++)); do
     if sudo umount "$target" 2>/dev/null; then
       return 0
     fi
@@ -290,14 +290,14 @@ fi
 # agent-abnormal-exit-diagnostics.sh runs with `set +e` and has command/fallback
 # guards where absence should reduce diagnostic detail, not block image verification.
 
-# Shell wrappers used by vsock-guest before the runner command body executes.
+# Shell wrappers used by guest-control-server before the runner command body executes.
 # Env-backed wrappers clean up their transient script directory before exec.
 check_required_executable "/bin/sh" "sh"
 check_required_executable "/bin/bash" "bash"
 check_required_executable "/usr/bin/su" "su"
 check_required_executable "/usr/bin/rmdir" "rmdir"
 
-# Guest state and timezone repair. /sbin/guest-reseed is rootfs-only and is
+# Guest state and timezone repair. /sbin/guest-state-restore is rootfs-only and is
 # checked with the guest binaries above when verifying a rootfs image.
 check_required_executable "/usr/bin/date" "date"
 check_required_executable "/usr/bin/ln" "ln"

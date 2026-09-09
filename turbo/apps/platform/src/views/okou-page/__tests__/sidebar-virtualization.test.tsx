@@ -3,6 +3,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   act,
@@ -12,6 +13,7 @@ import {
   within,
 } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 import {
   click,
@@ -58,6 +60,7 @@ function mockThreads(count: number): void {
           selectedModel: null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedVideoModel: null,
         };
       }),
       latestEventId: null,
@@ -84,6 +87,9 @@ function mockThreads(count: number): void {
       },
     });
   });
+  context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
 }
 
 function mockViewportHeight(height: () => number, threadCount = 120): void {
@@ -104,6 +110,35 @@ function mockViewportHeight(height: () => number, threadCount = 120): void {
 function resizeWindow(): void {
   fireEvent(window, new Event("resize"));
 }
+
+test("entering the scrolled list keeps the visible threads available for navigation", async () => {
+  mockThreads(120);
+  mockViewportHeight(() => {
+    return 612;
+  });
+  await setupPage({ context, path: `/chats/${threadId(80)}` });
+  const sidebar = screen.getByTestId("chat-list-column");
+  await within(sidebar).findByText("History 81");
+  const viewport = within(sidebar).getByTestId("sidebar-scroll-area");
+  await waitFor(() => {
+    expect(viewport.scrollTop).toBe(80 * ROW_HEIGHT);
+  });
+  viewport.scrollTop = 0;
+  fireEvent.scroll(viewport);
+  const title = await within(sidebar).findByText("History 1");
+  const link = title.closest("a");
+  const user = userEvent.setup();
+  act(() => {
+    viewport.focus();
+  });
+  await user.keyboard("{Tab}");
+  expect(link).toHaveFocus();
+  expect(viewport.scrollTop).toBe(0);
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(window.location.pathname).toBe(`/chats/${threadId(0)}`);
+  });
+});
 
 function queueAnimationFrames(): () => void {
   let nextFrameId = 0;
@@ -163,6 +198,26 @@ test("Wait for styles before mounting the virtual viewport", async () => {
   });
   expect(within(sidebar).getByText("History 25")).toBeInTheDocument();
   expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
+});
+
+test("Resize and navigate a loaded virtual viewport", async () => {
+  const threadCount = 6406;
+  mockThreads(threadCount);
+  let viewportHeight = 612;
+  mockViewportHeight(() => {
+    return viewportHeight;
+  }, threadCount);
+
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+  const sidebar = await screen.findByTestId("chat-list-column");
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    expect(rows()).toHaveLength(25);
+  });
+  expect(within(sidebar).getByText("History 25")).toBeInTheDocument();
+  expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
 
   viewportHeight = 900;
   resizeWindow();
@@ -203,8 +258,74 @@ test("Keep the virtual viewport unmounted when the main stylesheet fails", async
   );
 });
 
+test("Use the fallback window before sidebar geometry is available", async () => {
+  mockThreads(120);
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+
+  const sidebar = screen.getByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(
+      within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row"),
+    ).toHaveLength(100);
+  });
+  expect(within(sidebar).getByText("History 100")).toBeInTheDocument();
+  expect(within(sidebar).queryByText("History 101")).not.toBeInTheDocument();
+});
+
+test("Do not retain rows or show an empty state when the list query fails", async () => {
+  mockThreads(120);
+  const unreads = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.unreads, async ({ respond }) => {
+    await unreads.promise;
+    return respond(403, {
+      error: {
+        code: "FORBIDDEN",
+        message: "Unread conversations are unavailable",
+      },
+    });
+  });
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+
+  const sidebar = screen.getByTestId("chat-list-column");
+  await within(sidebar).findByText("History 1");
+  click(within(sidebar).getByLabelText("Open chat list menu"));
+  const unreadOnlyItem = queryAllByRoleFast("menuitem").find((item) => {
+    return item.textContent?.trim() === "Unread only";
+  });
+  if (!unreadOnlyItem) {
+    throw new Error("Unread-only menu item is missing");
+  }
+  click(unreadOnlyItem);
+
+  await waitFor(() => {
+    expect(within(sidebar).queryByText("History 1")).not.toBeInTheDocument();
+    expect(within(sidebar).getAllByTestId("sidebar-skeleton")).toHaveLength(3);
+  });
+
+  unreads.resolve(undefined);
+  await waitFor(() => {
+    expect(within(sidebar).queryAllByTestId("sidebar-skeleton")).toHaveLength(
+      0,
+    );
+  });
+  const [visibleError] = await screen.findAllByText(
+    "Unread conversations are unavailable",
+  );
+  expect(visibleError).toBeVisible();
+  expect(
+    within(sidebar).queryByText("No unread chats"),
+  ).not.toBeInTheDocument();
+  expect(
+    within(sidebar).queryByTestId("sidebar-chat-threads-virtual-list"),
+  ).not.toBeInTheDocument();
+});
+
 test("Coalesce sidebar resize bursts and cancel pending measurements when hidden", async () => {
   mockThreads(120);
+  let viewportHeight = 612;
+  mockViewportHeight(() => {
+    return viewportHeight;
+  });
   await setupPage({
     context,
     path: `/chats/${threadId(0)}`,
@@ -215,11 +336,10 @@ test("Coalesce sidebar resize bursts and cancel pending measurements when hidden
     return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
   };
   await waitFor(() => {
-    expect(rows()).toHaveLength(100);
+    expect(rows()).toHaveLength(25);
   });
 
   const viewport = within(sidebar).getByTestId("sidebar-scroll-area");
-  let viewportHeight = 120 * ROW_HEIGHT;
   let heightReads = 0;
   vi.spyOn(viewport, "clientHeight", "get").mockImplementation(() => {
     heightReads += 1;
@@ -386,6 +506,7 @@ test("Refresh virtualization when the upgrade card appears and disappears", asyn
   let tier = "team";
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
+      showUsagePack: false,
       tier,
       credits: 10_000,
       onboardingPaymentPending: false,

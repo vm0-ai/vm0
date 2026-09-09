@@ -441,12 +441,6 @@ unless Array(bootstrap["needs"]).include?("cli-e2e-03-runner-prepare")
   raise "runner bootstrap must wait for the token artifact"
 end
 bootstrap_steps = bootstrap.fetch("steps")
-legacy_provider_writer = bootstrap_steps.find do |step|
-  step.fetch("run", "").match?(/defaultProviderType:\s*"vm0"/)
-end
-if legacy_provider_writer
-  raise "runner bootstrap policy writers must not emit the legacy vm0 provider discriminator"
-end
 unless bootstrap_steps.any? do |step|
     step["uses"]&.start_with?("actions/checkout@")
   end
@@ -587,6 +581,9 @@ run_step = runner.fetch("steps").find do |step|
   step.fetch("name", "").include?("Run runner E2E tests")
 end
 raise "missing runner E2E BATS execution" unless run_step
+if run_step.key?("continue-on-error")
+  raise "runner E2E BATS failures must remain blocking"
+end
 run_script = run_step.fetch("run")
 unless run_script.include?('mapfile -t test_files') &&
     run_script.include?('BATS_TEST_TIMEOUT=240 ./test/libs/bats/bin/bats') &&
@@ -610,10 +607,13 @@ unless runner.fetch("steps").any? do |step|
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Upload runner E2E JUnit XML" &&
+      step["continue-on-error"] == true &&
+      step["if"] == "${{ !cancelled() }}" &&
       step.dig("with", "name") == "e2e-runner-junit-${{ matrix.index }}" &&
+      step.dig("with", "path") == "e2e/results/runner-${{ matrix.index }}/" &&
       step.dig("with", "retention-days") == 7
   end
-  raise "every runner shard must upload its JUnit report"
+  raise "every runner shard must attempt a non-blocking JUnit upload unless cancelled"
 end
 
 cleanup_steps = account_cleanup.fetch("steps")

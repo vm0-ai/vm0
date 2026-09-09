@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.146](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.145...guest-write-file-v0.1.146) (2026-09-09)
+
+## [0.1.145](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.144...guest-write-file-v0.1.145) (2026-09-08)
+
+## [0.1.144](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.143...guest-write-file-v0.1.144) (2026-09-08)
+
+## [0.1.143](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.142...guest-write-file-v0.1.143) (2026-09-08)
+
+## [0.1.142](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.141...guest-write-file-v0.1.142) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** batch required connector context with agent private files ([#32545](https://github.com/vm0-ai/vm0/issues/32545)) ([a297e80](https://github.com/vm0-ai/vm0/commit/a297e80b989a3d11b3b26a5bc93939d69a996318))
+
+## [0.1.141](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.140...guest-write-file-v0.1.141) (2026-09-08)
+
+## [0.1.140](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.139...guest-write-file-v0.1.140) (2026-09-08)
+
+## [0.1.139](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.138...guest-write-file-v0.1.139) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
+## [0.1.138](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.137...guest-write-file-v0.1.138) (2026-09-07)
+
+
+### Documentation
+
+* **guest-write-file:** correct private-mode usage syntax ([#32315](https://github.com/vm0-ai/vm0/issues/32315)) ([35076cc](https://github.com/vm0-ai/vm0/commit/35076cc86acdd535ba2b5c6143edc173c1d66c94))
+
 ## [0.1.137](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.136...guest-write-file-v0.1.137) (2026-09-07)
 
 ## [0.1.136](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.135...guest-write-file-v0.1.136) (2026-09-07)

@@ -1,3 +1,4 @@
+import { stoppedOkouDriverState } from "./test/desktop-driver-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import {
@@ -10,6 +11,7 @@ function computerUseState(
   status: ComputerUseHostRuntimeStatus,
 ): DesktopComputerUseState {
   return {
+    driver: stoppedOkouDriverState,
     platform: "darwin",
     supported: true,
     permissions: { accessibility: true, screenRecording: true },

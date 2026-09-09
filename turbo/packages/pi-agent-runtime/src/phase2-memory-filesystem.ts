@@ -57,7 +57,6 @@ export interface SnapshotPhase2Input {
   readonly signal: AbortSignal;
   readonly heartbeat: PiMemoryPhase2ConsolidationArgs["heartbeat"];
   readonly onLifecycle: PiMemoryPhase2ConsolidationArgs["onLifecycle"];
-  readonly onUsage: PiMemoryPhase2ConsolidationArgs["onUsage"];
   readonly selectionDigest: string;
   readonly baseTotalBytes: number;
 }
@@ -354,7 +353,6 @@ function snapshotModel(
     ...(model.requestHeaders === undefined
       ? {}
       : { requestHeaders: Object.freeze({ ...model.requestHeaders }) }),
-    ...(model.api === undefined ? {} : { api: model.api }),
     ...(model.thinkingLevel === undefined
       ? {}
       : { thinkingLevel: model.thinkingLevel }),
@@ -392,7 +390,6 @@ export function snapshotPiMemoryPhase2Input(
     signal,
     heartbeat: args.heartbeat,
     onLifecycle: args.onLifecycle,
-    onUsage: args.onUsage,
     selectionDigest: selectionDigest(selected),
     baseTotalBytes: base.totalBytes,
   });

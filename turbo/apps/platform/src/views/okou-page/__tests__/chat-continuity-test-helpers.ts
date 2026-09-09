@@ -16,12 +16,12 @@ import type { SetupPageAuth } from "../../../__tests__/page-helper.ts";
 import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   chatListAuth,
+  cachedChatListEvents,
   chatListThread,
   installActiveChatBoundaries,
   installChatListAgent,
   installChatListModelPolicies,
   installChatListStream,
-  seedChatListCache,
   sidebarThreadLinks,
 } from "./chat-list-test-helpers.ts";
 
@@ -34,6 +34,7 @@ interface ContinuityDraftPatch {
 interface ContinuityWorkspaceOptions {
   readonly caseId: number;
   readonly threads: readonly ChatThreadSnapshotProjection[];
+  readonly chatListRemoteGate?: Promise<void>;
   readonly drafts?: ReadonlyMap<string, ChatThreadDraft>;
   readonly beforeDraftResponse?: (threadId: string) => Promise<void>;
   readonly beforeMetadataResponse?: (threadId: string) => Promise<void>;
@@ -45,7 +46,15 @@ interface ContinuityWorkspaceOptions {
 }
 
 interface ContinuityWorkspace {
-  readonly auth: Exclude<SetupPageAuth, null>;
+  /**
+   * Page stories must install the cache projection together with its identity.
+   * Keeping these options inseparable prevents callers from falling back to
+   * scheduler-dependent IndexedDB hydration before visible assertions.
+   */
+  readonly pageOptions: {
+    readonly auth: Exclude<SetupPageAuth, null>;
+    readonly cachedChatThreadEvents: ReturnType<typeof cachedChatListEvents>;
+  };
   readonly draftPatches: ContinuityDraftPatch[];
   readonly eventRowQueries: ContinuityEventRowQuery[];
   readonly setDraft: (threadId: string, draft: ChatThreadDraft) => void;
@@ -182,17 +191,17 @@ export function draftPlainText(
     .join("\n");
 }
 
-export async function installContinuityWorkspace(
+export function installContinuityWorkspace(
   context: TestContext,
   options: ContinuityWorkspaceOptions,
-): Promise<ContinuityWorkspace> {
+): ContinuityWorkspace {
   const auth = chatListAuth(200 + options.caseId);
-  await seedChatListCache(options.caseId, auth, options.threads);
   installChatListAgent(context);
   installChatListModelPolicies(context);
   installChatListStream(context, {
     caseId: options.caseId,
     snapshot: options.threads,
+    remoteGate: options.chatListRemoteGate,
   });
   installActiveChatBoundaries(context);
 
@@ -336,7 +345,13 @@ export async function installContinuityWorkspace(
   });
 
   return {
-    auth,
+    pageOptions: {
+      auth,
+      cachedChatThreadEvents: cachedChatListEvents(
+        options.caseId,
+        options.threads,
+      ),
+    },
     draftPatches,
     eventRowQueries,
     setDraft(threadId, draft) {

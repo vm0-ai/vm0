@@ -1,3 +1,5 @@
+import { resolveApiBase } from "../api-base.ts";
+import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import {
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
@@ -292,7 +294,25 @@ export function classifyChatAttachment(
   );
 }
 
+function isAuthenticatedFileUrl(url: URL): boolean {
+  return (
+    url.pathname === "/api/web/download-file" &&
+    url.username === "" &&
+    url.password === "" &&
+    Boolean(url.searchParams.get("file_id")) &&
+    browserHost() !== null &&
+    url.origin === new URL(resolveApiBase()).origin
+  );
+}
+
 function filenameFromUrl(url: string): string {
+  const parsed = tryParseUrl(url);
+  if (parsed && isAuthenticatedFileUrl(parsed)) {
+    const filename = parsed.searchParams.get("filename");
+    if (filename) {
+      return filename;
+    }
+  }
   const path = url.split("?")[0].split("#")[0];
   const last = path.split("/").pop();
   if (!last || last.length === 0) {
@@ -412,6 +432,9 @@ function isPlatformFileUrl(url: string): boolean {
   if (!parsed) {
     return false;
   }
+  if (isAuthenticatedFileUrl(parsed)) {
+    return true;
+  }
   const isLegacyPath = LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname);
   const isShortArtifactPath = SHORT_ARTIFACT_FILE_PATH_PATTERN.test(
     parsed.pathname,
@@ -472,6 +495,13 @@ function hostedSiteAttachment(
   url: string,
   title?: string,
 ): ChatAttachmentDescriptor | null {
+  if (privateHostedDeploymentId(url, resolveApiBase())) {
+    return {
+      filename: title?.trim() || "Artifact.html",
+      url,
+      contentType: "text/html",
+    };
+  }
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
   const parsed = tryParseUrl(url, baseUrl);
@@ -492,7 +522,11 @@ function hostedSiteAttachment(
 }
 
 export function isPreviewableChatUrl(url: string): boolean {
-  return isPlatformFileUrl(url) || isHostedSiteUrl(url);
+  return (
+    Boolean(privateHostedDeploymentId(url, resolveApiBase())) ||
+    isPlatformFileUrl(url) ||
+    isHostedSiteUrl(url)
+  );
 }
 
 export function previewAttachmentFromUrl(

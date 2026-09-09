@@ -146,7 +146,7 @@ const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES = 32 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:bc53f9b2cd4e4f8f4021879612f524a44a676455f1266e70d5ab7f3da4e65aa2";
+  "sha256:dc794c1167865d737412da7275be82d46074c9557c6efc60ce1c5cac959150f0";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -3289,20 +3289,23 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial, replacement], replacement));
     await syncCatalog();
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: run.runId,
-        target: { kind: "custom", customConnectorId: custom.id },
-      },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: expect.arrayContaining([
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({
+            runId: run.runId,
+            target: { kind: "custom", customConnectorId: custom.id },
+          }),
+          encoding: "json",
+        },
+      ]),
+    });
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await syncCatalog();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      expect.anything(),
-    );
+    expect(context.mocks.ably.batchPublish).not.toHaveBeenCalled();
   }, 15_000);
 
   it("composes accepted connector and local model-provider runner firewalls", async () => {
@@ -3912,8 +3915,8 @@ describe("connector catalog valid lifecycle", () => {
   });
 
   it("executes an external OpenID grant with catalog-owned storage", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     configureSource();
     const release = buildRelease({
@@ -5702,7 +5705,7 @@ describe("connector catalog executable compatibility", () => {
   });
 
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     const provider = mockTestOAuthAuthCodeProvider({
       refreshToken: "catalog-test-oauth-refresh",
     });
@@ -5918,7 +5921,7 @@ describe("connector catalog executable compatibility", () => {
     ]);
 
     const response = await requestOauthCallbackRaw(context, {
-      origin: "https://api.vm0.ai",
+      origin: "https://api.okou.ai",
       connectorSlug: "cloudflare",
       query: { code: "missing-state" },
     });

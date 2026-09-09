@@ -416,7 +416,7 @@ function MediaModelList({
               }}
             >
               {option.icon}
-              <span className="min-w-0 truncate">{option.label}</span>
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
               <PriceTierBadge
                 tier={option.priceTier}
                 description={getMediaModelPriceTierLabel(option.priceTier)}

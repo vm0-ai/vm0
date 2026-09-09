@@ -4,10 +4,7 @@ import {
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import type {
-  ChatRunVideoOptionsRequest,
-  UserMessageDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
@@ -22,8 +19,8 @@ import {
   sql,
 } from "drizzle-orm";
 
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
 import type { Db } from "../external/db";
-import { buildVideoRunOptionsPrompt } from "../../lib/video-run-options-prompt";
 import { BEFORE_DISPATCH_CANCELLED_ERROR } from "./agent-run-create.service";
 import type { ChatThreadSessionResolutionAction } from "./chat-session-continuity.service";
 import { loadWebChatIncompleteContext } from "./chat-incomplete-context.service";
@@ -61,11 +58,6 @@ interface WebChatPriorRun {
 
 export interface WebChatSessionPromptContext {
   readonly generationTemplatePrompt: string;
-  /**
-   * Video parameters sent with this message. Run-scoped and never persisted,
-   * so a rotated session or a queued dispatch has nothing to read back.
-   */
-  readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostDisplayName: string | null;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
@@ -73,6 +65,7 @@ export interface WebChatSessionPromptContext {
 
 function buildWebChatPrompt(): string {
   return [
+    CONVERSATION_GUIDANCE,
     "# Current Integration\nYou are currently running inside: Web",
     "You are communicating with the user through the web chat UI.",
   ].join("\n\n");
@@ -165,7 +158,6 @@ export function buildWebChatAppendSystemPrompt(args: {
     args.priorContext,
     args.incompleteContext,
     args.context.generationTemplatePrompt,
-    buildVideoRunOptionsPrompt(args.context.videoRunOptions),
     args.context.computerUseHostDisplayName
       ? buildComputerUseSystemPrompt(args.context.computerUseHostDisplayName)
       : "",
@@ -242,9 +234,6 @@ function buildWebChatPriorRunsContext(
     "",
     "The runs below are from the same web chat thread. When responding:",
     "- Runs closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
-    "- Match the tone of the conversation -- casual messages deserve casual replies.",
-    "- Only provide technical analysis when explicitly asked a technical question.",
-    "- Keep responses proportional to the message length and complexity.",
     "- Use the AGENT_SESSION_COMMAND for a run if you need more detailed agent session context.",
     "",
     blocks.join("\n\n"),

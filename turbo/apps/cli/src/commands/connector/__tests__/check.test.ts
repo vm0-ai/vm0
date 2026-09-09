@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type {
-  ConnectorCheckDiagnosticResult,
-  ConnectorCheckPolicy,
-  ConnectorCheckRequest,
+import {
+  connectorCheckRequestBodySchema,
+  type ConnectorCheckDiagnosticResult,
+  type ConnectorCheckPolicy,
+  type ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
@@ -19,7 +20,7 @@ import {
 import { server } from "../../../mocks/server";
 import { checkConnectorCommand } from "../check";
 
-const API_BASE_URL = "https://app.vm0.ai";
+const API_BASE_URL = "https://app.okou.ai";
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
 const SELECTED_CONNECTION_ID = "00000000-0000-4000-8000-000000000099";
 
@@ -171,6 +172,27 @@ function stubDiagnostic(
     http.post(diagnosticEndpoint(baseUrl), async ({ request }) => {
       const body: unknown = await request.json();
       onRequest?.(body);
+      const parsed = connectorCheckRequestBodySchema.parse(body);
+      if ("includeCustomConnectors" in parsed || "target" in parsed) {
+        if ("connector" in result) {
+          const { connectorSlug, ...identity } = result.connector;
+          return HttpResponse.json({
+            ...result,
+            connector: {
+              ...identity,
+              target: { kind: "builtin", connectorSlug },
+            },
+          });
+        }
+        if (result.outcome === "ambiguous") {
+          return HttpResponse.json({
+            ...result,
+            candidates: result.candidates.map(({ connectorSlug, label }) => {
+              return { target: { kind: "builtin", connectorSlug }, label };
+            }),
+          });
+        }
+      }
       return HttpResponse.json(result);
     }),
   );
@@ -302,11 +324,13 @@ describe("okou connector check command", () => {
     vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");
+    checkConnectorCommand.setOptionValue("json", false);
     setRunAccount("github", "connected");
   });
 
   afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
+    process.exitCode = undefined;
   });
 
   function getOutput(): string {
@@ -323,6 +347,214 @@ describe("okou connector check command", () => {
     ).rejects.toThrow("process.exit called");
     expect(mockExit).toHaveBeenCalledWith(1);
   }
+
+  describe("JSON output", () => {
+    it("preserves sanitized diagnostics, exact accounts, separate grants, and permission actions", async () => {
+      stubDiagnostic(
+        resolvedUrl({
+          permission: {
+            kind: "matched",
+            permissions: [
+              {
+                name: "contents:read",
+                policy: { outcome: "deny", basis: "deny-list" },
+              },
+            ],
+          },
+        }),
+      );
+      stubResolvedDependencies("github", { enabledConnectorSlugs: [] });
+      setRunAccount("github", "reconnect-required");
+      vi.stubEnv("GITHUB_TOKEN", "environment-value-must-not-be-printed");
+      chalk.level = 3;
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/vm0-ai/vm0?token=private-query#private-fragment",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(getOutput());
+      expect(json).toMatchObject({
+        context: "run",
+        request: {
+          mode: "url",
+          method: "GET",
+          url: "https://api.github.com/repos/vm0-ai/vm0",
+        },
+        diagnostic: {
+          outcome: "resolved",
+          permission: {
+            kind: "matched",
+            permissions: [
+              { name: "contents:read", policy: { outcome: "deny" } },
+            ],
+          },
+        },
+        connector: {
+          connectorType: "builtin",
+          target: { kind: "builtin", connectorSlug: "github" },
+        },
+        account: {
+          state: "available",
+          connectionId: SELECTED_CONNECTION_ID,
+          metadata: { connectionStatus: "reconnect-required" },
+        },
+        connection: null,
+        authorization: { agentId: AGENT_ID, authorized: false },
+        environment: [{ name: "GITHUB_TOKEN", present: true }],
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "command",
+            command:
+              "okou connector permission-request 'github' --permission 'contents:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
+          }),
+          expect.objectContaining({
+            kind: "link",
+            url: expect.stringContaining(
+              `/reconnect/${SELECTED_CONNECTION_ID}`,
+            ),
+          }),
+        ]),
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+      expect(getOutput()).not.toMatch(
+        /private-query|private-fragment|environment-value-must-not-be-printed/,
+      );
+      expect(getOutput()).not.toContain("\u001b[");
+    });
+
+    it("keeps a standalone connection and unscoped policy distinct from a run account", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "");
+      stubDiagnostic(
+        resolvedEnvironment({
+          run: { status: "not-scoped" },
+          permission: { outcome: "unavailable", basis: "not-run-scoped" },
+        }),
+      );
+      stubConnector("github");
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "contents:read",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(getOutput());
+      expect(json).toMatchObject({
+        context: "current",
+        account: null,
+        authorization: null,
+        connection: { id: connectorResponse("github").id },
+        diagnostic: {
+          run: { status: "not-scoped" },
+          permission: { outcome: "unavailable", basis: "not-run-scoped" },
+        },
+      });
+    });
+
+    it.each([
+      { outcome: "run-context-unavailable" },
+      { outcome: "no-match", scope: "run" },
+      { outcome: "unresolved-dynamic-base", connector: connectorIdentity() },
+    ] satisfies ConnectorCheckDiagnosticResult[])(
+      "retains $outcome as JSON with a failing exit status",
+      async (diagnostic) => {
+        stubDiagnostic(diagnostic);
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/repos/vm0-ai/vm0",
+          "--json",
+        ]);
+        const json: unknown = JSON.parse(getOutput());
+        expect(json).toMatchObject({
+          context: "run",
+          diagnostic: { outcome: diagnostic.outcome },
+          message: expect.any(String),
+          actions: [
+            expect.objectContaining({
+              kind: "command",
+              command: expect.stringContaining("--json"),
+            }),
+          ],
+        });
+        expect(process.exitCode).toBe(1);
+        expect(getErrorOutput()).toBe("");
+        expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it("preserves unavailable environment and unknown-endpoint policy information", async () => {
+      stubDiagnostic(
+        resolvedUrl({
+          environmentNames: null,
+          permission: {
+            kind: "unknown-endpoint",
+            policy: { outcome: "unavailable", basis: "policies-unavailable" },
+          },
+        }),
+      );
+      stubResolvedDependencies();
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/unknown",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(getOutput());
+      expect(json).toMatchObject({
+        environment: null,
+        diagnostic: {
+          permission: {
+            kind: "unknown-endpoint",
+            policy: { outcome: "unavailable", basis: "policies-unavailable" },
+          },
+        },
+      });
+      expect(getOutput()).not.toContain("permission-request");
+    });
+
+    it("keeps Computer Use guidance machine-readable", async () => {
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://app.okou.ai/computer-use/hosts",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(getOutput());
+      expect(json).toMatchObject({
+        diagnostic: {
+          outcome: "not-a-connector",
+          capability: "computer-use:write",
+        },
+        guidance: expect.arrayContaining([
+          expect.stringContaining("Existing run tokens cannot be upgraded"),
+        ]),
+        actions: [{ command: "okou whoami" }],
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves API failures on stderr without fabricating a JSON diagnosis", async () => {
+      server.use(
+        http.post(diagnosticEndpoint(), () => {
+          return HttpResponse.json(
+            { error: { code: "INTERNAL", message: "Diagnostic failed" } },
+            { status: 500 },
+          );
+        }),
+      );
+      await expectCommandFailure(["--env-name", "GH_TOKEN", "--json"]);
+      expect(getOutput()).toBe("");
+      expect(getErrorOutput()).toContain("Diagnostic failed");
+    });
+  });
 
   describe("request construction and local validation", () => {
     it("sends a sanitized URL request and preserves every selector in the re-diagnosis hint", async () => {
@@ -467,7 +699,7 @@ describe("okou connector check command", () => {
     it.each([
       {
         name: "Computer Use URL",
-        args: ["--url", "https://api.vm0.ai/computer-use/commands"],
+        args: ["--url", "https://api.okou.ai/computer-use/commands"],
       },
       {
         name: "Computer Use permission",
@@ -782,23 +1014,18 @@ describe("okou connector check command", () => {
     it.each([
       {
         name: "production API",
-        baseUrl: "https://api.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://api.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "legacy production web",
-        baseUrl: "https://www.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
-      },
-      {
-        name: "legacy production platform",
-        baseUrl: "https://platform.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://www.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "canonical production app",
-        baseUrl: "https://app.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://app.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "staging API",

@@ -12,9 +12,9 @@ const USAGE_DISPLAY_NAMES = {
       return $.usage.displayNames.finance;
     });
   },
-  imageRecognize(): string {
+  imageRecognition(): string {
     return i18n.t(($) => {
-      return $.usage.displayNames.imageRecognize;
+      return $.usage.displayNames.imageRecognition;
     });
   },
   maps(): string {
@@ -63,7 +63,7 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     seo: USAGE_DISPLAY_NAMES.seo,
     finance: USAGE_DISPLAY_NAMES.finance,
     weather: USAGE_DISPLAY_NAMES.weather,
-    "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,
+    "image-recognition": USAGE_DISPLAY_NAMES.imageRecognition,
     translation: USAGE_DISPLAY_NAMES.translation,
   };
 
@@ -72,7 +72,7 @@ const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
   "joggai-talking-avatar": USAGE_DISPLAY_NAMES.avatar,
   // Rows recorded before image tasks moved to task-scoped kinds carry
   // kind "model" with this provider; nothing else runs it as a chat model.
-  "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,
+  "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognition,
 };
 
 function titleCaseUsageToken(token: string): string {

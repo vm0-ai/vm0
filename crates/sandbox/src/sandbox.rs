@@ -367,6 +367,65 @@ pub trait SandboxStartObserver: Send {
     /// start. A provider invokes this callback at most once per applicable
     /// stage.
     fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool);
+
+    /// Records a child attempt inside the guest DNS readiness stage.
+    ///
+    /// Providers may buffer these callbacks until the invocation ends to avoid
+    /// observer work between retries. Children overlap their parent, and must
+    /// not be added to it. Cancellation may report an incomplete child without
+    /// a completed parent; this callback never owns cancellation or cleanup.
+    fn record_dns_readiness_attempt(&mut self, _attempt: crate::SandboxDnsReadinessAttempt) {}
+
+    /// Records optional guest-connection detail, separately from critical-path stages.
+    ///
+    /// `duration` covers the full host-observed phase, including work overlapping
+    /// backend startup. `remaining` is its intersection with this same start's
+    /// residual guest-connection wait. Never add full durations to start stages.
+    /// A phase is emitted at most once; missing detail after cancellation, panic,
+    /// or an earlier startup failure is not a zero-duration observation.
+    fn record_guest_connection_phase(
+        &mut self,
+        _phase: SandboxGuestConnectionPhase,
+        _duration: Duration,
+        _remaining: Duration,
+        _success: bool,
+    ) {
+    }
+}
+
+/// Fixed host-side guest connection phases, not guest-internal execution times.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxGuestConnectionPhase {
+    /// Task submission through the connection operation's first poll.
+    TaskSchedule,
+    /// Deadline/path preparation, stale socket removal and listener bind.
+    ListenerSetup,
+    /// Bound listener through successful accept, or the accept error.
+    Accept,
+    /// Accept through READY decode, including listener unlinking and decoder setup.
+    Ready,
+    /// READY decode through complete PING frame write.
+    Ping,
+    /// PING write through decode of the matching PONG.
+    Pong,
+    /// PONG decode through client initialization and reader task submission.
+    ClientSetup,
+    /// Connection operation completion through the startup caller's observation.
+    TaskHandoff,
+}
+
+impl SandboxGuestConnectionPhase {
+    /// Stable phase order; errors may produce only a completed prefix and failed phase.
+    pub const ALL: [Self; 8] = [
+        Self::TaskSchedule,
+        Self::ListenerSetup,
+        Self::Accept,
+        Self::Ready,
+        Self::Ping,
+        Self::Pong,
+        Self::ClientSetup,
+        Self::TaskHandoff,
+    ];
 }
 
 /// Fixed low-cardinality stages of the final reuse preparation and park path.
@@ -615,6 +674,17 @@ pub trait Sandbox: Send + Sync + Any {
         Ok(SandboxParkOutcome::Reusable)
     }
 
+    /// Park a tenant-free sandbox prepared for the blank pool.
+    ///
+    /// The caller retains the full profile resource budget. Providers may
+    /// preserve guest memory to avoid reclaiming it only to return it during
+    /// startup. All fencing, idempotency, failure and cleanup requirements of
+    /// [`park`](Self::park) still apply. Providers without a distinct blank
+    /// memory policy use ordinary parking.
+    async fn park_for_blank_pool(&mut self) -> Result<SandboxParkOutcome> {
+        self.park().await
+    }
+
     /// Run one final normal guest exec and park without reopening operation
     /// admission between the exec and pause.
     ///
@@ -696,6 +766,21 @@ pub trait Sandbox: Send + Sync + Any {
     /// safe.
     async fn unpark(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    /// Unpark only for terminal guest operations before destroying the sandbox.
+    ///
+    /// This has the same operation-readiness contract as [`unpark`](Self::unpark),
+    /// but providers may omit background work whose only purpose is serving a
+    /// future active workload. After this call succeeds, the lifecycle owner
+    /// must run only the bounded terminal operations needed to preserve state,
+    /// then terminate and destroy the sandbox without returning it to a pool or
+    /// binding another run.
+    ///
+    /// Providers that do not distinguish terminal finalization from normal
+    /// reuse preserve compatibility by performing a full unpark.
+    async fn unpark_for_terminal_operations(&mut self) -> Result<()> {
+        self.unpark().await
     }
 
     // -- operations --

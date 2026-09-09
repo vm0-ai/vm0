@@ -27,7 +27,7 @@ import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
-import { and, eq, inArray, notExists } from "drizzle-orm";
+import { and, eq, inArray, notExists, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -266,6 +266,41 @@ async function getConnectorDiagnosticRegistrationForAction(
         }
       : null,
   });
+}
+
+async function deleteConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  await db
+    .delete(agentRunConnectorDiagnosticRegistrations)
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function corruptConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  await db
+    .update(agentRunConnectorDiagnosticRegistrations)
+    .set({
+      payload: sql`'null'::jsonb`,
+    })
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId));
+  signal.throwIfAborted();
+  return actionOk();
 }
 
 async function deleteRunForAction(
@@ -1049,6 +1084,10 @@ const cronCleanupSandboxesActionHandlers = {
     seedConnectorDiagnosticRegistrationForAction,
   "get-connector-diagnostic-registration":
     getConnectorDiagnosticRegistrationForAction,
+  "corrupt-connector-diagnostic-registration":
+    corruptConnectorDiagnosticRegistrationForAction,
+  "delete-connector-diagnostic-registration":
+    deleteConnectorDiagnosticRegistrationForAction,
   "transition-run-terminal": transitionRunTerminalForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,

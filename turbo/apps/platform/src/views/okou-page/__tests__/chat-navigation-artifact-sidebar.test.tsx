@@ -4,7 +4,7 @@ import type {
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
@@ -12,6 +12,7 @@ import {
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "../sidebar-breakpoint.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   artifactSummary,
@@ -49,7 +50,9 @@ const IMAGE_URL = "https://files.example.test/launch-graphic.png";
 
 function useWideScreen(): void {
   context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 1280px)";
+    return (
+      query === SIDEBAR_DESKTOP_MEDIA_QUERY || query === "(min-width: 1280px)"
+    );
   });
 }
 
@@ -99,11 +102,11 @@ function officeFileEvents(
   ];
 }
 
-async function setupGeneratedOfficePreview(
+async function setupGeneratedFilePreview(
   filename: string,
   contentType: string,
+  url = `https://cdn.vm7.io/artifacts/tests/office/${filename}`,
 ): Promise<string> {
-  const url = `https://cdn.vm7.io/artifacts/tests/office/${filename}`;
   mockArtifactConversation(context, {
     catalog: [],
     artifactRuns: () => {
@@ -139,7 +142,7 @@ async function setupGeneratedOfficePreview(
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
   return url;
 }
@@ -213,7 +216,7 @@ test("Keep attachment cards closed until the user selects one", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -237,7 +240,7 @@ test("Keep attachment cards closed until the user selects one", async () => {
 
 test("Preview a DOCX attachment in the dialog and split view", async () => {
   const filename = "release-plan.docx";
-  const url = await setupGeneratedOfficePreview(
+  const url = await setupGeneratedFilePreview(
     filename,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
@@ -258,7 +261,7 @@ test("Preview a DOCX attachment in the dialog and split view", async () => {
 
 test("Preview a PPTX attachment in the dialog and split view", async () => {
   const filename = "quarterly-review.pptx";
-  const url = await setupGeneratedOfficePreview(
+  const url = await setupGeneratedFilePreview(
     filename,
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   );
@@ -279,7 +282,7 @@ test("Preview a PPTX attachment in the dialog and split view", async () => {
 
 test("Preview an XLSX attachment in the dialog and split view", async () => {
   const filename = "launch-budget.xlsx";
-  const url = await setupGeneratedOfficePreview(
+  const url = await setupGeneratedFilePreview(
     filename,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   );
@@ -316,7 +319,7 @@ test("Use a public URL for a private Office attachment preview", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   click(await screen.findByLabelText(`Preview ${filename}`));
@@ -325,6 +328,97 @@ test("Use a public URL for a private Office attachment preview", async () => {
   const frame = await within(dialog).findByTitle(`${filename} preview`);
   expectOfficeViewerUrl(frame, publicUrl);
   expect(frame.getAttribute("src")).not.toContain(privateUrl);
+});
+
+test("Refresh a private document on tab return while preserving an existing public attachment", async () => {
+  const fileId = "f0000000-0000-4000-a000-000000000936";
+  const filename = "private-plan.docx";
+  const contentType =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const firstUrl = `https://storage.example.test/${filename}?signature=first`;
+  const refreshedUrl = `https://storage.example.test/${filename}?signature=refreshed`;
+  const publicFileId = "f0000000-0000-4000-a000-000000000937";
+  const publicFilename = "existing-image.png";
+  const publicUrl = `https://cdn.vm7.io/artifacts/tests/${publicFilename}`;
+  const firstPublicResourceUrl = `https://storage.example.test/${publicFilename}?signature=first`;
+  let publicResourceUrl = firstPublicResourceUrl;
+  let resourceUrl = firstUrl;
+  const visibility = context.mocks.browser.visibilityState("visible");
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    if (query.file_id === publicFileId) {
+      return respond(200, { url: publicResourceUrl, publicUrl });
+    }
+    expect(query.file_id).toBe(fileId);
+    return respond(200, { url: resourceUrl, publicUrl: null });
+  });
+  mockArtifactConversation(context, {
+    catalog: [],
+    chatEvents: [
+      ...officeFileEvents(fileId, filename, contentType),
+      {
+        id: "existing-public-image",
+        role: "assistant",
+        content: `![${publicFilename}](https://api.okou.ai/api/web/download-file?file_id=${publicFileId}&filename=${publicFilename})`,
+        runId: "office-preview-run",
+        seqId: 3,
+        createdAt: "2026-09-01T12:00:02.000Z",
+      },
+    ],
+  });
+  await setupPage({
+    context,
+    path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
+    host: "app.okou.ai",
+  });
+  const publicImage = await screen.findByAltText(publicFilename);
+  expect(publicImage).toHaveAttribute("src", firstPublicResourceUrl);
+  click(await screen.findByLabelText(`Preview ${filename}`));
+  const dialog = await screen.findByTestId("attachment-lightbox");
+  const frame = await within(dialog).findByTitle(`${filename} preview`);
+  expectOfficeViewerUrl(frame, firstUrl);
+  expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
+
+  act(() => {
+    visibility.changeTo("hidden");
+  });
+  resourceUrl = refreshedUrl;
+  publicResourceUrl = `https://storage.example.test/${publicFilename}?signature=refreshed`;
+  await act(() => {
+    visibility.changeTo("visible");
+  });
+  await waitFor(() => {
+    const refreshedFrame = within(dialog).getByTitle(`${filename} preview`);
+    expect(refreshedFrame).toBeVisible();
+    expectOfficeViewerUrl(refreshedFrame, refreshedUrl);
+  });
+  expect(screen.getByAltText(publicFilename)).toHaveAttribute(
+    "src",
+    firstPublicResourceUrl,
+  );
+});
+
+test("Render a generated private image from the authenticated file reference", async () => {
+  const filename = "private-image.png";
+  const fileId = "f0000000-0000-4000-a000-000000000938";
+  const resourceUrl =
+    "https://private-r2.example/private-image.png?signature=image";
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    expect(query.file_id).toBe(fileId);
+    return respond(200, { url: resourceUrl, publicUrl: null });
+  });
+  await setupGeneratedFilePreview(
+    filename,
+    "image/png",
+    `https://api.okou.ai/api/web/download-file?file_id=${fileId}&filename=${filename}`,
+  );
+  const embedded = await screen.findByAltText(filename);
+  expect(embedded).toHaveAttribute("src", resourceUrl);
+  click(embedded);
+  const dialog = await screen.findByTestId("attachment-lightbox");
+  expect(
+    within(dialog).getByTestId("attachment-lightbox-image"),
+  ).toHaveAttribute("src", resourceUrl);
+  expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
 });
 
 test("Explain empty and unavailable CSV previews", async () => {
@@ -369,7 +463,7 @@ test("Explain empty and unavailable CSV previews", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -405,6 +499,12 @@ test("Explain empty and unavailable CSV previews", async () => {
 });
 
 test("Expand a diagram from a Markdown artifact", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    1600,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    900,
+  );
   useWideScreen();
   const summary = artifactSummary(MARKDOWN_ID, "file", "Architecture notes.md");
   context.mocks.http.get(MARKDOWN_URL, () => {
@@ -434,7 +534,7 @@ test("Expand a diagram from a Markdown artifact", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -488,7 +588,7 @@ test("Preview a hosted site artifact in the thread sidebar", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -512,6 +612,12 @@ test("Preview a hosted site artifact in the thread sidebar", async () => {
 });
 
 test("Zoom and reset an image artifact preview", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    1600,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    900,
+  );
   useWideScreen();
   const summary = artifactSummary(IMAGE_ID, "image", "Launch graphic");
   mockArtifactConversation(context, {
@@ -531,7 +637,7 @@ test("Zoom and reset an image artifact preview", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -591,7 +697,7 @@ test("Keep the utility sidebar selected by the user", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -664,7 +770,7 @@ test("Show artifacts that belong to the current thread", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -699,7 +805,7 @@ test("Return to the artifact list when a preview is unavailable", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {

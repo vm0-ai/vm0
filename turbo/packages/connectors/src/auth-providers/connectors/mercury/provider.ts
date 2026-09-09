@@ -21,12 +21,19 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
       const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
+      const state = args.state;
+      if (!state) {
+        throw new Error(
+          "Mercury PKCE requires state for code_verifier derivation",
+        );
+      }
       const result = await exchangeMercuryCode(
         args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
+        state,
       );
       return {
         outputs: {

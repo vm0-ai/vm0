@@ -95,6 +95,7 @@ interface AwsSigninVerificationCode {
 interface AwsSigninErrorDetails {
   readonly message: string;
   readonly oauthError: string | undefined;
+  readonly providerErrorCode: string | undefined;
 }
 
 interface AwsDpopPublicJwk {
@@ -477,6 +478,8 @@ async function throwAwsSigninHttpError(args: {
     `AWS Sign-In token ${args.operation} failed: ${args.response.status}${suffix}`,
     args.response.status,
     oauthError,
+    undefined,
+    details.providerErrorCode,
   );
 }
 
@@ -486,7 +489,7 @@ async function readAwsSigninErrorDetails(
 ): Promise<AwsSigninErrorDetails> {
   const raw = await response.text();
   if (!raw) {
-    return { message: "", oauthError: undefined };
+    return { message: "", oauthError: undefined, providerErrorCode: undefined };
   }
 
   const truncated = truncateAwsSigninErrorText(
@@ -499,6 +502,7 @@ async function readAwsSigninErrorDetails(
       return {
         message: redactAwsSigninErrorText(truncated, sensitiveValues),
         oauthError: undefined,
+        providerErrorCode: undefined,
       };
     }
     const errorCode =
@@ -520,11 +524,18 @@ async function readAwsSigninErrorDetails(
         redactAwsSigninErrorText(message, sensitiveValues),
       ),
       oauthError: parsed.data.error,
+      providerErrorCode:
+        errorCode === undefined
+          ? undefined
+          : truncateAwsSigninErrorText(
+              redactAwsSigninErrorText(errorCode, sensitiveValues),
+            ),
     };
   } catch {
     return {
       message: redactAwsSigninErrorText(truncated, sensitiveValues),
       oauthError: undefined,
+      providerErrorCode: undefined,
     };
   }
 }

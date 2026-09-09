@@ -130,6 +130,7 @@
         "diskPressure": "Penggunaan ulang workspace dilewati karena runner mengalami tekanan disk.",
         "environment": "Lingkungan",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
+        "framework": "Framework",
         "generation": "Generasi",
         "hostname": "Nama host",
         "invalidMetadata": "Metadata workspace dalam cache tidak valid.",
@@ -576,6 +577,11 @@
       "unavailable": "Pratinjau {{kind}} tidak tersedia.",
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Bagikan ke organisasi",
+      "sharePublic": "Bagikan ke publik",
+      "unavailable": "Artefak ini tidak tersedia atau Anda tidak memiliki akses."
+    },
     "sidebar": {
       "openSharedConversation": "Buka percakapan yang dibagikan",
       "panelTitle": "Artefak",
@@ -591,6 +597,9 @@
       "categories": "Kategori template",
       "category": "Kategori template",
       "chooseVoice": "Pilih suara untuk {{title}}",
+      "creativeVideo": "Video kreatif",
+      "explainerUnavailable": "Template video ini tidak lagi tersedia. Hapus untuk mengirim pesan Anda.",
+      "explainerVideo": "Video penjelasan",
       "filters": {
         "age": "Usia",
         "all": "Semua",
@@ -1035,19 +1044,35 @@
       "continuation": {
         "activationErrorDescription": "Kami tidak dapat menyelesaikan proses masuk. Mulai lagi dan coba kembali.",
         "activationErrorTitle": "Proses masuk tidak dapat diselesaikan",
+        "backupDescription": "Simpan kode ini di tempat yang aman. Setiap kode dapat digunakan sekali jika Anda kehilangan akses ke ponsel.",
+        "backupTitle": "Simpan kode cadangan Anda",
         "chooseOrganizationDescription": "Pilih organisasi untuk melanjutkan ke {{brandName}}.",
         "chooseOrganizationTitle": "Pilih organisasi",
         "completeDescription": "Mengarahkan Anda ke {{brandName}}.",
         "completeTitle": "Proses masuk selesai",
+        "createOrganization": "Buat organisasi",
+        "invitationError": "Undangan ini tidak dapat diterima. Coba lagi, atau minta undangan baru jika tautan ini telah kedaluwarsa.",
+        "joinOrganization": "Bergabung dengan {{organizationName}}",
         "loadingDescription": "Memeriksa langkah berikutnya yang diperlukan akun Anda.",
         "loadingTitle": "Menyelesaikan proses masuk",
         "noOrganizationsDescription": "Akun ini tidak memiliki organisasi yang tersedia. Minta akses kepada administrator organisasi, lalu mulai lagi.",
         "noOrganizationsTitle": "Tidak ada organisasi yang tersedia",
+        "organizationName": "Nama organisasi",
+        "passwordTaskError": "Kata sandi Anda tidak dapat diperbarui. Pilih kata sandi yang lebih kuat dan coba lagi.",
+        "phoneNumberLabel": "Nomor telepon",
         "recoveryAction": "Mulai lagi",
+        "savedCodes": "Saya sudah menyimpan kode",
         "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "secondFactorTitle": "Verifikasi tambahan diperlukan",
+        "securityDescription": "Tambahkan cara kedua untuk memverifikasi identitas Anda.",
+        "securityTitle": "Siapkan verifikasi dua langkah",
         "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "sendCode": "Kirim kode",
+        "setupKey": "Kunci penyiapan",
+        "setupKeyDescription": "Tambahkan kunci penyiapan ini ke aplikasi autentikator, lalu masukkan kode yang dihasilkan.",
         "signedInAs": "Masuk sebagai {{identifier}}",
+        "taskComplete": "Pengaturan keamanan Anda tersimpan. Lanjutkan untuk menyelesaikan proses masuk.",
+        "taskError": "Langkah ini tidak dapat diselesaikan. Periksa detail Anda dan coba lagi.",
         "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "unsupportedTitle": "Langkah masuk tidak tersedia"
       },
@@ -1852,6 +1877,25 @@
     "composer": {
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
+      "create": {
+        "addStyle": "Tambahkan gaya",
+        "addTemplate": "Tambahkan templat",
+        "chooseType": "Pilih jenis",
+        "description": "Presentasi, video, dan gambar",
+        "exit": "Keluar dari mode pembuatan",
+        "image": "Buat gambar",
+        "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
+        "presentation": "Buat presentasi",
+        "presentationPlaceholder": "Apa topik presentasi Anda?",
+        "question": "Apa yang ingin Anda wujudkan?",
+        "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "slideCount": "Jumlah slide",
+        "slideCountAuto": "Otomatis",
+        "slideCountRange": "{{range}} slide",
+        "title": "Buat",
+        "video": "Buat video",
+        "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
+      },
       "createWorkflow": "Buat alur kerja",
       "imageModelForThisChat": "Model gambar untuk chat ini",
       "message": "Pesan",
@@ -1909,7 +1953,6 @@
       "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",
       "addConnectors": "Tambahkan konektor",
-      "authorizationFailed": "{{connectorName}} terhubung tetapi tidak dapat diotorisasi untuk {{agentName}}",
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
@@ -1917,6 +1960,37 @@
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
       "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",
+      "directory": {
+        "allCategories": "Semua",
+        "askAdmin": "Minta admin untuk mengaktifkan",
+        "browse": "Jelajahi konektor",
+        "configure": "Konfigurasi",
+        "connected": "Terhubung",
+        "createCustom": "Buat kustom",
+        "customBadge": "Kustom",
+        "detailAccounts": "Akun",
+        "detailCategory": "Kategori",
+        "detailConnection": "Koneksi",
+        "detailMethod": "Metode",
+        "detailPermissions": "Izin",
+        "emptyCustomBody": "Buat satu dari API HTTP atau server MCP mana pun, dan Okou dapat menggunakannya seperti konektor lain.",
+        "emptyCustomTitle": "Belum ada konektor kustom",
+        "emptyYoursBody": "Hubungkan aplikasi dan Okou dapat membaca serta bertindak di dalamnya untuk Anda.",
+        "emptyYoursTitle": "Anda belum menghubungkan apa pun",
+        "matchCount_other": "{{count}} hasil",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "Perlu perhatian",
+        "noResultsBody": "Coba nama produk, atau buat sendiri dari API atau server MCP.",
+        "noResultsTitle": "Tidak ada konektor yang cocok dengan “{{query}}”",
+        "openDetailAria": "Buka detail {{connector}}",
+        "otherCategory": "Lainnya",
+        "permissionCount_other": "{{count}} izin",
+        "searchYours": "Cari konektor Anda",
+        "showAll_other": "Lihat semua {{count}}",
+        "tabCustom": "Kustom",
+        "tabDiscover": "Temukan",
+        "tabYours": "Konektor Anda"
+      },
       "fallsBackTo": "Beralih kembali ke {{account}}",
       "find": "Cari konektor...",
       "noUsableAccount": "Tidak ada akun yang dapat digunakan",
@@ -1955,6 +2029,20 @@
       },
       "runCancelled": "Tertunda di tengah pikiran — lanjutkan kapan saja."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Temukan suara yang cocok dengan konten Anda.",
+      "avatarVoice": "Suara avatar",
+      "changeAvatar": "Ubah avatar",
+      "chooseStyle": "Pilih gaya",
+      "chooseStyleAndVoice": "Pilih gaya dan suara.",
+      "noMatches": "Tidak ada hasil. Coba pencarian atau kategori lain.",
+      "ready": "Siap digunakan. Tambahkan konten Anda di obrolan.",
+      "searchAvatars": "Cari avatar",
+      "searchStyles": "Cari gaya",
+      "settings": "Pengaturan video penjelasan",
+      "style": "Gaya",
+      "useSelection": "Gunakan pilihan"
+    },
     "feedback": {
       "emailDraftDescription": "draf email (ID draf mail: {{id}})",
       "partHeading": "Masukan untuk bagian balasan Anda ini:",
@@ -1985,50 +2073,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Otomatis · Okou memilih",
-        "autoDescription": "Pilih presenter publik HeyGen yang sesuai dengan permintaan",
         "heading": "Pilih avatar",
         "label": "Avatar",
         "none": "Tanpa avatar",
-        "noneDescription": "Buat video tanpa presenter",
         "previewLook": "Pratinjau tampilan {{name}}"
       },
-      "cardDescription": "Ubah ide atau materi menjadi video siap pakai",
       "catalog": {
-        "empty": "Tidak ada pilihan publik HeyGen yang tersedia.",
-        "error": "Katalog HeyGen tidak dapat dimuat.",
+        "error": "Katalog tidak dapat dimuat.",
         "loading": "Memuat pilihan lainnya",
         "reload": "Muat ulang katalog",
         "retry": "Coba lagi"
       },
-      "description": "Tambahkan materi, jelaskan keinginan Anda, lalu pilih gaya, avatar, dan suara HeyGen jika diperlukan.",
-      "errors": {
-        "sendFailed": "Utas chat tidak dapat dibuat. Permintaan Anda masih ada di sini agar Anda dapat mencoba lagi.",
-        "uploadFailed": "Satu atau beberapa file tidak dapat diunggah. Hapus file tersebut atau coba lagi."
-      },
       "footer": {
-        "cancel": "Batal",
-        "create": "Buat video",
-        "hint": "Tambahkan instruksi, file, atau keduanya"
-      },
-      "format": {
-        "auto": "Otomatis",
-        "output": "Format keluaran"
-      },
-      "heading": "Buat video intro Anda",
-      "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
-      "prompt": {
-        "label": "Apa yang harus disampaikan video ini?",
-        "placeholder": "Jelaskan tujuan, audiens, bahasa, nada, atau detail penting lainnya"
-      },
-      "source": {
-        "drop": "Letakkan file di sini atau klik untuk mengunggah",
-        "remove": "Hapus {{filename}}"
+        "cancel": "Batal"
       },
       "style": {
         "auto": "Biarkan Okou memilih",
         "browseGroups": "Jelajahi menurut gaya",
-        "description": "Gaya menentukan adegan, transisi, teks overlay, dan tempo.",
         "groups": {
           "cinematic": "Film dan fotografi",
           "handmade": "Kerajinan dan material",
@@ -2038,25 +2099,16 @@
           "print": "Percetakan dan penerbitan",
           "retro-tech": "Teknologi retro dan antarmuka"
         },
-        "heading": "Pilih referensi gaya",
-        "label": "Referensi gaya",
         "preview": "Pratinjau {{title}}",
         "previewUnavailable": "Pratinjau video tidak tersedia untuk gaya ini."
       },
-      "title": "Buat video intro",
       "voice": {
         "auto": "Biarkan Okou memilih",
-        "autoDescription": "Okou memilih suara publik HeyGen yang sesuai",
-        "default": "Default · Mengikuti avatar",
         "defaultDescription": "Gunakan suara default avatar yang dipilih",
-        "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Gunakan suara HeyGen default milik {{avatar}}",
         "heading": "Pilih suara",
         "label": "Suara",
         "none": "Tanpa narasi",
-        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",
-        "original": "Audio asli",
-        "originalDescription": "Pertahankan audio sumber yang dipilih tanpa menambahkan ucapan buatan"
+        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya."
       }
     },
     "mail": {
@@ -2136,26 +2188,17 @@
     "promptDocumentTitle": "Prompt",
     "queue": {
       "aboutAutomationEvent": "Tentang peristiwa otomatisasi ini",
-      "aboutGoal": "Tentang tujuan ini",
       "aboutQueuedMessage": "Tentang pesan yang menunggu ini",
-      "activeGoal": "Tujuan aktif",
       "automationEvent": "Peristiwa otomatisasi",
       "automationEventDescription": "Menunggu di belakang pesan yang menunggu dan dijalankan setelah eksekusi saat ini selesai.",
-      "cancelGoal": "Batalkan tujuan",
       "cancellationRecoveryPending": "Menyelesaikan eksekusi yang dibatalkan sebelum melanjutkan pekerjaan dalam antrean.",
       "event_one": "{{count}} peristiwa",
       "event_other": "{{count}} peristiwa",
       "goal": "Tujuan",
-      "goalDescription": "Berjalan setelah antrean kosong dan terus berjalan sampai Anda membatalkannya.",
-      "goalLoadFailed": "Tidak dapat memuat tujuan ini",
-      "goalRetry": "Tutup dialog dan buka lagi untuk mencoba kembali.",
-      "goalUnavailable": "Tujuan ini sudah tidak tersedia.",
       "itemsWaiting": "{{items}} menunggu",
       "itemsWaitingTogether": "{{messages}} dan {{events}} menunggu",
-      "loadingGoal": "Memuat tujuan...",
       "message_one": "{{count}} pesan",
       "message_other": "{{count}} pesan",
-      "openGoalDetails": "Buka detail tujuan",
       "pendingAutomationEvent": "Peristiwa otomatisasi tertunda",
       "queuedMessage": "Pesan dalam antrean",
       "queuedMessageDescription": "Menunggu giliran dan dikirim setelah eksekusi saat ini selesai.",
@@ -2167,8 +2210,6 @@
       "title": "Ganti draf composer?"
     },
     "run": {
-      "automatedRun": "Eksekusi otomatis",
-      "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {
@@ -2183,33 +2224,27 @@
         "wrappedUp": "Diselesaikan pada {{time}}"
       },
       "duration": {
-        "hour_one": "{{count}} jam",
-        "hour_other": "{{count}} jam",
         "hoursShort_one": "{{count}}j",
         "hoursShort_other": "{{count}}j",
-        "minute_one": "{{count}} mnt",
-        "minute_other": "{{count}} mnt",
         "minutesShort_one": "{{count}}m",
         "minutesShort_other": "{{count}}m",
         "secondsShort_one": "{{count}}d",
         "secondsShort_other": "{{count}}d"
       },
-      "durationFor": "{{duration}} untuk {{label}}",
-      "expandGroupedHistory": "Kembangkan riwayat eksekusi yang dikelompokkan",
       "expandWorkHistory": "Kembangkan riwayat kerja",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "Mode cepat nonaktif",
       "fastModeOn": "Mode cepat aktif",
       "fastModeWillBeOff": "Mode cepat akan nonaktif",
       "fastModeWillBeOn": "Mode cepat akan aktif",
-      "goalFor": "Tujuan untuk {{label}}",
-      "groupedRunsFor_one": "{{count}} eksekusi untuk {{source}}",
-      "groupedRunsFor_other": "{{count}} eksekusi untuk {{source}}",
       "justNow": "baru saja",
       "keepGoing": "Lanjutkan",
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
       "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefak",
+      "relatedArtifactCount_other": "{{formattedCount}} artefak",
+      "relatedArtifacts": "Artefak terkait",
       "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
@@ -2226,7 +2261,6 @@
       "viewActivityLogs": "Lihat log aktivitas",
       "viewLogs": "Lihat log eksekusi",
       "waitingIn": "Menunggu di",
-      "worked": "Dikerjakan",
       "workedFor": "Dikerjakan selama {{duration}}",
       "workingFor": "Bekerja selama {{duration}}"
     },
@@ -2265,13 +2299,9 @@
       "openChatMenu": "Buka menu chat",
       "openListMenu": "Buka menu daftar chat",
       "pin": "Sematkan chat",
-      "pinDropAfter": "Letakkan setelah {{title}}",
-      "pinDropBefore": "Letakkan sebelum {{title}}",
       "pinned": "Disematkan",
       "rename": "Ganti nama chat",
       "renameDescription": "Masukkan nama baru untuk thread chat ini.",
-      "reorderInstructions": "Seret untuk mengurutkan ulang. Tekan Spasi untuk memilih, tombol panah untuk memindahkan, Spasi untuk melepas, atau Esc untuk membatalkan.",
-      "reorderThread": "Urutkan ulang {{title}}",
       "titlePlaceholder": "Judul chat",
       "unpin": "Lepas sematan chat",
       "unread": "Belum dibaca",
@@ -2308,6 +2338,199 @@
       "openTemplatesAria": "Jelajahi templat",
       "startWithPrompt": "Buat",
       "templates": "Templat"
+    },
+    "taskChips": {
+      "chooseTask": "Pilih tugas",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Desain undangan ulang tahun",
+            "prompt": "Desain undangan ulang tahun"
+          },
+          "brandCharacter": {
+            "label": "Buat karakter untuk merek saya",
+            "prompt": "Buat karakter untuk merek saya"
+          },
+          "businessLogo": {
+            "label": "Buat logo untuk bisnis saya",
+            "prompt": "Buat logo untuk bisnis saya"
+          },
+          "cafeMenu": {
+            "label": "Desain menu untuk kafe saya",
+            "prompt": "Desain menu untuk kafe saya"
+          },
+          "eventPoster": {
+            "label": "Desain poster untuk acara saya",
+            "prompt": "Desain poster untuk acara saya"
+          },
+          "finishedSketch": {
+            "label": "Ubah sketsa saya menjadi visual jadi",
+            "prompt": "Ubah sketsa saya menjadi visual jadi"
+          },
+          "greetingCard": {
+            "label": "Buat kartu ucapan pribadi",
+            "prompt": "Buat kartu ucapan pribadi"
+          },
+          "headshot": {
+            "label": "Buat foto profil profesional",
+            "prompt": "Buat foto profil profesional"
+          },
+          "infographic": {
+            "label": "Ubah ide menjadi infografik",
+            "prompt": "Ubah ide menjadi infografik"
+          },
+          "newsletterCover": {
+            "label": "Buat sampul untuk buletin saya",
+            "prompt": "Buat sampul untuk buletin saya"
+          },
+          "packaging": {
+            "label": "Jelajahi kemasan untuk produk saya",
+            "prompt": "Jelajahi kemasan untuk produk saya"
+          },
+          "photoLighting": {
+            "label": "Perbaiki pencahayaan foto saya",
+            "prompt": "Perbaiki pencahayaan foto saya"
+          },
+          "presentationVisual": {
+            "label": "Buat visual untuk presentasi saya",
+            "prompt": "Buat visual untuk presentasi saya"
+          },
+          "productScene": {
+            "label": "Tempatkan produk saya dalam suasana baru",
+            "prompt": "Tempatkan produk saya dalam suasana baru"
+          },
+          "profileBanner": {
+            "label": "Perbarui banner profil saya",
+            "prompt": "Perbarui banner profil saya"
+          },
+          "roomDesign": {
+            "label": "Coba tampilan baru untuk kamar saya",
+            "prompt": "Coba tampilan baru untuk kamar saya"
+          },
+          "storePhoto": {
+            "label": "Siapkan foto untuk toko saya",
+            "prompt": "Siapkan foto untuk toko saya"
+          },
+          "websiteImage": {
+            "label": "Buat gambar untuk situs saya",
+            "prompt": "Buat gambar untuk situs saya"
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "Ubah foto menjadi video",
+            "prompt": "Animasikan foto yang saya berikan dengan gerakan alami. Pertahankan ciri subjek dan tanyakan bagian yang perlu bergerak."
+          },
+          "brandIntro": {
+            "label": "Buat pembuka untuk merek saya",
+            "prompt": "Buat video pembuka singkat untuk merek saya dengan logo dan detail yang saya berikan. Bantu memilih suasananya."
+          },
+          "eventPromo": {
+            "label": "Promosikan acara saya",
+            "prompt": "Buat video promosi singkat untuk acara saya. Tanyakan acara, audiens, dan detail yang perlu disertakan."
+          },
+          "loopingBackground": {
+            "label": "Buat latar belakang berulang",
+            "prompt": "Buat video latar dengan gerakan lembut yang berulang tanpa jeda. Tanyakan adegan dan suasana yang saya inginkan."
+          },
+          "productDemo": {
+            "label": "Tampilkan produk saya dalam gerakan",
+            "prompt": "Buat video singkat dari foto produk saya. Pertahankan tampilannya dan tonjolkan fitur yang saya pilih."
+          },
+          "socialClip": {
+            "label": "Buat klip untuk media sosial",
+            "prompt": "Buat video singkat untuk media sosial. Bantu pilih pesan yang jelas dan gaya visual yang sesuai dengan audiens saya."
+          },
+          "videoGreeting": {
+            "label": "Buat video ucapan",
+            "prompt": "Buat video ucapan singkat untuk ulang tahun, hari raya, atau perayaan. Tanyakan acara, penerima, dan pesannya."
+          },
+          "visualExplainer": {
+            "label": "Jelaskan ide secara visual",
+            "prompt": "Buat video singkat yang memudahkan pemahaman satu ide. Tanyakan ide yang akan dijelaskan dan target audiensnya."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Buat halaman pemesanan layanan saya",
+            "prompt": "Buat halaman yang menjelaskan layanan saya dan cara memesan. Gunakan tautan pemesanan yang sudah ada dan tanyakan detail layanan."
+          },
+          "businessSite": {
+            "label": "Buat situs untuk bisnis saya",
+            "prompt": "Buat situs yang menjelaskan bisnis, layanan, dan cara menghubungi saya. Mulai dengan detail bisnis dan audiens."
+          },
+          "cafeMenu": {
+            "label": "Tampilkan menu kafe saya secara online",
+            "prompt": "Buat situs kafe dengan menu, harga, jam buka, dan lokasi. Gunakan detail dan foto yang saya berikan."
+          },
+          "coursePage": {
+            "label": "Buat halaman untuk kursus saya",
+            "prompt": "Buat halaman yang mengenalkan kursus, target peserta, hasil belajar, dan cara mendaftar melalui tautan yang saya berikan."
+          },
+          "eventPage": {
+            "label": "Buat halaman untuk acara saya",
+            "prompt": "Buat halaman acara dengan tanggal, lokasi, agenda, dan tautan pendaftaran yang saya berikan. Tanyakan detail yang belum tersedia."
+          },
+          "linkPage": {
+            "label": "Satukan tautan saya dalam satu halaman",
+            "prompt": "Buat halaman tautan sederhana dengan perkenalan, karya, dan akun sosial saya. Tanyakan tautan yang perlu disertakan."
+          },
+          "portfolio": {
+            "label": "Tampilkan karya saya dalam portofolio",
+            "prompt": "Buat situs portofolio untuk karya saya. Bantu susun proyek, perkenalan diri, dan informasi kontak."
+          },
+          "productLaunch": {
+            "label": "Luncurkan halaman untuk produk saya",
+            "prompt": "Buat halaman produk dengan manfaat, visual, dan langkah selanjutnya yang jelas. Tanyakan produk yang diluncurkan dan targetnya."
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "Dapatkan ringkasan email setiap pagi",
+            "prompt": "Ringkas email penting, balasan yang perlu dibuat, dan tugas setiap pagi. Konfirmasi kotak masuk dan waktu penerimaan terlebih dahulu."
+          },
+          "fileOrganization": {
+            "label": "Atur file yang baru masuk",
+            "prompt": "Atur file baru dengan aturan penamaan dan pengarsipan yang disepakati. Konfirmasi sumber, folder tujuan, dan kategori."
+          },
+          "meetingActions": {
+            "label": "Ubah catatan rapat menjadi tugas",
+            "prompt": "Saat catatan rapat baru tersedia, ambil tugas, penanggung jawab, dan tenggat. Tandai informasi yang belum ada dan konfirmasi lokasi catatan."
+          },
+          "meetingPrep": {
+            "label": "Bantu persiapkan rapat saya",
+            "prompt": "Sebelum rapat, siapkan informasi peserta, latar belakang, dan topik diskusi. Konfirmasi kalender, sumber materi, dan waktu pengingat."
+          },
+          "numbersBrief": {
+            "label": "Dapatkan ringkasan angka harian",
+            "prompt": "Rangkum angka yang saya pantau beserta perubahan sejak pembaruan terakhir setiap hari. Konfirmasi sumber data, metrik, dan waktu pengiriman."
+          },
+          "progressRecap": {
+            "label": "Rangkum progres dan langkah berikutnya",
+            "prompt": "Rangkum pekerjaan selesai, tugas tertunda, dan prioritas berikutnya secara rutin. Konfirmasi sumber catatan serta jadwal harian atau mingguan."
+          },
+          "replyWatch": {
+            "label": "Beri tahu saat email mendapat balasan",
+            "prompt": "Pantau balasan untuk satu email, lalu beri tahu saya dan rangkum isinya. Konfirmasi email yang perlu diikuti terlebih dahulu."
+          },
+          "topicUpdates": {
+            "label": "Ikuti kabar terbaru tentang suatu topik",
+            "prompt": "Ikuti topik yang saya minati dan rangkum informasi baru yang penting beserta sumbernya. Tanyakan topik dan frekuensi pembaruan."
+          }
+        }
+      },
+      "ideasLabel": "Ide untuk memulai",
+      "label": "Mulai tugas",
+      "moreIdeas": "Ide lainnya",
+      "moreTemplates": "Template lainnya",
+      "presentationTemplates": "Template presentasi",
+      "tasks": {
+        "image": "Gambar",
+        "presentation": "Slide",
+        "video": "Video",
+        "website": "Situs web",
+        "workflow": "Alur kerja"
+      }
     },
     "templates": {
       "categories": {
@@ -2503,8 +2726,8 @@
     },
     "callback": {
       "connected": "{{connector}} terhubung",
-      "connectedAs": "Terhubung sebagai {{username}}. Anda dapat menutup jendela ini.",
-      "connectedDescription": "Akun Anda telah terhubung. Anda dapat menutup jendela ini.",
+      "connectedAs": "Terhubung sebagai {{username}}. Tutup jendela ini dan kembali ke halaman semula untuk melanjutkan.",
+      "connectedDescription": "Akun Anda telah terhubung. Tutup jendela ini dan kembali ke halaman semula untuk melanjutkan.",
       "connecting": "Menghubungkan {{connector}}…",
       "connectingDescription": "Harap tunggu saat kami menyelesaikan koneksi akun Anda.",
       "customConnectorLabel": "Konektor kustom",
@@ -2671,6 +2894,10 @@
         "title": "Metode koneksi tidak tersedia"
       }
     },
+    "connectionProgress": {
+      "description": "Selesaikan otorisasi jika diminta. Tunggu sementara kami menyelesaikan pengaturan koneksi.",
+      "title": "Menghubungkan akun Anda"
+    },
     "custom": {
       "connect": {
         "configured": "Terkonfigurasi",
@@ -2739,7 +2966,7 @@
         "prefixesHint": "(satu per baris, hanya https)",
         "recommended": "(Disarankan)",
         "redirectCopy": "Salin URL pengalihan",
-        "redirectHint": "(Daftarkan URL ini di aplikasi OAuth penyedia. Pertahankan juga URL pengalihan VM0 atau Okou yang sudah terdaftar.)",
+        "redirectHint": "(Daftarkan URL ini di aplikasi OAuth penyedia.)",
         "redirectUrl": "URL pengalihan",
         "removeApiAuthentication": "Hapus autentikasi API",
         "removeAutomatic": "Hapus autentikasi otomatis",
@@ -5437,7 +5664,7 @@
     "displayNames": {
       "avatar": "Avatar",
       "finance": "Keuangan",
-      "imageRecognize": "Pengenalan Gambar",
+      "imageRecognition": "Pengenalan Gambar",
       "maps": "Peta",
       "peopleSearch": "Pencarian Orang",
       "seo": "SEO",
@@ -5499,6 +5726,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Tindakan diperlukan — pengiriman dijeda",
         "addAction": "Tambahkan otomatisasi Kalender",
         "addAria": "Tambahkan otomatisasi Google Calendar",
         "addDescriptionCancelled": "Jalankan alur kerja ini saat acara Google Calendar dibatalkan.",
@@ -5507,16 +5735,29 @@
         "addTitle": "Tambahkan otomatisasi Google Calendar",
         "calendarId": "ID Kalender",
         "calendarIdPlaceholder": "utama",
+        "calendarNotFoundDescription": "Kalender ini tidak lagi tersedia. Pilih kalender lain untuk melanjutkan otomatisasi ini.",
         "cancelledDescription": "Jalankan saat acara kalender dibatalkan.",
         "cancelledRule": "Saat acara kalender {{calendar}} dibatalkan",
         "cancelledTitle": "Acara Google Calendar dibatalkan",
+        "cancelRecovery": "Batal",
+        "changeAria": "Ubah otomatisasi Google Calendar",
+        "changeCalendar": "Ubah kalender",
+        "checkingRecovery": "Memeriksa apakah otomatisasi ini dapat dilanjutkan…",
+        "checkRecoveryStatus": "Periksa status",
         "createdDescription": "Jalankan saat acara kalender dibuat.",
         "createdRule": "Saat kalender {{calendar}} mendapat acara baru",
         "createdTitle": "Acara Google Calendar dibuat",
+        "enabledIntent": "Diaktifkan",
+        "reconnectDescription": "Google Calendar perlu dihubungkan kembali sebelum otomatisasi ini dapat dilanjutkan.",
+        "reconnectGoogleCalendar": "Hubungkan kembali Google Calendar",
+        "recoveryStatus": "Pemulihan Google Kalender",
+        "recoveryUnconfirmed": "Pemulihan belum dikonfirmasi. Tinjau peringatan otomatisasi ini, lalu periksa kembali statusnya.",
+        "saveCalendar": "Simpan kalender",
         "summary": "Kalender {{calendar}}",
         "updatedDescription": "Jalankan saat acara kalender diperbarui.",
         "updatedRule": "Saat acara kalender {{calendar}} diperbarui",
-        "updatedTitle": "Acara Google Calendar diperbarui"
+        "updatedTitle": "Acara Google Calendar diperbarui",
+        "updateError": "Kami tidak dapat mengubah kalender ini. Coba lagi."
       },
       "chat": {
         "addAction": "Tambahkan otomatisasi chat",
@@ -5614,7 +5855,7 @@
         "branches": "Cabang",
         "branchesPlaceholder": "main, release",
         "commentPrefixes": "Awalan komentar",
-        "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "Kesimpulan",
         "conclusionsSummary": "Kesimpulan {{values}}",
         "creators": "Pembuat",
@@ -6092,6 +6333,7 @@
       }
     },
     "list": {
+      "actionRequired": "Tindakan diperlukan",
       "agentEmpty": "Belum ada alur kerja yang dijalankan sebagai agen ini.",
       "all": "Semua",
       "allAgents": "Semua agen",
@@ -6109,6 +6351,7 @@
       },
       "noWorkflows": "Tidak ada alur kerja",
       "open": "Buka {{title}}",
+      "openRecovery": "Buka pemulihan {{title}}",
       "runsAs": "Dijalankan sebagai",
       "runsAsAria": "Dijalankan sebagai {{agent}}",
       "section": {

@@ -14,7 +14,7 @@ import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   badRequestMessage,
@@ -417,7 +417,6 @@ const startConnectorOauthInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
     if (!auth.orgId) {
@@ -467,13 +466,11 @@ const startConnectorOauthInner$ = command(
       method,
       connectorSlug: resolved.connectorSlug,
       callbackTarget: bodyResult.data.callbackTarget,
-      publicBrand,
     });
     const prepared = prepareConnectorAuthCodeStartWithMethod({
       method,
       redirectUri,
       readEnv: optionalEnv,
-      publicBrand,
     });
     if (!prepared.ok) {
       return internalServerError(`${connectorSlug} auth client not configured`);
@@ -550,7 +547,6 @@ const startConnectorOpenIdInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
 
@@ -602,7 +598,6 @@ const startConnectorOpenIdInner$ = command(
         request,
         method: resolved.method,
       }),
-      publicBrand,
     });
     const authResult = await buildConnectorOpenIdAuthUrlWithMethod({
       connectorSlug: resolved.connectorSlug,

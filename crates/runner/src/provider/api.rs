@@ -12,7 +12,8 @@ use api_contracts::generated::{
     constants::runners::{
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
         PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
-        PI_MODEL_CONFIG_LEGACY_GENERATION, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        PI_MODEL_CONFIG_LEGACY_GENERATION, PI_MODEL_CONFIG_NATIVE_GENERATION,
+        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -42,7 +43,9 @@ use super::{
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
-use crate::error::{ApiFailureKind, ApiStatusError, ApiTransportError, RunnerError, RunnerResult};
+use crate::error::{
+    ApiBodyReadError, ApiFailureKind, ApiStatusError, ApiTransportError, RunnerError, RunnerResult,
+};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
@@ -71,7 +74,7 @@ struct ClaimRequestBody<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunnerClaimCapabilities {
-    pi_model_config_generations: [u32; 3],
+    pi_model_config_generations: [u32; 4],
 }
 
 #[derive(Serialize)]
@@ -213,7 +216,6 @@ const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
 const POLL_DEGRADED_AFTER: Duration = Duration::from_secs(60);
 /// Runner reuse requires a heartbeat observed within this freshness window.
 const HEARTBEAT_DEGRADED_AFTER: Duration = Duration::from_secs(30);
-const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct DegradationEpisode {
@@ -223,32 +225,32 @@ struct DegradationEpisode {
 }
 
 #[derive(Clone, Copy)]
-struct DegradationObservation {
-    consecutive_failures: u64,
-    failure_elapsed: Duration,
-    degraded: bool,
-    emit_degradation: bool,
+pub(super) struct DegradationObservation {
+    pub(super) consecutive_failures: u64,
+    pub(super) failure_elapsed: Duration,
+    pub(super) degraded: bool,
+    pub(super) emit_degradation: bool,
 }
 
 #[derive(Clone, Copy)]
-struct DegradationRecovery {
-    recovered_after_failures: u64,
-    failure_elapsed: Duration,
-    was_degraded: bool,
+pub(super) struct DegradationRecovery {
+    pub(super) recovered_after_failures: u64,
+    pub(super) failure_elapsed: Duration,
+    pub(super) was_degraded: bool,
 }
 
-struct DegradationEpisodeTracker {
+pub(super) struct DegradationEpisodeTracker {
     active_episode: Mutex<Option<DegradationEpisode>>,
 }
 
 impl DegradationEpisodeTracker {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             active_episode: Mutex::new(None),
         }
     }
 
-    async fn observe_failure(
+    pub(super) async fn observe_failure(
         &self,
         now: Instant,
         degraded_after: Duration,
@@ -274,7 +276,7 @@ impl DegradationEpisodeTracker {
         }
     }
 
-    async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
+    pub(super) async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
         self.active_episode
             .lock()
             .await
@@ -342,6 +344,7 @@ pub struct ApiProvider {
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: RunCancellationRegistry,
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
+    ssh: Option<Arc<crate::ssh::SshRuntime>>,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
     poll_degradation_tracker: DegradationEpisodeTracker,
@@ -356,6 +359,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 pub struct ApiProviderConfig {
+    pub(crate) ssh: Option<Arc<crate::ssh::SshRuntime>>,
     pub(crate) runner_identity: RunnerProcessIdentity,
     pub(crate) runner_hostname: Option<String>,
     pub group: String,
@@ -373,6 +377,7 @@ impl ApiProvider {
         cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
+            ssh,
             runner_identity,
             runner_hostname,
             group,
@@ -404,6 +409,7 @@ impl ApiProvider {
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
             connector_runtime_sync,
+            ssh,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
             poll_degradation_tracker: DegradationEpisodeTracker::new(),
@@ -563,6 +569,7 @@ impl ApiProvider {
             direct_candidates: Arc::clone(&self.direct_candidates),
             cancel_tokens: self.cancel_tokens.clone(),
             connector_runtime_sync: self.connector_runtime_sync.clone(),
+            ssh: self.ssh.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
             provider_cancel: self.cancel.clone(),
         }));
@@ -813,16 +820,15 @@ impl JobProvider for ApiProvider {
                     response_body_read_elapsed,
                     response_decode_elapsed,
                 );
-                let active_input_source = (ctx.cli_agent_type != "pi"
-                    && supports_thread_active_input(ctx.reuse_key.as_deref()))
-                .then(|| {
-                    ActiveInputSource::api(
-                        self.api.clone(),
-                        run_id,
-                        ctx.sandbox_token.clone(),
-                        self.active_input_notifications.subscribe(run_id),
-                    )
-                });
+                let active_input_source = supports_thread_active_input(ctx.reuse_key.as_deref())
+                    .then(|| {
+                        ActiveInputSource::api(
+                            self.api.clone(),
+                            run_id,
+                            ctx.sandbox_token.clone(),
+                            self.active_input_notifications.subscribe(run_id),
+                        )
+                    });
                 let claimed = match if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(
                         run_id,
@@ -1413,13 +1419,12 @@ impl ApiClient {
         })
     }
 
-    /// Send a heartbeat with runner state. The short timeout (3s) bounds this
-    /// best-effort request and any lifecycle drain waiting for it.
+    /// Send a heartbeat with runner state. The default API timeout allows for
+    /// cold starts while bounding this request and lifecycle drain waits.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
-                .timeout(Duration::from_secs(3))
                 .json(state),
             "heartbeat",
         )
@@ -1561,7 +1566,6 @@ impl ApiClient {
                 ),
                 &self.token,
             )
-            .timeout(CONNECTOR_RUNTIME_SYNC_TIMEOUT)
             .json(&serde_json::json!({ "targets": targets }))
     }
 
@@ -1602,9 +1606,31 @@ impl ApiClient {
                 Ok(None) => break,
                 Err(_) if !status.is_success() => return Err(api_status_error(LABEL, status, "")),
                 Err(error) => {
-                    return Err(RunnerError::Api(format!(
-                        "{LABEL} decode read body: {error}"
-                    )));
+                    let content_type = match resp.headers().get(reqwest::header::CONTENT_TYPE) {
+                        None => "missing",
+                        Some(value) => match value.to_str() {
+                            Err(_) => "invalid",
+                            Ok(value) => {
+                                let media_type = value
+                                    .split_once(';')
+                                    .map_or(value, |(media_type, _)| media_type)
+                                    .trim();
+                                if media_type.eq_ignore_ascii_case("application/json") {
+                                    "application/json"
+                                } else {
+                                    "other"
+                                }
+                            }
+                        },
+                    };
+                    return Err(RunnerError::ApiBodyRead(Box::new(ApiBodyReadError {
+                        endpoint_label: LABEL,
+                        status,
+                        content_type,
+                        content_length,
+                        received_bytes: body_len,
+                        failure_cause: crate::http::api_transport_cause(&error),
+                    })));
                 }
             };
             let chunk_len = u64::try_from(chunk.len()).map_err(|error| {
@@ -1679,6 +1705,7 @@ fn claim_request_body<'a>(
                 PI_MODEL_CONFIG_LEGACY_GENERATION,
                 PI_MODEL_CONFIG_CURRENT_GENERATION,
                 PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+                PI_MODEL_CONFIG_NATIVE_GENERATION,
             ],
         },
         telemetry: ClaimRequestTelemetry {
@@ -2013,6 +2040,56 @@ mod tests {
         api_client_for_url(server.base_url())
     }
 
+    #[tokio::test]
+    async fn heartbeat_and_connector_sync_allow_api_cold_starts() {
+        let server = MockServer::start_async().await;
+        let heartbeat = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/runners/heartbeat")
+                    .header("authorization", "Bearer runner-token");
+                then.status(200).delay(Duration::from_secs(6));
+            })
+            .await;
+        let run_id = RunId::nil();
+        let sync = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                    .header("authorization", "Bearer runner-token");
+                then.status(200)
+                    .delay(Duration::from_secs(6))
+                    .json_body(serde_json::json!({
+                        "results": [{
+                            "target": {"kind": "builtin", "connectorSlug": "slack"},
+                            "state": "unresolved",
+                            "reason": "connector-unavailable",
+                        }],
+                    }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let state = heartbeat_state_for_test();
+        let targets = [ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "slack".to_string(),
+            base_url_vars: None,
+            source_id: None,
+        }];
+
+        let (heartbeat_result, sync_result) = tokio::join!(
+            api.heartbeat(&state),
+            api.sync_connector_runtime(run_id, &targets),
+        );
+
+        heartbeat_result.expect("heartbeat should survive an API cold start");
+        assert!(matches!(
+            sync_result.expect("connector sync should survive an API cold start"),
+            ConnectorRuntimeSyncOutcome::Synced(response) if response.results.len() == 1
+        ));
+        heartbeat.assert_calls_async(1).await;
+        sync.assert_calls_async(1).await;
+    }
+
     async fn claim_decode_error(
         server: &MockServer,
         run_id: RunId,
@@ -2317,6 +2394,7 @@ mod tests {
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
+            ssh: None,
             connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
@@ -3177,7 +3255,7 @@ mod tests {
         assert!(!body.to_string().contains("path"));
         assert_eq!(
             body["capabilities"]["piModelConfigGenerations"],
-            serde_json::json!([1, 2, 3])
+            serde_json::json!([1, 2, 3, 4])
         );
 
         let runner_identity = test_runner_identity();
@@ -5361,6 +5439,46 @@ mod tests {
         assert_eq!(context.prompt, "minimal response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_attaches_active_input_source_for_thread_bound_pi() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "reuseKey": "thread:pi-active-input",
+                    "prompt": "steer the active Pi run",
+                    "sandboxToken": "pi-active-input-sandbox-token",
+                    "cliAgentType": "pi",
+                    "platformEnvironment": {},
+                    "connectorRuntimeTargets": []
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("thread-bound Pi claim should succeed");
+
+        assert!(matches!(
+            claimed.active_input_source(),
+            Some(ActiveInputSource::Api(_))
+        ));
         claim_mock.assert_calls_async(1).await;
     }
 

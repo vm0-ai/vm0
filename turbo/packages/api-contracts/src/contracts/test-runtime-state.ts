@@ -18,36 +18,36 @@ const builtInModelRuntimeRouteSchema = z.object({
 
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
-    action: z.literal("seed-vm0-built-in-default-model-key"),
+    action: z.literal("seed-built-in-default-model-key"),
     fixture_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("seed-vm0-built-in-model-key"),
-    fixture_id: z.uuid(),
-    selected_model: z.string(),
-  }),
-  z.object({
-    action: z.literal("delete-vm0-built-in-model-key"),
-    fixture_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("seed-vm0-built-in-model-candidate-keys"),
+    action: z.literal("seed-built-in-model-key"),
     fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("resolve-vm0-built-in-model-route"),
+    action: z.literal("delete-built-in-model-key"),
+    fixture_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("seed-built-in-model-candidate-keys"),
+    fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("set-vm0-built-in-candidate-cooldown"),
+    action: z.literal("resolve-built-in-model-route"),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-built-in-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),
     unavailable_until: z.iso.datetime(),
   }),
   z.object({
-    action: z.literal("delete-vm0-built-in-candidate-cooldown"),
+    action: z.literal("delete-built-in-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),

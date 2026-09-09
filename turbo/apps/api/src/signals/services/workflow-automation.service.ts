@@ -27,6 +27,7 @@ import {
   type ChatThreadWorkflowAutomation,
   type GmailAutomationEventConfig,
   type GoogleCalendarAutomationEventConfig,
+  type GoogleCalendarWatchActionRequiredReason,
   type GoogleMeetAutomationEventConfig,
   type GoogleFormsResponseSubmittedEventConfig,
   type GoogleFormsResponseSubmittedEventCreateConfig,
@@ -50,6 +51,7 @@ import {
 } from "@okouai/api-contracts/contracts/workflows";
 import { parseScheduledAtTime } from "@okouai/core/timezone";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { googleCalendarWatchStates } from "@okouai/db/schema/google-calendar-event";
 import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automation-event";
@@ -99,8 +101,14 @@ import {
 } from "./notion-automation-account.service";
 import {
   ensureGoogleCalendarWatchForUser,
+  googleCalendarAutomationTargetMatchesConnector,
   hasEnabledGoogleCalendarConsumer,
+  lockReadyGoogleCalendarWatchTarget,
   normalizeGoogleCalendarIdForConnector,
+  reconcileGoogleCalendarWatchTarget,
+  releaseStagedGoogleCalendarWatchTarget,
+  stageGoogleCalendarWatchTargetForReconfiguration,
+  type StagedGoogleCalendarWatchTarget,
 } from "./google-calendar-automation-event.service";
 import { resolveGoogleCalendarAutomationConnectorId } from "./google-calendar-automation-account.service";
 import {
@@ -122,8 +130,6 @@ import {
   prepareNotionPageContentUpdatedEventConfigForPersist,
   validateNotionEventConfigForConnector,
 } from "./notion-automation-event.service";
-import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
-import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
 import { resolveStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
@@ -241,26 +247,6 @@ function workflowWebhookTeamRequiredResult(): {
   };
 }
 
-function notionWorkflowAutomationsDisabledResult(): {
-  readonly kind: "bad-request";
-  readonly message: string;
-} {
-  return {
-    kind: "bad-request",
-    message: "Notion workflow automations are not enabled",
-  };
-}
-
-function googleFormsWorkflowAutomationsDisabledResult(): {
-  readonly kind: "bad-request";
-  readonly message: string;
-} {
-  return {
-    kind: "bad-request",
-    message: "Google Forms workflow automations are not enabled",
-  };
-}
-
 function stripeInvoicePaidWorkflowAutomationsDisabledResult(): {
   readonly kind: "bad-request";
   readonly message: string;
@@ -296,7 +282,6 @@ interface CreateEventAutomationWorkflowContext {
   readonly workflowId: string;
   readonly agentId: string;
   readonly workflowTitle: string;
-  readonly publicBrand: PublicBrand;
   readonly automationId?: string;
 }
 
@@ -612,12 +597,10 @@ type RowToSummaryOptions = {
   | {
       readonly webhookToken: string;
       readonly webhookSecret: string;
-      readonly publicBrand: PublicBrand;
     }
   | {
       readonly webhookToken?: undefined;
       readonly webhookSecret?: undefined;
-      readonly publicBrand?: undefined;
     }
 );
 
@@ -791,10 +774,15 @@ async function loadStripeWorkflowAutomationHealth(
   };
 }
 
+interface EventSummaryWarnings {
+  readonly googleCalendar?: GoogleCalendarWatchActionRequiredReason;
+  readonly googleForms?: string;
+}
+
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
-  warning?: string,
+  warnings: EventSummaryWarnings = {},
 ): WorkflowAutomationSummary | null {
   if (row.eventType === "chat-run-finished") {
     return {
@@ -840,6 +828,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
+      ...(warnings.googleCalendar === undefined
+        ? {}
+        : { warning: warnings.googleCalendar }),
     };
   }
   if (row.eventType === "google-calendar-event-updated") {
@@ -852,6 +843,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
+      ...(warnings.googleCalendar === undefined
+        ? {}
+        : { warning: warnings.googleCalendar }),
     };
   }
   if (row.eventType === "google-calendar-event-cancelled") {
@@ -864,6 +858,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
+      ...(warnings.googleCalendar === undefined
+        ? {}
+        : { warning: warnings.googleCalendar }),
     };
   }
   if (row.eventType === "google-forms-response-submitted") {
@@ -876,7 +873,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
-      ...(warning === undefined ? {} : { warning }),
+      ...(warnings.googleForms === undefined
+        ? {}
+        : { warning: warnings.googleForms }),
     };
   }
   if (row.eventType === "google-meet-transcript-generated") {
@@ -901,6 +900,54 @@ function eventRowToSummary(
     return notionPageContentUpdatedRowSummary(row, chatThreadId);
   }
   return null;
+}
+
+function googleCalendarIdFromAutomationRow(row: AutomationRow): string | null {
+  if (row.eventType === "google-calendar-event-created") {
+    return googleCalendarEventCreatedEventConfigSchema.parse(row.eventConfig)
+      .calendarId;
+  }
+  if (row.eventType === "google-calendar-event-updated") {
+    return googleCalendarEventUpdatedEventConfigSchema.parse(row.eventConfig)
+      .calendarId;
+  }
+  if (row.eventType === "google-calendar-event-cancelled") {
+    return googleCalendarEventCancelledEventConfigSchema.parse(row.eventConfig)
+      .calendarId;
+  }
+  return null;
+}
+
+async function loadGoogleCalendarAutomationWarning(
+  db: ReadonlyDb,
+  row: AutomationRow,
+): Promise<GoogleCalendarWatchActionRequiredReason | undefined> {
+  const calendarId = googleCalendarIdFromAutomationRow(row);
+  if (calendarId === null || row.eventConnectorId === null) {
+    return undefined;
+  }
+  const [state] = await db
+    .select({
+      reason: googleCalendarWatchStates.actionRequiredReason,
+      startedAt: googleCalendarWatchStates.actionRequiredAt,
+    })
+    .from(googleCalendarWatchStates)
+    .where(
+      and(
+        eq(googleCalendarWatchStates.orgId, row.orgId),
+        eq(googleCalendarWatchStates.userId, row.ownerUserId),
+        eq(googleCalendarWatchStates.connectorId, row.eventConnectorId),
+        eq(googleCalendarWatchStates.calendarId, calendarId),
+      ),
+    )
+    .limit(1);
+  if (!state) {
+    return undefined;
+  }
+  if ((state.reason === null) !== (state.startedAt === null)) {
+    throw new Error("Incomplete Google Calendar action-required episode");
+  }
+  return state.reason ?? undefined;
 }
 
 async function rowToSummary(
@@ -931,7 +978,10 @@ async function rowToSummary(
         })),
       };
     }
-    const eventSummary = eventRowToSummary(row, chatThreadId, options.warning);
+    const eventSummary = eventRowToSummary(row, chatThreadId, {
+      googleCalendar: await loadGoogleCalendarAutomationWarning(db, row),
+      googleForms: options.warning,
+    });
     if (eventSummary) {
       return eventSummary;
     }
@@ -1320,7 +1370,6 @@ export async function revealWorkflowWebhookSecret(
     readonly orgId: string;
     readonly member: WorkflowMember;
     readonly automationId: string;
-    readonly publicBrand: PublicBrand;
   },
 ): Promise<WorkflowWebhookSecretResponse | null> {
   const automation = await loadAutomationRow(db, {
@@ -1343,10 +1392,7 @@ export async function revealWorkflowWebhookSecret(
   if (!visible) {
     return null;
   }
-  return await revealWorkflowWebhookSecretFields(db, {
-    automation,
-    publicBrand: args.publicBrand,
-  });
+  return await revealWorkflowWebhookSecretFields(db, { automation });
 }
 
 interface CreateScheduleAutomationInput {
@@ -1724,7 +1770,6 @@ async function insertWebhookEventAutomation(
     readonly workflowTitle: string;
     readonly automationId?: string;
     readonly currentTime: Date;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<WorkflowAutomationSummary | null> {
@@ -1795,7 +1840,6 @@ async function insertWebhookEventAutomation(
       chatThreadId,
       webhookToken: token,
       webhookSecret: secret,
-      publicBrand: args.publicBrand,
     });
   });
 }
@@ -2103,7 +2147,6 @@ async function createWebhookEventAutomationForWorkflow(
       workflowTitle: args.context.workflowTitle,
       automationId: args.context.automationId,
       currentTime: nowDate(),
-      publicBrand: args.context.publicBrand,
     },
     signal,
   );
@@ -2196,6 +2239,19 @@ function parseGoogleCalendarEventConfig(
     return googleCalendarEventUpdatedEventConfigSchema.parse(eventConfig);
   }
   return googleCalendarEventCancelledEventConfigSchema.parse(eventConfig);
+}
+
+function safeParseGoogleCalendarEventConfig(
+  eventType: GoogleCalendarAutomationEventType,
+  eventConfig: unknown,
+): GoogleCalendarAutomationEventConfig | null {
+  const result =
+    eventType === "google-calendar-event-created"
+      ? googleCalendarEventCreatedEventConfigSchema.safeParse(eventConfig)
+      : eventType === "google-calendar-event-updated"
+        ? googleCalendarEventUpdatedEventConfigSchema.safeParse(eventConfig)
+        : googleCalendarEventCancelledEventConfigSchema.safeParse(eventConfig);
+  return result.success ? result.data : null;
 }
 
 async function createGoogleCalendarEventAutomationForWorkflow(
@@ -2584,7 +2640,6 @@ async function createNotionEventAutomationForWorkflow(
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               connectorId: eventConnectorId,
-              publicBrand: args.context.publicBrand,
               eventConfig:
                 "parentPageUrl" in eventConfig
                   ? eventConfig
@@ -2611,7 +2666,6 @@ async function createNotionEventAutomationForWorkflow(
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               connectorId: eventConnectorId,
-              publicBrand: args.context.publicBrand,
               eventConfig:
                 "databaseUrl" in eventConfig
                   ? eventConfig
@@ -2638,7 +2692,6 @@ async function createNotionEventAutomationForWorkflow(
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               connectorId: eventConnectorId,
-              publicBrand: args.context.publicBrand,
               eventConfig:
                 "scope" in eventConfig
                   ? eventConfig.scope.type === "page"
@@ -2891,14 +2944,13 @@ async function createChatRunFinishedEventAutomationForWorkflow(
 
 const createEventAutomationForWorkflow$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly db: Db;
       readonly input: CreateEventAutomationInput;
       readonly workflowId: string;
       readonly agentId: string;
       readonly workflowTitle: string;
-      readonly publicBrand: PublicBrand;
       readonly automationId?: string;
     },
     signal: AbortSignal,
@@ -2946,16 +2998,6 @@ const createEventAutomationForWorkflow$ = command(
     }
 
     if (automationCreateInputIsGoogleForms(input)) {
-      const featureEnabled = await get(
-        googleFormsWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return googleFormsWorkflowAutomationsDisabledResult();
-      }
       return await createGoogleFormsEventAutomationForWorkflow(
         {
           context: args,
@@ -2974,17 +3016,6 @@ const createEventAutomationForWorkflow$ = command(
     }
 
     if (automationCreateInputIsNotion(input)) {
-      const featureEnabled = await get(
-        notionWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return notionWorkflowAutomationsDisabledResult();
-      }
-
       return await createNotionEventAutomationForWorkflow(
         {
           context: args,
@@ -3241,7 +3272,6 @@ export const createWorkflowAutomation$ = command(
   async (
     { set },
     args: CreateAutomationInput,
-    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
     const writeDb = set(writeDb$);
@@ -3306,7 +3336,6 @@ export const createWorkflowAutomation$ = command(
           workflowId: workflow.id,
           agentId: agent.id,
           workflowTitle,
-          publicBrand,
           automationId: args.officialInstallation?.automationId,
         },
         signal,
@@ -3444,7 +3473,6 @@ export type OfficialAutomationEventPreparationResult =
 interface PrepareOfficialAutomationReconfigurationInput {
   readonly automationId: string;
   readonly input: CreateAutomationInput;
-  readonly publicBrand: PublicBrand;
 }
 
 function preparedOfficialEvent(
@@ -3493,7 +3521,6 @@ async function prepareOfficialChatRunFinishedEvent(
 async function prepareOfficialNotionEvent(
   db: Db,
   input: CreateNotionEventAutomationInput,
-  publicBrand: PublicBrand,
   signal: AbortSignal,
 ): Promise<OfficialAutomationEventPreparationResult> {
   const eventConnectorId = await resolveNotionAutomationConnectorId(db, {
@@ -3522,7 +3549,6 @@ async function prepareOfficialNotionEvent(
         orgId: input.orgId,
         userId: input.member.userId,
         connectorId: eventConnectorId,
-        publicBrand,
         eventConfig:
           "parentPageUrl" in config
             ? config
@@ -3552,7 +3578,6 @@ async function prepareOfficialNotionEvent(
         orgId: input.orgId,
         userId: input.member.userId,
         connectorId: eventConnectorId,
-        publicBrand,
         eventConfig:
           "databaseUrl" in config
             ? config
@@ -3595,7 +3620,6 @@ async function prepareOfficialNotionEvent(
       orgId: input.orgId,
       userId: input.member.userId,
       connectorId: eventConnectorId,
-      publicBrand,
       eventConfig,
     },
     signal,
@@ -3771,12 +3795,8 @@ async function prepareOfficialGoogleFormsReconfiguration(
   db: Db,
   input: CreateGoogleFormsEventAutomationInput,
   currentConfig: unknown,
-  enabled: boolean,
   signal: AbortSignal,
 ): Promise<OfficialAutomationEventPreparationResult> {
-  if (!enabled) {
-    return googleFormsWorkflowAutomationsDisabledResult();
-  }
   return preserveGoogleFormsCursorForSameTarget(
     currentConfig,
     await prepareOfficialGoogleFormsEvent(db, input, signal),
@@ -3874,20 +3894,12 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGoogleCalendarEvent(db, input, signal);
     }
     if (automationCreateInputIsGoogleForms(input)) {
-      const enabled = await get(
-        googleFormsWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
       return await prepareOfficialGoogleFormsReconfiguration(
         db,
         input,
         automation.eventType === input.eventType
           ? automation.eventConfig
           : undefined,
-        enabled,
         signal,
       );
     }
@@ -3895,16 +3907,7 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGoogleMeetEvent(db, input, signal);
     }
     if (automationCreateInputIsNotion(input)) {
-      const enabled = await get(
-        notionWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      return enabled
-        ? await prepareOfficialNotionEvent(db, input, args.publicBrand, signal)
-        : notionWorkflowAutomationsDisabledResult();
+      return await prepareOfficialNotionEvent(db, input, signal);
     }
     if (automationCreateInputIsStripeInvoicePaid(input)) {
       const enabled = await get(
@@ -3986,7 +3989,8 @@ interface UpdateAutomationInput {
   readonly schedule?: WorkflowSchedule;
   readonly eventConfig?:
     | GmailAutomationEventConfig
-    | GithubAutomationEventConfig;
+    | GithubAutomationEventConfig
+    | GoogleCalendarAutomationEventConfig;
 }
 
 async function updateAutomationEventConfig(
@@ -3995,7 +3999,8 @@ async function updateAutomationEventConfig(
     readonly automationId: string;
     readonly eventConfig:
       | GmailAutomationEventConfig
-      | GithubAutomationEventConfig;
+      | GithubAutomationEventConfig
+      | GoogleCalendarAutomationEventConfig;
     readonly eventConnectorId?: string;
   },
   signal: AbortSignal,
@@ -4095,7 +4100,8 @@ async function updateGmailEventAutomationForWorkflow(
     };
     readonly eventConfig:
       | GmailAutomationEventConfig
-      | GithubAutomationEventConfig;
+      | GithubAutomationEventConfig
+      | GoogleCalendarAutomationEventConfig;
   },
   signal: AbortSignal,
 ): Promise<AutomationResult> {
@@ -4189,6 +4195,323 @@ async function updateGmailEventAutomationForWorkflow(
   return { kind: "ok", summary };
 }
 
+type GoogleCalendarReconfigurationPersistenceResult =
+  | { readonly kind: "ok"; readonly summary: WorkflowAutomationSummary }
+  | { readonly kind: "account-changed" }
+  | { readonly kind: "watch-changed" }
+  | { readonly kind: "automation-changed" };
+
+type GoogleCalendarAutomationUpdateEventConfig =
+  | GmailAutomationEventConfig
+  | GithubAutomationEventConfig
+  | GoogleCalendarAutomationEventConfig;
+
+interface GoogleCalendarAutomationUpdateArgs {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly automation: AutomationRow & {
+    readonly eventType: GoogleCalendarAutomationEventType;
+  };
+  readonly eventConfig: GoogleCalendarAutomationUpdateEventConfig;
+}
+
+type GoogleCalendarReconfigurationPreparationResult =
+  | {
+      readonly kind: "ok";
+      readonly eventConnectorId: string;
+      readonly eventConfig: GoogleCalendarAutomationEventConfig;
+      readonly requestedCalendarId: string;
+      readonly previousTarget: StagedGoogleCalendarWatchTarget | null;
+      readonly targetChanged: boolean;
+    }
+  | { readonly kind: "bad-request"; readonly message: string };
+
+function googleCalendarAutomationMatchesReconfigurationSource(
+  current: AutomationRow,
+  source: AutomationRow & {
+    readonly eventType: GoogleCalendarAutomationEventType;
+  },
+): boolean {
+  return (
+    current.orgId === source.orgId &&
+    current.workflowId === source.workflowId &&
+    current.ownerUserId === source.ownerUserId &&
+    current.kind === "event" &&
+    current.eventType === source.eventType &&
+    current.enabled === source.enabled &&
+    current.eventConnectorId === source.eventConnectorId &&
+    current.officialBlueprintKey === null &&
+    isDeepStrictEqual(current.eventConfig, source.eventConfig)
+  );
+}
+
+async function persistGoogleCalendarAutomationReconfiguration(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly member: WorkflowMember;
+    readonly source: AutomationRow & {
+      readonly eventType: GoogleCalendarAutomationEventType;
+    };
+    readonly eventConnectorId: string;
+    readonly eventConfig: GoogleCalendarAutomationEventConfig;
+    readonly requestedCalendarId: string;
+    readonly requireReadyWatch: boolean;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarReconfigurationPersistenceResult> {
+  return await args.db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      target: { kind: "builtin", connectorSlug: "google-calendar" },
+    });
+    const selectedConnectorId =
+      await resolveGoogleCalendarAutomationConnectorId(tx, {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        workflowId: args.source.workflowId,
+      });
+    signal.throwIfAborted();
+    if (selectedConnectorId !== args.eventConnectorId) {
+      return { kind: "account-changed" };
+    }
+    const targetMatchesConnector =
+      await googleCalendarAutomationTargetMatchesConnector(
+        {
+          db: tx,
+          orgId: args.orgId,
+          userId: args.member.userId,
+          connectorId: args.eventConnectorId,
+          requestedCalendarId: args.requestedCalendarId,
+          normalizedCalendarId: args.eventConfig.calendarId,
+        },
+        signal,
+      );
+    signal.throwIfAborted();
+    if (!targetMatchesConnector) {
+      return { kind: "account-changed" };
+    }
+    if (args.requireReadyWatch) {
+      const watchReady = await lockReadyGoogleCalendarWatchTarget(
+        {
+          db: tx,
+          orgId: args.orgId,
+          userId: args.member.userId,
+          connectorId: args.eventConnectorId,
+          calendarId: args.eventConfig.calendarId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!watchReady) {
+        return { kind: "watch-changed" };
+      }
+    }
+
+    const [current] = await tx
+      .select(workflowAutomationColumns())
+      .from(workflowAutomations)
+      .where(
+        and(
+          eq(workflowAutomations.orgId, args.orgId),
+          eq(workflowAutomations.id, args.source.id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    signal.throwIfAborted();
+    if (
+      !current ||
+      !googleCalendarAutomationMatchesReconfigurationSource(
+        current,
+        args.source,
+      )
+    ) {
+      return { kind: "automation-changed" };
+    }
+
+    const [updated] = await tx
+      .update(workflowAutomations)
+      .set({
+        eventConfig: args.eventConfig,
+        eventConnectorId: args.eventConnectorId,
+        updatedAt: nowDate(),
+      })
+      .where(eq(workflowAutomations.id, args.source.id))
+      .returning(workflowAutomationColumns());
+    signal.throwIfAborted();
+    if (!updated) {
+      throw new Error("Failed to update Google Calendar automation target");
+    }
+    return { kind: "ok", summary: await rowToSummary(tx, updated) };
+  });
+}
+
+async function prepareGoogleCalendarAutomationReconfiguration(
+  args: GoogleCalendarAutomationUpdateArgs,
+  signal: AbortSignal,
+): Promise<GoogleCalendarReconfigurationPreparationResult> {
+  const parsedConfig = safeParseGoogleCalendarEventConfig(
+    args.automation.eventType,
+    args.eventConfig,
+  );
+  if (parsedConfig === null) {
+    return {
+      kind: "bad-request",
+      message: "eventConfig must match the Google Calendar automation type",
+    };
+  }
+
+  const eventConnectorId = await resolveGoogleCalendarAutomationConnectorId(
+    args.db,
+    {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      workflowId: args.automation.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Calendar before using Google Calendar event automations",
+    };
+  }
+
+  const calendarId = await normalizeGoogleCalendarIdForConnector(
+    args.db,
+    {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      connectorId: eventConnectorId,
+      calendarId: parsedConfig.calendarId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  const eventConfig = { ...parsedConfig, calendarId };
+  const previousConfig = parseGoogleCalendarEventConfig(
+    args.automation.eventType,
+    args.automation.eventConfig,
+  );
+  const previousTarget =
+    args.automation.eventConnectorId === null
+      ? null
+      : {
+          connectorId: args.automation.eventConnectorId,
+          calendarId: previousConfig.calendarId,
+        };
+  return {
+    kind: "ok",
+    eventConnectorId,
+    eventConfig,
+    requestedCalendarId: parsedConfig.calendarId,
+    previousTarget,
+    targetChanged:
+      previousTarget === null ||
+      previousTarget.connectorId !== eventConnectorId ||
+      previousTarget.calendarId !== eventConfig.calendarId,
+  };
+}
+
+async function releaseOwnedGoogleCalendarStagedTarget(
+  db: Db,
+  stagedTarget: StagedGoogleCalendarWatchTarget | null,
+): Promise<void> {
+  if (stagedTarget === null) {
+    return;
+  }
+  await bestEffort(
+    releaseStagedGoogleCalendarWatchTarget(
+      { db, stagedTarget },
+      new AbortController().signal,
+    ),
+  );
+}
+
+async function updateGoogleCalendarEventAutomationForWorkflow(
+  args: GoogleCalendarAutomationUpdateArgs,
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const prepared = await prepareGoogleCalendarAutomationReconfiguration(
+    args,
+    signal,
+  );
+  if (prepared.kind !== "ok") {
+    return prepared;
+  }
+
+  let stagedTarget: StagedGoogleCalendarWatchTarget | null = null;
+  if (args.automation.enabled && prepared.targetChanged) {
+    const staged = await stageGoogleCalendarWatchTargetForReconfiguration(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.member.userId,
+        connectorId: prepared.eventConnectorId,
+        calendarId: prepared.eventConfig.calendarId,
+      },
+      signal,
+    );
+    if (staged.kind !== "ok") {
+      signal.throwIfAborted();
+      return { kind: "bad-request", message: staged.message };
+    }
+    stagedTarget = staged.stagedTarget;
+    if (signal.aborted) {
+      await releaseOwnedGoogleCalendarStagedTarget(args.db, stagedTarget);
+      signal.throwIfAborted();
+    }
+  }
+
+  const releaseStagedTarget = async (): Promise<void> => {
+    await releaseOwnedGoogleCalendarStagedTarget(args.db, stagedTarget);
+  };
+  const persistence = persistGoogleCalendarAutomationReconfiguration(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      member: args.member,
+      source: args.automation,
+      eventConnectorId: prepared.eventConnectorId,
+      eventConfig: prepared.eventConfig,
+      requestedCalendarId: prepared.requestedCalendarId,
+      requireReadyWatch: args.automation.enabled && prepared.targetChanged,
+    },
+    signal,
+  );
+  const persisted =
+    stagedTarget === null
+      ? await persistence
+      : await onRejection(persistence, releaseStagedTarget);
+  if (persisted.kind !== "ok") {
+    await releaseStagedTarget();
+    return {
+      kind: "bad-request",
+      message:
+        persisted.kind === "account-changed"
+          ? "Google Calendar account selection changed; retry the update"
+          : persisted.kind === "watch-changed"
+            ? "Google Calendar watch target changed; retry the update"
+            : "Google Calendar automation changed; retry the update",
+    };
+  }
+
+  if (prepared.targetChanged && prepared.previousTarget !== null) {
+    const cleanupSignal = new AbortController().signal;
+    await bestEffort(
+      reconcileGoogleCalendarWatchTarget(
+        { db: args.db, ...prepared.previousTarget },
+        cleanupSignal,
+      ),
+    );
+  }
+  return { kind: "ok", summary: persisted.summary };
+}
+
 const updateEventAutomationForWorkflow$ = command(
   async (
     _,
@@ -4199,7 +4522,8 @@ const updateEventAutomationForWorkflow$ = command(
       readonly automation: AutomationRow;
       readonly eventConfig?:
         | GmailAutomationEventConfig
-        | GithubAutomationEventConfig;
+        | GithubAutomationEventConfig
+        | GoogleCalendarAutomationEventConfig;
     },
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
@@ -4213,12 +4537,6 @@ const updateEventAutomationForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "Stripe invoice-paid event automations cannot be updated",
-      };
-    }
-    if (supportedGoogleCalendarEventType(args.automation.eventType)) {
-      return {
-        kind: "bad-request",
-        message: "Google Calendar event automations cannot be updated",
       };
     }
     if (supportedGoogleFormsEventType(args.automation.eventType)) {
@@ -4239,6 +4557,19 @@ const updateEventAutomationForWorkflow$ = command(
         kind: "bad-request",
         message: "eventConfig is required for event automations",
       };
+    }
+    if (supportedGoogleCalendarEventType(args.automation.eventType)) {
+      return await updateGoogleCalendarEventAutomationForWorkflow(
+        {
+          ...args,
+          automation: {
+            ...args.automation,
+            eventType: args.automation.eventType,
+          },
+          eventConfig: args.eventConfig,
+        },
+        signal,
+      );
     }
     if (supportedGithubEventType(args.automation.eventType)) {
       const eventConfig = await prepareGithubAutomationEventConfig(args.db, {

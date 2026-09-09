@@ -24,6 +24,8 @@ import {
 import {
   completeOnLocalAbort,
   createChildAbortController,
+  createDeferredPromise,
+  onRejection,
   withCleanup,
 } from "../utils.ts";
 
@@ -110,6 +112,19 @@ export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
 });
 
+const initialFeatureSwitchHydrationDeferred$ = computed((get) => {
+  return createDeferredPromise<void>(get(rootSignal$));
+});
+
+/**
+ * Resolves after the first authoritative feature-switch read for this app
+ * lifetime. Consumers that turn a switch into immutable parsed state await
+ * this boundary so an older cache cannot permanently win the bootstrap race.
+ */
+export const initialFeatureSwitchHydration$ = computed((get) => {
+  return get(initialFeatureSwitchHydrationDeferred$).promise;
+});
+
 export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
@@ -122,12 +137,16 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });
 
-export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+export const agentMessageMathEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AgentMessageMath] ?? false;
 });
 
 export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
+});
+
+export const avatarFramingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AvatarFraming] ?? false;
 });
 
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
@@ -136,10 +155,6 @@ export const customConnectorMcpEnabled$ = computed((get): boolean => {
 
 export const voiceInputV2Enabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VoiceInputV2] ?? false;
-});
-
-export const chatThreadPinShortcutEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ChatThreadPinShortcut] ?? false;
 });
 
 export const stableChatThreadNavigationEnabled$ = computed((get): boolean => {
@@ -189,7 +204,7 @@ const hydrateFeatureSwitch$ = command(
   },
 );
 
-export const reloadFeatureSwitch$ = command(
+const refreshFeatureSwitchState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
@@ -225,6 +240,24 @@ export const reloadFeatureSwitch$ = command(
         requestController.abort();
       },
     );
+  },
+);
+
+export const reloadFeatureSwitch$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const initialHydration = get(initialFeatureSwitchHydrationDeferred$);
+    await onRejection(
+      set(refreshFeatureSwitchState$, signal),
+      (error: unknown) => {
+        if (!initialHydration.settled()) {
+          initialHydration.reject(error);
+        }
+      },
+    );
+    signal.throwIfAborted();
+    if (!initialHydration.settled()) {
+      initialHydration.resolve(undefined);
+    }
   },
 );
 

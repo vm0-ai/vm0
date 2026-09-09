@@ -1,11 +1,10 @@
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
-  isPlatformProductionHostname,
+  isOkouProductionHostname,
   okouAppWorkerPreviewJobRef,
 } from "@okouai/core/platform-service-origin";
 
 type PlatformEnvironment = "development" | "preview" | "production";
-type PlatformPublicBrand = "vm0" | "okou";
+type PlatformPublicBrand = "okou";
 
 interface PlatformServiceStatusConfig {
   readonly issuesUrl: string;
@@ -22,7 +21,6 @@ interface PlatformRuntimeConfig {
   readonly clerkPublishableKey: string;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
   readonly publicStaticAssetsBaseUrl: string;
-  readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
   readonly postHogHost: string | null;
   readonly postHogKey: string | null;
@@ -73,22 +71,12 @@ export function resolvePlatformServiceStatusConfig(
   hostname: string,
 ): PlatformServiceStatusConfig | null {
   const normalizedHostname = hostname.toLowerCase();
-  return normalizedHostname === "app.vm0.ai" ||
-    normalizedHostname === "app.okou.ai"
+  return normalizedHostname === "app.okou.ai"
     ? {
         issuesUrl: PRODUCTION_SERVICE_STATUS_ISSUES_URL,
         pageBaseUrl: PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL,
       }
     : null;
-}
-
-function resolvePlatformPublicBrand(
-  hostname: string | null,
-): PlatformPublicBrand {
-  if (!hostname) {
-    return "vm0";
-  }
-  return isOkouHostname(hostname) ? "okou" : "vm0";
 }
 
 export function resolvePlatformEnvironment(): PlatformEnvironment {
@@ -101,7 +89,7 @@ export function resolvePlatformEnvironment(): PlatformEnvironment {
     return "development";
   }
 
-  return isPlatformProductionHostname(hostname) ? "production" : "preview";
+  return isOkouProductionHostname(hostname) ? "production" : "preview";
 }
 
 function optionalBuildValue(value: unknown): string | null {
@@ -134,11 +122,9 @@ export function resolvePlatformClientTelemetryConfig(): PlatformClientTelemetryC
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const clientTelemetryConfig = resolvePlatformClientTelemetryConfig();
   const { environment } = clientTelemetryConfig;
-  const publicBrand = resolvePlatformPublicBrand(browserHostname());
-  const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
-    "https://static.vm0.io",
-    publicBrand,
-  );
+  // Only okou.ai serves the app, so every page renders the Okou brand.
+  const publicBrand: PlatformPublicBrand = "okou";
+  const publicStaticAssetsBaseUrl = "https://static.okou.io";
 
   if (environment === "production") {
     return {
@@ -153,7 +139,6 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       ),
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
       publicStaticAssetsBaseUrl,
-      zeroHostDomain: "sites.vm0.io",
       plausibleScriptUrl: optionalBuildValue(
         import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
       ),
@@ -175,7 +160,6 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
     ),
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
     publicStaticAssetsBaseUrl,
-    zeroHostDomain: "sites.vm7.io",
     plausibleScriptUrl:
       environment === "preview"
         ? optionalBuildValue(import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW)

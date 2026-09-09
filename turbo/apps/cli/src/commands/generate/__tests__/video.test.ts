@@ -16,7 +16,6 @@ import { videoCommand } from "../video";
 
 const VIDEO_URL = "http://localhost:3000/api/video-io/generate";
 const FIRST_FRAME_URL = "https://example.com/first.png";
-const LAST_FRAME_URL = "https://example.com/last.png";
 const VIDEO_RESULT = {
   id: "video-file-id",
   filename: "video-video-fi.mp4",
@@ -74,6 +73,7 @@ function stubBillingStatus(
 ) {
   return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
+      showUsagePack: false,
       tier,
       canBuyCredits: videoGenerationAllowed,
       videoGenerationAllowed,
@@ -185,12 +185,6 @@ describe("okou generate video command", () => {
   it("should generate a video and print the /f file URL", async () => {
     server.use(
       stubBillingStatus(true),
-      http.get(FIRST_FRAME_URL, () => {
-        return imageResponse(900, 1600);
-      }),
-      http.get(LAST_FRAME_URL, () => {
-        return imageResponse(900, 1600);
-      }),
       http.post(VIDEO_URL, async ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         expect(request.headers.get("content-type")).toBe("application/json");
@@ -207,8 +201,6 @@ describe("okou generate video command", () => {
           imageUrls: ["https://example.com/reference.png"],
           videoUrls: ["https://example.com/reference.mp4"],
           audioUrls: ["https://example.com/reference.mp3"],
-          firstFrameImageUrl: FIRST_FRAME_URL,
-          lastFrameImageUrl: LAST_FRAME_URL,
         });
 
         return HttpResponse.json(VIDEO_RESULT);
@@ -241,10 +233,6 @@ describe("okou generate video command", () => {
       "https://example.com/reference.mp4",
       "--audio-url",
       "https://example.com/reference.mp3",
-      "--first-frame-image-url",
-      FIRST_FRAME_URL,
-      "--last-frame-image-url",
-      LAST_FRAME_URL,
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
@@ -302,6 +290,54 @@ describe("okou generate video command", () => {
     );
     expect(mockConsoleLog).not.toHaveBeenCalled();
   });
+
+  it.each([true, false])(
+    "validates frame dimensions without sending credentials to a foreign origin (owned API=%s)",
+    async (ownedApi) => {
+      const origin = ownedApi
+        ? "http://localhost:3000"
+        : "https://foreign.example";
+      const frame = `${origin}/api/web/download-file?file_id=private-frame&filename=frame.png`;
+      let authorization: string | null = null;
+      let videoInput: unknown;
+      server.use(
+        http.get(`${origin}/api/web/download-file`, ({ request }) => {
+          authorization = request.headers.get("authorization");
+          return imageResponse(1080, 1920);
+        }),
+        http.post(VIDEO_URL, async ({ request }) => {
+          videoInput = await request.json();
+          const { sourceUrl: _sourceUrl, ...result } = VIDEO_RESULT;
+          return HttpResponse.json({
+            ...result,
+            url: "http://localhost:3000/api/web/download-file?file_id=private-video&filename=video.mp4",
+          });
+        }),
+      );
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "video",
+        "--prompt",
+        "Animate this private frame",
+        "--aspect-ratio",
+        "9:16",
+        "--first-frame-image-url",
+        frame,
+        "--json",
+      ]);
+      expect(authorization).toBe(ownedApi ? "Bearer test-token" : null);
+      expect(videoInput).toMatchObject({ firstFrameImageUrl: frame });
+      const output = mockConsoleLog.mock.calls
+        .map(([value]) => {
+          return String(value);
+        })
+        .join("\n");
+      expect(output).toContain("/api/web/download-file?file_id=private-video");
+      expect(output).not.toContain(VIDEO_RESULT.sourceUrl);
+      expect(output).not.toContain("test-token");
+    },
+  );
 
   it("should reject frame images that do not match --aspect-ratio before generating", async () => {
     const postVideo = vi.fn();
@@ -416,6 +452,10 @@ describe("okou generate video command", () => {
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
     expect(helpOutput).toContain("--json");
+    expect(helpOutput).toContain(
+      "first/last frame inputs cannot be combined with",
+    );
+    expect(helpOutput).toContain("Choose one input mode before generating.");
     expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
   });
 

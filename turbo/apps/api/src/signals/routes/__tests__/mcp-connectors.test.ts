@@ -511,9 +511,9 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       runs.acceptStorageDownloads();
       runs.acceptTelemetryIngest();
       const runnerGroup = runs.configureRunnerGroup();
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockAutomaticMcpOAuthProvider(context, {
         registration,
         initialExpiresIn: 3600,
@@ -585,15 +585,11 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
         connector.id,
       ]);
-      const run = await runs.createRun(
-        actor,
-        {
-          agentId: agent.agentId,
-          prompt: "Use the MCP connector with incremental scope",
-          modelProvider: "anthropic-api-key",
-        },
-        "okou",
-      );
+      const run = await runs.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: "Use the MCP connector with incremental scope",
+        modelProvider: "anthropic-api-key",
+      });
       expect(run.status).toBe("pending");
       await runs.heartbeatRunner(runnerGroup);
       const claim = await runs.claimRunnerJob(run.runId);
@@ -675,9 +671,9 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     const runnerGroup = runs.configureRunnerGroup();
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       authentication: "none",
@@ -713,15 +709,11 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
     await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
       connector.id,
     ]);
-    const run = await runs.createRun(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Use the no-auth MCP connector",
-        modelProvider: "anthropic-api-key",
-      },
-      "okou",
-    );
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "Use the no-auth MCP connector",
+      modelProvider: "anthropic-api-key",
+    });
     expect(run.status).toBe("pending");
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);

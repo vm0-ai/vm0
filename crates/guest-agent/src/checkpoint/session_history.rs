@@ -16,12 +16,12 @@ use api_contracts::generated::constants::runners::{
 };
 use api_contracts::generated::types::webhooks::agent::checkpoints::prepare_history;
 use bytes::Bytes;
-use guest_common::telemetry::{
+use guest_contracts::session_history_identity::SessionHistorySourceRef;
+use guest_telemetry::telemetry::{
     SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
 };
-use guest_common::{log_error, log_info, log_warn};
-use guest_contracts::session_history_identity::SessionHistorySourceRef;
-use guest_session_prune::{
+use guest_telemetry::{log_error, log_info, log_warn};
+use session_history_selector::{
     ClaudeHistoryCandidate, ClaudeHistoryIneligibleReason, ClaudeHistorySelection,
     CodexHistoryCandidate, CodexHistoryIneligibleReason, CodexHistorySelection,
     select_claude_compact_generation_from_file,

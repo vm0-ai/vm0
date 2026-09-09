@@ -1,25 +1,22 @@
-import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
-  cancelledEvent,
   completedEvent,
   context,
   creditUsage,
   expectTextOrder,
   findButton,
   findLink,
+  findWorkHistoryToggle,
   installRunChat,
   promptEvent,
   queryButton,
+  queryWorkHistoryToggles,
   readyChat,
   RUN_PATH,
   thinkingEvent,
@@ -28,8 +25,6 @@ import {
 
 const RUN_A = "a0000000-0000-4000-a000-000000000201";
 const RUN_B = "a0000000-0000-4000-a000-000000000202";
-const RUN_C = "a0000000-0000-4000-a000-000000000203";
-const RUN_D = "a0000000-0000-4000-a000-000000000204";
 
 function createdAt(minute: number, second = 0): string {
   return `2026-08-01T10:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000Z`;
@@ -190,7 +185,6 @@ test("Browse completed work by conversation phase", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -204,22 +198,22 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
-  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
-  expect(
-    queryMessageBody("Checked launch dependencies"),
-  ).not.toBeInTheDocument();
-  const firstExpand = buttonsNamed("Expand work history")[0];
-  if (!firstExpand) {
-    throw new Error("First work-history summary not found");
-  }
+  expect(screen.queryByText("Collected requirements")).toBeNull();
+  expect(screen.queryByText("Compared rollback options")).toBeNull();
+  expect(screen.queryByText("Checked launch dependencies")).toBeNull();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(3);
 
-  click(firstExpand);
-
+  click(
+    buttonNamedIn(
+      "Expand work history",
+      assistantGroupFor(screen.getByText("Phase one outline")),
+    ),
+  );
   await expect(
     screen.findByText("Collected requirements"),
   ).resolves.toBeVisible();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
+  expect(screen.queryByText("Compared rollback options")).toBeNull();
+  expect(screen.queryByText("Checked launch dependencies")).toBeNull();
   expectTextOrder(
     "Plan phase one",
     "Collected requirements",
@@ -227,35 +221,29 @@ test("Browse completed work by conversation phase", async () => {
     "Include rollback steps",
     "Phase one final plan",
   );
-  expect(
-    queryMessageBody("Checked launch dependencies"),
-  ).not.toBeInTheDocument();
+  click(
+    buttonNamedIn(
+      "Expand work history",
+      assistantGroupFor(screen.getByText("Phase one final plan")),
+    ),
+  );
+  await expect(
+    screen.findByText("Compared rollback options"),
+  ).resolves.toBeVisible();
+  expect(screen.queryByText("Checked launch dependencies")).toBeNull();
 
-  click(await findButton("Collapse work history"));
-  await waitFor(() => {
-    expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  });
-
-  const secondRunExpand = buttonsNamed("Expand work history").at(-1);
-  if (!secondRunExpand) {
-    throw new Error("Second run work-history summary not found");
-  }
-  click(secondRunExpand);
-
+  click(
+    buttonNamedIn(
+      "Expand work history",
+      assistantGroupFor(screen.getByText("Phase two final plan")),
+    ),
+  );
   await expect(
     screen.findByText("Checked launch dependencies"),
   ).resolves.toBeVisible();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expect(screen.getByLabelText("Credit usage 7")).toBeVisible();
-  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
 
-  click(await findButton("Collapse work history"));
-
-  await waitFor(() => {
-    expect(
-      queryMessageBody("Checked launch dependencies"),
-    ).not.toBeInTheDocument();
-  });
   expect(screen.getByText("Plan phase two")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
   expect(screen.getByText("Plan phase one")).toBeVisible();
@@ -277,7 +265,7 @@ test.each([
   },
   {
     label: "multiple output messages",
-    messageCount: 3,
+    messageCount: 5,
     showsHistoryStatus: true,
     canExpandHistory: true,
   },
@@ -292,7 +280,6 @@ test.each([
     await setupPage({
       context,
       path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
     });
 
     await readyChat();
@@ -303,7 +290,7 @@ test.each([
     expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(
       showsHistoryStatus ? 1 : 0,
     );
-    expect(buttonsNamed("Expand work history")).toHaveLength(
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(
       canExpandHistory ? 1 : 0,
     );
 
@@ -315,7 +302,7 @@ test.each([
     expect(main).toBeVisible();
 
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(queryMessageBody(workMessage(index))).toBeNull();
+      expect(screen.queryByText(workMessage(index))).toBeNull();
     }
     expect(assistantGroupFor(main)).toContainElement(thinking);
 
@@ -323,7 +310,7 @@ test.each([
       return;
     }
 
-    click(await findButton("Expand work history"));
+    click(await findWorkHistoryToggle("collapsed"));
     const firstHistoryMessage = await screen.findByText(workMessage(0));
     const secondHistoryMessage = screen.getByText(workMessage(1));
     expect(assistantGroupFor(firstHistoryMessage)).toBe(
@@ -359,12 +346,11 @@ test("Do not create history before the first output.message", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
   expect(screen.queryByText(/^Working(?: for)? /u)).toBeNull();
-  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
 });
 
@@ -397,7 +383,6 @@ test("Count one output.message once when Markdown renders multiple child blocks"
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -407,7 +392,7 @@ test("Count one output.message once when Markdown renders multiple child blocks"
     findLink("Open pdf preview for package.pdf"),
   ).resolves.toBeVisible();
   await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
-  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(1);
   expect(viewAgentProfileLinks()).toHaveLength(1);
 });
@@ -420,7 +405,7 @@ test.each([
   },
   {
     label: "multiple output messages",
-    messageCount: 3,
+    messageCount: 5,
     canExpandHistory: true,
   },
 ])(
@@ -441,18 +426,17 @@ test.each([
     await setupPage({
       context,
       path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
     });
 
     await readyChat();
     expect(screen.getByText(workMessage(messageCount - 1))).toBeVisible();
     expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     expect(screen.queryAllByText(/^Worked(?: for)? /u)).toHaveLength(1);
-    expect(buttonsNamed("Expand work history")).toHaveLength(
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(
       canExpandHistory ? 1 : 0,
     );
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(queryMessageBody(workMessage(index))).toBeNull();
+      expect(screen.queryByText(workMessage(index))).toBeNull();
     }
   },
 );
@@ -531,15 +515,14 @@ test.each(finalOutputDocuments)(
     await setupPage({
       context,
       path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
     });
 
     await readyChat();
     const main = await find();
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
-    expect(queryMessageBody("Earlier output belongs in history")).toBeNull();
-    expect(buttonsNamed("Expand work history")).toHaveLength(1);
+    expect(screen.queryByText("Earlier output belongs in history")).toBeNull();
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(1);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
     );
@@ -569,7 +552,6 @@ test("Keep result actions visible alongside running progress", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -596,7 +578,6 @@ test("Do not render result actions while waiting for assistant output", async ()
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -632,7 +613,6 @@ test("Render result actions after a run completes", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -654,143 +634,6 @@ test("Render result actions after a run completes", async () => {
   expect(
     result.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-});
-
-test("Fold intermediate work only after a run completes", async () => {
-  installRunChat({
-    activeRunIds: [RUN_A],
-    chatEvents: [
-      promptEvent({
-        id: "active-user",
-        runId: RUN_A,
-        seqId: 1,
-        text: "Active request",
-      }),
-      assistantEvent({
-        id: "active-partial",
-        runId: RUN_A,
-        seqId: 2,
-        text: "Active partial work",
-      }),
-      promptEvent({
-        id: "cancel-user",
-        runId: RUN_B,
-        seqId: 3,
-        text: "Cancelled request",
-      }),
-      assistantEvent({
-        id: "cancel-partial",
-        runId: RUN_B,
-        seqId: 4,
-        text: "Cancelled partial work",
-      }),
-      cancelledEvent({ id: "cancel-terminal", runId: RUN_B, seqId: 5 }),
-      promptEvent({
-        id: "fold-user",
-        runId: RUN_C,
-        seqId: 6,
-        text: "Completed research request",
-      }),
-      assistantEvent({
-        id: "fold-work-1",
-        runId: RUN_C,
-        seqId: 7,
-        text: "Intermediate research one",
-      }),
-      assistantEvent({
-        id: "fold-work-2",
-        runId: RUN_C,
-        seqId: 8,
-        text: "Intermediate research two",
-      }),
-      assistantEvent({
-        id: "fold-final",
-        runId: RUN_C,
-        seqId: 9,
-        text: "Completed research answer",
-      }),
-      completedEvent({ id: "fold-complete", runId: RUN_C, seqId: 10 }),
-      promptEvent({
-        id: "direct-user",
-        runId: RUN_D,
-        seqId: 11,
-        text: "Direct question",
-      }),
-      assistantEvent({
-        id: "direct-answer",
-        runId: RUN_D,
-        seqId: 12,
-        text: "Direct answer",
-      }),
-      completedEvent({ id: "direct-complete", runId: RUN_D, seqId: 13 }),
-    ],
-  });
-
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
-  });
-
-  await readyChat();
-  expect(screen.getByText("Active partial work")).toBeVisible();
-  expect(screen.getByText("Cancelled partial work")).toBeVisible();
-  expect(
-    screen.queryByText("Intermediate research one"),
-  ).not.toBeInTheDocument();
-  expect(screen.getByText("Completed research answer")).toBeVisible();
-  const directAnswer = screen.getByText("Direct answer");
-  expect(directAnswer).toBeVisible();
-  expect(buttonsNamed("Expand work history")).toHaveLength(1);
-
-  const directGroup = assistantGroupFor(directAnswer);
-  const directCopy = buttonNamedIn("Copy message", directGroup);
-  expect(directGroup.firstElementChild).toContainElement(directAnswer);
-  expect(directGroup.firstElementChild).not.toContainElement(directCopy);
-  expect(directGroup.lastElementChild).toContainElement(directCopy);
-  expect(
-    directGroup.querySelector(
-      "[data-chat-run-work], [data-chat-run-work-main], [data-chat-run-work-remaining-artifacts]",
-    ),
-  ).toBeNull();
-
-  click(await findButton("Expand work history"));
-
-  await expect(
-    screen.findByText("Intermediate research one"),
-  ).resolves.toBeVisible();
-  expect(screen.getByText("Intermediate research two")).toBeVisible();
-  expect(buttonsNamed("Collapse work history")).toHaveLength(1);
-});
-
-test("Keep the legacy running tail outside the response when work folding is disabled", async () => {
-  installRunChat({
-    activeRunIds: [RUN_A],
-    chatEvents: activeWorkChatEvents(2),
-  });
-
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
-  });
-
-  await readyChat();
-  const latestMessage = screen.getByText(workMessage(1));
-  const assistantGroup = assistantGroupFor(latestMessage);
-  const thinking = document.querySelector<HTMLElement>(
-    "[data-thinking-indicator]",
-  );
-  const copy = buttonNamedIn("Copy message", assistantGroup);
-
-  expect(screen.getByText(workMessage(0))).toBeVisible();
-  expect(thinking).toBeVisible();
-  expect(assistantGroup).not.toContainElement(thinking);
-  expect(assistantGroup.firstElementChild).toContainElement(latestMessage);
-  expect(assistantGroup.firstElementChild).not.toContainElement(copy);
-  expect(assistantGroup.lastElementChild).toContainElement(copy);
-  expect(assistantGroup.querySelector("[data-chat-run-work]")).toBeNull();
-  expect(buttonsNamed("Expand work history")).toHaveLength(0);
 });
 
 test("Keep interleaved run updates with their own turns", async () => {

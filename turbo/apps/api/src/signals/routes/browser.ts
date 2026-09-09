@@ -4,8 +4,8 @@ import { command } from "ccstate";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   createBrowser$,
   closeBrowserForThread$,
@@ -40,8 +40,7 @@ const createBrowserInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const result = await set(
       createBrowser$,
       {
@@ -69,8 +68,7 @@ const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const result = await set(
     useBrowser$,
     {
@@ -95,8 +93,7 @@ const leaseBrowserInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const result = await set(
       leaseCurrentBrowser$,
       {
@@ -123,8 +120,7 @@ const leaseBrowserByThreadInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const result = await set(
       leaseBrowserByThread$,
       {
@@ -151,8 +147,7 @@ const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const result = await set(
     openBrowserForThread$,
     {
@@ -180,8 +175,7 @@ const closeBrowserInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const result = await set(
       closeBrowserForThread$,
       {
@@ -210,8 +204,7 @@ const resizeBrowserByThreadInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const result = await set(
       resizeBrowserByThread$,
       {
@@ -233,8 +226,7 @@ const resizeBrowserByThreadInner$ = command(
 const currentBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const result = await set(
       getCurrentBrowser$,
       {
@@ -254,8 +246,7 @@ const currentBrowserInner$ = command(
 const getParams$ = pathParamsOf(browserContract.get);
 const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const result = await set(
     getBrowser$,
     {

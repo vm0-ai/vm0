@@ -12,6 +12,7 @@ import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
+import { explainerVideoOptionsSchema } from "./explainer-video";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
@@ -333,16 +334,9 @@ const chatThreadSnapshotProjectionSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
-  // Rollout fallback. Optional so a payload without the field still parses:
-  // from an API deployed before this change (DB/API skew, observed max ~102min)
-  // and from IndexedDB rows an older bundle wrote (old web clients, ~2d).
   // Loose rather than the catalog enum so a pin whose model later leaves the
   // catalog still parses; the strict enum applies on the write path.
-  // Remove once the client floor passes the build that introduced the field and
-  // cached rows have resynced, together with the two `?? null` reads in
-  // chat-thread-event.service.ts and chat-thread-event-replay.ts.
-  // Follow-up: https://github.com/vm0-ai/vm0/issues/26765
-  selectedVideoModel: z.string().nullable().optional(),
+  selectedVideoModel: z.string().nullable(),
   // Keep this optional for pre-field browser rows and loose rather than
   // imageModelIdSchema so a stored model that later leaves the catalog remains
   // replayable. New write contracts validate against the shared schema.
@@ -376,7 +370,7 @@ const chatThreadEventSchema = z.object({
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
-  selectedVideoModel: z.string().nullable().optional(),
+  selectedVideoModel: z.string().nullable(),
   selectedImageModel: z.string().nullable().optional(),
   createdAt: z.string(),
 });
@@ -445,6 +439,8 @@ const videoGenerationTemplateRequestSchema = z.object({
   selection: z.object({
     stylePresetId: z.string().min(1),
     avatarOptions: avatarGenerationOptionsSchema.optional(),
+    // Keep the video envelope readable by previously deployed clients.
+    explainerOptions: explainerVideoOptionsSchema.optional(),
 
     /**
      * The four fields below are no longer written: the web-client floor has
@@ -1092,10 +1088,10 @@ const chatThreadModelSelectionUpdateBodySchema = z.object({
 /**
  * Text-to-video parameters chosen for this send only.
  *
- * Deliberately not persisted anywhere: the API renders them into the run's
- * system prompt and forgets them, so a reload starts from the effective
- * model's defaults again. The model itself is absent because it is already
- * resolved from the thread pin and the member default the run carries.
+ * Deliberately not persisted as structured settings: the API renders them into
+ * the run's agent prompt, so a reload starts from the effective model's
+ * defaults again. The model itself is absent because it is already resolved
+ * from the thread pin and the member default the run carries.
  */
 const chatRunVideoOptionsRequestSchema = z
   .object({
@@ -1813,17 +1809,11 @@ const chatSearchResultSchema = z.object({
   matchedRanges: z.array(chatSearchMatchRangeSchema),
 });
 
-/**
- * `hasMore` indicates that the server truncated the result set at `limit`.
- * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
- * query schema below) and chat-message search is a lookup tool, not a bulk
- * export. Callers that hit `hasMore=true` should narrow the query (add
- * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
- * genuine pagination is ever needed, introduce `nextCursor` here.
- */
+export const CHAT_SEARCH_RESULT_LIMIT = 25;
+
+/** The newest matching messages, capped at 25 without pagination. */
 const chatSearchResponseSchema = z.object({
-  results: z.array(chatSearchResultSchema),
-  hasMore: z.boolean(),
+  results: z.array(chatSearchResultSchema).max(CHAT_SEARCH_RESULT_LIMIT),
 });
 
 /**
@@ -1840,7 +1830,6 @@ export const chatSearchContract = c.router({
       keyword: z.string().trim().min(1),
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(50).default(20),
     }),
     responses: {
       200: chatSearchResponseSchema,
@@ -1848,7 +1837,7 @@ export const chatSearchContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Search chat messages within caller's org",
+    summary: "Search up to 25 newest chat messages within caller's org",
   },
 });
 

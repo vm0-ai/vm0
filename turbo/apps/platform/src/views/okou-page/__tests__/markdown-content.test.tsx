@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
+  click,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -50,7 +51,7 @@ test("A blockquote remains recognizable when HTML is treated as text", async () 
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const quotedText = await screen.findByText(/Quoted passage/);
@@ -86,7 +87,7 @@ test("Common Markdown features remain recognizable", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const bold = await screen.findByText("Bold feature");
@@ -121,7 +122,7 @@ test("A complete HEX color has a preview in a plain assistant response", async (
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -159,7 +160,7 @@ test("Preview exact inline HEX code without decorating linked or partial code", 
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const brand = await screen.findByText("Brand #112233");
@@ -205,7 +206,7 @@ test("Fenced code stays readable for known and unknown languages", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const knownHeading = await screen.findByText("Known JavaScript");
@@ -240,7 +241,7 @@ test("Media links keep their text while image syntax shows a preview", async () 
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const image = await screen.findByRole("img", {
@@ -281,7 +282,7 @@ test("Raw message content cannot impersonate Platform controls", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const rawControl = await screen.findByText(/Counterfeit copy control/);
@@ -311,7 +312,7 @@ test("Raw HTML cannot change the surrounding page", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const literalHtml = await screen.findByText(/Visible safe text/);
@@ -348,7 +349,7 @@ test("Mermaid content remains readable code on surfaces without diagrams", async
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("flowchart TD", { exact: false });
@@ -368,4 +369,54 @@ test("Mermaid content remains readable code on surfaces without diagrams", async
       return button.getAttribute("aria-label") === "Expand diagram";
     }),
   ).toBeFalsy();
+});
+
+test("Retired Goal history displays and copies the complete literal objective", async () => {
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  const chat = createMarkdownChatFixture(context);
+  const content =
+    "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: complete\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\nBefore <oai-mem-citation>literal objective</oai-mem-citation> after\n`<oai-mem-citation>`\n```xml\n<oai-mem-citation>fenced\n```\nUnclosed <oai-mem-citation>keep the rest 🧭\n\n";
+  const row = {
+    ...chat.outputMessage(content, { seqId: 1 }),
+    runId: null,
+    runEventId: null,
+    runEventSequenceNumber: null,
+  };
+  chat.install({
+    rows: () => {
+      return [row];
+    },
+  });
+  await setupPage({ context, path: chat.path, host: "app.okou.ai" });
+  const message = await screen.findByText(
+    /Before <oai-mem-citation>literal objective/,
+  );
+  expect(message.textContent).toBe(content);
+  const copy = queryAllByRoleFast("button").find((button) => {
+    return button.getAttribute("aria-label") === "Copy message";
+  });
+  if (!copy) {
+    throw new Error("Expected message copy action");
+  }
+  click(copy);
+  await waitFor(() => {
+    expect(clipboard.writes).toStrictEqual([content]);
+  });
+});
+
+test("An actual assistant copying the Goal notice retains citation filtering and Markdown", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const content =
+    "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: complete\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\n**Formatted actual answer** <oai-mem-citation>hidden transport</oai-mem-citation>";
+  const rows = completedMessageRows(chat, content);
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+  await setupPage({ context, path: chat.path, host: "app.okou.ai" });
+  await expect(
+    screen.findByText("Formatted actual answer"),
+  ).resolves.toHaveProperty("tagName", "STRONG");
+  expect(screen.queryByText(/hidden transport/)).not.toBeInTheDocument();
 });

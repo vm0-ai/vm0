@@ -63,7 +63,7 @@ function modelSelectionFromBody(body: {
 
 function mountedComposerEditor(): HTMLElement {
   const editor = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(editor instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");
@@ -103,6 +103,7 @@ interface ThreadListItem {
   serviceTier?: "priority" | null;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  selectedVideoModel?: string | null;
 }
 
 const UUID_PATTERN =
@@ -123,6 +124,7 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+      selectedVideoModel: thread.selectedVideoModel ?? null,
     };
   });
 }

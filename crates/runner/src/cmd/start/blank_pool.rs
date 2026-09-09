@@ -569,7 +569,7 @@ async fn prepare_blank_sandbox(
         }
     }
 
-    match run_background_stage(sandbox.park(), &cancel, &mut pre_spawn_lease).await {
+    match run_background_stage(sandbox.park_for_blank_pool(), &cancel, &mut pre_spawn_lease).await {
         BackgroundStageResult::Completed(Ok(SandboxParkOutcome::Reusable)) => {
             drop(pre_spawn_lease.take());
             BlankPrepareResult::Ready {
@@ -801,7 +801,8 @@ mod tests {
 
         let mut pool = idle_pool.lock().await;
         assert_eq!(pool.blank_len(), 1);
-        assert_eq!(pool.status_snapshot().idle_sandboxes.len(), 1);
+        assert!(pool.status_snapshot().idle_sandboxes.is_empty());
+        assert_eq!(pool.status_snapshot().blank_sandboxes.len(), 1);
         assert!(pool.held_sandbox_states().is_empty());
         let destroy = pool.drain();
         drop(pool);

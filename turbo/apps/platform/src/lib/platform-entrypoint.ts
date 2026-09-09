@@ -10,7 +10,7 @@ import "../polyfill.ts";
 import { createRoot } from "react-dom/client";
 import { createStore } from "ccstate";
 import { bootstrap$ } from "../signals/bootstrap.ts";
-import { resolveAssistantNameForHostname } from "../signals/branding.ts";
+import { ASSISTANT_NAME } from "../signals/branding.ts";
 import { detach, Reason, resetSignal } from "../signals/utils.ts";
 import { setupRouter } from "../views/main.tsx";
 import { renderUnsupportedBrowserPage } from "../views/unsupported-browser-page.tsx";
@@ -85,11 +85,7 @@ export function startPlatformEntrypoint(): void {
     if (!rootElement) {
       throw new Error("can't find root el to render unsupported browser page");
     }
-    renderUnsupportedBrowserPage(
-      rootElement,
-      resolveAssistantNameForHostname(location.hostname),
-      browserUpgrade,
-    );
+    renderUnsupportedBrowserPage(rootElement, ASSISTANT_NAME, browserUpgrade);
   } else {
     startApplication();
   }

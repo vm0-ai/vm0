@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopConfig } from "./config";
+import { resolveDesktopConfig } from "./config";
 
 const mocks = vi.hoisted(() => {
   type AutoUpdaterListener = (...args: readonly unknown[]) => void;
@@ -70,33 +70,11 @@ function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", { value: platform });
 }
 
-function productionConfig(): DesktopConfig {
-  return {
-    platformUrl: new URL("https://app.vm0.ai"),
-    webUrl: new URL("https://app.vm0.ai"),
-    authUrl: new URL("https://www.vm0.ai"),
-    environment: "production",
-    identity: {
-      product: "zero",
-      brandName: "Zero",
-      displayName: "Zero Computer Use",
-      userDataDirectoryName: "Zero Computer Use",
-      updateLine: "zero",
-      bundleId: "ai.vm0.desktop",
-      authProtocolName: "Zero Desktop",
-      authScheme: "vm0-desktop",
-    },
-    sessionPartition: "persist:desktop",
-    authPartition: "persist:desktop",
-    allowedAppOrigins: new Set(["https://app.vm0.ai"]),
-  };
-}
-
 async function enterDegradedMode(error: unknown): Promise<void> {
   const { enterDegradedDesktopMode } = await import("./bootstrap-degraded");
   enterDegradedDesktopMode({
-    config: productionConfig(),
-    apiBaseUrl: "https://api.vm0.ai",
+    config: resolveDesktopConfig(),
+    apiBaseUrl: "https://api.okou.ai",
     error,
   });
   await vi.waitFor(() => {
@@ -131,8 +109,8 @@ describe("enterDegradedDesktopMode", () => {
 
     const { enterDegradedDesktopMode } = await import("./bootstrap-degraded");
     enterDegradedDesktopMode({
-      config: productionConfig(),
-      apiBaseUrl: "https://api.vm0.ai",
+      config: resolveDesktopConfig(),
+      apiBaseUrl: "https://api.okou.ai",
       error: new Error("boom"),
     });
 
@@ -145,7 +123,7 @@ describe("enterDegradedDesktopMode", () => {
     await enterDegradedMode(new Error("boom"));
 
     expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledWith({
-      url: `https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/${process.arch}/RELEASES.json`,
+      url: `https://api.okou.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/${process.arch}/RELEASES.json`,
       serverType: "json",
     });
     const dialogOptions = mocks.dialog.showMessageBox.mock.calls[0]?.[0];

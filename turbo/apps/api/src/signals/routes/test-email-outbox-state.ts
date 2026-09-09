@@ -53,7 +53,7 @@ async function applyAction(
       const [item] = await db
         .insert(emailOutbox)
         .values({
-          fromAddress: "Zero <outbox-fixture@mail.example.com>",
+          fromAddress: "Okou <outbox-fixture@mail.example.com>",
           toAddresses: body.to_address,
           subject: body.subject,
           template: {

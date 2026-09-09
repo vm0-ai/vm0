@@ -127,6 +127,9 @@ pub mod runners {
     /// Rust runners use this shared contract value to split target batches before calling the API.
     pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = 256;
 
+    /// Official token kind; the API still authenticates the secret and winning claim.
+    pub const OFFICIAL_RUNNER_TOKEN_PREFIX: &str = "vm0_official_";
+
     /// Current dialect-aware Pi model configuration generation.
     pub const PI_MODEL_CONFIG_CURRENT_GENERATION: u32 = 2;
 
@@ -135,6 +138,12 @@ pub mod runners {
 
     /// Legacy unversioned Pi model configuration generation.
     pub const PI_MODEL_CONFIG_LEGACY_GENERATION: u32 = 1;
+
+    /// Native Messages and Bedrock reader generation; activation is separate.
+    pub const PI_MODEL_CONFIG_NATIVE_GENERATION: u32 = 4;
+
+    /// Opaque native Pi sandbox marker; never a real signing credential.
+    pub const PI_NATIVE_CREDENTIAL_PLACEHOLDER: &str = "OKOUPINATIVEPLACEHOLDER";
 
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
@@ -182,11 +191,11 @@ pub mod runners {
 
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
-        /// Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.
+        /// Canonical directory for Okou-managed Claude Code configuration and session state inside runner guests.
         /// Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.
         pub const CANONICAL_CLAUDE_CONFIG_DIR: &str = "/home/user/.claude";
 
-        /// Canonical directory for VM0-managed Codex state inside runner guests.
+        /// Canonical directory for Okou-managed Codex state inside runner guests.
         /// Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.
         pub const CANONICAL_CODEX_HOME_DIR: &str = "/home/user/.codex";
 

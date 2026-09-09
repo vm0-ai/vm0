@@ -1,8 +1,8 @@
 //! E2E timing helpers — measure durations from API start time.
 
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_info, log_warn};
 use guest_contracts::epoch_milliseconds::is_plausible_epoch_milliseconds;
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_info, log_warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 

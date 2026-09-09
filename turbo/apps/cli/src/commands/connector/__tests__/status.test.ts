@@ -19,7 +19,6 @@ import {
 } from "../../__tests__/helpers/connector-catalog";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
-const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 
 const connectedGithub = {
   id: "1",
@@ -124,6 +123,7 @@ describe("okou connector status command", () => {
     vi.stubEnv("OKOU_APP_URL", "");
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", undefined);
     vi.stubEnv("OKOU_AGENT_ID", "");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     statusCommand.setOptionValue("agent", undefined);
@@ -215,6 +215,8 @@ describe("okou connector status command", () => {
           connector: expect.objectContaining({
             slug: "github",
             connectionStatus: "connected",
+            connectorType: "builtin",
+            target: { kind: "builtin", connectorSlug: "github" },
           }),
           authorization: null,
         }),
@@ -312,7 +314,7 @@ describe("okou connector status command", () => {
     });
 
     it("uses the production app origin in authorization links", async () => {
-      const apiOrigin = "https://api.vm0.ai";
+      const apiOrigin = "https://api.okou.ai";
       vi.stubEnv("APP_URL", "https://unrelated.example.test");
       vi.stubEnv("OKOU_API_BACKEND_URL", apiOrigin);
       server.use(
@@ -334,7 +336,7 @@ describe("okou connector status command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        `[Authorize github](https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
+        `[Authorize github](https://app.okou.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
       );
     });
 
@@ -465,8 +467,8 @@ describe("okou connector status command", () => {
       expect(logCalls).toContain("Account used by this run is unavailable");
     });
 
-    it("does not let --agent bypass canonical run context", async () => {
-      vi.stubEnv("OKOU_AGENT_ID", ALT_AGENT_UUID);
+    it("does not let matching --agent bypass unavailable run context", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
 
       await statusCommand.parseAsync([
         "node",

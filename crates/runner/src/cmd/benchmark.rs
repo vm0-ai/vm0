@@ -27,6 +27,60 @@ struct Timing {
     exec_ms: Option<u128>,
 }
 
+#[derive(Default)]
+struct BenchmarkStartObserver {
+    stages: Vec<(sandbox::SandboxStartStage, Duration, bool)>,
+    connection: Vec<(
+        sandbox::SandboxGuestConnectionPhase,
+        Duration,
+        Duration,
+        bool,
+    )>,
+}
+
+impl sandbox::SandboxStartObserver for BenchmarkStartObserver {
+    fn record_stage(
+        &mut self,
+        stage: sandbox::SandboxStartStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        self.stages.push((stage, duration, success));
+    }
+
+    fn record_guest_connection_phase(
+        &mut self,
+        phase: sandbox::SandboxGuestConnectionPhase,
+        duration: Duration,
+        remaining: Duration,
+        success: bool,
+    ) {
+        self.connection.push((phase, duration, remaining, success));
+    }
+}
+
+impl BenchmarkStartObserver {
+    fn report(self) {
+        for (stage, duration, success) in self.stages {
+            info!(
+                ?stage,
+                duration_ms = duration.as_secs_f64() * 1000.0,
+                success,
+                "benchmark sandbox start stage"
+            );
+        }
+        for (phase, duration, remaining, success) in self.connection {
+            info!(
+                ?phase,
+                duration_ms = duration.as_secs_f64() * 1000.0,
+                remaining_ms = remaining.as_secs_f64() * 1000.0,
+                success,
+                "benchmark guest connection phase"
+            );
+        }
+    }
+}
+
 const DEFAULT_BENCHMARK_TIMEZONE: &str = "UTC";
 
 /// Reject malformed entries so typos fail loud before benchmark startup.
@@ -434,9 +488,11 @@ async fn run_in_sandbox(
 ) -> (RunnerResult<ExecResult>, Timing) {
     let mut timing = Timing::default();
 
+    let mut observer = BenchmarkStartObserver::default();
     let t_boot = Instant::now();
-    let start_result = sandbox.start().await;
+    let start_result = sandbox.start_with_observer(&mut observer).await;
     timing.boot_ms = Some(t_boot.elapsed().as_millis());
+    observer.report();
     if let Err(e) = start_result {
         return (Err(e.into()), timing);
     }

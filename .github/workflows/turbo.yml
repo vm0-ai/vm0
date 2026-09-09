@@ -391,7 +391,7 @@ jobs:
           # shellcheck disable=SC2086
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  # Lint jobs - split into 4 parallel jobs for faster CI
+  # Lint jobs - split into independent parallel jobs for faster CI
   lint-eslint:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
@@ -419,6 +419,30 @@ jobs:
         working-directory: turbo
         run: pnpm lint
 
+  lint-style:
+    needs: [detect-turbo-ts-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: ./.github/actions/toolchain-init
+      - name: Lint app styles
+        working-directory: turbo
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKOUT_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          STYLE_POLICY_RATCHET_REF=$(../.github/scripts/changed-base-ref.sh)
+          export STYLE_POLICY_RATCHET_REF
+          pnpm lint:style
+
   lint-types:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
@@ -443,6 +467,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    env:
+      TSC_CHECKERS: "2"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
@@ -500,6 +526,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    env:
+      TSC_CHECKERS: "2"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
@@ -1033,7 +1061,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
+          cli-pkg-url: https://static.okou.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1145,7 +1173,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
+          cli-pkg-url: https://static.okou.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1524,7 +1552,6 @@ jobs:
       - name: Prepare standalone app Worker preview
         id: worker-preview
         env:
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
@@ -1614,7 +1641,7 @@ jobs:
             trap 'rm -f "$worker_secrets"' EXIT
             jq -n \
               '{
-                CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL,
+                CLERK_EDGE_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL,
                 CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
                 CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
               }' > "$worker_secrets"
@@ -2102,7 +2129,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
-      CLI_STATIC_BASE_URL: https://static.vm0.io
+      CLI_STATIC_BASE_URL: https://static.okou.io
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -2307,6 +2334,7 @@ jobs:
         prepare,
         deploy-cli,
         lint-eslint,
+        lint-style,
         lint-types,
         lint-format,
         lint-knip,
@@ -2435,7 +2463,10 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image-groups.sh
 
-  # Deploy runner start: generate config with real API preview URL and start service
+  # Deploy runner start: start one service on the existing deterministic host
+  # selection for runner-image-job-ref, matching the Crates Runner behavior lane.
+  # Retire the same service namespace on unselected hosts before reporting ready.
+  # Shared image preparation and lifecycle locking still cover all hosts.
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
   deploy-runner-start:
     runs-on: ubuntu-latest
@@ -2923,6 +2954,8 @@ jobs:
           report_type: test_results
       - name: Upload runner E2E JUnit XML
         if: ${{ !cancelled() }}
+        # JUnit artifacts are diagnostic; the BATS step determines test success.
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: e2e-runner-junit-${{ matrix.index }}
@@ -3071,6 +3104,7 @@ jobs:
       - prepare
       - file-size-check
       - lint-eslint
+      - lint-style
       - lint-types
       - lint-type-app
       - lint-type-api
@@ -3174,9 +3208,10 @@ jobs:
           check_result "detect-turbo-ts-checks" "${{ needs.detect-turbo-ts-checks.result }}" ""
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
-          # Turbo TypeScript checks: only 'success' is acceptable unless
+          # Turbo checks: only 'success' is acceptable unless
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-style" "${{ needs.lint-style.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-types" "${{ needs.lint-types.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-type-app" "${{ needs.lint-type-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-type-api" "${{ needs.lint-type-api.result }}" "$TS_CHECK_SKIP_ALLOWED"

@@ -2,8 +2,8 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
+  PUBLIC_BRAND,
+  PUBLIC_BRAND_PRESENTATION,
 } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
@@ -22,7 +22,7 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
 import { now } from "../../lib/time";
 import {
@@ -44,7 +44,6 @@ import {
   resolveAgentPhoneUserLink,
   resolveOrgDefaultComposeId,
   storeOutboundAgentPhoneMessage,
-  stripAgentPhoneMention,
   touchAgentPhoneUserLink,
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
@@ -71,7 +70,6 @@ import {
 } from "./user-data.service";
 
 const MAX_CONNECT_AGE_SECONDS = 600;
-const LEGACY_CONNECT_CUTOFF_ENV = "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS";
 const MAX_WEBHOOK_AGE_SECONDS = 300;
 const SIGNATURE_PREFIX = "sha256=";
 const MAX_CONTEXT_MESSAGES = 10;
@@ -129,7 +127,7 @@ type LinkAgentPhoneUserResult =
   | { readonly ok: true; readonly userLink: AgentPhoneUserLink }
   | {
       readonly ok: false;
-      readonly reason: "phone-handle-linked" | "vm0-org-linked" | "conflict";
+      readonly reason: "phone-handle-linked" | "org-linked" | "conflict";
       readonly userLink?: AgentPhoneUserLink;
     };
 
@@ -237,32 +235,14 @@ function safeHexSignatureEqual(expected: string, actual: string): boolean {
   return timingSafeEqual(expectedBuffer, signatureBuffer);
 }
 
-function isLegacyBrandlessAgentPhoneConnectAllowed(timestamp: number): boolean {
-  const configured = optionalEnv(LEGACY_CONNECT_CUTOFF_ENV);
-  if (configured === undefined) {
-    return false;
-  }
-  const cutoff = Number(configured);
-  if (!Number.isSafeInteger(cutoff) || cutoff <= 0) {
-    return false;
-  }
-
-  // Old Platform -> new API rollout compatibility: old web/app clients can stay
-  // active for about two days and can omit both brand fields. Accept only links
-  // issued at or before the operator cutoff; newer stripped links fail closed.
-  // Remove with #27750 after the client floor excludes the old Platform and the
-  // final cutoff-eligible link's ten-minute TTL has elapsed.
-  return timestamp <= cutoff;
-}
-
 export function verifyAgentPhoneConnectSignature(params: {
   readonly phoneHandle: string;
   readonly agentphoneAgentId: string;
   readonly timestamp: number;
   readonly channel: AgentPhoneChannel;
   readonly signature: string;
-  readonly publicBrand?: PublicBrand;
-  readonly publicBrandSignature?: string;
+  readonly publicBrand: PublicBrand;
+  readonly publicBrandSignature: string;
   readonly secret: string;
 }): boolean {
   const nowSeconds = Math.floor(now() / 1000);
@@ -278,19 +258,6 @@ export function verifyAgentPhoneConnectSignature(params: {
     secret: params.secret,
   });
   if (!safeHexSignatureEqual(expected, params.signature)) {
-    return false;
-  }
-
-  if (
-    params.publicBrand === undefined &&
-    params.publicBrandSignature === undefined
-  ) {
-    return isLegacyBrandlessAgentPhoneConnectAllowed(params.timestamp);
-  }
-  if (
-    params.publicBrand === undefined ||
-    params.publicBrandSignature === undefined
-  ) {
     return false;
   }
 
@@ -344,10 +311,9 @@ export function buildAgentPhoneConnectUrl(params: {
   readonly agentphoneAgentId: string;
   readonly channel: AgentPhoneChannel;
   readonly secret: string;
-  readonly publicBrand?: PublicBrand;
 }): string {
   const timestamp = Math.floor(now() / 1000);
-  const publicBrand = params.publicBrand ?? "vm0";
+  const publicBrand = PUBLIC_BRAND;
   const phoneHandle = normalizeAgentPhoneHandle(
     params.phoneHandle,
     params.channel,
@@ -379,7 +345,7 @@ export function buildAgentPhoneConnectUrl(params: {
       secret: params.secret,
     }),
   });
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/agentphone/connect?${query.toString()}`;
+  return `${env("APP_URL")}/agentphone/connect?${query.toString()}`;
 }
 
 export async function linkAgentPhoneUser(
@@ -389,7 +355,7 @@ export async function linkAgentPhoneUser(
     readonly channel: AgentPhoneChannel;
     readonly userId: string;
     readonly orgId: string;
-    readonly publicBrand?: PublicBrand;
+    readonly publicBrand: PublicBrand;
   },
 ): Promise<LinkAgentPhoneUserResult> {
   const phoneHandle = normalizeAgentPhoneHandle(
@@ -453,7 +419,7 @@ export async function linkAgentPhoneUser(
 
     return {
       ok: false,
-      reason: "vm0-org-linked",
+      reason: "org-linked",
       userLink: existingUserOrgLink,
     };
   }
@@ -464,7 +430,7 @@ export async function linkAgentPhoneUser(
       phoneHandle,
       userId: params.userId,
       orgId: params.orgId,
-      publicBrand: params.publicBrand ?? "vm0",
+      publicBrand: params.publicBrand,
     })
     .onConflictDoNothing()
     .returning();
@@ -964,12 +930,8 @@ function enrichAgentPhonePrompt(opts: {
   readonly prompt: string;
   readonly messageId: string;
   readonly mediaUrl: string | null;
-  readonly isGroup: boolean;
 }): string {
-  const promptText = opts.isGroup
-    ? stripAgentPhoneMention(opts.prompt)
-    : opts.prompt.trim();
-  const parts = [promptText];
+  const parts = [opts.prompt.trim()];
   if (opts.mediaUrl) {
     parts.push(
       formatAgentPhoneFileForContext({
@@ -1060,17 +1022,13 @@ async function refreshTypingIfSupported(
   );
 }
 
-function formatConnectPrompt(
-  event: AgentPhoneMessageEvent,
-  publicBrand: PublicBrand,
-): string {
-  const { brandName } = publicBrandPresentation(publicBrand);
+function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   const connectUrl = buildAgentPhoneConnectUrl({
     phoneHandle: event.fromNumber,
     agentphoneAgentId: event.agentphoneAgentId,
     secret: env("SECRETS_ENCRYPTION_KEY"),
     channel: event.channel,
-    publicBrand,
   });
 
   return [
@@ -1086,8 +1044,8 @@ function formatConnectPrompt(
   ].join("\n");
 }
 
-function formatHelpMessage(publicBrand: PublicBrand): string {
-  const { brandName } = publicBrandPresentation(publicBrand);
+function formatHelpMessage(): string {
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   return [
     `${brandName} text message commands`,
     "",
@@ -1103,11 +1061,10 @@ function formatHelpMessage(publicBrand: PublicBrand): string {
 
 async function sendConnectPrompt(
   event: AgentPhoneMessageEvent,
-  publicBrand: PublicBrand,
   options: { readonly slashCommand: boolean } | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  const body = formatConnectPrompt(event, publicBrand);
+  const body = formatConnectPrompt(event);
   await sendAgentPhoneText(
     event,
     options?.slashCommand
@@ -1171,12 +1128,11 @@ async function handleConnectCommand(
   args: {
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
   if (args.userLink) {
-    const { brandName } = publicBrandPresentation(args.publicBrand);
+    const { brandName } = PUBLIC_BRAND_PRESENTATION;
     await sendAgentPhoneSlashCommandText(
       args.event,
       `You are already connected. Send a message here to start using ${brandName}.`,
@@ -1184,12 +1140,7 @@ async function handleConnectCommand(
     );
     return;
   }
-  await sendConnectPrompt(
-    args.event,
-    args.publicBrand,
-    { slashCommand: true },
-    signal,
-  );
+  await sendConnectPrompt(args.event, { slashCommand: true }, signal);
 }
 
 async function handleDisconnectCommand(
@@ -1197,7 +1148,6 @@ async function handleDisconnectCommand(
     readonly db: Db;
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1217,7 +1167,7 @@ async function handleDisconnectCommand(
 
   await sendAgentPhoneSlashCommandText(
     args.event,
-    `This phone number has been disconnected from ${publicBrandPresentation(args.publicBrand).brandName}.`,
+    `This phone number has been disconnected from ${PUBLIC_BRAND_PRESENTATION.brandName}.`,
     signal,
   );
 }
@@ -1227,17 +1177,11 @@ async function handleNewSessionCommand(
     readonly db: Db;
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
   if (!args.userLink) {
-    await sendConnectPrompt(
-      args.event,
-      args.publicBrand,
-      { slashCommand: true },
-      signal,
-    );
+    await sendConnectPrompt(args.event, { slashCommand: true }, signal);
     return;
   }
 
@@ -1446,7 +1390,6 @@ const dispatchAgentPhoneCommand$ = command(
       readonly command: string | undefined;
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -1456,7 +1399,6 @@ const dispatchAgentPhoneCommand$ = command(
           {
             event: args.event,
             userLink: args.userLink,
-            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1468,7 +1410,6 @@ const dispatchAgentPhoneCommand$ = command(
             db: args.db,
             event: args.event,
             userLink: args.userLink,
-            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1480,7 +1421,6 @@ const dispatchAgentPhoneCommand$ = command(
             db: args.db,
             event: args.event,
             userLink: args.userLink,
-            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1489,19 +1429,14 @@ const dispatchAgentPhoneCommand$ = command(
       case "help": {
         await sendAgentPhoneSlashCommandText(
           args.event,
-          formatHelpMessage(args.publicBrand),
+          formatHelpMessage(),
           signal,
         );
         return true;
       }
       case "model": {
         if (!args.userLink) {
-          await sendConnectPrompt(
-            args.event,
-            args.publicBrand,
-            { slashCommand: true },
-            signal,
-          );
+          await sendConnectPrompt(args.event, { slashCommand: true }, signal);
           return true;
         }
         await set(
@@ -1529,7 +1464,6 @@ const handleAgentPhoneCommandIfPresent$ = command(
       readonly db: Db;
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -1559,7 +1493,6 @@ const handleAgentPhoneCommandIfPresent$ = command(
         command: commandText,
         event: args.event,
         userLink: args.userLink,
-        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -1813,7 +1746,6 @@ export const handleAgentPhoneMessage$ = command(
           db,
           event: params.event,
           userLink: params.userLink,
-          publicBrand: params.publicBrand,
         },
         signal,
       )
@@ -1827,12 +1759,7 @@ export const handleAgentPhoneMessage$ = command(
         return;
       }
 
-      await sendConnectPrompt(
-        params.event,
-        params.publicBrand,
-        undefined,
-        signal,
-      );
+      await sendConnectPrompt(params.event, undefined, signal);
       return;
     }
 
@@ -1841,7 +1768,7 @@ export const handleAgentPhoneMessage$ = command(
     if (!agent) {
       await sendAgentPhoneText(
         params.event,
-        `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(params.publicBrand).brandName} first.`,
+        `The workspace default agent is not configured. Please choose an agent in ${PUBLIC_BRAND_PRESENTATION.brandName} first.`,
         signal,
       );
       return;
@@ -1877,7 +1804,6 @@ export const handleAgentPhoneMessage$ = command(
       prompt: params.event.body,
       messageId: params.event.messageId,
       mediaUrl: params.event.mediaUrl,
-      isGroup,
     });
 
     const result = await set(

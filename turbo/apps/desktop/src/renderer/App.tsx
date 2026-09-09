@@ -17,6 +17,7 @@ import {
 } from "./computer-use-state";
 import { DesktopBrandMark, Panel } from "./components";
 import { ReadyExperience } from "./hero";
+import { ComputerUseDriverControls } from "./computer-use-driver";
 import { currentDesktopIdentity } from "./desktop-identity";
 import okouWordmarkUrl from "./assets/okou-wordmark-dark.svg";
 import {
@@ -128,12 +129,18 @@ function ComputerUsePage() {
     }
 
     return (
-      <ComputerUseContent
-        authLoading={authLoading}
-        authState={authState}
-        developerToolsEnabled={developerToolsEnabled}
-        state={loadable.data}
-      />
+      <>
+        <ComputerUseContent
+          authLoading={authLoading}
+          authState={authState}
+          developerToolsEnabled={developerToolsEnabled}
+          state={loadable.data}
+        />
+        <ComputerUseDriverControls
+          developerToolsEnabled={developerToolsEnabled}
+          state={loadable.data.driver}
+        />
+      </>
     );
   }
 
@@ -165,16 +172,12 @@ function Header() {
     <header className="app-header">
       <div className="titlebar-title">
         <h1>
-          {identity.product === "okou" ? (
-            <img
-              className="titlebar-wordmark"
-              src={okouWordmarkUrl}
-              alt={identity.displayName}
-              draggable={false}
-            />
-          ) : (
-            identity.displayName
-          )}
+          <img
+            className="titlebar-wordmark"
+            src={okouWordmarkUrl}
+            alt={identity.displayName}
+            draggable={false}
+          />
         </h1>
       </div>
     </header>
@@ -182,9 +185,8 @@ function Header() {
 }
 
 export function App() {
-  const identity = currentDesktopIdentity();
   return (
-    <div className={`app-shell desktop-product-${identity.product}`}>
+    <div className="app-shell desktop-product-okou">
       <BridgeSubscription />
       <Header />
       <main className="content">

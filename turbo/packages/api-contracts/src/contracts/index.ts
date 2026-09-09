@@ -26,7 +26,6 @@ export {
   CHAT_GOAL_MARKER_EVENT_TYPES,
   chatEventCompatibilityRole,
   chatEventTypeSchema,
-  foldActiveChatGoalObjective,
   foldPendingChatQueueEvents,
   foldRunnableChatQueueEvents,
   foldChatRunStates,
@@ -533,7 +532,7 @@ export {
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  // VM0 built-in provider
+  // Built-in provider
   BUILT_IN_MODEL_TO_PROVIDER,
   BUILT_IN_MODEL_ROUTE_PROVIDERS,
   BUILT_IN_MODEL_ALIAS_TO_MODEL,
@@ -1779,6 +1778,14 @@ export {
   type BuiltInGenerationAcceptedResponse,
   type BuiltInGenerationResponse,
 } from "./built-in-generation";
+export {
+  introVideoAgentContract,
+  introVideoAgentGenerateRequestSchema,
+  introVideoAgentResponseSchema,
+  type IntroVideoAgentContract,
+  type IntroVideoAgentGenerateRequest,
+  type IntroVideoAgentResponse,
+} from "./intro-video-agent";
 export {
   voiceIoPolishContract,
   voiceIoPolishRequestSchema,

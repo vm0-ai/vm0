@@ -47,20 +47,48 @@ telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
 version. Remove any historical query fallback only after its bounded
 observation window expires.
 
+## Blank Sandbox Memory
+
+Tenant-free sandboxes prepared for the blank pool retain their full profile
+resource budget. Firecracker stops their reactive balloon controller and
+pauses vCPUs without requesting aggressive idle balloon inflation. Guest
+quiesce and operation fencing still complete before pause. This avoids a
+large idle-only inflate/deflate cycle when a prepared sandbox is claimed.
+
+Unpark still requests memory return without waiting for physical balloon
+convergence. After a preserved blank resumes, its background controller waits
+for both target-zero convergence and the first successful Agent-ready event
+before resuming reactive reclamation. Guest operations and Agent startup do not
+wait for that controller, and no fixed delay is added. Failed or cancelled
+startup does not release the gate; ordinary park, stop and destruction cancel
+the owned controller. The full profile budget stays reserved throughout.
+
+A small balloon from active preparation may remain at park. Exact/session idle
+sandboxes continue using ordinary memory reclamation, including after a
+claimed blank completes its first run.
+
+Pool sizing, full-profile admission, exact-first reuse and blank-first pressure
+eviction are unchanged. Preserving blank memory can increase physical idle
+memory usage; the profile budget is not a measurement of resident memory.
+
 ## Idle Workspace Reclamation Concurrency
 
 Workspace promotion uses two independent runner-process-local admission gates,
 each sized as `(host_cpus / 2).clamp(1, 4)`. Cache clones share the gates.
 The existing sidecar export gate covers guest export execution only. Idle
 reclamation additionally acquires admission **before unpark** and holds it
-through export, host copy, cleanup, workspace freeze and sandbox stop. Waiting
-reclamation jobs remain parked.
+through terminal unpark, export, host copy, workspace freeze and immediate
+sandbox termination. Waiting reclamation jobs remain parked. Terminal unpark
+does not start the reactive balloon controller used by future active workloads,
+and the temporary guest sidecar is left for sandbox destruction instead of a
+separate guest cleanup command.
 
-After a successful stop, cache publication and factory destruction run without
-holding idle admission. If stop fails or panics, admission remains held through
-the factory destruction attempt. Missing or explicitly abandoned promotion
-does not acquire this gate. Normal startup/reuse and active sandbox promotion
-do not acquire idle reclamation admission.
+After successful termination, cache publication and factory destruction run
+without holding idle admission. If termination fails or panics, publication is
+abandoned and admission remains held through the factory destruction attempt.
+Missing or explicitly abandoned promotion does not acquire this gate. Normal
+startup/reuse and active sandbox promotion do not acquire idle reclamation
+admission.
 
 This limits simultaneous resumed idle guests, not total sandboxes or team run
 concurrency. A bulk drain can take longer and retain parked budget leases while
@@ -278,5 +306,5 @@ the per-drive split.
   host capacity and derives sandbox-level limits.
 - [`crates/runner/src/cmd/start/mod.rs`](../crates/runner/src/cmd/start/mod.rs)
   emits the startup state and effective-limit logs.
-- [`crates/sandbox-fc/src/config.rs`](../crates/sandbox-fc/src/config.rs) splits
+- [`crates/sandbox-firecracker/src/config.rs`](../crates/sandbox-firecracker/src/config.rs) splits
   the sandbox block budget across Firecracker drives.

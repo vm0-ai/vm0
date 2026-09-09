@@ -1,9 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -175,10 +171,9 @@ async function getPrimaryUserEmail(
 function buildSlackConnectUrl(
   workspaceId: string,
   slackUserId: string,
-  publicBrand: PublicBrand,
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/settings/slack?${params.toString()}`;
+  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
 async function refreshSlackAppHome(args: {
@@ -187,7 +182,6 @@ async function refreshSlackAppHome(args: {
   readonly client: SlackClient;
   readonly installation: SlackInstallation;
   readonly slackUserId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<void> {
   const [connection] = await args.db
     .select()
@@ -207,14 +201,12 @@ async function refreshSlackAppHome(args: {
     await args.client.publishAppHome(
       args.slackUserId,
       buildAppHomeView({
-        publicBrand: args.publicBrand,
         botUserId: args.installation.botUserId,
-        appUrl: appUrlForPublicBrand(env("APP_URL"), args.publicBrand),
+        appUrl: env("APP_URL"),
         isLinked: false,
         loginUrl: buildSlackConnectUrl(
           args.installation.slackWorkspaceId,
           args.slackUserId,
-          args.publicBrand,
         ),
       }),
     );
@@ -252,9 +244,8 @@ async function refreshSlackAppHome(args: {
   await args.client.publishAppHome(
     args.slackUserId,
     buildAppHomeView({
-      publicBrand: args.publicBrand,
       botUserId: args.installation.botUserId,
-      appUrl: appUrlForPublicBrand(env("APP_URL"), args.publicBrand),
+      appUrl: env("APP_URL"),
       isLinked: true,
       userId: connection.userId,
       userEmail: await getPrimaryUserEmail(args.clerkClient, connection.userId),
@@ -479,7 +470,6 @@ export const notifySlackConnect$ = command(
       readonly channelId?: string;
       readonly threadTs?: string;
       readonly pendingPrompt?: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -496,7 +486,7 @@ export const notifySlackConnect$ = command(
       ? await getWorkspaceAgentName(writeDb, defaultAgentId)
       : undefined;
     signal.throwIfAborted();
-    const { assistantName } = publicBrandPresentation(args.publicBrand);
+    const { assistantName } = PUBLIC_BRAND_PRESENTATION;
 
     const blocks = buildSuccessMessage(
       `You're connected to ${assistantName}! :tada:\nMention ${officialSlackBotMention(args.installation.botUserId)} in any channel or send a DM to start chatting with your agent.`,
@@ -565,7 +555,6 @@ export const notifySlackConnect$ = command(
       client,
       installation: args.installation,
       slackUserId: args.slackUserId,
-      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
   },

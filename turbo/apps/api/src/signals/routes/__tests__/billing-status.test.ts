@@ -450,6 +450,7 @@ describe("GET /api/billing/status", () => {
     expect(response.body.canBuyConcurrency).toBeTruthy();
     expect(response.body.canBuyCredits).toBeFalsy();
     expect(response.body.memberInviteUsagePackRequired).toBeTruthy();
+    expect(response.body.showUsagePack).toBeFalsy();
     expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();

@@ -75,7 +75,7 @@ test("Keep each conversation's draft separate while navigating", async () => {
       note: [{ type: "text", text: "Second conversation feedback" }],
     },
   ]);
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 1,
     threads: [first, second],
     drafts: new Map([[second.id, secondServerDraft]]),
@@ -84,7 +84,7 @@ test("Keep each conversation's draft separate while navigating", async () => {
   await setupPage({
     context,
     path: `/chats/${first.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const firstComposer = await messageComposer();
@@ -192,7 +192,7 @@ test("Restore a rich saved draft when a chat opens", async () => {
     ],
     [attachment],
   );
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 3,
     threads: [thread, referenced],
     drafts: new Map([[thread.id, draft]]),
@@ -201,7 +201,7 @@ test("Restore a rich saved draft when a chat opens", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await messageComposer();
@@ -246,7 +246,7 @@ test("Restore a rich saved draft when a chat opens", async () => {
 test("Save and clear typed drafts consistently", async () => {
   const target = continuityThread(4, 1, "Draft persistence target");
   const neighbor = continuityThread(4, 2, "Draft persistence neighbor");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 4,
     threads: [target, neighbor],
   });
@@ -254,7 +254,7 @@ test("Save and clear typed drafts consistently", async () => {
   await setupPage({
     context,
     path: `/chats/${target.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await messageComposer();
@@ -306,7 +306,7 @@ test("Save and clear typed drafts consistently", async () => {
 test("Send the current version of a restored draft and clear it", async () => {
   const thread = continuityThread(5, 1, "Draft ready to send");
   const originalAttachment = continuityAttachment(5, 1, "outdated-brief.txt");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 5,
     threads: [thread],
     drafts: new Map([
@@ -347,7 +347,7 @@ test("Send the current version of a restored draft and clear it", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await messageComposer();

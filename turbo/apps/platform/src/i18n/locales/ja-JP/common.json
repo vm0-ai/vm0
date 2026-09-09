@@ -130,6 +130,7 @@
         "diskPressure": "ランナーのディスク使用量が逼迫していたため、ワークスペースの再利用をスキップしました。",
         "environment": "環境",
         "featureDisabled": "この実行ではサンドボックスの再利用が無効になっています。",
+        "framework": "フレームワーク",
         "generation": "世代",
         "hostname": "ホスト名",
         "invalidMetadata": "キャッシュ済みワークスペースのメタデータが無効でした。",
@@ -576,6 +577,11 @@
       "unavailable": "{{kind}} プレビューは利用できません。",
       "videoLabel": "{{filename}} のビデオ プレビュー"
     },
+    "sharing": {
+      "shareOrganization": "組織内で共有",
+      "sharePublic": "一般公開する",
+      "unavailable": "このアーティファクトは利用できないか、アクセス権がありません。"
+    },
     "sidebar": {
       "openSharedConversation": "共有された会話を開く",
       "panelTitle": "アーティファクト",
@@ -591,6 +597,9 @@
       "categories": "テンプレートのカテゴリ",
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
+      "creativeVideo": "クリエイティブ動画",
+      "explainerUnavailable": "この動画テンプレートは現在利用できません。削除してメッセージを送信してください。",
+      "explainerVideo": "解説動画",
       "filters": {
         "age": "年齢",
         "all": "すべて",
@@ -1035,19 +1044,35 @@
       "continuation": {
         "activationErrorDescription": "サインインを完了できませんでした。最初からやり直してください。",
         "activationErrorTitle": "サインインを完了できませんでした",
+        "backupDescription": "コードを安全な場所に保管してください。電話を利用できなくなった場合、各コードを1回ずつ使用できます。",
+        "backupTitle": "バックアップコードを保存",
         "chooseOrganizationDescription": "{{brandName}} に進む組織を選択してください。",
         "chooseOrganizationTitle": "組織を選択",
         "completeDescription": "{{brandName}} に移動しています。",
         "completeTitle": "サインイン完了",
+        "createOrganization": "組織を作成",
+        "invitationError": "この招待を承認できませんでした。もう一度お試しいただくか、リンクの有効期限が切れている場合は新しい招待を依頼してください。",
+        "joinOrganization": "{{organizationName}}に参加",
         "loadingDescription": "アカウントに必要な次の手順を確認しています。",
         "loadingTitle": "サインインを完了しています",
         "noOrganizationsDescription": "このアカウントで利用できる組織がありません。組織の管理者にアクセスを依頼してから、最初からやり直してください。",
         "noOrganizationsTitle": "利用できる組織がありません",
+        "organizationName": "組織名",
+        "passwordTaskError": "パスワードを更新できませんでした。より強力なパスワードを選んで、もう一度お試しください。",
+        "phoneNumberLabel": "電話番号",
         "recoveryAction": "最初からやり直す",
+        "savedCodes": "コードを保存しました",
         "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
         "secondFactorTitle": "追加の確認が必要です",
+        "securityDescription": "本人確認のための2つ目の方法を追加します。",
+        "securityTitle": "2段階認証を設定",
         "selectOrganization": "{{organizationName}} で続行",
+        "sendCode": "コードを送信",
+        "setupKey": "セットアップキー",
+        "setupKeyDescription": "このセットアップキーを認証アプリに追加し、生成されたコードを入力してください。",
         "signedInAs": "{{identifier}} としてサインイン中",
+        "taskComplete": "セキュリティ設定を保存しました。続行してサインインを完了してください。",
+        "taskError": "この手順を完了できませんでした。入力内容を確認して、もう一度お試しください。",
         "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
         "unsupportedTitle": "サインイン手順を利用できません"
       },
@@ -1852,6 +1877,25 @@
     "composer": {
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
+      "create": {
+        "addStyle": "スタイルを追加",
+        "addTemplate": "テンプレートを追加",
+        "chooseType": "種類を選択",
+        "description": "プレゼンテーション、動画、画像",
+        "exit": "作成モードを終了",
+        "image": "画像を作成",
+        "imagePlaceholder": "作成したい画像を説明してください…",
+        "presentation": "プレゼンテーションを作成",
+        "presentationPlaceholder": "プレゼンテーションのテーマは何ですか？",
+        "question": "何を実現したいですか？",
+        "settingsAdjusted": "このモデルに合わせて一部の動画設定を調整しました",
+        "slideCount": "スライド数",
+        "slideCountAuto": "自動",
+        "slideCountRange": "{{range}}枚",
+        "title": "作成",
+        "video": "動画を作成",
+        "videoPlaceholder": "作成したい動画を説明してください…"
+      },
       "createWorkflow": "ワークフローの作成",
       "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",
@@ -1909,7 +1953,6 @@
       "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
       "addConnectors": "コネクタの追加",
-      "authorizationFailed": "{{connectorName}} は接続されましたが、{{agentName}} に対して認証できませんでした",
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
@@ -1917,6 +1960,37 @@
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
       "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",
+      "directory": {
+        "allCategories": "すべて",
+        "askAdmin": "管理者に有効化を依頼してください",
+        "browse": "コネクターを見る",
+        "configure": "設定",
+        "connected": "接続済み",
+        "createCustom": "カスタムを作成",
+        "customBadge": "カスタム",
+        "detailAccounts": "アカウント",
+        "detailCategory": "カテゴリー",
+        "detailConnection": "接続",
+        "detailMethod": "認証方法",
+        "detailPermissions": "権限",
+        "emptyCustomBody": "HTTP API や MCP サーバーから作成すると、Okou は他のコネクターと同じように使えます。",
+        "emptyCustomTitle": "カスタムコネクターはまだありません",
+        "emptyYoursBody": "アプリを接続すると、Okou が代わりに読み取り、操作できます。",
+        "emptyYoursTitle": "まだ何も接続していません",
+        "matchCount_other": "{{count}} 件の一致",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "対応が必要",
+        "noResultsBody": "製品名で検索するか、API や MCP サーバーから自分で作成してください。",
+        "noResultsTitle": "「{{query}}」に一致するコネクターがありません",
+        "openDetailAria": "{{connector}} の詳細を開く",
+        "otherCategory": "その他",
+        "permissionCount_other": "{{count}} 件の権限",
+        "searchYours": "接続済みのコネクターを検索",
+        "showAll_other": "すべて表示 ({{count}})",
+        "tabCustom": "カスタム",
+        "tabDiscover": "見つける",
+        "tabYours": "接続済み"
+      },
       "fallsBackTo": "{{account}} にフォールバック",
       "find": "コネクタを検索...",
       "noUsableAccount": "使用可能なアカウントがありません",
@@ -1955,6 +2029,20 @@
       },
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "コンテンツに合う音声を選びます。",
+      "avatarVoice": "アバターの音声",
+      "changeAvatar": "アバターを変更",
+      "chooseStyle": "スタイルを選択",
+      "chooseStyleAndVoice": "スタイルと音声を選択してください。",
+      "noMatches": "見つかりませんでした。検索条件やカテゴリを変更してください。",
+      "ready": "準備ができました。チャットにコンテンツを追加してください。",
+      "searchAvatars": "アバターを検索",
+      "searchStyles": "スタイルを検索",
+      "settings": "解説動画の設定",
+      "style": "スタイル",
+      "useSelection": "この設定を使用"
+    },
     "feedback": {
       "emailDraftDescription": "メールの下書き (メールの下書き ID: {{id}})",
       "partHeading": "返信のこの部分に関するフィードバック:",
@@ -1985,50 +2073,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "自動 · Okou におまかせ",
-        "autoDescription": "ご要望に合う HeyGen の公開プレゼンターを選択",
         "heading": "アバターを選択",
         "label": "アバター",
         "none": "アバターなし",
-        "noneDescription": "プレゼンターなしで動画を作成",
         "previewLook": "{{name}} の外見をプレビュー"
       },
-      "cardDescription": "アイデアや資料を完成した動画に変換",
       "catalog": {
-        "empty": "HeyGen の公開オプションはありません。",
-        "error": "HeyGen の一覧を読み込めませんでした。",
+        "error": "カタログを読み込めませんでした。",
         "loading": "さらに読み込み中",
         "reload": "一覧を再読み込み",
         "retry": "再試行"
       },
-      "description": "資料を追加してご要望を説明し、必要に応じて HeyGen のスタイル、アバター、音声を選んでください。",
-      "errors": {
-        "sendFailed": "チャットスレッドを作成できませんでした。リクエストはこの画面に残っているので、もう一度お試しください。",
-        "uploadFailed": "一部のファイルをアップロードできませんでした。削除するか、もう一度お試しください。"
-      },
       "footer": {
-        "cancel": "キャンセル",
-        "create": "動画を作成",
-        "hint": "指示やファイルを追加してください"
-      },
-      "format": {
-        "auto": "自動",
-        "output": "出力の画面比率"
-      },
-      "heading": "イントロビデオを作成",
-      "help": "資料の追加やご要望の説明、またはその両方から始められます。あとは Okou におまかせください。",
-      "prompt": {
-        "label": "動画で何を伝えたいですか？",
-        "placeholder": "目的、対象者、言語、雰囲気など、大切なことを説明してください"
-      },
-      "source": {
-        "drop": "ここにファイルをドロップ、またはクリックしてアップロード",
-        "remove": "{{filename}} を削除"
+        "cancel": "キャンセル"
       },
       "style": {
         "auto": "Okou におまかせ",
         "browseGroups": "スタイルから探す",
-        "description": "スタイルはシーン、トランジション、テキストの表示、テンポを決めます。",
         "groups": {
           "cinematic": "映画と写真",
           "handmade": "手作りと素材",
@@ -2038,25 +2099,16 @@
           "print": "印刷と出版",
           "retro-tech": "レトロテックとインターフェース"
         },
-        "heading": "参考にするスタイルを選択",
-        "label": "スタイル参考",
         "preview": "{{title}} のプレビュー",
         "previewUnavailable": "このスタイルの動画プレビューはありません。"
       },
-      "title": "イントロビデオを作成",
       "voice": {
         "auto": "Okou におまかせ",
-        "autoDescription": "Okou が最適な HeyGen の公開音声を選択",
-        "default": "デフォルト · アバターに合わせる",
         "defaultDescription": "選択したアバターのデフォルト音声を使用",
-        "defaultForAvatar": "デフォルト · {{avatar}}",
-        "defaultForAvatarDescription": "{{avatar}} の HeyGen デフォルト音声を使用",
         "heading": "音声を選択",
         "label": "音声",
         "none": "ナレーションなし",
-        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。",
-        "original": "元の音声",
-        "originalDescription": "選択した元の音声を保持し、生成音声は追加しません"
+        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。"
       }
     },
     "mail": {
@@ -2136,26 +2188,17 @@
     "promptDocumentTitle": "プロンプト",
     "queue": {
       "aboutAutomationEvent": "このオートメーションイベントについて",
-      "aboutGoal": "この目標について",
       "aboutQueuedMessage": "このキューに入れられたメッセージについて",
-      "activeGoal": "アクティブな目標",
       "automationEvent": "オートメーションイベント",
       "automationEventDescription": "キューに入れられたメッセージの後ろで待機し、現在の実行が終了すると実行されます。",
-      "cancelGoal": "ゴールをキャンセルする",
       "cancellationRecoveryPending": "キュー内の作業を続行する前に、キャンセルされた実行の終了処理を行っています。",
       "event_one": "{{count}} イベント",
       "event_other": "{{count}} イベント",
       "goal": "目標",
-      "goalDescription": "キューが空になった後に実行され、キャンセルされるまで実行され続けます。",
-      "goalLoadFailed": "この目標を読み込めませんでした",
-      "goalRetry": "ダイアログを閉じて、もう一度開いて再試行してください。",
-      "goalUnavailable": "この目標はもう利用できません。",
       "itemsWaiting": "{{items}} 待機中",
       "itemsWaitingTogether": "{{messages}} と {{events}} が待機中です",
-      "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
-      "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",
       "queuedMessageDescription": "列に並んで待機し、現在の実行が終了したら送信します。",
@@ -2167,8 +2210,6 @@
       "title": "コンポーザーの下書きを置き換えますか？"
     },
     "run": {
-      "automatedRun": "自動実行",
-      "collapseGroupedHistory": "グループ化された実行履歴を折りたたむ",
       "collapseWorkHistory": "作業履歴を折りたたむ",
       "creditUsage": "クレジット使用量",
       "done": {
@@ -2183,33 +2224,27 @@
         "wrappedUp": "{{time}} で終了"
       },
       "duration": {
-        "hour_one": "{{count}} 時間",
-        "hour_other": "{{count}} 時間",
         "hoursShort_one": "{{count}}h",
         "hoursShort_other": "{{count}}h",
-        "minute_one": "{{count}} 分",
-        "minute_other": "{{count}} 分",
         "minutesShort_one": "{{count}}m",
         "minutesShort_other": "{{count}}m",
         "secondsShort_one": "{{count}}s",
         "secondsShort_other": "{{count}}s"
       },
-      "durationFor": "{{label}} の場合は {{duration}}",
-      "expandGroupedHistory": "グループ化された実行履歴を展開する",
       "expandWorkHistory": "作業履歴を展開",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "Fastモード オフ",
       "fastModeOn": "Fastモード オン",
       "fastModeWillBeOff": "Fastモードがオフになります",
       "fastModeWillBeOn": "Fastモードがオンになります",
-      "goalFor": "{{label}} の目標",
-      "groupedRunsFor_one": "{{count}} は {{source}} に対して実行されます",
-      "groupedRunsFor_other": "{{count}} は {{source}} に対して実行されます",
       "justNow": "たった今",
       "keepGoing": "続ける",
       "keepGoingAt": "続ける · {{timestamp}}",
       "modelChangedTo": "モデルを{{model}}に変更しました",
       "queueEllipsis": "行列...",
+      "relatedArtifactCount_one": "{{formattedCount}} 個のアーティファクト",
+      "relatedArtifactCount_other": "{{formattedCount}} 個のアーティファクト",
+      "relatedArtifacts": "関連するアーティファクト",
       "selectedModelAppliesAfterCurrentRun": "選択した{{model}}モデルはこの実行後に適用されます",
       "thinking": {
         "assembling": "部品を組み立て中...",
@@ -2226,7 +2261,6 @@
       "viewActivityLogs": "アクティビティログを表示する",
       "viewLogs": "実行ログを表示する",
       "waitingIn": "待機中",
-      "worked": "働いた",
       "workedFor": "{{duration}} で働いていました",
       "workingFor": "{{duration}} 作業中"
     },
@@ -2265,13 +2299,9 @@
       "openChatMenu": "チャットメニューを開く",
       "openListMenu": "チャットリストメニューを開く",
       "pin": "チャットをピン留めする",
-      "pinDropAfter": "「{{title}}」の後に配置",
-      "pinDropBefore": "「{{title}}」の前に配置",
       "pinned": "ピン留め済み",
       "rename": "チャットの名前を変更する",
       "renameDescription": "このチャット スレッドの新しい名前を入力します。",
-      "reorderInstructions": "ドラッグして並べ替えます。スペースキーで選択し、矢印キーで移動、スペースキーで配置、Escキーでキャンセルします。",
-      "reorderThread": "「{{title}}」を並べ替え",
       "titlePlaceholder": "チャットのタイトル",
       "unpin": "チャットの固定を解除する",
       "unread": "未読",
@@ -2308,6 +2338,199 @@
       "openTemplatesAria": "テンプレートを見る",
       "startWithPrompt": "作成",
       "templates": "テンプレート"
+    },
+    "taskChips": {
+      "chooseTask": "タスクを選ぶ",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "誕生日の招待状をデザインする",
+            "prompt": "誕生日の招待状をデザインする"
+          },
+          "brandCharacter": {
+            "label": "ブランドのキャラクターを作る",
+            "prompt": "ブランドのキャラクターを作る"
+          },
+          "businessLogo": {
+            "label": "自分のビジネスのロゴを作る",
+            "prompt": "自分のビジネスのロゴを作る"
+          },
+          "cafeMenu": {
+            "label": "カフェのメニューをデザインする",
+            "prompt": "カフェのメニューをデザインする"
+          },
+          "eventPoster": {
+            "label": "イベントのポスターをデザインする",
+            "prompt": "イベントのポスターをデザインする"
+          },
+          "finishedSketch": {
+            "label": "スケッチを完成したビジュアルにする",
+            "prompt": "スケッチを完成したビジュアルにする"
+          },
+          "greetingCard": {
+            "label": "心のこもったグリーティングカードを作る",
+            "prompt": "心のこもったグリーティングカードを作る"
+          },
+          "headshot": {
+            "label": "仕事用のプロフィール写真を作る",
+            "prompt": "仕事用のプロフィール写真を作る"
+          },
+          "infographic": {
+            "label": "アイデアをインフォグラフィックにする",
+            "prompt": "アイデアをインフォグラフィックにする"
+          },
+          "newsletterCover": {
+            "label": "ニュースレターの表紙を作る",
+            "prompt": "ニュースレターの表紙を作る"
+          },
+          "packaging": {
+            "label": "商品のパッケージ案を考える",
+            "prompt": "商品のパッケージ案を考える"
+          },
+          "photoLighting": {
+            "label": "写真の明るさを改善する",
+            "prompt": "写真の明るさを改善する"
+          },
+          "presentationVisual": {
+            "label": "プレゼン用のビジュアルを作る",
+            "prompt": "プレゼン用のビジュアルを作る"
+          },
+          "productScene": {
+            "label": "商品を新しいシーンに配置する",
+            "prompt": "商品を新しいシーンに配置する"
+          },
+          "profileBanner": {
+            "label": "プロフィールのバナーを刷新する",
+            "prompt": "プロフィールのバナーを刷新する"
+          },
+          "roomDesign": {
+            "label": "部屋の新しい雰囲気を試す",
+            "prompt": "部屋の新しい雰囲気を試す"
+          },
+          "storePhoto": {
+            "label": "商品写真をオンラインストア向けに整える",
+            "prompt": "商品写真をオンラインストア向けに整える"
+          },
+          "websiteImage": {
+            "label": "ウェブサイトの画像を作る",
+            "prompt": "ウェブサイトの画像を作る"
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "写真を動画にする",
+            "prompt": "提供した写真に自然な動きを付けてください。被写体の特徴を保ち、何を動かすか確認してください。"
+          },
+          "brandIntro": {
+            "label": "ブランドのオープニング動画を作る",
+            "prompt": "提供するロゴとブランド情報で短いオープニング動画を作り、雰囲気を決めるのを手伝ってください。"
+          },
+          "eventPromo": {
+            "label": "イベントを動画で告知する",
+            "prompt": "イベントの短い告知動画を作ってください。内容、対象者、載せたい情報を確認してください。"
+          },
+          "loopingBackground": {
+            "label": "ループする背景動画を作る",
+            "prompt": "穏やかに動く、継ぎ目のないループ背景動画を作ってください。場面と雰囲気を確認してください。"
+          },
+          "productDemo": {
+            "label": "商品を動きのある動画で見せる",
+            "prompt": "商品写真から短い紹介動画を作ってください。見た目を保ち、指定した特徴を強調してください。"
+          },
+          "socialClip": {
+            "label": "SNS向けの短い動画を作る",
+            "prompt": "SNS向けの短い動画を作ってください。見る人に合うメッセージと映像スタイルを一緒に決めてください。"
+          },
+          "videoGreeting": {
+            "label": "お祝いの動画を作る",
+            "prompt": "誕生日や祝日などのお祝い動画を短く作ってください。機会、贈る相手、メッセージを確認してください。"
+          },
+          "visualExplainer": {
+            "label": "アイデアを映像で説明する",
+            "prompt": "一つのアイデアをわかりやすく伝える短い動画を作ってください。内容と対象者を確認してください。"
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "予約してもらうためのページを作る",
+            "prompt": "サービスと予約方法を説明するページを作ってください。既存の予約リンクを使い、サービスの詳細を確認してください。"
+          },
+          "businessSite": {
+            "label": "自分のビジネスのサイトを作る",
+            "prompt": "事業、サービス、連絡方法を紹介するサイトを作ってください。事業の詳細と対象者を先に確認してください。"
+          },
+          "cafeMenu": {
+            "label": "カフェのメニューをオンラインにする",
+            "prompt": "提供する情報と写真で、メニュー、価格、営業時間、場所を掲載するカフェのサイトを作ってください。"
+          },
+          "coursePage": {
+            "label": "講座の紹介ページを作る",
+            "prompt": "講座、対象者、学べることを紹介するページを作ってください。申込方法には提供する登録リンクを使ってください。"
+          },
+          "eventPage": {
+            "label": "イベントのページを作る",
+            "prompt": "提供する日時、会場、プログラム、申込リンクでイベントページを作ってください。不足情報は確認してください。"
+          },
+          "linkPage": {
+            "label": "自分のリンクを一つのページにまとめる",
+            "prompt": "自己紹介、作品、SNSリンクをまとめたシンプルなプロフィールページを作ってください。載せるリンクを確認してください。"
+          },
+          "portfolio": {
+            "label": "作品をポートフォリオで紹介する",
+            "prompt": "作品を紹介するポートフォリオサイトを作ってください。プロジェクト、自己紹介、連絡先を整理してください。"
+          },
+          "productLaunch": {
+            "label": "商品の紹介ページを公開する",
+            "prompt": "商品の利点、画像、次の行動が伝わるランディングページを作ってください。商品と対象者を確認してください。"
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "毎朝、重要なメールをまとめる",
+            "prompt": "毎朝、注目すべきメールと返信・対応が必要な事項をまとめてください。使う受信トレイと受け取る時刻を先に確認してください。"
+          },
+          "fileOrganization": {
+            "label": "届いたファイルを整理する",
+            "prompt": "新しいファイルを決めた命名・分類ルールで整理してください。取得元、保存先、分類方法を先に確認してください。"
+          },
+          "meetingActions": {
+            "label": "議事録からアクションを整理する",
+            "prompt": "新しい議事録から行動項目、担当者、期限を抽出し、不明な点を示してください。議事録の保存先を確認してください。"
+          },
+          "meetingPrep": {
+            "label": "会議の準備を手伝ってもらう",
+            "prompt": "会議前に参加者、背景、議題を整理してください。カレンダー、資料、何分前に知らせるかを先に確認してください。"
+          },
+          "numbersBrief": {
+            "label": "毎日、気になる数字をまとめる",
+            "prompt": "追跡している数字と前回からの変化を毎日まとめてください。データの場所、指標、受け取る時刻を確認してください。"
+          },
+          "progressRecap": {
+            "label": "進捗と次にやることを整理する",
+            "prompt": "完了した仕事、未完了の事項、次の優先事項を定期的にまとめてください。記録の場所と、毎日か毎週かを確認してください。"
+          },
+          "replyWatch": {
+            "label": "メールに返信が来たら知らせる",
+            "prompt": "指定したメールへの返信を待ち、届いたら要点とともに知らせてください。対象のメールを先に確認してください。"
+          },
+          "topicUpdates": {
+            "label": "気になる話題の最新情報を追う",
+            "prompt": "関心のある話題を継続して調べ、重要な新情報を出典付きでまとめてください。話題と更新頻度を確認してください。"
+          }
+        }
+      },
+      "ideasLabel": "始めるためのアイデア",
+      "label": "タスクを始める",
+      "moreIdeas": "他のアイデア",
+      "moreTemplates": "他のテンプレート",
+      "presentationTemplates": "プレゼンテンプレート",
+      "tasks": {
+        "image": "画像",
+        "presentation": "スライド",
+        "video": "動画",
+        "website": "ウェブサイト",
+        "workflow": "ワークフロー"
+      }
     },
     "templates": {
       "categories": {
@@ -2503,8 +2726,8 @@
     },
     "callback": {
       "connected": "{{connector}} が接続されました",
-      "connectedAs": "{{username}} として接続されています。このウィンドウは閉じても構いません。",
-      "connectedDescription": "あなたのアカウントは接続されました。このウィンドウは閉じても構いません。",
+      "connectedAs": "{{username}} として接続されました。このウィンドウを閉じて元のページに戻り、続行してください。",
+      "connectedDescription": "アカウントが接続されました。このウィンドウを閉じて元のページに戻り、続行してください。",
       "connecting": "{{connector}} を接続中…",
       "connectingDescription": "アカウントの接続が完了するまでお待ちください。",
       "customConnectorLabel": "カスタムコネクタ",
@@ -2671,6 +2894,10 @@
         "title": "利用できない接続方法"
       }
     },
+    "connectionProgress": {
+      "description": "認証を求められた場合は完了してください。接続の設定が完了するまでお待ちください。",
+      "title": "アカウントを接続中"
+    },
     "custom": {
       "connect": {
         "configured": "設定済み",
@@ -2739,7 +2966,7 @@
         "prefixesHint": "(1 行に 1 つ、https のみ)",
         "recommended": "（推奨）",
         "redirectCopy": "リダイレクト URL をコピーする",
-        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録してください。既存の VM0 または Okou のリダイレクト URL も登録したままにしてください。)",
+        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録してください。)",
         "redirectUrl": "リダイレクトURL",
         "removeApiAuthentication": "API認証を削除する",
         "removeAutomatic": "自動認証を削除",
@@ -5437,7 +5664,7 @@
     "displayNames": {
       "avatar": "アバター",
       "finance": "金融",
-      "imageRecognize": "画像認識",
+      "imageRecognition": "画像認識",
       "maps": "地図",
       "peopleSearch": "人物検索",
       "seo": "SEO",
@@ -5499,6 +5726,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "対応が必要 — 配信を一時停止中",
         "addAction": "カレンダーのオートメーションを追加する",
         "addAria": "Google Calendar オートメーションを追加",
         "addDescriptionCancelled": "Google Calendar イベントがキャンセルされたときに、このワークフローを実行します。",
@@ -5507,16 +5735,29 @@
         "addTitle": "Google Calendar オートメーションを追加",
         "calendarId": "カレンダーID",
         "calendarIdPlaceholder": "プライマリー",
+        "calendarNotFoundDescription": "このカレンダーは利用できなくなりました。このオートメーションを再開するには、別のカレンダーを選択してください。",
         "cancelledDescription": "カレンダーイベントがキャンセルされたときに実行されます。",
         "cancelledRule": "カレンダー {{calendar}} イベントがキャンセルされた場合",
         "cancelledTitle": "Google Calendar イベントがキャンセルされました",
+        "cancelRecovery": "キャンセル",
+        "changeAria": "Google Calendar オートメーションを変更",
+        "changeCalendar": "カレンダーを変更",
+        "checkingRecovery": "この自動化を再開できるか確認しています…",
+        "checkRecoveryStatus": "状態を確認",
         "createdDescription": "カレンダーイベントの作成時に実行します。",
         "createdRule": "カレンダー {{calendar}} が新しいイベントを取得したとき",
         "createdTitle": "Google Calendar イベントが作成されました",
+        "enabledIntent": "有効",
+        "reconnectDescription": "このオートメーションを再開するには、Google Calendar を再接続する必要があります。",
+        "reconnectGoogleCalendar": "Google Calendar を再接続",
+        "recoveryStatus": "Google カレンダーの復旧",
+        "recoveryUnconfirmed": "復旧を確認できませんでした。この自動化の警告を確認してから、状態を再確認してください。",
+        "saveCalendar": "カレンダーを保存",
         "summary": "カレンダー {{calendar}}",
         "updatedDescription": "カレンダーイベントが更新されたときに実行します。",
         "updatedRule": "カレンダー {{calendar}} イベントが更新されたとき",
-        "updatedTitle": "Google Calendar イベントが更新されました"
+        "updatedTitle": "Google Calendar イベントが更新されました",
+        "updateError": "このカレンダーを変更できませんでした。もう一度お試しください。"
       },
       "chat": {
         "addAction": "チャットオートメーションを追加する",
@@ -5614,7 +5855,7 @@
         "branches": "支店",
         "branchesPlaceholder": "メイン、リリース",
         "commentPrefixes": "コメント接頭辞",
-        "commentPrefixesPlaceholder": "/zero、/verify、/deploy",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "結論",
         "conclusionsSummary": "結論 {{values}}",
         "creators": "クリエイター",
@@ -6092,6 +6333,7 @@
       }
     },
     "list": {
+      "actionRequired": "対応が必要",
       "agentEmpty": "このエージェントとして実行されるワークフローはまだありません。",
       "all": "すべて",
       "allAgents": "すべてのエージェント",
@@ -6109,6 +6351,7 @@
       },
       "noWorkflows": "ワークフローなし",
       "open": "{{title}} を開く",
+      "openRecovery": "{{title}} の復旧を開く",
       "runsAs": "として実行",
       "runsAsAria": "{{agent}} として実行",
       "section": {

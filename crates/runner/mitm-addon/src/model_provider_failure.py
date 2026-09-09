@@ -42,7 +42,6 @@ path calls ``release_flow()`` to remove the reducer state and the registered res
 
 import json
 import threading
-import time
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
@@ -92,13 +91,13 @@ _FLOW_STATE = "_model_provider_failure_flow_state"
 _RESPONSE_FINISH = "_model_provider_failure_response_finish"
 _MAX_JSON_WORK_UNITS = 65_536
 _MAX_RETRY_AFTER_SECONDS = 300
-_REPORT_TIMEOUT_SECONDS = 3
+# Allow API cold starts while keeping best-effort reporting and shutdown bounded.
+_REPORT_TIMEOUT_SECONDS = 10
 _REPORT_WORKERS = 4
 _MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
 RUNNER_AUTH_ENV = "OKOU_MITM_RUNNER_TOKEN"
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
-_HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_PAYMENT_REQUIRED = 402
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
@@ -180,10 +179,7 @@ _report_condition = threading.Condition(_report_lock)
 _report_api_url = ""
 _report_bearer_credential = ""
 _report_slots = threading.BoundedSemaphore(_MAX_PENDING_REPORTS)
-_report_executor = ThreadPoolExecutor(
-    max_workers=_REPORT_WORKERS,
-    thread_name_prefix="model-provider-failure",
-)
+_report_executor: ThreadPoolExecutor | None = None
 _reporter_shut_down = False
 _report_futures: set[Future[int]] = set()
 
@@ -211,10 +207,7 @@ def reset_for_tests() -> None:
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:
         if _reporter_shut_down:
-            _report_executor = ThreadPoolExecutor(
-                max_workers=_REPORT_WORKERS,
-                thread_name_prefix="model-provider-failure",
-            )
+            _report_executor = None
             _reporter_shut_down = False
 
 
@@ -618,8 +611,10 @@ def shutdown() -> None:
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:
         pending = tuple(_report_futures)
+        executor = _report_executor
         _reporter_shut_down = True
-    _report_executor.shutdown(wait=False, cancel_futures=True)
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
     running = tuple(future for future in pending if not future.cancelled())
     if running:
         wait(running, timeout=_REPORT_TIMEOUT_SECONDS)
@@ -886,7 +881,27 @@ def _mark_websocket_ambiguous(
     _log_suppressed(flow, reason)
 
 
+def _start_report_executor() -> ThreadPoolExecutor:
+    executor = ThreadPoolExecutor(
+        max_workers=_REPORT_WORKERS,
+        thread_name_prefix="model-provider-failure",
+    )
+    release_workers = threading.Event()
+    try:
+        # submit() queues before starting a worker and can then raise without returning
+        # its future. Start every worker with report-free tasks before enqueueing HTTP.
+        for _ in range(_REPORT_WORKERS):
+            executor.submit(release_workers.wait)
+    except BaseException:
+        release_workers.set()
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    release_workers.set()
+    return executor
+
+
 def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
+    global _report_executor
     with _report_lock:
         api_url = _report_api_url
         bearer_credential = _report_bearer_credential
@@ -907,24 +922,26 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     payload: dict[str, str | int] = {"failureKind": failure.failure_kind}
     if failure.retry_after_seconds is not None:
         payload["retryAfterSeconds"] = failure.retry_after_seconds
-    legacy_content: bytes | None = None
     if failure.connection_source is not None:
-        legacy_content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         payload["connectionSource"] = failure.connection_source
     content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     report_url = (
         f"{api_url}/api/runners/runs/{urllib.parse.quote(run_id, safe='')}/model-provider-failures"
     )
     future: Future[int] | None = None
+    omission_reason = "reporter_shut_down"
     with _report_lock:
         if not _reporter_shut_down:
             try:
+                if _report_executor is None:
+                    omission_reason = "worker_start_failed"
+                    _report_executor = _start_report_executor()
+                omission_reason = "reporter_shut_down"
                 future = _report_executor.submit(
                     _post_report,
                     report_url,
                     bearer_credential,
                     content,
-                    legacy_content,
                 )
             except RuntimeError:
                 pass
@@ -932,7 +949,7 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
                 _report_futures.add(future)
     if future is None:
         _report_slots.release()
-        _log_report_omitted(report_context, "reporter_shut_down")
+        _log_report_omitted(report_context, omission_reason)
         return
     future.add_done_callback(lambda completed: _finish_report(completed, report_context))
 
@@ -941,45 +958,12 @@ def _post_report(
     url: str,
     bearer_credential: str,
     content: bytes,
-    legacy_content: bytes | None,
-) -> int:
-    deadline = time.monotonic() + _REPORT_TIMEOUT_SECONDS
-    status = _post_report_once(
-        url,
-        bearer_credential,
-        content,
-        timeout=deadline - time.monotonic(),
-    )
-    if status != _HTTP_STATUS_BAD_REQUEST or legacy_content is None:
-        return status
-
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        return status
-
-    # New runners can reach a pre-#29671 API during rollout or rollback. Remove this
-    # new-runner -> old-API fallback under #29882 after old runners and sandboxes drain
-    # and those APIs are neither serving nor retained rollback targets.
-    return _post_report_once(
-        url,
-        bearer_credential,
-        legacy_content,
-        timeout=remaining,
-    )
-
-
-def _post_report_once(
-    url: str,
-    bearer_credential: str,
-    content: bytes,
-    *,
-    timeout: float,
 ) -> int:
     request = platform_api.make_api_request(url, content, bearer_credential)
     try:
         with platform_api.build_api_opener().open(
             request,
-            timeout=timeout,
+            timeout=_REPORT_TIMEOUT_SECONDS,
         ) as response:
             return response.status
     except urllib.error.HTTPError as error:

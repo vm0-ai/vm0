@@ -18,8 +18,8 @@ use api_contracts::generated::types::{
     runners::storage::ArtifactEntryMissingRootPolicy, webhooks::agent::checkpoints,
 };
 use futures_util::stream::{self, FuturesUnordered, StreamExt};
-use guest_common::log_info;
-use guest_common::telemetry::record_sandbox_op;
+use guest_telemetry::log_info;
+use guest_telemetry::telemetry::record_sandbox_op;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -940,7 +940,7 @@ mod tests {
 
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let mut sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
 
         let dir = tempfile::tempdir().unwrap();
         let first_prefix = "a".repeat(200);
@@ -1053,7 +1053,7 @@ mod tests {
         const PARENT_COUNT: usize = 2;
 
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
 
         let dir = tempfile::tempdir().unwrap();
         let mount = dir.path().join("wide");
@@ -1101,7 +1101,7 @@ mod tests {
         use std::os::unix::ffi::OsStringExt;
 
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
 
         let dir = tempfile::tempdir().unwrap();
         let mount = dir.path().join("deep");

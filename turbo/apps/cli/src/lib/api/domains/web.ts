@@ -37,6 +37,11 @@ import {
   introVideoStylesResponseSchema,
   introVideoVoicesResponseSchema,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
+import {
+  introVideoAgentResponseSchema,
+  type IntroVideoAgentGenerateRequest,
+  type IntroVideoAgentResponse,
+} from "@okouai/api-contracts/contracts/intro-video-agent";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -151,15 +156,33 @@ interface DownloadWebFileResult {
   size: number;
 }
 
-/**
- * Download a web-uploaded file to a local path, streaming the response body
- * to disk. Authenticates via OKOU_TOKEN. Response is binary, so this bypasses
- * the typed contract client.
- */
-export async function downloadWebFile(
-  fileId: string,
-  outPath: string,
-): Promise<DownloadWebFileResult> {
+/** Only the configured API origin may receive the CLI credential. */
+export async function webFileReferenceId(
+  value: string,
+): Promise<string | null> {
+  const url = new URL(value);
+  const baseUrl = new URL(await getBaseUrl());
+  if (
+    url.origin !== baseUrl.origin ||
+    url.pathname !== "/api/web/download-file" ||
+    url.username ||
+    url.password
+  ) {
+    return null;
+  }
+  const id = url.searchParams.get("file_id");
+  if (!id) {
+    throw new Error("Artifact reference is missing file_id");
+  }
+  return id;
+}
+
+export async function fetchGenerationReference(url: URL): Promise<Response> {
+  const id = await webFileReferenceId(url.href);
+  return id ? fetchWebFile(id) : fetch(url);
+}
+
+async function fetchWebFile(fileId: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const token = await getActiveToken();
   if (!token) {
@@ -176,6 +199,19 @@ export async function downloadWebFile(
   const response = await fetch(url, {
     headers: headersWithCliClientHeaders(headers),
   });
+  return response;
+}
+
+/**
+ * Download a web-uploaded file to a local path, streaming the response body
+ * to disk. Authenticates via OKOU_TOKEN. Response is binary, so this bypasses
+ * the typed contract client.
+ */
+export async function downloadWebFile(
+  fileId: string,
+  outPath: string,
+): Promise<DownloadWebFileResult> {
+  const response = await fetchWebFile(fileId);
 
   if (!response.ok) {
     let message = `Failed to download web file (HTTP ${response.status})`;
@@ -729,7 +765,7 @@ async function readBuiltInGenerationResponse<T>(args: {
 }
 
 /**
- * Upload a local file and receive back metadata including a public CDN URL.
+ * Upload a local file and receive metadata including its stable file URL.
  * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
@@ -744,7 +780,7 @@ async function readBuiltInGenerationResponse<T>(args: {
  */
 export async function uploadWebFile(
   localPath: string,
-  options?: { contentType?: string },
+  options?: { contentType?: string; purpose?: "artifact" },
 ): Promise<UploadWebFileResult> {
   const stats = statSync(localPath);
   if (!stats.isFile()) {
@@ -778,6 +814,7 @@ export async function uploadWebFile(
       filename,
       contentType,
       size: stats.size,
+      purpose: options?.purpose,
     }),
   });
 
@@ -1059,6 +1096,52 @@ export async function generateWebIntroVideoPresenter(
     token,
     fallback: "Failed to generate Intro Video presenter",
   });
+}
+
+/** Submit once and return the durable native Video Agent job without waiting. */
+export async function generateWebIntroVideoAgent(
+  options: IntroVideoAgentGenerateRequest,
+): Promise<IntroVideoAgentResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/agent/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to submit Intro Video Agent job",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return introVideoAgentResponseSchema.parse(await response.json());
+}
+
+/** Reconcile one existing job; this endpoint never creates another video. */
+export async function getWebIntroVideoAgent(
+  generationId: string,
+): Promise<IntroVideoAgentResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoAgentResponseSchema.parse(
+    await getIntroVideoCatalog(
+      new URL(
+        `/api/intro-video/agent/${encodeURIComponent(generationId)}`,
+        baseUrl,
+      ),
+      "Failed to get Intro Video Agent job",
+    ),
+  );
 }
 
 /**

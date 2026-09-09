@@ -1,7 +1,7 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Sun, Moon, Monitor, Palette } from "lucide-react";
-import { cn } from "@okouai/ui";
+import { ChoiceButton } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
@@ -20,7 +20,6 @@ import { LanguageSettings } from "../language-settings.tsx";
 import { ColorThemeSettings } from "../color-theme-settings.tsx";
 import { PreferenceCardRow } from "../preference-card-row.tsx";
 import { SendModePreference } from "./chat-section.tsx";
-import type { ChatPreferenceActions } from "../chat-preference-actions.ts";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
@@ -70,23 +69,17 @@ function AppearanceBlock() {
                       return $.settings.preferences.appearance.theme.system;
                     });
             return (
-              <button
+              <ChoiceButton
                 key={value}
                 type="button"
-                aria-pressed={isActive}
+                selected={isActive}
                 onClick={() => {
                   handleChange(value);
                 }}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  isActive
-                    ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
-                    : "okou-chip text-muted-foreground hover:text-foreground",
-                )}
               >
                 <Icon size={15} />
                 {label}
-              </button>
+              </ChoiceButton>
             );
           })}
         </div>
@@ -95,11 +88,7 @@ function AppearanceBlock() {
   );
 }
 
-export function PreferenceSection({
-  sendModeAction,
-}: {
-  sendModeAction: ChatPreferenceActions["sendMode"];
-}) {
+export function PreferenceSection() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
   const chatPreferenceEnabled =
@@ -140,7 +129,7 @@ export function PreferenceSection({
               return $.settings.preferences.send.description;
             })}
           />
-          <SendModePreference action={sendModeAction} />
+          <SendModePreference />
         </section>
       ) : null}
 

@@ -38,17 +38,11 @@
     "description": "Pilih gaya atau tekan acak untuk kejutan.",
     "editDescription": "Ubah bagian mana pun, atau tekan acak untuk tampilan baru.",
     "editTitle": "Edit avatar",
-    "intensity": {
-      "chill": "Santai",
-      "hyped": "Semangat",
-      "normal": "Normal"
-    },
     "nextStep": "Langkah berikutnya",
     "previousStep": "Langkah sebelumnya",
     "randomize": "Acak avatar",
     "shuffleHint": "Acak — coba tampilan acak!",
     "steps": {
-      "angle": "Sudut",
       "color": "Warna",
       "face": "Wajah",
       "hair": "Rambut",

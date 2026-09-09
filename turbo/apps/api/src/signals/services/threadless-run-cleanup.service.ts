@@ -3,6 +3,7 @@ import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
@@ -12,10 +13,12 @@ import {
   eq,
   exists,
   gte,
+  gt,
   inArray,
   isNotNull,
   isNull,
   ne,
+  notExists,
   or,
   sql,
 } from "drizzle-orm";
@@ -29,6 +32,15 @@ import {
   drainOrgQueue$,
 } from "./agent-run-lifecycle.service";
 import { cancelRun$, dispatchCancelSideEffects$ } from "./run-cancel.service";
+import {
+  activePiMemoryPhase2MaintenanceRunCondition,
+  lockPiMemoryPhase2MaintenanceCleanupProtection,
+} from "./pi-memory-phase2-maintenance.service";
+import {
+  loadPiMemoryPhase2UsageBinding,
+  PI_MEMORY_PHASE2_USAGE_DRAIN_MS,
+  PI_MEMORY_PHASE2_MODEL,
+} from "./pi-memory-phase2-usage.service";
 
 const L = logger("ThreadlessRunCleanup");
 
@@ -103,8 +115,12 @@ function terminalError(candidate: ThreadlessRunCandidate): string | undefined {
 async function loadThreadlessRunCandidates(
   db: Db,
   runIds: readonly string[] | null,
+  currentTime: Date,
 ): Promise<readonly ThreadlessRunCandidate[]> {
   const forwardCutoff = new Date(THREADLESS_RUN_FORWARD_CUTOFF_ISO);
+  const usageQuietBefore = new Date(
+    currentTime.getTime() - PI_MEMORY_PHASE2_USAGE_DRAIN_MS,
+  );
   return await db
     .select({
       runId: agentRuns.id,
@@ -125,6 +141,45 @@ async function loadThreadlessRunCandidates(
           ...ACTIVE_RUN_STATUSES,
           ...TERMINAL_RUN_STATUSES,
         ]),
+        notExists(
+          db
+            .select({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId })
+            .from(piMemoryPhase2Jobs)
+            .where(
+              activePiMemoryPhase2MaintenanceRunCondition(db, {
+                runId: agentRuns.id,
+                orgId: agentRuns.orgId,
+                userId: agentRuns.userId,
+                currentTime,
+              }),
+            ),
+        ),
+        // Do not let retained private billing contexts occupy the bounded
+        // sweep and starve ordinary threadless cleanup. Revalidate under lock.
+        notExists(
+          db
+            .select({ id: agentRunCallbacks.id })
+            .from(agentRunCallbacks)
+            .where(
+              and(
+                eq(agentRunCallbacks.runId, agentRuns.id),
+                eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+                eq(
+                  sql`${agentRunCallbacks.payload}->>'orgId'`,
+                  agentRuns.orgId,
+                ),
+                eq(
+                  sql`${agentRunCallbacks.payload}->>'userId'`,
+                  agentRuns.userId,
+                ),
+                eq(agentRuns.triggerSource, "agent"),
+                eq(agentRuns.modelProvider, "built-in"),
+                eq(agentRuns.selectedModel, PI_MEMORY_PHASE2_MODEL),
+                eq(sql`${agentRuns.launchSnapshot}->>'framework'`, "pi"),
+                gt(agentRuns.completedAt, usageQuietBefore),
+              ),
+            ),
+        ),
         runIds === null ? undefined : inArray(agentRuns.id, runIds),
         or(
           gte(agentRuns.createdAt, forwardCutoff),
@@ -252,6 +307,24 @@ async function deleteIfStillEligible(
       return false;
     }
 
+    if (
+      await lockPiMemoryPhase2MaintenanceCleanupProtection(tx, {
+        runId: candidate.runId,
+        orgId: candidate.orgId,
+        userId: candidate.userId,
+      })
+    ) {
+      return false;
+    }
+
+    if (
+      current.completedAt.getTime() >
+        nowDate().getTime() - PI_MEMORY_PHASE2_USAGE_DRAIN_MS &&
+      (await loadPiMemoryPhase2UsageBinding(tx, candidate))
+    ) {
+      return false;
+    }
+
     if (await hasDeletionBlocker(tx, candidate.runId)) {
       return false;
     }
@@ -323,7 +396,12 @@ export const cleanupThreadlessRuns$ = command(
     signal: AbortSignal,
   ): Promise<ThreadlessRunCleanupResult> => {
     const db = set(writeDb$);
-    const candidates = await loadThreadlessRunCandidates(db, runIds);
+    const currentTime = nowDate();
+    const candidates = await loadThreadlessRunCandidates(
+      db,
+      runIds,
+      currentTime,
+    );
     signal.throwIfAborted();
 
     let cancelled = 0;
@@ -331,7 +409,7 @@ export const cleanupThreadlessRuns$ = command(
     let deleted = 0;
     const errors: ThreadlessRunCleanupError[] = [];
     const quietBefore = new Date(
-      nowDate().getTime() - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+      currentTime.getTime() - CANCELLATION_RECOVERY_STALE_AFTER_MS,
     );
 
     for (const candidate of candidates) {
@@ -345,6 +423,7 @@ export const cleanupThreadlessRuns$ = command(
                 userId: candidate.userId,
                 orgId: candidate.orgId,
                 runnerCancellationMode: "hard",
+                protectActivePiMemoryPhase2Maintenance: true,
               },
               signal,
             );

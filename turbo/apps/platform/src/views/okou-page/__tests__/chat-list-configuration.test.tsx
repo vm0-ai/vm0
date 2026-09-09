@@ -11,6 +11,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
+  cachedChatListEvents,
   chatListAuth,
   chatListEvent,
   chatListThread,
@@ -21,7 +22,6 @@ import {
   installChatListModelPolicies,
   installChatListStream,
   onlineComputerUseHost,
-  seedChatListCache,
   sidebarThreadLinks,
   sidebarThreadTitles,
 } from "./chat-list-test-helpers.ts";
@@ -109,9 +109,7 @@ test("Enabling cloud browser replaces the Computer Use host", async () => {
   const thread = chatListThread(36, "Hosted conversation", {
     computerUseHostId: HOST_ID,
   });
-  await seedChatListCache(2, auth, [thread]);
   const remote = context.mocks.deferred<void>();
-  const configurationLoaded = context.mocks.deferred<void>();
   installChatListAgent(context);
   installChatListModelPolicies(context);
   installChatListStream(context, {
@@ -130,13 +128,16 @@ test("Enabling cloud browser replaces the Computer Use host", async () => {
     hosts: [onlineComputerUseHost(HOST_ID)],
   });
   context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
-    configurationLoaded.resolve();
     return respond(200, { hosts: [onlineComputerUseHost(HOST_ID)] });
   });
 
-  await setupPage({ context, path: `/chats/${thread.id}`, auth });
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    auth,
+    cachedChatThreadEvents: cachedChatListEvents(2, [thread]),
+  });
 
-  await configurationLoaded.promise;
   await openComputerMenu();
   const selectedHost = await screen.findByRole("switch", {
     name: "Disconnect Studio Mac",
@@ -230,7 +231,6 @@ test("Media models do not overwrite one another or the run model", async () => {
     selectedVideoModel: "MiniMax-H3",
     selectedImageModel: "gpt-image-1",
   });
-  await seedChatListCache(6, auth, [thread]);
   installChatListAgent(context);
   installChatListModelPolicies(context);
   installChatListStream(context, {
@@ -244,7 +244,12 @@ test("Media models do not overwrite one another or the run model", async () => {
   });
   installActiveChatBoundaries(context, { metadata: thread });
 
-  await setupPage({ context, path: `/chats/${thread.id}`, auth });
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    auth,
+    cachedChatThreadEvents: cachedChatListEvents(6, [thread]),
+  });
 
   const runModel = await screen.findByRole("combobox", {
     name: "Claude Sonnet 4.6",
@@ -265,7 +270,6 @@ test("Service tier and Computer Use settings update independently", async () => 
     selectedModel: "gpt-5.6-sol",
   });
   const newer = chatListThread(44, "Newer conversation");
-  await seedChatListCache(14, auth, [target, newer]);
   const remote = context.mocks.deferred<void>();
   installChatListAgent(context);
   installChatListModelPolicies(context);
@@ -292,6 +296,7 @@ test("Service tier and Computer Use settings update independently", async () => 
     context,
     path: `/chats/${target.id}`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(14, [target, newer]),
     featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
   });
 

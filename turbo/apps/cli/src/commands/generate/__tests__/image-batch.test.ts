@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,31 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  const { readFileSync, writeFileSync } = await import("node:fs");
+  return {
+    ...original,
+    execFile: vi.fn(
+      (
+        command: string,
+        args: readonly string[],
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        expect(command).toBe("ffmpeg");
+        const input = args[args.indexOf("-i") + 1];
+        const output = args.at(-1);
+        if (!input || !output) throw new Error("Expected local image paths");
+        expect(readFileSync(input).toString()).toBe(
+          "authenticated private image bytes",
+        );
+        writeFileSync(output, "optimized private WebP bytes");
+        callback(null, "", "");
+      },
+    ),
+  };
+});
 
 const IMAGE_URL = "http://localhost:3000/api/image-io/generate";
 const IMAGE_GENERATION_ID = "00000000-0000-4000-8000-000000000001";
@@ -167,6 +193,74 @@ describe("okou generate image-batch command", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("bundles authenticated private images as local optimized assets without persisting URLs", async () => {
+    const root = await makeTemporaryDirectory();
+    const manifestPath = join(root, "images.tsv");
+    const stateDirectory = join(root, "state");
+    await writeFile(manifestPath, "hero\tA private landscape\n", "utf8");
+    await mkdir(stateDirectory);
+    const reference = `http://localhost:3000/api/web/download-file?file_id=${IMAGE_GENERATION_ID}&filename=image.png`;
+    let authorization: string | null = null;
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json({
+          id: IMAGE_GENERATION_ID,
+          filename: "image.png",
+          contentType: "image/png",
+          size: 33,
+          url: reference,
+          creditsCharged: 1,
+          model: "seedream4",
+          provider: "fal",
+          imageSize: "816x816",
+          quality: "low",
+          background: "opaque",
+          outputFormat: "png",
+          moderation: "auto",
+        });
+      }),
+      http.get("http://localhost:3000/api/web/download-file", ({ request }) => {
+        authorization = request.headers.get("authorization");
+        expect(new URL(request.url).searchParams.get("file_id")).toBe(
+          IMAGE_GENERATION_ID,
+        );
+        return new HttpResponse("authenticated private image bytes", {
+          headers: { "content-type": "image/png" },
+        });
+      }),
+    );
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image-batch",
+      "__run",
+      manifestPath,
+      stateDirectory,
+    ]);
+    expect(await readFile(join(stateDirectory, "done"), "utf8")).toBe("0\n");
+    expect(authorization).toBe("Bearer test-token");
+    expect(await readFile(join(stateDirectory, "results.tsv"), "utf8")).toBe(
+      "hero\tassets/image-hero.webp\n",
+    );
+    expect(
+      await readFile(join(stateDirectory, "assets/image-hero.webp"), "utf8"),
+    ).toBe("optimized private WebP bytes");
+    await expect(
+      readFile(join(stateDirectory, "assets/image-hero.source")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(vi.mocked(execFile).mock.calls.at(-1)?.[1]).toEqual(
+      expect.arrayContaining([
+        "-protocol_whitelist",
+        "file,pipe",
+        "-c:v",
+        "libwebp",
+        "-quality",
+        "85",
+      ]),
+    );
+    expect(vi.mocked(execFile).mock.calls.at(-1)?.[1]).not.toContain("-vf");
   });
 
   it("does not automatically retry an async output safety block", async () => {

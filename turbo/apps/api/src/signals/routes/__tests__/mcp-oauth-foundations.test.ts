@@ -7,7 +7,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { mcpOAuthClientMetadataRoutes } from "../mcp-oauth-client-metadata";
@@ -43,9 +43,9 @@ async function requestProbeFailure(body: TestMcpOAuthFetchRequest) {
 
 describe("MCP OAuth foundations", () => {
   it("publishes exact public Okou client metadata from configured origins", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
 
     const response = await accept(metadataClient().okouClientMetadata(), [200]);
 
@@ -62,9 +62,9 @@ describe("MCP OAuth foundations", () => {
   });
 
   it("does not let the request host change the Okou client identity", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
 
     const response = await accept(
       metadataClient("https://attacker.example.com").okouClientMetadata(),
@@ -78,19 +78,6 @@ describe("MCP OAuth foundations", () => {
     expect(response.body.redirect_uris).toStrictEqual([
       "https://app.okou.ai/connectors/custom/callback",
     ]);
-  });
-
-  it("does not register a VM0 client metadata route", async () => {
-    const request = setupRawAppRequest({
-      context,
-      routes: mcpOAuthClientMetadataRoutes,
-    });
-
-    const response = await request("/api/oauth/mcp/client-metadata/vm0.json", {
-      method: "GET",
-    });
-
-    expect(response.status).toBe(404);
   });
 
   it("supports OAuth metadata and SDK request body shapes with DNS pinning", async () => {

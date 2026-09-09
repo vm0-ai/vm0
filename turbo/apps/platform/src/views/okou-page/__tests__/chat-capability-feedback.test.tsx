@@ -1,4 +1,5 @@
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
@@ -14,6 +15,7 @@ import {
   context,
   feedbackItems,
   feedbackNotes,
+  FIRST_CAPABILITY_RUN_ID,
   findButton,
   installCapabilityChat,
   quoteSelectedPassage,
@@ -21,10 +23,16 @@ import {
   RUN_PATH,
   selectAcrossPassages,
   selectPassage,
+  selectPassageWithoutActions,
   waitForSend,
   type CapturedChatSend,
 } from "./chat-capability-test-helpers.ts";
-import { findEnabledButton } from "./chat-run-test-fixtures.ts";
+import {
+  assistantEvent,
+  completedEvent,
+  findEnabledButton,
+  promptEvent,
+} from "./chat-run-test-fixtures.ts";
 import { buttonByLabel } from "./chat-lifecycle-test-helpers.ts";
 
 const FIRST_PASSAGE = "The launch plan has three careful stages.";
@@ -101,6 +109,155 @@ test("Offer passage actions only for a valid assistant selection", async () => {
   expect(feedbackItems()[0]).toHaveTextContent(
     "launch plan has three careful stages",
   );
+});
+
+test("Expand desktop passage actions to the boundary of one AI reply", async () => {
+  installCapabilityChat({
+    events: completedConversation(FIRST_PASSAGE, SECOND_PASSAGE),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatDesktopSelection]: true },
+  });
+
+  await readyChat();
+  const firstResponse = await screen.findByText(FIRST_PASSAGE);
+  const assistantReply = firstResponse.closest('[data-role="assistant"]');
+  if (!assistantReply) {
+    throw new Error("AI reply boundary was not rendered");
+  }
+  const renderedDetail = document.createElement("div");
+  renderedDetail.textContent = "A rendered detail outside Markdown.";
+  assistantReply.append(renderedDetail);
+
+  await selectPassage("rendered detail outside Markdown");
+
+  expect(queryToolbarButton("Copy")).toBeVisible();
+  expect(queryToolbarButton("Quote")).toBeVisible();
+  expect(queryToolbarButton("Forward")).toBeVisible();
+
+  await selectAcrossPassages(
+    "rendered detail outside Markdown",
+    "separate decision",
+  );
+
+  expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Quote")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Forward")).not.toBeInTheDocument();
+});
+
+test("Hide passage actions for a run summary inside an AI reply", async () => {
+  installCapabilityChat({
+    events: [
+      promptEvent({
+        id: "capability-run-summary-user",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 1,
+        text: "Prepare the run summary response",
+        createdAt: "2026-08-01T10:00:00.000Z",
+      }),
+      assistantEvent({
+        id: "capability-run-summary-work",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 2,
+        text: "Checked the rollout dependencies",
+        createdAt: "2026-08-01T10:00:20.000Z",
+      }),
+      assistantEvent({
+        id: "capability-run-summary-answer",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 3,
+        text: FIRST_PASSAGE,
+        createdAt: "2026-08-01T10:00:40.000Z",
+      }),
+      completedEvent({
+        id: "capability-run-summary-completed",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 4,
+        createdAt: "2026-08-01T10:01:00.000Z",
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatDesktopSelection]: true,
+    },
+  });
+
+  await readyChat();
+  await expect(screen.findByText("Worked for 1m")).resolves.toBeVisible();
+  await selectPassage("launch plan has three careful stages");
+  await selectPassageWithoutActions("Worked for 1m");
+
+  expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Quote")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Forward")).not.toBeInTheDocument();
+});
+
+test("Keep the legacy Markdown selection boundary when expansion is disabled", async () => {
+  installCapabilityChat({
+    events: completedConversation(FIRST_PASSAGE),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatDesktopSelection]: false },
+  });
+
+  await readyChat();
+  const firstResponse = await screen.findByText(FIRST_PASSAGE);
+  const assistantReply = firstResponse.closest('[data-role="assistant"]');
+  if (!assistantReply) {
+    throw new Error("AI reply boundary was not rendered");
+  }
+  const renderedDetail = document.createElement("div");
+  renderedDetail.textContent = "A rendered detail outside Markdown.";
+  assistantReply.append(renderedDetail);
+
+  await selectPassage("launch plan has three careful stages");
+  await selectPassageWithoutActions("rendered detail outside Markdown");
+
+  expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Quote")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Forward")).not.toBeInTheDocument();
+});
+
+test("Keep touch passage actions on the legacy Markdown boundary", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(pointer: coarse)";
+  });
+  installCapabilityChat({
+    events: completedConversation(FIRST_PASSAGE),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatDesktopSelection]: true },
+  });
+
+  await readyChat();
+  const firstResponse = await screen.findByText(FIRST_PASSAGE);
+  const assistantReply = firstResponse.closest('[data-role="assistant"]');
+  if (!assistantReply) {
+    throw new Error("AI reply boundary was not rendered");
+  }
+  const renderedDetail = document.createElement("div");
+  renderedDetail.textContent = "A touch-only detail outside Markdown.";
+  assistantReply.append(renderedDetail);
+
+  await selectPassage("launch plan has three careful stages");
+  await selectPassageWithoutActions("touch-only detail outside Markdown");
+
+  expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Quote")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Forward")).not.toBeInTheDocument();
 });
 
 test("Combine inline feedback with the rest of a message draft", async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.857.0",
+  "version": "0.871.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,10 +18,9 @@
     "lint:localized-ui": "node --test scripts/check-localized-ui.node.mjs && node scripts/check-localized-ui.mjs",
     "lint:static-assets": "node scripts/check-static-assets.mjs",
     "lint": "pnpm lint:static-assets && pnpm lint:emoji-data && pnpm lint:localized-ui && pnpm lint:build-config && pnpm lint:i18n && oxlint --deny-warnings && oxlint --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0 --cache --cache-strategy content --cache-location .eslintcache",
-    "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tsconfig.build-config.json --noEmit"
+    "check-types": "tsc -p tsconfig.production.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs) && tsc -p tsconfig.tests.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs) && tsc -p tsconfig.build-config.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs)"
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
     "@axiomhq/js": "^1.5.0",
     "@base-ui/react": "^1.7.0",
     "@clerk/localizations": "^4.13.8",
@@ -35,7 +34,7 @@
     "@sentry/browser": "10.46.0",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
-    "@tiptap/core": "3.30.4",
+    "@tiptap/core": "3.30.5",
     "@tiptap/extension-blockquote": "3.30.4",
     "@tiptap/extension-bold": "3.30.4",
     "@tiptap/extension-code": "3.30.4",
@@ -76,7 +75,7 @@
     "rehype-raw": "^7.0.0",
     "rehype-rewrite": "^4.0.4",
     "rehype-slug": "^6.0.0",
-    "signal-timers": "^1.0.4",
+    "signal-timers": "^1.0.5",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "zod": "^4.3.6"

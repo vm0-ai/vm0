@@ -19,8 +19,8 @@
 
 use crate::error::AgentError;
 use crate::http::HttpClient;
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_error, log_info, log_warn};
 use serde::Serialize;
 
 mod api;
@@ -459,7 +459,7 @@ fn write_manifest(manifest_path: &Path, files: &[FileEntry]) -> Result<(), Manif
     let manifest = ArtifactManifest {
         version: 1,
         files,
-        created_at: guest_common::log::timestamp(),
+        created_at: guest_telemetry::log::timestamp(),
     };
 
     serde_json::to_writer(&mut writer, &manifest).map_err(ManifestWriteError::Serialize)?;
@@ -517,7 +517,7 @@ mod tests {
     const SNAPSHOT_STORAGE_ID: &str = "00000000-0000-4000-8000-000000000001";
 
     fn disable_system_log() {
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
     }
 
     fn test_http_client(server: &httpmock::MockServer) -> Result<HttpClient, AgentError> {

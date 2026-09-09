@@ -193,7 +193,71 @@ raises the frontend compatibility floor, rolling the frontend below that floor
 also requires rolling back the backend floor. Rolling the backend back to the
 dual-protocol preparation release remains safe for canonical clients.
 
+### Pi native session history
+
+Pi checkpoint persistence shares the Runner's 128 MiB raw and encoded history
+bound. The API-first execution budget remains 16 MiB. Before resource loading or
+provider ownership, a larger saved checkpoint selects sandbox-first execution
+from blob metadata. A V4 ownership-transfer manifest carries a presigned history
+reference; only the sandbox downloads and decompresses H0 for the next turn. The
+API still validates complete H2 history at checkpoint time, so its peak memory
+and validation work can exceed the raw file size.
+
+V3 manifests remain the active format for API-produced H1 and small
+sandbox-first H0. The CLI accepts both formats and retains the same V2 Guest
+boundary control; Runner job and launch-config schemas are unchanged. API and
+CLI changes must ship through the same commit-addressed CLI artifact selection.
+Previously captured contexts retain their package and history reference; new
+contexts select the new reader. Old Runners already support 128 MiB history.
+
+Pi remains staff-only behind `PiLoop`. Rolling the API back below this change
+restores its 16 MiB validation and resume limit: larger saved histories stay in
+storage, but continuing those sessions requires the fixed API and CLI again.
+There is no history truncation, migration, or alternate reader for that rollback.
+
 ### Runner
+
+#### Pi maintenance usage journal retirement
+
+Producer retirement in [#32787](https://github.com/vm0-ai/vm0/issues/32787)
+removes the CLI's private usage journal and Guest forwarding. The existing
+runner proxy remains the accounting authority established by
+[#32639](https://github.com/vm0-ai/vm0/pull/32639). The independent private
+checkpoint validation marker remains required for publication.
+
+The API keeps the authenticated, immutable-binding-validated journal ACK while
+old reporters remain supported:
+
+| CLI artifact | Guest artifact | Completion behavior                                            |
+| ------------ | -------------- | -------------------------------------------------------------- |
+| Old          | Old            | Reports to the retained validated ACK.                         |
+| New          | Old            | Old Guest accepts the missing journal.                         |
+| Old          | New            | Guest completes without reading the old CLI's private journal. |
+| New          | New            | Consolidation and checkpoint publication use no journal.       |
+
+The runtime package is bundled into the CLI artifact; removing its journal-only
+usage observer does not change already-pinned CLI packages. Aggregate provider
+results and lifecycle observation remain independent of that observer.
+
+Endpoint removal is tracked by
+[#32788](https://github.com/vm0-ai/vm0/issues/32788), under delivery parent
+[#32783](https://github.com/vm0-ai/vm0/issues/32783). Before removing the ACK,
+record the exact CLI commit-addressed and Runner/Guest artifacts, serving
+deployment times, last possible old-context creation/admission cutoff, and
+supported rollback floor. Verify zero old queued/running contexts, zero live
+reporting processes, and completed bounded finalization/retries. Reconcile
+context and artifact identities, terminal/process evidence, and content-free
+endpoint traffic across up to two hours queued plus two hours executing plus
+bounded finalization. Elapsed time or missing telemetry alone is not proof.
+Keep the ACK while supported rollback can restore an incompatible reporter.
+
+This source change does not establish those production cutoffs or alter rollback
+policy. Verify the proxy accounting prerequisite for supported API/Runner
+artifacts separately. The 122-minute private binding retention starts at terminal
+settlement to protect late proxy usage; it is not the journal drain gate and
+remains unchanged, along with ordinary pending-usage/callback cleanup blockers.
+
+#### Runner process drain
 
 Runner deployment is draining, not instant. The production promote playbook
 starts the new runner service, verifies it, and then sends a soft-drain signal
@@ -220,6 +284,27 @@ Keep the rollback floor bridge-capable. Delivery parent vm0-ai/vm0#30478 remains
 open until the canonical-only artifact is promoted, bridge processes drain, and
 the final fleet verification completes.
 
+Rootfs build scripts retain those same flock descriptions in an external
+`unshare --fork` waiter until their private PID namespace has terminated. The
+waiter starts in a separate session so owner death cannot orphan a stopped
+process group and send it a job-control `SIGHUP` before cleanup completes. The
+owning runner's death or cancellation closes a process-local control channel;
+namespace init then exits and the kernel terminates its descendants, including
+workers behind `sudo`. The waiter must not be killed as a cancellation shortcut:
+lock availability is the boundary that allows another builder or GC to touch
+staging. In-process shared ownership also keeps the flock and extracted scripts
+alive until the blocking spawn-and-wait task finishes. Existing builders and GC
+need no new lock file or persisted metadata to respect this exclusion.
+
+This containment applies to scripts launched by the new runner, not orphaned
+workers already launched by an older artifact. PID values are namespace-local;
+shared build caches must use independently unique temporary filenames instead
+of treating a script's PID as a host-wide unique attempt identity. Debootstrap
+cache staging uses `.tmp.mktemp.<random>.tar`; new GC recognizes both that format
+and the previous `.tmp.<pid>.tar`. Older GC still respects the shared cache lock,
+but counts leftover new-format staging files toward stable-cache retention until
+it is upgraded (potentially causing a cache miss, not exposing an active build).
+
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
@@ -237,22 +322,29 @@ status writer, and the independently deployed host monitoring collector scans
 every versioned runner directory. Status schema changes must cover those
 old/new combinations rather than treating the file as process-private state.
 
-Current status writers publish `idle_sandboxes` and omit the field when the
-collection is empty. Blank-enabled writers currently encode ready blanks there
-using `reuse_key: "__vm0_blank__:<sandbox_id>"`. A ready blank has no run ID or
-tenant reuse identity. The migration tracked by [#32071](https://github.com/vm0-ai/vm0/issues/32071)
-separates exact and blank identity without changing shared pool lifecycle rules.
+Current status writers publish exact inventory in `idle_sandboxes` and ready
+blanks in `blank_sandboxes`, omitting each collection when empty. Exact entries
+contain `reuse_key` and `sandbox_id`; blank entries contain only `sandbox_id`,
+never a run ID or tenant reuse identity. Both collections are captured from one
+pool revision and applied together, including preparing/running ownership
+transitions. The migration tracked by
+[#32071](https://github.com/vm0-ai/vm0/issues/32071) separates these identities
+without changing shared pool lifecycle rules.
 
-The reader bridge ([#32082](https://github.com/vm0-ai/vm0/issues/32082)) lets doctor
-and the host collector also read `blank_sandboxes: [{"sandbox_id": "..."}]`.
-Missing collections default to empty; malformed present collections are invalid.
-Legacy recognition is confined to input normalization and requires the entire
-reuse key to match the reserved prefix plus that entry's sandbox ID. Other
-prefix-like reuse keys remain exact. Explicit blank IDs suppress same-file idle
-mirrors, and duplicate blank IDs count once. Doctor lists exact reuse keys under
-Idle and sandbox-ID-only entries under Blank, recognizes both as owned processes,
-and never treats an unclaimed blank as an active job. Active mappings take
-priority over duplicate blanks. The writer is unchanged in the bridge release.
+Internally, the same `IdlePool` owns exact reuse-key and blank sandbox-ID
+indexes. They share capacity limits, budget ownership, parking gates and a
+mutation revision; they are not independent pools. Exact lookup, exact-first
+restoration, blank-first pressure eviction and conditional exact aging retain
+their existing policies. Heartbeat reuse inventories contain exact entries only.
+
+Doctor and the host collector read `blank_sandboxes: [{"sandbox_id": "..."}]`
+directly. Missing collections default to empty, including exact-only historical
+statuses without `blank_sandboxes`; malformed present collections are invalid.
+Blank identity is never inferred from an idle reuse key. Explicit blank IDs
+suppress same-file idle mirrors, and duplicate blank IDs count once. Doctor lists
+exact reuse keys under Idle and sandbox-ID-only entries under Blank, recognizes
+both as owned processes, and never treats an unclaimed blank as an active job.
+Active mappings take priority over duplicate blanks.
 
 The collector exports `vm0_runner_sandboxes{state="blank"}` (including zero).
 `state="idle"` now counts exact inventory only; total parked inventory is the
@@ -268,22 +360,34 @@ only `idle` will now show exact inventory; this change does not edit dashboards.
 
 The collector is installed by host provisioning, independently of Runner
 releases. Both its systemd timer and Alloy textfile scrape run every 15 seconds.
-Before enabling the explicit-only writer in
-[#32083](https://github.com/vm0-ai/vm0/issues/32083), verify bridge-capable doctor
-and collector deployment on every supported host and establish a compatible
-rollback floor using the actual reader commit/release ancestry. The target
-Runner's doctor runs during rollback, so an old-reader/new-writer combination
-must be excluded by these gates. Old writers remain readable by bridge readers
-during draining; neither merging this bridge nor releasing Runner proves the
-independent collector is installed. No writer rollout or rollback floor is
-changed by the bridge PR.
 
-Remove legacy prefix recognition only under
-[#32084](https://github.com/vm0-ai/vm0/issues/32084), after all supported live and
-rollback writers publish explicit blanks, old versions have drained, and relevant
-retained non-stopped status files no longer contain synthetic entries. Record
-deployment/file evidence and enforce rollback eligibility before removing it.
-Keep absent-collection support for genuinely exact-only historical status files.
+The reader-first rollout delivered doctor and collector support in
+[#32092](https://github.com/vm0-ai/vm0/pull/32092), followed by the explicit writer in
+[#32269](https://github.com/vm0-ai/vm0/pull/32269). The first explicit-writer release
+is `runner-rs-v0.188.0`, commit `f4b9a172cf76e04b845f2337c14cf87831c82adb`.
+Legacy blank input recognition is retired by
+[#32084](https://github.com/vm0-ai/vm0/issues/32084), based on read-only production
+verification on 2026-09-07 at 14:20 UTC:
+
+- `prod-11.gcp.vm3.ai`, `prod-12.gcp.vm3.ai` and `prod-13.gcp.vm3.ai` each had
+  `v0.188.3` running and `v0.188.2` draining. Both releases contain explicit-writer
+  commit `bd9cddcf6719c90848ed4ec497baca8cfd3191ea`. The remaining draining release
+  therefore does not require legacy input recognition.
+- The legacy writers were stopped. All 18 retained versioned status files parsed
+  successfully and contained no synthetic blank entries.
+- Each installed collector matched repository SHA-256
+  `560cb9b86e29357249582273253716f48be63df93cd6f04f12dabb4ffa499f42`, and each
+  collector timer was active. This is the pre-cleanup, bridge-capable collector
+  checksum, not the checksum of the retired-reader implementation.
+
+The explicit retirement decision excludes rollback compatibility with legacy
+writers; this cleanup does not change rollback resolution or promise that those
+writers remain readable as blank inventory. Current explicit writers work with
+both bridge and post-cleanup readers during deployment. No production process or
+status file was modified to establish the evidence. Verify the final doctor and
+independently provisioned collector rollout before closing delivery parent
+[#32071](https://github.com/vm0-ai/vm0/issues/32071); a merged PR alone does not
+establish that deployment.
 
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and
@@ -388,6 +492,59 @@ recovery must restore compatibility first or roll forward.
 Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
+
+### Okou Goal retirement rollback floor
+
+The production rollback resolver requires the release/API target to contain
+Goal retirement commit `6d391117e4fead19e2105136fb2792a6e77801d8`. The first
+compatible release is `1f68f182a2457ec3aea52d8063be2bd2d2263abd` (API 1.571.1).
+This permanent floor prevents canonical rollback from restoring Goal creation,
+reactivation, or continuation. It rejects pre-boundary targets before API or
+Runner artifact resolution and output publication, even if the rollback
+dashboard still lists those historical releases.
+
+Apply this floor only to the release/API target: the first compatible release
+retained an older Runner tag. All independent Runner ancestry, reader, host
+architecture, and release-asset checks still apply. The rollback workflow loads
+the resolver from current `main`, so merging the guard constrains future
+canonical executions without a release or test rollback.
+
+The accepted S1 gate verifies the currently serving normal production version
+rejects Goal creation/reactivation and cannot continue Goal work. Historical
+Vercel/fixed-deployment inventory is outside that gate under the
+[user decision](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5595137042);
+this does not claim those deployments were disabled. Keep the rollback floor,
+[archival and settlement checks](goal-retirement-archival.md), and the requirement
+to deploy consumer removal before a later physical schema drop in
+[EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
+
+### Usage pack visibility compatibility retirement
+
+`showUsagePack` has an explicit API writer and billing response starting with
+commit `65ac0518bde2310887470cb0874aeae06c0c0397`, first released in
+`api-v1.570.0` (`22c62b9e92f42078ae314e505b983a62eda35dac`). Its
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34227208941/job/102068385804)
+completed on 2026-09-08 at 12:54:51 UTC. The later `api-v1.572.1` artifact
+(`561b7d6bf0da6ccca2542c0f9cd053d67151ba31`) also completed
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34297728653/job/102298538957)
+on 2026-09-09 at 01:11:34 UTC.
+
+Migration `1092` removes the temporary legacy-writer trigger and function after
+this rollout. The billing response now requires the flag, and the frontend
+reads it directly. The existing Okou Goal retirement rollback floor requires
+commit `6d391117e4fead19e2105136fb2792a6e77801d8`, which descends from the
+explicit usage-pack writer commit. Its first compatible release is API 1.571.1,
+so every permitted rollback target also contains the required writer and
+response. The resolver runs from current `main` and rejects older targets before
+artifact resolution, including entries still retained in the rollback dashboard.
+Keep this enforced boundary when retiring the usage-pack compatibility bridge;
+all other deployment and Runner rollback checks continue to apply.
+
+The cleanup retains existing visibility values, the physical
+`member_invite_usage_pack_required` column and its ORM declaration, and all
+existing admin requirements. It does not change usage-pack balances or purchase
+eligibility. Further legacy-column retirement remains tracked in
+[issue #32575](https://github.com/vm0-ai/vm0/issues/32575).
 
 ### Workflow automation connector-account projections
 
@@ -631,3 +788,7 @@ For persisted state changes:
 Do not add broad defensive fallbacks just to hide incompatibility. The goal is a
 specific compatibility contract for the rollout window, with clear deletion
 criteria after the old version is gone.
+
+## Pi native provider reader preparation
+
+For the generation 4 reader-first release, see [Pi native provider preparation](pi-native-provider-preparation.md). Its model generation is independent of launch snapshot V3. Native writers remain absent until the controller verifies compatible API readers and rollback targets, Runner capabilities, pinned CLI artifacts and existing-route health. The preparation merge alone does not close these gates.

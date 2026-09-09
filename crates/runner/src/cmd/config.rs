@@ -212,7 +212,7 @@ mod tests {
         write_snapshot_without_complete_marker(rootfs, snapshot_hash).await;
         tokio::fs::write(
             snapshot.complete_marker(),
-            sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+            sandbox_firecracker::SNAPSHOT_COMPLETE_MARKER_CONTENT,
         )
         .await
         .unwrap();

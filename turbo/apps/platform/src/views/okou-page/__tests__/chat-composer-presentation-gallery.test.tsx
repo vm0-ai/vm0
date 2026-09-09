@@ -6,15 +6,12 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-} from "../../../lib/platform-template-items.ts";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
 import { tabByText } from "./chat-composer-test-helpers.ts";
 import {
   AGENT_ID,
-  TEMPLATE_FEATURES,
   context,
   expectInlineTemplate,
   mockPresentationHtml,
@@ -82,8 +79,7 @@ test("Choose a presentation template theme", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await openTemplatePicker(user, "Presentation");
@@ -136,8 +132,7 @@ test("Use a presentation template's default theme", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await openTemplatePicker(user, "Presentation");
@@ -167,8 +162,7 @@ test("Navigate every slide in a presentation template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await openTemplatePicker(user, "Presentation");
@@ -217,8 +211,7 @@ test("Navigate template categories on different screen sizes", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await openTemplatePicker(user);
@@ -252,8 +245,7 @@ test("Navigate template categories on a narrow screen", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: TEMPLATE_FEATURES,
+    host: "app.okou.ai",
   });
 
   await openTemplatePicker(user);
@@ -268,29 +260,4 @@ test("Navigate template categories on a narrow screen", async () => {
       ),
     ).toBeVisible();
   });
-});
-
-test("Show presentation import only when available", async () => {
-  mockTemplateChat();
-  const user = userEvent.setup();
-
-  await setupPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
-    featureSwitches: { presentationTemplates: false },
-  });
-
-  await openTemplatePicker(user, "Presentation");
-  expect(screen.queryByLabelText("Import your own deck")).toBeNull();
-  const builtIn = screen.getByLabelText(
-    `Select template ${builtInTemplate().title}`,
-  );
-  expect(builtIn).toBeEnabled();
-  await user.click(tabByText("Website"));
-  expect(
-    screen.getByLabelText(
-      `Preview website template ${WEBSITE_TEMPLATE_ITEMS[0]!.title}`,
-    ),
-  ).toBeVisible();
 });

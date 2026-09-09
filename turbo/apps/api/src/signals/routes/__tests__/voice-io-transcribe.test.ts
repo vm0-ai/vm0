@@ -630,6 +630,41 @@ function segmentForm(
 }
 
 describe("POST /api/voice-io/transcribe/segment", () => {
+  it("accepts the 60-minute recording boundary and rejects longer recordings", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  transcript: "Recorded speech.",
+                  language: "en",
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      client().segment({
+        headers,
+        body: segmentForm([audioFile(1)], "", false, 60 * 60),
+      }),
+      [200],
+    );
+    const tooLong = await client().segment({
+      headers,
+      body: segmentForm([audioFile(2)], "", false, 60 * 60 + 1),
+    });
+    expect(tooLong.status).toBe(400);
+  });
+
   it.each(["openai/gpt-audio", "openai/gpt-audio-mini"] as const)(
     "finishes a saved transcript with a text-capable model when %s has no remaining audio",
     async (model) => {
@@ -710,6 +745,131 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       expect(response.status).toBe(204);
     },
   );
+
+  it.each([
+    {
+      label: "keeps output below the conservative evidence floor",
+      transcript: "x".repeat(199),
+      polishedText: "x".repeat(199),
+      durationSeconds: 1,
+      status: 200,
+    },
+    {
+      label: "keeps output at the maximum plausible speech rate",
+      transcript: "x".repeat(200),
+      polishedText: "x".repeat(200),
+      durationSeconds: 8,
+      status: 200,
+    },
+    {
+      label: "drops an implausibly long segment transcript",
+      transcript: "x".repeat(200),
+      polishedText: "x".repeat(200),
+      durationSeconds: 1,
+      status: 204,
+    },
+    {
+      label: "rejects implausible polish while preserving a short transcript",
+      transcript: "Recorded speech.",
+      polishedText: "x".repeat(200),
+      durationSeconds: 1,
+      status: 502,
+    },
+  ])(
+    "$label",
+    async ({ transcript, polishedText, durationSeconds, status }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      server.use(
+        http.post(OPENROUTER_URL, () => {
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    transcript,
+                    polishedText,
+                    language: "en",
+                  }),
+                },
+              },
+            ],
+          });
+        }),
+      );
+      const response = await client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: segmentForm(
+          [audioFile(1, durationSeconds)],
+          "",
+          true,
+          durationSeconds,
+        ),
+      });
+      expect(response.status).toBe(status);
+    },
+  );
+
+  it("does not return context-derived polish without transcribed speech", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  transcript: "[NO_SPEECH]",
+                  polishedText: "Use LaunchPad for this release.",
+                  language: "und",
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const response = await client().segment({
+      headers: { authorization: "Bearer clerk-session" },
+      body: segmentForm([audioFile(1)], "", true, 1),
+    });
+    expect(response.status).toBe(204);
+  });
+
+  it("rejects implausible final output without discarding saved speech", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const invented = "x".repeat(200);
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  transcript: invented,
+                  polishedText: `Earlier speech. ${invented}`,
+                  language: "en",
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: segmentForm([audioFile(1)], "Earlier speech.", true, 61),
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+  });
 
   it("counts one free-tier recording only after finalization, including a failed final attempt", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");

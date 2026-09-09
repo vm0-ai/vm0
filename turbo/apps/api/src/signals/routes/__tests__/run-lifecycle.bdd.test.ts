@@ -1,3 +1,4 @@
+import nativePiFixtures from "../../../../../../packages/api-contracts/src/contracts/__tests__/fixtures/pi-native.json";
 import { createHash, randomUUID } from "node:crypto";
 
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
@@ -23,7 +24,6 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type {
   KnownRunFailureReason,
   RunFailureReasonToken,
@@ -905,7 +905,6 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
-  readonly publicBrand?: PublicBrand;
 }): void {
   expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
   expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
@@ -928,7 +927,6 @@ function expectCanonicalOkouRunEnvironment(args: {
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
-    publicBrand: args.publicBrand ?? "vm0",
     capabilities: expect.any(Array),
     iat: expect.any(Number),
     exp: expect.any(Number),
@@ -1708,41 +1706,18 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
+  it("names the deck guide in the agent tools prompt", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationTemplates]: false,
-    });
-
-    // The guide is not a mounted skill, so the prompt is the only thing that
-    // tells a run where to pull it. Off, it must stay out of every run.
-    const gatedOff = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "turn this deck into a template",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
-      "skill:presentation-reverse-template",
-    );
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationTemplates]: true,
-    });
-
-    const gatedOn = await api.createRun(actor, {
-      agentId,
-      prompt: "turn this deck into a template",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    const claim = await api.claimRunnerJob(run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
       "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
     );
@@ -1755,6 +1730,64 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "do not pull or compare the registry copy",
     );
+  });
+
+  it("mounts shared skills without granting Goal authority to a fresh manual run", async () => {
+    const names = ["goal", "workflow-setup"];
+    const versions = names.map((name) => {
+      const fullPath = `vm0-ai/vm0-skills/tree/fixture-${randomUUID()}/${name}`;
+      return {
+        name,
+        url: `https://github.com/${fullPath}`,
+        full_path: fullPath,
+        storage_name: `agent-skills@${fullPath}`,
+        version_hash: createHash("sha256").update(randomUUID()).digest("hex"),
+        size: 1024,
+        archive_size: 1024,
+        file_count: 1,
+        frontmatter: { name, description: `Historical ${name} skill fixture` },
+      };
+    });
+    onTestFinished(async () => {
+      await cleanupOwnedSkillsState(context, {
+        skillUrls: versions.map((version) => {
+          return version.url;
+        }),
+        storageNames: versions.map((version) => {
+          return version.storage_name;
+        }),
+      });
+    });
+    await seedCurrentSkillVersionsState(context, {
+      staleCommitSha: "goal-retirement-fixture",
+      versions,
+    });
+    const api = createRunsApi(
+      context,
+      Object.fromEntries(
+        versions.map((version) => {
+          return [version.name, version.storage_name];
+        }),
+      ),
+    );
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "ordinary manual request",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const mounts = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.map((mount) => {
+      return mount.mountPath;
+    });
+    expect(mounts).toContain("/home/user/.claude/skills/workflow-setup");
+    expect(mounts).not.toContain("/home/user/.claude/skills/goal");
+    expect(claim.appendSystemPrompt).toContain("# Agent Tools");
+    expect(claim.appendSystemPrompt).not.toContain("# Thread Goal");
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("advertises the intro-video skill and camera tooling only while its rollout switch is on", async () => {
@@ -1822,6 +1855,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     ).toContain(`/home/user/.claude/skills/${INTRO_VIDEO_SKILL_NAME}`);
 
+    await api.createOrgModelProvider(actor, {
+      type: "openai-api-key",
+      secret: "intro-video-codex-key",
+    });
+    const enabledCodex = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "openai-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const enabledCodexClaim = await api.claimRunnerJob(enabledCodex.runId);
+    expect(enabledCodexClaim.cliAgentType).toBe("codex");
+    expect(enabledCodexClaim.appendSystemPrompt ?? "").toContain(skillHint);
+    expect(
+      expectCanonicalStorageManifest(
+        enabledCodexClaim.storageManifest,
+      )?.storageMounts.map((mount) => {
+        return mount.mountPath;
+      }),
+    ).toContain(`/home/user/.codex/skills/${INTRO_VIDEO_SKILL_NAME}`);
+    await api.requestCancelRun(actor, enabledCodex.runId, [200]);
+
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.IntroVideo]: false,
     });
@@ -1853,34 +1908,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).not.toContain(`/home/user/.claude/skills/${INTRO_VIDEO_SKILL_NAME}`);
   });
 
-  it("advertises presentation screenshots only while their rollout switch is on", async () => {
+  it("always advertises presentation screenshots", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
     const toolHint =
       "okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>";
 
-    const gatedOff = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "render this deck to page images",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationScreenshot]: true,
-    });
-
-    const gatedOn = await api.createRun(actor, {
-      agentId,
-      prompt: "render this deck to page images",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    expect(gatedOnClaim.appendSystemPrompt ?? "").toContain(toolHint);
+    const stored = await api.readRun(actor, run.runId);
+    expect(stored.appendSystemPrompt ?? "").toContain(toolHint);
   });
 
   it("asks chat runs for a generic progressive artifact preview only while its switch is on", async () => {
@@ -1939,6 +1979,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const processOrdinalBucket = expectApiProcessSnapshot(timingEvents);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        "api_dispatch_prepare_context_select_connector_catalog",
+        "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       API_DISPATCH_PHASE_ACTION_TYPES,
@@ -2086,7 +2137,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         span_kind: "top_level",
       }),
     );
-    expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
+    expect(observedActionTypes).not.toContain(
+      "api_dispatch_check_built_in_credits",
+    );
     expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
 
     for (const actionType of API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES) {
@@ -2981,11 +3034,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       accessToken: "x-projection-access",
       refreshToken: "x-projection-refresh",
     });
-    const createProjectedRun = async (prompt: string) => {
+    const createProjectedRun = async (
+      prompt: string,
+      connectorSlugs = ["x", "runtime-projection-unknown", "x"],
+    ) => {
       return await api.createDirectRun(actor, {
         ...agentBackedDirectRunBody({ agentId, prompt }),
         connectorScope: {
-          allowedConnectorSlugs: ["x", "runtime-projection-unknown", "x"],
+          allowedConnectorSlugs: connectorSlugs,
           allowedCustomConnectorIds: [],
         },
       });
@@ -3018,6 +3074,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       cacheOutcomes.filter((outcome) => {
         return outcome === "hit" || outcome === "in_flight";
+      }),
+    ).toHaveLength(1);
+    expect(
+      concurrentLoads.filter((event) => {
+        return (
+          event.connector_catalog_projection_cache_observation === "reuse_1"
+        );
       }),
     ).toHaveLength(1);
     for (const load of concurrentLoads) {
@@ -3116,9 +3179,68 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         connector_catalog_runtime_selection_source: "projection",
         connector_catalog_projection_cache_outcome: "hit",
+        connector_catalog_projection_cache_observation: "reuse_1",
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+
+    const rotatedVersion = `api-test-projection-observation-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedVersion,
+      runtimeProjection: true,
+    });
+    const rotatedRun = await createProjectedRun("observe catalog rotation", [
+      "x",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(rotatedRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "identity_changed",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, rotatedRun.runId, [200]);
+
+    const resetRun = await createProjectedRun(
+      "do not reuse old identity history",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(resetRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "not_in_recent_history",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, resetRun.runId, [200]);
+
+    mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedVersion,
+      runtimeProjection: true,
+    });
+    const capabilityRun = await createProjectedRun(
+      "observe capability rotation",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(capabilityRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "identity_changed",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, capabilityRun.runId, [200]);
   });
 
   it("reuses current validator package authority", async () => {
@@ -3224,6 +3346,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         connector_catalog_projection_fallback_reason: "compatibility_not_ready",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).not.toHaveProperty("connector_catalog_projection_cache_observation");
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
@@ -3416,6 +3544,33 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, run.runId, [200]);
+
+    const repeatedRun = await api.createDirectRun(actor, {
+      ...agentBackedDirectRunBody({
+        agentId,
+        prompt: "repeat digest-mismatched projection",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    const repeatedEvents = apiDispatchTimingEventsForRun(repeatedRun.runId);
+    expectProjectionRowReadActionCounts(repeatedEvents, 1);
+    expect(
+      singleApiDispatchEvent(
+        repeatedEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_cache_observation: "reuse_1",
+        connector_catalog_projection_fallback_reason: "digest_mismatch",
+      }),
+    );
+    await api.requestCancelRun(actor, repeatedRun.runId, [200]);
   });
 
   it.each([
@@ -4940,6 +5095,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(created.status).toBe("pending");
     const claim = await api.claimRunnerJob(created.runId);
     expect(claim.prompt).toBe(prompt);
+    const snapshot = runContextSnapshotForRun(created.runId);
+    expect(snapshot).not.toHaveProperty("piModelConfigGeneration");
+    expect(snapshot).not.toHaveProperty("piModelConfigLegacyApi");
     expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
       expect.objectContaining({
         runId: created.runId,
@@ -7492,7 +7650,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       visibility: "private",
     });
     const byokPrompt = `suspended BYOK ${randomUUID()}`;
-    const vm0Prompt = `suspended VM0 ${randomUUID()}`;
+    const builtInPrompt = `suspended built-in ${randomUUID()}`;
     await seedOrgMetadata({
       orgId: actor.orgId,
       tier: "pro-suspend",
@@ -7511,18 +7669,18 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
-    // The suspension applies to vm0-built-in runs as well.
-    const vm0Rejected = await api.requestCreateRun(
+    // The suspension applies to built-in model runs as well.
+    const builtInRejected = await api.requestCreateRun(
       actor,
       {
         agentId: agent.agentId,
-        prompt: vm0Prompt,
+        prompt: builtInPrompt,
         modelProvider: "built-in",
       },
       [402],
     );
-    expectApiError(vm0Rejected.body);
-    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expectApiError(builtInRejected.body);
+    expect(builtInRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
     const runs = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -7530,7 +7688,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     });
     expect(
       runs.runs.filter((run) => {
-        return run.prompt === byokPrompt || run.prompt === vm0Prompt;
+        return run.prompt === byokPrompt || run.prompt === builtInPrompt;
       }),
     ).toHaveLength(0);
     const queue = await api.readRunQueue(actor);
@@ -8168,13 +8326,13 @@ describe("RUN-01: agent run authorization and session boundaries", () => {
   });
 });
 
-describe("RUN-02: model provider selection and vm0 admission", () => {
-  it("gates vm0 runs on billing state and on unexpired credit grants", async () => {
+describe("RUN-02: model provider selection and built-in admission", () => {
+  it("gates built-in model runs on billing state and on unexpired credit grants", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
 
     // An org that never went through onboarding has no billing state at all,
-    // so vm0 runs are refused before provider resolution.
+    // so built-in model runs are refused before provider resolution.
     const uninitialized = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.configureRunnerGroup();
@@ -8186,7 +8344,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       uninitialized,
       {
         agentId: bareAgent.agentId,
-        prompt: "vm0 run",
+        prompt: "built-in model run",
         modelProvider: "built-in",
       },
       [402],
@@ -8196,7 +8354,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     // The credit expiry is the subscription period end plus one month, so a
     // period that ended two months ago grants credits that are already
-    // expired and never settled — vm0 admission fails whether or not a
+    // expired and never settled — built-in admission fails whether or not a
     // built-in model key happens to resolve.
     const actor = bdd.user();
     await api.grantProEntitlement(actor, {
@@ -8210,7 +8368,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId: agent.agentId,
-        prompt: "vm0 run",
+        prompt: "built-in model run",
         modelProvider: "built-in",
       },
       [402],
@@ -8288,7 +8446,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
 
     const byokPrompt = `staff suspended BYOK ${randomUUID()}`;
-    const vm0Prompt = `staff suspended VM0 ${randomUUID()}`;
+    const builtInPrompt = `staff suspended built-in ${randomUUID()}`;
     const byokRejected = await api.requestCreateRun(
       actor,
       {
@@ -8300,17 +8458,17 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     expectApiError(byokRejected.body);
     expect(byokRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
-    const vm0Rejected = await api.requestCreateRun(
+    const builtInRejected = await api.requestCreateRun(
       actor,
       {
         agentId: agent.agentId,
-        prompt: vm0Prompt,
+        prompt: builtInPrompt,
         modelProvider: "built-in",
       },
       [402],
     );
-    expectApiError(vm0Rejected.body);
-    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expectApiError(builtInRejected.body);
+    expect(builtInRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
     const runs = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -8319,7 +8477,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(
       runs.runs.filter((candidate) => {
         return (
-          candidate.prompt === byokPrompt || candidate.prompt === vm0Prompt
+          candidate.prompt === byokPrompt || candidate.prompt === builtInPrompt
         );
       }),
     ).toHaveLength(0);
@@ -8405,7 +8563,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("claims vm0 runs with billable model firewall and usage provider", async () => {
+  it("claims built-in model runs with billable model firewall and usage provider", async () => {
     const api = createRunsApi(context);
     const selectedModel = await seedBuiltInDefaultModelKey();
     const concreteProvider = getBuiltInConcreteProviderType(selectedModel);
@@ -8419,7 +8577,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "vm0 built-in model provider",
+      prompt: "built-in model provider",
       modelProvider: "built-in",
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
@@ -8430,7 +8588,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      ["api_dispatch_check_vm0_credits"],
+      ["api_dispatch_check_built_in_credits"],
       "nested",
     );
     expectApiDispatchSpanKind(
@@ -8453,7 +8611,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("claims vm0 GPT 5.6 runs with the selected OpenAI runtime model", async () => {
+  it("claims built-in GPT 5.6 runs with the selected OpenAI runtime model", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "gpt-5.6-sol";
@@ -8474,7 +8632,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId,
-        prompt: "vm0 built-in GPT 5.6 model provider",
+        prompt: "built-in GPT 5.6 model provider",
         model: selectedModel,
       },
       [201],
@@ -8522,7 +8680,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it("keeps VM0 DeepSeek admission after a Slack fixture releases its shared key", async () => {
+  it("keeps built-in DeepSeek admission after a Slack fixture releases its shared key", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "deepseek-v4-flash";
@@ -8569,7 +8727,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId,
-        prompt: "vm0 DeepSeek admission after shared fixture release",
+        prompt: "built-in DeepSeek admission after shared fixture release",
         model: selectedModel,
       },
       [201],
@@ -8583,7 +8741,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "claims vm0 %s runs with the Responses adapter",
+    "claims built-in %s runs with the Responses adapter",
     async (selectedModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
@@ -8604,7 +8762,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         actor,
         {
           agentId,
-          prompt: "vm0 built-in DeepSeek Responses model provider",
+          prompt: "built-in DeepSeek Responses model provider",
           model: selectedModel,
         },
         [201],
@@ -8742,7 +8900,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       );
     }
     expect(unsupported.claim.appendSystemPrompt ?? "").toContain(
-      'okou recognize --file <image-path> --prompt "<instruction>"',
+      'okou image-recognition --file <image-path> --prompt "<instruction>"',
     );
     expect(verifyOkouToken(unsupportedToken)?.capabilities).toContain(
       "image-recognition:write",
@@ -8755,7 +8913,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       throw new Error("Expected the supported-model run to expose OKOU_TOKEN");
     }
     expect(supported.claim.appendSystemPrompt ?? "").not.toContain(
-      "okou recognize",
+      "okou image-recognition",
     );
     expect(verifyOkouToken(supportedToken)?.capabilities).not.toContain(
       "image-recognition:write",
@@ -8768,7 +8926,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       throw new Error("Expected the unknown-model run to expose OKOU_TOKEN");
     }
     expect(unknown.claim.appendSystemPrompt ?? "").not.toContain(
-      "okou recognize",
+      "okou image-recognition",
     );
     expect(verifyOkouToken(unknownToken)?.capabilities).not.toContain(
       "image-recognition:write",
@@ -10535,6 +10693,45 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it.each(nativePiFixtures)(
+    "claims stored native $name only with generation 4 capability",
+    async ({ config: piModelConfig }) => {
+      const api = createRunsApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "read a future native context",
+        modelProvider: "anthropic-api-key",
+      });
+      await setRunnerJobPiContextAsVersionedWriter(
+        context,
+        run.runId,
+        piModelConfig,
+      );
+      await api.heartbeatRunner(runnerGroup);
+      for (const capabilities of [
+        undefined,
+        { piModelConfigGenerations: [1, 2, 3] },
+      ]) {
+        await api.requestClaimRunnerJob(true, run.runId, [404], {
+          capabilities,
+        });
+        await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+          status: "pending",
+        });
+      }
+      const claim = await api.claimRunnerJob(run.runId, {
+        capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
+      });
+      expect(claim).toMatchObject({
+        cliAgentType: "pi",
+        piSessionId: run.runId,
+        piModelConfig,
+      });
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
+
   // Current admission cannot produce generation 3 or future/invalid rows.
   // The explicit stored-writer fixture exercises claim/read API behavior first.
   it.each([1, 2, 3] as const)(
@@ -10635,7 +10832,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
   it.each([
     {
-      schemaVersion: 4,
+      schemaVersion: 5,
       serviceTier: "priority",
       status: 404,
       runStatus: "pending",
@@ -10669,7 +10866,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       });
       await api.heartbeatRunner(runnerGroup);
       await api.requestClaimRunnerJob(true, run.runId, [route.status], {
-        capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
+        capabilities: { piModelConfigGenerations: [1, 2, 3, 4, 5] },
       });
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: route.runStatus,
@@ -10847,9 +11044,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replaceAll("-", "").slice(0, 8);
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       authentication: "none",
@@ -11506,12 +11703,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, []);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      { runId: run.runId, target: targetIdentity },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     const [defaultPermissionRuntime] = await api.syncConnectorRuntime(
       run.runId,
       {
@@ -11524,16 +11727,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(defaultPermissionRuntime?.nextSyncAt).toBeUndefined();
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
-    const restoredGrantWakeups = context.mocks.ably.publish.mock.calls.filter(
-      ([eventName]) => {
-        return eventName === "connector-runtime-sync";
-      },
-    );
-    expect(restoredGrantWakeups).toStrictEqual([
-      ["connector-runtime-sync", { runId: run.runId, target: targetIdentity }],
-    ]);
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledExactlyOnceWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -11618,8 +11823,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
-    context.mocks.ably.publish.mockClear();
-    context.mocks.ably.publish.mockRejectedValueOnce(
+    context.mocks.ably.batchPublish.mockClear();
+    context.mocks.ably.batchPublish.mockRejectedValueOnce(
       new Error("Custom runtime wakeup unavailable"),
     );
     await connectors.updateCustomConnector(actor, custom.id, {
@@ -11637,10 +11842,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       queryInjections: custom.queryInjections,
       authMode: custom.authMode,
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      { runId: run.runId, target: targetIdentity },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
     const lastKnownGoodAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -12500,6 +12711,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         connector_catalog_projection_cache_outcome: "hit",
         connector_catalog_requested_connector_count_bucket: "0",
         connector_catalog_metadata_connector_count_bucket: "1",
+        connector_catalog_projection_cache_observation: "reuse_1",
       }),
     );
     const directClaim = await api.claimRunnerJob(directRun.runId);
@@ -13275,9 +13487,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   });
 
   it("synthesizes bearer auth for Automatic MCP accounts resolved to OAuth", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       initialExpiresIn: 3600,
@@ -13557,7 +13769,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(kms.decryptCalls).toBe(1);
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.setCustomConnectorValues(
       actor,
       saved.connector.id,
@@ -13574,10 +13786,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         ),
       },
     );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      expect.anything(),
-    );
+    expect(context.mocks.ably.batchPublish).not.toHaveBeenCalled();
     const [pinnedRuntimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [pinnedTarget],
     });
@@ -14890,20 +15099,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(otherUserRuntime.body.error.message).toBe(
       "Run does not belong to user",
     );
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: snapshotRun.runId,
-        target: { kind: "builtin", connectorSlug: "slack" },
-      },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: expect.arrayContaining([
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({
+            runId: snapshotRun.runId,
+            target: { kind: "builtin", connectorSlug: "slack" },
+          }),
+          encoding: "json",
+        },
+      ]),
+    });
     const [refreshedRuntime] = await api.syncConnectorRuntime(
       snapshotRun.runId,
       { targets: [snapshotSlackTarget] },
@@ -15337,37 +15552,24 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: agent runner context, queue promotion, and skills", () => {
-  it.each([
-    { publicBrand: "vm0", staticDomain: "static.vm0.io" },
-    { publicBrand: "okou", staticDomain: "static.okou.io" },
-  ] satisfies readonly {
-    readonly publicBrand: PublicBrand;
-    readonly staticDomain: string;
-  }[])(
-    "uses the $publicBrand commit-addressed Okou CLI distribution",
-    async ({ publicBrand, staticDomain }) => {
-      const api = createRunsApi(context);
-      const { actor, agentId, runnerGroup } = await entitledRunActor();
-      const r2Run = await api.createRun(
-        actor,
-        {
-          agentId,
-          prompt: "use the default Okou CLI",
-          modelProvider: "anthropic-api-key",
-        },
-        publicBrand,
-      );
-      await api.heartbeatRunner(runnerGroup);
-      const r2Claim = await api.claimRunnerJob(r2Run.runId);
-      expect(r2Claim.appendSystemPrompt ?? "").toContain(
-        `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
-      );
-      expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
-        `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
-      );
-      await api.requestCancelRun(actor, r2Run.runId, [200]);
-    },
-  );
+  it("uses the configured commit-addressed Okou CLI distribution", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const r2Run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the default Okou CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const r2Claim = await api.claimRunnerJob(r2Run.runId);
+    expect(r2Claim.appendSystemPrompt ?? "").toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
+    );
+    expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
+      "https://static.okou.io/okou-cli/test-commit/package.tgz",
+    );
+    await api.requestCancelRun(actor, r2Run.runId, [200]);
+  });
 
   it("keeps direct-run execution config isolated from product execution", async () => {
     const appUrl = "https://app.writer-stop.example.test";
@@ -15688,7 +15890,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
     expect(claim.userTimezone).toBe("America/Los_Angeles");
 
-    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
@@ -15707,7 +15908,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       OKOU_APP_URL: appUrl,
       OKOU_AGENT_ID: agent.agentId,
       OKOU_TOKEN: claim.platformEnvironment.OKOU_TOKEN,
-      CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+      CLI_PKG_URL: "https://static.okou.io/okou-cli/test-commit/package.tgz",
     });
     for (const key of Object.keys(claim.platformEnvironment)) {
       expect(claim.environment).not.toHaveProperty(key);
@@ -15777,6 +15978,30 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("explains supported connector discovery for service connections", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "connect a third-party service",
+      modelProvider: "anthropic-api-key",
+    });
+    const appendSystemPrompt =
+      (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+    for (const connectorContext of [
+      "okou connector search <service-name>",
+      "searches every supported service",
+      "reports which matching connectors are available to the current run",
+      "provider credentials stay outside the sandbox",
+      "When a user wants to connect a third-party service, search for it first",
+    ]) {
+      expect(appendSystemPrompt).toContain(connectorContext);
+    }
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("advertises managed research tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -15789,7 +16014,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
@@ -15805,7 +16029,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain(
       "execute through the built-in platform provider",
     );
-    expect(claim.appendSystemPrompt ?? "").not.toContain("execute via vm0");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -15904,6 +16127,34 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     );
 
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
+  });
+
+  it("advertises Slack bot reads only while the feature is enabled", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    for (const enabled of [false, true]) {
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.SlackRead]: enabled,
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "read the channel's recent messages",
+        modelProvider: "anthropic-api-key",
+      });
+      const prompt =
+        (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+      if (enabled) {
+        expect(prompt).toContain("okou slack channel list --help");
+        expect(prompt).toContain("okou slack message history --help");
+      } else {
+        expect(prompt).not.toContain("okou slack message history --help");
+        expect(prompt).not.toContain("okou slack channel list --help");
+      }
+      expect(prompt).toContain("okou slack message send --help");
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
   });
 
   it("advertises connector account switching", async () => {
@@ -16042,7 +16293,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
@@ -19121,11 +19371,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
-  it("suppresses reviewed expected failures from generic completion logs", async () => {
-    const api = createRunsApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    await seedBuiltInDefaultModelKey();
-    const { actor, agentId } = await entitledRunActor();
+  describe("completion failure logs", () => {
     const suppressedReasons = [
       "insufficient_credits",
       "invalid_api_key",
@@ -19142,15 +19388,9 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       "reconnect_required",
       "usage_limit",
     ] as const satisfies readonly KnownRunFailureReason[];
-    const axiomLevels = [
-      context.mocks.axiomLogging.debug,
-      context.mocks.axiomLogging.info,
-      context.mocks.axiomLogging.warn,
-      context.mocks.axiomLogging.error,
-    ];
 
     function matchingLogCalls(
-      log: (typeof axiomLevels)[number],
+      log: typeof context.mocks.axiomLogging.warn,
       message: string,
       runId: string,
     ) {
@@ -19165,12 +19405,31 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       });
     }
 
-    async function completeFailure(args: {
+    function genericFailureLogCalls(runId: string) {
+      return [
+        context.mocks.axiomLogging.debug,
+        context.mocks.axiomLogging.info,
+        context.mocks.axiomLogging.warn,
+        context.mocks.axiomLogging.error,
+      ].flatMap((level) => {
+        return matchingLogCalls(level, "Run failed", runId);
+      });
+    }
+
+    interface FailureCase {
       readonly failureReason?: RunFailureReasonToken;
       readonly modelProvider?: ModelProviderType;
       readonly persistedModelProvider?: string | null;
-    }): Promise<{ readonly runId: string; readonly error: string }> {
+    }
+
+    async function completeFailure(args: FailureCase) {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
       const modelProvider = args.modelProvider ?? "anthropic-api-key";
+      if (modelProvider === "built-in") {
+        await seedBuiltInDefaultModelKey();
+      }
+      const { actor, agentId } = await entitledRunActor();
       const run = await api.createRun(actor, {
         agentId,
         prompt: `fail ${modelProvider} with ${args.failureReason ?? "no reason"}`,
@@ -19205,161 +19464,174 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       await expect(
         readRunFailureReasonFixture(context, run.runId),
       ).resolves.toBe(args.failureReason ?? null);
-      return { runId: run.runId, error };
+      return { actor, runId: run.runId, error };
     }
 
-    for (const failureReason of suppressedReasons) {
-      const { runId } = await completeFailure({ failureReason });
-      for (const level of axiomLevels) {
-        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
-      }
-    }
+    it.each(suppressedReasons)(
+      "suppresses %s for a BYOK provider",
+      async (failureReason) => {
+        const { runId } = await completeFailure({ failureReason });
+        expect(genericFailureLogCalls(runId)).toHaveLength(0);
+      },
+    );
 
-    const globallySuppressedFailures = [
-      await completeFailure({ failureReason: "input_too_large" }),
-      await completeFailure({
-        modelProvider: "built-in",
-        failureReason: "input_too_large",
-      }),
-      await completeFailure({
-        failureReason: "input_too_large",
-        persistedModelProvider: "legacy-unknown-provider",
-      }),
-      await completeFailure({ failureReason: "execution_timeout" }),
-      await completeFailure({
-        modelProvider: "built-in",
-        failureReason: "execution_timeout",
-      }),
-      await completeFailure({
-        failureReason: "execution_timeout",
-        persistedModelProvider: "legacy-unknown-provider",
-      }),
-    ];
-    for (const { runId } of globallySuppressedFailures) {
-      for (const level of axiomLevels) {
-        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
-      }
-    }
+    describe.each(["input_too_large", "execution_timeout"] as const)(
+      "globally suppresses %s",
+      (failureReason) => {
+        it.each([
+          { name: "BYOK", modelProvider: "anthropic-api-key" },
+          { name: "built-in", modelProvider: "built-in" },
+          {
+            name: "legacy provider",
+            persistedModelProvider: "legacy-unknown-provider",
+          },
+        ] satisfies readonly (FailureCase & { readonly name: string })[])(
+          "suppresses the generic log for $name",
+          async (provider) => {
+            const { runId } = await completeFailure({
+              ...provider,
+              failureReason,
+            });
+            expect(genericFailureLogCalls(runId)).toHaveLength(0);
+          },
+        );
+      },
+    );
 
-    const visibleControls = [
-      await completeFailure({
+    it.each([
+      {
+        name: "built-in rate limiting",
         modelProvider: "built-in",
         failureReason: "provider_rate_limited",
-      }),
-      await completeFailure({
+      },
+      {
+        name: "rate limiting with a null provider",
         failureReason: "provider_rate_limited",
         persistedModelProvider: null,
-      }),
-      await completeFailure({
+      },
+      {
+        name: "rate limiting with a legacy provider",
         failureReason: "provider_rate_limited",
         persistedModelProvider: "legacy-unknown-provider",
-      }),
-      await completeFailure({}),
-      await completeFailure({ failureReason: "session_history_limit" }),
-      await completeFailure({ failureReason: "unsupported_model" }),
-    ];
-    for (const control of visibleControls) {
-      const warnings = matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        control.runId,
-      );
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0]?.[1]).toStrictEqual(
-        expect.objectContaining({
-          runId: control.runId,
-          exitCode: 1,
-          error: control.error,
-          context: "webhook:complete",
-        }),
-      );
-    }
-
-    const missingCheckpoint = await api.createRun(actor, {
-      agentId,
-      prompt: "keep the missing-checkpoint warning visible",
-      modelProvider: "anthropic-api-key",
-    });
-    await webhooks.requestAgentComplete(
-      {
-        runId: missingCheckpoint.runId,
-        exitCode: 0,
-        failureReason: "provider_overloaded",
       },
+      { name: "an absent failure reason" },
       {
-        authorization: `Bearer ${api.sandboxTokenForRun(
-          actor,
+        name: "session history limits",
+        failureReason: "session_history_limit",
+      },
+      { name: "unsupported models", failureReason: "unsupported_model" },
+    ] satisfies readonly (FailureCase & { readonly name: string })[])(
+      "keeps $name visible",
+      async (failure) => {
+        const control = await completeFailure(failure);
+        const warnings = matchingLogCalls(
+          context.mocks.axiomLogging.warn,
+          "Run failed",
+          control.runId,
+        );
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]?.[1]).toStrictEqual(
+          expect.objectContaining({
+            runId: control.runId,
+            exitCode: 1,
+            error: control.error,
+            context: "webhook:complete",
+          }),
+        );
+      },
+    );
+
+    it("keeps the missing-checkpoint warning visible for a suppressible reason", async () => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      const missingCheckpoint = await api.createRun(actor, {
+        agentId,
+        prompt: "keep the missing-checkpoint warning visible",
+        modelProvider: "anthropic-api-key",
+      });
+      await webhooks.requestAgentComplete(
+        {
+          runId: missingCheckpoint.runId,
+          exitCode: 0,
+          failureReason: "provider_overloaded",
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(
+            actor,
+            missingCheckpoint.runId,
+          )}`,
+        },
+        [200],
+      );
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.warn,
+          "Run failed because checkpoint was not found",
           missingCheckpoint.runId,
-        )}`,
-      },
-      [200],
-    );
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed because checkpoint was not found",
-        missingCheckpoint.runId,
-      ),
-    ).toHaveLength(1);
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        missingCheckpoint.runId,
-      ),
-    ).toHaveLength(0);
-
-    const suppressibleFirst = await completeFailure({
-      failureReason: "provider_overloaded",
+        ),
+      ).toHaveLength(1);
+      expect(genericFailureLogCalls(missingCheckpoint.runId)).toHaveLength(0);
     });
-    await webhooks.requestAgentComplete(
-      {
-        runId: suppressibleFirst.runId,
-        exitCode: 1,
-        error: "late unsupported-model report",
-        failureReason: "unsupported_model",
-      },
-      {
-        authorization: `Bearer ${api.sandboxTokenForRun(
-          actor,
-          suppressibleFirst.runId,
-        )}`,
-      },
-      [200],
-    );
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        suppressibleFirst.runId,
-      ),
-    ).toHaveLength(0);
 
-    const visibleFirst = await completeFailure({
-      failureReason: "unsupported_model",
-    });
-    await webhooks.requestAgentComplete(
+    it.each([
       {
-        runId: visibleFirst.runId,
-        exitCode: 1,
-        error: "late overload report",
-        failureReason: "provider_overloaded",
+        firstReason: "provider_overloaded",
+        lateReason: "unsupported_model",
+        warningCount: 0,
       },
       {
-        authorization: `Bearer ${api.sandboxTokenForRun(
-          actor,
-          visibleFirst.runId,
-        )}`,
+        firstReason: "unsupported_model",
+        lateReason: "provider_overloaded",
+        warningCount: 1,
       },
-      [200],
+    ] as const)(
+      "does not relog $firstReason when a duplicate reports $lateReason",
+      async ({ firstReason, lateReason, warningCount }) => {
+        const api = createRunsApi(context);
+        const webhooks = createWebhookCallbackApi(context);
+        const first = await completeFailure({ failureReason: firstReason });
+        expect(
+          matchingLogCalls(
+            context.mocks.axiomLogging.warn,
+            "Run failed",
+            first.runId,
+          ),
+        ).toHaveLength(warningCount);
+
+        await webhooks.requestAgentComplete(
+          {
+            runId: first.runId,
+            exitCode: 1,
+            error: `late ${lateReason} report`,
+            failureReason: lateReason,
+          },
+          {
+            authorization: `Bearer ${api.sandboxTokenForRun(
+              first.actor,
+              first.runId,
+            )}`,
+          },
+          [200],
+        );
+        expect(
+          matchingLogCalls(
+            context.mocks.axiomLogging.warn,
+            "Run failed",
+            first.runId,
+          ),
+        ).toHaveLength(warningCount);
+        await expect(
+          api.readRun(first.actor, first.runId),
+        ).resolves.toMatchObject({
+          status: "failed",
+          error: first.error,
+        });
+        await expect(
+          readRunFailureReasonFixture(context, first.runId),
+        ).resolves.toBe(firstReason);
+      },
     );
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        visibleFirst.runId,
-      ),
-    ).toHaveLength(1);
   });
 
   it.each(["claude-code", "codex"] as const)(

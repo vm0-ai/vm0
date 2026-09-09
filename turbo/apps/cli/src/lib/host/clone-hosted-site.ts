@@ -3,6 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { HostedSiteFilesResponse } from "@okouai/api-contracts/contracts/host";
+import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
+import { getBaseUrl } from "../api/core/client-factory";
 import { getHostedSiteFiles } from "../api/domains/host";
 import { checkDirectoryStatus } from "../utils/file-utils";
 
@@ -31,9 +33,13 @@ interface CloneHostedSiteOptions {
   readonly onProgress?: (progress: CloneHostedSiteProgress) => void;
 }
 
-export function publicSlugFromSite(value: string): string {
+export async function publicSlugFromSite(value: string): Promise<string> {
   const trimmed = value.trim();
   if (URL.canParse(trimmed)) {
+    const deploymentId = privateHostedDeploymentId(trimmed, await getBaseUrl());
+    if (deploymentId) {
+      return `dpl-${deploymentId}`;
+    }
     const url = new URL(trimmed);
     return url.hostname.split(".")[0] ?? trimmed;
   }
@@ -118,7 +124,7 @@ async function downloadHostedFile(
 export async function cloneHostedSite(
   options: CloneHostedSiteOptions,
 ): Promise<CloneHostedSiteResult> {
-  const publicSlug = publicSlugFromSite(options.site);
+  const publicSlug = await publicSlugFromSite(options.site);
   const dirStatus = checkDirectoryStatus(options.destination);
   if (dirStatus.exists && !dirStatus.empty) {
     throw new Error(`Directory "${options.destination}" is not empty`);

@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
+/// Default host deadline for starting a supervised guest process.
+pub const DEFAULT_PROCESS_START_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Capture budgets for stdout/stderr returned by [`ExecRequest`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExecOutputLimits {
@@ -216,6 +219,15 @@ pub struct StartProcessRequest<'a> {
     pub cmd: &'a str,
     /// Guest-side process timeout.
     pub timeout: Duration,
+    /// Whether a clean guest execution timeout is an expected best-effort outcome.
+    ///
+    /// Only changes host terminal logging to info. The timeout result, deadlines,
+    /// start/wait errors, and warnings for additional diagnostics or output loss
+    /// are unchanged.
+    pub timeout_is_expected: bool,
+    /// Host deadline for writing the start request and receiving the guest
+    /// process-start acknowledgement.
+    pub start_timeout: Duration,
     /// Environment variables passed to the command. Keys must satisfy the vm0
     /// guest shell exec env key contract.
     pub env: &'a [(&'a str, &'a str)],
@@ -631,6 +643,8 @@ pub enum ProcessControlGuestStatus {
     QueueFull,
     /// The guest process-control sink returned an error.
     SinkError,
+    /// The connected guest process-control sink closed during request I/O.
+    SinkClosed,
 }
 
 impl ProcessControlGuestStatus {
@@ -642,7 +656,7 @@ impl ProcessControlGuestStatus {
             Self::SinkUnavailable => io::ErrorKind::NotConnected,
             Self::SinkTimeout => io::ErrorKind::TimedOut,
             Self::QueueFull => io::ErrorKind::WouldBlock,
-            Self::SinkError => io::ErrorKind::BrokenPipe,
+            Self::SinkError | Self::SinkClosed => io::ErrorKind::BrokenPipe,
         }
     }
 
@@ -656,6 +670,7 @@ impl ProcessControlGuestStatus {
             Self::SinkTimeout => "exec control sink timed out",
             Self::QueueFull => "exec control queue is full",
             Self::SinkError => "exec control sink error",
+            Self::SinkClosed => "exec control sink closed",
         }
     }
 }
@@ -1247,7 +1262,9 @@ mod tests {
     #[test]
     fn start_process_timeout_ms_rounds_nonzero_submillisecond_up() {
         let req = StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "true",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_nanos(1),
             env: &[],
             sudo: false,

@@ -1,4 +1,4 @@
-import { Command, Help } from "commander";
+import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { program, registerCommands, registerRequestedCommand } from "../okou";
@@ -13,24 +13,13 @@ function buildOkouToken(capabilities: readonly string[]): string {
   return `vm0_sandbox_${header}.${body}.test-signature`;
 }
 
-function visibleCommandNames(prog: Command): string[] {
-  return new Help()
-    .visibleCommands(prog)
-    .map((command) => {
-      return command.name();
-    })
-    .filter((name) => {
-      return name !== "help";
-    });
-}
-
 describe("Okou CLI program", () => {
   registerCommands(program);
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });
   const canonicalCommandNames = commandNames.filter((name) => {
-    return !name.startsWith("__") && name !== "recognize";
+    return !name.startsWith("__");
   });
 
   afterEach(() => {
@@ -101,16 +90,6 @@ describe("Okou CLI program", () => {
     }
   });
 
-  it("should keep recognize registered but out of canonical command listings", () => {
-    vi.stubEnv("OKOU_TOKEN", buildOkouToken(["image-recognition:write"]));
-    const prog = new Command();
-    registerCommands(prog);
-
-    expect(commandNames).toContain("recognize");
-    expect(visibleCommandNames(prog)).toContain("image-recognition");
-    expect(visibleCommandNames(prog)).not.toContain("recognize");
-  });
-
   it("should not include infrastructure or utility commands", () => {
     const excludedCommands = [
       "org",
@@ -134,9 +113,11 @@ describe("Okou CLI program", () => {
   it("should keep internal commands out of the public surface", () => {
     expect(commandNames).toContain("__agent-loop");
     expect(commandNames).toContain("__intro-video-presenter");
+    expect(commandNames).toContain("__intro-video-agent");
     expect(commandNames).toContain("__intro-video-voice");
     expect(canonicalCommandNames).not.toContain("__agent-loop");
     expect(canonicalCommandNames).not.toContain("__intro-video-presenter");
+    expect(canonicalCommandNames).not.toContain("__intro-video-agent");
     expect(canonicalCommandNames).not.toContain("__intro-video-voice");
   });
 
@@ -158,21 +139,9 @@ describe("Okou CLI lazy command loading", () => {
       expectedHelpCode: "commander.helpDisplayed",
     },
     {
-      label: "direct compatibility invocation",
-      argv: ["node", "okou", "recognize", "--help"],
-      expectedName: "recognize",
-      expectedHelpCode: "commander.helpDisplayed",
-    },
-    {
       label: "canonical help invocation",
       argv: ["node", "okou", "help", "image-recognition"],
       expectedName: "image-recognition",
-      expectedHelpCode: "commander.help",
-    },
-    {
-      label: "compatibility help invocation",
-      argv: ["node", "okou", "help", "recognize"],
-      expectedName: "recognize",
       expectedHelpCode: "commander.help",
     },
   ])(
@@ -205,4 +174,25 @@ describe("Okou CLI lazy command loading", () => {
       expect(helpOutput).toContain(`Usage: okou ${expectedName}`);
     },
   );
+
+  it("should reject help for an unknown command", async () => {
+    const argv = ["node", "okou", "help", "not-a-command"];
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken(["image-recognition:write"]));
+    let errorOutput = "";
+    const prog = new Command()
+      .name("okou")
+      .exitOverride()
+      .configureOutput({
+        writeErr: (text: string) => {
+          errorOutput += text;
+        },
+      });
+
+    await registerRequestedCommand(prog, argv);
+
+    await expect(prog.parseAsync(argv)).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+    expect(errorOutput).toContain("unknown command 'not-a-command'");
+  });
 });

@@ -236,7 +236,7 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             () = async {
                 if retry_after_read_error {
-                    tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
+                    source.wait_after_read_error().await;
                 } else {
                     source.wait_until_next_read().await;
                 }
@@ -335,7 +335,9 @@ fn classify_control_outcome(
                 }
                 ForwardDisposition::Retry
             }
-            ProcessControlGuestStatus::SinkTimeout | ProcessControlGuestStatus::SinkError => {
+            ProcessControlGuestStatus::SinkTimeout
+            | ProcessControlGuestStatus::SinkError
+            | ProcessControlGuestStatus::SinkClosed => {
                 if warn_retryable_failure {
                     warn!(
                         run_id = %run_id,
@@ -449,6 +451,7 @@ fn guest_status_label(status: ProcessControlGuestStatus) -> &'static str {
         ProcessControlGuestStatus::SinkTimeout => "sink_timeout",
         ProcessControlGuestStatus::QueueFull => "queue_full",
         ProcessControlGuestStatus::SinkError => "sink_error",
+        ProcessControlGuestStatus::SinkClosed => "sink_closed",
     }
 }
 

@@ -15,7 +15,7 @@ use api_contracts::generated::{
 use guest_contracts::env::{CliAgentTypeSelection, CliFramework};
 
 use crate::constants;
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
@@ -75,11 +75,11 @@ impl From<Framework> for CliFramework {
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
 /// mock Claude path aliases are absent or non-Unicode.
-pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::MOCK_CLAUDE_PATH;
+pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::CLAUDE_MOCK_PATH;
 
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
-pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::MOCK_CODEX_PATH;
+pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::CODEX_MOCK_PATH;
 
 fn u64_value_or(name: &str, value: Option<&str>, default: u64) -> u64 {
     match value {
@@ -471,17 +471,24 @@ pub struct GuestConfig {
     /// from [`guest_contracts::env::RunPayload`]. The value is parsed for
     /// Codex startup configuration and is otherwise retained in its wire form.
     pub codex_runtime_config: String,
-    /// Serialized Pi launch-config version marker from
-    /// [`guest_contracts::env::PI_LAUNCH_CONFIG_ENV`]. Pi parses this value and
-    /// uses it to create the private launch payload consumed by the Pi child.
+    /// Serialized Pi launch configuration from
+    /// [`guest_contracts::env::RunPayload::pi_launch_config`] in the private
+    /// run-payload file named by
+    /// [`guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV`]. The guest-agent
+    /// parses this value and writes it as `launchConfig` in a separate private
+    /// Pi launch-payload file, whose path is passed to the Pi child through
+    /// [`guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV`].
     pub pi_launch_config: String,
     /// JSON object containing non-secret Pi model metadata from
-    /// [`guest_contracts::env::PI_MODEL_CONFIG_ENV`]. It is included in the
-    /// private Pi launch payload.
+    /// [`guest_contracts::env::RunPayload::pi_model_config`] in the incoming
+    /// run payload. The guest-agent passes it to the Pi child through the
+    /// [`guest_contracts::env::PI_MODEL_CONFIG_ENV`] environment variable.
     pub pi_model_config: String,
     /// Chat Thread identifier from
-    /// [`guest_contracts::env::PI_SESSION_ID_ENV`] used as Pi's native session
-    /// identifier and included in Pi launch and session-history inputs.
+    /// [`guest_contracts::env::RunPayload::pi_session_id`] in the incoming run
+    /// payload. It is passed to the Pi child through the
+    /// [`guest_contracts::env::PI_SESSION_ID_ENV`] environment variable and used
+    /// as Pi's native session identifier and for session-history lookup.
     pub pi_session_id: String,
     /// Stuck-tool timeout in seconds parsed from
     /// [`guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`]. Empty

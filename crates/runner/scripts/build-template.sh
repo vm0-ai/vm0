@@ -113,7 +113,7 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.27.1"
-CLAUDE_CODE_VERSION="2.1.263"
+CLAUDE_CODE_VERSION="2.1.266"
 CODEX_CLI_VERSION="0.153.4"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
@@ -257,8 +257,8 @@ debootstrap_cache_locked() {
     # partial tarball under the stable cache name that another runner may reuse.
     # debootstrap validates the tarball suffix when unpacking, so keep the
     # process-scoped temp file ending in .tar instead of appending after it.
-    CACHE_TMP_TAR="${cache_tar%.tar}.tmp.$$.tar"
-    rm -f "$CACHE_TMP_TAR"
+    # PIDs can repeat across concurrent build namespaces; the cache is shared.
+    CACHE_TMP_TAR=$(mktemp "${cache_tar%.tar}.tmp.mktemp.XXXXXX.tar")
     sudo debootstrap --make-tarball="$CACHE_TMP_TAR" noble "$ROOTFS_DIR" "$MIRROR" || true
     if [[ ! -s "$CACHE_TMP_TAR" ]]; then
       echo "error: debootstrap --make-tarball failed to create $CACHE_TMP_TAR" >&2

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { conversations } from "@okouai/db/schema/conversation";
@@ -161,6 +161,22 @@ export async function readPiMemoryStage1CandidateFixture(args: {
   return candidate ?? null;
 }
 
+export async function countPiMemoryStage1CandidatesFixture(args: {
+  readonly memoryStorageId: string;
+  readonly piSessionId: string;
+}): Promise<number> {
+  const [result] = await db()
+    .select({ value: count() })
+    .from(piMemoryStage1Candidates)
+    .where(
+      and(
+        eq(piMemoryStage1Candidates.memoryStorageId, args.memoryStorageId),
+        eq(piMemoryStage1Candidates.piSessionId, args.piSessionId),
+      ),
+    );
+  return result?.value ?? 0;
+}
+
 export async function readPiConversationIdentityFixture(runId: string) {
   const [conversation] = await db()
     .select({
@@ -245,7 +261,12 @@ export async function setSyntheticPiMemoryStage1SelectionFixture(args: {
   }
 }
 
-export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
+export async function readmitPiMemoryStage1CandidateFixture(
+  runId: string,
+  ownership: Partial<
+    Pick<AdmitPiMemoryStage1CandidateArgs, "orgId" | "userId" | "chatThreadId">
+  > = {},
+) {
   const [run] = await db()
     .select({
       orgId: agentRuns.orgId,
@@ -286,6 +307,7 @@ export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
       chatThreadId: run.chatThreadId,
       completedAt,
       idleDelayMs: 0,
+      ...ownership,
     });
   });
 }

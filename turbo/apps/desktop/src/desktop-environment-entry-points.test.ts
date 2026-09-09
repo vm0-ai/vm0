@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import manifest from "../cua/artifacts.json";
+import packageMetadata from "../package.json";
+import identities from "./desktop-identities.json";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import {
   chmodSync,
@@ -60,8 +64,8 @@ const config = resolveDesktopConfig(
 if (
   config.identity.product !== process.env.TEST_EXPECTED_PRODUCT ||
   config.platformUrl.toString() !== process.env.TEST_EXPECTED_PLATFORM_URL ||
-  config.authUrl.origin !== (config.identity.product === "okou" ? (config.environment === "production" ? "https://app.okou.ai" : config.platformUrl.origin) : config.webUrl.origin) ||
-  (config.identity.product === "okou" ? config.authPartition === config.sessionPartition : config.authPartition !== config.sessionPartition) ||
+  config.authUrl.origin !== (config.environment === "production" ? "https://app.okou.ai" : config.platformUrl.origin) ||
+  config.authPartition === config.sessionPartition ||
   config.environment !== process.env.TEST_EXPECTED_ENVIRONMENT ||
   config.identity.displayName !== process.env.TEST_EXPECTED_DISPLAY_NAME ||
   config.sessionPartition !== process.env.TEST_EXPECTED_SESSION_PARTITION
@@ -92,7 +96,7 @@ interface EnvironmentValues {
 
 interface RuntimeFileConfig {
   readonly platformUrl: string;
-  readonly product?: "zero" | "okou";
+  readonly product?: unknown;
 }
 
 interface SurfaceCase {
@@ -100,7 +104,7 @@ interface SurfaceCase {
   readonly fileConfig?: RuntimeFileConfig;
   readonly platformArgument?: string;
   readonly productArgument?: string;
-  readonly expectedProduct: "zero" | "okou";
+  readonly expectedProduct: "okou";
   readonly expectedPlatformUrl: string;
   readonly expectedDisplayName: string;
 }
@@ -128,6 +132,7 @@ function createDesktopFixture(): DesktopFixture {
   const sourceDirectory = join(fixtureDesktopDirectory, "src");
   mkdirSync(scriptsDirectory, { recursive: true });
   mkdirSync(sourceDirectory, { recursive: true });
+  mkdirSync(join(fixtureDesktopDirectory, "cua"));
 
   for (const relativePath of [
     "scripts/desktop-build-config.js",
@@ -135,6 +140,10 @@ function createDesktopFixture(): DesktopFixture {
     "scripts/packaged-app-paths.js",
     "scripts/run-packaged-app.js",
     "scripts/smoke-test-packaged-app.js",
+    "scripts/desktop-smoke-evidence.js",
+    "scripts/stage-cua-runtime.py",
+    "cua/artifacts.json",
+    "package.json",
     "src/config.ts",
     "src/desktop-api-base-url.ts",
     "src/desktop-identities.json",
@@ -246,16 +255,10 @@ function runInstalledConfig(testCase: InstalledSurfaceCase): EntryPointResult {
   return { process: processResult, trace: trace(fixture) };
 }
 
-function runForgeConfig(
-  product: "zero" | "okou" | undefined,
-  expectedAppIconBaseName: "icon-zero" | "icon",
-): SpawnSyncReturns<string> {
+function runForgeConfig(): SpawnSyncReturns<string> {
   const environment = baseEnvironment();
   environment.TEST_FORGE_CONFIG = join(desktopDirectory, "forge.config.js");
-  environment.TEST_EXPECTED_APP_ICON_BASE_NAME = expectedAppIconBaseName;
-  if (product) {
-    environment.OKOU_DESKTOP_PRODUCT = product;
-  }
+  environment.TEST_EXPECTED_APP_ICON_BASE_NAME = "icon";
   return spawnSync(process.execPath, ["--eval", forgeConfigHarnessSource], {
     cwd: desktopDirectory,
     encoding: "utf8",
@@ -263,10 +266,150 @@ function runForgeConfig(
   });
 }
 
+function dormantDriverEvidence() {
+  return {
+    experimentalCuaEnabled: false,
+    selectedDriver: "okou",
+    developerAvailability: "unavailable",
+    actual: null,
+    phase: "stopped",
+    lifecycleElapsedMs: 1,
+    cleanupPending: false,
+    expectedCuaVersion: manifest.driverVersion,
+    error: null,
+    canRetry: true,
+  };
+}
+
+function probeEvidence(bundleId = "ai.okou.desktop") {
+  const state = {
+    phase: "ready",
+    generation: 1,
+    cleanupPending: false,
+    driverVersion: manifest.driverVersion,
+    loadedDriverVersion: manifest.driverVersion,
+    error: null,
+  };
+  return {
+    schemaVersion: 1,
+    desktopVersion: packageMetadata.version,
+    electronVersion: packageMetadata.devDependencies.electron,
+    bundleId,
+    generation: 1,
+    driverVersion: manifest.driverVersion,
+    metadata: {
+      pid: 42,
+      embedded: true,
+      hostBundleId: bundleId,
+      driverVersion: manifest.driverVersion,
+      contractVersion: "1",
+      mcpProtocolVersion: "2025-03-26",
+    },
+    readyState: state,
+    stoppedState: {
+      ...state,
+      phase: "stopped",
+      generation: null,
+      loadedDriverVersion: null,
+    },
+    accessibility: false,
+    screenRecording: false,
+    attribution: "host",
+    capture: "not_requested",
+    cleanup: {
+      generation: 1,
+      exitObserved: true,
+      exitSuccess: true,
+      exitCode: 0,
+      hostStopped: true,
+      directoryRemoved: true,
+      process: {
+        guardianPid: 24,
+        guardianExitObserved: true,
+        descendantsExited: true,
+        forced: false,
+        elapsedMs: 75,
+        heartbeatCount: 1,
+      },
+    },
+  };
+}
+
+interface SmokeScenario {
+  readonly probe?: boolean;
+  readonly settledDriver?: unknown;
+  readonly output?: string;
+  readonly exit?: number | "signal";
+  readonly corrupt?: "missing" | "javascript" | "version" | "signature";
+}
+
+function prepareCuaPayload(
+  resources: string,
+  corrupt?: SmokeScenario["corrupt"],
+) {
+  const root = join(resources, "cua");
+  mkdirSync(root, { recursive: true });
+  for (const artifact of manifest.artifacts) {
+    for (const file of artifact.files) {
+      const name = join(
+        artifact.destination,
+        artifact.destination === "." ? file : file.slice("package/".length),
+      );
+      const target = join(root, name);
+      mkdirSync(resolve(target, ".."), { recursive: true });
+      writeFileSync(
+        target,
+        manifest.nativeCode.includes(name)
+          ? Buffer.from([
+              0xcf,
+              0xfa,
+              0xed,
+              0xfe,
+              0x0c,
+              0,
+              0,
+              1,
+              ...new Array<number>(24).fill(0),
+            ])
+          : "fixture resource",
+      );
+      chmodSync(target, 0o755);
+    }
+  }
+  writeFileSync(join(root, "artifacts.json"), JSON.stringify(manifest));
+  const files: Record<string, string> = {};
+  const names = [
+    "artifacts.json",
+    ...manifest.artifacts.flatMap((artifact) =>
+      artifact.files.map((file) =>
+        join(
+          artifact.destination,
+          artifact.destination === "." ? file : file.slice("package/".length),
+        ),
+      ),
+    ),
+  ];
+  for (const name of names)
+    files[name] = createHash("sha256")
+      .update(readFileSync(join(root, name)))
+      .digest("hex");
+  writeFileSync(
+    join(root, "payload.json"),
+    JSON.stringify({
+      driverVersion: corrupt === "version" ? "0.23.1" : manifest.driverVersion,
+      files,
+    }),
+  );
+  const entry = join(root, "node_modules/@trycua/cua-driver/dist/index.js");
+  if (corrupt === "missing") rmSync(entry);
+  if (corrupt === "javascript") writeFileSync(entry, "tampered resource");
+}
+
 function preparePackagedApp(
   fixture: DesktopFixture,
   appName: string,
   marker: "selected" | "unexpected",
+  scenario: SmokeScenario,
 ): void {
   const appBundlePath = join(
     fixture.desktopDirectory,
@@ -279,10 +422,37 @@ function preparePackagedApp(
   mkdirSync(join(resourcesPath, "app", "dist"), { recursive: true });
   mkdirSync(join(resourcesPath, "mcp"), { recursive: true });
   mkdirSync(join(appBundlePath, "Contents", "MacOS"), { recursive: true });
+  const identity = Object.values(identities)
+    .flatMap((product) => [product.production, product.development])
+    .find((item) => item.displayName === appName)!;
+  const { product, brandName, displayName, bundleId } = identity;
+  const evidence = {
+    schemaVersion: 1,
+    desktopVersion: packageMetadata.version,
+    electronVersion: packageMetadata.devDependencies.electron,
+    bundleId,
+    bridge: {
+      auth: true,
+      authCompletionRejected: true,
+      computerUse: true,
+      developerTools: true,
+      driverControls: true,
+      driver: dormantDriverEvidence(),
+      settledDriver: scenario.settledDriver ?? dormantDriverEvidence(),
+      identity: { product, brandName, displayName },
+    },
+    sdkLoadAttempted: false,
+  };
+  const output =
+    scenario.output ??
+    (scenario.probe
+      ? `[cua-probe] ${JSON.stringify(probeEvidence(bundleId))}`
+      : `[smoke-test] evidence ${JSON.stringify(evidence)}`);
   writeFileSync(
     executablePath,
-    `#!${process.execPath}\nrequire("node:fs").appendFileSync(process.env.TEST_TRACE_PATH, "${marker}\\n");\nconsole.log("[smoke-test] desktop main ready");\n`,
+    `#!${process.execPath}\nrequire("node:fs").appendFileSync(process.env.TEST_TRACE_PATH, "${marker}\\n");\nconsole.log(${JSON.stringify(output)});\n${scenario.exit === "signal" ? 'process.kill(process.pid, "SIGTERM");' : `process.exit(${scenario.exit ?? 0});`}\n`,
   );
+  if (scenario.probe) prepareCuaPayload(resourcesPath, scenario.corrupt);
   chmodSync(executablePath, 0o755);
   writeFileSync(join(resourcesPath, "app", "dist", "main.js"), "");
   writeFileSync(join(resourcesPath, "mcp", "index.mjs"), "");
@@ -291,23 +461,32 @@ function preparePackagedApp(
 function runWrapper(
   wrapper: "run-packaged-app.js" | "smoke-test-packaged-app.js",
   values: EnvironmentValues,
-  expectedAppName: "Zero Computer Use" | "Zero CU Dev" | "Okou" | "Okou Dev",
+  expectedAppName: "Okou" | "Okou Dev",
+  scenario: SmokeScenario = {},
 ): EntryPointResult {
   const fixture = createDesktopFixture();
-  for (const appName of [
-    "Zero Computer Use",
-    "Zero CU Dev",
-    "Okou",
-    "Okou Dev",
-  ]) {
+  for (const appName of ["Okou", "Okou Dev"]) {
     preparePackagedApp(
       fixture,
       appName,
       appName === expectedAppName ? "selected" : "unexpected",
+      scenario,
     );
   }
   const environment = baseEnvironment();
   environment.TEST_TRACE_PATH = fixture.tracePath;
+  if (scenario.probe) {
+    const bin = join(fixture.desktopDirectory, "bin");
+    mkdirSync(bin);
+    // macOS codesign is the only substituted verification boundary.
+    const codesign = join(bin, "codesign");
+    writeFileSync(
+      codesign,
+      `#!${process.execPath}\nprocess.exit(${scenario.corrupt === "signature" ? 1 : 0});\n`,
+    );
+    chmodSync(codesign, 0o755);
+    environment.PATH = bin + ":" + environment.PATH;
+  }
   applyEnvironmentValues(environment, values);
   const processResult = spawnSync(
     process.execPath,
@@ -315,6 +494,7 @@ function runWrapper(
       "--require",
       fixture.platformOverridePath,
       join(fixture.desktopDirectory, "scripts", wrapper),
+      ...(scenario.probe ? ["--cua-probe", "--signed"] : []),
     ],
     { encoding: "utf8", env: environment },
   );
@@ -369,20 +549,6 @@ describe("Desktop build configuration entry point", () => {
       expectedPlatformUrl: "https://staging-app.omby.ai/",
       expectedDisplayName: "Okou Dev",
     },
-    {
-      name: "keeps Zero selectable through canonical inputs",
-      environment: { canonicalProduct: "zero" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-    },
-    {
-      name: "keeps Zero selectable through the runtime file",
-      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-    },
   ] satisfies readonly (SurfaceCase & { readonly name: string })[];
 
   it.each(lifecycleCases)("$name", (testCase) => {
@@ -396,7 +562,7 @@ describe("Desktop build configuration entry point", () => {
         canonicalPlatformUrl: "https://app.okou.ai",
       },
       fileConfig: {
-        product: "zero",
+        product: "okou",
         platformUrl: "https://staging-app.omby.ai",
       },
       expectedProduct: "okou",
@@ -410,8 +576,8 @@ describe("Desktop build configuration entry point", () => {
   it("keeps non-empty explicit options ahead of canonical environment", () => {
     const result = runBuildConfig({
       environment: {
-        canonicalProduct: "zero",
-        canonicalPlatformUrl: "https://app.vm0.ai",
+        canonicalProduct: "okou",
+        canonicalPlatformUrl: "https://app.okou.ai",
       },
       productArgument: " okou ",
       platformArgument: " https://app.okou.ai ",
@@ -482,22 +648,6 @@ describe("installed Desktop configuration entry point", () => {
       expectedDisplayName: "Okou Dev",
       expectedEnvironment: "staging",
     },
-    {
-      name: "keeps Zero selectable through canonical inputs",
-      environment: { canonicalProduct: "zero" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-      expectedEnvironment: "production",
-    },
-    {
-      name: "keeps Zero selectable through the runtime file",
-      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-      expectedEnvironment: "production",
-    },
   ] satisfies readonly (InstalledSurfaceCase & { readonly name: string })[];
 
   it.each(lifecycleCases)("$name", (testCase) => {
@@ -511,7 +661,7 @@ describe("installed Desktop configuration entry point", () => {
         canonicalPlatformUrl: "https://app.okou.ai",
       },
       fileConfig: {
-        product: "zero",
+        product: "okou",
         platformUrl: "https://staging-app.omby.ai",
       },
       expectedProduct: "okou",
@@ -526,8 +676,8 @@ describe("installed Desktop configuration entry point", () => {
   it("keeps non-empty arguments ahead of canonical environment", () => {
     const result = runInstalledConfig({
       environment: {
-        canonicalProduct: "zero",
-        canonicalPlatformUrl: "https://app.vm0.ai",
+        canonicalProduct: "okou",
+        canonicalPlatformUrl: "https://app.okou.ai",
       },
       productArgument: " okou ",
       platformArgument: " https://app.okou.ai ",
@@ -560,7 +710,7 @@ describe("installed Desktop configuration entry point", () => {
         canonicalPlatformUrl: "https://canonical.example.invalid",
       },
       fileConfig: {
-        product: "zero",
+        product: "okou",
         platformUrl: "https://staging-app.omby.ai",
       },
       productArgument: "okou",
@@ -593,6 +743,36 @@ describe("installed Desktop configuration entry point", () => {
   });
 });
 
+describe("Desktop product configuration validation", () => {
+  it.each([
+    { productArgument: "unsupported" },
+    { environment: { canonicalProduct: "unsupported" } },
+    ...["unsupported", "", 1, null].map((product) => ({
+      fileConfig: { product, platformUrl: "https://app.okou.ai" },
+    })),
+  ])(
+    "rejects invalid configured product input at build and runtime: %j",
+    (input) => {
+      const testCase: InstalledSurfaceCase = {
+        ...input,
+        expectedProduct: "okou",
+        expectedPlatformUrl: "https://app.okou.ai/",
+        expectedDisplayName: "Okou",
+        expectedEnvironment: "production",
+      };
+      for (const result of [
+        runBuildConfig(testCase),
+        runInstalledConfig(testCase),
+      ]) {
+        expect(result.process.status).toBe(1);
+        expect(result.process.stderr).toMatch(
+          /Unsupported desktop product|product must be okou/,
+        );
+      }
+    },
+  );
+});
+
 describe("packaged Desktop wrapper entry points", () => {
   const wrappers = [
     "run-packaged-app.js",
@@ -612,27 +792,137 @@ describe("packaged Desktop wrapper entry points", () => {
     expectSuccessfulEntryPoint(result);
     expect(result.trace).toBe("selected\n");
   });
-  it.each(wrappers)("selects the Zero product through %s", (wrapper) => {
-    const result = runWrapper(
-      wrapper,
-      { canonicalProduct: "zero" },
-      "Zero Computer Use",
-    );
 
+  it("accepts structured lifecycle evidence only after successful process exit", () => {
+    const result = runWrapper("smoke-test-packaged-app.js", {}, "Okou", {
+      probe: true,
+    });
     expectSuccessfulEntryPoint(result);
     expect(result.trace).toBe("selected\n");
+    expect(result.process.stdout).toContain('"exitObserved":true');
+    expect(result.process.stdout).toContain('"code":0,"signal":null');
+  });
+
+  it.each(["missing", "javascript", "version", "signature"] as const)(
+    "rejects %s package damage before launching the executable",
+    (corrupt) => {
+      const result = runWrapper("smoke-test-packaged-app.js", {}, "Okou", {
+        probe: true,
+        corrupt,
+      });
+      expect(result.process.status).not.toBe(0);
+      expect(result.trace).toBe("");
+    },
+  );
+
+  it.each([1, "signal"] as const)(
+    "rejects valid metadata with process exit %s",
+    (exit) => {
+      const result = runWrapper("smoke-test-packaged-app.js", {}, "Okou", {
+        probe: true,
+        exit,
+      });
+      expect(result.process.status).toBe(1);
+      expect(result.trace).toBe("selected\n");
+    },
+  );
+
+  const validProbe = probeEvidence();
+  const malformedEvidence = [
+    "[cua-probe] {invalid JSON with private-input}",
+    '[cua-probe] {"cleanup":"confirmed"}',
+    "[cua-probe] " + JSON.stringify({ ...validProbe, driverVersion: "0.23.1" }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        metadata: { ...validProbe.metadata, embedded: false },
+      }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        metadata: { ...validProbe.metadata, hostBundleId: "unowned.app" },
+      }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        readyState: { ...validProbe.readyState, loadedDriverVersion: null },
+      }),
+    "[cua-probe] " + JSON.stringify({ ...validProbe, capture: "success" }),
+    "[cua-probe] " + JSON.stringify({ ...validProbe, accessibility: "false" }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        cleanup: { ...validProbe.cleanup, exitObserved: false },
+      }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        cleanup: { ...validProbe.cleanup, exitCode: null, exitSuccess: false },
+      }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        cleanup: { ...validProbe.cleanup, generation: 2 },
+      }),
+    "[cua-probe] " +
+      JSON.stringify({
+        ...validProbe,
+        stoppedState: { ...validProbe.stoppedState, cleanupPending: true },
+      }),
+    "[cua-probe] " +
+      JSON.stringify({ ...validProbe, privateField: "private-input" }),
+    `[cua-probe] ${JSON.stringify(validProbe)}\n[cua-probe] ${JSON.stringify(validProbe)}`,
+    "private-input".repeat(12000),
+    "no record",
+  ];
+  it.each(malformedEvidence.map((output, index) => ({ output, index })))(
+    "rejects invalid or unproven lifecycle evidence $index without exposing raw output",
+    ({ output }) => {
+      const result = runWrapper("smoke-test-packaged-app.js", {}, "Okou", {
+        probe: true,
+        output,
+      });
+      expect(result.process.status).toBe(1);
+      expect(result.process.stdout + result.process.stderr).not.toContain(
+        "private-input",
+      );
+    },
+  );
+
+  it.each([
+    { ...dormantDriverEvidence(), selectedDriver: "cua" },
+    { ...dormantDriverEvidence(), phase: "ready" },
+    { ...dormantDriverEvidence(), expectedCuaVersion: "0.23.1" },
+    {
+      ...dormantDriverEvidence(),
+      actual: { id: "cua", generation: 1, version: null },
+    },
+    {
+      ...dormantDriverEvidence(),
+      actual: { id: "okou", generation: 0, version: null },
+    },
+    { ...dormantDriverEvidence(), cleanupPending: true },
+  ])(
+    "rejects non-default or invalid settled driver state %#",
+    (settledDriver) => {
+      const result = runWrapper("smoke-test-packaged-app.js", {}, "Okou", {
+        settledDriver,
+      });
+      expect(result.process.status).toBe(1);
+    },
+  );
+
+  it("does not accept ordinary readiness/dormancy markers without actual driver state", () => {
+    const result = runWrapper("smoke-test-packaged-app.js", {}, "Okou", {
+      output: "[smoke-test] desktop main ready\n[smoke-test] cua dormant",
+    });
+    expect(result.process.status).toBe(1);
   });
 });
 
 describe("Desktop package brand assets", () => {
   it("uses the Okou app icon by default", () => {
-    const result = runForgeConfig(undefined, "icon");
-
-    expect(result.status, result.stderr).toBe(0);
-  });
-
-  it("retains the legacy icon for explicit Zero builds", () => {
-    const result = runForgeConfig("zero", "icon-zero");
+    const result = runForgeConfig();
 
     expect(result.status, result.stderr).toBe(0);
   });

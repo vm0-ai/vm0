@@ -1,4 +1,5 @@
-import { command, computed, state, type Command, type State } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
+import { delay } from "signal-timers";
 import {
   connectorAccountTargetKey,
   connectorAccountsContract,
@@ -10,7 +11,6 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { onRejection, resetSignal } from "../utils.ts";
-import { debounceCommand } from "../command-scheduling.ts";
 
 const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
 /** Keep account search responsive while coalescing normal typing bursts. */
@@ -142,115 +142,44 @@ async function fetchConnectorAccountPage(
     : { ...result.body, available: true };
 }
 
-function createConnectorAccountFirstPageQuery(
-  effectiveSearch$: State<string>,
-  resetPages$: Command<void, []>,
-  includeBuiltinScopeMismatch: boolean,
-) {
-  return command(
-    async (
-      { get, set },
-      target: ConnectorAccountTarget,
-      search: string,
-      signal: AbortSignal,
-    ): Promise<ConnectorAccountPage> => {
-      signal.throwIfAborted();
-      set(effectiveSearch$, search);
-      set(resetPages$);
-      return await fetchConnectorAccountPage(
-        {
-          createClient: get(apiClient$),
-          target,
-          search,
-          includeBuiltinScopeMismatch,
-        },
-        signal,
-      );
-    },
-  );
+interface ConnectorAccountQuery {
+  readonly target: ConnectorAccountTarget;
+  readonly search: string;
+  readonly debounce: boolean;
+  readonly signal: AbortSignal;
 }
 
-function createConnectorAccountFirstPageSignals(
-  includeBuiltinScopeMismatch: boolean,
-) {
-  const target$ = state<ConnectorAccountTarget | null>(null);
+function createConnectorAccountQuerySignals() {
+  const query$ = state<ConnectorAccountQuery | null>(null);
   const search$ = state("");
-  const effectiveSearch$ = state("");
-  const generation$ = state(0);
-  const pages$ = state<readonly ConnectorAccountPage[]>([]);
-  const loadingCursor$ = state<string | null>(null);
-  const firstPage$ = state<Promise<ConnectorAccountPage>>(
-    Promise.resolve(emptyConnectorAccountPage()),
-  );
+  const lastPage$ = state<Computed<Promise<ConnectorAccountList>> | null>(null);
   const resetQuerySignal$ = resetSignal();
-
-  const resetPages$ = command(({ set }) => {
-    set(pages$, []);
-    set(loadingCursor$, null);
-    set(generation$, (generation) => {
-      return generation + 1;
-    });
-  });
-
-  const queryFirstPage$ = createConnectorAccountFirstPageQuery(
-    effectiveSearch$,
-    resetPages$,
-    includeBuiltinScopeMismatch,
-  );
-
-  const debouncedQueryFirstPage$ = debounceCommand(
-    queryFirstPage$,
-    CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS,
-  );
-
-  const startFirstPageQuery$ = command(
-    (
-      { set },
-      target: ConnectorAccountTarget,
-      search: string,
-      debounce: boolean,
-      signal: AbortSignal,
-    ): void => {
-      const request = set(
-        debounce ? debouncedQueryFirstPage$ : queryFirstPage$,
-        target,
-        search,
-        signal,
-      );
-      set(firstPage$, request);
-    },
-  );
-
-  const accounts$ = computed(async (get): Promise<ConnectorAccountList> => {
-    const firstPage = await get(firstPage$);
-    return mergeConnectorAccountPages(firstPage, get(pages$));
-  });
-
   const setTarget$ = command(
     ({ get, set }, target: ConnectorAccountTarget, signal: AbortSignal) => {
-      const current = get(target$);
+      const current = get(query$);
       if (
         current &&
-        connectorAccountTargetKey(current) === connectorAccountTargetKey(target)
+        connectorAccountTargetKey(current.target) ===
+          connectorAccountTargetKey(target)
       ) {
         return;
       }
-      set(target$, target);
       set(search$, "");
-      const querySignal = set(resetQuerySignal$, signal);
-      set(startFirstPageQuery$, target, "", false, querySignal);
+      set(lastPage$, null);
+      set(query$, {
+        target,
+        search: "",
+        debounce: false,
+        signal: set(resetQuerySignal$, signal),
+      });
     },
   );
-
   const clearTarget$ = command(({ set }) => {
     set(resetQuerySignal$);
-    set(target$, null);
+    set(query$, null);
     set(search$, "");
-    set(effectiveSearch$, "");
-    set(resetPages$);
-    set(firstPage$, Promise.resolve(emptyConnectorAccountPage()));
+    set(lastPage$, null);
   });
-
   const setSearch$ = command(
     ({ get, set }, search: string, signal: AbortSignal) => {
       const normalized = search.trimStart();
@@ -258,48 +187,42 @@ function createConnectorAccountFirstPageSignals(
         return;
       }
       set(search$, normalized);
-      const target = get(target$);
-      if (!target) {
+      const current = get(query$);
+      if (!current) {
         return;
       }
-
-      const querySignal = set(resetQuerySignal$, signal);
-      set(
-        startFirstPageQuery$,
-        target,
-        normalized,
-        normalized.length > 0,
-        querySignal,
-      );
+      set(lastPage$, null);
+      set(query$, {
+        target: current.target,
+        search: normalized,
+        debounce: normalized.length > 0,
+        signal: set(resetQuerySignal$, signal),
+      });
     },
   );
-
   const resetSearch$ = command(({ set }) => {
     set(resetQuerySignal$);
     set(search$, "");
-    set(effectiveSearch$, "");
   });
-
   const reload$ = command(({ get, set }, signal: AbortSignal) => {
-    const target = get(target$);
-    if (!target) {
+    const current = get(query$);
+    if (!current) {
       return;
     }
-
-    const querySignal = set(resetQuerySignal$, signal);
-    set(startFirstPageQuery$, target, get(search$), false, querySignal);
+    set(lastPage$, null);
+    set(query$, {
+      target: current.target,
+      search: get(search$),
+      debounce: false,
+      signal: set(resetQuerySignal$, signal),
+    });
   });
-
   return {
-    target$,
-    effectiveSearch$,
-    generation$,
-    pages$,
-    loadingCursor$,
+    query$,
+    lastPage$,
     search$: computed((get) => {
       return get(search$);
     }),
-    accounts$,
     setTarget$,
     clearTarget$,
     setSearch$,
@@ -313,67 +236,101 @@ export function createConnectorAccountListSignals(
 ) {
   const includeBuiltinScopeMismatch =
     options.includeBuiltinScopeMismatch === true;
-  const firstPageSignals = createConnectorAccountFirstPageSignals(
-    includeBuiltinScopeMismatch,
-  );
+  const querySignals = createConnectorAccountQuerySignals();
+  const firstPage$ = computed(async (get): Promise<ConnectorAccountList> => {
+    const query = get(querySignals.query$);
+    if (!query) {
+      return emptyConnectorAccountPage();
+    }
+    if (query.debounce) {
+      await delay(CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS, {
+        signal: query.signal,
+      });
+    }
+    query.signal.throwIfAborted();
+    return fetchConnectorAccountPage(
+      {
+        createClient: get(apiClient$),
+        target: query.target,
+        search: query.search,
+        includeBuiltinScopeMismatch,
+      },
+      query.signal,
+    );
+  });
+  const accounts$ = computed(async (get): Promise<ConnectorAccountList> => {
+    return await get(get(querySignals.lastPage$) ?? firstPage$);
+  });
   const loadMore$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const generation = get(firstPageSignals.generation$);
-      const target = get(firstPageSignals.target$);
-      if (!target) {
+      const query = get(querySignals.query$);
+      if (!query) {
         return;
       }
-      const loaded = await get(firstPageSignals.accounts$);
+      const previousPage$ = get(querySignals.lastPage$) ?? firstPage$;
+      const previousPage = await get(previousPage$);
       signal.throwIfAborted();
-      if (get(firstPageSignals.generation$) !== generation) {
+      if (get(querySignals.query$) !== query) {
         return;
       }
-      const cursor = loaded.nextCursor;
-      if (!cursor || get(firstPageSignals.loadingCursor$) !== null) {
+      // Another caller already requested this cursor. Await that same page.
+      if ((get(querySignals.lastPage$) ?? firstPage$) !== previousPage$) {
+        await get(accounts$);
+        signal.throwIfAborted();
         return;
       }
-      set(firstPageSignals.loadingCursor$, cursor);
-      const result = await onRejection(
-        fetchConnectorAccountPage(
-          {
-            createClient: get(apiClient$),
-            target,
-            search: get(firstPageSignals.effectiveSearch$),
-            cursor,
-            includeBuiltinScopeMismatch,
-          },
-          signal,
-        ),
-        () => {
-          if (get(firstPageSignals.generation$) !== generation) {
-            return;
-          }
-          set(firstPageSignals.loadingCursor$, null);
-        },
-      );
-      signal.throwIfAborted();
-      if (get(firstPageSignals.generation$) !== generation) {
+      const cursor = previousPage.nextCursor;
+      if (!cursor) {
         return;
       }
-      if (!result.available) {
-        set(firstPageSignals.reload$, signal);
-        return;
-      }
-      set(firstPageSignals.pages$, (pages) => {
-        return [...pages, result];
+      const pageSignal = AbortSignal.any([query.signal, signal]);
+      const nextPage$ = computed(async (get): Promise<ConnectorAccountList> => {
+        const [previous, page] = await Promise.all([
+          get(previousPage$),
+          fetchConnectorAccountPage(
+            {
+              createClient: get(apiClient$),
+              target: query.target,
+              search: query.search,
+              cursor,
+              includeBuiltinScopeMismatch,
+            },
+            pageSignal,
+          ),
+        ]);
+        return page.available
+          ? mergeConnectorAccountPages(previous, [page])
+          : page;
       });
-      set(firstPageSignals.loadingCursor$, null);
+      set(querySignals.lastPage$, nextPage$);
+      const result = await onRejection(get(nextPage$), () => {
+        if (
+          get(querySignals.query$) === query &&
+          get(querySignals.lastPage$) === nextPage$
+        ) {
+          set(
+            querySignals.lastPage$,
+            previousPage$ === firstPage$ ? null : previousPage$,
+          );
+        }
+      });
+      signal.throwIfAborted();
+      pageSignal.throwIfAborted();
+      if (!result.available) {
+        set(querySignals.reload$, signal);
+        await get(accounts$);
+        signal.throwIfAborted();
+      }
     },
   );
-
   return {
-    search$: firstPageSignals.search$,
-    accounts$: firstPageSignals.accounts$,
-    setTarget$: firstPageSignals.setTarget$,
-    clearTarget$: firstPageSignals.clearTarget$,
-    setSearch$: firstPageSignals.setSearch$,
-    resetSearch$: firstPageSignals.resetSearch$,
-    reload$: firstPageSignals.reload$,
+    search$: querySignals.search$,
+    accounts$,
+    setTarget$: querySignals.setTarget$,
+    clearTarget$: querySignals.clearTarget$,
+    setSearch$: querySignals.setSearch$,
+    resetSearch$: querySignals.resetSearch$,
+    reload$: querySignals.reload$,
     loadMore$,
   };
 }

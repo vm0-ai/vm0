@@ -55,6 +55,7 @@ function snapshotThread(options: {
     pinnedAt: null,
     renamedAt: null,
     selectedModel: null,
+    selectedVideoModel: null,
   };
 }
 
@@ -70,6 +71,7 @@ function event(options: {
   return {
     ...options,
     selectedModel: null,
+    selectedVideoModel: null,
   };
 }
 

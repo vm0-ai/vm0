@@ -15,6 +15,9 @@ pub enum RunnerError {
     #[error("api error: {0}")]
     ApiTransport(Box<ApiTransportError>),
 
+    #[error("api error: {0}")]
+    ApiBodyRead(Box<ApiBodyReadError>),
+
     #[error("sandbox error: {0}")]
     Sandbox(#[from] sandbox::SandboxError),
 
@@ -231,6 +234,33 @@ impl std::fmt::Display for ApiTransportError {
             self.request.endpoint_label,
             self.summary,
             self.failure_cause.as_str()
+        )
+    }
+}
+
+/// Safe diagnostics for a response that failed before JSON parsing.
+#[derive(Debug)]
+pub struct ApiBodyReadError {
+    pub endpoint_label: &'static str,
+    pub status: StatusCode,
+    /// An allowlisted media type, or `other`, `invalid`, or `missing`.
+    pub content_type: &'static str,
+    pub content_length: Option<u64>,
+    pub received_bytes: u64,
+    pub failure_cause: ApiTransportCause,
+}
+
+impl std::fmt::Display for ApiBodyReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} read response body: cause={}, status={}, content_type={}, content_length={:?}, received_bytes={}",
+            self.endpoint_label,
+            self.failure_cause.as_str(),
+            self.status.as_u16(),
+            self.content_type,
+            self.content_length,
+            self.received_bytes,
         )
     }
 }

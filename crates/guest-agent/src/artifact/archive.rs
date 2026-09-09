@@ -7,7 +7,7 @@ use api_contracts::generated::constants::storages::{
 };
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, Metadata};
 use std::io::{self, Read};
@@ -713,7 +713,7 @@ mod tests {
     }
 
     fn disable_system_log() {
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
     }
 
     struct FailingWriter;

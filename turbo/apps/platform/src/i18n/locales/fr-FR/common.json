@@ -132,6 +132,7 @@
         "diskPressure": "La réutilisation de l'espace de travail a été ignorée en raison de la pression disque du runner.",
         "environment": "Environnement",
         "featureDisabled": "La réutilisation du bac à sable est désactivée pour cette exécution.",
+        "framework": "Framework",
         "generation": "Génération",
         "hostname": "Nom d’hôte",
         "invalidMetadata": "Les métadonnées de l'espace de travail en cache n'étaient pas valides.",
@@ -595,6 +596,11 @@
       "unavailable": "Aperçu {{kind}} indisponible.",
       "videoLabel": "Aperçu vidéo pour {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Partager avec l’organisation",
+      "sharePublic": "Partager publiquement",
+      "unavailable": "Cet artefact n’est pas disponible ou vous n’y avez pas accès."
+    },
     "sidebar": {
       "openSharedConversation": "Ouvrir la conversation partagée",
       "panelTitle": "Artéfacts",
@@ -610,6 +616,9 @@
       "categories": "Catégories de modèles",
       "category": "Catégorie de modèle",
       "chooseVoice": "Choisir une voix pour {{title}}",
+      "creativeVideo": "Vidéo créative",
+      "explainerUnavailable": "Ce modèle vidéo n’est plus disponible. Retirez-le pour envoyer votre message.",
+      "explainerVideo": "Vidéo explicative",
       "filters": {
         "age": "Âge",
         "all": "Tous",
@@ -1055,19 +1064,35 @@
       "continuation": {
         "activationErrorDescription": "Nous n'avons pas pu terminer la connexion. Recommencez et réessayez.",
         "activationErrorTitle": "La connexion n'a pas pu être terminée",
+        "backupDescription": "Conservez ces codes en lieu sûr. Chaque code peut être utilisé une fois si vous perdez l’accès à votre téléphone.",
+        "backupTitle": "Enregistrez vos codes de secours",
         "chooseOrganizationDescription": "Choisissez une organisation pour continuer vers {{brandName}}.",
         "chooseOrganizationTitle": "Choisir une organisation",
         "completeDescription": "Redirection vers {{brandName}}.",
         "completeTitle": "Connexion terminée",
+        "createOrganization": "Créer une organisation",
+        "invitationError": "Cette invitation n’a pas pu être acceptée. Réessayez ou demandez une nouvelle invitation si ce lien a expiré.",
+        "joinOrganization": "Rejoindre {{organizationName}}",
         "loadingDescription": "Vérification de la prochaine étape requise pour votre compte.",
         "loadingTitle": "Finalisation de la connexion",
         "noOrganizationsDescription": "Aucune organisation n'est disponible pour ce compte. Demandez l'accès à un administrateur de l'organisation, puis recommencez.",
         "noOrganizationsTitle": "Aucune organisation disponible",
+        "organizationName": "Nom de l’organisation",
+        "passwordTaskError": "Votre mot de passe n’a pas pu être mis à jour. Choisissez un mot de passe plus fort et réessayez.",
+        "phoneNumberLabel": "Numéro de téléphone",
         "recoveryAction": "Recommencer",
+        "savedCodes": "J’ai enregistré mes codes",
         "secondFactorDescription": "Cette connexion nécessite une étape de vérification supplémentaire que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "secondFactorTitle": "Vérification supplémentaire requise",
+        "securityDescription": "Ajoutez un deuxième moyen de vérifier votre identité.",
+        "securityTitle": "Configurer la validation en deux étapes",
         "selectOrganization": "Continuer avec {{organizationName}}",
+        "sendCode": "Envoyer le code",
+        "setupKey": "Clé de configuration",
+        "setupKeyDescription": "Ajoutez cette clé de configuration à votre application d’authentification, puis saisissez le code généré.",
         "signedInAs": "Connecté en tant que {{identifier}}",
+        "taskComplete": "Vos paramètres de sécurité sont enregistrés. Continuez pour terminer la connexion.",
+        "taskError": "Cette étape n’a pas pu être terminée. Vérifiez vos informations et réessayez.",
         "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "unsupportedTitle": "Étape de connexion indisponible"
       },
@@ -1884,6 +1909,25 @@
     "composer": {
       "agentSuggestions": "Agents",
       "configureModel": "Configurer le modèle",
+      "create": {
+        "addStyle": "Ajouter un style",
+        "addTemplate": "Ajouter un modèle",
+        "chooseType": "Choisissez un type",
+        "description": "Présentations, vidéos et images",
+        "exit": "Quitter le mode création",
+        "image": "Créer une image",
+        "imagePlaceholder": "Décrivez l’image à créer…",
+        "presentation": "Créer une présentation",
+        "presentationPlaceholder": "Quel est le sujet de votre présentation ?",
+        "question": "Que souhaitez-vous réaliser ?",
+        "settingsAdjusted": "Certains paramètres vidéo ont été adaptés à ce modèle",
+        "slideCount": "Nombre de diapositives",
+        "slideCountAuto": "Automatique",
+        "slideCountRange": "{{range}} diapositives",
+        "title": "Créer",
+        "video": "Créer une vidéo",
+        "videoPlaceholder": "Décrivez la vidéo à créer…"
+      },
       "createWorkflow": "Créer un workflow",
       "imageModelForThisChat": "Modèle d’image pour cette discussion",
       "message": "Message",
@@ -1941,7 +1985,6 @@
       "accountForThread": "Compte pour ce fil",
       "add": "Ajouter {{connectorName}}",
       "addConnectors": "Ajouter des connecteurs",
-      "authorizationFailed": "{{connectorName}} connecté mais n'a pas pu être autorisé pour {{agentName}}",
       "authorized": "{{connectorName}} connecté et autorisé pour {{agentName}}",
       "available_one": "Connecteurs disponibles à connecter ({{count}})",
       "available_many": "Connecteurs disponibles à connecter ({{count}})",
@@ -1950,6 +1993,45 @@
       "configurePermissions": "Configurer les autorisations de {{connectorName}}",
       "customAuthorizeDescription": "Examiner, connecter et autoriser ce connecteur personnalisé pour l'agent.",
       "defaultAccountFor": "{{connector}} · Compte par défaut utilisé : {{account}}",
+      "directory": {
+        "allCategories": "Tous",
+        "askAdmin": "Demandez à un administrateur de l'activer",
+        "browse": "Parcourir les connecteurs",
+        "configure": "Configurer",
+        "connected": "Connecté",
+        "createCustom": "Créer un connecteur",
+        "customBadge": "Personnalisé",
+        "detailAccounts": "Comptes",
+        "detailCategory": "Catégorie",
+        "detailConnection": "Connexion",
+        "detailMethod": "Méthode",
+        "detailPermissions": "Autorisations",
+        "emptyCustomBody": "Créez-en un à partir de n'importe quelle API HTTP ou serveur MCP, et Okou l'utilisera comme les autres.",
+        "emptyCustomTitle": "Aucun connecteur personnalisé",
+        "emptyYoursBody": "Connectez une application et Okou pourra y lire et y agir pour vous.",
+        "emptyYoursTitle": "Vous n'avez encore rien connecté",
+        "matchCount_one": "{{count}} résultat",
+        "matchCount_many": "{{count}} résultats",
+        "matchCount_other": "{{count}} résultats",
+        "moreAccounts_one": "+{{count}}",
+        "moreAccounts_many": "+{{count}}",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "À vérifier",
+        "noResultsBody": "Essayez un nom de produit, ou créez le vôtre à partir d'une API ou d'un serveur MCP.",
+        "noResultsTitle": "Aucun connecteur ne correspond à « {{query}} »",
+        "openDetailAria": "Ouvrir les détails de {{connector}}",
+        "otherCategory": "Autres",
+        "permissionCount_one": "{{count}} autorisation",
+        "permissionCount_many": "{{count}} autorisations",
+        "permissionCount_other": "{{count}} autorisations",
+        "searchYours": "Rechercher vos connecteurs",
+        "showAll_one": "Afficher les {{count}}",
+        "showAll_many": "Afficher les {{count}}",
+        "showAll_other": "Afficher les {{count}}",
+        "tabCustom": "Personnalisés",
+        "tabDiscover": "Découvrir",
+        "tabYours": "Vos connecteurs"
+      },
       "fallsBackTo": "Utilise {{account}} en repli",
       "find": "Rechercher des connecteurs...",
       "noUsableAccount": "Aucun compte utilisable",
@@ -1988,6 +2070,20 @@
       },
       "runCancelled": "En pause au milieu d'une pensée — reprenez-la quand vous voulez."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Trouvez une voix adaptée à votre contenu.",
+      "avatarVoice": "Voix de l’avatar",
+      "changeAvatar": "Changer d’avatar",
+      "chooseStyle": "Choisir un style",
+      "chooseStyleAndVoice": "Choisissez un style et une voix.",
+      "noMatches": "Aucun résultat. Essayez une autre recherche ou catégorie.",
+      "ready": "Prêt à utiliser. Ajoutez votre contenu dans le chat.",
+      "searchAvatars": "Rechercher des avatars",
+      "searchStyles": "Rechercher des styles",
+      "settings": "Paramètres de la vidéo explicative",
+      "style": "Style",
+      "useSelection": "Utiliser la sélection"
+    },
     "feedback": {
       "emailDraftDescription": "un brouillon d'email (ID du brouillon : {{id}})",
       "partHeading": "Retour sur cette partie de votre réponse :",
@@ -2020,50 +2116,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou décide",
-        "autoDescription": "Choisir un présentateur public HeyGen adapté à votre demande",
         "heading": "Choisir un avatar",
         "label": "Avatar",
         "none": "Aucun avatar",
-        "noneDescription": "Créer la vidéo sans présentateur",
         "previewLook": "Aperçu de l’apparence {{name}}"
       },
-      "cardDescription": "Transformez une idée ou vos contenus en vidéo finalisée",
       "catalog": {
-        "empty": "Aucune option publique HeyGen n’est disponible.",
-        "error": "Le catalogue HeyGen n’a pas pu être chargé.",
+        "error": "Le catalogue n’a pas pu être chargé.",
         "loading": "Chargement d’autres options",
         "reload": "Recharger le catalogue",
         "retry": "Réessayer"
       },
-      "description": "Ajoutez des contenus, décrivez votre objectif et choisissez éventuellement un style, un avatar et une voix HeyGen.",
-      "errors": {
-        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre demande est toujours ici, vous pouvez réessayer.",
-        "uploadFailed": "Un ou plusieurs fichiers n'ont pas pu être importés. Supprimez-les ou réessayez."
-      },
       "footer": {
-        "cancel": "Annuler",
-        "create": "Créer la vidéo",
-        "hint": "Ajoutez des consignes, des fichiers ou les deux"
-      },
-      "format": {
-        "auto": "Automatique",
-        "output": "Format de sortie"
-      },
-      "heading": "Créez votre vidéo d’introduction",
-      "help": "Ajoutez des contenus, décrivez votre objectif ou faites les deux. Okou s’occupe du reste.",
-      "prompt": {
-        "label": "Que doit transmettre la vidéo ?",
-        "placeholder": "Décrivez l’objectif, le public, la langue, le ton ou tout autre détail important"
-      },
-      "source": {
-        "drop": "Déposez vos fichiers ici ou cliquez pour les importer",
-        "remove": "Retirer {{filename}}"
+        "cancel": "Annuler"
       },
       "style": {
         "auto": "Laisser Okou choisir",
         "browseGroups": "Parcourir par style",
-        "description": "Le style définit les scènes, les transitions, les textes superposés et le rythme.",
         "groups": {
           "cinematic": "Cinéma et photographie",
           "handmade": "Artisanat et matières",
@@ -2073,25 +2142,16 @@
           "print": "Impression et édition",
           "retro-tech": "Technologie rétro et interfaces"
         },
-        "heading": "Choisir une référence de style",
-        "label": "Référence de style",
         "preview": "Aperçu de {{title}}",
         "previewUnavailable": "Aucun aperçu vidéo n’est disponible pour ce style."
       },
-      "title": "Créer une vidéo d'introduction",
       "voice": {
         "auto": "Laisser Okou choisir",
-        "autoDescription": "Okou choisit une voix publique HeyGen adaptée",
-        "default": "Par défaut · Suit l’avatar",
         "defaultDescription": "Utiliser la voix par défaut de l’avatar choisi",
-        "defaultForAvatar": "Par défaut · {{avatar}}",
-        "defaultForAvatarDescription": "Utiliser la voix HeyGen par défaut de {{avatar}}",
         "heading": "Choisir une voix",
         "label": "Voix",
         "none": "Sans voix off",
-        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine.",
-        "original": "Audio d'origine",
-        "originalDescription": "Conserver le son d’origine sélectionné sans ajouter de voix générée"
+        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine."
       }
     },
     "mail": {
@@ -2173,28 +2233,19 @@
     "promptDocumentTitle": "Prompt",
     "queue": {
       "aboutAutomationEvent": "À propos de cet événement d'automatisation",
-      "aboutGoal": "À propos de cet objectif",
       "aboutQueuedMessage": "À propos de ce message en file d'attente",
-      "activeGoal": "Objectif actif",
       "automationEvent": "Événement d'automatisation",
       "automationEventDescription": "Attend derrière les messages en file d'attente et s'exécute une fois que l'exécution en cours est terminée.",
-      "cancelGoal": "Annuler l'objectif",
       "cancellationRecoveryPending": "Finalisation de l'exécution annulée avant la reprise du travail en file d'attente.",
       "event_one": "{{count}} événement",
       "event_many": "{{count}} événements",
       "event_other": "{{count}} événements",
       "goal": "Objectif",
-      "goalDescription": "S'exécute après que la file d'attente est vidée et continue à s'exécuter jusqu'à ce que vous l'annuliez.",
-      "goalLoadFailed": "Impossible de charger cet objectif",
-      "goalRetry": "Fermez la boîte de dialogue et rouvrez-la pour réessayer.",
-      "goalUnavailable": "Cet objectif n'est plus disponible.",
       "itemsWaiting": "{{items}} en attente",
       "itemsWaitingTogether": "{{messages}} et {{events}} en attente",
-      "loadingGoal": "Chargement de l'objectif...",
       "message_one": "{{count}} message",
       "message_many": "{{count}} messages",
       "message_other": "{{count}} messages",
-      "openGoalDetails": "Ouvrir les détails de l'objectif",
       "pendingAutomationEvent": "Événement d'automatisation en attente",
       "queuedMessage": "Message en file d'attente",
       "queuedMessageDescription": "Attend en ligne et envoie une fois l'exécution actuelle terminée.",
@@ -2206,8 +2257,6 @@
       "title": "Remplacer le brouillon du compositeur ?"
     },
     "run": {
-      "automatedRun": "Exécution automatisée",
-      "collapseGroupedHistory": "Réduire l'historique des exécutions groupées",
       "collapseWorkHistory": "Réduire l'historique du travail",
       "creditUsage": "Utilisation du crédit",
       "done": {
@@ -2222,15 +2271,9 @@
         "wrappedUp": "Terminé à {{time}}"
       },
       "duration": {
-        "hour_one": "{{count}} heure",
-        "hour_many": "{{count}} heures",
-        "hour_other": "{{count}} heures",
         "hoursShort_one": "{{count}}h",
         "hoursShort_many": "{{count}}h",
         "hoursShort_other": "{{count}}h",
-        "minute_one": "{{count}} min",
-        "minute_many": "{{count}} min",
-        "minute_other": "{{count}} min",
         "minutesShort_one": "{{count}}m",
         "minutesShort_many": "{{count}}m",
         "minutesShort_other": "{{count}}m",
@@ -2238,23 +2281,21 @@
         "secondsShort_many": "{{count}}s",
         "secondsShort_other": "{{count}}s"
       },
-      "durationFor": "{{duration}} pour {{label}}",
-      "expandGroupedHistory": "Développer l’historique des exécutions groupées",
       "expandWorkHistory": "Développer l'historique du travail",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "Mode rapide désactivé",
       "fastModeOn": "Mode rapide activé",
       "fastModeWillBeOff": "Le mode rapide sera désactivé",
       "fastModeWillBeOn": "Le mode rapide sera activé",
-      "goalFor": "Objectif pour {{label}}",
-      "groupedRunsFor_one": "{{count}} exécution pour {{source}}",
-      "groupedRunsFor_many": "{{count}} exécutions pour {{source}}",
-      "groupedRunsFor_other": "{{count}} exécutions pour {{source}}",
       "justNow": "à l'instant",
       "keepGoing": "Continuez",
       "keepGoingAt": "Continuez · {{timestamp}}",
       "modelChangedTo": "Le modèle a été changé en {{model}}",
       "queueEllipsis": "en file d'attente...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefact",
+      "relatedArtifactCount_many": "{{formattedCount}} artefacts",
+      "relatedArtifactCount_other": "{{formattedCount}} artefacts",
+      "relatedArtifacts": "Artefacts associés",
       "selectedModelAppliesAfterCurrentRun": "Votre modèle sélectionné {{model}} entrera en vigueur après cette exécution",
       "thinking": {
         "assembling": "Assemblage des pièces...",
@@ -2271,7 +2312,6 @@
       "viewActivityLogs": "Voir les journaux d'activité",
       "viewLogs": "Voir les journaux d'exécution",
       "waitingIn": "En attente",
-      "worked": "Fonctionné",
       "workedFor": "Fonctionné pendant {{duration}}",
       "workingFor": "En cours depuis {{duration}}"
     },
@@ -2312,13 +2352,9 @@
       "openChatMenu": "Ouvrir le menu de discussion",
       "openListMenu": "Ouvrir le menu de la liste de discussion",
       "pin": "Épingler la discussion",
-      "pinDropAfter": "Déposer après {{title}}",
-      "pinDropBefore": "Déposer avant {{title}}",
       "pinned": "Épinglé",
       "rename": "Renommer la discussion",
       "renameDescription": "Entrez un nouveau nom pour ce fil de discussion.",
-      "reorderInstructions": "Faites glisser pour réorganiser. Appuyez sur Espace pour sélectionner, sur les flèches pour déplacer, sur Espace pour déposer ou sur Échap pour annuler.",
-      "reorderThread": "Réorganiser {{title}}",
       "titlePlaceholder": "Titre de la discussion",
       "unpin": "Détacher la discussion",
       "unread": "Non lu",
@@ -2355,6 +2391,199 @@
       "openTemplatesAria": "Parcourir les modèles",
       "startWithPrompt": "Créer",
       "templates": "Modèles"
+    },
+    "taskChips": {
+      "chooseTask": "Choisir une tâche",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Créer une invitation d’anniversaire",
+            "prompt": "Créer une invitation d’anniversaire"
+          },
+          "brandCharacter": {
+            "label": "Créer un personnage pour ma marque",
+            "prompt": "Créer un personnage pour ma marque"
+          },
+          "businessLogo": {
+            "label": "Créer un logo pour mon entreprise",
+            "prompt": "Créer un logo pour mon entreprise"
+          },
+          "cafeMenu": {
+            "label": "Créer un menu pour mon café",
+            "prompt": "Créer un menu pour mon café"
+          },
+          "eventPoster": {
+            "label": "Créer une affiche pour mon événement",
+            "prompt": "Créer une affiche pour mon événement"
+          },
+          "finishedSketch": {
+            "label": "Transformer mon croquis en visuel final",
+            "prompt": "Transformer mon croquis en visuel final"
+          },
+          "greetingCard": {
+            "label": "Créer une carte personnelle",
+            "prompt": "Créer une carte personnelle"
+          },
+          "headshot": {
+            "label": "Créer un portrait professionnel",
+            "prompt": "Créer un portrait professionnel"
+          },
+          "infographic": {
+            "label": "Transformer une idée en infographie",
+            "prompt": "Transformer une idée en infographie"
+          },
+          "newsletterCover": {
+            "label": "Créer une couverture pour ma newsletter",
+            "prompt": "Créer une couverture pour ma newsletter"
+          },
+          "packaging": {
+            "label": "Explorer des emballages pour mon produit",
+            "prompt": "Explorer des emballages pour mon produit"
+          },
+          "photoLighting": {
+            "label": "Améliorer l’éclairage de ma photo",
+            "prompt": "Améliorer l’éclairage de ma photo"
+          },
+          "presentationVisual": {
+            "label": "Créer un visuel pour ma présentation",
+            "prompt": "Créer un visuel pour ma présentation"
+          },
+          "productScene": {
+            "label": "Placer mon produit dans un nouveau décor",
+            "prompt": "Placer mon produit dans un nouveau décor"
+          },
+          "profileBanner": {
+            "label": "Renouveler ma bannière de profil",
+            "prompt": "Renouveler ma bannière de profil"
+          },
+          "roomDesign": {
+            "label": "Essayer un nouveau style pour ma pièce",
+            "prompt": "Essayer un nouveau style pour ma pièce"
+          },
+          "storePhoto": {
+            "label": "Préparer une photo pour ma boutique",
+            "prompt": "Préparer une photo pour ma boutique"
+          },
+          "websiteImage": {
+            "label": "Créer une image pour mon site",
+            "prompt": "Créer une image pour mon site"
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "Transformer une photo en vidéo",
+            "prompt": "Anime une photo fournie avec des mouvements naturels. Garde le sujet reconnaissable et demande ce qui doit bouger."
+          },
+          "brandIntro": {
+            "label": "Créer une introduction pour ma marque",
+            "prompt": "Crée une courte ouverture vidéo avec le logo et les informations de marque fournis. Aide-moi à choisir l'ambiance."
+          },
+          "eventPromo": {
+            "label": "Promouvoir mon événement",
+            "prompt": "Crée une courte vidéo promotionnelle pour mon événement. Demande l'événement, le public et les informations à inclure."
+          },
+          "loopingBackground": {
+            "label": "Créer un arrière-plan en boucle",
+            "prompt": "Crée un fond vidéo en boucle continue avec un mouvement doux. Demande la scène et l'ambiance souhaitées."
+          },
+          "productDemo": {
+            "label": "Montrer mon produit en mouvement",
+            "prompt": "Crée une courte vidéo de présentation à partir de ma photo produit. Préserve son apparence et souligne la caractéristique que je choisis."
+          },
+          "socialClip": {
+            "label": "Créer un clip pour les réseaux sociaux",
+            "prompt": "Crée une courte vidéo pour les réseaux sociaux. Aide-moi à choisir un message clair et un style adapté à mon public."
+          },
+          "videoGreeting": {
+            "label": "Créer une vidéo de vœux",
+            "prompt": "Crée une courte vidéo de vœux pour un anniversaire, une fête ou une célébration. Demande l'occasion, le destinataire et le message."
+          },
+          "visualExplainer": {
+            "label": "Expliquer une idée en images",
+            "prompt": "Crée une courte vidéo qui explique clairement une idée. Demande quelle idée présenter et à qui elle s'adresse."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Créer une page pour réserver mes services",
+            "prompt": "Crée une page expliquant mes services et comment réserver. Utilise mon lien de réservation existant et demande les détails de mes services."
+          },
+          "businessSite": {
+            "label": "Créer un site pour mon entreprise",
+            "prompt": "Crée un site présentant mon entreprise, mes services et mes coordonnées. Commence par les détails de l'activité et le public visé."
+          },
+          "cafeMenu": {
+            "label": "Mettre le menu de mon café en ligne",
+            "prompt": "Crée un site de café avec mon menu, les prix, les horaires et l'adresse, à partir des informations et photos fournies."
+          },
+          "coursePage": {
+            "label": "Créer une page pour mon cours",
+            "prompt": "Crée une page présentant mon cours, son public, les acquis et l'inscription via le lien que je fournis."
+          },
+          "eventPage": {
+            "label": "Créer une page pour mon événement",
+            "prompt": "Crée une page avec la date, le lieu, le programme et le lien d'inscription fournis. Demande les informations manquantes."
+          },
+          "linkPage": {
+            "label": "Réunir mes liens sur une seule page",
+            "prompt": "Crée une page de liens simple avec ma présentation, mon travail et mes réseaux sociaux. Demande quels liens inclure."
+          },
+          "portfolio": {
+            "label": "Présenter mon travail dans un portfolio",
+            "prompt": "Crée un site portfolio pour mon travail. Aide-moi à organiser les projets, me présenter et ajouter mes coordonnées."
+          },
+          "productLaunch": {
+            "label": "Lancer une page pour mon produit",
+            "prompt": "Crée une page produit avec ses avantages, des visuels et une prochaine action claire. Demande ce que je lance et pour qui."
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "Recevoir mon résumé matinal des e-mails",
+            "prompt": "Chaque matin, résume les e-mails importants, les réponses à préparer et les actions à mener. Confirme la boîte à utiliser et l'heure souhaitée."
+          },
+          "fileOrganization": {
+            "label": "Organiser les nouveaux fichiers",
+            "prompt": "Classe les nouveaux fichiers selon les règles de nommage convenues. Confirme la source, le dossier de destination et les catégories."
+          },
+          "meetingActions": {
+            "label": "Transformer les notes de réunion en actions",
+            "prompt": "À l'arrivée de nouvelles notes de réunion, extrais les actions, responsables et échéances. Signale les informations manquantes et confirme où trouver les notes."
+          },
+          "meetingPrep": {
+            "label": "M'aider à préparer mes réunions",
+            "prompt": "Avant les réunions, prépare les participants, le contexte et les points à discuter. Confirme le calendrier, les documents et le délai du rappel."
+          },
+          "numbersBrief": {
+            "label": "Recevoir mon résumé quotidien des chiffres",
+            "prompt": "Résume chaque jour les chiffres que je suis et leur évolution depuis le dernier point. Confirme la source, les indicateurs et l'heure."
+          },
+          "progressRecap": {
+            "label": "Résumer mes progrès et prochaines étapes",
+            "prompt": "Résume régulièrement le travail terminé, les tâches restantes et les priorités. Confirme la source des notes et une fréquence quotidienne ou hebdomadaire."
+          },
+          "replyWatch": {
+            "label": "M'avertir d'une réponse à un e-mail",
+            "prompt": "Surveille la réponse à un e-mail précis, puis préviens-moi et résume-la. Confirme d'abord l'e-mail à suivre."
+          },
+          "topicUpdates": {
+            "label": "Suivre les nouveautés d'un sujet",
+            "prompt": "Suis un sujet qui m'intéresse et résume les nouvelles informations importantes avec leurs sources. Demande le sujet et la fréquence souhaitée."
+          }
+        }
+      },
+      "ideasLabel": "Idées pour démarrer",
+      "label": "Tâches pour démarrer",
+      "moreIdeas": "Autres idées",
+      "moreTemplates": "Autres modèles",
+      "presentationTemplates": "Modèles de présentation",
+      "tasks": {
+        "image": "Image",
+        "presentation": "Diapositives",
+        "video": "Vidéo",
+        "website": "Site web",
+        "workflow": "Workflow"
+      }
     },
     "templates": {
       "categories": {
@@ -2558,8 +2787,8 @@
     },
     "callback": {
       "connected": "{{connector}} connecté",
-      "connectedAs": "Connecté en tant que {{username}}. Vous pouvez fermer cette fenêtre.",
-      "connectedDescription": "Votre compte a été connecté. Vous pouvez fermer cette fenêtre.",
+      "connectedAs": "Connecté en tant que {{username}}. Fermez cette fenêtre et revenez à la page d’origine pour continuer.",
+      "connectedDescription": "Votre compte est connecté. Fermez cette fenêtre et revenez à la page d’origine pour continuer.",
       "connecting": "Connexion de {{connector}}…",
       "connectingDescription": "Veuillez patienter pendant que nous terminons la connexion de votre compte.",
       "customConnectorLabel": "Connecteur personnalisé",
@@ -2726,6 +2955,10 @@
         "title": "Méthodes de connexion indisponibles"
       }
     },
+    "connectionProgress": {
+      "description": "Terminez l’autorisation si nécessaire. Veuillez patienter pendant la configuration de la connexion.",
+      "title": "Connexion de votre compte"
+    },
     "custom": {
       "connect": {
         "configured": "Configuré",
@@ -2794,7 +3027,7 @@
         "prefixesHint": "(un par ligne, uniquement https)",
         "recommended": "(Recommandé)",
         "redirectCopy": "Copier l'URL de redirection",
-        "redirectHint": "(Enregistrez cette URL dans l'application OAuth du fournisseur. Conservez également toute URL de redirection VM0 ou Okou existante.)",
+        "redirectHint": "(Enregistrez cette URL dans l'application OAuth du fournisseur.)",
         "redirectUrl": "URL de redirection",
         "removeApiAuthentication": "Supprimer l'authentification API",
         "removeAutomatic": "Supprimer l’authentification automatique",
@@ -5503,7 +5736,7 @@
     "displayNames": {
       "avatar": "Avatar",
       "finance": "Finance",
-      "imageRecognize": "Reconnaissance d'images",
+      "imageRecognition": "Reconnaissance d'images",
       "maps": "Cartes",
       "peopleSearch": "Recherche de personnes",
       "seo": "SEO",
@@ -5567,6 +5800,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Action requise — livraison suspendue",
         "addAction": "Ajouter une automatisation du calendrier",
         "addAria": "Ajouter une automatisation Google Calendar",
         "addDescriptionCancelled": "Exécuter ce workflow lorsqu'un événement Google Calendar est annulé.",
@@ -5575,16 +5809,29 @@
         "addTitle": "Ajouter une automatisation Google Calendar",
         "calendarId": "ID du calendrier",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "Ce calendrier n’est plus disponible. Choisissez un autre calendrier pour reprendre cette automatisation.",
         "cancelledDescription": "Exécuter lorsqu'un événement du calendrier est annulé.",
         "cancelledRule": "Lorsque l'événement du calendrier {{calendar}} est annulé",
         "cancelledTitle": "Événement Google Calendar annulé",
+        "cancelRecovery": "Annuler",
+        "changeAria": "Modifier l’automatisation Google Calendar",
+        "changeCalendar": "Changer de calendrier",
+        "checkingRecovery": "Vérification de la reprise de cette automatisation…",
+        "checkRecoveryStatus": "Vérifier l’état",
         "createdDescription": "Exécuter lorsqu'un événement du calendrier est créé.",
         "createdRule": "Lorsque le calendrier {{calendar}} reçoit un nouvel événement",
         "createdTitle": "Événement Google Calendar créé",
+        "enabledIntent": "Activée",
+        "reconnectDescription": "Google Calendar doit être reconnecté avant que cette automatisation puisse reprendre.",
+        "reconnectGoogleCalendar": "Reconnecter Google Calendar",
+        "recoveryStatus": "Rétablissement de Google Agenda",
+        "recoveryUnconfirmed": "Le rétablissement n’est pas confirmé. Consultez l’avertissement de cette automatisation, puis vérifiez à nouveau son état.",
+        "saveCalendar": "Enregistrer le calendrier",
         "summary": "Calendrier {{calendar}}",
         "updatedDescription": "Exécuter lorsqu'un événement du calendrier est mis à jour.",
         "updatedRule": "Lorsque l'événement de calendrier {{calendar}} est mis à jour",
-        "updatedTitle": "Événement Google Calendar mis à jour"
+        "updatedTitle": "Événement Google Calendar mis à jour",
+        "updateError": "Impossible de changer ce calendrier. Réessayez."
       },
       "chat": {
         "addAction": "Ajouter une automatisation de chat",
@@ -5685,7 +5932,7 @@
         "branches": "Branches",
         "branchesPlaceholder": "main, release",
         "commentPrefixes": "Préfixes de commentaire",
-        "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "Conclusions",
         "conclusionsSummary": "Conclusions {{values}}",
         "creators": "Créateurs",
@@ -6164,6 +6411,7 @@
       }
     },
     "list": {
+      "actionRequired": "Action requise",
       "agentEmpty": "Aucun workflow n'a encore été exécuté avec cet agent.",
       "all": "Tout",
       "allAgents": "Tous les agents",
@@ -6181,6 +6429,7 @@
       },
       "noWorkflows": "Aucun workflow",
       "open": "Ouvrir {{title}}",
+      "openRecovery": "Ouvrir la récupération de {{title}}",
       "runsAs": "S'exécute en tant que",
       "runsAsAria": "S'exécute en tant que {{agent}}",
       "section": {

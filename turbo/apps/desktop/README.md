@@ -1,13 +1,11 @@
 # Computer Use Desktop
 
-Electron shell for the Zero and Okou products.
+Electron shell for Okou.
 
-This pass is macOS-only. Windows packaging, native push, tray behavior, and
-auto-update are intentionally out of scope. Computer Use setup lives in the
-hosted Platform UI, while this app exposes the Desktop bridge and native macOS
-host runtime that page uses.
+Computer Use setup lives in the hosted Platform UI. This app exposes the
+Desktop bridge and native macOS host runtime that page uses.
 
-Zero Computer Use and Okou support macOS 14+ (macOS 14 or newer). Packaged app
+Okou supports macOS 14+ (macOS 14 or newer). Packaged app
 metadata, native helper builds, and release verification all use the same
 minimum for Apple silicon artifacts. Intel Macs are not supported.
 
@@ -18,6 +16,15 @@ native macOS `computer-use-helper`, and completes commands back to the API.
 Electron only owns the app shell and command bridge; the helper owns macOS
 Accessibility, target-window screenshot capture, and targeted CGEvent input
 dispatch.
+
+## Experimental Computer Use driver
+
+Okou remains the default actuator. A current Developer account can check
+**Developer Tools** in the app menu, then explicitly select **CUA (Experimental)**
+in the **Computer Use driver** panel below the hero/setup and existing developer
+panels. Showing or hiding Developer Tools does not switch or stop a driver. See [selection, recovery and manual verification](cua/README.md#developer-selection-and-recovery)
+and the exact [CUA 0.23.2 command contract](cua/ADAPTER.md). Selection is local to
+this installation; failed CUA execution never silently selects another driver.
 
 ## Development
 
@@ -31,7 +38,7 @@ This launches the generic Electron app from `node_modules`, so macOS URL scheme
 handlers, bundle identifiers, Dock identity, and permission prompts do not match
 the packaged Desktop app.
 
-From the monorepo root, start a packaged development app against the local proxy
+From `turbo/`, start a packaged development app against the local proxy
 with:
 
 ```bash
@@ -39,8 +46,7 @@ pnpm desktop:dev
 ```
 
 This packages and runs `Okou Dev.app` with `OKOU_DESKTOP_PLATFORM_URL` set to
-the local proxy. Set `OKOU_DESKTOP_PRODUCT=zero` to package `Zero CU Dev.app`
-instead. Use packaged development apps for sign-in callback, URL scheme, and
+the local proxy. Use packaged development apps for sign-in callback, URL scheme, and
 permission testing.
 Non-CI packaged desktop builds require the `Developer ID Application: Max &
 Zoe, Inc. (C5UWSXYB67)` signing identity in the local keychain. This keeps the
@@ -63,16 +69,7 @@ This builds the production `Okou.app` with bundle ID and callback scheme
 `ai.okou.desktop`, signs it with the local Developer ID Application identity,
 submits it to Apple's notary service, staples the notarization ticket, and
 writes the zip artifact under `apps/desktop/out/make`. Development Okou builds
-use `ai.okou.desktop.dev`. Build the independent Zero identity with:
-
-```bash
-OKOU_DESKTOP_PRODUCT=zero \
-OKOU_DESKTOP_PLATFORM_URL=https://app.vm0.ai \
-pnpm -F @okouai/desktop make
-```
-
-That build creates `Zero Computer Use.app` with bundle ID and callback scheme
-`ai.vm0.zero.desktop`.
+use `ai.okou.desktop.dev`.
 Local notarized builds use the `notarytool` Keychain profile
 `vm0-desktop-notary` by default. Set `OKOU_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
 override the profile and `OKOU_DESKTOP_NOTARIZE_KEYCHAIN` to override the
@@ -138,13 +135,6 @@ publishes `okou-desktop-vX.Y.Z` containing `Okou-darwin-arm64-X.Y.Z.zip` and
 The release workflow then updates the Okou manifest. The Zero manifest is frozen
 at its final bridge release and is no longer produced by any build.
 
-Use the product's DMG for manual installation. It opens with a product-specific
-Finder background, the app on the left, and an `/Applications` symlink on the
-right for drag-to-install. Update manifests continue to point at the ZIP
-artifacts because the auto-update feeds consume ZIP releases. Release smoke
-tests copy Okou from the DMG into an isolated Applications directory, launch it,
-replace it from the Okou update ZIP, and launch it again.
-
 ### Zero and Okou update compatibility
 
 Final `ai.okou.desktop` installations use
@@ -172,14 +162,14 @@ Okou schemes (`ai.okou.desktop` and `ai.okou.desktop.dev`). Desktop
 builds select exactly one product feed and one callback scheme from their
 packaged identity; they do not discover or switch products at runtime.
 
-`OKOU_DESKTOP_PRODUCT` defaults to `okou`, so an unconfigured local or CI build
-produces `Okou.app`. Zero remains selectable through an explicit
-`OKOU_DESKTOP_PRODUCT=zero` or a runtime config naming that product; only the
-build-side default retired. Okou production builds package a runtime
+Current Desktop builds support only Okou. `OKOU_DESKTOP_PRODUCT` and the
+runtime configuration's optional `product` field accept `okou`; unsupported
+products fail validation. An unconfigured local or CI build produces
+`Okou.app`, while staging and local origins select `Okou Dev.app` with its
+existing `Okou Dev` profile. Okou production builds package a runtime
 configuration containing
 `product: okou` and `https://app.okou.ai`. That app origin routes API calls to
-`api.okou.ai`, while Clerk and OAuth web flows remain canonical on
-`www.vm0.ai`.
+`api.okou.ai`, while Clerk and OAuth web flows use `app.okou.ai`.
 
 Okou is a separate macOS application identity. It can be installed beside
 Zero, stores Electron data under its explicit `Okou` data directory, and gets a
@@ -187,8 +177,10 @@ new installation ID. It does not read or migrate the pre-adoption Okou profile
 or Zero's Chromium profile. Users sign in again and grant Accessibility, Screen
 Recording, and browser Automation permissions again because macOS TCC
 associates those permissions with the application identity. The current
-release promotion signs and notarizes both product lines while publishing them
-under independent release tags and update manifests.
+release promotion signs and notarizes only Okou, publishing under its existing
+release tag and update manifest identities. The local manifest writer requires
+existing manifests to identify `product: okou`; it rejects missing or conflicting
+product values instead of relabeling historical artifacts.
 
 ### Final Zero bridge release
 

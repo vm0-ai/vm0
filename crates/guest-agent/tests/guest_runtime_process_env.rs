@@ -1,4 +1,4 @@
-//! Production runtime bootstrap should install explicit guest-common paths.
+//! Production runtime bootstrap should install explicit guest-telemetry paths.
 //!
 //! This test lives in its own binary to isolate process env captured by
 //! `GuestRuntime::from_process_env`.
@@ -46,19 +46,19 @@ fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
         )
         .unwrap();
     }
-    guest_common::log::clear_system_log_file();
-    guest_common::telemetry::clear_sandbox_ops_log_file();
+    guest_telemetry::log::clear_system_log_file();
+    guest_telemetry::telemetry::clear_sandbox_ops_log_file();
 
     let runtime = guest_agent::run_context::GuestRuntime::from_process_env().unwrap();
 
     assert!(runtime.workload_containment.is_none());
     assert_eq!(runtime.paths.runtime_dir(), runtime_dir.as_path());
 
-    guest_common::log_info!(
+    guest_telemetry::log_info!(
         "sandbox:guest-agent-test",
         "runtime bootstrap system log marker"
     );
-    guest_common::telemetry::record_sandbox_op(
+    guest_telemetry::telemetry::record_sandbox_op(
         "runtime_bootstrap_sandbox_op",
         Duration::from_millis(7),
         true,

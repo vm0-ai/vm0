@@ -298,7 +298,7 @@ function lockedInstallationMatches(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly agentId: string;
+    readonly agentId: string | null;
   },
 ): boolean {
   return (
@@ -399,7 +399,7 @@ export async function validateOfficialWorkflowRunForInsert(
     readonly observation: OfficialWorkflowRunObservation | undefined;
     readonly orgId: string;
     readonly userId: string;
-    readonly agentId: string;
+    readonly agentId: string | null;
     readonly automationId: string | undefined;
     readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
     readonly allowMissingMountsForFailedRun: boolean;

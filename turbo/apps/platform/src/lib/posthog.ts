@@ -45,6 +45,10 @@ const AUTH_V2_DIAGNOSTIC_STEPS = [
   "initialize",
   "new-password",
   "oauth-callback",
+  "one-tap-continuation",
+  "one-tap-exchange",
+  "one-tap-prompt",
+  "one-tap-sign-up",
   "password",
   "password-reset-code",
   "recovery",
@@ -59,6 +63,7 @@ export type AuthV2DiagnosticOutcome =
   (typeof AUTH_V2_DIAGNOSTIC_OUTCOMES)[number];
 
 const AUTH_V2_DIAGNOSTIC_ERROR_CATEGORIES = [
+  "account-not-found",
   "cancelled",
   "captcha",
   "configuration",

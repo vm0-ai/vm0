@@ -129,9 +129,18 @@ impl DevicePoolHandle {
 
     #[cfg(test)]
     pub(crate) fn new_one_device_for_test(config: DevicePoolConfig, lock_dir: &Path) -> Self {
+        Self::new_devices_for_test(config, lock_dir, 1)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_devices_for_test(
+        config: DevicePoolConfig,
+        lock_dir: &Path,
+        max_devices: u32,
+    ) -> Self {
         Self::from_pool(DevicePool::new_with_options(
             config,
-            1,
+            max_devices,
             lock_dir.to_path_buf(),
             |_| true,
         ))

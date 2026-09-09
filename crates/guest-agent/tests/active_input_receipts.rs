@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::http::HttpClient;
 use httpmock::prelude::*;
@@ -318,6 +319,72 @@ async fn transport_failure_gets_only_one_finalization_retry()
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn finalization_receipt_survives_api_cold_start() -> Result<(), Box<dyn std::error::Error>> {
+    let server = MockServer::start_async().await;
+    let path = format!("/api/runners/runs/{RUN_ID}/active-inputs/deliveries/{DELIVERY_ID}/receipt");
+    let unavailable = server
+        .mock_async(|when, then| {
+            when.method(POST).path(&path);
+            then.status(503);
+        })
+        .await;
+    let tmp = tempfile::tempdir()?;
+    let journal_path = tmp.path().join("active-input-receipts.json");
+    let runtime = ActiveInputRuntime::new_with_receipts(
+        RUN_ID,
+        "initial",
+        &journal_path,
+        receipt_http(&server.base_url())?,
+    )?;
+    let controller = runtime.controller();
+    let mut writer = runtime.into_writer();
+    assert_eq!(
+        controller.handle_control_payload(&payload(PROMPT)?),
+        ActiveInputControlOutcome::Accepted
+    );
+    let frame = writer
+        .next_frame()
+        .await
+        .expect("input should reach the sink");
+    writer.mark_writing(&frame.uuid);
+    writer.mark_backend_accepted_without_replay(&frame)?;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while unavailable.calls_async().await == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the initial receipt request should reach the server");
+    unavailable.delete_async().await;
+    let delivered = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(&path)
+                .header("authorization", "Bearer test-token");
+            then.status(200)
+                .delay(Duration::from_secs(6))
+                .json_body(json!({ "outcome": "delivered" }));
+        })
+        .await;
+
+    controller.close_terminal();
+    assert_eq!(
+        controller.finalize_receipts().await?,
+        vec![DELIVERY_ID.to_string()]
+    );
+    delivered.assert_calls_async(1).await;
+    assert!(
+        guest_contracts::active_input_receipts::read_active_input_receipt_journal(
+            &journal_path,
+            RUN_ID,
+        )?
+        .is_empty(),
+        "finalization must wait for the delayed acknowledgement before compacting the journal"
+    );
+    Ok(())
+}
+
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn journal_publication_failure_is_terminal_after_backend_acceptance()
@@ -432,11 +499,18 @@ async fn unacknowledged_journal_recovers_without_requeueing_the_backend()
         receipt_http(&server.base_url())?,
     )?;
     let recovered_controller = recovered.controller();
-    let _writer = recovered.into_writer();
+    let mut recovered_writer = recovered.into_writer();
 
     assert_eq!(
         recovered_controller.handle_control_payload(&accepted_payload),
-        ActiveInputControlOutcome::Accepted,
+        ActiveInputControlOutcome::Accepted
+    );
+    // Admission enqueues synchronously. Poll before close hides queued frames,
+    // without allowing a cooperative yield to masquerade as an empty queue.
+    assert!(
+        tokio::task::unconstrained(recovered_writer.next_frame())
+            .now_or_never()
+            .is_none(),
         "a recovered delivery must not be queued for the backend again"
     );
     recovered_controller.close_terminal();

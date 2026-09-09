@@ -3,11 +3,11 @@ import { stripMarkdown } from "../../lib/strip-markdown";
 const OBJECTIVE_BRIEF_MAX_CHARS = 140;
 const DEFAULT_GOAL_OBJECTIVE_BRIEF = "Untitled goal";
 
-export function compactGoalObjectiveBriefText(text: string): string {
+function compactGoalObjectiveBriefText(text: string): string {
   return stripMarkdown(text).replace(/\s+/g, " ").trim();
 }
 
-export function capGoalObjectiveBriefText(text: string): string {
+function capGoalObjectiveBriefText(text: string): string {
   const maxTextChars = OBJECTIVE_BRIEF_MAX_CHARS - 3;
   let endIndex = 0;
   let charCount = 0;
@@ -23,7 +23,7 @@ export function capGoalObjectiveBriefText(text: string): string {
   return text;
 }
 
-export function fallbackGoalObjectiveBrief(objective: string): string {
+function fallbackGoalObjectiveBrief(objective: string): string {
   const firstNonEmptyLine = objective
     .split(/\r?\n/)
     .map((line) => {

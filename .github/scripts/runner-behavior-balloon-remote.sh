@@ -300,7 +300,7 @@ echo "PASS: balloon physically deflated beyond retired partial bound from ${INFL
 # Test 3: re-inflate after pressure released — kill the host-side
 # exec first (prevents further output), then kill the guest-side
 # allocator. The host kill does NOT propagate to the guest process
-# because vsock-guest spawns it independently.
+# because guest-control-server spawns it independently.
 echo "--- Test 3: balloon re-inflate after pressure release ---"
 kill "$ALLOC_PID" 2>/dev/null || true
 wait "$ALLOC_PID" 2>/dev/null || true

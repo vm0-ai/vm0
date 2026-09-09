@@ -11,7 +11,6 @@ import {
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
@@ -36,8 +35,7 @@ import {
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
 import { usageUnderbillingFields } from "../usage-underbilling";
-import { piMemoryPhase2MaintenanceCallbackPayloadSchema } from "../services/pi-memory-phase2-maintenance.service";
-import { recordPiMemoryPhase2Usage } from "../services/pi-memory-phase2-usage.service";
+import { loadPiMemoryPhase2UsageBinding } from "../services/pi-memory-phase2-usage.service";
 
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
@@ -51,6 +49,11 @@ interface SandboxOperationDimensionInput {
   readonly error?: string;
   readonly outcome?: string;
   readonly reason?: string;
+  readonly dns_readiness_attempt?: number;
+  readonly dns_readiness_final_attempt?: boolean;
+  readonly dns_readiness_guest_duration_ms?: number;
+  readonly dns_readiness_host_residual_ms?: number;
+  readonly dns_readiness_timing?: string;
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly runner_pre_spawn_concurrency_bucket?: RunnerPreSpawnConcurrencyBucket;
@@ -99,10 +102,32 @@ function runnerResourceBudgetDimensions(
   };
 }
 
+function dnsReadinessDimensions(
+  op: SandboxOperationDimensionInput,
+): Record<string, string | number | boolean> {
+  return {
+    ...(op.dns_readiness_attempt !== undefined
+      ? { dns_readiness_attempt: op.dns_readiness_attempt }
+      : {}),
+    ...(op.dns_readiness_final_attempt !== undefined
+      ? { dns_readiness_final_attempt: op.dns_readiness_final_attempt }
+      : {}),
+    ...(op.dns_readiness_guest_duration_ms !== undefined
+      ? { dns_readiness_guest_duration_ms: op.dns_readiness_guest_duration_ms }
+      : {}),
+    ...(op.dns_readiness_host_residual_ms !== undefined
+      ? { dns_readiness_host_residual_ms: op.dns_readiness_host_residual_ms }
+      : {}),
+    ...(op.dns_readiness_timing
+      ? { dns_readiness_timing: op.dns_readiness_timing }
+      : {}),
+  };
+}
+
 function sandboxOperationDimensions(
   op: SandboxOperationDimensionInput,
   runner: SandboxRunnerDimensionInput,
-): Record<string, string> {
+): Record<string, string | number | boolean> {
   return {
     source: "sandbox",
     ...(runner.runnerHostname
@@ -112,6 +137,7 @@ function sandboxOperationDimensions(
     ...(op.error ? { error: op.error } : {}),
     ...(op.outcome ? { outcome: op.outcome } : {}),
     ...(op.reason ? { reason: op.reason } : {}),
+    ...dnsReadinessDimensions(op),
     ...(op.runner_startup_path
       ? { runner_startup_path: op.runner_startup_path }
       : {}),
@@ -235,36 +261,24 @@ const maintenanceUsage$ = command(async ({ get, set }, signal: AbortSignal) => {
     return unauthorizedRunMismatch;
   }
   const db = set(writeDb$);
-  const [callback] = await db
-    .select({ payload: agentRunCallbacks.payload })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, auth.runId),
-        eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
-      ),
-    )
-    .limit(1);
+  const binding = await loadPiMemoryPhase2UsageBinding(db, auth);
   signal.throwIfAborted();
-  const binding = piMemoryPhase2MaintenanceCallbackPayloadSchema.safeParse(
-    callback?.payload,
-  );
   if (
-    !binding.success ||
-    binding.data.orgId !== auth.orgId ||
-    binding.data.userId !== auth.userId ||
-    binding.data.memoryStorageId !== body.memoryStorageId ||
-    binding.data.leaseToken !== body.leaseToken ||
-    binding.data.claimedRevision !== body.claimedRevision ||
-    binding.data.claimedBaseVersionId !== body.claimedBaseVersionId ||
-    binding.data.selectionDigest !== body.selectionDigest
+    !binding ||
+    binding.memoryStorageId !== body.memoryStorageId ||
+    binding.leaseToken !== body.leaseToken ||
+    binding.claimedRevision !== body.claimedRevision ||
+    binding.claimedBaseVersionId !== body.claimedBaseVersionId ||
+    binding.selectionDigest !== body.selectionDigest
   ) {
     return notFound("Pi memory maintenance usage binding not found");
   }
-  for (const attempt of body.attempts) {
-    await recordPiMemoryPhase2Usage(db, { ...binding.data, ...attempt });
-    signal.throwIfAborted();
-  }
+  // Existing Guest/commit-pinned CLI contexts still submit this journal. ACK
+  // their validated private binding, but only usageEvent$ charges the provider
+  // work. The proxy survives a killed child and also covers missing journals.
+  // Retire this ACK under #32788 only after the last old
+  // producer's contexts drain: up to two hours queued, two hours executing,
+  // and bounded finalization. New API + old Guest/CLI keeps the same response.
   return { status: 200 as const, body: { success: true } };
 });
 const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -361,6 +375,7 @@ function telemetryMetricEvent(
     runId,
     userId,
     cpu: metric.cpu,
+    ...(metric.memory === undefined ? {} : { memory: metric.memory }),
     ...(metric.cpu_steal_percent === undefined
       ? {}
       : { cpu_steal_percent: metric.cpu_steal_percent }),
@@ -390,6 +405,50 @@ function telemetryMetricEvent(
       ? {}
       : { workload_cpu_throttled_usec: metric.workload_cpu_throttled_usec }),
   };
+}
+
+function telemetryOomEvents(
+  evidence: NonNullable<TelemetryBody["oomEvidence"]>,
+  runId: string,
+  userId: string,
+  sandboxId: string | undefined,
+): Record<string, unknown>[] {
+  const identity = {
+    runId: runId,
+    userId: userId,
+    sandboxId: sandboxId,
+    operation_id: evidence.operation_id,
+    guest_boot_id: evidence.guest_boot_id,
+    started_boottime_us: evidence.started_boottime_us,
+    kernel_cursor: evidence.kernel_cursor,
+    ingested_at: nowDate().toISOString(),
+    dropped_incidents: evidence.dropped_incidents,
+  };
+  return [
+    {
+      ...identity,
+      type: "guest_memory_snapshot",
+      _time: evidence.sampled_at,
+      sampled_at: evidence.sampled_at,
+      kernel_status: evidence.kernel_status,
+      groups: evidence.groups,
+    },
+    ...evidence.incidents.map((incident) => {
+      return {
+        ...identity,
+        type: "guest_oom_incident",
+        _time: incident.captured_at,
+        incident_id: incident.id,
+        captured_at: incident.captured_at,
+        reason: incident.reason,
+        after_observation: incident.after_observation,
+        before_cleanup: incident.before_cleanup,
+        kernel_status: incident.kernel_status,
+        kernel_events: incident.kernel_events,
+        groups: incident.groups,
+      };
+    }),
+  ];
 }
 
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
@@ -425,6 +484,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   const telemetryBatches: {
     readonly dataset: string;
     readonly events: readonly Record<string, unknown>[];
+    readonly includesOomEvidence?: boolean;
   }[] = [];
 
   if (body.systemLog) {
@@ -450,6 +510,19 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     });
   }
 
+  if (body.oomEvidence) {
+    telemetryBatches.push({
+      includesOomEvidence: true,
+      dataset: getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
+      events: telemetryOomEvents(
+        body.oomEvidence,
+        body.runId,
+        auth.userId,
+        body.sandboxId,
+      ),
+    });
+  }
+
   if (body.networkLogs && body.networkLogs.length > 0) {
     telemetryBatches.push({
       dataset: getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
@@ -464,18 +537,23 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     });
   }
 
+  let oomEvidenceIngested = false;
   if (telemetryBatches.length > 0) {
-    await Promise.all(
+    const ingestionResults = await Promise.all(
       telemetryBatches.map(async (batch) => {
-        await ingestAxiomDirect(
+        const result = await ingestAxiomDirect(
           batch.dataset,
           batch.events,
           TELEMETRY_INGEST_TIMEOUT_MS,
           signal,
         );
+        return batch.includesOomEvidence === true && result.configured;
       }),
     );
     signal.throwIfAborted();
+    oomEvidenceIngested = ingestionResults.some((ingested) => {
+      return ingested;
+    });
   }
 
   if (body.sandboxOperations && body.sandboxOperations.length > 0) {
@@ -500,6 +578,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     body: {
       success: true,
       id: body.runId,
+      ...(oomEvidenceIngested ? { oomEvidenceVersion: 1 as const } : {}),
     },
   };
 });

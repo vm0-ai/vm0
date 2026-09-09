@@ -24,6 +24,8 @@ use crate::provider::ApiClient;
 use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, json_response};
 use crate::types::SandboxReuseResult;
 
+mod read_backoff;
+
 const DELIVERY_ID: &str = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
 const EVENT_ID: &str = "e6bc287d-8c08-464e-831a-cad771610157";
 
@@ -1169,6 +1171,15 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 
+    // Freeze the clock before the first attempt. Blocking work prevents Tokio
+    // from auto-advancing through deadlines while startup performs real I/O.
+    // Dropping the sender also releases the guard if an assertion panics.
+    let (clock_release, clock_wait) = std::sync::mpsc::channel::<()>();
+    let clock_guard = tokio::task::spawn_blocking(move || {
+        let _ = clock_wait.recv_timeout(Duration::from_secs(30));
+    });
+    tokio::time::pause();
+
     let run_task = tokio::spawn(async move {
         run_in_sandbox(
             &*sandbox,
@@ -1201,8 +1212,8 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
             .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
-    tokio::time::pause();
     let mut previous_attempt_at = tokio::time::Instant::now();
+    drop(clock_release);
     for (index, expected_delay) in retry_delays.into_iter().enumerate() {
         assert!(
             overrides
@@ -1220,6 +1231,7 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     }
 
     tokio::time::resume();
+    clock_guard.await.unwrap();
     wait_gate.notify_one();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await
@@ -1240,16 +1252,34 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
 
 #[tokio::test]
 async fn run_in_sandbox_suppresses_possibly_written_delivery() {
+    assert_uncertain_delivery_is_suppressed(sandbox::ProcessControlOutcome::Failed {
+        kind: sandbox::ProcessControlFailureKind::Operation,
+        write_state: sandbox::ProcessControlWriteState::PossiblyWritten,
+        error: std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "delivery acknowledgement timed out",
+        ),
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_suppresses_delivery_when_control_sink_closed() {
+    assert_uncertain_delivery_is_suppressed(sandbox::ProcessControlOutcome::GuestStatus {
+        status: sandbox::ProcessControlGuestStatus::SinkClosed,
+        diagnostic: "control sink closed".into(),
+    })
+    .await;
+}
+
+async fn assert_uncertain_delivery_is_suppressed(outcome: sandbox::ProcessControlOutcome) {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let wait_gate = Arc::new(tokio::sync::Notify::new());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&wait_gate),
     ));
-    overrides.push_process_control_io_error(
-        std::io::ErrorKind::TimedOut,
-        "delivery acknowledgement timed out",
-    );
+    overrides.push_process_control_outcome(outcome);
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;

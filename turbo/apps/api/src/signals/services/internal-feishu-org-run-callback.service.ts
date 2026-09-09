@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
@@ -55,7 +54,6 @@ interface HandleFeishuCallbackInput {
     readonly runId: string;
     readonly chatThreadId: string | null | undefined;
     readonly errorMessage: string;
-    readonly publicBrand: PublicBrand;
   }) => Promise<string>;
   readonly saveRunSummary: (
     runId: string,
@@ -207,7 +205,6 @@ async function handleFeishuCallback(
   if (!installation) {
     return { success: false, error: "Feishu installation not found" };
   }
-  const publicBrand = payload.publicBrand;
   const connection = await loadFeishuCallbackConnection(args.db, payload);
   signal.throwIfAborted();
   if (!connection) {
@@ -231,7 +228,6 @@ async function handleFeishuCallback(
           runId: args.callback.runId,
           chatThreadId: run.chatThreadId,
           errorMessage: args.callback.error ?? "Agent execution failed.",
-          publicBrand,
         })
       : undefined;
   signal.throwIfAborted();
@@ -242,7 +238,6 @@ async function handleFeishuCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: payload.agentId ?? run.agentId,
-      publicBrand,
       defaultAgentId: installation.defaultAgentId ?? undefined,
       getFeatureOverrides: args.getFeatureOverrides,
     },
@@ -255,7 +250,6 @@ async function handleFeishuCallback(
       : (output ?? "Task completed successfully.");
   const responseMessage = buildFeishuAgentResponseMessage({
     text: responseText,
-    publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });

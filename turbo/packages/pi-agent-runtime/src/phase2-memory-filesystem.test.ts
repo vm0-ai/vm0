@@ -114,7 +114,6 @@ function consolidationArgs(
       baseUrl: "http://127.0.0.1:1/v1",
       apiKey: "unused-test-key",
       model: "gpt-5.6-terra",
-      api: "openai-responses",
       dialect: "openai-responses",
     },
     heartbeat: async () => {

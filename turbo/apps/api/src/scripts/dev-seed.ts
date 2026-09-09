@@ -415,7 +415,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(1), 1_000_000],
     ["tokens.cache_creation", usd(12.5), 1_000_000],
   ]),
-  // Canonical VM0 customer credit pricing for managed DeepSeek V4 Flash.
+  // Canonical Okou customer credit pricing for managed DeepSeek V4 Flash.
   // Keep this product rate independent of the selected upstream route.
   ...usageGroup("model", "deepseek-v4-flash", [
     ["tokens.input", usd(0.14), 1_000_000],
@@ -738,11 +738,11 @@ type OptionalEnvReader = (name: string) => string | undefined;
 type LineWriter = (message: string) => void;
 
 /**
- * Build vm0_api_keys entries from environment variables.
- * Vendors are derived from all VM0 built-in candidates so new providers are
+ * Build built_in_model_keys entries from environment variables.
+ * Vendors are derived from all built-in candidates so new providers are
  * automatically picked up.
  */
-export function buildVm0ApiKeys(
+export function buildBuiltInModelKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
@@ -787,9 +787,9 @@ async function devSeed() {
     });
   writeLine(`Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
-  // --- vm0_api_keys (transactional replace) ---
-  writeLine("Seeding vm0_api_keys");
-  const apiKeys = buildVm0ApiKeys();
+  // --- built_in_model_keys (transactional replace) ---
+  writeLine("Seeding built_in_model_keys");
+  const apiKeys = buildBuiltInModelKeys();
   await database.transaction(async (tx) => {
     await tx.delete(builtInModelKeys);
     if (apiKeys.length > 0) {
@@ -797,9 +797,9 @@ async function devSeed() {
     }
   });
   for (const k of apiKeys) {
-    writeLine(`Seeded vm0 API key entry: ${k.vendor}`);
+    writeLine(`Seeded built-in model key entry: ${k.vendor}`);
   }
-  writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
+  writeLine(`Seeded ${apiKeys.length} built-in model key entries`);
 
   // --- skills (published volumes + seed-skill metadata fallback) ---
   const seedSkillVolumes = getDevSeedSkillVolumes();

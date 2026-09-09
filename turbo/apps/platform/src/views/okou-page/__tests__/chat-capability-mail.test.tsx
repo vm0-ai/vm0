@@ -28,7 +28,7 @@ const SECOND_MAIL_ID = "e0000000-0000-4000-a000-000000000854";
 const DETAILS_MAIL_ID = "e0000000-0000-4000-a000-000000000855";
 const GMAIL_CONNECTION_ID = "e0000000-0000-4000-a000-000000000856";
 const DEFAULT_GMAIL_CONNECTION_ID = "e0000000-0000-4000-a000-000000000857";
-const APP_HOST = "app.vm0.ai";
+const APP_HOST = "app.okou.ai";
 
 function mailUrl(mailDraftId: string): string {
   return `https://${APP_HOST}/mail/drafts/${mailDraftId}`;
@@ -252,7 +252,10 @@ test("Reconnect the exact Gmail account required by a persisted mail card", asyn
       { intent: "reconnect", connectionId: GMAIL_CONNECTION_ID },
     ]);
   });
-  expect(screen.getByText(subject)).toBeVisible();
+  expect(
+    screen.queryByRole("dialog", { name: "Connecting your account" }),
+  ).toBeNull();
+  await expect(screen.findByText("Reconnecting…")).resolves.toBeVisible();
   await expect(findMailCard(subject)).resolves.toBeVisible();
 
   gmailReady = true;
@@ -279,6 +282,9 @@ test("Reconnect the exact Gmail account required by a persisted mail card", asyn
   });
   expect(within(sidebar).getByText(subject)).toBeVisible();
   expect(within(sidebar).getByText("A persisted email message.")).toBeVisible();
+  expect(
+    screen.queryByRole("dialog", { name: "Connecting your account" }),
+  ).not.toBeInTheDocument();
 });
 
 test("Send, revisit, and delete mail drafts from chat", async () => {

@@ -1,5 +1,4 @@
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen } from "@testing-library/react";
 
 import {
@@ -26,16 +25,11 @@ export function setupArtifactCatalogPage(
   context: TestContext,
   options: {
     readonly path?: string;
-    readonly sharedConversations?: boolean;
   } = {},
 ): Promise<void> {
   return setupPage({
     context,
     path: options.path ?? "/artifacts",
-    featureSwitches: {
-      [FeatureSwitchKey.SharedThreadSharing]:
-        options.sharedConversations ?? true,
-    },
   });
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVm0ApiKeys } from "../dev-seed";
+import { buildBuiltInModelKeys } from "../dev-seed";
 
 function readEnvFrom(
   values: Readonly<Record<string, string | undefined>>,
@@ -13,15 +13,15 @@ function readEnvFrom(
 function buildVendorKeys(
   vendor: string,
   values: Readonly<Record<string, string | undefined>>,
-): ReturnType<typeof buildVm0ApiKeys> {
-  return buildVm0ApiKeys(readEnvFrom(values), () => {
+): ReturnType<typeof buildBuiltInModelKeys> {
+  return buildBuiltInModelKeys(readEnvFrom(values), () => {
     // Suppress expected skip logs for vendors that are not configured in tests.
   }).filter((key) => {
     return key.vendor === vendor;
   });
 }
 
-describe("buildVm0ApiKeys", () => {
+describe("buildBuiltInModelKeys", () => {
   it("falls back to ANTHROPIC_API_KEY for Anthropic dev seed rows", () => {
     const anthropicKeys = buildVendorKeys("anthropic", {
       DEV_MODEL_ANTHROPIC_KEY: "",
