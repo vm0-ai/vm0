@@ -273,13 +273,15 @@ function memberUsageTotals(
   members: readonly MemberDisplay[],
   selections: Readonly<Record<string, MemberUsageSelection>>,
   catalog: readonly MemberUsagePackOption[],
+  defaultUsage: MemberUsageSelection = catalog[0]?.usagePackUsd ??
+    MINIMUM_USAGE_PACK_USD,
 ): MemberUsageTotals {
   return members.reduce<MemberUsageTotals>(
     (totals, member) => {
       const selection = memberUsageSelection(
         selections,
         member.id,
-        catalog[0]?.usagePackUsd,
+        defaultUsage,
       );
       const item = usagePackCatalogItem(catalog, selection);
       return {
@@ -371,17 +373,41 @@ function checkoutMemberUsagePacks(
   members: readonly MemberDisplay[],
   selections: Readonly<Record<string, MemberUsageSelection>>,
   catalog: readonly MemberUsagePackOption[] | null,
+  defaultUsage: MemberUsageSelection = catalog?.[0]?.usagePackUsd ??
+    MINIMUM_USAGE_PACK_USD,
 ): readonly MemberUsagePack[] {
   return members.map((member) => {
     return {
       memberId: member.id,
-      usagePackUsd: memberUsageSelection(
-        selections,
-        member.id,
-        catalog?.[0]?.usagePackUsd,
-      ),
+      usagePackUsd: memberUsageSelection(selections, member.id, defaultUsage),
     };
   });
+}
+
+function checkoutMemberUsagePackState(
+  members: readonly MemberDisplay[] | undefined,
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+  catalog: readonly MemberUsagePackOption[] | null,
+  defaultUsage: MemberUsageSelection,
+): {
+  readonly hasPaidUsagePack: boolean;
+  readonly memberUsagePacks: readonly MemberUsagePack[] | undefined;
+} {
+  if (!members) {
+    return { hasPaidUsagePack: false, memberUsagePacks: undefined };
+  }
+  const memberUsagePacks = checkoutMemberUsagePacks(
+    members,
+    selections,
+    catalog,
+    defaultUsage,
+  );
+  return {
+    hasPaidUsagePack: memberUsagePacks.some((selection) => {
+      return selection.usagePackUsd !== 0;
+    }),
+    memberUsagePacks,
+  };
 }
 
 function memberName(member: OrgMember): string {
@@ -589,7 +615,7 @@ function MemberUsageRow({
             package:
               downgrade.targetUsagePackUsd === 0
                 ? i18n.t(($) => {
-                    return $.billing.plans.usagePacks.free;
+                    return $.billing.plans.usagePacks.noPackage;
                   })
                 : formatUsd(downgrade.targetUsagePackUsd, 0),
             date: formatBillingDate(downgrade.effectiveAt),
@@ -603,7 +629,7 @@ function MemberUsageRow({
             package:
               downgrade.targetUsagePackUsd === 0
                 ? i18n.t(($) => {
-                    return $.billing.plans.usagePacks.free;
+                    return $.billing.plans.usagePacks.noPackage;
                   })
                 : formatUsd(downgrade.targetUsagePackUsd, 0),
           },
@@ -698,6 +724,7 @@ function memberUsageDowngrade(
 function MemberUsageConfiguration({
   catalog,
   comparisonRows,
+  defaultUsage,
   management,
   members,
   onSelectionChange,
@@ -707,6 +734,7 @@ function MemberUsageConfiguration({
 }: {
   readonly catalog: readonly MemberUsagePackOption[];
   readonly comparisonRows?: readonly SubscriptionComparisonRow[];
+  readonly defaultUsage?: MemberUsageSelection;
   readonly management: UsagePackManagementResponse | null;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly onSelectionChange?: () => void;
@@ -724,6 +752,8 @@ function MemberUsageConfiguration({
     return $.billing.plans.usagePacks.memberUsage;
   });
   const displayedMembers = [...members, ...pendingMembers];
+  const fallbackUsage =
+    defaultUsage ?? catalog[0]?.usagePackUsd ?? MINIMUM_USAGE_PACK_USD;
 
   return (
     <section
@@ -737,7 +767,7 @@ function MemberUsageConfiguration({
         const pendingUsagePack = pendingMemberUsagePack(management, member);
         const selection =
           pendingUsagePack ??
-          memberUsageSelection(selections, member.id, catalog[0]?.usagePackUsd);
+          memberUsageSelection(selections, member.id, fallbackUsage);
         const allocation = management?.allocations.find((candidate) => {
           return candidate.memberId === member.id;
         });
@@ -1233,6 +1263,7 @@ function OrderSummary({
   checkoutDisabled,
   checkoutError,
   checkoutLoading,
+  checkoutRequirement,
   configuresGrantedPlan,
   onCheckout,
   plan,
@@ -1240,6 +1271,7 @@ function OrderSummary({
   readonly checkoutDisabled: boolean;
   readonly checkoutError: string | null;
   readonly checkoutLoading: boolean;
+  readonly checkoutRequirement: string | null;
   readonly configuresGrantedPlan: boolean;
   readonly onCheckout: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly plan: UsagePackPlan;
@@ -1251,6 +1283,9 @@ function OrderSummary({
       })}
       className={STEP_ACTION_BAR}
     >
+      {checkoutRequirement && (
+        <p className="text-sm text-muted-foreground">{checkoutRequirement}</p>
+      )}
       {checkoutError && (
         <p className="text-sm text-destructive">{checkoutError}</p>
       )}
@@ -1281,12 +1316,14 @@ function OrderSummary({
 function CheckoutOrderSummary({
   catalog,
   configuresGrantedPlan,
+  defaultUsage,
   members,
   plan,
   selections,
 }: {
   readonly catalog: readonly MemberUsagePackOption[] | null;
   readonly configuresGrantedPlan: boolean;
+  readonly defaultUsage: MemberUsageSelection;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
@@ -1298,26 +1335,35 @@ function CheckoutOrderSummary({
     checkoutLoadable.state === "hasError"
       ? String(checkoutLoadable.error)
       : null;
+  const { hasPaidUsagePack, memberUsagePacks } = checkoutMemberUsagePackState(
+    members,
+    selections,
+    catalog,
+    defaultUsage,
+  );
 
   return (
     <OrderSummary
-      checkoutDisabled={!members}
+      checkoutDisabled={!members || !hasPaidUsagePack}
       checkoutError={checkoutError}
       checkoutLoading={checkoutLoading}
+      checkoutRequirement={
+        members && !hasPaidUsagePack
+          ? i18n.t(($) => {
+              return $.billing.plans.usagePacks.paidPackageRequired;
+            })
+          : null
+      }
       configuresGrantedPlan={configuresGrantedPlan}
       onCheckout={(event) => {
-        if (!members) {
+        if (!memberUsagePacks || !hasPaidUsagePack) {
           return;
         }
         detach(
           checkout(
             {
               tier: plan.tier,
-              memberUsagePacks: checkoutMemberUsagePacks(
-                members,
-                selections,
-                catalog,
-              ),
+              memberUsagePacks,
             },
             event.metaKey || event.ctrlKey,
             pageSignal,
@@ -2321,14 +2367,70 @@ function managedSubscriptionChangeState({
   };
 }
 
+function ManagedSubscriptionActionBar({
+  downgradeNotice,
+  error,
+  hasPaidUsagePack,
+  hasPendingChange,
+  hasScheduledDowngrade,
+  membersLoaded,
+  onPreview,
+  previewing,
+  restoresScheduledDowngrade,
+}: {
+  readonly downgradeNotice: ReactNode;
+  readonly error: string | null;
+  readonly hasPaidUsagePack: boolean;
+  readonly hasPendingChange: boolean;
+  readonly hasScheduledDowngrade: boolean;
+  readonly membersLoaded: boolean;
+  readonly onPreview: () => Promise<void>;
+  readonly previewing: boolean;
+  readonly restoresScheduledDowngrade: boolean;
+}) {
+  return (
+    <div className={stepActionBarClass(Boolean(downgradeNotice))}>
+      {downgradeNotice}
+      {!hasPaidUsagePack && (
+        <p className="text-sm text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.paidPackageRequired;
+          })}
+        </p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button
+        type="button"
+        className="h-10 w-full text-sm font-medium"
+        disabled={
+          !membersLoaded ||
+          !hasPaidUsagePack ||
+          (hasPendingChange && !hasScheduledDowngrade) ||
+          previewing
+        }
+        onClick={() => {
+          detach(onPreview(), Reason.DomCallback);
+        }}
+      >
+        {managedSubscriptionActionLabel({
+          previewing,
+          restoresScheduledDowngrade,
+        })}
+      </Button>
+    </div>
+  );
+}
+
 function ManagedSubscriptionOrderSummary({
   catalog,
+  defaultUsage,
   management,
   members,
   plan,
   selections,
 }: ManagedSubscriptionOrderSummaryProps & {
   readonly catalog: readonly MemberUsagePackOption[];
+  readonly defaultUsage: MemberUsageSelection;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [previewLoadable, previewChange] = useLoadableSet(
@@ -2351,6 +2453,12 @@ function ManagedSubscriptionOrderSummary({
   const hasSubscriptionAction =
     (hasConfigurationChange || restoresScheduledDowngrade) &&
     (!hasPendingChange || hasScheduledDowngrade);
+  const { hasPaidUsagePack, memberUsagePacks } = checkoutMemberUsagePackState(
+    members,
+    selections,
+    catalog,
+    defaultUsage,
+  );
   const scheduledDowngradeEffectiveAt =
     hasScheduledDowngrade && !hasConfigurationChange
       ? management.currentPeriodEnd
@@ -2370,17 +2478,13 @@ function ManagedSubscriptionOrderSummary({
     )
   );
   const openPreview = async (): Promise<void> => {
-    if (!members) {
+    if (!memberUsagePacks || !hasPaidUsagePack) {
       return;
     }
     await previewChange(
       {
         targetTier: plan.tier,
-        memberUsagePacks: checkoutMemberUsagePacks(
-          members,
-          selections,
-          catalog,
-        ),
+        memberUsagePacks,
       },
       pageSignal,
     );
@@ -2401,27 +2505,17 @@ function ManagedSubscriptionOrderSummary({
         </p>
       )}
       {hasSubscriptionAction && (
-        <div className={stepActionBarClass(Boolean(downgradeNotice))}>
-          {downgradeNotice}
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button
-            type="button"
-            className="h-10 w-full text-sm font-medium"
-            disabled={
-              !members ||
-              (hasPendingChange && !hasScheduledDowngrade) ||
-              previewing
-            }
-            onClick={() => {
-              detach(openPreview(), Reason.DomCallback);
-            }}
-          >
-            {managedSubscriptionActionLabel({
-              previewing,
-              restoresScheduledDowngrade,
-            })}
-          </Button>
-        </div>
+        <ManagedSubscriptionActionBar
+          downgradeNotice={downgradeNotice}
+          error={error}
+          hasPaidUsagePack={hasPaidUsagePack}
+          hasPendingChange={hasPendingChange}
+          hasScheduledDowngrade={hasScheduledDowngrade}
+          membersLoaded={Boolean(members)}
+          onPreview={openPreview}
+          previewing={previewing}
+          restoresScheduledDowngrade={restoresScheduledDowngrade}
+        />
       )}
     </section>
   );
@@ -2464,7 +2558,15 @@ function PackageConfigurationStep({
           )
         : undefined
     : allMembers;
-  const totals = memberUsageTotals(members ?? [], selections, catalog);
+  const defaultUsage = management?.supportsFreeMembers
+    ? 0
+    : MINIMUM_USAGE_PACK_USD;
+  const totals = memberUsageTotals(
+    members ?? [],
+    selections,
+    catalog,
+    defaultUsage,
+  );
   const comparisonRows =
     management &&
     hasUsagePackConfigurationChange(management, members, plan, selections)
@@ -2488,6 +2590,7 @@ function PackageConfigurationStep({
       <MemberUsageConfiguration
         catalog={catalog}
         comparisonRows={comparisonRows}
+        defaultUsage={defaultUsage}
         management={management}
         members={members}
         pendingMembers={paidPendingMembers}
@@ -2500,6 +2603,7 @@ function PackageConfigurationStep({
         {management ? (
           <ManagedSubscriptionOrderSummary
             catalog={catalog}
+            defaultUsage={defaultUsage}
             management={management}
             members={members}
             plan={plan}
@@ -2509,6 +2613,7 @@ function PackageConfigurationStep({
           <CheckoutOrderSummary
             catalog={catalog}
             configuresGrantedPlan={configuresGrantedPlan}
+            defaultUsage={defaultUsage}
             members={members}
             plan={plan}
             selections={selections}

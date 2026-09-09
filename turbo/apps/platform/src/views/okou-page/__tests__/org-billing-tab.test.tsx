@@ -176,8 +176,9 @@ function noActiveBillingStatus(): BillingStatusResponse {
   };
 }
 
-function usagePackCatalogResponse() {
+function usagePackCatalogResponse(supportsFreeMembers?: boolean) {
   return {
+    ...(supportsFreeMembers === undefined ? {} : { supportsFreeMembers }),
     usagePacks: [
       {
         usagePackUsd: 20 as const,
@@ -331,7 +332,7 @@ async function waitForAnimationFrame(): Promise<void> {
   await frame.promise;
 }
 
-function mockInitialUsagePackPurchase(): void {
+function mockInitialUsagePackPurchase(supportsFreeMembers?: boolean): void {
   context.mocks.data.org({
     id: "org_1",
     name: "Usage Pack Org",
@@ -341,7 +342,7 @@ function mockInitialUsagePackPurchase(): void {
     return respond(200, noActiveBillingStatus());
   });
   context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
+    return respond(200, usagePackCatalogResponse(supportsFreeMembers));
   });
   context.mocks.data.orgMembers({
     name: "Usage Pack Org",
@@ -460,7 +461,7 @@ test("Compare usage-pack plans before choosing one", async () => {
   ).toBeInTheDocument();
   expect(
     screen.getByText(
-      "Choose Free or a paid package for each member in the next step.",
+      "Choose a paid package for each member in the next step, or select No package.",
     ),
   ).toBeInTheDocument();
   expect(
@@ -525,6 +526,56 @@ test("Compare usage-pack plans before choosing one", async () => {
     expect(within(teamPlan).queryByText(item)).toBeNull();
   }
 });
+
+test.each(["pro", "team"] as const)(
+  "Default a new %s plan to the $20 member package",
+  async (tier) => {
+    mockInitialUsagePackPurchase(true);
+    const { proPlan, teamPlan } = await openUsagePackPlanSelection();
+    const plan = tier === "pro" ? proPlan : teamPlan;
+    click(
+      buttonByText(tier === "pro" ? "Start with Pro" : "Start with Team", plan),
+    );
+
+    const memberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    const upgradeLabel = tier === "pro" ? "Upgrade to Pro" : "Upgrade to Team";
+    for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
+      expect(
+        within(memberUsage).getByRole("combobox", {
+          name: `Usage for ${memberName}`,
+        }),
+      ).toHaveTextContent("21,234 credits · 6% off");
+    }
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
+
+    for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
+      await selectMemberUsagePack(memberUsage, memberName, "No package");
+    }
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeDisabled();
+    expect(
+      within(orderSummary).getByText(
+        "Select a paid package for at least one member to continue.",
+      ),
+    ).toBeVisible();
+
+    await selectMemberUsagePack(
+      memberUsage,
+      "Alex Chen",
+      "$20 · 21,234 credits · 6% off",
+    );
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
+    expect(
+      within(orderSummary).queryByText(
+        "Select a paid package for at least one member to continue.",
+      ),
+    ).not.toBeInTheDocument();
+  },
+);
 
 test("Configure member packages for a new workspace plan", async () => {
   mockInitialUsagePackPurchase();
@@ -737,7 +788,7 @@ test("Leave a member-package flow without keeping unfinished choices", async () 
 });
 
 test.each([false, true])(
-  "Add a package for a member without an allocation (Free supported: %s)",
+  "Add a package for a member without an allocation (no package supported: %s)",
   async (supportsFreeMembers) => {
     context.mocks.data.org({
       id: "org_1",
@@ -870,7 +921,7 @@ test.each([false, true])(
       name: "Usage for Sam Lee",
     });
     expect(samUsage).toHaveTextContent(
-      supportsFreeMembers ? "Free" : "21,234 credits · 6% off",
+      supportsFreeMembers ? "No package" : "21,234 credits · 6% off",
     );
     click(samUsage);
     click(
@@ -2091,9 +2142,9 @@ test.each([50, 0] as const)(
       name: "Usage for Alex Chen",
     });
     expect(packageSelect).toHaveTextContent(
-      targetUsagePackUsd === 0 ? "Free" : "54,321 credits · 8% off",
+      targetUsagePackUsd === 0 ? "No package" : "54,321 credits · 8% off",
     );
-    const notice = `Downgrades to ${targetUsagePackUsd === 0 ? "Free" : "$50"} on Apr 1, 2026.`;
+    const notice = `Downgrades to ${targetUsagePackUsd === 0 ? "No package" : "$50"} on Apr 1, 2026.`;
     const downgradeNotice = screen.getByText(notice);
     expect(downgradeNotice).toBeVisible();
     expect(screen.queryByText("+4,321 bonus credits")).not.toBeInTheDocument();
@@ -2165,7 +2216,7 @@ test.each([
   { targetUsagePackUsd: 0, alreadyScheduled: true },
   { targetUsagePackUsd: 0, alreadyScheduled: false },
 ] as const)(
-  "Schedule a member package downgrade to $targetUsagePackUsd (replacing: $alreadyScheduled)",
+  "Validate a member package downgrade to $targetUsagePackUsd (replacing: $alreadyScheduled)",
   async ({ targetUsagePackUsd, alreadyScheduled }) => {
     let confirmed = false;
     context.mocks.data.org({
@@ -2305,17 +2356,30 @@ test.each([
     click(
       await screen.findByRole("option", {
         name:
-          targetUsagePackUsd === 0 ? "Free" : "$100 · 109,999 credits · 9% off",
+          targetUsagePackUsd === 0
+            ? "No package"
+            : "$100 · 109,999 credits · 9% off",
       }),
     );
-    const notice = `Downgrades to ${targetUsagePackUsd === 0 ? "Free" : "$100"} on Apr 1, 2026.`;
+    const notice = `Downgrades to ${targetUsagePackUsd === 0 ? "No package" : "$100"} on Apr 1, 2026.`;
     expect(screen.getByText(notice)).toBeVisible();
     expect(
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();
-    expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+    const confirmButton = buttonByText("Confirm", orderSummary);
+    expect(confirmButton).toHaveProperty("disabled", targetUsagePackUsd === 0);
+    expect(
+      Boolean(
+        within(orderSummary).queryByText(
+          "Select a paid package for at least one member to continue.",
+        ),
+      ),
+    ).toBe(targetUsagePackUsd === 0);
+    if (targetUsagePackUsd === 0) {
+      return;
+    }
 
-    click(buttonByText("Confirm", orderSummary));
+    click(confirmButton);
     const review = await screen.findByRole("dialog", {
       name: "Review package change",
     });
@@ -2507,11 +2571,12 @@ test("Schedule a Team-to-Pro downgrade", async () => {
     return respond(200, billingStatus);
   });
   context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
+    return respond(200, usagePackCatalogResponse(true));
   });
   context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
     return respond(200, {
       tier: "team",
+      supportsFreeMembers: true,
       currentPeriodEnd: "2026-04-01T00:00:00Z",
       allocations: [
         {
@@ -2590,9 +2655,34 @@ test("Schedule a Team-to-Pro downgrade", async () => {
   await screen.findByRole("heading", {
     name: "Configure member packages",
   });
+  const memberUsage = screen.getByRole("group", {
+    name: "Member usage",
+  });
   const orderSummary = screen.getByRole("region", {
     name: "Order summary",
   });
+  const confirmDowngradeButton = buttonByText("Confirm", orderSummary);
+  expect(confirmDowngradeButton).toBeEnabled();
+
+  await selectMemberUsagePack(memberUsage, "Alex Chen", "No package");
+  expect(confirmDowngradeButton).toBeDisabled();
+  expect(
+    within(orderSummary).getByText(
+      "Select a paid package for at least one member to continue.",
+    ),
+  ).toBeVisible();
+
+  await selectMemberUsagePack(
+    memberUsage,
+    "Alex Chen",
+    "$20 · 21,234 credits · 6% off",
+  );
+  expect(confirmDowngradeButton).toBeEnabled();
+  expect(
+    within(orderSummary).queryByText(
+      "Select a paid package for at least one member to continue.",
+    ),
+  ).not.toBeInTheDocument();
   const comparison = within(await hoverSubscriptionComparison()).getByRole(
     "table",
     {
@@ -2614,7 +2704,6 @@ test("Schedule a Team-to-Pro downgrade", async () => {
   expect(
     within(orderSummary).queryByText("Scheduled for Apr 1, 2026"),
   ).not.toBeInTheDocument();
-  const confirmDowngradeButton = buttonByText("Confirm", orderSummary);
   expect(downgradeNotice.parentElement).toContainElement(
     confirmDowngradeButton,
   );

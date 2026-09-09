@@ -6,7 +6,7 @@ import { i18n } from "../../../../i18n/index.ts";
 export function usagePackOptionLabel(item: MemberUsagePackOption): string {
   if (item.usagePackUsd === 0) {
     return i18n.t(($) => {
-      return $.billing.plans.usagePacks.free;
+      return $.billing.plans.usagePacks.noPackage;
     });
   }
   const discount = Math.round((item.bonusCredits / item.totalCredits) * 100);

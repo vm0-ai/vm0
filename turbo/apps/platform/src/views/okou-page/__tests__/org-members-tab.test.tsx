@@ -443,7 +443,7 @@ test.each(["pro", "team"])(
 
     await expect(screen.findByText("Usage pack")).resolves.toBeVisible();
     expect(
-      within(rowByEmail("bob@example.com")).getByText("Free"),
+      within(rowByEmail("bob@example.com")).getByText("No package"),
     ).toBeVisible();
     const email = tier === "pro" ? "alice@example.com" : "bob@example.com";
     click(screen.getByLabelText(`Actions for ${email}`));
@@ -550,7 +550,7 @@ test.each([
   { tier: "pro", hasSubscription: false },
   { tier: "team", hasSubscription: false },
 ] as const)(
-  "Invite a member for Free on $tier without paid packs (subscription: $hasSubscription)",
+  "Invite a member after selecting No package on $tier (subscription: $hasSubscription)",
   async ({ tier, hasSubscription }) => {
     mockMembersStory();
     mockMemberInviteEntitlement(
@@ -585,7 +585,7 @@ test.each([
     const packages = await within(inviteDialog).findByRole("combobox", {
       name: "Member packages",
     });
-    expect(packages).toHaveTextContent("Free");
+    expect(packages).toHaveTextContent("20,400 credits");
     await fill(
       within(inviteDialog).getByPlaceholderText("email@example.com"),
       "free.invitee@example.com",
@@ -602,7 +602,7 @@ test.each([
       ).toBeEnabled();
     });
     click(packages);
-    click(await screen.findByRole("option", { name: "Free" }));
+    click(await screen.findByRole("option", { name: "No package" }));
     await waitFor(() => {
       expect(buttonByText("Send invitation", inviteDialog)).toBeEnabled();
     });
@@ -660,7 +660,7 @@ test.each([
   { tier: "team", supportsFreeMembers: false, hasVisibilityCapability: true },
   { tier: "pro", supportsFreeMembers: false, hasVisibilityCapability: false },
 ] as const)(
-  "Buy an invitation package on $tier (Free: $supportsFreeMembers, visibility: $hasVisibilityCapability)",
+  "Buy an invitation package on $tier (no package: $supportsFreeMembers, visibility: $hasVisibilityCapability)",
   async ({ tier, supportsFreeMembers, hasVisibilityCapability }) => {
     const story = mockMembersStory();
     mockMemberInviteEntitlement(
@@ -721,15 +721,13 @@ test.each([
     const packages = await within(inviteDialog).findByRole("combobox", {
       name: "Member packages",
     });
-    expect(packages).toHaveTextContent(
-      supportsFreeMembers ? "Free" : "20,400 credits",
-    );
+    expect(packages).toHaveTextContent("20,400 credits");
     await fill(
       within(inviteDialog).getByPlaceholderText("email@example.com"),
       "paid.invitee@example.com",
     );
     click(packages);
-    expect(screen.queryByRole("option", { name: "Free" }) !== null).toBe(
+    expect(screen.queryByRole("option", { name: "No package" }) !== null).toBe(
       supportsFreeMembers,
     );
     click(await screen.findByRole("option", { name: /52,600 credits/u }));
@@ -763,9 +761,7 @@ test.each([
       within(nextInvite).findByRole("combobox", {
         name: "Member packages",
       }),
-    ).resolves.toHaveTextContent(
-      supportsFreeMembers ? "Free" : "20,400 credits",
-    );
+    ).resolves.toHaveTextContent("20,400 credits");
   },
 );
 

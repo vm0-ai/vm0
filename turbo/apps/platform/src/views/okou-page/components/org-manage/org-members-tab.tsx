@@ -41,9 +41,10 @@ import {
   type OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackManagementResponse } from "@okouai/api-contracts/contracts/billing";
-import type {
-  MemberUsagePackOption,
-  MemberUsageSelection,
+import {
+  MINIMUM_USAGE_PACK_USD,
+  type MemberUsagePackOption,
+  type MemberUsageSelection,
 } from "../../../../signals/okou-page/settings/usage-pack-pricing-state.ts";
 import {
   orgMembers$,
@@ -686,7 +687,7 @@ function InviteDialog() {
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
   const usagePacks = configuration?.options ?? null;
   const usagePackUsd =
-    selectedUsagePackUsd ?? usagePacks?.[0]?.usagePackUsd ?? 0;
+    selectedUsagePackUsd ?? (usagePacks === null ? 0 : MINIMUM_USAGE_PACK_USD);
   const mode = resolveInviteDialogMode({
     capabilities,
     catalogLoading: catalogLoadable.state === "loading",
@@ -948,7 +949,7 @@ function UsagePackCell({
     return (
       <div className="text-[13px] text-muted-foreground">
         {t(($) => {
-          return $.billing.plans.usagePacks.free;
+          return $.billing.plans.usagePacks.noPackage;
         })}
       </div>
     );
@@ -977,7 +978,7 @@ function UsagePackCell({
               package:
                 downgradeTarget === 0
                   ? t(($) => {
-                      return $.billing.plans.usagePacks.free;
+                      return $.billing.plans.usagePacks.noPackage;
                     })
                   : formatUsd(downgradeTarget, 0),
               date: formatBillingDate(
@@ -994,7 +995,7 @@ function UsagePackCell({
               package:
                 downgradeTarget === 0
                   ? t(($) => {
-                      return $.billing.plans.usagePacks.free;
+                      return $.billing.plans.usagePacks.noPackage;
                     })
                   : formatUsd(downgradeTarget, 0),
             },

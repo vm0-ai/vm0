@@ -212,6 +212,24 @@ function checkoutRedirectsAllowed(
   );
 }
 
+function billingPreviewReturnUrlAllowed(
+  previewEnabled: boolean,
+  returnUrl: string | undefined,
+): boolean {
+  return (
+    !previewEnabled ||
+    (returnUrl !== undefined && billingRedirectAllowed(returnUrl))
+  );
+}
+
+function hasPaidUsagePack(
+  memberUsagePacks: readonly MemberUsagePack[],
+): boolean {
+  return memberUsagePacks.some((selection) => {
+    return selection.usagePackUsd !== 0;
+  });
+}
+
 async function validateUsagePackSubscriptionMembers(
   args: {
     readonly clerk: ClerkClient;
@@ -732,11 +750,17 @@ const usagePackCheckoutAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (bodyResult.data.previewToken) {
+    const body = bodyResult.data;
+    if (!hasPaidUsagePack(body.memberUsagePacks)) {
+      return badRequestMessage(
+        "At least one member must have a paid usage pack",
+      );
+    }
+    if (body.previewToken) {
       return await set(
         confirmUsagePackPurchaseForOrg$,
         auth.orgId,
-        bodyResult.data.previewToken,
+        body.previewToken,
         signal,
       );
     }
@@ -747,7 +771,6 @@ const usagePackCheckoutAuthed$ = command(
     }
     signal.throwIfAborted();
 
-    const body = bodyResult.data;
     const previewEnabled = body.supportsInAppPreview === true;
     const clerk = get(clerk$);
     const resolvedAttribution = await checkoutAttribution(
@@ -968,9 +991,7 @@ const usagePackChangePreviewAuthed$ = command(
     }
     const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
-      previewEnabled &&
-      (!bodyResult.data.returnUrl ||
-        !billingRedirectAllowed(bodyResult.data.returnUrl))
+      !billingPreviewReturnUrlAllowed(previewEnabled, bodyResult.data.returnUrl)
     ) {
       return badRequestMessage(
         "returnUrl must match the platform origin for in-app billing",
@@ -1485,11 +1506,14 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    if (!hasPaidUsagePack(bodyResult.data.memberUsagePacks)) {
+      return badRequestMessage(
+        "At least one member must have a paid usage pack",
+      );
+    }
     const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
-      previewEnabled &&
-      (!bodyResult.data.returnUrl ||
-        !billingRedirectAllowed(bodyResult.data.returnUrl))
+      !billingPreviewReturnUrlAllowed(previewEnabled, bodyResult.data.returnUrl)
     ) {
       return badRequestMessage(
         "returnUrl must match the platform origin for in-app billing",
