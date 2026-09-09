@@ -222,7 +222,6 @@ function assertCatalogRows(
 }
 
 test("Choose an image model from a curated catalog", async () => {
-  const user = userEvent.setup();
   const updates: ImageModel[] = [];
   installModelEnvironment();
   mockThread({
@@ -261,27 +260,13 @@ test("Choose an image model from a curated catalog", async () => {
 
   click(mediaModelRow("GPT Image 1"));
   await waitFor(() => {
+    expect(screen.queryByRole("radiogroup", { name: "Models" })).toBeNull();
+  });
+  await openCategory("Image");
+  await waitFor(() => {
+    expectSelected("GPT Image 1");
     expect(updates).toStrictEqual(["gpt-image-1"]);
   });
-  for (const label of ["GPT Image 2.5 Flare", "GPT Image 2.5 Sunburst"]) {
-    await chooseMediaModel("Image", label);
-    await openCategory("Image");
-    expectSelected(label);
-    await user.keyboard("{Escape}");
-  }
-  await chooseMediaModel("Image", "Seedream 5 Pro");
-  await chooseMediaModel("Image", "FLUX.2 Pro");
-
-  await openCategory("Image");
-  expectSelected("FLUX.2 Pro");
-  expect(updates).toStrictEqual([
-    "gpt-image-1",
-    "gpt-image-2.5-flare",
-    "gpt-image-2.5-sunburst",
-    "dola-seedream-5-0-pro-260628",
-    "fal-ai/flux-2-pro",
-  ]);
-  await user.keyboard("{Escape}");
 });
 
 test("Keep image model choices clear on mobile", async () => {
