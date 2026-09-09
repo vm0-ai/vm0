@@ -201,7 +201,7 @@ export function activityRevision(entries: RunActivityEntries): string {
 export function summaryRevision(activity: string, cursor: number): string {
   return createHash("sha256").update(`${activity}:${cursor}`).digest("hex");
 }
-export function activityPhrase(value: string | null): string | null {
+function activityPhrase(value: string | null): string | null {
   if (value === null) {
     return null;
   }
@@ -228,4 +228,34 @@ export function activityPhrase(value: string | null): string | null {
     })
     .join("")
     .trimEnd();
+}
+
+export function activityPhrases(value: string | null): string[] | null {
+  if (value === null) {
+    return null;
+  }
+  const lines = value
+    .trim()
+    .split(/\r?\n/u)
+    .filter((line) => {
+      return line.trim();
+    });
+  if (lines.length === 0 || lines.length > 4) {
+    return null;
+  }
+  const phrases = lines.map(activityPhrase);
+  if (
+    phrases.some((phrase) => {
+      return phrase === null;
+    })
+  ) {
+    return null;
+  }
+  return [
+    ...new Set(
+      phrases.filter((phrase) => {
+        return phrase !== null;
+      }),
+    ),
+  ];
 }

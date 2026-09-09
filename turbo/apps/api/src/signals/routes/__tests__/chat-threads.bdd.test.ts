@@ -649,10 +649,6 @@ async function completeThreadGoal(
   );
 }
 
-// Neutral throughout since #30807 retired the branded forms of every
-// chat-thread row; the earlier per-row notes below record which removal took
-// each of the others. A branded request would 404 before reaching the parameter
-// check these cases exist to exercise.
 const malformedChatThreadIdRequests = [
   { method: "GET", path: "/api/chat-threads/:id", paramName: "id" },
   { method: "PATCH", path: "/api/chat-threads/:id", paramName: "id" },
@@ -667,31 +663,22 @@ const malformedChatThreadIdRequests = [
     path: "/api/chat-threads/:id/mark-unread",
     paramName: "id",
   },
-  // Neutral rather than branded, for the same reason as `rename` below: #28916
-  // retired this row's branded forms.
   {
     method: "POST",
     path: "/api/chat-threads/:id/model-selection",
     paramName: "id",
   },
-  // Neutral rather than branded: #28917 retired this row's branded forms, so a
-  // branded request here would 404 before the parameter check it exists to
-  // exercise.
   {
     method: "POST",
     path: "/api/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
   { method: "POST", path: "/api/chat-threads/:id/pin", paramName: "id" },
-  // Neutral for the same reason as `computer-use-host` above.
   {
     method: "POST",
     path: "/api/chat-threads/:id/unpin",
     paramName: "id",
   },
-  // Neutral rather than branded: #28711 retired this row's branded forms, so a
-  // branded request here would 404 before the parameter check it exists to
-  // exercise.
   {
     method: "POST",
     path: "/api/chat-threads/:id/rename",

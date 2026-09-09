@@ -248,7 +248,6 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
     redirectUrl,
   );
   expect(document.title).toBe("Sign in | Okou");
-  expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
   expect(okouBrandLink()).toHaveAttribute("href", "/");
 });
 

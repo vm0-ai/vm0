@@ -1,4 +1,4 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { onRef } from "../utils.ts";
 
 function isDocumentScrollTarget(
@@ -48,12 +48,7 @@ const attachMainThreadFocusFallback$ = command(
   },
 );
 
-export function createChatThreadContainerSignals(
-  attachActivitySummary$: Computed<
-    Command<Promise<void>, [HTMLElement, AbortSignal]>
-  >,
-  pageSignal: AbortSignal,
-) {
+export function createChatThreadContainerSignals(pageSignal: AbortSignal) {
   const internalContainerEl$ = state<HTMLElement | null>(null);
   const containerEl$ = computed((get) => {
     return get(internalContainerEl$);
@@ -67,15 +62,13 @@ export function createChatThreadContainerSignals(
     },
   );
   const setContainerRef$ = onRef(attachContainer$);
-  const mainContainerRef$ = computed((get) => {
-    const attachActivity$ = get(attachActivitySummary$);
+  const mainContainerRef$ = computed(() => {
     return onRef(
-      command(async ({ set }, el: HTMLElement, mountSignal: AbortSignal) => {
+      command(({ set }, el: HTMLElement, mountSignal: AbortSignal) => {
         const signal = AbortSignal.any([mountSignal, pageSignal]);
         signal.throwIfAborted();
         set(attachContainer$, el, signal);
         set(attachMainThreadFocusFallback$, el, signal);
-        await set(attachActivity$, el, signal);
       }),
     );
   });
