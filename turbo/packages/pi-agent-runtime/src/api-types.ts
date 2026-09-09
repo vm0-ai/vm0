@@ -1,4 +1,5 @@
 import type { PiAgentModelConfig } from "./types";
+import type { PiApiModelFailureDiagnostic } from "./api-failure";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 import type { PiMemoryCitation } from "@okouai/api-contracts/contracts/pi-memory-citations";
 
@@ -153,6 +154,7 @@ export interface PiApiAssistantMessage {
   readonly stopReason: PiApiAssistantStopReason;
   /** Content-free product classification; native provider diagnostics stay private. */
   readonly failureReason?: "reconnect_required" | "usage_limit";
+  readonly failureDiagnostic?: PiApiModelFailureDiagnostic;
   readonly timestamp: number;
   readonly usage: {
     readonly input: number;

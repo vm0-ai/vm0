@@ -1,4 +1,8 @@
-import { classifyPiApiProviderFailure } from "./api-failure";
+import {
+  classifyPiApiProviderFailure,
+  PiApiModelRequestError,
+  type PiApiModelFailureDiagnostic,
+} from "./api-failure";
 import { runPiApiFirstTurn as runPiApiFirstTurnImpl } from "./api-turn";
 import { MemoryPiSession } from "./session-memory";
 import type {
@@ -71,6 +75,7 @@ import type {
 } from "./stage1-memory";
 export {
   classifyPiApiProviderFailure,
+  PiApiModelRequestError,
   PI_MEMORY_STAGE1_RESPONSE_SCHEMA,
   PiMemoryStage1ProviderError,
   projectPiMemoryStage1History,
@@ -93,6 +98,7 @@ export {
 };
 export { createPiApiFirstTurnOwnership };
 export type {
+  PiApiModelFailureDiagnostic,
   PiApiAssistantContent,
   PiApiAssistantMessage,
   PiApiAssistantStopReason,

@@ -14,7 +14,10 @@ import type {
   PiObservedServiceTier,
 } from "./api-types";
 import { UnsupportedPiResourceSnapshotError } from "./errors";
-import { classifyPiApiProviderFailure } from "./api-failure";
+import {
+  classifyPiApiProviderFailure,
+  projectPiApiModelFailure,
+} from "./api-failure";
 
 function projectAssistantContent(message: AssistantMessage): {
   readonly content: PiApiAssistantContent[];
@@ -61,6 +64,7 @@ function projectAssistantContent(message: AssistantMessage): {
 
 export function projectPiApiAssistantMessage(
   message: AssistantMessage,
+  responseStatus?: number,
 ): PiApiAssistantMessage {
   const projection = projectAssistantContent(message);
   const failureReason =
@@ -78,6 +82,14 @@ export function projectPiApiAssistantMessage(
     responseId: message.responseId,
     stopReason: message.stopReason,
     ...(failureReason ? { failureReason } : {}),
+    ...(message.stopReason === "error" || message.stopReason === "aborted"
+      ? {
+          failureDiagnostic: projectPiApiModelFailure(
+            message.errorMessage,
+            responseStatus,
+          ),
+        }
+      : {}),
     timestamp: message.timestamp,
     usage: {
       input: message.usage.input,
@@ -157,7 +169,10 @@ export async function runPiApiFirstTurn(
       providerRequestBoundary: args.providerRequestBoundary,
     });
     return {
-      assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
+      assistantMessage: projectPiApiAssistantMessage(
+        turn.assistantMessage,
+        turn.responseStatus,
+      ),
       handoffRequired: turn.handoffRequired,
       observedServiceTier,
       sessionJsonl: memorySession.toJsonl(),
