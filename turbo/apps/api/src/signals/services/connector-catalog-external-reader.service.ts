@@ -61,6 +61,7 @@ import {
   CONNECTOR_SEARCH_LIMIT,
   compareConnectorPopularity,
   connectorPopularityRank,
+  createConnectorPopularityIndex,
   isInternalConnector,
 } from "./connector-popularity";
 import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
@@ -775,8 +776,15 @@ function authMethodDetailForCatalog(
 
 function connectorCatalogItem(
   effective: EffectiveConnector,
+  popularityIndex: ReadonlyMap<
+    string,
+    number
+  > = createConnectorPopularityIndex(),
 ): PublicConnectorCatalogItem {
-  const rank = connectorPopularityRank(effective.connector.slug);
+  const rank = connectorPopularityRank(
+    popularityIndex,
+    effective.connector.slug,
+  );
   return {
     slug: effective.connector.slug,
     label: effective.connector.label,
@@ -793,9 +801,10 @@ function connectorCatalogItem(
 
 function connectorCatalogDetail(
   effective: EffectiveConnector,
+  popularityIndex?: ReadonlyMap<string, number>,
 ): PublicConnectorCatalogDetail {
   return {
-    ...connectorCatalogItem(effective),
+    ...connectorCatalogItem(effective, popularityIndex),
     authMethods: effective.authMethods.map(authMethodDetailForCatalog),
   };
 }
@@ -905,8 +914,9 @@ function connectorCatalogStatusItem(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: EffectiveConnector;
   readonly connection: ConnectorCatalogConnection | null;
+  readonly popularityIndex: ReadonlyMap<string, number>;
 }): PublicConnectorCatalogStatusItem {
-  const detail = connectorCatalogDetail(args.effective);
+  const detail = connectorCatalogDetail(args.effective, args.popularityIndex);
   const response = args.connection?.response ?? null;
   const effectiveMethod = response
     ? args.effective.authMethods.find((method) => {
@@ -1011,9 +1021,10 @@ export async function listExternalPublicConnectorCatalog(
     catalog,
     featureStates: args.featureStates,
   });
+  const popularityIndex = createConnectorPopularityIndex();
   return {
     connectors: connectors.map((connector) => {
-      return connectorCatalogItem(connector);
+      return connectorCatalogItem(connector, popularityIndex);
     }),
     categoryMetadata: categoryMetadataForConnectors(catalog, connectors),
   };
@@ -1032,12 +1043,13 @@ function connectorMatchesKeyword(
 function rankedEffectiveConnectors(
   effective: readonly EffectiveConnector[],
 ): EffectiveConnector[] {
+  const index = createConnectorPopularityIndex();
   return [...effective]
     .filter((entry) => {
       return !isInternalConnector(entry.connector.slug);
     })
     .sort((left, right) => {
-      return compareConnectorPopularity(left.connector, right.connector);
+      return compareConnectorPopularity(index, left.connector, right.connector);
     });
 }
 
@@ -1158,6 +1170,7 @@ export async function getExternalPublicConnectorCatalogStatus(
     catalog,
     effective: entry,
     connection: connection ?? null,
+    popularityIndex: createConnectorPopularityIndex(),
   });
 }
 
@@ -1212,11 +1225,13 @@ function connectorCatalogStatusRead(args: {
       return [connection.response.slug, connection];
     }),
   );
+  const popularityIndex = createConnectorPopularityIndex();
   const connectors = args.effective.map((entry) => {
     return connectorCatalogStatusItem({
       catalog: args.catalog,
       effective: entry,
       connection: connectionsBySlug.get(entry.connector.slug) ?? null,
+      popularityIndex,
     });
   });
   return {

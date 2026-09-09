@@ -18,13 +18,13 @@ export const CONNECTOR_SEARCH_LIMIT = 100;
  * shopping for, and ranking by connection frequency floats them to the top of
  * discovery. Excluded from discovery and search; still connectable by slug.
  */
-export const INTERNAL_CONNECTOR_SLUGS: ReadonlySet<string> = new Set([
+export const INTERNAL_CONNECTOR_SLUGS = [
   "maskdb",
   "db9",
   "drive9",
   "slock",
   "runtime",
-]);
+] as const satisfies readonly ConnectorSlug[];
 
 /**
  * Discovery ranking, most-wanted first.
@@ -160,32 +160,43 @@ export const CONNECTOR_POPULARITY_RANKING = [
   "strava",
 ] as const satisfies readonly ConnectorSlug[];
 
-const RANK_BY_SLUG: ReadonlyMap<string, number> = new Map(
-  CONNECTOR_POPULARITY_RANKING.map((slug, index) => {
-    return [slug, index];
-  }),
-);
-
 /**
- * Rank of a connector in discovery ordering. Unranked connectors return
- * `Number.MAX_SAFE_INTEGER` so they sort after every ranked one without a
- * separate branch at every call site.
+ * Rank lookup for one request. Built per call rather than at module scope,
+ * because a package-level mutable Map is not allowed here, and because a
+ * comparator that scanned the ranking for every comparison would turn an
+ * ordering pass over the whole catalog into quadratic work.
  */
-export function connectorPopularityRank(slug: string): number {
-  return RANK_BY_SLUG.get(slug) ?? Number.MAX_SAFE_INTEGER;
+export function createConnectorPopularityIndex(): ReadonlyMap<string, number> {
+  return new Map(
+    CONNECTOR_POPULARITY_RANKING.map((slug, index) => {
+      return [slug, index];
+    }),
+  );
+}
+
+/** Rank of one connector. Unranked connectors sort after every ranked one. */
+export function connectorPopularityRank(
+  index: ReadonlyMap<string, number>,
+  slug: string,
+): number {
+  return index.get(slug) ?? Number.MAX_SAFE_INTEGER;
 }
 
 export function isInternalConnector(slug: string): boolean {
-  return INTERNAL_CONNECTOR_SLUGS.has(slug);
+  return INTERNAL_CONNECTOR_SLUGS.some((internal) => {
+    return internal === slug;
+  });
 }
 
 /** Order by rank, then by label, so the tail is still predictable. */
 export function compareConnectorPopularity(
+  index: ReadonlyMap<string, number>,
   left: { readonly slug: string; readonly label: string },
   right: { readonly slug: string; readonly label: string },
 ): number {
   const rankDelta =
-    connectorPopularityRank(left.slug) - connectorPopularityRank(right.slug);
+    connectorPopularityRank(index, left.slug) -
+    connectorPopularityRank(index, right.slug);
   if (rankDelta !== 0) {
     return rankDelta;
   }
