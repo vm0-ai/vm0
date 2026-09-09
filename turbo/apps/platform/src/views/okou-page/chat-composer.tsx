@@ -8795,7 +8795,7 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 }
 
 const VOICE_DRAFT_TRAY_CLASS =
-  "min-h-12 rounded-xl bg-gray-50 py-2 dark:bg-gray-100";
+  "min-h-12 rounded-xl bg-neutral-50 py-2 dark:bg-neutral-900";
 
 function VoiceDraftFooter({
   signals,
