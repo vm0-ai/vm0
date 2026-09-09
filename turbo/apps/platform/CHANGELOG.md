@@ -11,6 +11,25 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.880.0](https://github.com/vm0-ai/vm0/compare/app-v0.879.0...app-v0.880.0) (2026-09-09)
+
+
+### Features
+
+* **auth:** add clerk ui v1 comparison routes ([#32278](https://github.com/vm0-ai/vm0/issues/32278)) ([0c694da](https://github.com/vm0-ai/vm0/commit/0c694da01b1d49bc9a008bc79d64a91a30c28114))
+
+
+### Bug Fixes
+
+* **ssh:** restore chat directory setup and keyboard activation ([#33027](https://github.com/vm0-ai/vm0/issues/33027)) ([80d0069](https://github.com/vm0-ai/vm0/commit/80d006954fc26eb46d4175c20912874410b1805b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/ui bumped to 1.7.0
+
 ## [0.879.0](https://github.com/vm0-ai/vm0/compare/app-v0.878.0...app-v0.879.0) (2026-09-09)
 
 
