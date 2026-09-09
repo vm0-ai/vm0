@@ -1,3 +1,4 @@
+import { mockOAuthCompletions } from "./connector-page-test-helpers.ts";
 import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
@@ -346,7 +347,8 @@ function mockConnectorOauthStart(args?: {
   return { authWindow };
 }
 
-function mockConnectorOpenIdStart(args?: {
+function mockConnectorOpenIdStart(args: {
+  readonly oauthAttemptId: string;
   readonly onStart?: () => void;
   readonly popupClosed?: boolean;
 }): {
@@ -365,6 +367,7 @@ function mockConnectorOpenIdStart(args?: {
       args?.onStart?.();
       return respond(200, {
         authorizationUrl: `https://openid.test/${params.connectorSlug}/authorize`,
+        oauthAttemptId: args.oauthAttemptId,
       });
     },
   );
@@ -456,6 +459,8 @@ test("Connect and authorize a manual MCP connector", async () => {
 });
 
 test("Let an MCP server discover authentication from a directed connection", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   const connectionId = "a0000000-0000-4000-a000-000000000095";
   let connected = false;
   let grants: AgentCustomConnectorGrant[] = [];
@@ -491,8 +496,10 @@ test("Let an MCP server discover authentication from a directed connection", asy
       expect(params.id).toBe(connector.id);
       expect(body.account).toStrictEqual({ intent: "add" });
       connected = true;
+      completedAttempts.set(oauthAttemptId, connectionId);
       return respond(200, {
         result: "authorization",
+        oauthAttemptId,
         authorizationUrl: "https://mcp.discovery.test/authorize",
         connectionId,
       });
@@ -610,6 +617,8 @@ test("Reconnect the exact manual custom-connector account", async () => {
 });
 
 test("Connect and authorize a custom OAuth connector", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   let connected = false;
   const connectionId = crypto.randomUUID();
   let grants: AgentCustomConnectorGrant[] = [];
@@ -658,8 +667,10 @@ test("Connect and authorize a custom OAuth connector", async () => {
       expect(params.id).toBe(connector.id);
       expect(body.account).toStrictEqual({ intent: "add" });
       connected = true;
+      completedAttempts.set(oauthAttemptId, connectionId);
       return respond(200, {
         result: "authorization",
+        oauthAttemptId,
         authorizationUrl: "https://acme.test/oauth/authorize",
         connectionId,
       });
@@ -702,6 +713,8 @@ test("Connect and authorize a custom OAuth connector", async () => {
 });
 
 test("Reconnect the exact custom OAuth account", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   const connectionId = crypto.randomUUID();
   const siblingConnectionId = crypto.randomUUID();
   let connectedAccountUpdatedAt = "2026-01-01T00:00:00Z";
@@ -746,8 +759,10 @@ test("Reconnect the exact custom OAuth account", async () => {
         connectionId,
       });
       connectedAccountUpdatedAt = "2026-01-01T00:00:01Z";
+      completedAttempts.set(oauthAttemptId, connectionId);
       return respond(200, {
         result: "authorization",
+        oauthAttemptId,
         authorizationUrl: "https://acme.test/oauth/reconnect",
         connectionId: siblingConnectionId,
       });
@@ -790,6 +805,8 @@ test("Reconnect the exact custom OAuth account", async () => {
 });
 
 test("Preserve existing agent permissions after connecting custom OAuth", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   let connected = false;
   const connectionId = crypto.randomUUID();
   let authorizationUpdates = 0;
@@ -821,7 +838,13 @@ test("Preserve existing agent permissions after connecting custom OAuth", async 
   });
   context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, {
-      connectors: [{ ...connector, connected }],
+      connectors: [
+        {
+          ...connector,
+          connected,
+          connectedAccountId: connected ? connectionId : undefined,
+        },
+      ],
     });
   });
   context.mocks.api(
@@ -830,8 +853,10 @@ test("Preserve existing agent permissions after connecting custom OAuth", async 
       expect(params.id).toBe(connector.id);
       expect(body.account).toStrictEqual({ intent: "add" });
       connected = true;
+      completedAttempts.set(oauthAttemptId, connectionId);
       return respond(200, {
         result: "authorization",
+        oauthAttemptId,
         authorizationUrl: "https://acme.test/oauth/authorize",
         connectionId,
       });
@@ -1034,13 +1059,20 @@ test("Connect a no-auth connector and continue the originating chat", async () =
 });
 
 test("Complete OpenID and continue the originating chat", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   context.mocks.data.connectors([]);
   const threadId = "00000000-0000-4000-a000-000000000102";
   const callbackPrompt = "Re-check Steam, then continue";
   let continuationPrompt: string | null = null;
   const { authWindow } = mockConnectorOpenIdStart({
+    oauthAttemptId,
     popupClosed: false,
     onStart: () => {
+      completedAttempts.set(
+        oauthAttemptId,
+        "00000000-0000-4000-8000-000000000001",
+      );
       context.mocks.data.connectors([
         connectedConnectorResponse({
           slug: "steam",

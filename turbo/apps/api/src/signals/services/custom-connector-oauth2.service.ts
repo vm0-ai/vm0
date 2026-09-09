@@ -777,7 +777,12 @@ async function persistCustomConnectorOAuthStart(
       allowSiblings: !isIntegrationManagedCustomConnector(connector),
     });
     if (resolution.kind !== "ready") {
-      return { resolution, connectionId: null, expiresAt };
+      return {
+        resolution,
+        connectionId: null,
+        oauthAttemptId: null,
+        expiresAt,
+      };
     }
     const oauthStateId = await insertConnectorOAuthState(tx, {
       state: prepared.state,
@@ -798,6 +803,7 @@ async function persistCustomConnectorOAuthStart(
     });
     return {
       resolution,
+      oauthAttemptId: oauthStateId,
       connectionId: args.account.intent === "add" ? oauthStateId : null,
       expiresAt,
     };
@@ -1041,6 +1047,7 @@ export const startCustomConnectorOAuth2$ = command(
       result: "authorization" as const,
       authorizationUrl: prepared.authorizationUrl,
       connectionId: mutationStart.connectionId ?? undefined,
+      oauthAttemptId: mutationStart.oauthAttemptId ?? undefined,
     };
   },
 );

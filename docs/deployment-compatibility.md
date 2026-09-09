@@ -792,3 +792,15 @@ criteria after the old version is gone.
 ## Pi native provider reader preparation
 
 For the generation 4 reader-first release, see [Pi native provider preparation](pi-native-provider-preparation.md). Its model generation is independent of launch snapshot V3. Native writers remain absent until the controller verifies compatible API readers and rollback targets, Runner capabilities, pinned CLI artifacts and existing-route health. The preparation merge alone does not close these gates.
+
+## Connector OAuth completion receipts
+
+Browser OAuth/OpenID start responses add an optional `oauthAttemptId`. A successful callback records a short-lived receipt only after credential persistence and required Agent authorization/linking finish. The authenticated, uncached `/api/connector-accounts/oauth-completions/:attemptId` lookup validates the current user, organization, connector target, and actual connected account. Receipts expire 15 minutes after success; account deletion cascades to receipts, and the existing OAuth-state cleanup cron removes expired receipts in bounded batches.
+
+The App uses the exact attempt receipt, not account timestamps, account counts, or sibling-account presence, to continue the flow. The callback's existing single-use state claim remains unchanged. Counts still determine the first-account Agent-grant policy, not OAuth success.
+
+- Old App → new API: existing requests remain valid; the new response field is additive. Already-loaded old pages retain their previous completion heuristic until refreshed.
+- New App → old API, or a new start handled by an old callback instance: absence of a receipt cannot prove success. The App does not automatically continue or grant access; credentials may have been saved and the user may need to retry after rollout.
+- The new table is additive and does not change existing OAuth-state or connector-account rows. No Runner protocol changes or immediate App minimum-version increase are required.
+
+Remove the optional field and absent-ID compatibility branch only after receipt-capable API versions are the serving and rollback floor. Track that contraction in [#32870](https://github.com/vm0-ai/vm0/issues/32870).

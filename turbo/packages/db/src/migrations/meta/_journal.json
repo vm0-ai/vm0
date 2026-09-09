@@ -134,6 +134,13 @@
       "when": 1788934062730,
       "tag": "1096_shiny_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 1097,
+      "version": "7",
+      "when": 1788942150364,
+      "tag": "1097_puzzling_retro_girl",
+      "breakpoints": true
     }
   ]
 }

@@ -176,6 +176,21 @@ const connectorAccountExactTargetBodySchema = z
   .strict();
 
 export const connectorAccountsContract = c.router({
+  oauthCompletion: {
+    method: "GET",
+    path: "/api/connector-accounts/oauth-completions/:attemptId",
+    headers: authHeadersSchema,
+    pathParams: z.object({ attemptId: z.uuid() }),
+    query: connectorAccountTargetQuerySchema,
+    responses: {
+      200: z.object({ connectionId: z.uuid() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Read an owned OAuth attempt's completed account",
+  },
   inspect: {
     method: "POST",
     path: "/api/connector-accounts/inspect",

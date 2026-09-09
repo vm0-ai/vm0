@@ -16,6 +16,30 @@ import { sql } from "drizzle-orm";
 import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 
 import { orgCustomConnectors } from "./org-custom-connector";
+import { connectors } from "./connector";
+
+export const connectorOauthCompletions = pgTable(
+  "connector_oauth_completions",
+  {
+    id: uuid("id").primaryKey(),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(
+        () => {
+          return connectors.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    userId: text("user_id").notNull(),
+    orgId: text("org_id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_connector_oauth_completions_expires_at").on(table.expiresAt),
+    ];
+  },
+);
 
 export const connectorOauthStates = pgTable(
   "connector_oauth_states",

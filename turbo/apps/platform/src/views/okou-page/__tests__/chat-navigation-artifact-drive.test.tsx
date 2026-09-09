@@ -1,3 +1,4 @@
+import { mockOAuthCompletions } from "./connector-page-test-helpers.ts";
 import type { ArtifactDetail } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
@@ -90,6 +91,9 @@ function installDriveMocks(
   initialConnectionState: DriveConnectionState,
   options: DriveMockOptions = {},
 ): DriveMockControl {
+  const completedAttempts = mockOAuthCompletions(targetContext);
+  let oauthAttemptId = crypto.randomUUID();
+  let oauthConnectionId = SELECTED_DRIVE_CONNECTION_ID;
   let connectionState = initialConnectionState;
   let agentAuthorized = options.agentAuthorized ?? false;
   let artifactSynced = false;
@@ -197,8 +201,14 @@ function installDriveMocks(
     connectorOauthStartContract.start,
     ({ body, respond }) => {
       oauthRequests.push(body);
+      oauthAttemptId = crypto.randomUUID();
+      oauthConnectionId =
+        body.account.intent === "add"
+          ? NEW_DRIVE_CONNECTION_ID
+          : body.account.connectionId;
       return respond(200, {
         authorizationUrl: AUTHORIZATION_URL,
+        oauthAttemptId,
         ...(body.account.intent === "add"
           ? { connectionId: NEW_DRIVE_CONNECTION_ID }
           : {}),
@@ -287,6 +297,7 @@ function installDriveMocks(
   return {
     authorizationUpdates,
     completeAuthorization: () => {
+      completedAttempts.set(oauthAttemptId, oauthConnectionId);
       connectionState = "connected";
       agentAuthorized = true;
       targetContext.mocks.ably.trigger("connector:changed", {

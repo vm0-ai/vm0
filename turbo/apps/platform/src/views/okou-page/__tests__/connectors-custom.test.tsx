@@ -40,6 +40,7 @@ import {
   listAgent,
   mcpCustomConnector,
   mockCustomConnectorStory,
+  mockOAuthCompletions,
   queryConnectorAction,
 } from "./connector-page-test-helpers.ts";
 
@@ -873,6 +874,8 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
 });
 
 test("Configure and maintain OAuth for a custom HTTP connector", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   let connector: CustomConnectorHttpResponse | null = null;
   const created: CreateCustomConnectorBody[] = [];
   const updated: UpdateCustomConnectorBody[] = [];
@@ -928,9 +931,14 @@ test("Configure and maintain OAuth for a custom HTTP connector", async () => {
         throw new Error("Expected OAuth connector");
       }
       connector = { ...connector, connected: true, missingRequiredFields: [] };
+      const connectedAccountId =
+        connector.connectedAccountId ?? crypto.randomUUID();
+      connector = { ...connector, connectedAccountId };
+      completedAttempts.set(oauthAttemptId, connectedAccountId);
       authWindow.close();
       return respond(200, {
         result: "authorization",
+        oauthAttemptId,
         authorizationUrl: "https://oauth.acme.test/authorize?state=ui-test",
       });
     },
@@ -1374,15 +1382,48 @@ test("Create and connect an MCP server with automatic authentication", async () 
   });
 });
 
-test.each([false, true])(
-  "Reconnect an MCP account with a reusable dialog (close while pending: %s)",
-  async (dismiss) => {
-    const connector = mcpCustomConnector({
-      authMode: "automatic",
-      fields: [],
-      headerInjections: [],
-      configuredFieldKeys: [],
-    });
+test.each([
+  { kind: "http", dismiss: false },
+  { kind: "mcp", dismiss: false },
+  { kind: "mcp", dismiss: true },
+])(
+  "Reconnect a $kind account after cancelled consent and metadata changes (dismiss: $dismiss)",
+  async ({ kind, dismiss }) => {
+    const completedAttempts = mockOAuthCompletions(context);
+    let oauthAttemptId = crypto.randomUUID();
+    const connector =
+      kind === "http"
+        ? customConnector({
+            displayName: "Acme OAuth",
+            authMode: "oauth",
+            fields: [],
+            headerInjections: [
+              {
+                name: "Authorization",
+                valueTemplate: "Bearer {{oauth.access_token}}",
+              },
+            ],
+            configuredFieldKeys: [],
+            connected: true,
+            missingRequiredFields: [],
+            oauthConfig: {
+              providerAdapter: "standard",
+              clientId: "test-client",
+              authorizationUrl: "https://oauth.acme.test/authorize",
+              tokenUrl: "https://oauth.acme.test/token",
+              tokenEndpointAuthMethod: "client_secret_post",
+              pkceMethod: "none",
+              scopes: ["read"],
+              authorizationParams: {},
+            },
+          })
+        : mcpCustomConnector({
+            displayName: "Acme OAuth",
+            authMode: "automatic",
+            fields: [],
+            headerInjections: [],
+            configuredFieldKeys: [],
+          });
     const work = customAccount(connector.id, crypto.randomUUID(), {
       displayName: "Work",
     });
@@ -1434,7 +1475,9 @@ test.each([false, true])(
           intent: "reconnect",
           connectionId: personal.id,
         });
+        oauthAttemptId = crypto.randomUUID();
         return respond(200, {
+          oauthAttemptId,
           result: "authorization",
           connectionId: personal.id,
           authorizationUrl: "https://oauth.acme.test/reconnect",
@@ -1443,18 +1486,18 @@ test.each([false, true])(
     );
     await setupCustomPage({ mcp: true });
     const manageAccounts = await waitFor(() => {
-      return getConnectorAction("button", "Manage Acme MCP accounts");
+      return getConnectorAction("button", "Manage Acme OAuth accounts");
     });
     click(manageAccounts);
     const manager = await screen.findByRole("dialog", {
-      name: "Manage Acme MCP accounts",
+      name: "Manage Acme OAuth accounts",
     });
     const personalRow = await within(manager).findByRole("group", {
       name: "Personal",
     });
     click(getConnectorAction("button", "Reconnect", personalRow));
     const dialog = await screen.findByRole("dialog", {
-      name: "Connect Acme MCP",
+      name: "Connect Acme OAuth",
     });
 
     const cancelledWindow = createAuthWindow();
@@ -1471,13 +1514,19 @@ test.each([false, true])(
     expect(getConnectorAction("button", "Connecting…", dialog)).toBeDisabled();
     expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
     expect(within(dialog).getByLabelText("Close")).toBeEnabled();
+    personal = {
+      ...personal,
+      displayName: "Renamed in another tab",
+      updatedAt: "2026-01-01T00:00:00.500Z",
+    };
+    const cancelledAttemptId = oauthAttemptId;
     cancelledWindow.close();
     await waitFor(() => {
       expect(getConnectorAction("button", "Continue", dialog)).toBeEnabled();
     });
     expect(dialog).toBeInTheDocument();
     await waitFor(() => {
-      expect(getConnectorCard("Acme MCP")).toHaveTextContent("Add access");
+      expect(getConnectorCard("Acme OAuth")).toHaveTextContent("Add access");
     });
 
     const completedWindow = createAuthWindow();
@@ -1505,15 +1554,17 @@ test.each([false, true])(
       reconnectReason: null,
       updatedAt: "2026-01-01T00:00:01.000Z",
     };
+    expect(oauthAttemptId).not.toBe(cancelledAttemptId);
+    completedAttempts.set(oauthAttemptId, personal.id);
     completedWindow.close();
     await waitFor(() => {
       expect(
-        getConnectorAction("button", "Manage Acme MCP access"),
+        getConnectorAction("button", "Manage Acme OAuth access"),
       ).toHaveTextContent("Add access");
       expect(dialog).not.toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("dialog", { name: "Name your Acme MCP account" }),
+      screen.queryByRole("dialog", { name: "Name your Acme OAuth account" }),
     ).not.toBeInTheDocument();
   },
 );
@@ -1653,6 +1704,8 @@ test("Create, edit, and connect an OAuth MCP connector", async () => {
 });
 
 test("Add and optionally name a custom OAuth account", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   let connector = customConnector({
     fields: [],
     headerInjections: [
@@ -1704,9 +1757,13 @@ test("Add and optionally name a custom OAuth account", async () => {
         authMethod: "oauth",
         oauthScopes: ["search.read"],
       });
+      const connectedAccountId = connectionId;
+      connector = { ...connector, connectedAccountId };
+      completedAttempts.set(oauthAttemptId, connectedAccountId);
       authWindow.close();
       return respond(200, {
         result: "authorization",
+        oauthAttemptId,
         authorizationUrl: "https://oauth.acme.test/authorize?state=test",
         connectionId,
       });

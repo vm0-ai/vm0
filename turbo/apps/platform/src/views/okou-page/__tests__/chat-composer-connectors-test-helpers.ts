@@ -1,3 +1,4 @@
+import { mockOAuthCompletions } from "./connector-page-test-helpers.ts";
 import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -128,6 +129,7 @@ interface ComposerConnectorFixture {
   readonly manualConnectionRequests: readonly BuiltinConnectionRequest[];
   readonly noAuthConnectionRequests: readonly BuiltinConnectionRequest[];
   readonly oauthConnectionRequests: readonly OAuthConnectionRequest[];
+  readonly completeOAuth: (connectionId: string) => void;
   readonly threadSelectionUpdates: readonly ThreadSelectionUpdate[];
   readonly clearedThreadSelections: readonly {
     readonly threadId: string;
@@ -246,6 +248,8 @@ export function installComposerConnectorFixture(
   const manualConnectionRequests: BuiltinConnectionRequest[] = [];
   const noAuthConnectionRequests: BuiltinConnectionRequest[] = [];
   const oauthConnectionRequests: OAuthConnectionRequest[] = [];
+  const completedAttempts = mockOAuthCompletions(context);
+  let oauthAttemptId = crypto.randomUUID();
   const threadSelectionUpdates: ThreadSelectionUpdate[] = [];
   const clearedThreadSelections: {
     threadId: string;
@@ -560,6 +564,7 @@ export function installComposerConnectorFixture(
   context.mocks.api(
     connectorOauthStartContract.start,
     ({ body, params, respond }) => {
+      oauthAttemptId = crypto.randomUUID();
       oauthConnectionRequests.push({
         agentId: body.agentId,
         authorizeAgent: body.authorizeAgent,
@@ -569,6 +574,7 @@ export function installComposerConnectorFixture(
       });
       return respond(200, {
         authorizationUrl: `https://accounts.example.test/${params.connectorSlug}`,
+        oauthAttemptId,
         connectionId: "f0000000-0000-4000-a000-000000000064",
       });
     },
@@ -581,6 +587,9 @@ export function installComposerConnectorFixture(
     manualConnectionRequests,
     noAuthConnectionRequests,
     oauthConnectionRequests,
+    completeOAuth: (connectionId: string) => {
+      completedAttempts.set(oauthAttemptId, connectionId);
+    },
     threadSelectionUpdates,
     clearedThreadSelections,
     createdThreadRequests,

@@ -28,6 +28,24 @@ import { screen, within } from "@testing-library/react";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
 
+export function mockOAuthCompletions(
+  context: TestContext,
+): Map<string, string> {
+  const completed = new Map<string, string>();
+  context.mocks.api(
+    connectorAccountsContract.oauthCompletion,
+    ({ params, respond }) => {
+      const connectionId = completed.get(params.attemptId);
+      return connectionId
+        ? respond(200, { connectionId })
+        : respond(404, {
+            error: { code: "NOT_FOUND", message: "OAuth completion not found" },
+          });
+    },
+  );
+  return completed;
+}
+
 export function getConnectorAction(
   role: "button" | "link" | "menuitem" | "tab",
   name: string,
