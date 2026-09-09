@@ -429,6 +429,24 @@ Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
 
+### Okou Goal retirement rollback floor
+
+The production rollback resolver requires the release/API target to contain
+Goal retirement commit `6d391117e4fead19e2105136fb2792a6e77801d8`. The first
+compatible release is `1f68f182a2457ec3aea52d8063be2bd2d2263abd` (API 1.571.1).
+This permanent floor prevents canonical rollback from restoring Goal creation,
+reactivation, or continuation. It rejects pre-boundary targets before API or
+Runner artifact resolution and output publication, even if the rollback
+dashboard still lists those historical releases.
+
+Apply this floor only to the release/API target: the first compatible release
+retained an older Runner tag. All independent Runner ancestry, reader, host
+architecture, and release-asset checks still apply. The rollback workflow loads
+the resolver from current `main`, so merging the guard constrains future
+canonical executions without a release or test rollback. This does not prove
+that old fixed API deployments are non-writable or authorize Goal archival;
+those remain separate gates in [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
+
 ### Usage pack visibility compatibility retirement
 
 `showUsagePack` has an explicit API writer and billing response starting with
@@ -442,12 +460,14 @@ on 2026-09-09 at 01:11:34 UTC.
 
 Migration `1092` removes the temporary legacy-writer trigger and function after
 this rollout. The billing response now requires the flag, and the frontend
-reads it directly. The production rollback resolver, loaded from `main`, rejects
-targets without the explicit writer commit before resolving deployment artifacts.
-This guard is active before the cleanup release runs its migration and also
-rejects older entries retained in the rollback dashboard. Other rollback checks,
-including deployment availability and Runner architecture coverage, still apply.
-Recovery below `api-v1.570.0` requires restoring compatibility first.
+reads it directly. The existing Okou Goal retirement rollback floor requires
+commit `6d391117e4fead19e2105136fb2792a6e77801d8`, which descends from the
+explicit usage-pack writer commit. Its first compatible release is API 1.571.1,
+so every permitted rollback target also contains the required writer and
+response. The resolver runs from current `main` and rejects older targets before
+artifact resolution, including entries still retained in the rollback dashboard.
+Keep this enforced boundary when retiring the usage-pack compatibility bridge;
+all other deployment and Runner rollback checks continue to apply.
 
 The cleanup retains existing visibility values, the physical
 `member_invite_usage_pack_required` column and its ORM declaration, and all

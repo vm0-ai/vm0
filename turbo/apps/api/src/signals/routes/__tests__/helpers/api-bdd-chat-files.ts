@@ -1225,7 +1225,6 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly agentId?: string;
         readonly since?: number;
-        readonly limit?: number;
       } = {},
     ): Promise<ChatSearchResponse> {
       const response = await accept(
@@ -1244,6 +1243,7 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly agentId?: string;
         readonly since?: number;
+        // Previous clients still send this retired parameter during rollout.
         readonly limit?: number;
       },
       statuses: readonly (200 | 400 | 401 | 403)[],

@@ -1,9 +1,13 @@
 import { useGet } from "ccstate-react";
-import { avatarNeckSweaterEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
+  avatarFramingEnabled$,
+  avatarNeckSweaterEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import {
+  AVATAR_ARTWORK_SLOT,
   AVATAR_HEAD_TRANSFORM_ORIGIN,
   avatarSvgComposition,
-  isLegacyAvatarSvgConfig,
+  avatarSvgContentTransform,
   type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
 
@@ -28,8 +32,16 @@ export function AvatarSvgPreview({
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
   const neckSweater = useGet(avatarNeckSweaterEnabled$);
-  const { behind, head, front, headScale, contentOffsetY } =
-    avatarSvgComposition(config, { neckSweater });
+  const framing = useGet(avatarFramingEnabled$);
+  const { behind, head, front, headScale, contentOffsetY, contentScale } =
+    avatarSvgComposition(config, { neckSweater, framing });
+  // `centerContent` is the avatar maker asking for centering on its own while
+  // the framing switch is off; the rule centers every avatar once it ships, and
+  // the prop goes with the switch.
+  const transform = avatarSvgContentTransform({
+    contentOffsetY: framing || centerContent ? contentOffsetY : 0,
+    contentScale,
+  });
   const layerClassName = "absolute inset-0 h-full w-full object-cover";
   const layer = (src: string) => {
     return <img key={src} alt="" src={src} className={layerClassName} />;
@@ -43,12 +55,9 @@ export function AvatarSvgPreview({
       data-testid={testId}
     >
       <div
-        className={`absolute inset-0 ${isLegacyAvatarSvgConfig(config) ? "scale-[1.25]" : ""}`}
-        style={
-          centerContent
-            ? { transform: `translateY(${contentOffsetY}%)` }
-            : undefined
-        }
+        {...AVATAR_ARTWORK_SLOT}
+        className="absolute inset-0"
+        style={transform ? { transform } : undefined}
       >
         {behind.map(layer)}
         <div

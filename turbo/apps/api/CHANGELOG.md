@@ -8,6 +8,21 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.573.0](https://github.com/vm0-ai/vm0/compare/api-v1.572.2...api-v1.573.0) (2026-09-09)
+
+
+### Features
+
+* **api:** summarize connected slack activity in morning brief ([#32769](https://github.com/vm0-ai/vm0/issues/32769)) ([77a34fd](https://github.com/vm0-ai/vm0/commit/77a34fd2059b9834b9553e72950fbe5a75f0c3f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.640.0
+    * @okouai/db bumped to 1.247.3
+
 ## [1.572.2](https://github.com/vm0-ai/vm0/compare/api-v1.572.1...api-v1.572.2) (2026-09-09)
 
 

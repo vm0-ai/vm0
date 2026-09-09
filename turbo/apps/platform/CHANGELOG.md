@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.869.0](https://github.com/vm0-ai/vm0/compare/app-v0.868.1...app-v0.869.0) (2026-09-09)
+
+
+### Features
+
+* **platform:** frame every avatar to one size in its box ([#32766](https://github.com/vm0-ai/vm0/issues/32766)) ([90c14bb](https://github.com/vm0-ai/vm0/commit/90c14bb0f0374714cf14ecb1b41762eabb940708))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.640.0
+
 ## [0.868.1](https://github.com/vm0-ai/vm0/compare/app-v0.868.0...app-v0.868.1) (2026-09-09)
 
 

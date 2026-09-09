@@ -8,7 +8,6 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../lib/utils/time-format";
-import { parseBoundedLogCount } from "../../lib/utils/log-pagination";
 import { parseSearchQuery } from "../../lib/utils/search-query";
 import { isUuid } from "../../lib/utils/uuid";
 
@@ -20,7 +19,7 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 export const SEARCH_EXPLAINER = `
 Available sources:
   agent-session  locates local Claude Code and Codex session files for direct analysis
-  chat           user/assistant text messages as shown in the web chat UI
+  chat           user/assistant text messages from web chat (up to 25 newest matches)
   slack          returns a recipe for calling the Slack API directly; requires the Slack connector
 
 Usage: okou search <query> --source <agent-session|chat|slack> [flags]
@@ -52,25 +51,18 @@ To verify the token and network policy end-to-end:
 
 Slack API docs: https://api.slack.com/methods/search.messages
 
-Note: CLI-local flags (--limit, --since) are ignored for the slack source.
-Pass equivalents to Slack's API via count= / highlight=
-query parameters instead.`;
+Note: --since is ignored for the slack source.
+Add time filters directly to the Slack search query.`;
 }
 
 interface SearchOptions {
   source: string[];
   agent?: string;
   since?: string;
-  limit?: string;
 }
 
 function collectSource(value: string, previous: string[]): string[] {
   return [...previous, value];
-}
-
-function parseLimit(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
 function formatTimestamp(iso: string): string {
@@ -96,15 +88,6 @@ function renderChatResults(response: ChatSearchResponse): void {
     );
     renderChatMessage(result.matchedMessage);
   }
-
-  if (response.hasMore) {
-    console.log();
-    console.log(
-      chalk.dim(
-        `  Showing first ${response.results.length} matches. Use --limit to see more.`,
-      ),
-    );
-  }
 }
 
 async function runChatSource(
@@ -118,7 +101,6 @@ async function runChatSource(
     process.exit(1);
   }
 
-  const limit = parseLimit(options.limit);
   const since =
     options.since !== undefined
       ? parseTime(options.since)
@@ -128,7 +110,6 @@ async function runChatSource(
     keyword: query,
     agentId: options.agent,
     since,
-    limit,
   });
 
   if (response.results.length === 0) {
@@ -170,7 +151,6 @@ export const searchCommand = new Command()
   )
   .option("--agent <id>", "Filter by agent ID")
   .option("--since <time>", "Time window (e.g., 7d, 2h)")
-  .option("--limit <n>", "Maximum number of matches")
   .addHelpText("after", SEARCH_EXPLAINER)
   .action(
     withErrorHandler(async (query: string, options: SearchOptions) => {

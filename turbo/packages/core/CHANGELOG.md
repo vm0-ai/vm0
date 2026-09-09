@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.640.0](https://github.com/vm0-ai/vm0/compare/core-v8.639.0...core-v8.640.0) (2026-09-09)
+
+
+### Features
+
+* **platform:** frame every avatar to one size in its box ([#32766](https://github.com/vm0-ai/vm0/issues/32766)) ([90c14bb](https://github.com/vm0-ai/vm0/commit/90c14bb0f0374714cf14ecb1b41762eabb940708))
+
 ## [8.639.0](https://github.com/vm0-ai/vm0/compare/core-v8.638.1...core-v8.639.0) (2026-09-09)
 
 

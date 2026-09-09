@@ -119,11 +119,24 @@ const AVATAR_HAIR_TOP_Y: Readonly<
   "ribbon-updo": [45, 51],
 };
 
-function composerContentOffsetY(
+/**
+ * The share of the avatar box the framing rule aims the visible artwork at.
+ * Read off the brand avatar, which is drawn edge to edge on its own canvas and
+ * is the reference every other avatar sits next to.
+ */
+const AVATAR_CONTENT_TARGET_FILL = 0.92;
+
+/** Top and bottom of the visible artwork, in 380px canvas units. */
+interface AvatarContentBounds {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+function composerContentBounds(
   config: AvatarSvgConfig,
   headScale: number,
   neckSweater: boolean,
-): number {
+): AvatarContentBounds {
   const hairTop =
     AVATAR_HAIR_TOP_Y[config.hair][config.face === "square" ? 1 : 0];
   const hairBottom =
@@ -134,14 +147,33 @@ function composerContentOffsetY(
       : config.hair === "geometric-long" || config.hair === "long-center-part"
         ? 316
         : AVATAR_FACE_CHIN_Y[config.face];
-  const top = Math.max(
-    0,
-    AVATAR_FACE_TOP_Y + (hairTop - AVATAR_FACE_TOP_Y) * headScale,
-  );
-  const bottom = neckSweater
-    ? 380
-    : Math.min(380, Math.max(AVATAR_FACE_CHIN_Y[config.face], hairBottom));
+  return {
+    top: Math.max(
+      0,
+      AVATAR_FACE_TOP_Y + (hairTop - AVATAR_FACE_TOP_Y) * headScale,
+    ),
+    bottom: neckSweater
+      ? 380
+      : Math.min(380, Math.max(AVATAR_FACE_CHIN_Y[config.face], hairBottom)),
+  };
+}
+
+function contentOffsetY({ top, bottom }: AvatarContentBounds): number {
   return ((380 - top - bottom) / 2 / 380) * 100;
+}
+
+/**
+ * Half of the correction toward `AVATAR_CONTENT_TARGET_FILL`, in log space.
+ *
+ * Hair volume is the only thing that varies here — the chin baseline already
+ * pins every face to the same box — so scaling the artwork all the way to one
+ * fill would trade an uneven silhouette for an uneven face: a `rounded-crop`
+ * avatar would be inflated 1.32x and end up with a larger face than the rest of
+ * the cast. Moving each avatar halfway keeps every scale within 1.15x and 0.97x
+ * while pulling the silhouettes from a 1.42x spread down to 1.19x.
+ */
+function contentScale({ top, bottom }: AvatarContentBounds): number {
+  return Math.sqrt(AVATAR_CONTENT_TARGET_FILL / ((bottom - top) / 380));
 }
 
 interface AvatarSvgComposition {
@@ -154,6 +186,37 @@ interface AvatarSvgComposition {
   readonly headScale: number;
   /** Percentage translation that centers the visible artwork vertically. */
   readonly contentOffsetY: number;
+  /** Scale applied to the whole artwork, about the center of its box. */
+  readonly contentScale: number;
+}
+
+/**
+ * The element every avatar surface places its framed artwork on. The framing is
+ * a transform with no page-observable result under jsdom, so this is the slot
+ * tests read it from; both the React preview and the mention-chip node view
+ * expose it so they cannot drift apart.
+ */
+export const AVATAR_ARTWORK_SLOT = { "data-avatar-artwork": "" } as const;
+
+/**
+ * The artwork transform for a composition, or null when it is the identity.
+ *
+ * Order matters: the translation is written to the right of the scale so it
+ * applies first, which carries the centering offset through the scale instead
+ * of sliding an already-scaled artwork by an unscaled distance.
+ */
+export function avatarSvgContentTransform(placement: {
+  readonly contentOffsetY: number;
+  readonly contentScale: number;
+}): string | null {
+  const parts: string[] = [];
+  if (placement.contentScale !== 1) {
+    parts.push(`scale(${placement.contentScale})`);
+  }
+  if (placement.contentOffsetY !== 0) {
+    parts.push(`translateY(${placement.contentOffsetY}%)`);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 /**
@@ -161,10 +224,17 @@ interface AvatarSvgComposition {
  * byte-for-byte the four head layers at their original scale, because the neck
  * and the chin baseline are one change: a scaled head with no collar under it
  * is just a smaller or larger avatar than the one already saved.
+ *
+ * `framing` is the `avatarFraming` switch. With it off `contentScale` stays at
+ * the scale each family already shipped with, so only the callers that ask for
+ * centering get it.
  */
 export function avatarSvgComposition(
   config: ResolvedAvatarSvgConfig,
-  { neckSweater }: { readonly neckSweater: boolean },
+  {
+    neckSweater,
+    framing,
+  }: { readonly neckSweater: boolean; readonly framing: boolean },
 ): AvatarSvgComposition {
   if (isLegacyAvatarSvgConfig(config)) {
     return {
@@ -181,6 +251,10 @@ export function avatarSvgComposition(
       front: [],
       headScale: 1,
       contentOffsetY: 0,
+      // Legacy heads are drawn without a neck, and this is the scale that has
+      // always sized them against the rest. It is the framing rule for that
+      // family: their artwork bounds are not derivable from a config.
+      contentScale: 1.25,
     };
   }
 
@@ -195,23 +269,27 @@ export function avatarSvgComposition(
     ),
   ];
   if (!neckSweater) {
+    const bounds = composerContentBounds(config, 1, false);
     return {
       behind: [],
       head,
       front: [],
       headScale: 1,
-      contentOffsetY: composerContentOffsetY(config, 1, false),
+      contentOffsetY: contentOffsetY(bounds),
+      contentScale: framing ? contentScale(bounds) : 1,
     };
   }
   const headScale =
     (AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_TOP_Y) /
     (AVATAR_FACE_CHIN_Y[config.face] - AVATAR_FACE_TOP_Y);
+  const bounds = composerContentBounds(config, headScale, true);
   return {
     behind: [avatarComposerAssetUrl(`neck/${config.skin}.svg`)],
     head,
     front: [avatarComposerAssetUrl(`sweater/${config.sweater}.svg`)],
     headScale,
-    contentOffsetY: composerContentOffsetY(config, headScale, true),
+    contentOffsetY: contentOffsetY(bounds),
+    contentScale: framing ? contentScale(bounds) : 1,
   };
 }
 

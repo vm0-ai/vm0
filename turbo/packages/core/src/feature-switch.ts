@@ -308,6 +308,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
     enabled: true,
   },
+  [FeatureSwitchKey.AvatarFraming]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Center every avatar's visible artwork in its box and move it halfway to a shared fill, so hair volume stops changing how large an avatar looks.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@okou.ai",
     description:
