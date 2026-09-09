@@ -3,9 +3,11 @@ import type { SignIn } from "@clerk/react";
 import type { ComponentProps } from "react";
 import { platformOkouWordmarkLightImg } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
-import { AUTH_V2_PRIMARY_ACTION_CLASS } from "../auth-v2/auth-v2-action-styles.ts";
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
+
+const AUTH_V1_PRIMARY_ACTION_CLASS =
+  "border-transparent bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed";
 
 // Clerk's OTP slots are visual divs; its accessible textbox owns focus. Match
 // the shared Input boundary while adapting focus and error states through the
@@ -36,8 +38,8 @@ export function getAuthV1ComponentAppearance(
       logoImage: "h-auto w-[76px]",
       // Clerk shares colorPrimary between links and filled controls. Keep the
       // accessible link color at provider level, then give only the CTA the
-      // same filled treatment as Auth V2.
-      formButtonPrimary: cn(AUTH_V2_PRIMARY_ACTION_CLASS, "border-transparent"),
+      // application's semantic filled-action colors.
+      formButtonPrimary: AUTH_V1_PRIMARY_ACTION_CLASS,
       otpCodeFieldInput: AUTH_V1_OTP_INPUT_CLASS,
     },
   };
