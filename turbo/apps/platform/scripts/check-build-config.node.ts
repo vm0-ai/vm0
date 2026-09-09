@@ -9,10 +9,11 @@ import { build, loadConfigFromFile } from "vite";
 
 import { applicationResourcePriorityHtmlPlugin } from "./app-resource-priority-html.ts";
 import {
+  APPLICATION_LAZY_CHUNK,
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
-  VENDOR_MODULE_PATTERN,
   applicationBundleViolations,
   applicationJavaScriptBundlePlugin,
+  isVendorModule,
   singleWorkerBundleViolations,
   singleWorkerJavaScriptBundlePlugin,
 } from "./single-bundle.ts";
@@ -26,7 +27,7 @@ const productionConfigPromise = loadConfigFromFile(
   new URL("../vite.config.ts", import.meta.url).pathname,
 );
 
-await test("production build emits one deterministic vendor group with a compiled app version", async () => {
+await test("production build isolates the configured lazy dependency", async () => {
   const loaded = await productionConfigPromise;
 
   assert.ok(loaded);
@@ -35,29 +36,38 @@ await test("production build emits one deterministic vendor group with a compile
   const codeSplitting = output.codeSplitting;
   assert.equal(typeof codeSplitting, "object");
   assert.ok(codeSplitting && typeof codeSplitting === "object");
-  assert.equal(codeSplitting.groups?.length, 1);
-  const vendorGroup = codeSplitting.groups?.[0];
+  assert.equal(codeSplitting.groups?.length, 2);
+  const lazyGroup = codeSplitting.groups?.[0];
+  const vendorGroup = codeSplitting.groups?.[1];
+  assert.equal(lazyGroup?.name, APPLICATION_LAZY_CHUNK.name);
+  assert.ok(lazyGroup?.test instanceof RegExp);
+  assert.equal(
+    lazyGroup.test.source,
+    APPLICATION_LAZY_CHUNK.modulePattern.source,
+  );
   assert.equal(vendorGroup?.name, "vendor");
-  assert.ok(vendorGroup?.test instanceof RegExp);
+  assert.equal(typeof vendorGroup?.test, "function");
+  if (typeof vendorGroup?.test !== "function") {
+    assert.fail("Expected a vendor module filter");
+  }
+  assert.equal(vendorGroup.test("/repo/node_modules/react/index.js"), true);
   assert.equal(
-    vendorGroup.test.test("/repo/node_modules/react/index.js"),
+    vendorGroup.test("/repo/packages/mermaid-lite/dist/mermaid.esm.min.mjs"),
     true,
   );
   assert.equal(
-    vendorGroup.test.test(
-      "/repo/packages/mermaid-lite/dist/mermaid.esm.min.mjs",
-    ),
-    true,
-  );
-  assert.equal(
-    vendorGroup.test.test("/repo/packages/mermaid-lite/src/index.ts"),
+    vendorGroup.test("/repo/packages/mermaid-lite/src/index.ts"),
     false,
   );
   assert.equal(
-    vendorGroup.test.test("/repo/packages/core/src/resource-registry.ts"),
+    vendorGroup.test("/repo/packages/core/src/resource-registry.ts"),
     false,
   );
-  assert.equal(vendorGroup.test.test("/repo/src/main.ts"), false);
+  assert.equal(
+    vendorGroup.test("/repo/node_modules/katex/dist/katex.mjs"),
+    false,
+  );
+  assert.equal(vendorGroup.test("/repo/src/main.ts"), false);
   assert.equal(loaded.config.define?.__OKOU_APP_GIT_COMMIT_SHA__, undefined);
   assert.equal(
     typeof JSON.parse(loaded.config.define?.__OKOU_APP_VERSION__ ?? "null"),
@@ -99,16 +109,28 @@ await test("production shared worker stays on the app origin", async () => {
 });
 
 const APP_FILE = "assets/index-AppHash1.js";
+const LAZY_FILE = "assets/katex-KatexHash1.js";
 const VENDOR_FILE = "assets/vendor-Vendor01.js";
 const RUNTIME_FILE = "assets/rolldown-runtime-Runtime1.js";
 
 function applicationChunk() {
   return {
     code: "entry",
+    dynamicImports: [LAZY_FILE],
     fileName: APP_FILE,
     imports: [RUNTIME_FILE, VENDOR_FILE],
     isEntry: true,
     moduleIds: ["/repo/apps/platform/src/main.ts"],
+    type: "chunk" as const,
+  };
+}
+
+function lazyChunk() {
+  return {
+    code: "katex",
+    fileName: LAZY_FILE,
+    imports: [RUNTIME_FILE],
+    moduleIds: ["/repo/node_modules/katex/dist/katex.mjs"],
     type: "chunk" as const,
   };
 }
@@ -146,15 +168,21 @@ function workerAsset() {
 }
 
 function validApplicationOutputs() {
-  return [applicationChunk(), vendorChunk(), runtimeChunk(), workerAsset()];
+  return [
+    applicationChunk(),
+    lazyChunk(),
+    vendorChunk(),
+    runtimeChunk(),
+    workerAsset(),
+  ];
 }
 
-await test("requires the fixed app, vendor, runtime, and worker layout", () => {
+await test("requires the fixed app, lazy, vendor, runtime, and worker layout", () => {
   assert.deepEqual(applicationBundleViolations(validApplicationOutputs()), []);
   assert.deepEqual(
-    applicationBundleViolations(validApplicationOutputs().slice(0, 3)),
+    applicationBundleViolations(validApplicationOutputs().slice(0, 4)),
     [
-      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk)`,
+      `Expected exactly one app entry, one lazy chunk, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${LAZY_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk)`,
     ],
   );
   assert.deepEqual(
@@ -163,9 +191,29 @@ await test("requires the fixed app, vendor, runtime, and worker layout", () => {
       { code: "lazy", fileName: "assets/lazy-Extra001.js", type: "chunk" },
     ]),
     [
-      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk), assets/shared-database-worker-Worker01.js (asset), assets/lazy-Extra001.js (chunk)`,
+      `Expected exactly one app entry, one lazy chunk, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${LAZY_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk), assets/shared-database-worker-Worker01.js (asset), assets/lazy-Extra001.js (chunk)`,
     ],
   );
+});
+
+await test("keeps the configured dependency behind the only dynamic import", () => {
+  const violations = applicationBundleViolations([
+    { ...applicationChunk(), dynamicImports: [] },
+    {
+      ...lazyChunk(),
+      moduleIds: [
+        ...lazyChunk().moduleIds,
+        "/repo/node_modules/react/index.js",
+      ],
+    },
+    vendorChunk(),
+    runtimeChunk(),
+    workerAsset(),
+  ]);
+  assert.deepEqual(violations, [
+    `${APP_FILE}: expected exactly one dynamic import (${LAZY_FILE})`,
+    `${LAZY_FILE}: unexpected modules in the configured lazy chunk: /repo/node_modules/react/index.js`,
+  ]);
 });
 
 await test("rejects raw-size regressions", () => {
@@ -175,6 +223,7 @@ await test("rejects raw-size regressions", () => {
       code: "x".repeat(RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES),
     },
     vendorChunk(),
+    lazyChunk(),
     runtimeChunk(),
     workerAsset(),
   ]);
@@ -186,7 +235,7 @@ await test("keeps third-party modules only in vendor and rejects extra edges", (
   const violations = applicationBundleViolations([
     {
       ...applicationChunk(),
-      dynamicImports: ["assets/lazy-Extra001.js"],
+      dynamicImports: [LAZY_FILE, "assets/lazy-Extra001.js"],
       moduleIds: [
         "/repo/apps/platform/src/main.ts",
         "/repo/node_modules/react/index.js",
@@ -199,12 +248,13 @@ await test("keeps third-party modules only in vendor and rejects extra edges", (
         "/repo/node_modules/@clerk/clerk-js/dist/clerk.mjs",
       ],
     },
+    lazyChunk(),
     runtimeChunk(),
     workerAsset(),
   ]);
   assert.ok(
     violations.some((violation) => {
-      return violation.includes("expected no dynamic JavaScript imports");
+      return violation.includes("unexpected dynamic JavaScript imports");
     }),
   );
   assert.ok(
@@ -230,6 +280,7 @@ await test("keeps only the generated Mermaid workspace module in vendor", () => 
         return !moduleId.includes("/packages/mermaid-lite/");
       }),
     },
+    lazyChunk(),
     runtimeChunk(),
     workerAsset(),
   ]);
@@ -248,6 +299,7 @@ await test("keeps only the generated Mermaid workspace module in vendor", () => 
         ...vendorChunk(),
         moduleIds: [...vendorChunk().moduleIds, unrelatedWorkspaceModule],
       },
+      lazyChunk(),
       runtimeChunk(),
       workerAsset(),
     ]),
@@ -273,6 +325,7 @@ await test("allows Prism common and rejects non-common entries", () => {
           "/repo/node_modules/refractor/lib/all.js",
         ],
       },
+      lazyChunk(),
       runtimeChunk(),
       workerAsset(),
     ]),
@@ -294,6 +347,7 @@ await test("rejects server-only contracts from the eager platform graph", () => 
         ],
       },
       vendorChunk(),
+      lazyChunk(),
       runtimeChunk(),
       workerAsset(),
     ]),
@@ -432,6 +486,36 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
   );
 }
 
+function testCodeSplittingGroups() {
+  return [
+    {
+      name: APPLICATION_LAZY_CHUNK.name,
+      test: APPLICATION_LAZY_CHUNK.modulePattern,
+    },
+    { name: "vendor", test: isVendorModule },
+  ];
+}
+
+async function writeLazyPackageFixture(root: string): Promise<void> {
+  const directory = path.join(
+    root,
+    "node_modules",
+    APPLICATION_LAZY_CHUNK.name,
+  );
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    path.join(directory, "package.json"),
+    JSON.stringify({
+      exports: "./index.mjs",
+      name: APPLICATION_LAZY_CHUNK.name,
+    }),
+  );
+  await writeFile(
+    path.join(directory, "index.mjs"),
+    'export default { renderToString: () => "math" };',
+  );
+}
+
 await test("emits the fixed page topology and one external worker", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "okou-app-bundles-"));
   const sourceDirectory = path.join(root, "src");
@@ -442,10 +526,11 @@ await test("emits the fixed page topology and one external worker", async () => 
     await mkdir(sourceDirectory, { recursive: true });
     await mkdir(vendorDirectory, { recursive: true });
     await mkdir(mermaidDirectory, { recursive: true });
+    await writeLazyPackageFixture(root);
     await writeFile(path.join(root, "index.html"), clerkDiscoveryFixture());
     await writeFile(
       path.join(sourceDirectory, "main.js"),
-      'import "./main.css"; import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import mermaid from "../packages/mermaid-lite/dist/mermaid.esm.min.mjs"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, mermaid.value, vendor.value);',
+      'import "./main.css"; import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import mermaid from "../packages/mermaid-lite/dist/mermaid.esm.min.mjs"; import vendor from "fixture-vendor"; globalThis.loadKatex = () => import("katex"); new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, mermaid.value, vendor.value);',
     );
     await writeFile(
       path.join(sourceDirectory, "main.css"),
@@ -483,7 +568,7 @@ await test("emits the fixed page topology and one external worker", async () => 
         rolldownOptions: {
           output: {
             codeSplitting: {
-              groups: [{ name: "vendor", test: VENDOR_MODULE_PATTERN }],
+              groups: testCodeSplittingGroups(),
             },
           },
         },
@@ -498,14 +583,13 @@ await test("emits the fixed page topology and one external worker", async () => 
         },
       },
     });
-
     if (Array.isArray(result) || !("output" in result)) {
       assert.fail("Expected one completed Vite build output");
     }
     const javaScriptOutputs = result.output.filter((item) => {
       return item.fileName.endsWith(".js");
     });
-    assert.equal(javaScriptOutputs.length, 4);
+    assert.equal(javaScriptOutputs.length, 5);
     assert.equal(
       javaScriptOutputs.filter((item) => {
         return item.type === "chunk" && item.isEntry;

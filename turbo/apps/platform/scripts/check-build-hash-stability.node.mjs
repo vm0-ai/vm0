@@ -17,6 +17,7 @@ import { Window } from "happy-dom";
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const COMMIT_SHA_META_NAME = "okou-app-git-commit-sha";
 const VERSION_META_NAME = "okou-app-version";
+const APP_FILE_PATTERN = /^index-[^/]+\.js$/u;
 const VENDOR_FILE_PATTERN = /^vendor-[^/]+\.js$/u;
 const RUNTIME_FILE_PATTERN = /^rolldown-runtime-[^/]+\.js$/u;
 const WORKER_FILE_PATTERN = /^shared-database-worker-[^/]+\.js$/u;
@@ -181,16 +182,11 @@ async function describeBuild(outputDirectory) {
     WORKER_FILE_PATTERN,
     "SharedWorker JavaScript file",
   );
-  const appFiles = javaScriptFiles.filter((fileName) => {
-    return ![vendorFile, runtimeFile, workerFile].includes(fileName);
-  });
-  assert.equal(
-    appFiles.length,
-    1,
-    `Expected exactly one app entry JavaScript file, found: ${appFiles.join(", ") || "none"}`,
+  const appFile = exactlyOne(
+    javaScriptFiles,
+    APP_FILE_PATTERN,
+    "app entry JavaScript file",
   );
-  const appFile = appFiles[0];
-  assert.ok(appFile);
 
   const artifacts = {
     app: await describeFile(assetsDirectory, appFile),

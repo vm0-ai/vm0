@@ -10,8 +10,20 @@ const ROLLDOWN_RUNTIME_FILE_PATTERN = /^assets\/rolldown-runtime-[^/]+\.js$/u;
 const MERMAID_LITE_MODULE_PATH =
   "/packages/mermaid-lite/dist/mermaid.esm.min.mjs";
 
-export const VENDOR_MODULE_PATTERN =
+export const APPLICATION_LAZY_CHUNK = {
+  modulePattern: /[\\/]node_modules[\\/]katex[\\/]/u,
+  name: "katex",
+} as const;
+
+const VENDOR_MODULE_PATTERN =
   /(?:[\\/]node_modules[\\/]|[\\/]packages[\\/]mermaid-lite[\\/]dist[\\/]mermaid\.esm\.min\.mjs$)/u;
+
+export function isVendorModule(moduleId: string): boolean {
+  return (
+    VENDOR_MODULE_PATTERN.test(moduleId) &&
+    !APPLICATION_LAZY_CHUNK.modulePattern.test(moduleId)
+  );
+}
 
 const FORBIDDEN_BUNDLED_PACKAGES = [
   "@base-org",
@@ -20,7 +32,7 @@ const FORBIDDEN_BUNDLED_PACKAGES = [
   "@coinbase",
   "@solana",
   "@wallet-standard",
-  "katex",
+  APPLICATION_LAZY_CHUNK.name,
   "rehype-katex",
   "remark-math",
   "tr46",
@@ -113,6 +125,14 @@ function generatedChunks(
   });
 }
 
+function isLazyApplicationChunk(chunk: GeneratedChunk): boolean {
+  return (
+    chunk.isEntry !== true &&
+    !VENDOR_FILE_PATTERN.test(chunk.fileName) &&
+    !ROLLDOWN_RUNTIME_FILE_PATTERN.test(chunk.fileName)
+  );
+}
+
 function outputDescription(outputs: readonly GeneratedOutput[]): string {
   if (outputs.length === 0) {
     return "none";
@@ -128,6 +148,7 @@ function chunkViolations(
   chunk: GeneratedChunk,
   allowedStaticImports: ReadonlySet<string>,
   allowedBundledPackages: ReadonlySet<string> = new Set(),
+  allowedDynamicImports: ReadonlySet<string> = new Set(),
 ): string[] {
   const violations: string[] = [];
   const unexpectedImports = (chunk.imports ?? []).filter((fileName) => {
@@ -138,9 +159,14 @@ function chunkViolations(
       `${chunk.fileName}: unexpected JavaScript imports: ${unexpectedImports.join(", ")}`,
     );
   }
-  if ((chunk.dynamicImports ?? []).length > 0) {
+  const unexpectedDynamicImports = (chunk.dynamicImports ?? []).filter(
+    (fileName) => {
+      return !allowedDynamicImports.has(fileName);
+    },
+  );
+  if (unexpectedDynamicImports.length > 0) {
     violations.push(
-      `${chunk.fileName}: expected no dynamic JavaScript imports, found ${(chunk.dynamicImports ?? []).join(", ")}`,
+      `${chunk.fileName}: unexpected dynamic JavaScript imports: ${unexpectedDynamicImports.join(", ")}`,
     );
   }
 
@@ -242,49 +268,85 @@ export function applicationBundleViolations(
     },
   );
   const vendorChunks = applicationChunks.filter((chunk) => {
-    return VENDOR_FILE_PATTERN.test(chunk.fileName);
+    return chunk.isEntry !== true && VENDOR_FILE_PATTERN.test(chunk.fileName);
   });
   const runtimeChunks = applicationChunks.filter((chunk) => {
-    return ROLLDOWN_RUNTIME_FILE_PATTERN.test(chunk.fileName);
-  });
-  const appChunks = applicationChunks.filter((chunk) => {
     return (
-      !VENDOR_FILE_PATTERN.test(chunk.fileName) &&
-      !ROLLDOWN_RUNTIME_FILE_PATTERN.test(chunk.fileName)
+      chunk.isEntry !== true &&
+      ROLLDOWN_RUNTIME_FILE_PATTERN.test(chunk.fileName)
     );
   });
+  const appChunks = applicationChunks.filter((chunk) => {
+    return chunk.isEntry === true;
+  });
+  const lazyChunks = applicationChunks.filter(isLazyApplicationChunk);
   const appChunk = appChunks[0];
   const vendorChunk = vendorChunks[0];
+  const lazyChunk = lazyChunks[0];
   const runtimeChunk = runtimeChunks[0];
   const workerAsset = workerAssets[0];
+  const invalidLayout = [
+    javaScriptOutputs.length !== 5,
+    appChunks.length !== 1,
+    vendorChunks.length !== 1,
+    lazyChunks.length !== 1,
+    runtimeChunks.length !== 1,
+    workerAssets.length !== 1,
+  ].some(Boolean);
   if (
-    javaScriptOutputs.length !== 4 ||
-    applicationChunks.length !== 3 ||
-    appChunks.length !== 1 ||
-    vendorChunks.length !== 1 ||
-    runtimeChunks.length !== 1 ||
-    workerAssets.length !== 1 ||
+    invalidLayout ||
     !appChunk ||
     !vendorChunk ||
+    !lazyChunk ||
     !runtimeChunk ||
-    !workerAsset ||
-    appChunk.isEntry !== true ||
-    vendorChunk.isEntry === true ||
-    runtimeChunk.isEntry === true
+    !workerAsset
   ) {
     return [
-      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${outputDescription(javaScriptOutputs)}`,
+      `Expected exactly one app entry, one lazy chunk, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${outputDescription(javaScriptOutputs)}`,
     ];
   }
 
-  const allowedStaticImports = new Set(
-    applicationChunks.map((chunk) => {
+  const allowedEagerStaticImports = new Set(
+    [appChunk, vendorChunk, runtimeChunk].map((chunk) => {
       return chunk.fileName;
     }),
   );
-  const violations = applicationChunks.flatMap((chunk) => {
-    return chunkViolations(chunk, allowedStaticImports);
-  });
+  const violations = [
+    ...chunkViolations(
+      appChunk,
+      allowedEagerStaticImports,
+      new Set(),
+      new Set([lazyChunk.fileName]),
+    ),
+    ...chunkViolations(vendorChunk, allowedEagerStaticImports),
+    ...chunkViolations(runtimeChunk, allowedEagerStaticImports),
+    ...chunkViolations(
+      lazyChunk,
+      allowedEagerStaticImports,
+      new Set([APPLICATION_LAZY_CHUNK.name]),
+    ),
+  ];
+  if (
+    appChunk.dynamicImports?.length !== 1 ||
+    appChunk.dynamicImports[0] !== lazyChunk.fileName
+  ) {
+    violations.push(
+      `${appChunk.fileName}: expected exactly one dynamic import (${lazyChunk.fileName})`,
+    );
+  }
+  const unrelatedLazyModules = (lazyChunk.moduleIds ?? []).filter(
+    (moduleId) => {
+      return (
+        !APPLICATION_LAZY_CHUNK.modulePattern.test(moduleId) &&
+        !isVirtualModule(moduleId)
+      );
+    },
+  );
+  if (unrelatedLazyModules.length > 0) {
+    violations.push(
+      `${lazyChunk.fileName}: unexpected modules in the configured lazy chunk: ${unrelatedLazyModules.join(", ")}`,
+    );
+  }
   for (const chunk of [appChunk, runtimeChunk]) {
     const misplacedNodeModules = (chunk.moduleIds ?? []).filter(isNodeModule);
     if (misplacedNodeModules.length > 0) {
