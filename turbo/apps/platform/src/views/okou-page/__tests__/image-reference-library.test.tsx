@@ -3,7 +3,7 @@ import {
   imageReferencesContract,
   type CreateImageReferenceBody,
   type ImageReference,
-  type ImageReferencePreviewAsset,
+  type ImageReferencePreviewUrl,
   type UpdateImageReferenceBody,
 } from "@okouai/api-contracts/contracts/image-references";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
@@ -17,7 +17,6 @@ import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { agentChatComposerSignals$ } from "../../../signals/okou-page/agent-composer-signals.ts";
 import type { ImageReferenceLibrarySignals } from "../../../signals/okou-page/image-reference-library.ts";
 import { mockNow, now } from "../../../lib/time.ts";
-import { createChildAbortController } from "../../../signals/utils.ts";
 import {
   AGENT_ID,
   context,
@@ -64,14 +63,11 @@ function createReference(options: {
     contentType: "image/png",
     width: 1280,
     height: 720,
-    previewAsset: {
-      previewAssetId: `image-reference:${id}:source`,
-      url:
-        options.previewUrl ??
-        `https://preview.example.test/references/${id}/initial.png`,
-      expiresAt:
-        options.expiresAt ?? new Date(now() + 15 * 60 * 1000).toISOString(),
-    },
+    previewUrl:
+      options.previewUrl ??
+      `https://preview.example.test/references/${id}/initial.png`,
+    previewUrlExpiresAt:
+      options.expiresAt ?? new Date(now() + 15 * 60 * 1000).toISOString(),
     canManage: options.canManage ?? ownerUserId === USER_ID,
     canModerate: options.canModerate ?? false,
     createdAt: "2026-09-08T12:00:00.000Z",
@@ -96,7 +92,7 @@ interface ImageReferenceLibraryControl {
     readonly release: () => void;
   };
   replace(references: readonly ImageReference[]): void;
-  renew(asset: ImageReferencePreviewAsset): void;
+  renew(preview: ImageReferencePreviewUrl): void;
   moderateNextUpdate(): void;
 }
 
@@ -112,7 +108,7 @@ function installImageReferenceLibrary(
   const updates: ImageReferenceLibraryControl["requests"]["updates"] = [];
   const deletes: string[] = [];
   const previewResolutions: string[][] = [];
-  const renewedAssets = new Map<string, ImageReferencePreviewAsset>();
+  const renewedPreviews = new Map<string, ImageReferencePreviewUrl>();
   let nextListGate: {
     readonly started: ReturnType<typeof context.mocks.deferred<void>>;
     readonly release: ReturnType<typeof context.mocks.deferred<void>>;
@@ -141,18 +137,26 @@ function installImageReferenceLibrary(
   context.mocks.api(
     imageReferencesContract.resolvePreviewUrls,
     ({ body, respond }) => {
-      previewResolutions.push([...body.previewAssetIds]);
-      const assets = body.previewAssetIds.flatMap((previewAssetId) => {
-        const renewed = renewedAssets.get(previewAssetId);
+      previewResolutions.push([...body.referenceIds]);
+      const previews = body.referenceIds.flatMap((referenceId) => {
+        const renewed = renewedPreviews.get(referenceId);
         if (renewed) {
           return [renewed];
         }
         const reference = references.find((candidate) => {
-          return candidate.previewAsset.previewAssetId === previewAssetId;
+          return candidate.id === referenceId;
         });
-        return reference ? [reference.previewAsset] : [];
+        return reference
+          ? [
+              {
+                referenceId,
+                url: reference.previewUrl,
+                expiresAt: reference.previewUrlExpiresAt,
+              },
+            ]
+          : [];
       });
-      return respond(200, { assets });
+      return respond(200, { previews });
     },
   );
   context.mocks.api(imageReferencesContract.create, ({ body, respond }) => {
@@ -231,8 +235,8 @@ function installImageReferenceLibrary(
     replace(nextReferences) {
       references = [...nextReferences];
     },
-    renew(asset) {
-      renewedAssets.set(asset.previewAssetId, asset);
+    renew(preview) {
+      renewedPreviews.set(preview.referenceId, preview);
     },
     moderateNextUpdate() {
       moderateNextUpdate = true;
@@ -451,7 +455,7 @@ test("create, rename, share, moderate, and delete through API boundaries", async
   ).resolves.toBeNull();
 });
 
-test("renew preview URLs by asset identity while retaining the loaded image", async () => {
+test("renew preview URLs by reference identity while retaining the loaded image", async () => {
   mockNow(new Date("2026-09-08T15:50:00.000Z"), context.signal);
   const initial = createReference({
     index: 6,
@@ -465,8 +469,8 @@ test("renew preview URLs by asset identity while retaining the loaded image", as
     throw new Error("Expected an image reference picker item");
   }
   const loaded = {
-    desiredUrl: initial.previewAsset.url,
-    sourceUrl: initial.previewAsset.url,
+    desiredUrl: initial.previewUrl,
+    sourceUrl: initial.previewUrl,
     slot: "a" as const,
   };
   await context.store.set(
@@ -476,7 +480,7 @@ test("renew preview URLs by asset identity while retaining the loaded image", as
   );
 
   const renewed = {
-    ...initial.previewAsset,
+    referenceId: initial.id,
     url: "https://preview.example.test/renewed.png",
     expiresAt: "2026-09-08T16:15:00.000Z",
   };
@@ -493,9 +497,7 @@ test("renew preview URLs by asset identity while retaining the loaded image", as
   expect(context.store.get(item.imageBuffers.card.state$).active).toStrictEqual(
     loaded,
   );
-  expect(control.requests.previewResolutions).toStrictEqual([
-    [initial.previewAsset.previewAssetId],
-  ]);
+  expect(control.requests.previewResolutions).toStrictEqual([[initial.id]]);
   const refreshedItem = (await context.store.get(library.pickerItems$))[0];
   expect(refreshedItem?.imageBuffers).toBe(item.imageBuffers);
 });
@@ -518,8 +520,8 @@ test("apply user and organization invalidations and evict inaccessible state", a
     throw new Error("Expected an owner picker item");
   }
   const loaded = {
-    desiredUrl: own.previewAsset.url,
-    sourceUrl: own.previewAsset.url,
+    desiredUrl: own.previewUrl,
+    sourceUrl: own.previewUrl,
     slot: "a" as const,
   };
   await context.store.set(
@@ -551,25 +553,24 @@ test("apply user and organization invalidations and evict inaccessible state", a
   ).toStrictEqual(loaded);
 });
 
-test("upload a private artifact and create a row without composer or thread side effects", async () => {
+test("upload an image-reference source and create a row without composer or thread side effects", async () => {
   const { chat, control, library } = await setupImageReferencePage([]);
   let completed = 0;
-  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
-    expect(body).toMatchObject({
-      filename: "canonical.png",
-      contentType: "image/png",
-      purpose: "image-reference",
-    });
-    return respond(200, {
-      id: sourceFileId(2),
-      filename: body.filename,
-      contentType: body.contentType,
-      size: body.size,
-      url: `https://files.example.test/${sourceFileId(2)}`,
-      uploadUrl: "https://uploads.example.test/canonical.png",
-      uploadHeaders: { "x-upload-token": "private" },
-    });
-  });
+  context.mocks.api(
+    imageReferencesContract.prepareUpload,
+    ({ body, respond }) => {
+      expect(body).toStrictEqual({
+        filename: "canonical.png",
+        contentType: "image/png",
+        size: 9,
+      });
+      return respond(200, {
+        sourceFileId: sourceFileId(2),
+        uploadUrl: "https://uploads.example.test/canonical.png",
+        uploadHeaders: { "x-upload-token": "private" },
+      });
+    },
+  );
   context.mocks.http.put(
     "https://uploads.example.test/canonical.png",
     ({ request }) => {
@@ -622,110 +623,21 @@ test("upload a private artifact and create a row without composer or thread side
   expect(chat.runPrompts).toStrictEqual([]);
 });
 
-test("cancel multipart upload cleanup and retry without sending chat", async () => {
-  const { chat, control, library } = await setupImageReferencePage([]);
-  const firstPutStarted = context.mocks.deferred<void>();
-  const cancelledPut = context.mocks.deferred<void>();
-  let prepareCount = 0;
-  let abortCount = 0;
-  let completeCount = 0;
-  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
-    prepareCount += 1;
-    if (prepareCount === 1) {
-      return respond(200, {
-        id: sourceFileId(3),
-        filename: body.filename,
-        contentType: body.contentType,
-        size: body.size,
-        url: `https://files.example.test/${sourceFileId(3)}`,
-        multipart: {
-          uploadId: "multipart-cancelled",
-          partSize: body.size,
-          parts: [
-            {
-              partNumber: 1,
-              uploadUrl: "https://uploads.example.test/cancelled-part",
-            },
-          ],
-        },
-      });
-    }
-    return respond(200, {
-      id: sourceFileId(4),
-      filename: body.filename,
-      contentType: body.contentType,
-      size: body.size,
-      url: `https://files.example.test/${sourceFileId(4)}`,
-      uploadUrl: "https://uploads.example.test/retry.png",
-      uploadHeaders: {},
-    });
-  });
-  context.mocks.http.put(
-    "https://uploads.example.test/cancelled-part",
-    async ({ request }) => {
-      firstPutStarted.resolve();
-      request.signal.addEventListener(
-        "abort",
-        () => {
-          cancelledPut.reject(request.signal.reason);
-        },
-        { once: true },
-      );
-      await cancelledPut.promise;
-      return new HttpResponse(null, { status: 500 });
-    },
-  );
-  context.mocks.http.put("https://uploads.example.test/retry.png", () => {
-    return new HttpResponse(null, { status: 200 });
-  });
-  context.mocks.api(uploadsContract.abortMultipart, ({ respond }) => {
-    abortCount += 1;
-    return respond(200, { id: sourceFileId(3) });
-  });
-  context.mocks.api(uploadsContract.complete, ({ body, respond }) => {
-    completeCount += 1;
-    return respond(200, {
-      id: body.id,
-      filename: "retry.png",
-      contentType: "image/png",
-      size: 5,
-      url: `https://files.example.test/${body.id}`,
-    });
-  });
+test("reject unsupported source formats before preparing an upload", async () => {
+  const { control, library } = await setupImageReferencePage([]);
 
-  const largeFile = new File(["first"], "cancelled.png", {
-    type: "image/png",
-  });
-  Object.defineProperty(largeFile, "size", {
-    configurable: true,
-    value: 6 * 1024 * 1024,
-  });
-  const operation = createChildAbortController(context.signal);
-  const cancelled = context.store.set(
-    library.uploadAndCreate$,
-    { file: largeFile, title: "Cancelled", visibility: "private" },
-    operation.signal,
-  );
-  await firstPutStarted.promise;
-  operation.abort(new DOMException("Upload cancelled", "AbortError"));
-  await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
-  await waitFor(() => {
-    expect(abortCount).toBe(1);
-  });
+  await expect(
+    context.store.set(
+      library.uploadAndCreate$,
+      {
+        file: new File(["document"], "reference.pdf", {
+          type: "application/pdf",
+        }),
+        title: "Unsupported",
+        visibility: "private",
+      },
+      context.signal,
+    ),
+  ).rejects.toThrow("Image must be a PNG, JPEG, or WebP file");
   expect(control.requests.creates).toStrictEqual([]);
-
-  await context.store.set(
-    library.uploadAndCreate$,
-    {
-      file: new File(["retry"], "retry.png", { type: "image/png" }),
-      title: "Retried",
-      visibility: "private",
-    },
-    context.signal,
-  );
-  expect(completeCount).toBe(1);
-  expect(control.requests.creates).toHaveLength(1);
-  expect(chat.sentMessages).toStrictEqual([]);
-  expect(chat.threadCreates).toStrictEqual([]);
-  expect(chat.runPrompts).toStrictEqual([]);
 });

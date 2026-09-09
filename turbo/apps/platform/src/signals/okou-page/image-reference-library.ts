@@ -1,10 +1,10 @@
 import {
   IMAGE_REFERENCE_PREVIEW_URL_TTL_SECONDS,
-  MAX_IMAGE_REFERENCE_PREVIEW_ASSETS,
+  MAX_IMAGE_REFERENCE_PREVIEW_URLS,
   imageReferencesContract,
   type CreateImageReferenceBody,
   type ImageReference,
-  type ImageReferencePreviewAsset,
+  type ImageReferencePreviewUrl,
   type ImageReferenceVisibility,
   type UpdateImageReferenceBody,
 } from "@okouai/api-contracts/contracts/image-references";
@@ -36,7 +36,7 @@ import {
   setLoop,
   withCleanup,
 } from "../utils.ts";
-import { uploadPrivateArtifactToStorage$ } from "./file-upload.ts";
+import { uploadImageReferenceSource$ } from "./file-upload.ts";
 
 export type { ImageReference, ImageReferenceVisibility };
 
@@ -249,8 +249,7 @@ export const subscribeImageReferencesChanged$ = command(
 );
 
 interface ImageReferenceCache {
-  readonly previewAssetIdByReferenceId: Map<string, string>;
-  readonly previewUrlByAssetId: Map<string, ImageReferencePreviewAsset>;
+  readonly previewByReferenceId: Map<string, ImageReferencePreviewUrl>;
   readonly imageBuffersByReferenceId: Map<string, ImageReferenceImageBuffers>;
   readonly detailByReferenceId: Map<
     string,
@@ -259,8 +258,7 @@ interface ImageReferenceCache {
 }
 
 function clearImageReferenceCache(cache: ImageReferenceCache): void {
-  cache.previewAssetIdByReferenceId.clear();
-  cache.previewUrlByAssetId.clear();
+  cache.previewByReferenceId.clear();
   cache.imageBuffersByReferenceId.clear();
   cache.detailByReferenceId.clear();
 }
@@ -269,27 +267,23 @@ function evictImageReferenceCache(
   cache: ImageReferenceCache,
   referenceId: string,
 ): void {
-  const previewAssetId = cache.previewAssetIdByReferenceId.get(referenceId);
-  cache.previewAssetIdByReferenceId.delete(referenceId);
+  cache.previewByReferenceId.delete(referenceId);
   cache.imageBuffersByReferenceId.delete(referenceId);
   cache.detailByReferenceId.delete(referenceId);
-  if (previewAssetId !== undefined) {
-    cache.previewUrlByAssetId.delete(previewAssetId);
-  }
 }
 
-function mergeImageReferencePreviewAsset(
+function mergeImageReferencePreviewUrl(
   cache: ImageReferenceCache,
-  asset: ImageReferencePreviewAsset,
+  preview: ImageReferencePreviewUrl,
 ): boolean {
-  const existing = cache.previewUrlByAssetId.get(asset.previewAssetId);
+  const existing = cache.previewByReferenceId.get(preview.referenceId);
   if (
     existing !== undefined &&
-    Date.parse(existing.expiresAt) >= Date.parse(asset.expiresAt)
+    Date.parse(existing.expiresAt) >= Date.parse(preview.expiresAt)
   ) {
     return false;
   }
-  cache.previewUrlByAssetId.set(asset.previewAssetId, asset);
+  cache.previewByReferenceId.set(preview.referenceId, preview);
   return true;
 }
 
@@ -302,30 +296,23 @@ function synchronizeImageReferenceCache(
       return reference.id;
     }),
   );
-  for (const referenceId of cache.previewAssetIdByReferenceId.keys()) {
+  for (const referenceId of cache.previewByReferenceId.keys()) {
     if (!referenceIds.has(referenceId)) {
       evictImageReferenceCache(cache, referenceId);
     }
   }
 
   return references.map((reference) => {
-    const previousAssetId = cache.previewAssetIdByReferenceId.get(reference.id);
-    if (
-      previousAssetId !== undefined &&
-      previousAssetId !== reference.previewAsset.previewAssetId
-    ) {
-      cache.previewUrlByAssetId.delete(previousAssetId);
-    }
-    cache.previewAssetIdByReferenceId.set(
-      reference.id,
-      reference.previewAsset.previewAssetId,
-    );
-    mergeImageReferencePreviewAsset(cache, reference.previewAsset);
+    mergeImageReferencePreviewUrl(cache, {
+      referenceId: reference.id,
+      url: reference.previewUrl,
+      expiresAt: reference.previewUrlExpiresAt,
+    });
+    const preview = cache.previewByReferenceId.get(reference.id);
     return {
       ...reference,
-      previewAsset:
-        cache.previewUrlByAssetId.get(reference.previewAsset.previewAssetId) ??
-        reference.previewAsset,
+      previewUrl: preview?.url ?? reference.previewUrl,
+      previewUrlExpiresAt: preview?.expiresAt ?? reference.previewUrlExpiresAt,
     };
   });
 }
@@ -442,28 +429,28 @@ function imageReferenceCreator(
   };
 }
 
-async function resolveImageReferencePreviewAssets(
+async function resolveImageReferencePreviewUrls(
   createClient: ApiClientFactory,
-  previewAssetIds: readonly string[],
+  referenceIds: readonly string[],
   signal: AbortSignal,
-): Promise<readonly ImageReferencePreviewAsset[]> {
-  const uniqueIds = [...new Set(previewAssetIds)];
+): Promise<readonly ImageReferencePreviewUrl[]> {
+  const uniqueIds = [...new Set(referenceIds)];
   const batches: string[][] = [];
   for (
     let index = 0;
     index < uniqueIds.length;
-    index += MAX_IMAGE_REFERENCE_PREVIEW_ASSETS
+    index += MAX_IMAGE_REFERENCE_PREVIEW_URLS
   ) {
     batches.push(
-      uniqueIds.slice(index, index + MAX_IMAGE_REFERENCE_PREVIEW_ASSETS),
+      uniqueIds.slice(index, index + MAX_IMAGE_REFERENCE_PREVIEW_URLS),
     );
   }
   const client = createClient(imageReferencesContract);
   const responses = await Promise.all(
-    batches.map(async (previewAssetIdsBatch) => {
+    batches.map(async (referenceIdsBatch) => {
       return await accept(
         client.resolvePreviewUrls({
-          body: { previewAssetIds: previewAssetIdsBatch },
+          body: { referenceIds: referenceIdsBatch },
           fetchOptions: { signal },
         }),
         [200],
@@ -471,23 +458,23 @@ async function resolveImageReferencePreviewAssets(
     }),
   );
   return responses.flatMap((response) => {
-    return response.body.assets;
+    return response.body.previews;
   });
 }
 
-function expiringPreviewAssetIds(
+function expiringPreviewReferenceIds(
   cache: ImageReferenceCache,
   requestedAt: number,
 ): readonly string[] {
-  return [...cache.previewUrlByAssetId.values()]
-    .filter((asset) => {
+  return [...cache.previewByReferenceId.values()]
+    .filter((preview) => {
       return (
-        Date.parse(asset.expiresAt) - requestedAt <=
+        Date.parse(preview.expiresAt) - requestedAt <=
         IMAGE_REFERENCE_PREVIEW_URL_SAFETY_MS
       );
     })
-    .map((asset) => {
-      return asset.previewAssetId;
+    .map((preview) => {
+      return preview.referenceId;
     });
 }
 
@@ -496,9 +483,11 @@ function previewRefreshDelayMs(
   catalogLoadedAtMs: number,
 ): number {
   const requestedAt = now();
-  const expirations = [...cache.previewUrlByAssetId.values()].map((asset) => {
-    return Date.parse(asset.expiresAt);
-  });
+  const expirations = [...cache.previewByReferenceId.values()].map(
+    (preview) => {
+      return Date.parse(preview.expiresAt);
+    },
+  );
   if (expirations.length === 0) {
     return Math.max(
       0,
@@ -515,12 +504,6 @@ function previewRefreshDelayMs(
   );
 }
 
-function referencedPreviewAssetIds(
-  cache: ImageReferenceCache,
-): ReadonlySet<string> {
-  return new Set(cache.previewAssetIdByReferenceId.values());
-}
-
 function createPreviewRefreshSignals(
   catalog$: Computed<Promise<ImageReferenceCatalog>>,
   cache: ImageReferenceCache,
@@ -530,7 +513,7 @@ function createPreviewRefreshSignals(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await get(imageReferencesAvailable$);
       signal.throwIfAborted();
-      if (cache.previewUrlByAssetId.size === 0) {
+      if (cache.previewByReferenceId.size === 0) {
         const catalog = await get(catalog$);
         signal.throwIfAborted();
         if (
@@ -542,36 +525,35 @@ function createPreviewRefreshSignals(
         return;
       }
 
-      const previewAssetIds = expiringPreviewAssetIds(cache, now());
-      if (previewAssetIds.length === 0) {
+      const referenceIds = expiringPreviewReferenceIds(cache, now());
+      if (referenceIds.length === 0) {
         return;
       }
-      const assets = await resolveImageReferencePreviewAssets(
+      const previews = await resolveImageReferencePreviewUrls(
         get(apiClient$),
-        previewAssetIds,
+        referenceIds,
         signal,
       );
       signal.throwIfAborted();
       const resolvedIds = new Set(
-        assets.map((asset) => {
-          return asset.previewAssetId;
+        previews.map((preview) => {
+          return preview.referenceId;
         }),
       );
       if (
-        previewAssetIds.some((previewAssetId) => {
-          return !resolvedIds.has(previewAssetId);
+        referenceIds.some((referenceId) => {
+          return !resolvedIds.has(referenceId);
         })
       ) {
         await set(refreshAndLoadImageReferences$, signal);
         return;
       }
-      const referencedIds = referencedPreviewAssetIds(cache);
-      const updated = assets
-        .filter((asset) => {
-          return referencedIds.has(asset.previewAssetId);
+      const updated = previews
+        .filter((preview) => {
+          return cache.previewByReferenceId.has(preview.referenceId);
         })
-        .map((asset) => {
-          return mergeImageReferencePreviewAsset(cache, asset);
+        .map((preview) => {
+          return mergeImageReferencePreviewUrl(cache, preview);
         })
         .includes(true);
       if (updated) {
@@ -599,7 +581,7 @@ function createPreviewRefreshSignals(
           setLoop(
             async (loopSignal) => {
               const catalogLoadedAtMs =
-                cache.previewUrlByAssetId.size === 0
+                cache.previewByReferenceId.size === 0
                   ? (await get(catalog$)).loadedAtMs
                   : now();
               loopSignal.throwIfAborted();
@@ -685,7 +667,7 @@ function createMutationSignals(
       await get(imageReferencesAvailable$);
       signal.throwIfAborted();
       const uploaded = await set(
-        uploadPrivateArtifactToStorage$,
+        uploadImageReferenceSource$,
         input.file,
         signal,
       );
@@ -693,7 +675,7 @@ function createMutationSignals(
       return await set(
         create$,
         {
-          sourceFileId: uploaded.id,
+          sourceFileId: uploaded.sourceFileId,
           title: input.title,
           visibility: input.visibility,
         },
@@ -792,8 +774,7 @@ function createMutationSignals(
 /** Composer-owned reusable image-reference catalog and mutation state. */
 export function createImageReferenceLibrarySignals(): ImageReferenceLibrarySignals {
   const cache: ImageReferenceCache = {
-    previewAssetIdByReferenceId: new Map(),
-    previewUrlByAssetId: new Map(),
+    previewByReferenceId: new Map(),
     imageBuffersByReferenceId: new Map(),
     detailByReferenceId: new Map(),
   };
@@ -850,9 +831,7 @@ export function createImageReferenceLibrarySignals(): ImageReferenceLibrarySigna
         let imageBuffers = cache.imageBuffersByReferenceId.get(reference.id);
         if (!imageBuffers) {
           const desiredUrl$ = computed(async (read) => {
-            return (
-              (await read(resolve(reference.id)))?.previewAsset.url ?? null
-            );
+            return (await read(resolve(reference.id)))?.previewUrl ?? null;
           });
           imageBuffers = {
             card: createImageReferenceImageSignals(desiredUrl$),

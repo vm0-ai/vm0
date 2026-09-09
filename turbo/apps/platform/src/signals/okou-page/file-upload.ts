@@ -1,3 +1,8 @@
+import {
+  IMAGE_REFERENCE_CONTENT_TYPES,
+  imageReferencesContract,
+  type ImageReferenceContentType,
+} from "@okouai/api-contracts/contracts/image-references";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { command } from "ccstate";
 import { delay } from "signal-timers";
@@ -197,21 +202,15 @@ async function uploadPartWithRetry(
   signal.throwIfAborted();
 }
 
-type UploadPurpose = "image-reference" | undefined;
-
 const uploadFile$ = command(
   async (
     { get, set },
     file: File,
-    purpose: UploadPurpose,
     signal: AbortSignal,
   ): Promise<UploadedFileInfo> => {
     const client = get(apiClient$)(uploadsContract);
     const contentType = inferUploadContentType(file);
 
-    // The browser transfers bytes directly to storage. The narrow
-    // image-reference purpose selects a private-artifact allocation without
-    // changing ordinary composer attachment uploads.
     const prepared = await accept(
       client.prepare({
         body: {
@@ -221,7 +220,6 @@ const uploadFile$ = command(
           ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
             ? { multipart: true as const }
             : {}),
-          ...(purpose === undefined ? {} : { purpose }),
         },
         fetchOptions: { signal },
       }),
@@ -261,18 +259,7 @@ const uploadFile$ = command(
             [200],
           );
           signal.throwIfAborted();
-          if (purpose === undefined) {
-            return uploadedFileInfo(completed.body, prepared.body.contentType);
-          }
-          const finalized = await accept(
-            client.complete({
-              body: { id: completed.body.id },
-              fetchOptions: { signal },
-            }),
-            [200],
-          );
-          signal.throwIfAborted();
-          return uploadedFileInfo(finalized.body, finalized.body.contentType);
+          return uploadedFileInfo(completed.body, prepared.body.contentType);
         })(),
         async () => {
           // Once completion begins, aborting can race a successful R2 finalize.
@@ -314,41 +301,82 @@ const uploadFile$ = command(
         `storage returned ${putResponse.status} ${putResponse.statusText}`,
       );
     }
-    if (purpose === undefined) {
-      return uploadedFileInfo(prepared.body, prepared.body.contentType);
-    }
-
-    const finalized = await accept(
-      client.complete({
-        body: { id: prepared.body.id },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return uploadedFileInfo(finalized.body, finalized.body.contentType);
+    return uploadedFileInfo(prepared.body, prepared.body.contentType);
   },
 );
 
 /** Upload an ordinary composer attachment without changing its existing flow. */
 export const uploadFileToStorage$ = command(
   async ({ set }, file: File, signal: AbortSignal) => {
-    return await set(uploadFile$, file, undefined, signal);
+    return await set(uploadFile$, file, signal);
   },
 );
 
-interface UploadedPrivateArtifact {
-  readonly id: string;
+function isImageReferenceContentType(
+  value: string,
+): value is ImageReferenceContentType {
+  const accepted: readonly string[] = IMAGE_REFERENCE_CONTENT_TYPES;
+  return accepted.includes(value);
 }
 
-/** Upload and finalize one owner-authenticated private artifact. */
-export const uploadPrivateArtifactToStorage$ = command(
+interface UploadedImageReferenceSource {
+  readonly sourceFileId: string;
+}
+
+/** Upload and finalize one image-reference source through its domain API. */
+export const uploadImageReferenceSource$ = command(
   async (
-    { set },
+    { get },
     file: File,
     signal: AbortSignal,
-  ): Promise<UploadedPrivateArtifact> => {
-    const uploaded = await set(uploadFile$, file, "image-reference", signal);
-    return { id: uploaded.id };
+  ): Promise<UploadedImageReferenceSource> => {
+    const contentType = inferUploadContentType(file);
+    if (!isImageReferenceContentType(contentType)) {
+      throw new Error("Image must be a PNG, JPEG, or WebP file");
+    }
+
+    const imageClient = get(apiClient$)(imageReferencesContract);
+    const prepared = await accept(
+      imageClient.prepareUpload({
+        body: {
+          filename: file.name,
+          contentType,
+          size: file.size,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    const putResponse = await fetchResource(
+      prepared.body.uploadUrl,
+      {
+        method: "PUT",
+        body: file,
+        headers: {
+          "content-type": contentType,
+          ...prepared.body.uploadHeaders,
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!putResponse.ok) {
+      throw new Error(
+        `storage returned ${putResponse.status} ${putResponse.statusText}`,
+      );
+    }
+
+    const uploadsClient = get(apiClient$)(uploadsContract);
+    await accept(
+      uploadsClient.complete({
+        body: { id: prepared.body.sourceFileId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return { sourceFileId: prepared.body.sourceFileId };
   },
 );
