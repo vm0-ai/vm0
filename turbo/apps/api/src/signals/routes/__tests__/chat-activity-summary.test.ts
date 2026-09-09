@@ -21,7 +21,7 @@ import {
   holdRunActivityFixture,
 } from "../../../test-fixtures/run-activity";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise } from "../../utils";
+import { createDeferredPromise, settleIncludingAbort } from "../../utils";
 import { chatThreadActivitySummaryRoutes } from "../chat-threads-activity-summary";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -530,7 +530,7 @@ describe("thread activity summary", () => {
       entered.resolve(undefined);
       return await release.promise;
     });
-    const first = summarize(f.actor, f.run);
+    const first = settleIncludingAbort(summarize(f.actor, f.run));
     await entered.promise;
     const concurrent = await Promise.all([
       summarize(f.actor, f.run),
@@ -538,12 +538,21 @@ describe("thread activity summary", () => {
     ]);
     expect(
       concurrent.every((value) => {
-        return value.status === "pending" && value.phrase === null;
+        // Concurrent followers may hit the production lock budget and degrade
+        // to unavailable. Neither outcome may publish a phrase or claim again.
+        return (
+          (value.status === "pending" || value.status === "unavailable") &&
+          value.phrase === null
+        );
       }),
     ).toBeTruthy();
     await deliver(f, [tool(0, "new activity while the provider is working")]);
     release.resolve("Preparing the requested checklist");
-    const finished = await first;
+    const outcome = await first;
+    if (!outcome.ok) {
+      throw outcome.error;
+    }
+    const finished = outcome.value;
     expect(finished.summarySequence).toBeNull();
     expect(finished.sourceSequence).toBe(0);
     expect(finished.summaryRevision).not.toBe(finished.sourceRevision);

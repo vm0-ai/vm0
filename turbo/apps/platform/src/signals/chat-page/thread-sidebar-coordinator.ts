@@ -1,3 +1,4 @@
+import { prepareAttachmentDisplay$ } from "../attachment-resource-url.ts";
 import { command, computed } from "ccstate";
 
 import {
@@ -145,7 +146,17 @@ function withTextPreview(
   if (!isTextPreviewKind(ref.kind)) {
     return ref;
   }
-  const text$ = ref.text$ ?? createTextPreviewComputed(ref.url);
+  const display = ref.display;
+  const text$ =
+    ref.text$ ??
+    createTextPreviewComputed(
+      ref.url,
+      display
+        ? computed(async (get) => {
+            return (await get(display.urls$)).resourceUrl;
+          })
+        : undefined,
+    );
   return {
     ...ref,
     text$,
@@ -161,7 +172,11 @@ const materializeArtifactRef$ = command(
     const previewSignal = set(resetResources$, ownerSignal);
     if (typeof input === "string") {
       return withTextPreview(
-        { ...artifactRefFromUrl(input), resetResources$ },
+        {
+          ...artifactRefFromUrl(input),
+          resetResources$,
+          display: set(prepareAttachmentDisplay$, input),
+        },
         previewSignal,
       );
     }
@@ -169,6 +184,7 @@ const materializeArtifactRef$ = command(
       return withTextPreview(
         {
           url: input.url,
+          display: set(prepareAttachmentDisplay$, input.url),
           kind: classifyChatAttachment({
             contentType: input.contentType,
             filename: input.filename,
@@ -188,6 +204,7 @@ const materializeArtifactRef$ = command(
     return withTextPreview(
       {
         url: resource.url,
+        display: set(prepareAttachmentDisplay$, resource.url),
         kind: classifyChatAttachment({
           contentType: input.file.type,
           filename: input.file.name,

@@ -1,5 +1,5 @@
-import { command, computed, state, type Computed } from "ccstate";
-import { timeout } from "signal-timers";
+import { settle } from "./utils.ts";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
   artifactReferencesContract,
   parseArtifactReference,
@@ -12,26 +12,9 @@ import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
 import { apiClient$ } from "./api-client.ts";
 
-const resourceRevision$ = state(0);
+import { now } from "../lib/time.ts";
 
-const refreshAttachmentUrls$ = command(({ set }) => {
-  set(resourceRevision$, (revision) => {
-    return revision + 1;
-  });
-});
-
-export const setupAttachmentUrlRefresh$ = command(
-  ({ set }, signal: AbortSignal) => {
-    timeout(
-      () => {
-        set(refreshAttachmentUrls$);
-        set(setupAttachmentUrlRefresh$, signal);
-      },
-      10 * 60 * 1000,
-      { signal },
-    );
-  },
-);
+const RENEW_BEFORE_EXPIRY_MS = 5 * 60 * 1000;
 
 const AUTHENTICATED_FILE_PATH = "/api/web/download-file";
 
@@ -58,6 +41,7 @@ export interface AttachmentUrls {
    * instead of the file. Null until a private artifact is published.
    */
   readonly shareUrl: string | null;
+  readonly expiresAt: string | null;
 }
 
 /**
@@ -72,7 +56,6 @@ function createAttachmentResourceUrl$(
   return computed(async (get) => {
     const reference = parseArtifactReference(url, location.origin);
     if (reference) {
-      get(resourceRevision$);
       const signal = get(pageSignal$);
       const response = await accept(
         get(apiClient$)(artifactReferencesContract).resolve({
@@ -84,11 +67,14 @@ function createAttachmentResourceUrl$(
       );
       const resourceUrl = new URL(response.body.url);
       resourceUrl.hash = reference.fragment;
-      return { resourceUrl: resourceUrl.href, shareUrl: null };
+      return {
+        resourceUrl: resourceUrl.href,
+        shareUrl: null,
+        expiresAt: response.body.expiresAt,
+      };
     }
     const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
     if (deploymentId) {
-      get(resourceRevision$);
       const signal = get(pageSignal$);
       const response = await accept(
         get(apiClient$)(hostContract).privatePreview({
@@ -100,11 +86,15 @@ function createAttachmentResourceUrl$(
       );
       const resourceUrl = new URL(response.body.url);
       resourceUrl.hash = new URL(url).hash;
-      return { resourceUrl: resourceUrl.href, shareUrl: null };
+      return {
+        resourceUrl: resourceUrl.href,
+        shareUrl: null,
+        expiresAt: response.body.expiresAt,
+      };
     }
     if (!isAuthenticatedAttachmentUrl(url)) {
       // Already a public address, so it both renders and shares as-is.
-      return { resourceUrl: url, shareUrl: url };
+      return { resourceUrl: url, shareUrl: url, expiresAt: null };
     }
 
     const sourceUrl = new URL(url);
@@ -122,46 +112,149 @@ function createAttachmentResourceUrl$(
       [200],
       signal,
     );
-    if (response.body.publicUrl === null) {
-      // Only confirmed private resources follow the page's refresh clock.
-      // Their recorded policy survives disabling creation; public attachments
-      // keep their existing resolution lifetime.
-      get(resourceRevision$);
-    }
     return {
       resourceUrl: response.body.url,
       shareUrl: response.body.publicUrl,
+      expiresAt: response.body.expiresAt,
     };
   });
 }
 
-export type AttachmentResourceUrlResolver = (
-  url: string,
-) => Computed<Promise<AttachmentUrls>>;
+/** A request's deadline is scheduling metadata, not a second response cache. */
+interface AttachmentRequest {
+  readonly urls$: Computed<Promise<AttachmentUrls>>;
+  readonly needsRenewal: () => boolean;
+}
 
-/**
- * Create the URL join owned by one thread or page. The returned map is private:
- * consumers only receive the resolved item's computed, never the keyed store.
- */
-export function createAttachmentResourceUrlResolver(): AttachmentResourceUrlResolver {
-  const resourceUrlByUrl = new Map<string, Computed<Promise<AttachmentUrls>>>();
-  return (url: string): Computed<Promise<AttachmentUrls>> => {
-    const existing = resourceUrlByUrl.get(url);
-    if (existing) {
-      return existing;
+function createAttachmentRequest(url: string): AttachmentRequest {
+  let expiresAt: number | null = null;
+  let failed = false;
+  const load$ = createAttachmentResourceUrl$(url);
+  const urls$ = computed(async (get) => {
+    const result = await settle(get(load$), get(pageSignal$));
+    if (!result.ok) {
+      failed = true;
+      throw result.error;
     }
-    const resourceUrl$ = createAttachmentResourceUrl$(url);
-    resourceUrlByUrl.set(url, resourceUrl$);
-    return resourceUrl$;
+    failed = false;
+    const urls = result.value;
+    expiresAt = urls.expiresAt === null ? null : Date.parse(urls.expiresAt);
+    return urls;
+  });
+  return {
+    urls$,
+    needsRenewal: () => {
+      return (
+        failed ||
+        (expiresAt !== null && expiresAt <= now() + RENEW_BEFORE_EXPIRY_MS)
+      );
+    },
   };
 }
 
-/**
- * Preview components that do not already receive thread-owned signals share a
- * resolver for the current page. Replacing the page signal replaces the whole
- * resolver, so URLs from a previous page are no longer retained.
- */
+interface AttachmentResource {
+  readonly urls$: Computed<Promise<AttachmentUrls>>;
+  readonly prepare$: Command<AttachmentRequest, []>;
+}
+
+function createAttachmentResource(url: string): AttachmentResource {
+  const current$ = state(createAttachmentRequest(url));
+  return {
+    urls$: computed((get) => {
+      return get(get(current$).urls$);
+    }),
+    prepare$: command(({ get, set }) => {
+      const current = get(current$);
+      if (!current.needsRenewal()) {
+        return current;
+      }
+      const next = createAttachmentRequest(url);
+      set(current$, next);
+      return next;
+    }),
+  };
+}
+
+interface AttachmentResourceUrlResolver {
+  (url: string): Computed<Promise<AttachmentUrls>>;
+  readonly prepare$: Command<AttachmentRequest, [string]>;
+}
+
+/** Request identity and in-flight work are shared within the owning page. */
+function createAttachmentResourceUrlResolver(): AttachmentResourceUrlResolver {
+  const resources = new Map<string, AttachmentResource>();
+  const resourceFor = (url: string): AttachmentResource => {
+    let resource = resources.get(url);
+    if (!resource) {
+      resource = createAttachmentResource(url);
+      resources.set(url, resource);
+    }
+    return resource;
+  };
+  return Object.assign(
+    (url: string) => {
+      return resourceFor(url).urls$;
+    },
+    {
+      prepare$: command(({ set }, url: string) => {
+        return set(resourceFor(url).prepare$);
+      }),
+    },
+  );
+}
+
+/** A display pins one request, so renewing another display cannot replace its src. */
+export interface AttachmentDisplay {
+  readonly url: string;
+  readonly urls$: Computed<Promise<AttachmentUrls>>;
+  readonly prepare$: Command<void, []>;
+  readonly retry$: Command<boolean, []>;
+}
+
+export function createAttachmentDisplay(url: string): AttachmentDisplay {
+  const selected$ = state<AttachmentRequest | null>(null);
+  const retried$ = state(false);
+  return {
+    url,
+    urls$: computed((get) => {
+      return get(
+        get(selected$)?.urls$ ?? get(pageAttachmentResourceUrlResolver$)(url),
+      );
+    }),
+    prepare$: command(({ get, set }) => {
+      set(
+        selected$,
+        set(get(pageAttachmentResourceUrlResolver$).prepare$, url),
+      );
+      set(retried$, false);
+    }),
+    retry$: command(({ get, set }) => {
+      const selected = get(selected$);
+      if (!selected?.needsRenewal() || get(retried$)) {
+        return false;
+      }
+      set(retried$, true);
+      set(
+        selected$,
+        set(get(pageAttachmentResourceUrlResolver$).prepare$, url),
+      );
+      return true;
+    }),
+  };
+}
+
 export const pageAttachmentResourceUrlResolver$ = computed((get) => {
   get(pageSignal$);
   return createAttachmentResourceUrlResolver();
+});
+
+/** Called by the command that opens a preview, before React consumes its signals. */
+export const prepareAttachmentDisplay$ = command(({ set }, url: string) => {
+  const display = createAttachmentDisplay(url);
+  set(display.prepare$);
+  return display;
+});
+
+export const noAttachmentRetry$ = command(() => {
+  return false;
 });

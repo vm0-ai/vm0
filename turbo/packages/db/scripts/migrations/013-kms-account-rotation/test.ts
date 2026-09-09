@@ -361,9 +361,11 @@ async function workflowCli(
     "synthetic-source-secret",
     "synthetic-target-secret",
     "synthetic-operator-secret",
+    "syntheticOperatorSecret",
     "synthetic-operator-session",
     "synthetic-database-secret",
     "synthetic-doppler-token",
+    "synthetic-oidc-token",
     "synthetic-provider-secret-must-not-be-logged",
     "synthetic-clerk-secret",
   ]) {
@@ -409,6 +411,30 @@ try {
   assert.equal(business?.businessVerification, "passed");
   assert.equal(business.operatorReencryptAndRollback, "passed");
   assert.equal(business.targetRuntimeVerification, undefined);
+  for (const [scenario, errorCode] of [
+    ["aws-access-denied", "AccessDenied"],
+    ["aws-invalid-identity-token", "InvalidIdentityToken"],
+    ["aws-cli-input-error", "CliInputError"],
+    ["aws-unclassified", "UnclassifiedAwsCliFailure"],
+  ]) {
+    const rejected = await workflowCli(
+      "workflow-business-" + scenario,
+      "verify-business",
+      scenario,
+    );
+    assert.equal(rejected?.result, "failed");
+    assert.deepEqual(rejected.awsFailure, {
+      operation: "sts:AssumeRoleWithWebIdentity",
+      errorCode,
+      exitCode: 255,
+    });
+    assert.equal(
+      rejected.failure,
+      "aws_operation_failed:sts:AssumeRoleWithWebIdentity:" + errorCode,
+    );
+    assert.equal(rejected.businessVerification, undefined);
+    assert.equal(rejected.operatorReencryptAndRollback, undefined);
+  }
   for (const scenario of [
     "business-incomplete",
     "wrong-operator",

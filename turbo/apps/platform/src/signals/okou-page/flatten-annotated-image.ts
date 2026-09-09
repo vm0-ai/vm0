@@ -9,6 +9,8 @@ import {
   markOrdinal,
   NOTE_GROUND,
   noteOnImage,
+  PIN_INSET_PX,
+  PIN_RADIUS_PX,
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "./image-annotation.ts";
@@ -23,7 +25,6 @@ import { createDeferredPromise, withCleanup } from "../utils.ts";
 const REFERENCE_EDGE_PX = 1000;
 const STROKE_WIDTH_UNITS = 3;
 const HALO_WIDTH_UNITS = 1;
-const PIN_RADIUS_UNITS = 11;
 const PIN_FONT_UNITS = 13;
 const TEXT_FONT_UNITS = 18;
 const NOTE_FONT_UNITS = 15;
@@ -208,7 +209,7 @@ function drawPin(
 ): void {
   const { x, y } = at;
   const { ink, ordinal } = pin;
-  const radius = px(scale, PIN_RADIUS_UNITS);
+  const radius = px(scale, PIN_RADIUS_PX);
   context.beginPath();
   context.arc(x, y, radius, 0, Math.PI * 2);
   context.fillStyle = ink;
@@ -348,7 +349,14 @@ function drawMark(
         px(scale, CORNER_RADIUS_UNITS),
       );
     });
-    drawPin(context, scale, { x, y }, { ink: mark.ink, ordinal });
+    // Inset to match the editor, where the corner belongs to the resize grip.
+    const inset = px(scale, PIN_INSET_PX);
+    drawPin(
+      context,
+      scale,
+      { x: x + inset, y: y + inset },
+      { ink: mark.ink, ordinal },
+    );
     return;
   }
 

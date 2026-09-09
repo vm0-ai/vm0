@@ -1,3 +1,4 @@
+import { nowDate } from "../../lib/time";
 import { command } from "ccstate";
 import { and, eq, isNull } from "drizzle-orm";
 import {
@@ -9,13 +10,13 @@ import {
   privateHostedDeployments,
 } from "@okouai/db/schema/hosted-site";
 import { notFound } from "../../lib/error";
-import { nowDate } from "../../lib/time";
+import { PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS } from "../../lib/private-artifact-preview";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { setResHeader$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
-import { generatePresignedGetUrl } from "../external/s3";
+import { generateArtifactPreviewUrl } from "../external/s3";
 import { privateArtifactRecord } from "../services/private-artifact-storage.service";
 import { createPrivateHostedPreview$ } from "../services/private-hosted-preview.service";
 import { resolveArtifactShare$ } from "../services/artifact-shares.service";
@@ -39,15 +40,17 @@ const resolve$ = command(async ({ get, set }, signal: AbortSignal) => {
     ) {
       return notFound("Artifact unavailable");
     }
-    const url = await get(
-      generatePresignedGetUrl(file.bucket, file.key, 900, undefined, true),
+    const preview = await get(
+      generateArtifactPreviewUrl(file.bucket, file.key, {
+        expiresIn: PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS,
+        signingDate: nowDate(),
+      }),
     );
     signal.throwIfAborted();
     return {
       status: 200 as const,
       body: {
-        url,
-        expiresAt: new Date(nowDate().getTime() + 900_000).toISOString(),
+        ...preview,
         filename: file.filename,
         contentType: file.contentType,
         target: { kind: "file" as const, id },

@@ -1,3 +1,4 @@
+import type { AttachmentDisplay } from "../../signals/attachment-resource-url.ts";
 import type { ReactNode } from "react";
 import {
   ArrowLeft,
@@ -34,7 +35,10 @@ import {
   artifactPreviewUrlsMatch,
   publicAttachmentUrl,
 } from "./attachment-url.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource";
+import {
+  useResolvedAttachmentUrl,
+  useAttachmentMediaError,
+} from "./attachment-resource";
 import { lightboxDialogVisible$ } from "../../signals/okou-page/attachment-chips.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { jsonParseOr } from "../../signals/utils.ts";
@@ -228,6 +232,7 @@ function ArtifactSidebarContent({
 
   return (
     <ArtifactSidebarResolvedContent
+      resourceDisplay={artifactRef.display}
       closePreview={onClose}
       display={display}
       fullscreen={fullscreen}
@@ -243,6 +248,7 @@ function ArtifactSidebarContent({
 }
 
 type ArtifactSidebarResolvedContentProps = {
+  readonly resourceDisplay?: AttachmentDisplay;
   readonly closePreview: () => void;
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
@@ -256,6 +262,7 @@ type ArtifactSidebarResolvedContentProps = {
 };
 
 function ArtifactSidebarResolvedContent({
+  resourceDisplay,
   closePreview,
   display,
   fullscreen,
@@ -284,6 +291,7 @@ function ArtifactSidebarResolvedContent({
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
         <ArtifactBody
+          resourceDisplay={resourceDisplay}
           url={display.url}
           kind={display.kind}
           filename={display.filename}
@@ -692,6 +700,7 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
 }
 
 function ArtifactBody({
+  resourceDisplay,
   url,
   kind,
   filename,
@@ -702,6 +711,7 @@ function ArtifactBody({
   markdownTree$,
   text$,
 }: {
+  resourceDisplay?: AttachmentDisplay;
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
@@ -749,6 +759,7 @@ function ArtifactBody({
   if (kind === "image") {
     return (
       <ArtifactImageBody
+        resourceDisplay={resourceDisplay}
         fullscreen={fullscreen}
         imageCanvasSignals={imageCanvasSignals}
         imageNavigation={imageNavigation}
@@ -758,14 +769,27 @@ function ArtifactBody({
     );
   }
   if (kind === "video") {
-    return <ArtifactVideoBody url={url} filename={filename} />;
+    return (
+      <ArtifactVideoBody
+        resourceDisplay={resourceDisplay}
+        url={url}
+        filename={filename}
+      />
+    );
   }
   if (kind === "audio") {
-    return <ArtifactAudioBody url={url} filename={filename} />;
+    return (
+      <ArtifactAudioBody
+        resourceDisplay={resourceDisplay}
+        url={url}
+        filename={filename}
+      />
+    );
   }
   if (kind === "html" || kind === "pdf") {
     return (
       <ArtifactIframeBody
+        resourceDisplay={resourceDisplay}
         url={url}
         kind={kind}
         filename={filename}
@@ -777,6 +801,7 @@ function ArtifactBody({
   if (isOfficeFilePreview(filename)) {
     return (
       <ArtifactOfficeDocumentBody
+        resourceDisplay={resourceDisplay}
         filename={filename}
         fullscreen={fullscreen}
         url={url}
@@ -1065,12 +1090,14 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
 }
 
 function ArtifactImageBody({
+  resourceDisplay,
   fullscreen,
   imageCanvasSignals,
   imageNavigation,
   url,
   filename,
 }: {
+  resourceDisplay?: AttachmentDisplay;
   fullscreen: boolean;
   imageCanvasSignals: ZoomableImageCanvasSignals;
   imageNavigation?: ArtifactImageNavigationActions;
@@ -1078,7 +1105,7 @@ function ArtifactImageBody({
   filename: string;
 }) {
   const modalOpen = useGet(lightboxDialogVisible$);
-  const resourceUrl = useResolvedAttachmentUrl(url);
+  const resourceUrl = useResolvedAttachmentUrl(url, resourceDisplay);
 
   if (resourceUrl === null) {
     return <ArtifactSpinner />;
@@ -1098,6 +1125,7 @@ function ArtifactImageBody({
             navigation={imageNavigation}
           />
           <ZoomableArtifactImageCanvas
+            resourceDisplay={resourceDisplay}
             key={`${fullscreen ? "fullscreen" : "sidebar"}:${url}`}
             src={resourceUrl}
             alt={filename}
@@ -1126,14 +1154,17 @@ function ArtifactImageBody({
 }
 
 function ArtifactVideoBody({
+  resourceDisplay,
   url,
   filename,
 }: {
+  resourceDisplay?: AttachmentDisplay;
   url: string;
   filename: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(url);
+  const resourceUrl = useResolvedAttachmentUrl(url, resourceDisplay);
+  const retryExpiredMedia = useAttachmentMediaError(resourceDisplay);
   return (
     <ArtifactStageShell centered>
       <div
@@ -1142,6 +1173,7 @@ function ArtifactVideoBody({
       >
         {resourceUrl !== null && (
           <video
+            onError={retryExpiredMedia}
             src={resourceUrl}
             controls
             playsInline
@@ -1161,20 +1193,24 @@ function ArtifactVideoBody({
 }
 
 function ArtifactAudioBody({
+  resourceDisplay,
   url,
   filename,
 }: {
+  resourceDisplay?: AttachmentDisplay;
   url: string;
   filename: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(url);
+  const resourceUrl = useResolvedAttachmentUrl(url, resourceDisplay);
+  const retryExpiredMedia = useAttachmentMediaError(resourceDisplay);
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
         <p className="text-sm text-muted-foreground">{filename}</p>
         {resourceUrl !== null && (
           <audio
+            onError={retryExpiredMedia}
             src={resourceUrl}
             controls
             preload="metadata"
@@ -1194,12 +1230,14 @@ function ArtifactAudioBody({
 }
 
 function ArtifactIframeBody({
+  resourceDisplay,
   url,
   kind,
   filename,
   artifactKind,
   fullscreen,
 }: {
+  resourceDisplay?: AttachmentDisplay;
   url: string;
   kind: "html" | "pdf";
   filename: string;
@@ -1207,7 +1245,7 @@ function ArtifactIframeBody({
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(url);
+  const resourceUrl = useResolvedAttachmentUrl(url, resourceDisplay);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
@@ -1270,10 +1308,12 @@ function ArtifactIframeBody({
 }
 
 function ArtifactOfficeDocumentBody({
+  resourceDisplay,
   filename,
   fullscreen,
   url,
 }: {
+  resourceDisplay?: AttachmentDisplay;
   filename: string;
   fullscreen: boolean;
   url: string;
@@ -1282,6 +1322,7 @@ function ArtifactOfficeDocumentBody({
     <ArtifactStageShell scrollable={false}>
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <OfficeDocumentPreview
+          resourceDisplay={resourceDisplay}
           filename={filename}
           focusKey={`${url}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen}

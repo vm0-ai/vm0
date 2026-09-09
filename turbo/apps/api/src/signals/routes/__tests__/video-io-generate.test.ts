@@ -68,7 +68,7 @@ const KLING_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
 const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
 const CLOUDFLARE_MEDIA_FRAME_URL =
-  /^https:\/\/cdn\.(?:vm7|okou)\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
+  /^https:\/\/(?:a\.okou|cdn\.(?:vm7|okou))\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
 const WEB_ORIGIN = "https://www.okou.test";
 
 const VIDEO_PRICING_DEFAULTS = [
@@ -277,7 +277,11 @@ function putObjectInput(): PutObjectCommandInput {
       return candidate;
     })
     .find((candidate): candidate is PutObjectCommand => {
-      return candidate instanceof PutObjectCommand;
+      return (
+        candidate instanceof PutObjectCommand &&
+        (candidate.input.Key?.startsWith("artifacts/") === true ||
+          candidate.input.Key?.startsWith("private-artifacts/") === true)
+      );
     });
   if (!command) {
     throw new Error("Expected generated video to be uploaded to S3");

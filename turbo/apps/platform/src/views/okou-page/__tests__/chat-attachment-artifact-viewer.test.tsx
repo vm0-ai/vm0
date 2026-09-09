@@ -1,3 +1,4 @@
+import { mockNow } from "../../../lib/time.ts";
 import {
   artifactReferencePath,
   artifactReferencesContract,
@@ -464,10 +465,14 @@ test("Image navigation remains inside its split-view chat", async () => {
   );
 });
 
-test("Private HTML links open isolated previews without exposing a share URL", async () => {
+test("Private HTML previews stay stable on tab return and renew on expired reopening", async () => {
   const deploymentId = "00000000-0000-4000-8000-000000000009";
   const canonicalUrl = `${artifactReferencePath(deploymentId, "index.html")}#slide-2`;
   const firstPreview = `https://pv-${"a".repeat(48)}.sites.vm7.io/`;
+  const nextPreview = `https://pv-${"b".repeat(48)}.sites.vm7.io/`;
+  let currentPreview = firstPreview;
+  mockNow(new Date("2026-09-09T00:00:00.000Z"), context.signal);
+  const visibility = context.mocks.browser.visibilityState("visible");
   mockAttachmentChat(context, {
     chatEvents: [assistantMessage(`[Private report](${canonicalUrl})`)],
     artifacts: [
@@ -488,11 +493,14 @@ test("Private HTML links open isolated previews without exposing a share URL", a
         ),
       );
       return respond(200, {
-        url: firstPreview,
+        url: currentPreview,
         filename: "index.html",
         contentType: "text/html",
         target: { kind: "html", id: deploymentId },
-        expiresAt: "2099-01-01T00:00:00.000Z",
+        expiresAt:
+          currentPreview === firstPreview
+            ? "2026-09-11T00:00:00.000Z"
+            : "2026-09-13T00:00:00.000Z",
       });
     },
   );
@@ -511,5 +519,20 @@ test("Private HTML links open isolated previews without exposing a share URL", a
     expect(
       within(sidebar).getByTestId("artifact-sidebar-body-html"),
     ).toHaveAttribute("src", `${firstPreview}#slide-2`);
+  });
+  currentPreview = nextPreview;
+  mockNow(new Date("2026-09-11T00:00:01.000Z"), context.signal);
+  visibility.changeTo("hidden");
+  visibility.changeTo("visible");
+  await waitFor(() => {
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toHaveAttribute("src", `${firstPreview}#slide-2`);
+  });
+  click(await findNamedLink("Private report"));
+  await waitFor(() => {
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toHaveAttribute("src", `${nextPreview}#slide-2`);
   });
 });

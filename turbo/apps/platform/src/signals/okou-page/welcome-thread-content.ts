@@ -11,7 +11,6 @@ import {
   markdownCardKey,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
-import { createAttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
 import { assistantName$ } from "../branding.ts";
 import {
   createArtifactCardSignalsRegistry,
@@ -103,10 +102,8 @@ export const createWelcomeThreadContentSignals$ = command(
       [welcomePresentation.embedUrl, welcomePresentation.previewImage],
       [welcomeVideo.previewVideo, welcomeVideo.previewImage],
     ]);
-    const artifactSignals = createArtifactCardSignalsRegistry(
-      previewImageUrls$,
-      createAttachmentResourceUrlResolver(),
-    );
+    const artifactSignals =
+      createArtifactCardSignalsRegistry(previewImageUrls$);
     const artifactCard = (
       descriptor: ArtifactDescriptor,
     ): Extract<MarkdownCardRef, { kind: "artifact" }> => {

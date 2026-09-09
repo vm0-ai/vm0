@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run protected production KMS verification or a bounded ciphertext migration."""
 
+from contextlib import ExitStack
 import datetime
 import hashlib
 import json
@@ -31,6 +32,45 @@ CONFIG_NAMES = {
 
 class MigrationError(Exception):
     """Only fixed failure codes may reach logs; provider bodies stay in memory."""
+
+
+class AwsOperationError(MigrationError):
+    """Retain only an allowlisted operation/error and the CLI exit status."""
+
+    def __init__(self, operation, result):
+        match = re.search(r"An error occurred \(([A-Za-z0-9]+)\)", result.stderr)
+        error_code = "UnclassifiedAwsCliFailure"
+        if match and match[1] in {
+            "AccessDenied", "AccessDeniedException", "ExpiredToken",
+            "ExpiredTokenException", "IDPCommunicationError", "IDPRejectedClaim",
+            "InvalidClientTokenId", "InvalidIdentityToken", "MalformedPolicyDocument",
+            "PackedPolicyTooLarge", "RegionDisabledException", "RequestExpired",
+            "ServiceUnavailable", "SignatureDoesNotMatch", "Throttling",
+            "ThrottlingException", "ValidationError",
+        }:
+            error_code = match[1]
+        elif any(
+            prefix in result.stderr
+            for prefix in (
+                "Error parsing parameter '--cli-input-json':",
+                "Error parsing parameter 'cli-input-json':",
+            )
+        ):
+            error_code = "CliInputError"
+        elif "Parameter validation failed:" in result.stderr:
+            error_code = "ParameterValidationFailed"
+        elif "SSL validation failed" in result.stderr:
+            error_code = "TlsValidationFailed"
+        elif "Could not connect to the endpoint URL" in result.stderr:
+            error_code = "EndpointConnectionFailed"
+        elif "Unable to locate credentials" in result.stderr:
+            error_code = "CredentialsUnavailable"
+        self.details = {
+            "operation": operation,
+            "errorCode": error_code,
+            "exitCode": result.returncode,
+        }
+        super().__init__("aws_operation_failed:" + operation + ":" + error_code)
 
 
 def require(condition, code):
@@ -100,16 +140,38 @@ def oidc(audience):
 
 
 def aws(arguments, environment, payload=None):
-    result = subprocess.run(
-        ["aws", *arguments, "--region", "us-west-2", "--output", "json"],
-        input=None if payload is None else json.dumps(payload),
-        env=environment,
-        text=True,
-        capture_output=True,
-        timeout=45,
-        check=False,
-    )
-    require(result.returncode == 0, "aws_operation_failed")
+    operation = {
+        ("sts", "get-caller-identity"): "sts:GetCallerIdentity",
+        ("sts", "assume-role-with-web-identity"): "sts:AssumeRoleWithWebIdentity",
+    }[tuple(arguments[:2])]
+    with ExitStack() as resources:
+        descriptors = ()
+        if payload is not None:
+            # AWS CLI can read JSON input more than once. A pipe is consumed on
+            # its first read; this anonymous Linux memory file is seekable and
+            # keeps the OIDC token out of disk files and process arguments.
+            input_file = resources.enter_context(
+                os.fdopen(os.memfd_create("kms-migration-input"), "w+")
+            )
+            json.dump(payload, input_file)
+            input_file.flush()
+            descriptors = (input_file.fileno(),)
+            arguments = [
+                *arguments,
+                "--cli-input-json",
+                "file:///proc/self/fd/" + str(input_file.fileno()),
+            ]
+        result = subprocess.run(
+            ["aws", *arguments, "--region", "us-west-2", "--output", "json"],
+            pass_fds=descriptors,
+            env=environment,
+            text=True,
+            capture_output=True,
+            timeout=45,
+            check=False,
+        )
+    if result.returncode != 0:
+        raise AwsOperationError(operation, result)
     return json.loads(result.stdout)
 
 
@@ -283,8 +345,6 @@ def assume_operator(environment):
         [
             "sts",
             "assume-role-with-web-identity",
-            "--cli-input-json",
-            "file:///dev/stdin",
         ],
         environment,
         {
@@ -544,8 +604,13 @@ def main():
             "deployment_changed_during_operation",
         )
         metadata["result"] = "passed"
-    except BaseException:
+    except BaseException as error:
         metadata["result"] = "failed"
+        metadata["failure"] = (
+            str(error) if isinstance(error, MigrationError) else "unexpected_error"
+        )
+        if isinstance(error, AwsOperationError):
+            metadata["awsFailure"] = error.details
         raise
     finally:
         metadata["finishedAt"] = datetime.datetime.now(

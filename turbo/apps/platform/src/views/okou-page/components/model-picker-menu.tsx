@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   Cpu,
+  MessageCircle,
   SlidersHorizontal,
 } from "lucide-react";
 import { Button, Switch, cn } from "@okouai/ui";
@@ -434,6 +435,337 @@ function MediaModelList({
       </div>
     </>
   );
+}
+
+/**
+ * Flyout layout: model types on the left, that type's models in a panel beside
+ * it. The two panels are separate cards -- joining them would make the root
+ * resize whenever a longer list opened, and the type rows would move out from
+ * under the pointer.
+ */
+function ModelPickerFlyoutTypeRow({
+  icon,
+  label,
+  current,
+  active,
+  index,
+  total,
+  onActivate,
+}: {
+  icon: ReactNode;
+  label: string;
+  current: string;
+  active: boolean;
+  index: number;
+  total: number;
+  onActivate: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      aria-posinset={index + 1}
+      aria-setsize={total}
+      tabIndex={active ? 0 : -1}
+      className={cn(
+        "flex h-11 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors",
+        "hover:bg-state-hover focus-visible:ring-inset",
+        active && "bg-state-hover",
+      )}
+      onMouseEnter={onActivate}
+      onFocus={onActivate}
+      onClick={onActivate}
+    >
+      <span className="flex w-4 shrink-0 items-center justify-center text-muted-foreground">
+        {icon}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-px">
+        <span className="truncate text-[13px] leading-[17px] text-foreground">
+          {label}
+        </span>
+        <span className="truncate text-[11px] leading-[14px] text-muted-foreground">
+          {current}
+        </span>
+      </span>
+      <ChevronRight
+        size={13}
+        aria-hidden="true"
+        className="shrink-0 text-muted-foreground"
+      />
+    </button>
+  );
+}
+
+function ModelPickerFlyoutOption({
+  content,
+  selected,
+  disabled,
+  index,
+  total,
+  onSelect,
+}: {
+  content: ReactNode;
+  selected: boolean;
+  disabled: boolean;
+  index: number;
+  total: number;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      aria-posinset={index + 1}
+      aria-setsize={total}
+      // Unavailable routes stay in the list and stay reachable: a native
+      // disabled row is invisible to keyboard and screen reader users.
+      aria-disabled={disabled || undefined}
+      tabIndex={-1}
+      className={cn(
+        "relative flex h-9 w-full items-center gap-2 rounded-lg py-0 pl-2 pr-8 text-left",
+        "text-[13px] font-normal text-foreground transition-colors",
+        "focus-visible:ring-inset",
+        disabled ? "opacity-55" : "hover:bg-state-hover",
+      )}
+      onClick={() => {
+        if (!disabled) {
+          onSelect();
+        }
+      }}
+    >
+      {content}
+      {selected && (
+        <Check size={15} aria-hidden="true" className="absolute right-2" />
+      )}
+    </button>
+  );
+}
+
+function ModelPickerFlyoutOptions({
+  activeMedia,
+  options,
+  value,
+  onChange,
+}: {
+  activeMedia: MediaModelPanelState["categories"][number] | undefined;
+  options: readonly ModelPickerMenuOption[];
+  value: ModelProviderSelection | null;
+  onChange: (selection: ModelProviderSelection) => void;
+}) {
+  if (activeMedia) {
+    return activeMedia.options.map((option, index) => {
+      return (
+        <ModelPickerFlyoutOption
+          key={option.key}
+          content={
+            <>
+              {option.icon}
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              <PriceTierBadge
+                tier={option.priceTier}
+                description={getMediaModelPriceTierLabel(option.priceTier)}
+              />
+            </>
+          }
+          selected={option.selected}
+          disabled={false}
+          index={index}
+          total={activeMedia.options.length}
+          onSelect={option.onSelect}
+        />
+      );
+    });
+  }
+  return options.map((option, index) => {
+    return (
+      <ModelPickerFlyoutOption
+        key={option.model}
+        content={option.content}
+        selected={value?.selectedModel === option.model}
+        disabled={option.disabled}
+        index={index}
+        total={options.length}
+        onSelect={() => {
+          onChange(
+            value?.selectedModel === option.model
+              ? value
+              : { selectedModel: option.model },
+          );
+        }}
+      />
+    );
+  });
+}
+
+export function ModelPickerFlyoutContent({
+  signals,
+  value,
+  placeholder,
+  options,
+  mediaModelPanel,
+  onChange,
+}: ModelPickerMenuContentProps) {
+  const { t } = useTranslation();
+  const category = useGet(signals.flyoutCategory$);
+  const side = useGet(signals.flyoutSide$);
+  const setCategory = useSet(signals.setFlyoutCategory$);
+  const rootRef = useSet(signals.flyoutRootRef$);
+  const panelRef = useSet(signals.focusFlyoutPanelRef$);
+  const selectedOption = options.find((option) => {
+    return option.model === value?.selectedModel;
+  });
+  const chatLabel =
+    selectedOption?.label ??
+    (value ? getCanonicalModelDisplayName(value.selectedModel) : placeholder);
+  const types = [
+    {
+      id: "chat" as const,
+      label: t(($) => {
+        return $.settings.models.picker.categoryChat;
+      }),
+      current: chatLabel,
+      icon: <MessageCircle size={15} aria-hidden="true" />,
+    },
+    ...(mediaModelPanel?.categories ?? []).map((mediaCategory) => {
+      const selected = mediaCategory.options.find((option) => {
+        return option.selected;
+      });
+      return {
+        id: mediaCategory.id,
+        label: mediaCategory.tabLabel,
+        current: selected?.label ?? mediaCategory.label,
+        icon: selected?.icon ?? null,
+      };
+    }),
+  ];
+  const activeType = types.some((type) => {
+    return type.id === category;
+  })
+    ? category
+    : "chat";
+  const activeMedia = mediaModelPanel?.categories.find((mediaCategory) => {
+    return mediaCategory.id === activeType;
+  });
+  const panelLabel =
+    activeMedia?.label ??
+    t(($) => {
+      return $.settings.models.picker.chatModels;
+    });
+  return (
+    <div
+      ref={rootRef}
+      className="relative w-[188px]"
+      onKeyDown={(event) => {
+        moveFlyoutFocus(event, types.length);
+      }}
+    >
+      {types.length > 1 && (
+        <div
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label={t(($) => {
+            return $.settings.models.picker.models;
+          })}
+          className="flex flex-col gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-md"
+        >
+          {types.map((type, index) => {
+            return (
+              <ModelPickerFlyoutTypeRow
+                key={type.id}
+                icon={type.icon}
+                label={type.label}
+                current={type.current}
+                active={type.id === activeType}
+                index={index}
+                total={types.length}
+                onActivate={() => {
+                  setCategory(type.id);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+      <div
+        ref={panelRef}
+        role="listbox"
+        aria-label={panelLabel}
+        className={cn(
+          "flex max-h-[284px] w-[252px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
+          "rounded-xl border border-border bg-popover p-1 shadow-md",
+          types.length > 1
+            ? cn(
+                "absolute bottom-0",
+                side === "right"
+                  ? "left-[calc(100%+6px)]"
+                  : "right-[calc(100%+6px)]",
+              )
+            : "w-[252px]",
+        )}
+      >
+        <ModelPickerFlyoutOptions
+          activeMedia={activeMedia}
+          options={options}
+          value={value}
+          onChange={onChange}
+        />
+        {options.length === 0 && !activeMedia && (
+          <p className="px-2 py-2 text-sm text-muted-foreground">
+            {t(($) => {
+              return $.settings.models.picker.noConfiguredModels;
+            })}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Vertical tablist paired with a listbox: up/down inside each, arrows across. */
+function moveFlyoutFocus(
+  event: KeyboardEvent<HTMLDivElement>,
+  typeCount: number,
+): void {
+  const target = event.target as HTMLElement;
+  const root = event.currentTarget;
+  const onType = target.getAttribute("role") === "tab";
+  const options = Array.from(
+    root.querySelectorAll<HTMLElement>('[role="option"]'),
+  );
+  const tabs = Array.from(root.querySelectorAll<HTMLElement>('[role="tab"]'));
+  if (onType && (event.key === "ArrowRight" || event.key === "Enter")) {
+    event.preventDefault();
+    (
+      options.find((option) => {
+        return option.getAttribute("aria-selected") === "true";
+      }) ?? options[0]
+    )?.focus();
+    return;
+  }
+  if (!onType && event.key === "ArrowLeft" && typeCount > 1) {
+    event.preventDefault();
+    tabs
+      .find((tab) => {
+        return tab.getAttribute("aria-selected") === "true";
+      })
+      ?.focus();
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+    return;
+  }
+  const ring = onType ? tabs : options;
+  const current = ring.indexOf(target);
+  if (current === -1 || ring.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const next =
+    (current + (event.key === "ArrowDown" ? 1 : -1) + ring.length) %
+    ring.length;
+  ring[next]?.focus();
 }
 
 export function ModelPickerMenuContent(props: ModelPickerMenuContentProps) {

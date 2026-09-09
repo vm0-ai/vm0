@@ -1,4 +1,5 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
@@ -8,7 +9,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   pushState,
   search as locationSearch,
@@ -436,4 +442,73 @@ test("Present a connector with no accounts", async () => {
   expect(connect).toBeDisabled();
   expect(screen.queryByRole("dialog")).toBeNull();
   oauthStarted.resolve();
+});
+
+function shelfCatalog() {
+  const mail = [
+    "Gmail",
+    "Outlook Mail",
+    "Slack",
+    "Microsoft Teams Bot",
+    "Discord",
+    "Telegram",
+    "Lark",
+    "Zendesk",
+  ].map((label, index) => {
+    return publicStatusItem({
+      connectorSlug: `mail-${index}` as ConnectorSlug,
+      label,
+      category: "communication-collaboration",
+      popularityRank: index,
+      connected: false,
+    });
+  });
+  return [
+    ...mail,
+    publicStatusItem({
+      connectorSlug: "voice-0" as ConnectorSlug,
+      label: "ElevenLabs",
+      category: "ai-voice-audio",
+      popularityRank: 40,
+      connected: false,
+    }),
+  ];
+}
+
+test("Browse the catalog as shelves and filter it with category chips", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(context, shelfCatalog(), undefined, {
+    "communication-collaboration": 327,
+    "ai-voice-audio": 50,
+  });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  // Six per shelf, closed by the products it stands for rather than a count.
+  await waitFor(() => {
+    expect(screen.getByText("See Zendesk and 321 more")).toBeVisible();
+  });
+  expect(
+    screen.getByTestId("connector-shelf-communication-collaboration"),
+  ).toBeInTheDocument();
+
+  // The status dimension is its own control now, and the agent list is gone
+  // from the filter: which agents may use a connector is answered on its card.
+  expect(screen.getByRole("radio", { name: "Not connected" })).toBeVisible();
+  expect(screen.queryByLabelText("Filter connectors")).toBeNull();
+
+  const communicationChip = queryAllByRoleFast("button").find((element) => {
+    return element.textContent?.startsWith("Communication");
+  });
+  await click(communicationChip!);
+  await waitFor(() => {
+    expect(locationSearch()).toContain("category=communication-collaboration");
+  });
+  expect(
+    screen.queryByTestId("connector-shelf-communication-collaboration"),
+  ).toBeNull();
+  expect(getConnectorCard("Zendesk")).toBeInTheDocument();
 });

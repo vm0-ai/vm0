@@ -16,7 +16,7 @@ import {
   userModelPreferenceContract,
 } from "@okouai/api-contracts/contracts/user-model-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -711,4 +711,33 @@ test("Navigate the compact menu by keyboard and retain Fast after dismissal", as
   click(buttonNamed("Adjust GPT 5.6 Sol settings", reopened));
   await screen.findByRole("region", { name: "Chat settings" });
   expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
+});
+
+test("Choose a model from the flyout without leaving the type list", async () => {
+  const user = userEvent.setup({ delay: null });
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(min-width: 640px)";
+  });
+  installNewChat(["gpt-5.6-sol", "gpt-5.6-luna"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerFlyout]: true,
+      [FeatureSwitchKey.CodexFastMode]: false,
+    },
+  });
+  await readyComposer();
+  click(await findButton("GPT 5.6 Sol"));
+  // One panel, no pages: every model is reachable without a drill-in step.
+  const list = await screen.findByRole("listbox", { name: "Chat models" });
+  expect(screen.queryByLabelText("Back to models")).not.toBeInTheDocument();
+  const current = within(list).getByRole("option", { name: /GPT 5.6 Sol/u });
+  expect(current).toHaveAttribute("aria-selected", "true");
+  expect(current).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  const next = within(list).getByRole("option", { name: /GPT 5.6 Luna/u });
+  expect(next).toHaveFocus();
+  click(next);
+  await expect(findButton("GPT 5.6 Luna")).resolves.toBeVisible();
 });

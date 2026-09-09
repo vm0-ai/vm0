@@ -1,3 +1,4 @@
+import { nowDate } from "../../lib/time";
 import { randomBytes, randomUUID } from "node:crypto";
 import { artifactFilenameExtension } from "@okouai/api-contracts/contracts/artifact-delivery";
 import { registerArtifactDelivery$ } from "./artifact-delivery.service";
@@ -18,14 +19,14 @@ import {
 } from "@okouai/api-contracts/contracts/artifact-shares";
 import { settle } from "../utils";
 import { env } from "../../lib/env";
-import { nowDate } from "../../lib/time";
+import { PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS } from "../../lib/private-artifact-preview";
 import { db$, writeDb$ } from "../external/db";
 import { clerk$, isClerkResourceNotFound } from "../external/clerk";
 import {
   copyArtifactShareObject,
   readArtifactSharePolicyObject,
   writeArtifactSharePolicyObject,
-  generatePresignedGetUrl,
+  generateArtifactPreviewUrl,
   putHostedSitesS3Object,
 } from "../external/s3";
 import { privateArtifactRecord } from "./private-artifact-storage.service";
@@ -538,7 +539,8 @@ export const resolveArtifactShare$ = command(
       return null;
     }
     // No active-org assumption and no membership cache: removal is observed at
-    // the next resolve. Already issued delivery credentials expire in 15 minutes.
+    // the next resolve. Already issued delivery credentials expire in two days;
+    // content already downloaded into a browser cache can remain available.
     if (!(await set(currentShareMember$, row.orgId, args.userId, signal))) {
       return null;
     }
@@ -572,19 +574,16 @@ export const resolveArtifactShare$ = command(
     ) {
       return null;
     }
-    const url = await get(
-      generatePresignedGetUrl(
-        file.bucket,
-        policy.target.key,
-        900,
-        file.filename,
-        true,
-      ),
+    const preview = await get(
+      generateArtifactPreviewUrl(file.bucket, policy.target.key, {
+        expiresIn: PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS,
+        signingDate: nowDate(),
+        filename: file.filename,
+      }),
     );
     signal.throwIfAborted();
     return {
-      url,
-      expiresAt: new Date(nowDate().getTime() + 900_000).toISOString(),
+      ...preview,
       filename: file.filename,
       contentType: file.contentType,
       target: { kind: "file" as const, id: policy.target.id },

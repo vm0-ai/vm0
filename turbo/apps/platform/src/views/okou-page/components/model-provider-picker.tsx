@@ -79,7 +79,10 @@ import { settingsIconAssetUrl } from "./settings/settings-icon-assets";
 
 import type { ModelPickerMenuSignals } from "../../../signals/okou-page/model-picker-menu.ts";
 import { PriceTierBadge } from "./model-picker-price-tier.tsx";
-import { ModelPickerMenuContent } from "./model-picker-menu.tsx";
+import {
+  ModelPickerFlyoutContent,
+  ModelPickerMenuContent,
+} from "./model-picker-menu.tsx";
 
 export interface ModelProviderSelection {
   selectedModel: SupportedRunModel;
@@ -158,6 +161,8 @@ interface ModelProviderPickerProps {
   mediaModelPanel?: MediaModelPanelState;
   /** Composer-owned navigation for the compact model menu rollout. */
   menuSignals?: ModelPickerMenuSignals;
+  /** Replaces the menu's pages with the detached type/model flyout. */
+  flyoutLayout?: boolean;
   /** Model omitted from this caller's list of available choices. */
   excludedModel?: SupportedRunModel;
 }
@@ -1344,6 +1349,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
   excludedModel,
   showInheritOption,
   menuSignals,
+  flyoutLayout,
   onMenuChange,
 }: {
   value: ModelProviderSelection | null;
@@ -1354,6 +1360,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
   excludedModel: SupportedRunModel | undefined;
   showInheritOption: boolean;
   menuSignals: ModelPickerMenuSignals | undefined;
+  flyoutLayout: boolean;
   onMenuChange: (selection: ModelProviderSelection) => void;
 }) {
   const { t } = useTranslation();
@@ -1402,8 +1409,11 @@ function SubscribedExplicitModelFirstModelPickerContent({
     excludedModel,
   });
   if (menuSignals) {
+    const MenuContent = flyoutLayout
+      ? ModelPickerFlyoutContent
+      : ModelPickerMenuContent;
     return (
-      <ModelPickerMenuContent
+      <MenuContent
         signals={menuSignals}
         value={state.selection}
         placeholder={placeholder}
@@ -1501,6 +1511,7 @@ function EnabledExplicitModelFirstModelPicker(
       excludedModel={props.excludedModel}
       showInheritOption={props.showInheritOption ?? false}
       menuSignals={props.menuSignals}
+      flyoutLayout={props.flyoutLayout ?? false}
       onMenuChange={handleSelectionChange}
     />
   );
@@ -1543,7 +1554,13 @@ function EnabledExplicitModelFirstModelPicker(
           align="end"
           collisionPadding={8}
           aria-label={props.placeholder}
-          className="w-[304px] max-w-[calc(100vw-16px)] max-h-[var(--available-height)] overflow-y-auto overscroll-contain p-1"
+          className={cn(
+            props.flyoutLayout
+              ? // Each flyout panel carries its own card, so the popover itself
+                // must not paint one -- otherwise they read as a single box.
+                "w-auto border-0 bg-transparent p-0 shadow-none"
+              : "w-[304px] max-w-[calc(100vw-16px)] max-h-[var(--available-height)] overflow-y-auto overscroll-contain p-1",
+          )}
         >
           {content}
         </PopoverContent>
@@ -1581,6 +1598,7 @@ export function ModelProviderPicker({
   showInheritOption = false,
   mediaModelPanel,
   menuSignals,
+  flyoutLayout = false,
   excludedModel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
@@ -1619,6 +1637,7 @@ export function ModelProviderPicker({
       fastLabel={fastLabel}
       excludedModel={excludedModel}
       menuSignals={menuSignals}
+      flyoutLayout={flyoutLayout}
       {...(mediaModelPanel ? { mediaModelPanel } : {})}
     />
   );

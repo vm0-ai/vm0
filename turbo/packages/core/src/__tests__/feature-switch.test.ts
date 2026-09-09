@@ -201,7 +201,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
@@ -355,7 +355,7 @@ describe("getFeatureSwitchMetadata", () => {
       "released",
     );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
-    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
+    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",
     );

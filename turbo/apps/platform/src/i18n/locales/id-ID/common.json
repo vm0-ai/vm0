@@ -1965,7 +1965,6 @@
       "directory": {
         "allCategories": "Semua",
         "askAdmin": "Minta admin untuk mengaktifkan",
-        "browse": "Jelajahi konektor",
         "configure": "Konfigurasi",
         "connected": "Terhubung",
         "createCustom": "Buat kustom",
@@ -1977,8 +1976,6 @@
         "detailPermissions": "Izin",
         "emptyCustomBody": "Buat satu dari API HTTP atau server MCP mana pun, dan Okou dapat menggunakannya seperti konektor lain.",
         "emptyCustomTitle": "Belum ada konektor kustom",
-        "emptyYoursBody": "Hubungkan aplikasi dan Okou dapat membaca serta bertindak di dalamnya untuk Anda.",
-        "emptyYoursTitle": "Anda belum menghubungkan apa pun",
         "matchCount_other": "{{count}} hasil",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "Perlu perhatian",
@@ -1987,11 +1984,9 @@
         "openDetailAria": "Buka detail {{connector}}",
         "otherCategory": "Lainnya",
         "permissionCount_other": "{{count}} izin",
-        "searchYours": "Cari konektor Anda",
         "showAll_other": "Lihat semua {{count}}",
         "tabCustom": "Kustom",
-        "tabDiscover": "Temukan",
-        "tabYours": "Konektor Anda"
+        "tabDiscover": "Temukan"
       },
       "fallsBackTo": "Beralih kembali ke {{account}}",
       "find": "Cari konektor...",
@@ -2251,6 +2246,7 @@
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
         "brewing": "Meracik respons...",
+        "default": "Sedang berpikir...",
         "mapping": "Memetakan...",
         "onIt": "Sedang dikerjakan...",
         "piecingTogether": "Menyusun semuanya...",
@@ -2871,6 +2867,14 @@
       "noConnectorsAlt": "Tidak ada konektor",
       "otherCategory": "Lainnya",
       "search": "Cari konektor",
+      "shelf": {
+        "browseAll": "Semua",
+        "moreCategories": "Kategori lainnya",
+        "popular": "Populer",
+        "seeMore_one": "Lihat {{names}} dan {{count}} lainnya",
+        "seeMore_other": "Lihat {{names}} dan {{count}} lainnya",
+        "yours": "Konektor Anda"
+      },
       "tabs": {
         "builtin": "Bawaan",
         "custom": "Kustom"

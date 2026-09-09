@@ -668,10 +668,10 @@ const persistAgentCompletion$ = command(
   },
 );
 
-function agentSessionProgress(
-  session: HeyGenVideoAgentSession,
-  videoId: string | undefined,
-): { readonly known: boolean; readonly notice: string } {
+function agentSessionProgress(session: HeyGenVideoAgentSession): {
+  readonly known: boolean;
+  readonly notice: string;
+} {
   const known = [
     "thinking",
     "waiting_for_input",
@@ -686,7 +686,7 @@ function agentSessionProgress(
   } else if (session.status === "waiting_for_input") {
     notice =
       "HeyGen requires input in this generate-mode session. Keep this generation ID and report the blocked session; do not resubmit or switch routes.";
-  } else if (session.status === "completed" && !session.videoId && !videoId) {
+  } else if (session.status === "completed" && !session.videoId) {
     notice =
       "HeyGen reports a completed session without a video ID. Resume this generation to reconcile; do not resubmit.";
   }
@@ -730,8 +730,12 @@ const reconcileAgentSession$ = command(
     const generationId = job.id;
     const internal = readBuiltInGenerationRequestInternal(job.request);
     const videoId = internal.providerJobId;
+    // Once assigned, the video endpoint owns rendering progress.
+    if (videoId) {
+      return videoId;
+    }
     if (!internal.providerSessionId) {
-      return videoId ?? null;
+      return null;
     }
     const sessionResult = await settle(
       getHeyGenVideoAgentSession(internal.providerSessionId, apiKey, signal),
@@ -755,21 +759,7 @@ const reconcileAgentSession$ = command(
       return null;
     }
     const session = sessionResult.value;
-    if (session.videoId && videoId && session.videoId !== videoId) {
-      await set(
-        mergeBuiltInGenerationJobInternal$,
-        {
-          generationId,
-          internal: {
-            providerNotice:
-              "HeyGen returned a different video for this session. Keep this generation ID and report the mismatch; do not resubmit.",
-          },
-        },
-        signal,
-      );
-      return null;
-    }
-    const { known, notice } = agentSessionProgress(session, videoId);
+    const { known, notice } = agentSessionProgress(session);
     if (session.videoId) {
       const recorded = await set(
         recordIntroVideoAgentIdentity$,
@@ -802,7 +792,7 @@ const reconcileAgentSession$ = command(
       );
       return null;
     }
-    return known ? (session.videoId ?? videoId ?? null) : null;
+    return known ? session.videoId : null;
   },
 );
 

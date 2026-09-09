@@ -1,3 +1,5 @@
+import type { AttachmentDisplay } from "../../signals/attachment-resource-url.ts";
+import { useAttachmentLoadError } from "./attachment-resource.ts";
 import type { ReactNode, Ref, WheelEvent as ReactWheelEvent } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import {
@@ -79,6 +81,7 @@ export type ZoomableImageControls = {
 };
 
 type ZoomableArtifactImageCanvasProps = {
+  resourceDisplay?: AttachmentDisplay;
   alt: string;
   /**
    * Drawn over the image *inside* the zoom transform, so an overlay stays
@@ -97,6 +100,7 @@ type ZoomableArtifactImageCanvasProps = {
 };
 
 type ZoomableArtifactImageElementProps = {
+  resourceDisplay?: AttachmentDisplay;
   alt: string;
   imageClassName?: string;
   imageRef?: Ref<HTMLImageElement>;
@@ -140,6 +144,7 @@ function controlsFromTransformState({
 }
 
 function ZoomableArtifactImageElement({
+  resourceDisplay,
   alt,
   imageClassName,
   imageRef,
@@ -147,8 +152,10 @@ function ZoomableArtifactImageElement({
   imageWidth,
   src,
 }: ZoomableArtifactImageElementProps) {
+  const retryExpiredAttachment = useAttachmentLoadError(resourceDisplay);
   return (
     <img
+      onError={retryExpiredAttachment}
       ref={imageRef}
       src={src}
       alt={alt}
@@ -242,6 +249,7 @@ function ZoomableArtifactImageViewport({
 }
 
 export function ZoomableArtifactImageCanvas({
+  resourceDisplay,
   alt,
   canvasTestId = "zoomable-image-canvas",
   children,
@@ -331,6 +339,7 @@ export function ZoomableArtifactImageCanvas({
               canvasTestId={canvasTestId}
               contentClassName={contentClassName}
               element={{
+                resourceDisplay,
                 alt,
                 imageClassName,
                 imageRef,

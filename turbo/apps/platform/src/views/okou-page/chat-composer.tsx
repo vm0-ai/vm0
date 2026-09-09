@@ -250,6 +250,7 @@ import {
 } from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
+  modelPickerFlyoutEnabled$,
   modelPickerMenuEnabled$,
   customConnectorMcpEnabled$,
   voiceInputV2Enabled$,
@@ -9471,6 +9472,9 @@ function ComposerRunModelPickerControl({
 }) {
   const { t } = useTranslation();
   const modelMenuEnabled = useGet(modelPickerMenuEnabled$);
+  // The flyout needs the room a phone does not have; narrow viewports keep the
+  // menu's pages until the sheet layout lands.
+  const modelFlyoutEnabled = useGet(modelPickerFlyoutEnabled$) && desktopLayout;
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
@@ -9483,7 +9487,12 @@ function ComposerRunModelPickerControl({
           return $.chat.composer.selectModel;
         })}
         triggerClassName={composerModelPickerTriggerClassName()}
-        menuSignals={modelMenuEnabled ? signals.model.menu : undefined}
+        menuSignals={
+          modelMenuEnabled || modelFlyoutEnabled
+            ? signals.model.menu
+            : undefined
+        }
+        flyoutLayout={modelFlyoutEnabled}
         compactTrigger
         mobileIconTrigger
         open={modelPickerOpen}
@@ -10554,6 +10563,9 @@ function ComposerConnectorsSlot({
           <ConnectorDirectoryDialog
             state={connectorUi}
             onUpdateState={updateConnectorUi}
+            categoryCounts={connectorData?.categoryConnectorCounts}
+            categoryMetadata={connectorData?.categoryMetadata}
+            loading={connectorData === undefined}
             connected={agentConnectors}
             unconnected={unconnectedConnectors}
             connectedCustom={agentCustomConnectors}

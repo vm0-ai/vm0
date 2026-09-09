@@ -1,3 +1,4 @@
+import { mockNow } from "../../../lib/time";
 import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -161,6 +162,7 @@ describe("private artifact uploads", () => {
     context.mocks.s3.getSignedUrl.mockResolvedValue(
       "https://private-r2.example/report.html?signature=one",
     );
+    mockNow(new Date("2026-09-09T12:00:00.123Z"));
     const preview = await accept(
       api()(webFilesContract).fileUrl({ headers, query: { file_id: id } }),
       [200],
@@ -168,6 +170,7 @@ describe("private artifact uploads", () => {
     expect(preview.body).toStrictEqual({
       url: "https://private-r2.example/report.html?signature=one",
       publicUrl: null,
+      expiresAt: "2026-09-11T12:00:00.000Z",
     });
     expect(preview.headers.get("cache-control")).toBe("private, no-store");
     expect(context.mocks.s3.getSignedUrl.mock.calls.at(-1)).toMatchObject({
@@ -175,10 +178,13 @@ describe("private artifact uploads", () => {
         input: {
           Bucket: bucket,
           Key: `private-artifacts/${id}/report.html`,
-          ResponseCacheControl: "private, no-store",
+          ResponseCacheControl: "private, max-age=31536000, must-revalidate",
         },
       },
-      2: { expiresIn: 900 },
+      2: {
+        expiresIn: 172_800,
+        signingDate: new Date("2026-09-09T12:00:00.000Z"),
+      },
     });
     const downloaded = await accept(
       api()(webFilesContract).download({ headers, query: { file_id: id } }),
@@ -200,6 +206,7 @@ describe("private artifact uploads", () => {
     expect(refreshed.body).toStrictEqual({
       url: "https://private-r2.example/report.html?signature=two",
       publicUrl: null,
+      expiresAt: "2026-09-11T12:00:00.000Z",
     });
   });
 

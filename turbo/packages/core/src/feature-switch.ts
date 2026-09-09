@@ -294,6 +294,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelPickerFlyout]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Pick a model from a detached flyout: model types on the left, that type's models in a panel beside it.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -325,6 +332,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
@@ -489,7 +497,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorDirectory]: {
     maintainer: "tongx@okou.ai",
     description:
-      "Connector directory in the chat composer: connected connectors separated from discovery, category browsing, per-connector detail, and keyboard navigation.",
+      "Shelf-based connector browsing in the chat composer and on the connectors page: connected connectors separated from discovery, category shelves and chips, per-connector detail, and keyboard navigation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -1,3 +1,4 @@
+import { nowDate } from "../../lib/time";
 import { command } from "ccstate";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 
@@ -6,7 +7,8 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { setResHeader$ } from "../context/hono";
-import { generatePresignedGetUrl } from "../external/s3";
+import { generateArtifactPreviewUrl } from "../external/s3";
+import { PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS } from "../../lib/private-artifact-preview";
 import { uploadedArtifactObject } from "../services/uploaded-artifact.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -32,14 +34,13 @@ const fileUrlInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   // Signed against the object key resolved for this user, so the URL never
   // widens beyond what the ownership check already allowed.
-  const url = await get(
-    generatePresignedGetUrl(
-      object.bucket,
-      object.key,
-      object.isPrivate ? 15 * 60 : FILE_URL_TTL_SECONDS,
-      undefined,
-      true,
-    ),
+  const preview = await get(
+    generateArtifactPreviewUrl(object.bucket, object.key, {
+      expiresIn: object.isPrivate
+        ? PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS
+        : FILE_URL_TTL_SECONDS,
+      signingDate: nowDate(),
+    }),
   );
 
   signal.throwIfAborted();
@@ -48,7 +49,7 @@ const fileUrlInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   return {
     status: 200 as const,
-    body: { url, publicUrl: object.isPrivate ? null : object.url },
+    body: { ...preview, publicUrl: object.isPrivate ? null : object.url },
   };
 });
 

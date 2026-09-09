@@ -1,4 +1,4 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   createCardSignalsRegistry,
   type CardSignalsRegistry,
@@ -7,7 +7,10 @@ import {
   createTextPreviewComputed,
   isTextPreviewKind,
 } from "../text-preview.ts";
-import type { AttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
+import {
+  createAttachmentDisplay,
+  type AttachmentDisplay,
+} from "../attachment-resource-url.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -36,6 +39,7 @@ export interface ArtifactSignals extends ArtifactDescriptor {
   readonly previewImageLoad: ImageLoadSignals;
   readonly previewImageUrl$: Computed<Promise<string | undefined>>;
   readonly resourceUrl$: Computed<Promise<string>>;
+  readonly display: AttachmentDisplay;
   readonly text$?: Computed<Promise<string>>;
 }
 
@@ -60,13 +64,20 @@ function needsTextPreview(kind: ArtifactKind): boolean {
 function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-  resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactSignals {
-  const attachmentUrls$ = resolveResourceUrl(descriptor.url);
+  const display = createAttachmentDisplay(descriptor.url);
+  const attachmentUrls$ = display.urls$;
   const resourceUrl$ = computed(async (get) => {
     return (await get(attachmentUrls$)).resourceUrl;
   });
-  const previewImageLoad = createImageLoadSignals();
+  const imageLoad = createImageLoadSignals();
+  const previewImageLoad = {
+    ...imageLoad,
+    failed$: command(({ set }) => {
+      set(imageLoad.failed$);
+      set(display.retry$);
+    }),
+  };
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
       return undefined;
@@ -75,10 +86,17 @@ function createArtifactSignals(
     return previewImageUrlsByUrl.get(descriptor.url);
   });
   if (!needsTextPreview(descriptor.kind)) {
-    return { ...descriptor, previewImageLoad, previewImageUrl$, resourceUrl$ };
+    return {
+      ...descriptor,
+      previewImageLoad,
+      previewImageUrl$,
+      resourceUrl$,
+      display,
+    };
   }
   return {
     ...descriptor,
+    display,
     previewImageLoad,
     previewImageUrl$,
     resourceUrl$,
@@ -88,18 +106,13 @@ function createArtifactSignals(
 
 export function createArtifactCardSignalsRegistry(
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-  resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactCardSignalsRegistry {
   return createCardSignalsRegistry(
     (descriptor: ArtifactDescriptor) => {
       return descriptor.url;
     },
     (descriptor) => {
-      return createArtifactSignals(
-        descriptor,
-        previewImageUrlsByUrl$,
-        resolveResourceUrl,
-      );
+      return createArtifactSignals(descriptor, previewImageUrlsByUrl$);
     },
   );
 }

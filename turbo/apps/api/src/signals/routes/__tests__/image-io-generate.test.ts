@@ -243,7 +243,11 @@ function putObjectInput(): PutObjectCommandInput {
       return candidate;
     })
     .find((candidate): candidate is PutObjectCommand => {
-      return candidate instanceof PutObjectCommand;
+      return (
+        candidate instanceof PutObjectCommand &&
+        (candidate.input.Key?.startsWith("artifacts/") === true ||
+          candidate.input.Key?.startsWith("private-artifacts/") === true)
+      );
     });
   if (!command) {
     throw new Error("Expected generated image to be uploaded to S3");

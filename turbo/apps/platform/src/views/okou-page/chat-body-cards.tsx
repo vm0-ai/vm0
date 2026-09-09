@@ -1,3 +1,8 @@
+import type { AttachmentDisplay } from "../../signals/attachment-resource-url.ts";
+import {
+  useResolvedAttachmentUrl,
+  useAttachmentMediaError,
+} from "./attachment-resource.ts";
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -200,6 +205,7 @@ export function ChatImagePreviewLink({
 }
 
 type ChatVideoPreviewButtonProps = {
+  display?: AttachmentDisplay;
   ariaLabel: string;
   buttonClassName: string;
   filename: string;
@@ -219,6 +225,7 @@ function videoPosterFrameUrl(url: string): string {
 }
 
 export function ChatVideoPreviewButton({
+  display,
   ariaLabel,
   buttonClassName,
   filename,
@@ -230,11 +237,14 @@ export function ChatVideoPreviewButton({
   url,
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
-  const videoUrl = publicAttachmentUrl(url);
-  const posterVideoUrl = videoPosterFrameUrl(videoUrl);
+  const videoUrl = useResolvedAttachmentUrl(url, display);
+  const retryExpiredMedia = useAttachmentMediaError(display);
+  const posterVideoUrl =
+    videoUrl === null ? undefined : videoPosterFrameUrl(videoUrl);
   const videoFallback = (
     <video
       src={posterVideoUrl}
+      onError={retryExpiredMedia}
       preload="metadata"
       muted
       playsInline
@@ -387,6 +397,7 @@ function ArtifactCardView({
   if (signals.kind === "video") {
     return withChatScrollLayout(
       <ChatVideoPreviewButton
+        display={signals.display}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -414,6 +425,7 @@ function ArtifactCardView({
   }
   return withChatScrollLayout(
     <AttachmentPreview
+      resourceDisplay={signals.display}
       attachment={{
         filename: signals.kind === "html" && label ? label : signals.filename,
         url: signals.url,

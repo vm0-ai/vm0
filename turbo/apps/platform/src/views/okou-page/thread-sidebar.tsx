@@ -139,7 +139,7 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
   const fullscreen = useGet(sidebar.fullscreen$);
   const toggleFullscreen = useSet(sidebar.toggleFullscreen$);
   const close = useSet(sidebar.close$);
-  const open = useSet(sidebar.open$);
+  const open = useSet(sidebar.openCatalogArtifact$);
   const loadMore = useSet(sidebar.artifactCatalog.loadMore$);
   const pageSignal = useGet(pageSignal$);
 
@@ -205,10 +205,7 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
           <ArtifactCatalogGrid
             artifacts={artifacts}
             onOpen={(artifactId) => {
-              open({
-                type: "artifact",
-                source: { kind: "catalog", artifactId },
-              });
+              detach(open(artifactId, pageSignal), Reason.DomCallback);
             }}
           />
         )}
@@ -270,6 +267,7 @@ function ThreadArtifactDetail({
   const toggleFullscreen = useSet(sidebar.toggleFullscreen$);
   const close = useSet(sidebar.close$);
   const open = useSet(sidebar.open$);
+  const display = useGet(sidebar.selectedArtifactDisplay$);
   const backToArtifacts = useOpenThreadArtifacts(thread);
   const detailLoadable = useLastLoadable(
     sidebar.artifactCatalog.selectedArtifactDetail$,
@@ -298,7 +296,12 @@ function ThreadArtifactDetail({
     );
   }
 
-  if (detailLoadable.state === "loading") {
+  if (
+    detailLoadable.state === "loading" ||
+    (detailLoadable.state === "hasData" &&
+      detailLoadable.data !== null &&
+      display === null)
+  ) {
     return (
       <aside
         aria-label={t(($) => {
@@ -358,6 +361,7 @@ function ThreadArtifactDetail({
     <ArtifactSidebar
       artifactRef={{
         url: preview.url,
+        ...(display ? { display } : {}),
         kind: preview.kind,
         filename: preview.filename,
       }}

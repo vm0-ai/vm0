@@ -918,3 +918,61 @@ test.each(["desktop", "mobile"])(
     expect(mediaModelRow("Change Chat model, Claude Fable 5.1")).toBeVisible();
   },
 );
+
+test("Switch model type in the flyout without leaving the panel", async () => {
+  installModelEnvironment();
+  setDesktopViewport();
+  mockThread({
+    selectedModel: DEFAULT_RUN_MODEL,
+    selectedImageModel: null,
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ModelPickerFlyout]: true },
+  });
+
+  // The flyout trigger is a popover button inside the composer, not the
+  // Select combobox the menu layout renders.
+  const flyoutTrigger = await waitFor(() => {
+    const trigger = composerFor()
+      .querySelector('[data-slot="select-value"]')
+      ?.closest("button");
+    if (!(trigger instanceof HTMLElement)) {
+      throw new Error("Composer model picker not found");
+    }
+    return trigger;
+  });
+  click(flyoutTrigger);
+
+  // Types live in their own panel; the models sit in a second one beside it.
+  const types = await screen.findByRole("tablist", { name: "Models" });
+  const typeNames = queryAllByRoleFast("tab", types).map((tab) => {
+    return tab.textContent;
+  });
+  expect(typeNames).toHaveLength(3);
+  await screen.findByRole("listbox", { name: "Chat models" });
+
+  const imageType = queryAllByRoleFast("tab", types).find((tab) => {
+    return tab.textContent?.includes("Image");
+  });
+  if (!imageType) {
+    throw new Error("Image type row not found");
+  }
+  click(imageType);
+
+  // The panel swapped in place: no page was pushed, so nothing to go back from.
+  const imageList = await screen.findByRole("listbox", {
+    name: "Image models",
+  });
+  expect(screen.queryByLabelText("Back to models")).not.toBeInTheDocument();
+  expect(imageType).toHaveAttribute("aria-selected", "true");
+  const banana = queryAllByRoleFast("option", imageList).find((option) => {
+    return option.textContent?.includes("Nano Banana 2");
+  });
+  if (!banana) {
+    throw new Error("Nano Banana 2 option not found");
+  }
+  expect(banana).toHaveAttribute("aria-selected", "true");
+});

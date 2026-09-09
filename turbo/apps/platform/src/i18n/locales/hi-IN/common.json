@@ -1968,7 +1968,6 @@
       "directory": {
         "allCategories": "सभी",
         "askAdmin": "इसे चालू करने के लिए एडमिन से कहें",
-        "browse": "कनेक्टर्स देखें",
         "configure": "कॉन्फ़िगर करें",
         "connected": "कनेक्टेड",
         "createCustom": "कस्टम बनाएँ",
@@ -1980,8 +1979,6 @@
         "detailPermissions": "अनुमतियाँ",
         "emptyCustomBody": "किसी भी HTTP API या MCP सर्वर से एक बनाएँ, और Okou उसे बाकी कनेक्टर्स की तरह इस्तेमाल कर सकेगा।",
         "emptyCustomTitle": "अभी कोई कस्टम कनेक्टर नहीं है",
-        "emptyYoursBody": "कोई ऐप कनेक्ट करें और Okou आपके लिए उसमें पढ़ और काम कर सकेगा।",
-        "emptyYoursTitle": "आपने अभी तक कुछ नहीं जोड़ा है",
         "matchCount_one": "{{count}} परिणाम",
         "matchCount_other": "{{count}} परिणाम",
         "moreAccounts_one": "+{{count}}",
@@ -1993,12 +1990,10 @@
         "otherCategory": "अन्य",
         "permissionCount_one": "{{count}} अनुमति",
         "permissionCount_other": "{{count}} अनुमतियाँ",
-        "searchYours": "अपने कनेक्टर्स खोजें",
         "showAll_one": "सभी {{count}} देखें",
         "showAll_other": "सभी {{count}} देखें",
         "tabCustom": "कस्टम",
-        "tabDiscover": "खोजें",
-        "tabYours": "आपके कनेक्टर्स"
+        "tabDiscover": "खोजें"
       },
       "fallsBackTo": "{{account}} पर वापस जाता है",
       "find": "कनेक्टर ढूंढें...",
@@ -2258,6 +2253,7 @@
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",
         "brewing": "एक प्रतिक्रिया तैयार की जा रही है...",
+        "default": "सोच रहा हूँ...",
         "mapping": "इसे मैप करना...",
         "onIt": "उस पर...",
         "piecingTogether": "चीजों को एक साथ जोड़ना...",
@@ -2883,6 +2879,14 @@
       "noConnectorsAlt": "कोई कनेक्टर नहीं",
       "otherCategory": "अन्य",
       "search": "कनेक्टर खोजें",
+      "shelf": {
+        "browseAll": "सभी",
+        "moreCategories": "और श्रेणियाँ",
+        "popular": "लोकप्रिय",
+        "seeMore_one": "{{names}} और {{count}} अन्य देखें",
+        "seeMore_other": "{{names}} और {{count}} अन्य देखें",
+        "yours": "आपके कनेक्टर"
+      },
       "tabs": {
         "builtin": "बिल्ट-इन",
         "custom": "कस्टम"
