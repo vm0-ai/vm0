@@ -438,6 +438,14 @@ function MediaModelList({
 }
 
 /**
+ * Both flyout panels wear the shared popover surface rather than a hand-rolled
+ * card: same 0.7px gray-400 hairline, same radius, and no drop shadow, which
+ * the design system does not use for popovers.
+ */
+const FLYOUT_PANEL_CLASS =
+  "rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground outline-none";
+
+/**
  * Flyout layout: model types on the left, that type's models in a panel beside
  * it. The two panels are separate cards -- joining them would make the root
  * resize whenever a longer list opened, and the type rows would move out from
@@ -668,7 +676,7 @@ export function ModelPickerFlyoutContent({
           aria-label={t(($) => {
             return $.settings.models.picker.models;
           })}
-          className="flex flex-col gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-md"
+          className={cn("flex flex-col gap-0.5", FLYOUT_PANEL_CLASS)}
         >
           {types.map((type, index) => {
             return (
@@ -694,7 +702,7 @@ export function ModelPickerFlyoutContent({
         aria-label={panelLabel}
         className={cn(
           "flex max-h-[284px] w-[252px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
-          "rounded-xl border border-border bg-popover p-1 shadow-md",
+          FLYOUT_PANEL_CLASS,
           types.length > 1
             ? cn(
                 "absolute bottom-0",

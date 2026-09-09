@@ -12,6 +12,7 @@ type ModelPickerMenuPage =
 type ModelPickerFlyoutSide = "left" | "right";
 
 const FLYOUT_PANEL_WIDTH = 258;
+const FLYOUT_VIEWPORT_MARGIN = 8;
 
 /** One navigation state per composer, including split chats. */
 export function createModelPickerMenuSignals() {
@@ -54,25 +55,38 @@ export function createModelPickerMenuSignals() {
     return get(internalFlyoutSide$);
   });
   /**
-   * Open the panel towards whichever side actually has room. Measured from the
-   * anchored root, so the root itself never moves when the panel flips.
+   * Open the panel towards a side it actually fits on. Measured from the
+   * anchored root, so the root itself never moves when the panel flips, and
+   * measured after the popover has been positioned -- on mount the root is
+   * still at its pre-collision position and would pick the wrong side.
    */
   const flyoutRootRef$ = onRef(
     command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+      let frame = 0;
       const measure = () => {
         const box = element.getBoundingClientRect();
-        const roomRight = window.innerWidth - box.right;
-        const roomLeft = box.left;
+        const roomRight =
+          window.innerWidth - box.right - FLYOUT_VIEWPORT_MARGIN;
+        const roomLeft = box.left - FLYOUT_VIEWPORT_MARGIN;
         set(
           internalFlyoutSide$,
-          roomRight >= FLYOUT_PANEL_WIDTH || roomRight >= roomLeft
+          roomRight >= FLYOUT_PANEL_WIDTH
             ? "right"
-            : "left",
+            : roomLeft >= FLYOUT_PANEL_WIDTH
+              ? "left"
+              : roomRight >= roomLeft
+                ? "right"
+                : "left",
         );
       };
-      measure();
+      // Two frames: the first lets the popover commit its collision-adjusted
+      // position, the second measures the box it settled on.
+      frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(measure);
+      });
       window.addEventListener("resize", measure);
       signal.addEventListener("abort", () => {
+        window.cancelAnimationFrame(frame);
         window.removeEventListener("resize", measure);
       });
     }),
