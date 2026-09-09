@@ -5,8 +5,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { cloudBrowserEnabledByDefault$ } from "../cloud-browser-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
-import { jsonParseOr, onRef, tapError } from "../utils.ts";
+import { onRef, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
 import {
   parsePresentationPreviewDraft,
@@ -162,25 +161,6 @@ interface PresentationTemplateDetailSelectionParams {
 interface LoadedTemplateDetailFrame {
   readonly slideIndex: number;
   readonly url: string;
-}
-
-function parseTemplateCardThemeIdBySlug(
-  raw: string | null,
-): Readonly<Record<string, string>> {
-  if (raw === null) {
-    return {};
-  }
-  const parsed = jsonParseOr<unknown>(raw, {});
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return {};
-  }
-  const values: Record<string, string> = {};
-  for (const [slug, themeId] of Object.entries(parsed)) {
-    if (typeof themeId === "string") {
-      values[slug] = themeId;
-    }
-  }
-  return values;
 }
 
 function presentationTemplateDetailSlideCount(
@@ -632,15 +612,8 @@ function createTemplateCardSignals() {
   const internalTemplateCardThemeIdBySlug$ = state<
     Readonly<Record<string, string>>
   >({});
-  const {
-    get$: templateCardThemeIdBySlugRaw$,
-    set$: setTemplateCardThemeIdBySlugRaw$,
-  } = localStorageSignals("presentationTemplateThemeIdBySlug");
   const templateCardThemeIdBySlug$ = computed((get) => {
-    return {
-      ...parseTemplateCardThemeIdBySlug(get(templateCardThemeIdBySlugRaw$)),
-      ...get(internalTemplateCardThemeIdBySlug$),
-    };
+    return get(internalTemplateCardThemeIdBySlug$);
   });
   const setTemplateCardThemeId$ = command(
     ({ get, set }, slug: string, themeId: string) => {
@@ -649,7 +622,6 @@ function createTemplateCardSignals() {
         [slug]: themeId,
       };
       set(internalTemplateCardThemeIdBySlug$, next);
-      set(setTemplateCardThemeIdBySlugRaw$, JSON.stringify(next));
     },
   );
 

@@ -3,6 +3,7 @@ import {
   feishuConnectContract,
   type FeishuInstallationStatus,
 } from "@okouai/api-contracts/contracts/feishu-connect";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
@@ -12,8 +13,10 @@ import {
   fill,
   queryAllByRoleFast,
   setupPage,
+  startPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
   getAction,
@@ -287,6 +290,29 @@ test("Direct Feishu settings require Feishu to be enabled", async () => {
     expect(pathname()).toBe(`/agents/${HOME_AGENT_ID}/chat`);
   });
   expect(screen.queryByText("Feishu bots")).not.toBeInTheDocument();
+});
+
+test("Direct Feishu settings wait for authoritative feature hydration", async () => {
+  mockFeishu(context);
+  const featureResponse = createDeferredPromise<void>(context.signal);
+  context.mocks.api(
+    featureSwitchesContract.get,
+    async ({ respond, withSignal }) => {
+      await withSignal(featureResponse.promise);
+      return respond(200, {
+        switches: { [FeatureSwitchKey.FeishuIntegration]: true },
+        effectiveSwitches: { [FeatureSwitchKey.FeishuIntegration]: true },
+      });
+    },
+  );
+
+  const page = await startPage({ context, path: "/settings/feishu" });
+  expect(pathname()).toBe("/settings/feishu");
+  featureResponse.resolve(undefined);
+  await page.ready;
+
+  await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
+  expect(pathname()).toBe("/settings/feishu");
 });
 
 test("A member cannot manage an incomplete Feishu bot", async () => {

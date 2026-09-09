@@ -1,7 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import type { mockOrganization, mockUser } from "./mock-auth";
@@ -17,10 +16,7 @@ import {
 import { vi } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
-import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-state";
-import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { createDeferredPromise, detach, Reason } from "../signals/utils";
 import {
@@ -40,21 +36,6 @@ import {
 } from "../i18n/index.ts";
 
 const TEST_APP_VERSION = "0.540.0";
-
-const {
-  set$: setFeatureSwitchCacheLocalStorage$,
-  clear$: clearFeatureSwitchCacheLocalStorage$,
-} = localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
-
-const setFeatureSwitchCacheForTest$ = command(
-  ({ set }, switches: Record<FeatureSwitchKey, boolean>) => {
-    set(setFeatureSwitchCacheLocalStorage$, JSON.stringify(switches));
-  },
-);
-
-const clearFeatureSwitchCacheForTest$ = command(({ set }) => {
-  set(clearFeatureSwitchCacheLocalStorage$);
-});
 
 function ensureTestLocalStorage(): void {
   const currentLocalStorage = globalThis.localStorage;
@@ -115,7 +96,6 @@ interface SetupPageOptions {
   readonly auth?: SetupPageAuth;
   readonly debugLoggers?: string[];
   readonly env?: PageEnvironment;
-  readonly cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly sharedWorkerAppVersion?: string;
   /**
@@ -282,10 +262,6 @@ async function setupPageAsync(
     );
   }
 
-  // Simulate browser state before app startup: clear any prior cache, then
-  // seed it as if the user is returning with a populated cache.
-  // Reading featureSwitch$ is synchronous, so the cache must be in place
-  // before bootstrap starts its SWR refresh.
   const auth = resolveAuth(options);
   const clerk = mocks.clerk();
   const activeOrgId = auth.organization.activeOrg?.id ?? null;
@@ -293,15 +269,6 @@ async function setupPageAsync(
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
-  store.set(clearFeatureSwitchCacheForTest$);
-  const cachedFeatureSwitchOverrides = {
-    ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
-  };
-  const cachedFeatureSwitches = getAllFeatureStates({
-    orgId: activeOrgId ?? undefined,
-    overrides: cachedFeatureSwitchOverrides,
-  });
-  store.set(setFeatureSwitchCacheForTest$, cachedFeatureSwitches);
   clerk.sessionSignedOut(auth.signedOut);
   clerk.user(auth.user, auth.session);
   clerk.organization(auth.organization);

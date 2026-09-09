@@ -1,21 +1,21 @@
-import { computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v5";
+const internalFeatureSwitchState$ = state<Record<FeatureSwitchKey, boolean>>(
+  getAllFeatureStates({}),
+);
 
-const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
-  localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
+export const featureSwitchState$ = computed((get) => {
+  return get(internalFeatureSwitchState$);
+});
 
-export { setFeatureSwitchLocalStorage$ };
+export const setFeatureSwitchState$ = command(
+  ({ set }, switches: Record<FeatureSwitchKey, boolean>) => {
+    set(internalFeatureSwitchState$, switches);
+  },
+);
 
-export const featureSwitchCacheState$ = computed((get) => {
-  const raw = get(featureSwitchCache$);
-  if (!raw) {
-    // First-ever load: identity-gated switches start disabled until
-    // `reloadFeatureSwitch$` populates the cache.
-    return getAllFeatureStates({});
-  }
-  return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
+export const resetFeatureSwitchState$ = command(({ set }) => {
+  set(internalFeatureSwitchState$, getAllFeatureStates({}));
 });

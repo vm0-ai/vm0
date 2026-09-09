@@ -88,6 +88,27 @@ export function connectorCatalogItemBySlug(
   });
 }
 
+export const loadConnectorCatalogItem$ = command(
+  async (
+    { get },
+    connectorSlug: ConnectorSlug,
+    signal: AbortSignal,
+  ): Promise<PlatformConnectorCatalogStatusItem | null> => {
+    const createClient = get(apiClient$);
+    const client = createClient(connectorCatalogContract);
+    const result = await accept(
+      client.get({
+        params: { connectorSlug },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      signal,
+      { showErrorToast: false },
+    );
+    return result.status === 200 ? result.body.connector : null;
+  },
+);
+
 /**
  * Trigger a reload of connectors data.
  */

@@ -8,7 +8,7 @@ import {
   runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
 } from "./authenticated-daemons.ts";
-import { initTheme$, syncThemePreferences$ } from "./theme.ts";
+import { initTheme$, syncColorThemePreference$ } from "./theme.ts";
 import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
@@ -527,7 +527,7 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
 const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(reloadFeatureSwitch$, signal);
   await set(syncLocalePreference$, signal);
-  await set(syncThemePreferences$, signal);
+  await set(syncColorThemePreference$, signal);
 });
 
 function notificationChatThreadId(data: unknown): string | null {
@@ -573,7 +573,7 @@ const completeBootstrap$ = command(
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
-    set(initTheme$);
+    set(initTheme$, signal);
 
     render();
 
@@ -643,10 +643,9 @@ export const bootstrap$ = command(
     set(initBootstrapSkeleton$);
     set(setupLoggers$);
 
-    // The cached effective switches already drive the first rendered frame.
-    // Install capture from that same snapshot before bootstrap starts the
-    // authenticated services, so their initial Clerk and Ably waits are kept
-    // even while remote feature-switch hydration is still pending.
+    // Feature switches start from repository defaults until the API responds.
+    // Install diagnostics before authenticated services so an enabled default
+    // can capture their initial Clerk and Ably waits.
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",

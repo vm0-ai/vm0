@@ -1,5 +1,4 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
@@ -100,49 +99,6 @@ test("Connection diagnostics retain the most recent history", async () => {
   expect(
     within(diagnostics).queryByText(/"errorMessage":"history-event-0"/u),
   ).toBeNull();
-});
-
-test("Connection diagnostics remain available during startup", async () => {
-  const featureSwitchRequestStarted = context.mocks.deferred<void>();
-  const releaseFeatureSwitches = context.mocks.deferred<void>();
-  context.mocks.api(
-    featureSwitchesContract.get,
-    async ({ respond, withSignal }) => {
-      featureSwitchRequestStarted.resolve(undefined);
-      await withSignal(releaseFeatureSwitches.promise);
-      return respond(200, { effectiveSwitches: {}, switches: {} });
-    },
-  );
-  await setupPage({
-    context,
-    path: "/?settings=debug",
-    cachedFeatureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-  });
-
-  const diagnostics = await openConnectionDiagnostics();
-  await featureSwitchRequestStarted.promise;
-
-  await waitFor(() => {
-    expect(
-      within(diagnostics).getByText("connection: connected"),
-    ).toBeInTheDocument();
-    expect(
-      within(diagnostics).getByText("channel: attached"),
-    ).toBeInTheDocument();
-    // The direct Worker test transport shares globalThis with the page, so both
-    // valid connection spans can appear in the page capture.
-    expect(
-      within(diagnostics).queryAllByText(
-        /realtime\.initial-connection · start/u,
-      ),
-    ).not.toHaveLength(0);
-    expect(
-      within(diagnostics).queryAllByText(
-        /realtime\.initial-connection · finish/u,
-      ),
-    ).not.toHaveLength(0);
-  });
-  expect(releaseFeatureSwitches.settled()).toBeFalsy();
 });
 
 test("A user can inspect, refresh, and copy the shared worker capture", async () => {
