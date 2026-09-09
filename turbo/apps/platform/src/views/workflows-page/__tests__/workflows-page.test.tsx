@@ -549,7 +549,7 @@ function webhookWorkflowAutomation(): WorkflowWebhookAutomationSummary {
     lastRunAt: null,
     official: null,
     webhookUrl:
-      "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
+      "https://api.okou.test/api/webhooks/workflow-automations/whk_test",
     secretLastFour: "abcd",
     lastReceivedAt: null,
   };
@@ -1015,7 +1015,7 @@ function mockWorkflowApis(
         return respond(200, {
           webhookUrl:
             automation.webhookUrl ??
-            "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
+            "https://api.okou.test/api/webhooks/workflow-automations/whk_test",
           webhookSecret: automation.webhookSecret ?? "webhook-secret",
         });
       }

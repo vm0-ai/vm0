@@ -166,7 +166,7 @@ impl Default for SandboxConfig {
 /// CLI flag or env var at `start` time and override what's in the YAML.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
-    /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
+    /// Base URL of the Okou API (e.g. `https://api.example.com`). Overridable
     /// via `--api-url` / `OKOU_API_BACKEND_URL`.
     pub url: String,
     /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`.

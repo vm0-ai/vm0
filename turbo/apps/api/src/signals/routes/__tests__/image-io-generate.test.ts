@@ -151,8 +151,8 @@ const FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_TURBO_MEGAPIXEL_CREDITS = 9;
 const FAL_IDEOGRAM_4_BALANCED_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_QUALITY_MEGAPIXEL_CREDITS = 30;
-const API_ORIGIN = "https://api.vm0.test";
-const WEB_ORIGIN = "https://www.vm0.test";
+const API_ORIGIN = "https://api.okou.test";
+const WEB_ORIGIN = "https://www.okou.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
   "output_image.low.standard",

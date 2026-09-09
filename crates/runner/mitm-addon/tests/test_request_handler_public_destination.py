@@ -148,7 +148,7 @@ async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -186,7 +186,7 @@ async def test_public_destination_allows_public_runtime_destination(
     classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -283,7 +283,7 @@ async def test_public_destination_upstream_change_during_auth_prevents_credentia
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
@@ -334,7 +334,7 @@ async def test_public_destination_policy_allow_classifies_public_runtime_destina
     classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -362,7 +362,7 @@ async def test_public_destination_blocks_prebound_private_original_destination(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -391,7 +391,7 @@ async def test_public_destination_allows_prebound_public_original_destination(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -421,7 +421,7 @@ async def test_public_destination_blocks_private_transparent_host_despite_public
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -450,7 +450,7 @@ async def test_public_destination_blocks_bracketed_private_host_despite_public_o
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -483,7 +483,7 @@ async def test_public_destination_allows_bracketed_public_ipv6_host_with_public_
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -521,7 +521,7 @@ async def test_public_destination_blocks_legacy_ipv4_host_despite_public_origina
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -561,7 +561,7 @@ async def test_public_destination_blocks_percent_encoded_host_despite_public_ori
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -600,7 +600,7 @@ async def test_public_destination_blocks_malformed_host_despite_public_original(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -629,7 +629,7 @@ async def test_public_destination_blocks_prebound_public_original_port_mismatch(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -663,7 +663,7 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -697,7 +697,7 @@ async def test_public_destination_classifies_connected_hosts_once_per_admission_
     classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -735,7 +735,7 @@ async def test_public_destination_blocks_connected_private_transparent_host_desp
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -769,7 +769,7 @@ async def test_public_destination_blocks_connected_public_original_port_mismatch
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -796,7 +796,7 @@ async def test_public_destination_allows_connected_public_transparent_sockname_w
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -821,7 +821,7 @@ async def test_public_destination_blocks_connected_private_transparent_sockname_
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -848,7 +848,7 @@ async def test_public_destination_blocks_private_peer_before_public_transparent_
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -874,7 +874,7 @@ async def test_public_destination_blocks_private_transparent_host_despite_public
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -900,7 +900,7 @@ async def test_public_destination_blocks_private_server_address_despite_public_p
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -921,7 +921,7 @@ async def test_public_destination_blocks_public_server_address_port_mismatch(
     flow.server_conn.address = ("93.184.216.34", 8443)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -948,7 +948,7 @@ async def test_public_destination_blocks_loopback_peer_before_public_transparent
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -975,7 +975,7 @@ async def test_public_destination_blocks_transparent_sockname_port_mismatch(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1002,7 +1002,7 @@ async def test_public_destination_blocks_peer_port_mismatch_before_transparent_s
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1036,7 +1036,7 @@ async def test_public_destination_blocks_connected_private_peer_despite_public_o
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1070,7 +1070,7 @@ async def test_public_destination_blocks_private_original_despite_connected_publ
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1098,7 +1098,7 @@ async def test_public_destination_ignores_stale_prebound_public_original_destina
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1127,7 +1127,7 @@ async def test_public_destination_revalidates_connected_peer_after_requestheader
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1167,7 +1167,7 @@ async def test_public_destination_requestheaders_defers_unresolved_hostname_unti
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1206,7 +1206,7 @@ async def test_public_destination_requestheaders_deferred_hostname_still_blocks_
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1237,7 +1237,7 @@ async def test_public_destination_request_phase_blocks_unresolved_hostname_witho
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1265,7 +1265,7 @@ async def test_public_destination_reclassifies_buffered_auth_base_request(
         extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
@@ -1305,7 +1305,7 @@ async def test_public_destination_reclassifies_buffered_auth_base_hostname_reque
         extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
@@ -1354,7 +1354,7 @@ async def test_public_destination_revalidates_cached_policy_allow_classification
     classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1420,7 +1420,7 @@ async def test_firewall_allow_header_auth_requestheaders_blocks_public_destinati
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -1457,7 +1457,7 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
     flow.request.stream = request_stream
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -1486,7 +1486,7 @@ async def test_public_destination_requestheaders_kills_unknown_length_before_ear
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)

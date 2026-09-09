@@ -115,8 +115,8 @@ const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
 
 #### Connector gating
 
-Connector definitions live in `vm0-ai/vm0-connectors`, but vm0 owns the rollout
-association. Add an entry to `FEATURE_SWITCH_BY_AUTH_METHOD` in
+Connector definitions live in `vm0-ai/vm0-connectors`, but the platform owns
+the rollout association. Add an entry to `FEATURE_SWITCH_BY_AUTH_METHOD` in
 `turbo/apps/api/src/signals/services/connector-auth-method-feature-switches.ts`,
 keyed by `` `${connectorSlug}\0${authMethodId}` ``:
 

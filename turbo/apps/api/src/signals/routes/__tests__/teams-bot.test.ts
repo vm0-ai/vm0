@@ -68,7 +68,7 @@ const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
-const APP_ORIGIN = "https://app.vm0.test";
+const APP_ORIGIN = "https://app.okou.test";
 const KEY_ID = "teams-test-key";
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
@@ -110,7 +110,7 @@ function teamsInstallUrl(): string {
 }
 
 function teamsOauthConnectUrl(fixture: TeamsConnectFixture): string {
-  const url = new URL("https://api.vm0.test/api/teams/oauth/connect");
+  const url = new URL("https://api.okou.test/api/teams/oauth/connect");
   url.searchParams.set("orgId", fixture.orgId);
   url.searchParams.set("userId", fixture.userId);
   return url.toString();
@@ -918,8 +918,8 @@ describe("POST /api/webhooks/teams/bot", () => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
     teamsOutboundHandlers(SERVICE_URL);

@@ -60,7 +60,7 @@ pub const STUCK_TOOL_CHECK_INTERVAL_SECS: u64 = 5;
 pub const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
 
 /// Grace period after observing a `type=result` event before SIGTERM-ing the
-/// CLI process group. In vm0's one-shot web-agent integration the turn is
+/// CLI process group. In the platform's one-shot web-agent integration the turn is
 /// complete when the CLI emits its final `result`, but the CLI itself may
 /// still be blocked draining long-running backgrounded Bash tasks it spawned
 /// via its 2-minute auto-background timeout. Those tasks have been observed

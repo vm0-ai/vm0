@@ -384,12 +384,12 @@ function hasUnsafePreviewUrlProtocol(value: string): boolean {
   ) {
     return true;
   }
-  if (!URL.canParse(value, "https://vm0.invalid/")) {
+  if (!URL.canParse(value, "https://relative.invalid/")) {
     return false;
   }
   const protocol = new URL(
     value,
-    "https://vm0.invalid/",
+    "https://relative.invalid/",
   ).protocol.toLowerCase();
   return isUnsafePreviewUrlProtocol(protocol);
 }

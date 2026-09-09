@@ -2434,7 +2434,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("stores an OAuth app config and lets members authorize", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.okou.test");
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -2549,7 +2549,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     if (!redirectUri) {
       throw new Error("Expected custom connector OAuth redirect URI");
     }
-    expect(redirectUri).toBe("https://app.vm0.test/connectors/custom/callback");
+    expect(redirectUri).toBe(
+      "https://app.okou.test/connectors/custom/callback",
+    );
     expectNoVisibleSecret(authorizationUrl, clientSecret);
 
     const oauthState = stateFromAuthorizationUrl(authorizationUrl);
@@ -2793,7 +2795,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   ] as const)(
     "persists the $name for a standard custom OAuth connection",
     async ({ tokenScope, expectedScopes }) => {
-      mockEnv("APP_URL", "https://app.vm0.test");
+      mockEnv("APP_URL", "https://app.okou.test");
       const provider =
         tokenScope === undefined
           ? mockCustomConnectorOAuth2Provider(context)
@@ -2850,7 +2852,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   );
 
   it("removes OAuth tokens when manual credentials replace the connection", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.okou.test");
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
     });
@@ -2958,7 +2960,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("keeps OAuth state target-scoped and aligns Custom lifecycle with Builtin", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.okou.test");
     mockGitHubConnectorOAuth();
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
@@ -3006,7 +3008,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       userId: owner.userId,
       customConnectorId: connector.id,
       storageVersion: 1,
-      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      redirectUri:
+        "https://app.okou.test/api/custom-connectors/oauth2/callback",
       oauthContext: {
         oauthSetup: "custom",
         connectorId: connector.id,
@@ -3175,7 +3178,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("reuses confidential OAuth for MCP and gates callback writes", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.okou.test");
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -4052,7 +4055,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("models Automatic OAuth definitions, bindings, and state", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.okou.test");
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
@@ -4142,7 +4145,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       resource: "https://cimd-mcp.example.test/server",
       resourceMetadataUrl: null,
       tokenEndpoint: "https://cimd.example.test/token",
-      clientId: "https://app.vm0.test/.well-known/oauth-client",
+      clientId: "https://app.okou.test/.well-known/oauth-client",
       registration: {
         method: "cimd",
         tokenEndpointAuthMethod: "none",
@@ -4200,7 +4203,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       userId: admin.userId,
       customConnectorId,
       storageVersion: 1,
-      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      redirectUri:
+        "https://app.okou.test/api/custom-connectors/oauth2/callback",
       oauthContext: {
         version: 1,
         oauthSetup: "automatic",
@@ -4244,7 +4248,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       userId: admin.userId,
       customConnectorId,
       storageVersion: 1,
-      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      redirectUri:
+        "https://app.okou.test/api/custom-connectors/oauth2/callback",
       oauthContext: {
         version: 2,
         authMode: "automatic",
@@ -4289,7 +4294,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       userId: admin.userId,
       customConnectorId,
       storageVersion: 1,
-      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      redirectUri:
+        "https://app.okou.test/api/custom-connectors/oauth2/callback",
       oauthContext: {
         version: 2,
         authMode: "automatic",
@@ -7544,7 +7550,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
   });
 
   it("routes callbacks through canonical and trusted web origins", async () => {
-    mockEnv("OKOU_WEB_URL", "https://app.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://app.okou.test");
 
     const canonical = await requestOauthCallbackRaw(context, {
       origin: "https://api.okou.ai",
@@ -7564,20 +7570,20 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     });
     expect(trustedHeader.status).toBe(307);
     const trustedUrl = redirectLocation(trustedHeader);
-    expect(trustedUrl.origin).toBe("https://app.vm0.test");
+    expect(trustedUrl.origin).toBe("https://app.okou.test");
     expectConnectorErrorRedirect(trustedHeader, {
       connectorSlug: "github",
       message: "Missing state parameter",
     });
 
     const nonApiHost = await requestOauthCallbackRaw(context, {
-      origin: "https://app.vm0.test",
+      origin: "https://app.okou.test",
       connectorSlug: "github",
       query: { code: "code-123" },
     });
     expect(nonApiHost.status).toBe(307);
     const nonApiUrl = redirectLocation(nonApiHost);
-    expect(nonApiUrl.origin).toBe("https://app.vm0.test");
+    expect(nonApiUrl.origin).toBe("https://app.okou.test");
     expectConnectorErrorRedirect(nonApiHost, {
       connectorSlug: "github",
       message: "Missing state parameter",

@@ -144,7 +144,7 @@ async def test_runtime_host_policy_blocks_public_destination_private_endpoint(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -180,7 +180,7 @@ async def test_runtime_host_policy_allows_public_destination_public_endpoint(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -208,7 +208,7 @@ async def test_runtime_host_policy_blocks_public_destination_hostname_without_ip
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -242,7 +242,7 @@ async def test_runtime_host_policy_blocks_public_destination_private_request_hos
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -279,7 +279,7 @@ async def test_runtime_host_policy_enforces_inline_public_destination_policy(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -315,7 +315,7 @@ async def test_runtime_host_policy_rejects_malformed_provider_policy(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -377,7 +377,7 @@ async def test_runtime_host_policy_blocks_provider_owned_request_authority(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -410,7 +410,7 @@ async def test_runtime_host_policy_allows_provider_owned_request_authority(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -445,7 +445,7 @@ async def test_runtime_host_policy_blocks_requestheaders_credential_injection(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -495,7 +495,7 @@ async def test_runtime_host_policy_allows_requestheaders_credential_injection(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -541,7 +541,7 @@ async def test_resolved_host_policy_reuses_compiled_policy_across_requests(
     ]
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         context = registry.get_sandbox_context("10.200.0.5", str(reg_path))
@@ -587,7 +587,7 @@ async def test_resolved_public_destination_host_policy_uses_compiled_policy(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         context = registry.get_sandbox_context("10.200.0.5", str(reg_path))
@@ -634,7 +634,7 @@ async def test_runtime_host_policy_rejects_invalid_runtime_marker(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)

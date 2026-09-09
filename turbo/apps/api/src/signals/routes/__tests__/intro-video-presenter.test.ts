@@ -189,7 +189,7 @@ async function orgCredits(
 
 describe("Intro Video HeyGen presenter route", () => {
   beforeEach(() => {
-    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
+    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.okou.test");
     mockEnv("HEYGEN_API_KEY", "test-heygen-key");
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({

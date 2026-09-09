@@ -73,7 +73,7 @@ async def test_over_budget_http1_host_is_rejected_in_both_hooks_without_string_a
         fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
     ):
         addon_context.options.update(
-            vm0_api_url="https://api.vm0.ai",
+            vm0_api_url="https://api.okou.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
         client, http_layer = start_http_layer(
@@ -176,7 +176,7 @@ async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(
         fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
     ):
         addon_context.options.update(
-            vm0_api_url="https://api.vm0.ai",
+            vm0_api_url="https://api.okou.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
         http_layer, request_headers_hook = start_http2_request(
@@ -269,7 +269,7 @@ async def test_http1_absolute_form_authority_is_rejected_before_auth_or_forwardi
         fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
     ):
         addon_context.options.update(
-            vm0_api_url="https://api.vm0.ai",
+            vm0_api_url="https://api.okou.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
         http_layer, request_headers_hook = _start_transparent_http1_absolute_request(
@@ -333,7 +333,7 @@ async def test_matching_http1_absolute_form_authority_is_forwardable_with_auth(
         fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}),
     ):
         addon_context.options.update(
-            vm0_api_url="https://api.vm0.ai",
+            vm0_api_url="https://api.okou.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
         http_layer, request_headers_hook = _start_transparent_http1_absolute_request(

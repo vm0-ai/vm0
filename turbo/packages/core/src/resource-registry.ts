@@ -3063,10 +3063,10 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
     id: "image-style:vm0-illustration",
     kind: "image-style",
-    name: "vm0 Illustration",
+    name: "Okou Illustration",
     description:
-      "vm0 in-app spot illustration style with bold hand-drawn ink line art, white-filled interiors, and a soft rounded color backdrop.",
-    desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
+      "Okou in-app spot illustration style with bold hand-drawn ink line art, white-filled interiors, and a soft rounded color backdrop.",
+    desc: "Generate Okou in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
     source: imageStyleSource("vm0-illustration"),
   },
   {

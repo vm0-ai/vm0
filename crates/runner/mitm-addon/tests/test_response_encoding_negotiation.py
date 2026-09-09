@@ -513,7 +513,7 @@ async def test_billable_model_provider_request_normalizes_accept_encoding_before
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -550,7 +550,7 @@ async def test_billable_model_provider_request_preserves_over_budget_accept_enco
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -579,7 +579,7 @@ async def test_billable_model_provider_without_accept_encoding_sets_identity(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -614,7 +614,7 @@ async def test_billable_connector_with_response_parser_normalizes_accept_encodin
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -649,7 +649,7 @@ async def test_billable_connector_without_response_parser_keeps_accept_encoding(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -676,7 +676,7 @@ async def test_non_billable_model_provider_keeps_accept_encoding(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -711,7 +711,7 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -760,7 +760,7 @@ async def test_header_phase_stream_safe_auth_preserves_over_budget_accept_encodi
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -802,7 +802,7 @@ async def test_header_phase_auth_fallback_restores_encoding_negotiation(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -858,7 +858,7 @@ async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -968,7 +968,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1010,7 +1010,7 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -1164,7 +1164,7 @@ async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -1196,7 +1196,7 @@ async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -1231,7 +1231,7 @@ async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding
     flow.request.http_version = http_version
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -1273,7 +1273,7 @@ async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)

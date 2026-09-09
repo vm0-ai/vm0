@@ -1077,7 +1077,7 @@ async function uploadDriveFile(args: {
   readonly contentType: string;
   readonly file: Buffer;
 }): Promise<Response> {
-  const boundary = `vm0-${randomUUID()}`;
+  const boundary = `multipart-${randomUUID()}`;
   const metadata = JSON.stringify({
     name: args.filename,
     mimeType: args.contentType,

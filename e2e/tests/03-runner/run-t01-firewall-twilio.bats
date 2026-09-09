@@ -40,7 +40,7 @@ printf 'TWILIO_ACCOUNT_SID=%s\n' "$TWILIO_ACCOUNT_SID"
 printf 'TWILIO_AUTH_TOKEN=%s\n' "$TWILIO_AUTH_TOKEN"
 # Keep the request on Twilio's real IPv4 authority instead of an unrelated sink.
 # The 15-second budget leaves room around the proxy's 10-second auth deadline.
-# Assert vm0's auth/redaction telemetry, not Twilio's application response.
+# Assert the platform's auth/redaction telemetry, not Twilio's application response.
 curl --ipv4 --silent --show-error --max-time 15 \
     --output /dev/null \
     'https://api.twilio.com/2010-04-01/Accounts.json' || true

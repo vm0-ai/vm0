@@ -173,7 +173,7 @@
             "description": "Vincula cada deploy ao commit e alerta no Slack quando há falha",
             "title": "Resumo de deploys da Vercel"
           },
-          "zapier-vm0-migration": {
+          "zapier-okou-migration": {
             "description": "Recrie seus workflows do Zapier como agentes do {{brandName}}",
             "title": "Migração do Zapier para o {{brandName}}"
           }

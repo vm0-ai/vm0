@@ -131,25 +131,31 @@ function expectSelected(element: HTMLElement): void {
   expect(selectionAttribute).toBe("true");
 }
 
-test("A user can change theme while reviewing the unified preferences", async () => {
-  mockPreferences();
+test("Theme preferences work on the development host when storage writes are blocked", async () => {
+  const updates = mockPreferences({ theme: null });
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.dark");
+  context.mocks.browser.localStorageWrites({
+    blockedKeys: ["theme", "colorTheme"],
+  });
 
-  await setupPage({ context, path: "/settings", host: "app.okou.ai" });
+  await setupPage({ context, path: "/settings", host: "app.vm7.ai" });
 
   await expect(
     screen.findByText("Your preferred color scheme"),
   ).resolves.toBeVisible();
-  click(getFastRole("button", "Dark"));
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  click(getFastRole("button", "Light"));
 
   await waitFor(() => {
-    expectSelected(getFastRole("button", "Dark"));
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expectSelected(getFastRole("button", "Light"));
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(updates).toContainEqual({ theme: "light" });
   });
 
   await expect(
     screen.findByText("Your agents will use this time zone during runs"),
   ).resolves.toBeVisible();
-  expect(getFastRole("button", "Dark")).toBeVisible();
+  expect(getFastRole("button", "Light")).toBeVisible();
 });
 
 test("Account-backed appearance preferences are restored and saved", async () => {

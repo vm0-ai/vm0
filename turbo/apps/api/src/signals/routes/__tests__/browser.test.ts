@@ -546,7 +546,7 @@ describe("okou browser route", () => {
         const body = z
           .strictObject({ name: z.string() })
           .parse(await request.json());
-        expect(body.name).toMatch(/^vm0-browser-profile-[0-9a-f-]{36}$/u);
+        expect(body.name).toMatch(/^okou-browser-profile-[0-9a-f-]{36}$/u);
         const profileId = profileIds[profileCreates];
         profileCreates += 1;
         if (!profileId) {

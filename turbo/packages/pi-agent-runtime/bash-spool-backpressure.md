@@ -69,7 +69,7 @@ The patch updates the three affected `.js` files and their `.d.ts` declarations.
 - Custom operations and the independent interactive/remote executor are not
   converted to paced spooling by this patch. The independent executor retains
   its existing separate spool implementation. The bounded-output guarantee here
-  applies to the official local Bash tool used by vm0's factory.
+  applies to the official local Bash tool used by the runtime factory.
 
 #32637 kept the existing `patchedDependencies` entry and Pi version unchanged.
 Its lockfile changed only the coding-agent patch hash and references. `pnpm

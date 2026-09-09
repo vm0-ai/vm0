@@ -3629,7 +3629,7 @@ describe("Feishu integration", () => {
     );
     const legacyReplacementConnectUrl = new URL(
       "/api/feishu/connect",
-      "https://www.vm0.test",
+      "https://www.okou.test",
     );
     legacyReplacementConnectUrl.search = new URL(replacementConnectUrl).search;
     const replacementResponse = await connectApp.request(

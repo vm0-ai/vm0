@@ -50,7 +50,7 @@
 # variables can legitimately be omitted):
 #   - official_runner_secret: Runner auth secret, baked into runner.yaml by
 #                             `runner config`.
-#   - api_url: vm0 API URL, baked into runner.yaml.
+#   - api_url: Okou API URL, baked into runner.yaml.
 #
 # Conditionally Required (binary fallback only — ignored when the target
 # bin dir survives on the host, which is the common case):

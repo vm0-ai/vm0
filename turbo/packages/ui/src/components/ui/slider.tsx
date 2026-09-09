@@ -33,7 +33,7 @@ function tickCount(min: number, max: number, step: number): number {
 }
 
 /**
- * A single-value slider on the vm0 ramp: muted track, brand fill, and a thumb
+ * A single-value slider on the shared color ramp: muted track, brand fill, and a thumb
  * that lifts under the pointer.
  *
  * Chrome top-aligns a native range thumb rather than centring it, which is why

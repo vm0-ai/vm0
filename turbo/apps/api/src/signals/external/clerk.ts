@@ -15,7 +15,7 @@ import { settle } from "../utils";
  * what sets the CI peak RSS for apps/api (same move as `@aws-sdk/*` in
  * PR #25714).
  *
- * Everything exported below is a vm0-owned type; that is what keeps the
+ * Everything exported below is an application-owned type; that is what keeps the
  * emitted `.d.ts` free of Clerk types. The mirrored client covers exactly the
  * surface callers use today - widening it is fine, naming a Clerk type in an
  * exported signature is not.

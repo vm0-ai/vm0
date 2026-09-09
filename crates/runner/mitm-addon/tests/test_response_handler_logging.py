@@ -914,7 +914,7 @@ async def test_firewalled_streamed_request_logs_size_and_capture_body(
     body = b"x" * (STREAM_BUFFER_LIMIT + 17)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -961,7 +961,7 @@ async def test_firewalled_partial_streamed_request_marks_capture_truncated(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -1003,7 +1003,7 @@ async def test_firewalled_empty_incomplete_streamed_request_marks_capture_trunca
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -1041,7 +1041,7 @@ async def test_unknown_length_get_without_body_logs_zero_request_size(
         method="GET",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         assert callable(flow.request.stream)
         await mitm_addon.request(flow)
@@ -1072,11 +1072,11 @@ async def test_early_response_makes_late_request_hook_noop(tmp_path, real_flow, 
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
-        host="api.vm0.ai",
+        host="api.okou.ai",
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
         stream = flow.request.stream

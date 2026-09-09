@@ -25,7 +25,7 @@
 #   - runner_version: Semantic version of the runner being built, without leading v
 #   - runner_target: Rust target triple for the copied runner binary
 #   - official_runner_secret: Runner authentication secret (baked into config)
-#   - api_url: vm0 API URL (baked into config)
+#   - api_url: Okou API URL (baked into config)
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
 #       Shared template cache credentials. Required so the pre-fan-out
 #       warm step can fail visibly instead of allowing every host to rebuild
@@ -53,13 +53,13 @@
       file:
         path: "{{ bin_dir }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     - name: Copy runner binary (guest binaries are embedded)
       copy:
         src: "{{ playbook_dir }}/../../crates/target/{{ runner_target }}/release/runner"
         dest: "{{ bin_dir }}/"
-        mode: '0755'
+        mode: "0755"
 
     # ========================================
     # Phase 2: Setup + Build

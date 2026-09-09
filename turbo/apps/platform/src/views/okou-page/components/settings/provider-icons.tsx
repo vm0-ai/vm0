@@ -1,5 +1,6 @@
 import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { cn } from "@okouai/ui";
+import { platformOkouMarkDarkImg } from "../../../../lib/static-assets.ts";
 import { settingsIconAssetUrl } from "./settings-icon-assets.ts";
 
 const PROVIDER_ICONS: Readonly<Partial<Record<ModelProviderType, string>>> =
@@ -15,7 +16,7 @@ const PROVIDER_ICONS: Readonly<Partial<Record<ModelProviderType, string>>> =
     "codex-oauth-token": settingsIconAssetUrl("openai"),
     "azure-foundry": settingsIconAssetUrl("azure"),
     "aws-bedrock": settingsIconAssetUrl("bedrock"),
-    "built-in": settingsIconAssetUrl("vm0"),
+    "built-in": platformOkouMarkDarkImg,
   });
 
 const DARK_INVERT_PROVIDER_ICONS: Readonly<
@@ -23,6 +24,7 @@ const DARK_INVERT_PROVIDER_ICONS: Readonly<
 > = Object.freeze({
   "openai-api-key": true,
   "codex-oauth-token": true,
+  "built-in": true,
 });
 
 function providerIconNeedsDarkInvert(type: ModelProviderType): boolean {

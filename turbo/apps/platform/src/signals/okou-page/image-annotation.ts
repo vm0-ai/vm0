@@ -14,7 +14,7 @@ import type {
  * `--color-credit-*`), which are declared once with no dark override.
  *
  * The brand orange and the destructive red are deliberately absent: orange
- * collides with the orange buttons that appear inside vm0's own screenshots,
+ * collides with the orange buttons that appear inside Okou's own screenshots,
  * and red sits only 20° away from it while already meaning "danger" elsewhere.
  */
 export const ANNOTATION_INKS = [

@@ -195,7 +195,7 @@ const SLACK_APP_BOT_SCOPES = "chat:write,im:write,users:read";
 export function agentPhoneBddWebhookSecret(): string {
   return ["agentphone", "bdd", "webhook", "secret"].join("-");
 }
-const SLACK_APP_INTERNAL_API_URL = "https://api.vm0.test";
+const SLACK_APP_INTERNAL_API_URL = "https://api.okou.test";
 
 type SlackSignatureHeaders = Record<string, string>;
 type SlackIngressPath =
@@ -912,8 +912,8 @@ export function createBddIntegrationApi(context: TestContext) {
       mockOptionalEnv("SLACK_SIGNING_SECRET", SLACK_SIGNING_SECRET);
       mockEnv("SLACK_OAUTH_CLIENT_ID", "slack-bdd-client-id");
       mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-bdd-client-secret");
-      mockEnv("APP_URL", "https://app.vm0.test");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+      mockEnv("APP_URL", "https://app.okou.test");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.test");
       mockEnv("OKOU_API_BACKEND_URL", SLACK_APP_INTERNAL_API_URL);
       context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
       context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({

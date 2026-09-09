@@ -173,16 +173,16 @@ const sessionHistoryGzipMinBytesDoc = [
   "Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.",
 ] as const;
 const clientVersionHeaderDoc = [
-  "HTTP header carrying the sending vm0 client component version.",
+  "HTTP header carrying the sending platform client component version.",
 ] as const;
 const clientTypeHeaderDoc = [
-  "HTTP header carrying the sending vm0 client component type.",
+  "HTTP header carrying the sending platform client component type.",
 ] as const;
 const clientSessionIdHeaderDoc = [
-  "HTTP header carrying the sending vm0 client session identifier.",
+  "HTTP header carrying the sending platform client session identifier.",
 ] as const;
 const clientRequestIdHeaderDoc = [
-  "HTTP header carrying the per-request vm0 client request identifier.",
+  "HTTP header carrying the per-request platform client request identifier.",
 ] as const;
 
 function rustString(value: string): RustConstantValue {

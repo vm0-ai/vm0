@@ -90,11 +90,11 @@ def test_rejects_invalid_url_before_open(tmp_path, sync_usage_executor):
     "raw_url",
     [
         pytest.param(
-            "https:////user:pass@api.vm0.ai/path?token=secret#frag",
+            "https:////user:pass@api.okou.ai/path?token=secret#frag",
             id="extra-slashes",
         ),
         pytest.param(
-            "https: //user:pass@api.vm0.ai/path?token=secret#frag",
+            "https: //user:pass@api.okou.ai/path?token=secret#frag",
             id="space-before-separators",
         ),
     ],
@@ -103,7 +103,7 @@ def test_rejects_malformed_sensitive_url_without_logging_credentials(
     tmp_path, sync_usage_executor, raw_url
 ):
     proxy_log = tmp_path / "proxy.jsonl"
-    sanitized_url = "https://api.vm0.ai/path"
+    sanitized_url = "https://api.okou.ai/path"
     payload = {"runId": "run-1", "events": []}
     payload_bytes = len(json.dumps(payload).encode())
 
@@ -549,7 +549,7 @@ def test_url_error_is_retryable(tmp_path, sync_usage_executor):
         patch.object(time, "sleep") as mock_sleep,
     ):
         assert usage.webhook.enqueue_webhook_delivery(
-            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            "https://api.okou.ai/api/webhooks/agent/usage-event",
             "tok",
             payload,
             str(proxy_log),
@@ -578,7 +578,7 @@ def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(
     proxy_log = tmp_path / "proxy.jsonl"
     payload = {"runId": "run-1", "events": []}
     payload_bytes = len(json.dumps(payload).encode())
-    retry_url = "https://api.vm0.ai/api/webhooks/agent/usage-event?token=secret#frag"
+    retry_url = "https://api.okou.ai/api/webhooks/agent/usage-event?token=secret#frag"
     url_without_fragment = retry_url.removesuffix("#frag")
 
     with patch.object(
@@ -655,7 +655,7 @@ def test_payload_serialization_error_logs_body_free_summary(tmp_path, sync_usage
     proxy_log = tmp_path / "proxy.jsonl"
 
     assert usage.webhook.enqueue_webhook_delivery(
-        "https://api.vm0.ai/api/webhooks/agent/usage-event",
+        "https://api.okou.ai/api/webhooks/agent/usage-event",
         "tok",
         {"runId": "run-1", "events": [object()]},
         str(proxy_log),

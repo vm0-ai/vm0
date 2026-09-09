@@ -29,7 +29,6 @@ const SETTINGS_ICON_ASSET_PATHS = {
   telegram:
     "views/zero-page/components/settings/icons/telegram-2d9ff5d01146.svg",
   vercel: "views/zero-page/components/settings/icons/vercel-c2c941b10e27.svg",
-  vm0: "views/zero-page/components/settings/icons/vm0-0b40ba3af356.svg",
 } as const;
 
 type SettingsIconAssetKey = keyof typeof SETTINGS_ICON_ASSET_PATHS;

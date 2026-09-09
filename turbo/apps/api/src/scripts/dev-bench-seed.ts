@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
@@ -834,7 +835,7 @@ function appendNullRunControlRows(args: {
       ...(isInputPrompt
         ? {
             contextType: "web",
-            contextId: webChatPublicBrandContextId("vm0"),
+            contextId: webChatPublicBrandContextId(PUBLIC_BRAND),
             payload: { userMessage },
           }
         : {

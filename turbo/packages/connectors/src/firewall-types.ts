@@ -3253,7 +3253,7 @@ export function validateAuthBaseUrl(
  * Resolved from firewall name + FirewallConfig at compose time, then frozen.
  *
  * - `name`: firewall config name (e.g., "slack"). Also the key used in
- *   vm0.yaml to reference this firewall config, and the map key in
+ *   compose content to reference this firewall config, and the map key in
  *   `FirewallPolicies` / `NetworkPolicies`.
  * - `description`: optional description from the firewall config
  */

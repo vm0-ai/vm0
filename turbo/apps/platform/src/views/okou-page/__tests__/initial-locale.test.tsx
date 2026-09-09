@@ -12,7 +12,6 @@ const context = testContext();
 test.each([
   {
     scenario: "the site cookie takes precedence over browser languages",
-    host: "app.okou.ai",
     cookie: "v1.fr-FR",
     languages: ["ja-JP"],
     locale: "fr-FR",
@@ -20,7 +19,6 @@ test.each([
   },
   {
     scenario: "the first supported browser language family is selected",
-    host: "app.okou.ai",
     cookie: "v1.unsupported",
     languages: ["zh-CN", "de-AT", "ja-JP"],
     locale: "de-DE",
@@ -28,7 +26,6 @@ test.each([
   },
   {
     scenario: "browser language works before a site cookie exists",
-    host: "app.okou.ai",
     cookie: null,
     languages: ["fr-CA"],
     locale: "fr-FR",
@@ -36,17 +33,8 @@ test.each([
   },
   {
     scenario: "English is used when no locale hint is supported",
-    host: "app.okou.ai",
     cookie: "v0.fr-FR",
     languages: ["zh-CN", "ar-SA"],
-    locale: "en-US",
-    title: "Page not found",
-  },
-  {
-    scenario: "VM0 keeps its English default despite locale hints",
-    host: "app.vm0.ai",
-    cookie: "v1.fr-FR",
-    languages: ["ja-JP"],
     locale: "en-US",
     title: "Page not found",
   },
@@ -60,7 +48,7 @@ test.each([
 
   await setupPage({
     context,
-    host: scenario.host,
+    host: "app.okou.ai",
     path: "/missing-locale-page",
     auth: null,
   });
@@ -76,6 +64,22 @@ test("Use the browser's single language when its language list is empty", async 
   await setupPage({
     context,
     host: "app.okou.ai",
+    path: "/missing-locale-page",
+    auth: null,
+  });
+
+  expect(
+    screen.getByRole("heading", { name: "Page non trouvée" }),
+  ).toBeVisible();
+  expect(document.documentElement).toHaveAttribute("lang", "fr-FR");
+});
+
+test("Use locale hints on the development host", async () => {
+  context.mocks.browser.languages(["fr-FR"]);
+
+  await setupPage({
+    context,
+    host: "app.vm7.ai",
     path: "/missing-locale-page",
     auth: null,
   });

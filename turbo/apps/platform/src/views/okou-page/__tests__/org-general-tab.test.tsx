@@ -25,7 +25,7 @@ async function openGeneralTab(): Promise<void> {
 
 test("Edit, save, and discard workspace profile details", async () => {
   let capturedBody: unknown = null;
-  const logoUrl = "https://cdn.vm0.test/orgs/old-slug/logo.png";
+  const logoUrl = "https://cdn.okou.test/orgs/old-slug/logo.png";
   context.mocks.data.org({
     id: "org_1",
     name: "Old Name",
@@ -105,8 +105,8 @@ test("Show a workspace profile update failure without losing the edit", async ()
 test("Upload and save a valid workspace logo", async () => {
   const user = userEvent.setup({ delay: null });
   let capturedLogoName: string | null = null;
-  const initialLogoUrl = "https://cdn.vm0.test/orgs/acme/logo-old.png";
-  const uploadedLogoUrl = "https://cdn.vm0.test/orgs/acme/logo-new.png";
+  const initialLogoUrl = "https://cdn.okou.test/orgs/acme/logo-old.png";
+  const uploadedLogoUrl = "https://cdn.okou.test/orgs/acme/logo-new.png";
   context.mocks.browser.imageDimensions({ width: 512, height: 512 });
   context.mocks.data.org({
     id: "org_1",
@@ -168,7 +168,7 @@ test("Upload and save a valid workspace logo", async () => {
 
 test("Reject invalid workspace logo files", async () => {
   const user = userEvent.setup({ delay: null });
-  const initialLogoUrl = "https://cdn.vm0.test/orgs/acme/logo.png";
+  const initialLogoUrl = "https://cdn.okou.test/orgs/acme/logo.png";
   context.mocks.browser.imageDimensions([
     null,
     { width: 80, height: 80 },

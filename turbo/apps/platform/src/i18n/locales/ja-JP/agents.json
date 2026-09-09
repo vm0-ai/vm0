@@ -173,7 +173,7 @@
             "description": "各デプロイメントをそのコミットにリンクし、デプロイメントが失敗した場合に Slack を警告します。",
             "title": "Vercel デプロイ ダイジェスト"
           },
-          "zapier-vm0-migration": {
+          "zapier-okou-migration": {
             "description": "Zapier ワークフローを {{brandName}} エージェントとして再作成します",
             "title": "Zapier → {{brandName}} の移行"
           }

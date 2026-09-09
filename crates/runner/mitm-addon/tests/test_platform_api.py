@@ -52,12 +52,12 @@ class TestMakeApiRequest:
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
             req = platform_api.make_api_request(
-                "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+                "https://api.okou.ai/api/webhooks/agent/firewall/auth",
                 b"{}",
                 "tok-xyz",
             )
 
-        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/firewall/auth"
+        assert req.full_url == "https://api.okou.ai/api/webhooks/agent/firewall/auth"
         assert req.data == b"{}"
         headers = dict(req.header_items())
         assert headers["Content-type"] == "application/json"
@@ -75,7 +75,7 @@ class TestMakeApiRequest:
             patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
         ):
             req = platform_api.make_api_request(
-                "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+                "https://api.okou.ai/api/webhooks/agent/firewall/auth",
                 b"{}",
                 "tok-xyz",
             )
@@ -103,8 +103,8 @@ class TestMakeApiRequest:
                 id="alabel",
             ),
             pytest.param(
-                "https://api。vm0.ai/base",
-                "https://api.vm0.ai/base",
+                "https://api。okou.ai/base",
+                "https://api.okou.ai/base",
                 id="idna-dot",
             ),
             pytest.param(
@@ -128,7 +128,7 @@ class TestMakeApiRequest:
         "url",
         [
             pytest.param(
-                "https://\uff26\uff2f\uff2f.vm0.ai/base",
+                "https://\uff26\uff2f\uff2f.okou.ai/base",
                 id="unsafe-compatibility-alias",
             ),
             pytest.param("http://127.1/base", id="noncanonical-ipv4"),
@@ -142,12 +142,12 @@ class TestMakeApiRequest:
         ("url", "message"),
         [
             pytest.param(
-                "https://user:secret@api.vm0.ai/base",
+                "https://user:secret@api.okou.ai/base",
                 "user information",
                 id="userinfo",
             ),
-            pytest.param("https://api.vm0.ai:/base", "invalid port", id="empty-port"),
-            pytest.param("https://api.vm0.ai:65536/base", "invalid port", id="port-range"),
+            pytest.param("https://api.okou.ai:/base", "invalid port", id="empty-port"),
+            pytest.param("https://api.okou.ai:65536/base", "invalid port", id="port-range"),
         ],
     )
     def test_rejects_invalid_platform_authority(self, url: str, message: str):
@@ -156,7 +156,7 @@ class TestMakeApiRequest:
 
     def test_malformed_platform_authority_does_not_expose_credentials(self):
         password = "sensitive-platform-password"
-        url = f"https://platform-user:{password}@api\uff1avm0.ai/base"
+        url = f"https://platform-user:{password}@api\uff1aokou.ai/base"
 
         with pytest.raises(ValueError, match="Platform API URL is invalid") as exc_info:
             platform_api.make_api_request(url, b"{}", "tok-xyz")
@@ -170,7 +170,7 @@ class TestMakeApiRequest:
             pytest.param("file:///etc/passwd", id="file"),
             pytest.param("ftp://example.com/api", id="ftp"),
             pytest.param(
-                "//api.vm0.ai/api/webhooks/agent/firewall/auth",
+                "//api.okou.ai/api/webhooks/agent/firewall/auth",
                 id="scheme-relative",
             ),
             pytest.param("https:path-without-host", id="https-without-host"),

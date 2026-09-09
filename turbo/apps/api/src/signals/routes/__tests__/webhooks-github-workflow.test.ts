@@ -5,7 +5,6 @@ import {
   workflowAutomationsContract,
   type WorkflowAutomationCreateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -250,7 +249,6 @@ async function postGithubWebhook(args: {
     | "workflow_run";
   readonly deliveryId: string;
   readonly rawBody: string;
-  readonly publicBrand?: PublicBrand;
 }): Promise<{ readonly status: number; readonly text: string }> {
   const signature = `sha256=${createHmac("sha256", GITHUB_WEBHOOK_SECRET)
     .update(args.rawBody)
@@ -258,19 +256,16 @@ async function postGithubWebhook(args: {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(
-    `https://api.${args.publicBrand === "okou" ? "okou.ai" : "vm0.ai"}/api/webhooks/github`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-github-event": args.event,
-        "x-github-delivery": args.deliveryId,
-        "x-hub-signature-256": signature,
-      },
-      body: args.rawBody,
+  }).request("https://api.okou.ai/api/webhooks/github", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-github-event": args.event,
+      "x-github-delivery": args.deliveryId,
+      "x-hub-signature-256": signature,
     },
-  );
+    body: args.rawBody,
+  });
   return {
     status: response.status,
     text: await response.text(),
@@ -493,7 +488,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
           id: 904,
           state: "success",
           environment: "Production",
-          environment_url: "https://vm0.ai",
+          environment_url: "https://okou.ai",
           log_url: "https://vercel.com/logs/904",
           creator: { id: 101, login: "lancy", type: "User" },
         },
@@ -618,7 +613,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
           testCase,
           installed.remoteInstallationId,
         ),
-        publicBrand: "vm0",
       });
       expect(ignored).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();
@@ -652,7 +646,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         event: testCase.event,
         deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
-        publicBrand: "okou",
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();
@@ -722,7 +715,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         merged: true,
         installationId: installed.remoteInstallationId,
       }),
-      publicBrand: "vm0",
     });
     expect(first).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
@@ -743,7 +735,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         number: 43,
         installationId: installed.remoteInstallationId,
       }),
-      publicBrand: "okou",
     });
     expect(queued).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
@@ -817,7 +808,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       subjectNumber: 81_003,
     },
   ])(
-    "resolves provider identity for a queued $name independently from publicBrand",
+    "resolves provider identity for a queued $name",
     async (testCase) => {
       const { actor, agentId, workflowId } = await setupFixture();
       const installed = await gh.installGithubApp(actor, agentId);

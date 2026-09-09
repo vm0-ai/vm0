@@ -1051,7 +1051,7 @@ class TestHandleFirewallRequest:
                 AsyncMock(side_effect=Exception("API unreachable")),
             ),
             mitm_ctx(),
-            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.okou.ai"),
         ):
             result = await handle_firewall_request_without_upstream_admission(
                 flow, allow, sandbox_info
@@ -1502,7 +1502,7 @@ class TestHandleFirewallRequest:
                 AsyncMock(side_effect=api_error),
             ),
             mitm_ctx(),
-            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.okou.ai"),
         ):
             result = await handle_firewall_request_without_upstream_admission(
                 flow, allow, sandbox_info
@@ -1653,7 +1653,7 @@ class TestHandleFirewallRequest:
                 ),
             ),
             mitm_ctx(),
-            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.okou.ai"),
         ):
             result = await handle_firewall_request_without_upstream_admission(
                 flow, allow, sandbox_info
@@ -1685,7 +1685,7 @@ class TestHandleFirewallRequest:
                 AsyncMock(side_effect=auth_client.InsufficientCreditsError("Insufficient credits")),
             ),
             mitm_ctx(),
-            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.okou.ai"),
         ):
             result = await handle_firewall_request_without_upstream_admission(
                 flow, allow, sandbox_info
@@ -1723,7 +1723,7 @@ class TestHandleFirewallRequest:
                 ),
             ),
             mitm_ctx(),
-            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.okou.ai"),
         ):
             await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
@@ -1756,7 +1756,7 @@ class TestHandleFirewallRequest:
                 ),
             ),
             mitm_ctx(),
-            patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(platform_api, "get_api_url", return_value="https://api.okou.ai"),
         ):
             await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 

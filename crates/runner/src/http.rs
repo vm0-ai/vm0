@@ -34,7 +34,7 @@ pub struct HttpClientConfig {
     pub client_session_id: String,
 }
 
-/// Shared HTTP client for the vm0 API. Owns the connection pool, base URL,
+/// Shared HTTP client for the platform API. Owns the connection pool, base URL,
 /// and Vercel bypass header. Clone is a cheap Arc refcount bump.
 #[derive(Clone)]
 pub struct HttpClient {
@@ -73,7 +73,7 @@ pub(crate) struct PreparedApiRequest {
     context: ApiRequestContext,
 }
 
-/// Request builder for generated vm0 API routes.
+/// Request builder for generated platform API routes.
 ///
 /// Generated client headers are finalized in `send`/`build` so caller-side
 /// request customization cannot accidentally override them.

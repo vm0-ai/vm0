@@ -129,7 +129,7 @@ async def test_requestheaders_accepts_name_budget_and_preserves_existing_header_
     )
     assert len(flow.request.headers.fields) == _MAX_REQUEST_HEADER_FIELDS
 
-    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
         await mitm_addon.request(flow)
 

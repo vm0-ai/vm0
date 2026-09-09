@@ -1,6 +1,6 @@
 //! Fixed Linux `execve` argv/environment size preflight guards.
 //!
-//! These helpers reject values beyond vm0's configured budgets before spawning
+//! These helpers reject values beyond the configured budgets before spawning
 //! so the runner and guest-agent can return a descriptive error instead of an
 //! opaque `E2BIG` or shell-level "Argument list too long" error. Linux's
 //! effective aggregate limit also depends on the `RLIMIT_STACK` of the process
@@ -16,7 +16,7 @@ use std::fmt;
 /// one byte less of actual string payload.
 pub const EXECVE_STRING_MAX_BYTES: usize = 128 * 1024 - 1;
 
-/// Fixed vm0 aggregate byte budget for argv and environment strings.
+/// Fixed aggregate byte budget for argv and environment strings.
 ///
 /// Two MiB matches the common Linux `ARG_MAX` value with an 8 MiB soft
 /// `RLIMIT_STACK`. Linux derives the effective aggregate limit from the stack
@@ -127,7 +127,7 @@ impl fmt::Display for ExecBoundarySizeError {
 
 impl std::error::Error for ExecBoundarySizeError {}
 
-/// Validate argv/env sizes against vm0's fixed preflight budgets.
+/// Validate argv/env sizes against the fixed preflight budgets.
 ///
 /// Aggregate validation uses [`EXECVE_ARG_ENV_MAX_BYTES`]. The effective limit
 /// in the process that later calls `execve` can be lower, so successful

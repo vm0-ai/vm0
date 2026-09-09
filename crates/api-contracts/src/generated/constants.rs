@@ -5,22 +5,22 @@
 
 /// Client request contract constants shared by TypeScript and Rust.
 pub mod client {
-    /// HTTP header names used to identify vm0 clients in API request logs.
+    /// HTTP header names used to identify platform clients in API request logs.
     pub mod headers {
-        /// HTTP header carrying the per-request vm0 client request identifier.
+        /// HTTP header carrying the per-request platform client request identifier.
         pub const CLIENT_REQUEST_ID_HEADER: &str = "X-Client-Request-Id";
 
-        /// HTTP header carrying the sending vm0 client session identifier.
+        /// HTTP header carrying the sending platform client session identifier.
         pub const CLIENT_SESSION_ID_HEADER: &str = "X-Client-Session-Id";
 
-        /// HTTP header carrying the sending vm0 client component type.
+        /// HTTP header carrying the sending platform client component type.
         pub const CLIENT_TYPE_HEADER: &str = "X-Client-Type";
 
-        /// HTTP header carrying the sending vm0 client component version.
+        /// HTTP header carrying the sending platform client component version.
         pub const CLIENT_VERSION_HEADER: &str = "X-Client-Version";
     }
 
-    /// Client type values used to identify vm0 API request originators.
+    /// Client type values used to identify platform API request originators.
     pub mod types {
         /// Client type value for the platform web app.
         pub const CLIENT_TYPE_APP: &str = "App";

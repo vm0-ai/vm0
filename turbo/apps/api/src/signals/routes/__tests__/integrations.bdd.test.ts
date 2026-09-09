@@ -4534,7 +4534,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       text: "connect",
     });
     expect(JSON.stringify(loginPrompt)).toContain(
-      "https://app.vm0.test/settings/slack",
+      "https://app.okou.test/settings/slack",
     );
   });
 
@@ -4995,7 +4995,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(
       JSON.stringify(context.mocks.slack.views.publish.mock.calls),
     ).toContain("https://app.okou.ai/settings/slack");
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.okou.test");
     const disconnectedStatus = await integrations.requestSlackConnectStatus(
       actor,
       [200],

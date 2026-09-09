@@ -52,7 +52,7 @@ vi.mock("electron", () => ({
   },
   nativeImage: { createFromPath: () => ({ setTemplateImage() {} }) },
 }));
-const api = "https://api.vm0.ai";
+const api = "https://api.okou.ai";
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {

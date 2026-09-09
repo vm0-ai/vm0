@@ -216,7 +216,7 @@ pub struct ProxyConfig {
     pub runtime_lock_path: PathBuf,
     /// Okou API URL passed to the addon (optional).
     pub api_url: Option<String>,
-    /// Runner-runtime client session id passed to the addon for vm0 API requests.
+    /// Runner-runtime client session id passed to the addon for platform API requests.
     pub client_session_id: String,
     /// Runner credential available to the host addon for platform API requests.
     pub runner_token: Option<String>,

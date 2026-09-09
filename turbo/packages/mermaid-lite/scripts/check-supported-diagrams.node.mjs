@@ -62,7 +62,7 @@ await test("parses Flowchart and Sequence Diagram and rejects other types", asyn
     "stateDiagram-v2\n  [*] --> Ready",
     "erDiagram\n  USER ||--o{ ORDER : places",
     "gantt\n  title Schedule",
-    "mindmap\n  root((vm0))",
+    "mindmap\n  root((okou))",
     "architecture-beta\n  service api(server)[API]",
     "timeline\n  title Releases",
   ];

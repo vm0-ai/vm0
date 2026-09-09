@@ -1118,7 +1118,7 @@ export function mockGithubAppInstallProvider(
   mockOptionalEnv("GITHUB_APP_SLUG", GITHUB_APP_SLUG);
   mockOptionalEnv("GITHUB_APP_ID", "123456");
   mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", newGithubAppPrivateKeyBase64());
-  mockEnv("APP_URL", "https://app.vm0.test");
+  mockEnv("APP_URL", "https://app.okou.test");
 
   server.use(
     http.get(GITHUB_APP_INSTALLATIONS_URL, () => {

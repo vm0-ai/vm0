@@ -47,7 +47,7 @@ class TestModelProviderWebSocketUsageSourceRelease:
         flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
         proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
-        with mitm_ctx(api_url="https://api.vm0.ai"):
+        with mitm_ctx(api_url="https://api.okou.ai"):
             feed_websocket_server_message(
                 flow,
                 openai_websocket_usage_frame(

@@ -101,7 +101,7 @@ const categories: readonly Category[] = [
         connectorSlugs: ["browserbase", "slack"],
       },
       {
-        id: "zapier-vm0-migration",
+        id: "zapier-okou-migration",
         prompt:
           "Help me migrate my Zapier workflows to Okou. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
         connectorSlugs: ["zapier", "slack", "notion"],

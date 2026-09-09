@@ -177,7 +177,7 @@ export function initPostHog(): void {
     posthog.init(key, {
       // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
       // /flags, ingest and replay (/s) to PostHog US so ad blockers do not drop
-      // events. Shared with so.vm0.ai for one ingest domain.
+      // events. Shared with the marketing site through one ingest domain.
       api_host: host,
       ui_host: "https://us.posthog.com",
       autocapture: false,

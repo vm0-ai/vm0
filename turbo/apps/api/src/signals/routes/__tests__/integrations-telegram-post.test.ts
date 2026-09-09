@@ -872,7 +872,7 @@ describe("POST /api/telegram/register", () => {
     expect(installation?.botUsername).toBe("registered_bot");
   });
 
-  it("uses the registration Host for the custom bot webhook brand", async () => {
+  it("uses configured origins for the custom bot webhook", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
@@ -918,36 +918,26 @@ describe("POST /api/telegram/register", () => {
 
   it.each([
     {
-      caseName: "the VM0 canonical default rename attempt",
-      apiOrigin: "https://api.okou.ai",
-      displayName: "Zero",
-      seedDefaultAgent: true,
-      expectedAgentName: "Okou",
-    },
-    {
       caseName: "the Okou canonical default",
-      apiOrigin: "https://api.okou.ai",
       displayName: "Zero",
       seedDefaultAgent: true,
       expectedAgentName: "Okou",
     },
     {
       caseName: "an Okou canonical default rename attempt",
-      apiOrigin: "https://api.okou.ai",
       displayName: "Finance Agent",
       seedDefaultAgent: true,
       expectedAgentName: "Okou",
     },
     {
       caseName: "a non-canonical Okou agent named Zero",
-      apiOrigin: "https://api.okou.ai",
       displayName: "Zero",
       seedDefaultAgent: false,
       expectedAgentName: "Zero",
     },
   ] as const)(
     "brands Telegram command descriptions for $caseName",
-    async ({ apiOrigin, displayName, seedDefaultAgent, expectedAgentName }) => {
+    async ({ displayName, seedDefaultAgent, expectedAgentName }) => {
       const telegramBotId = newTelegramBotId();
       const fixture = await trackFixture(
         seedTelegramPostFixture({
@@ -974,7 +964,7 @@ describe("POST /api/telegram/register", () => {
           botToken: TEST_BOT_TOKEN,
           ...(seedDefaultAgent ? {} : { defaultAgentId: fixture.composeId }),
         },
-        apiOrigin,
+        "https://api.okou.ai",
       );
 
       expect(response.status).toBe(201);

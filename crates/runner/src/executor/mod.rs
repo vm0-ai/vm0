@@ -124,11 +124,11 @@ const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
-    b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
+    b"[runner] stdout stream reached the guest stream limit; later output was omitted\n";
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
-    b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
+    b"[runner] stdout stream overflowed the host queue; some output was dropped\n";
 const STDOUT_STREAM_INCOMPLETE_MARKER: &[u8] =
-    b"[vm0] stdout stream capture ended before clean EOF; some output may be missing\n";
+    b"[runner] stdout stream capture ended before clean EOF; some output may be missing\n";
 fn job_supervisor_timeout() -> Duration {
     JOB_TIMEOUT + JOB_FINALIZATION_GRACE_TIMEOUT
 }

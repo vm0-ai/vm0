@@ -544,7 +544,7 @@ const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
 
 const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
-/// Returns whether `key` is supported by vm0 guest shell exec env injection.
+/// Returns whether `key` is supported by guest shell exec env injection.
 ///
 /// This is the shell identifier format accepted by the guest env script's
 /// `export KEY=VALUE` lines. It is intentionally not a general definition of

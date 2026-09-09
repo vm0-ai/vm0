@@ -7,7 +7,7 @@ import { IMAGE_MODEL_CONFIGS, resolveImageModel } from "./image-model-catalog";
  * Falls back to the raw model ID if no mapping is found.
  */
 const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
-  // Anthropic direct (claude-code-oauth-token, anthropic-api-key, vm0)
+  // Anthropic direct (claude-code-oauth-token, anthropic-api-key, built-in)
   "claude-fable-5-1": "Claude Fable 5.1",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-5": "Claude Opus 5",

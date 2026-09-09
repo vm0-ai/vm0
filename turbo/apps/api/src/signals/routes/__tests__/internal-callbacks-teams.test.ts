@@ -56,7 +56,7 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   },
 );
 
-const APP_URL = "https://app.vm0.test";
+const APP_URL = "https://app.okou.test";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
@@ -623,8 +623,8 @@ beforeEach(() => {
   setupTeamsConnectTestEnv(APP_URL);
   mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.test");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.test");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.axiom.query.mockResolvedValue([]);
 });

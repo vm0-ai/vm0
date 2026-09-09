@@ -380,9 +380,9 @@ function renderedTemplate(
   return node.quasi.expressions.reduce((source, expression, index) => {
     let marker: string;
     if (isColumnExpression(sourceCode, expression)) {
-      marker = `"vm0_column_${index}"`;
+      marker = `"drizzle_column_${index}"`;
     } else if (isSchemaTableExpression(sourceCode, expression)) {
-      marker = `"vm0_table_${index}"`;
+      marker = `"drizzle_table_${index}"`;
     } else if (isSqlWrapperExpression(sourceCode, expression)) {
       marker = "TRUE";
     } else {
@@ -464,7 +464,7 @@ function supportedFromItem(value: unknown): boolean {
   if (range !== null) {
     return (
       typeof range.relname === "string" &&
-      /^vm0_table_\d+$/u.test(range.relname)
+      /^drizzle_table_\d+$/u.test(range.relname)
     );
   }
   const join = recordChild(value, "JoinExpr");
@@ -488,7 +488,7 @@ function columnReferencesAreLocalMarkers(value: unknown): boolean {
       Array.isArray(column.fields) &&
       column.fields.some((field) => {
         const name = stringNodeValue(field);
-        return name !== null && /^vm0_column_\d+$/u.test(name);
+        return name !== null && /^drizzle_column_\d+$/u.test(name);
       })
     );
   }

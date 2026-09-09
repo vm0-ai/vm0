@@ -201,7 +201,7 @@ async def test_payload_independent_sigv4_signs_before_streaming(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(
             auth,
@@ -253,7 +253,7 @@ async def test_bounded_payload_independent_sigv4_classifies_once_before_auth(
     validated_flows = track_trusted_authority_validations(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(
             registry,
@@ -300,7 +300,7 @@ async def test_payload_independent_large_fixed_length_bypasses_buffer_limit(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         await await_requestheaders_result(mitm_addon.requestheaders(flow))
@@ -329,7 +329,7 @@ async def test_payload_independent_sigv4_cancellation_restores_inspection_state(
     get_headers = AsyncMock(side_effect=asyncio.CancelledError)
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         pytest.raises(asyncio.CancelledError),
     ):
@@ -371,7 +371,7 @@ async def test_sigv4_request_target_inspection_boundary(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -435,7 +435,7 @@ async def test_presigned_s3_query_pair_count_inspection_boundary(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -503,7 +503,7 @@ async def test_sigv4_request_header_list_inspection_boundary(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -555,7 +555,7 @@ async def test_sigv4_request_hook_header_field_count_fails_closed(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         await mitm_addon.request(flow)
@@ -617,7 +617,7 @@ async def test_payload_independent_sigv4_disconnect_during_auth_falls_back_witho
     get_headers = AsyncMock(side_effect=resolve_auth)
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_task = asyncio.create_task(
@@ -665,7 +665,7 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -706,7 +706,7 @@ async def test_bounded_payload_dependent_sigv4_classifies_once_before_buffering(
     validated_flows = track_trusted_authority_validations(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(
             registry,
@@ -751,7 +751,7 @@ def test_bounded_sigv4_classification_failure_restores_probe_metadata(
     )
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(
             matching,
             "match_compiled_firewall_request",
@@ -817,7 +817,7 @@ def test_bounded_sigv4_revalidates_public_destination_after_prebind(
     )
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -849,7 +849,7 @@ async def test_payload_dependent_sigv4_revalidates_network_policy_before_auth(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -893,7 +893,7 @@ async def test_payload_dependent_sigv4_hashing_allows_event_loop_progress(
     request_task: asyncio.Task[None] | None = None
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(auth, "hash_request_body", hasher),
     ):
@@ -948,7 +948,7 @@ async def test_payload_dependent_sigv4_cancellation_waits_for_hash_completion(
     request_task: asyncio.Task[None] | None = None
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(auth, "hash_request_body", hasher),
     ):
@@ -997,7 +997,7 @@ async def test_payload_dependent_sigv4_revalidates_upstream_after_hashing(
     request_task: asyncio.Task[None] | None = None
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(auth, "hash_request_body", hasher),
     ):
@@ -1048,7 +1048,7 @@ async def test_payload_dependent_sigv4_holds_admission_until_websocket_end(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1110,7 +1110,7 @@ def test_payload_dependent_sigv4_rejects_unbounded_framing_before_auth(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1150,7 +1150,7 @@ def test_malformed_sigv4_placeholder_uses_bounded_fallback(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1189,7 +1189,7 @@ def test_payload_dependent_sigv4_rejects_saturated_admission_before_auth(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(aws_sigv4_body_admission, limit_name, limit_value),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
@@ -1223,7 +1223,7 @@ def test_payload_dependent_sigv4_releases_new_admission_after_attach_failure(
 
     try:
         with (
-            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
             pytest.raises(RuntimeError, match="already attached"),
         ):
             mitm_addon.requestheaders(flow)
@@ -1253,7 +1253,7 @@ async def test_payload_dependent_sigv4_cancellation_releases_admission(
     get_headers = AsyncMock(side_effect=asyncio.CancelledError)
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1282,7 +1282,7 @@ async def test_payload_dependent_sigv4_auth_failure_releases_at_local_response_t
     get_headers = AsyncMock(side_effect=RuntimeError("auth unavailable"))
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1309,7 +1309,7 @@ async def test_direct_oversized_sigv4_request_returns_413_without_auth(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         await mitm_addon.request(flow)
@@ -1348,7 +1348,7 @@ async def test_presigned_s3_request_signs_before_streaming(
     get_headers = AsyncMock(return_value=_resolved_token_meta())
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         await await_requestheaders_result(mitm_addon.requestheaders(flow))
@@ -1388,7 +1388,7 @@ def test_public_destination_presigned_s3_uses_bounded_fallback(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None

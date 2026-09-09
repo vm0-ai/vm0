@@ -158,7 +158,7 @@ function addUploadObject(
 describe("POST /api/uploads/complete", () => {
   it("records a private artifact from an agent run in the catalog with its authenticated URL", async () => {
     const fixture = await createRunUploadFixture({ chatThread: true });
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     createRouteMocks(context).clerk.session(
       fixture.actor.userId,
       fixture.actor.orgId,
@@ -199,7 +199,7 @@ describe("POST /api/uploads/complete", () => {
       [200],
     );
     expect(response.body).toMatchObject({
-      url: `https://api.vm0.ai/api/web/download-file?file_id=${prepared.body.id}&filename=private-report.pdf`,
+      url: `https://api.okou.ai/api/web/download-file?file_id=${prepared.body.id}&filename=private-report.pdf`,
     });
     const catalog = await chat.listArtifactCatalog(fixture.actor, {
       kind: "file",

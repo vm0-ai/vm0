@@ -380,10 +380,10 @@ describe("window policy", () => {
 
   it("opens mailto links externally", () => {
     expect(
-      decideWindowOpen("mailto:support@vm0.ai", allowedOrigins),
+      decideWindowOpen("mailto:support@okou.ai", allowedOrigins),
     ).toStrictEqual({
       action: "open-external",
-      url: "mailto:support@vm0.ai",
+      url: "mailto:support@okou.ai",
     });
   });
 
@@ -994,7 +994,7 @@ describe("computer use desktop runtime", () => {
         {
           id: "w0",
           role: "AXWindow",
-          name: "release-notify (Channel) - VM0 - Slack",
+          name: "release-notify (Channel) - Okou - Slack",
           children: [
             {
               id: "w0.e0",
@@ -1325,13 +1325,13 @@ describe("computer use desktop runtime", () => {
         {
           id: "w0",
           role: "AXWindow",
-          name: "Members | VM0 | Cloudflare",
+          name: "Members | Okou | Cloudflare",
           children: [
             {
               id: "w0.e0",
               role: "AXWebArea",
               roleDescription: "HTML content",
-              name: "Members | VM0 | Cloudflare",
+              name: "Members | Okou | Cloudflare",
               children: [
                 {
                   id: "w0.e0.e0",
@@ -1513,7 +1513,7 @@ describe("computer use desktop runtime", () => {
                 {
                   id: "w0",
                   role: "AXWindow",
-                  name: "release-notify (Channel) - VM0 - Slack",
+                  name: "release-notify (Channel) - Okou - Slack",
                   children: [
                     {
                       id: "w0.e0",

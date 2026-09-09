@@ -211,7 +211,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   SOCIAL_TRANSCRIPT_ACCESS_DENIED: {
     title: "Transcript access denied",
     guidance:
-      "The social data service denied transcript access, possibly because transcripts are disabled. This is not a vm0 authentication failure.",
+      "The social data service denied transcript access, possibly because transcripts are disabled. This is not an Okou authentication failure.",
   },
   // Keep guidance for responses from an older API deployment while the CLI
   // maps those codes to the provider-neutral values above.
@@ -228,7 +228,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   SOCIALKIT_TRANSCRIPT_ACCESS_DENIED: {
     title: "Transcript access denied",
     guidance:
-      "The social data service denied transcript access, possibly because transcripts are disabled. This is not a vm0 authentication failure.",
+      "The social data service denied transcript access, possibly because transcripts are disabled. This is not an Okou authentication failure.",
   },
 };
 

@@ -16,8 +16,8 @@ import { teamsOauthRoutes } from "../teams-oauth";
 
 const context = testContext();
 const REQUEST_ORIGIN = "http://api.test";
-const APP_ORIGIN = "https://app.vm0.test";
-const WEB_ORIGIN = "https://www.vm0.test";
+const APP_ORIGIN = "https://app.okou.test";
+const WEB_ORIGIN = "https://www.okou.test";
 // Generated rather than written as a literal so this file does not add another
 // hardcoded HMAC key, which the diff-aware Semgrep scan rejects outright.
 const SLACK_SIGNING_SECRET = randomBytes(32).toString("hex");
