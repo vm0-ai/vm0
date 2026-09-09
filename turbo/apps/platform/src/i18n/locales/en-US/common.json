@@ -5723,11 +5723,9 @@
     "tryItYourself": "Try it yourself"
   },
   "ssh": {
-    "access": "SSH access",
     "accessDescription": "Choose which Agents can use your SSH hosts.",
     "accessHelp": "Allow this Agent to execute commands on all your current and future configured SSH hosts. This is separate from connector permissions.",
     "add": "Add host",
-    "cache": "Changes notify active Runs. If a notification is missed, a Run may keep its cached access until it ends. End active Runs when immediate revocation is required.",
     "cancel": "Cancel",
     "chooseFile": "Choose file",
     "choosePrivateKeyFile": "Choose private key file",

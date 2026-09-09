@@ -52,6 +52,7 @@ test.each([SCOUT_AGENT_ID, OTHER_AGENT_ID])(
     expect(toggle).toHaveAttribute("aria-checked", String(enabled));
     const row = toggle.closest('[role="listitem"]');
     expect(row).toHaveTextContent("SSH");
+    expect(queryFastControl("button", "Manage SSH hosts")).toBeNull();
     click(toggle);
     await screen.findByLabelText(enabled ? "Add SSH" : "Remove SSH");
     expect(writes).toStrictEqual([{ agentId, enabled: !enabled }]);

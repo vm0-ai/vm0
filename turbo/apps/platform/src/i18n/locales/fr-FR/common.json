@@ -5791,11 +5791,9 @@
     "tryItYourself": "Essayez par vous-même"
   },
   "ssh": {
-    "access": "Accès SSH",
     "accessDescription": "Choisissez les agents qui peuvent utiliser vos hôtes SSH.",
     "accessHelp": "Autoriser cet Agent à exécuter des commandes sur tous vos hôtes SSH configurés, actuels et futurs. Cet accès est distinct des autorisations des connecteurs.",
     "add": "Ajouter un hôte",
-    "cache": "Les modifications notifient les Runs actifs. Si une notification est manquée, un Run peut conserver son accès en cache jusqu’à sa fin. Arrêtez les Runs actifs si la révocation doit être immédiate.",
     "cancel": "Annuler",
     "chooseFile": "Choisir un fichier",
     "choosePrivateKeyFile": "Choisir un fichier de clé privée",

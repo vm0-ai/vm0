@@ -48,9 +48,9 @@ host identity. A stale generation is not retried: the list refreshes automatical
 Reopen the host to review the current settings before saving again.
 
 Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
-with the same search and loading switch, not in Profile. The information tooltip
-explains the all-host grant and accepted Run-lifetime cache window.
-There is no permission-sliders or host-management button in that row. With no hosts, the SSH
+with the same search and loading switch, not in Profile. The description explains
+the all-host grant; there is no information tooltip, permission-sliders or
+host-management button in that row. With no hosts, the SSH
 row is hidden without clearing grants. Adding the first host automatically
 authorizes all Agents currently visible to you, including other users' public
 Agents in the same workspace. Host creation and these grants commit together.
@@ -65,7 +65,8 @@ or your grant. Agents cannot grant themselves access. This is not limited to
 chat-triggered Runs.
 
 Chat's services popover shows SSH alongside configured Connectors, with the
-same authorization switch, a host-management action and an enabled trigger icon.
+same authorization switch and an enabled trigger icon, without a host-management
+action. Manage hosts through the global SSH card.
 It always uses that composer's Agent, including split-pane chats. No hosts hides
 the SSH row; **Add connectors** offers the same zero-host setup entry.
 

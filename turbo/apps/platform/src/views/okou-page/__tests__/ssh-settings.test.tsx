@@ -839,6 +839,12 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
     name: "Grant SSH access",
   });
   expect(control).not.toBeChecked();
+  expect(queryAction("button", "SSH access")).not.toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "Allow this Agent to execute commands on all your current and future configured SSH hosts. This is separate from connector permissions.",
+    ),
+  ).toBeInTheDocument();
   expect(queryAction("button", "Manage SSH hosts")).not.toBeInTheDocument();
   expect(
     screen.queryByText(/No connected services yet/),

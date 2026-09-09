@@ -83,7 +83,6 @@ import {
   Search,
   SlidersHorizontal,
   Terminal,
-  Server,
   Square,
   SwatchBook,
   Trash2,
@@ -243,8 +242,6 @@ import {
   invalidateSsh$,
   sshSummary$,
 } from "../../signals/ssh.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
 import { SshLoadError } from "./ssh-load-error.tsx";
 import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -8268,7 +8265,6 @@ function ConnectorsPopoverButton({
   const [sshSaving, updateSshAccess] = useLoadableSet(updateAgentSshAccess$);
   const pageSignal = useGet(pageSignal$);
   const reloadSsh = useSet(invalidateSsh$);
-  const navigate = useSet(detachedNavigateTo$);
   const waitingForConnectors = connectorsLoading && !sshAccess;
   const connectorItems: ComposerPopoverConnectorItem[] = [
     ...(sshAccess
@@ -8445,24 +8441,6 @@ function ConnectorsPopoverButton({
                                   connectorName: item.connector.label,
                                 },
                               )
-                        }
-                        actions={
-                          <PopoverClose asChild>
-                            <Button
-                              showTooltip
-                              type="button"
-                              variant="quiet"
-                              size="icon-2xs"
-                              aria-label={t(($) => {
-                                return $.ssh.manage;
-                              })}
-                              onClick={() => {
-                                return navigate(ROUTES.connectorSsh);
-                              }}
-                            >
-                              <Server size={14} />
-                            </Button>
-                          </PopoverClose>
                         }
                       />
                     );

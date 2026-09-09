@@ -5718,11 +5718,9 @@
     "tryItYourself": "Coba sendiri"
   },
   "ssh": {
-    "access": "Akses SSH",
     "accessDescription": "Pilih Agen yang dapat menggunakan host SSH Anda.",
     "accessHelp": "Izinkan Agent ini menjalankan perintah pada semua host SSH Anda yang dikonfigurasi sekarang maupun nanti. Ini terpisah dari izin konektor.",
     "add": "Tambahkan host",
-    "cache": "Perubahan memberi notifikasi ke Run aktif. Jika notifikasi terlewat, Run dapat mempertahankan akses dalam cache hingga berakhir. Akhiri Run aktif jika akses harus segera dicabut.",
     "cancel": "Batal",
     "chooseFile": "Pilih file",
     "choosePrivateKeyFile": "Pilih file kunci privat",

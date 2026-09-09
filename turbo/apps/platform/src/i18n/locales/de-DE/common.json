@@ -5731,11 +5731,9 @@
     "tryItYourself": "Selbst ausprobieren"
   },
   "ssh": {
-    "access": "SSH-Zugriff",
     "accessDescription": "Wähle, welche Agents deine SSH-Hosts verwenden dürfen.",
     "accessHelp": "Diesem Agent erlauben, Befehle auf allen Ihren derzeit und künftig konfigurierten SSH-Hosts auszuführen. Dies ist unabhängig von Connector-Berechtigungen.",
     "add": "Host hinzufügen",
-    "cache": "Änderungen benachrichtigen aktive Runs. Bei einer verpassten Benachrichtigung kann ein Run seinen zwischengespeicherten Zugriff bis zum Ende behalten. Beenden Sie aktive Runs, wenn der Zugriff sofort entzogen werden muss.",
     "cancel": "Abbrechen",
     "chooseFile": "Datei auswählen",
     "choosePrivateKeyFile": "Datei mit privatem Schlüssel auswählen",

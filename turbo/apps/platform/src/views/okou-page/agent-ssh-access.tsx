@@ -1,14 +1,7 @@
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Info, Terminal } from "lucide-react";
-import {
-  Button,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@okouai/ui";
+import { Terminal } from "lucide-react";
 import { updateAgentSshAccess$ } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -33,36 +26,6 @@ export function AgentSshAccess({
       description={t(($) => {
         return $.ssh.accessHelp;
       })}
-      labelSuffix={
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="quiet"
-                size="icon-xs"
-                aria-label={t(($) => {
-                  return $.ssh.access;
-                })}
-              >
-                <Info size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p>
-                {t(($) => {
-                  return $.ssh.accessHelp;
-                })}
-              </p>
-              <p className="mt-2">
-                {t(($) => {
-                  return $.ssh.cache;
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      }
       enabled={enabled}
       loading={saving.state === "loading"}
       showManage={false}
