@@ -309,7 +309,7 @@ function PinnedAgentGridCard({
         );
         endDrag();
       }}
-      className={`relative ${pinnedAgentGridCardFrameClassName} no-underline transition-colors duration-200 ${
+      className={`group relative ${pinnedAgentGridCardFrameClassName} no-underline transition-colors duration-200 ${
         isPrimarySelected
           ? "bg-state-selected text-sidebar-foreground"
           : "text-sidebar-foreground hover:bg-state-hover"
