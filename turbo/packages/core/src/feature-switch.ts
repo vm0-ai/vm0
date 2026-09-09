@@ -380,9 +380,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
-    // Scoped to the maintainer rather than the whole staff org while the
-    // render-on-confirm upload is still unexercised outside tests.
-    enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
