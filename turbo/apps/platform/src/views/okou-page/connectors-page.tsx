@@ -119,6 +119,25 @@ import {
   openBuiltinAccountManager$,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { ConnectorAccountNameDialog } from "./components/settings/connector-account-name-dialog.tsx";
+import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
+import { sshSummary$ } from "../../signals/ssh.ts";
+import { filteredSshSummary$ } from "../../signals/okou-page/settings/ssh-connector.ts";
+
+type ConnectorPresentation =
+  | {
+      readonly kind: "catalog";
+      readonly connector: PlatformConnectorCatalogStatusItem;
+      readonly category: string;
+      readonly label: string;
+      readonly connected: boolean;
+    }
+  | {
+      readonly kind: "ssh";
+      readonly category: string;
+      readonly label: string;
+      readonly connected: boolean;
+      readonly configuredCount: number;
+    };
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -147,7 +166,7 @@ function ConnectorCategoryMenu({
   groups,
 }: {
   activeCategoryId: string | null;
-  groups: readonly ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
+  groups: readonly ConnectorCategoryGroup<ConnectorPresentation>[];
 }) {
   const { t } = useTranslation();
   if (groups.length <= 1) {
@@ -690,8 +709,8 @@ function ConnectorCategoryGroupSection({
   group,
   renderCard,
 }: {
-  group: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>;
-  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
+  group: ConnectorCategoryGroup<ConnectorPresentation>;
+  renderCard: (connector: ConnectorPresentation) => ReactNode;
 }) {
   if (group.kind === "group") {
     return (
@@ -972,9 +991,9 @@ function renderBuiltinList({
   connectionFilter,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
-  grouped: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
+  grouped: ConnectorCategoryGroup<ConnectorPresentation>[];
   filteredCount: number;
-  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
+  renderCard: (connector: ConnectorPresentation) => ReactNode;
   search: string;
   connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
@@ -1081,11 +1100,15 @@ function connectorLabelForSlug(
 
 function effectiveConnectorCatalogCount(
   catalogStatusLoadable: Loadable<PublicConnectorCatalogDiscoveryResponse>,
+  sshSummary: Loadable<{ readonly configuredCount: number } | null>,
 ): number | null {
   if (catalogStatusLoadable.state !== "hasData") {
     return null;
   }
-  return catalogStatusLoadable.data.totalConnectorCount;
+  return (
+    catalogStatusLoadable.data.totalConnectorCount +
+    (sshSummary.state === "hasData" && sshSummary.data ? 1 : 0)
+  );
 }
 
 interface SettingsConnectorCardProps {
@@ -1194,6 +1217,8 @@ export function ConnectorsPage() {
   const filteredCatalogItemsLoadable = useLastLoadable(
     filteredConnectorCatalogItems$,
   );
+  const sshSummary = useLoadable(sshSummary$);
+  const filteredSshSummary = useLoadable(filteredSshSummary$);
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
@@ -1252,6 +1277,7 @@ export function ConnectorsPage() {
       : [];
   const connectorCatalogCount = effectiveConnectorCatalogCount(
     catalogStatusLoadable,
+    sshSummary,
   );
   const categoryMetadata = localizeConnectorCategoryMetadata(
     catalogStatusLoadable.state === "hasData"
@@ -1359,8 +1385,30 @@ export function ConnectorsPage() {
   const otherCategoryLabel = t(($) => {
     return $.connectors.catalog.otherCategory;
   });
+  const presentationItems: ConnectorPresentation[] = filteredConnectors.map(
+    (connector) => {
+      return {
+        kind: "catalog",
+        connector,
+        category: connector.category,
+        label: connector.label,
+        connected: connector.connected,
+      };
+    },
+  );
+  if (filteredSshSummary.state === "hasData" && filteredSshSummary.data) {
+    presentationItems.push({
+      kind: "ssh",
+      category: "SSH",
+      label: t(($) => {
+        return $.ssh.label;
+      }),
+      connected: filteredSshSummary.data.configuredCount > 0,
+      configuredCount: filteredSshSummary.data.configuredCount,
+    });
+  }
   const grouped = groupConnectorsByCategory(
-    filteredConnectors,
+    presentationItems,
     categoryMetadata,
     otherCategoryLabel,
   );
@@ -1382,8 +1430,16 @@ export function ConnectorsPage() {
   const builtinList = renderBuiltinList({
     loadingState: filteredCatalogItemsLoadable.state,
     grouped,
-    filteredCount: filteredConnectors.length,
-    renderCard,
+    filteredCount:
+      presentationItems.length +
+      (filteredSshSummary.state === "loading" ? 1 : 0),
+    renderCard: (item) => {
+      return item.kind === "ssh" ? (
+        <SshConnectorCard key="ssh" configuredCount={item.configuredCount} />
+      ) : (
+        renderCard(item.connector)
+      );
+    },
     search,
     connectionFilter,
   });

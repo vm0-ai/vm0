@@ -9,6 +9,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { Link } from "../router/link.tsx";
 
 export function AgentSshAccess({ agentId }: { readonly agentId: string }) {
   const { t } = useTranslation();
@@ -23,7 +24,7 @@ export function AgentSshAccess({ agentId }: { readonly agentId: string }) {
     return null;
   }
   return (
-    <section className="my-5 grid gap-3 rounded-xl border bg-card p-5">
+    <section className="grid gap-3 rounded-xl border bg-card p-5">
       <label className="flex items-center justify-between gap-4">
         <span className="font-medium">
           {t(($) => {
@@ -48,11 +49,11 @@ export function AgentSshAccess({ agentId }: { readonly agentId: string }) {
           return $.ssh.cache;
         })}
       </p>
-      <a className="text-sm underline" href={ROUTES.settingsSsh}>
+      <Link className="text-sm underline" pathname={ROUTES.settingsSsh}>
         {t(($) => {
           return $.ssh.manage;
         })}
-      </a>
+      </Link>
     </section>
   );
 }

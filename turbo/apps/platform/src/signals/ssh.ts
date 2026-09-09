@@ -80,6 +80,17 @@ export const sshConnections$ = computed(async (get) => {
   );
   return result.status === 200 ? result.body.connections : null;
 });
+export const sshSummary$ = computed(async (get) => {
+  get(reload$);
+  if (!(await get(sshIdentity$))) {
+    return null;
+  }
+  const result = await accept(
+    (await get(sshClients$)).connections.summary(),
+    [200, 404],
+  );
+  return result.status === 200 ? result.body : null;
+});
 export const closeSshDialog$ = command(({ set }) => {
   return set(dialog$, null);
 });

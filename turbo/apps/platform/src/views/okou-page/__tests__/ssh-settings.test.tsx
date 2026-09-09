@@ -333,15 +333,15 @@ test("An admin who is not the Agent owner gets no SSH grant control or grant fet
     requests++;
     return respond(200, { enabled: true });
   });
-  await page(`/agents/${agentId}?tab=profile`);
-  await screen.findByDisplayValue("Shared Agent");
+  await page(`/agents/${agentId}?tab=authorization`);
+  await screen.findByText(/No connected services yet/);
   expect(
     screen.queryByRole("switch", { name: "SSH access" }),
   ).not.toBeInTheDocument();
   expect(requests).toBe(0);
 });
 
-test("Owner Agent settings offer independent SSH access and a management link", async () => {
+test("Owner Authorization offers SSH access while Profile has no SSH controls", async () => {
   const agent: AgentResponse = {
     agentId,
     ownerId: auth.user.id,
@@ -372,6 +372,12 @@ test("Owner Agent settings offer independent SSH access and a management link", 
     },
   );
   await page(`/agents/${agentId}?tab=profile`);
+  await screen.findByDisplayValue("Research");
+  expect(
+    screen.queryByRole("switch", { name: "SSH access" }),
+  ).not.toBeInTheDocument();
+  expect(queryAction("link", "Manage SSH hosts")).not.toBeInTheDocument();
+  click(getAction("button", "Authorization"));
   const control = await screen.findByRole("switch", { name: "SSH access" });
   expect(control).not.toBeChecked();
   expect(getAction("link", "Manage SSH hosts")).toHaveAttribute(

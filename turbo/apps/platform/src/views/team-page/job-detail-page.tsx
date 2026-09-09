@@ -9,6 +9,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { AgentSshAccess } from "../okou-page/agent-ssh-access.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   FileText,
@@ -716,7 +717,7 @@ function JobPermissionsTab({
   }
 
   return (
-    <div className="mx-auto max-w-[900px] flex flex-col gap-4">
+    <div className="mx-auto w-full max-w-[900px] flex flex-col gap-4">
       {connectedConnectors.length === 0 ? (
         <NoConnectedConnectors />
       ) : (
@@ -1053,7 +1054,12 @@ function AgentTabContent({
 
   switch (activeTab) {
     case "authorization": {
-      return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
+      return (
+        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
+          <AgentSshAccess agentId={agentId} />
+          <JobPermissionsTab agentId={agentId} displayName={displayName} />
+        </div>
+      );
     }
     case "profile": {
       return (

@@ -367,73 +367,75 @@ export function SshSettingsPage() {
     );
   }
   return (
-    <main className="mx-auto grid w-full max-w-3xl gap-5 p-6">
-      <h1 className="text-xl font-semibold">
-        {t(($) => {
-          return $.ssh.title;
-        })}
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        {t(
-          ($) => {
-            return $.ssh.count;
-          },
-          {
-            count: hosts.data.length,
-            limit: SSH_CONNECTION_LIMIT,
-          },
+    <main className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto grid w-full max-w-3xl gap-5 p-6 pb-[max(4rem,var(--sab))]">
+        <h1 className="text-xl font-semibold">
+          {t(($) => {
+            return $.ssh.title;
+          })}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {t(
+            ($) => {
+              return $.ssh.count;
+            },
+            {
+              count: hosts.data.length,
+              limit: SSH_CONNECTION_LIMIT,
+            },
+          )}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.ssh.cache;
+          })}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.ssh.tofu;
+          })}
+        </p>
+        {conflict && (
+          <p role="alert" className="text-sm">
+            {t(($) => {
+              return $.ssh.conflict;
+            })}
+          </p>
         )}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        {t(($) => {
-          return $.ssh.cache;
+        <div className="flex gap-2">
+          <Button
+            disabled={hosts.data.length >= SSH_CONNECTION_LIMIT}
+            onClick={() => {
+              return detach(open("create", null, signal), Reason.DomCallback);
+            }}
+          >
+            {t(($) => {
+              return $.ssh.add;
+            })}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              return refresh();
+            }}
+          >
+            {t(($) => {
+              return $.ssh.refresh;
+            })}
+          </Button>
+        </div>
+        {hosts.data.length === 0 && (
+          <p>
+            {t(($) => {
+              return $.ssh.empty;
+            })}
+          </p>
+        )}
+        {hosts.data.map((connection) => {
+          return <HostCard key={connection.id} connection={connection} />;
         })}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        {t(($) => {
-          return $.ssh.tofu;
-        })}
-      </p>
-      {conflict && (
-        <p role="alert" className="text-sm">
-          {t(($) => {
-            return $.ssh.conflict;
-          })}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <Button
-          disabled={hosts.data.length >= SSH_CONNECTION_LIMIT}
-          onClick={() => {
-            return detach(open("create", null, signal), Reason.DomCallback);
-          }}
-        >
-          {t(($) => {
-            return $.ssh.add;
-          })}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => {
-            return refresh();
-          }}
-        >
-          {t(($) => {
-            return $.ssh.refresh;
-          })}
-        </Button>
+        <SshDialog />
       </div>
-      {hosts.data.length === 0 && (
-        <p>
-          {t(($) => {
-            return $.ssh.empty;
-          })}
-        </p>
-      )}
-      {hosts.data.map((connection) => {
-        return <HostCard key={connection.id} connection={connection} />;
-      })}
-      <SshDialog />
     </main>
   );
 }

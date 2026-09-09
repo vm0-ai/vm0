@@ -3,14 +3,21 @@
 SSH is a standalone capability behind the default-off `SshAccess` (`sshAccess`)
 feature switch. The switch is the only feature-eligibility gate; enabled
 organizations do not need staff membership. Owner, Agent grant and Run
-authorization checks remain mandatory. This delivery
-does not activate it or add a public Connectors card. It uses neither connector
+authorization checks remain mandatory. The Connectors entry and Agent control
+are hidden while the switch is off; this delivery does not activate it. SSH uses neither connector
 accounts nor connector permissions.
 
 ## Owner setup
 
-Open `/settings/ssh` to manage up to 64 hosts for your current organization and
-user. Supply a display name, public hostname or IP, port, SSH username, and
+Open **Connectors -> SSH** (`/settings/ssh`) to manage up to 64 hosts for your
+current organization and user, without selecting or creating an Agent. The SSH
+card shows configured host count, not tested connectivity. It participates in
+search and category navigation. Connection-status filters mean configured or
+not configured for SSH; an Agent filter uses its independent SSH grant, even
+when no hosts are configured. SSH never opens generic connector account or
+permission dialogs.
+
+Supply a display name, public hostname or IP, port, SSH username, and
 private key with an optional passphrase. Credentials are write-only and stay
 outside the sandbox. Preserve complete key material, including whitespace.
 Use a least-privilege remote SSH user for the Agent's intended work.
@@ -23,7 +30,9 @@ metadata edits leave credentials unchanged. Host/port changes clear the learned
 host identity. A stale generation is not retried: refresh and reopen the host
 to review the current settings.
 
-Enable **SSH access** in the owner's Agent settings separately. The grant covers
+Enable **SSH access** in **Agent -> Authorization** separately, not in Profile.
+The management shortcut opens the same global host page; adding a host does not
+grant an Agent access. The grant covers
 all current and future hosts belonging to that owner in that organization.
 Another user, an organization admin who is not the Agent owner, and the Agent
 itself cannot grant this access. It is not limited to chat-triggered Runs.
