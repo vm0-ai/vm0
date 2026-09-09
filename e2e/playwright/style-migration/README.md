@@ -3,10 +3,10 @@
 The settings and Tone runners together cover all three shared selection-control
 consumers. Run both when changing the control or its common button styles:
 
-| Runner | Consumers | Captured states |
-| --- | --- | --- |
-| `pnpm style:migration` | Appearance and Send mode | 21 |
-| `pnpm style:migration:tone` | Agent profile Tone | 33 |
+| Runner                      | Consumers                | Captured states |
+| --------------------------- | ------------------------ | --------------- |
+| `pnpm style:migration`      | Appearance and Send mode | 21              |
+| `pnpm style:migration:tone` | Agent profile Tone       | 33              |
 
 Follow [the migration protocol](../../../docs/style-migration.md) for deployment
 identity, private authentication, fixtures, unchanged-code calibration and
