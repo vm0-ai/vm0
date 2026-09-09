@@ -208,22 +208,25 @@ interface PinnedGridAgent {
 type PinnedDropSide = "before" | "after";
 
 /**
- * The drag handle shown above a pinned tile while a reorder drag is in flight.
- * Hovering a tile leaves it untouched — the handle marks the reorderable slots
- * once dragging starts, so browsing pinned agents stays quiet. It is absolutely
- * positioned so it costs no layout: the tile keeps its size and the avatar
- * never moves.
+ * The drag handle shown above a reorderable pinned tile on hover or focus. It
+ * stays visible on the source tile while dragging, without appearing on the
+ * other drop targets. It is absolutely positioned so it costs no layout: the
+ * tile keeps its size and the avatar never moves.
  *
  * Every inset is a whole pixel. The tile is a `1fr` grid column, so the handle
  * is centred on a fractional x; a half-pixel padding would round up on one edge
  * and down on the other and visibly push the dots off-centre.
  */
-function PinnedAgentDragHandle() {
+function PinnedAgentDragHandle({ isActive }: { readonly isActive: boolean }) {
   return (
     <span
       aria-hidden="true"
       data-testid="pinned-agent-drag-handle"
-      className="pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px]"
+      className={`pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px] transition-opacity ${
+        isActive
+          ? "opacity-100"
+          : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+      }`}
     >
       {[0, 1].map((row) => {
         return (
@@ -295,6 +298,16 @@ function PinnedAgentGridCard({
           "application/x-okou-pinned-agent",
           agent.agentId,
         );
+        const dragImage = e.currentTarget.querySelector<HTMLElement>(
+          '[data-slot="pinned-agent-avatar"]',
+        );
+        if (dragImage) {
+          e.dataTransfer.setDragImage(
+            dragImage,
+            dragImage.offsetWidth / 2,
+            dragImage.offsetHeight / 2,
+          );
+        }
         startDrag(agent.agentId);
       }}
       onDragEnd={() => {
@@ -339,8 +352,8 @@ function PinnedAgentGridCard({
           : "text-sidebar-foreground hover:bg-state-hover"
       } ${isReorderable ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      {isReorderable && isDragInFlight && !isDragging && (
-        <PinnedAgentDragHandle />
+      {isReorderable && (!isDragInFlight || isDragging) && (
+        <PinnedAgentDragHandle isActive={isDragging} />
       )}
       {dropSide && (
         <span
@@ -358,7 +371,8 @@ function PinnedAgentGridCard({
         />
       )}
       <span
-        className={`relative flex h-9 w-9 shrink-0 ${
+        data-slot="pinned-agent-avatar"
+        className={`pointer-events-none relative flex h-9 w-9 shrink-0 ${
           isDragging ? "opacity-0" : ""
         }`}
       >

@@ -25,6 +25,7 @@ import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { avatarComposerUrl } from "@okouai/core/agent-avatar";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
@@ -73,6 +74,14 @@ const INCIDENT_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
+const LAYERED_AVATAR_URL = avatarComposerUrl({
+  face: "round",
+  hair: "curly-cap",
+  expression: "calm",
+  skin: "light",
+  hairColor: "blue",
+  sweater: "lime",
+});
 
 interface SidebarThread {
   readonly id: string;
@@ -181,14 +190,22 @@ const OVERFLOW_PINNED_AGENTS = [
  * Pins five agents so the grid holds six cards plus Pin, which overflows the
  * five-column row and puts cards on both sides of the Pin button.
  */
-function prepareOverflowingPinnedAgents(targetContext = context): string[] {
+function prepareOverflowingPinnedAgents(
+  targetContext = context,
+  supportAvatarUrl: string | null = null,
+): string[] {
   const agents = prepareAgents(targetContext);
+  const agentsWithAvatar = agents.map((agent) => {
+    return agent.agentId === SUPPORT_AGENT_ID
+      ? { ...agent, avatarUrl: supportAvatarUrl }
+      : agent;
+  });
   const templateAgent = agents[1];
   if (!templateAgent) {
     throw new Error("Pinned-agent template is unavailable");
   }
   targetContext.mocks.data.agents([
-    ...agents,
+    ...agentsWithAvatar,
     ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
         ...templateAgent,
@@ -426,11 +443,19 @@ function commandItemByText(container: HTMLElement, text: string): HTMLElement {
  * jsdom does not implement DataTransfer, so drag events need a stub that keeps
  * the payload the pinned grid writes on drag start.
  */
+interface DataTransferStub extends DataTransfer {
+  readonly dragImage: Element | null;
+}
+
 function createDataTransferStub(
   initialValues: Readonly<Record<string, string>> = {},
-): DataTransfer {
+): DataTransferStub {
   let values = new Map<string, string>(Object.entries(initialValues));
+  let dragImage: Element | null = null;
   return {
+    get dragImage() {
+      return dragImage;
+    },
     effectAllowed: "none",
     dropEffect: "none",
     clearData: (format?: string) => {
@@ -446,7 +471,10 @@ function createDataTransferStub(
     getData: (format: string) => {
       return values.get(format) ?? "";
     },
-  } as unknown as DataTransfer;
+    setDragImage: (image: Element) => {
+      dragImage = image;
+    },
+  } as unknown as DataTransferStub;
 }
 
 const SIDEBAR_TITLE_BOX_WIDTH = 160;
@@ -2422,6 +2450,59 @@ test("Reorder pinned agents while keeping Zero first", async () => {
   });
   expect(pinnedAgentNames(grid)).toStrictEqual(orderAfterReorder);
   expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
+});
+
+test("Keep pinned agent drag feedback on the dragged agent", async () => {
+  const pinnedAgentIds = prepareOverflowingPinnedAgents(
+    context,
+    LAYERED_AVATAR_URL,
+  );
+  context.mocks.data.userPreferences({ pinnedAgentIds });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+  });
+
+  const dragged = pinnedAgentLink(grid, "Support Agent");
+  const target = pinnedAgentLink(grid, "Operations Agent");
+  const avatar = dragged.querySelector('[data-slot="pinned-agent-avatar"]');
+  if (!(avatar instanceof HTMLElement)) {
+    throw new Error("Pinned-agent avatar not found");
+  }
+  const avatarLayers = avatar.querySelectorAll("img");
+  const topAvatarLayer = avatarLayers.item(avatarLayers.length - 1);
+  if (!(topAvatarLayer instanceof HTMLImageElement)) {
+    throw new Error("Layered pinned-agent avatar not found");
+  }
+  const dataTransfer = createDataTransferStub();
+
+  expect(
+    within(dragged).getByTestId("pinned-agent-drag-handle"),
+  ).toBeInTheDocument();
+  expect(
+    within(target).getByTestId("pinned-agent-drag-handle"),
+  ).toBeInTheDocument();
+
+  fireEvent.dragStart(topAvatarLayer, { dataTransfer });
+
+  // jsdom cannot paint native drag feedback, so DataTransfer is the browser
+  // boundary that proves the complete composite was selected as its image.
+  expect(dataTransfer.dragImage).toBe(avatar);
+  expect(
+    within(dragged).getByTestId("pinned-agent-drag-handle"),
+  ).toBeInTheDocument();
+  expect(
+    within(target).queryByTestId("pinned-agent-drag-handle"),
+  ).not.toBeInTheDocument();
 });
 
 test("Search, pin, and open an agent from the pin manager", async () => {
