@@ -110,8 +110,7 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
   expect(stop.closest("[data-composer-voice-tray]")).toHaveClass(
     "min-h-10",
     "bg-neutral-50",
-    "pl-0",
-    "pr-2",
+    "px-2",
     "py-1",
   );
   return stop;

@@ -8925,7 +8925,7 @@ function VoiceDraftFooter({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-2 pl-0 pr-2",
+        "flex w-full items-center gap-2 px-2",
         VOICE_DRAFT_TRAY_CLASS,
       )}
       data-composer-voice-tray
@@ -10699,7 +10699,11 @@ function ComposerFooter({
     <div
       className={cn(
         "flex items-center justify-between gap-1 sm:gap-2",
-        activeVoiceDraftStatus ? "px-3 pb-3 pt-3" : "px-4 pb-4 pt-1",
+        activeVoiceDraftStatus === "recording"
+          ? "px-2 pb-3 pt-3"
+          : activeVoiceDraftStatus
+            ? "px-3 pb-3 pt-3"
+            : "px-4 pb-4 pt-1",
         narrowVideoGap,
         createMode === "video" && "@max-[344px]/composer:px-3",
       )}
@@ -10794,9 +10798,9 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
-          {/* Active voice states keep the neutral tray 12px from the inner
-              edge. The recording row uses optical padding so its compact
-              telemetry and bordered confirmation control feel balanced. */}
+          {/* Recording gives the neutral tray an 8px outer inset plus 8px
+              inner padding, keeping both edges aligned to the standard 16px
+              control inset. Other voice states retain their 12px tray inset. */}
           <ComposerFooter
             signals={signals}
             actions={actions}
