@@ -296,6 +296,7 @@ function DirectoryCategoryChips({
       <div className="flex w-max gap-1.5 pb-1">
         <button
           type="button"
+          data-connector-category-chip=""
           className={chipClass(selected === null)}
           onClick={() => {
             onSelect(null);
@@ -310,6 +311,7 @@ function DirectoryCategoryChips({
             <button
               key={section.category}
               type="button"
+              data-connector-category-chip=""
               className={chipClass(selected === section.category)}
               onClick={() => {
                 onSelect(section.category);

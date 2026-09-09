@@ -186,18 +186,18 @@ test("Keep the category chips the same width when the selection moves", async ()
 
   // A chip that changes font weight on selection changes its own width, which
   // shifts every chip after it. Every chip has to carry the same weight.
+  const chips = Array.from(
+    dialog.querySelectorAll<HTMLElement>("[data-connector-category-chip]"),
+  );
+  expect(chips.length).toBeGreaterThan(1);
   const weights = new Set(
-    queryAllByRoleFast("button", dialog)
-      .filter((element) => {
-        return element.className.includes("shrink-0 items-center gap-1.5");
-      })
-      .map((element) => {
-        return (
-          element.className.split(/\s+/u).find((token) => {
-            return token.startsWith("font-");
-          }) ?? "none"
-        );
-      }),
+    chips.map((element) => {
+      return (
+        element.className.split(/\s+/u).find((token) => {
+          return token.startsWith("font-");
+        }) ?? "none"
+      );
+    }),
   );
   expect(weights.size).toBe(1);
   expect(weights).not.toContain("none");
