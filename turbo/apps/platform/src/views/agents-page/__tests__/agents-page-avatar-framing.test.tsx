@@ -1,3 +1,20 @@
+/**
+ * Boundary exception, per `docs/testing/testing-external-behavior.md`.
+ *
+ * These cases are set up entirely through the production page — the real
+ * Agents route, the real agent list, and a real feature-switch override — but
+ * they cannot be verified through it. Avatar framing has no page-observable
+ * result: it is a transform whose only effect is the rendered size of the
+ * artwork, and jsdom performs no layout, so nothing a user could see changes in
+ * the DOM. The applied transform is the only available evidence.
+ *
+ * The case is still worth testing because the whole point of the framing rule
+ * is that two avatars stop differing in size, and a wrong scale is silent —
+ * every layer still loads and every element still renders. So the assertions
+ * read the artwork through the `AVATAR_ARTWORK_SLOT` hook rather than the DOM
+ * shape around it, and check the relationship the rule guarantees rather than
+ * the exact numbers that happen to produce it.
+ */
 import { avatarComposerUrl } from "@okouai/core/agent-avatar";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -68,15 +85,12 @@ function agentCard(agentId: string): HTMLElement {
   return card;
 }
 
-/**
- * The transform placing the artwork inside the avatar box. That is the box's
- * only element child, one level above the wrapper carrying the chin-baseline
- * scale, so reading it here keeps the two transforms apart.
- */
+/** The transform placing the artwork inside the avatar box. */
 function avatarFramingTransform(agentId: string): string {
-  const box = agentCard(agentId).querySelector<HTMLElement>('[role="img"]');
-  const artwork = box?.firstElementChild;
-  if (!(artwork instanceof HTMLElement)) {
+  const artwork = agentCard(agentId).querySelector<HTMLElement>(
+    "[data-avatar-artwork]",
+  );
+  if (!artwork) {
     throw new Error(`${agentId} avatar artwork not found`);
   }
   return artwork.style.transform;
@@ -86,6 +100,14 @@ function framingScale(transform: string): number {
   const match = /scale\(([\d.]+)\)/u.exec(transform);
   if (!match?.[1]) {
     throw new Error(`No scale in transform: ${transform}`);
+  }
+  return Number(match[1]);
+}
+
+function centeringOffset(transform: string): number {
+  const match = /translateY\((-?[\d.]+)%\)/u.exec(transform);
+  if (!match?.[1]) {
+    throw new Error(`No vertical offset in transform: ${transform}`);
   }
   return Number(match[1]);
 }
@@ -135,20 +157,24 @@ test("Center each composer avatar and pull the cast toward one size", async () =
   const flat = avatarFramingTransform(FLAT_HAIR_AGENT_ID);
   const tall = avatarFramingTransform(TALL_HAIR_AGENT_ID);
 
-  // Both are centered: the flat-haired artwork sits far below the middle of its
-  // canvas, so it moves up much further than the one that already fills it.
-  expect(flat).toMatch(/translateY\(-15\.26/u);
-  expect(tall).toMatch(/translateY\(-0\.83/u);
+  // Both move up, because both artworks hang below the middle of their canvas.
+  // The flat-haired one leaves the whole forehead margin empty, so it has much
+  // further to travel than the one whose bun already fills that margin.
+  expect(centeringOffset(flat)).toBeLessThan(0);
+  expect(centeringOffset(tall)).toBeLessThan(0);
+  expect(centeringOffset(flat)).toBeLessThan(centeringOffset(tall));
 
-  // The smaller artwork grows, the larger one shrinks, and neither is scaled
-  // hard enough to make its face the odd one out.
+  // The smaller artwork grows and the larger one shrinks, and neither moves far
+  // enough to make its face the odd one out.
   const flatScale = framingScale(flat);
   const tallScale = framingScale(tall);
-  expect(flatScale).toBeCloseTo(1.151, 3);
-  expect(tallScale).toBeCloseTo(0.967, 3);
+  expect(flatScale).toBeGreaterThan(1);
+  expect(tallScale).toBeLessThan(1);
+  expect(flatScale).toBeLessThan(1.2);
+  expect(tallScale).toBeGreaterThan(0.9);
 
-  // What the framing is for: as drawn these two differ by 1.42x, which is what
-  // makes a row of cards look uneven. Framed, they differ by less than 1.2x.
+  // What the framing is for: as drawn these two differ by more than 1.4x, which
+  // is what makes a row of cards look uneven. Framed, they differ by under 1.2x.
   const shippedRatio = TALL_HAIR_SHIPPED_FILL / FLAT_HAIR_SHIPPED_FILL;
   const framedRatio =
     (TALL_HAIR_SHIPPED_FILL * tallScale) / (FLAT_HAIR_SHIPPED_FILL * flatScale);

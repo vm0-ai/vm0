@@ -4,6 +4,7 @@ import {
   avatarNeckSweaterEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
+  AVATAR_ARTWORK_SLOT,
   AVATAR_HEAD_TRANSFORM_ORIGIN,
   avatarSvgComposition,
   avatarSvgContentTransform,
@@ -54,6 +55,7 @@ export function AvatarSvgPreview({
       data-testid={testId}
     >
       <div
+        {...AVATAR_ARTWORK_SLOT}
         className="absolute inset-0"
         style={transform ? { transform } : undefined}
       >

@@ -7,6 +7,7 @@ import {
   resolveAvatarUrl,
 } from "../../views/okou-page/avatar-utils.ts";
 import {
+  AVATAR_ARTWORK_SLOT,
   AVATAR_HEAD_TRANSFORM_ORIGIN,
   avatarSvgComposition,
   avatarSvgContentTransform,
@@ -41,6 +42,10 @@ export interface AgentMentionAvatarRuntime {
    * runtime rather than read from `featureSwitch$` here.
    */
   readonly setSwitches: (next: AgentMentionAvatarSwitches) => void;
+  /**
+   * Stable by reference until a field actually changes, which is what lets a
+   * node view detect a switch flip by identity.
+   */
   readonly switches: () => AgentMentionAvatarSwitches;
   readonly subscribe: (listener: () => void) => () => void;
 }
@@ -121,6 +126,9 @@ function renderAgentMentionAvatar(
       avatarSvgComposition(svgConfig, switches);
     const layers = document.createElement("span");
     layers.className = "absolute inset-0";
+    for (const [name, value] of Object.entries(AVATAR_ARTWORK_SLOT)) {
+      layers.setAttribute(name, value);
+    }
     const transform = avatarSvgContentTransform({
       contentOffsetY: switches.framing ? contentOffsetY : 0,
       contentScale,

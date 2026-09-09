@@ -191,6 +191,14 @@ interface AvatarSvgComposition {
 }
 
 /**
+ * The element every avatar surface places its framed artwork on. The framing is
+ * a transform with no page-observable result under jsdom, so this is the slot
+ * tests read it from; both the React preview and the mention-chip node view
+ * expose it so they cannot drift apart.
+ */
+export const AVATAR_ARTWORK_SLOT = { "data-avatar-artwork": "" } as const;
+
+/**
  * The artwork transform for a composition, or null when it is the identity.
  *
  * Order matters: the translation is written to the right of the scale so it
