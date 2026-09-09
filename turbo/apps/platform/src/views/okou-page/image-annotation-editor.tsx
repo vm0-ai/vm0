@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
@@ -42,7 +42,6 @@ import {
 } from "../../signals/okou-page/image-annotation.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   markInk,
   MarkNoteLabel,
@@ -1399,9 +1398,9 @@ function AnnotationSurface({
 }) {
   const { t } = useTranslation();
   const close = useSet(signals.closeAnnotationEditor$);
-  const resolvedUrl = useResolvedAttachmentUrl(target.url);
+  const resolvedUrl = useLastResolved(signals.annotationResourceUrl$);
 
-  if (resolvedUrl === null) {
+  if (!resolvedUrl) {
     return null;
   }
 

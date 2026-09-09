@@ -12,7 +12,7 @@ import {
   Globe,
 } from "lucide-react";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { surfaceVariants, cn } from "@okouai/ui";
 import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
@@ -29,7 +29,6 @@ import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifa
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
-import { useResolvedAttachmentUrl } from "../okou-page/attachment-resource.ts";
 import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
@@ -139,8 +138,12 @@ function ArtifactCatalogFallbackPreview({
   );
 }
 
-function ArtifactCatalogVideoPreview({ sourceUrl }: { sourceUrl: string }) {
-  const resourceUrl = useResolvedAttachmentUrl(sourceUrl);
+function ArtifactCatalogVideoPreview({
+  artifact,
+}: {
+  artifact: CatalogArtifact;
+}) {
+  const resourceUrl = useLastResolved(artifact.videoUrl$);
   return (
     <video
       src={resourceUrl ? `${resourceUrl}#t=0.001` : undefined}
@@ -165,8 +168,9 @@ function ArtifactCatalogCard({
 }) {
   const { t } = useTranslation();
   const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
+  const thumbnailUrl = useLastResolved(artifact.thumbnailUrl$);
   const sourceVideo = artifact.videoSourceUrl ? (
-    <ArtifactCatalogVideoPreview sourceUrl={artifact.videoSourceUrl} />
+    <ArtifactCatalogVideoPreview artifact={artifact} />
   ) : null;
   const fallbackPreview =
     sourceVideo ??
@@ -205,9 +209,9 @@ function ArtifactCatalogCard({
         data-testid="artifact-catalog-card-preview"
         className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-background"
       >
-        {artifact.thumbnail ? (
+        {thumbnailUrl ? (
           <ArtifactThumbnailImage
-            src={r2ImageTransformUrl(artifact.thumbnail.url, {
+            src={r2ImageTransformUrl(thumbnailUrl, {
               width: ARTIFACT_CARD_THUMBNAIL_WIDTH_PX,
               fit: "scale-down",
             })}

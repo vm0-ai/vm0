@@ -36,8 +36,10 @@ import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
 import { flattenAnnotatedImage } from "./flatten-annotated-image.ts";
 import { logger } from "../log.ts";
-import { pageAttachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
-import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
+import {
+  createAttachmentResourceUrl$,
+  createAttachmentUrls$,
+} from "../attachment-resource-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
 
 // ---------------------------------------------------------------------------
@@ -433,11 +435,7 @@ function createAttachmentAnnotationSignals(args: {
           // response remains unreadable to fetch because of CORS. Flattening
           // needs the bytes. Private storage must allow authenticated app origins
           // through R2 CORS; public inputs retain their existing CDN URL.
-          const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
-          const resolved = await get(
-            set(resolveResourceUrl.prepare$, publicAttachmentUrl(original.url))
-              .urls$,
-          );
+          const resolved = await get(createAttachmentUrls$(original.url));
           signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(
             resolved.shareUrl ?? resolved.resourceUrl,
@@ -506,6 +504,7 @@ export interface ChatAttachment {
   imageLoad: ImageLoadSignals;
   /** Reactive file info (id + url) — loading while uploading, hasData when done. */
   fileInfo$: Computed<Promise<FileInfo | null>>;
+  resourceUrl$: Computed<Promise<string | null>>;
   /** Whether either the original or its annotated derivative is uploading. */
   uploadPending$: Computed<boolean>;
   /** Whether every file required by a send has been uploaded successfully. */
@@ -523,6 +522,15 @@ export interface ChatAttachment {
   >;
   retryAnnotationUpload$: Command<Promise<void>, [AbortSignal]>;
   cancelAnnotationUpload$: Command<void, []>;
+}
+
+function createComposerAttachmentResourceUrl(
+  fileInfo$: Computed<Promise<FileInfo | null>>,
+) {
+  return computed(async (get) => {
+    const file = await get(fileInfo$);
+    return file ? await get(createAttachmentResourceUrl$(file.url)) : null;
+  });
 }
 
 function createChatAttachment(file: File): ChatAttachment {
@@ -581,6 +589,7 @@ function createChatAttachment(file: File): ChatAttachment {
     size: file.size,
     imageLoad,
     fileInfo$,
+    resourceUrl$: createComposerAttachmentResourceUrl(fileInfo$),
     uploadPending$,
     sendReady$,
     cancel$,
@@ -722,6 +731,7 @@ export function createRestoredAttachment(
     size: persisted.size,
     imageLoad: createImageLoadSignals(),
     fileInfo$,
+    resourceUrl$: createComposerAttachmentResourceUrl(fileInfo$),
     uploadPending$,
     sendReady$: annotation.annotationReady$,
     cancel$,

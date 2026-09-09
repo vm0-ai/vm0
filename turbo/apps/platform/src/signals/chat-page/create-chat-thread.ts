@@ -1,4 +1,3 @@
-import { visit } from "unist-util-visit";
 import { isRetiredGoalArchiveText } from "@okouai/api-contracts/contracts/retired-goal-archive";
 import { literalHistoryTree } from "../../lib/markdown/literal-history.ts";
 import { createChatComposerLayoutOnRef } from "./chat-layout.ts";
@@ -168,7 +167,6 @@ import type { MarkdownCardRef } from "./markdown-card-ref.ts";
 import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
-  type ArtifactSignals,
 } from "./artifact-card-signals.ts";
 import {
   createAgentReferenceSignalsRegistry,
@@ -2118,88 +2116,6 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
   };
 }
 
-function createVisibleArtifactPreparation(
-  registeredEvents$: State<RegisteredChatEvent[]>,
-  {
-    eventTrees$,
-    ensureEventTrees$,
-    retryRichEventTree$,
-  }: Pick<
-    ReturnType<typeof createEventTreeSignals>,
-    "eventTrees$" | "ensureEventTrees$" | "retryRichEventTree$"
-  >,
-) {
-  const registeredById$ = computed((get) => {
-    return new Map(
-      get(registeredEvents$).map((entry) => {
-        return [entry.event.id, entry] as const;
-      }),
-    );
-  });
-  const visibleArtifacts$ = state<ReadonlySet<ArtifactSignals>>(new Set());
-  const visibleEventIds$ = state<ReadonlySet<string>>(new Set());
-  const prepareRenderedArtifacts$ = command(({ get, set }) => {
-    // A previous parse can finish after another scroll. Always prepare the
-    // latest render window, including trees reused from the parse cache.
-    const eventIds = get(visibleEventIds$);
-    const visible = new Set<ArtifactSignals>();
-    const registered = get(registeredById$);
-    for (const eventId of eventIds) {
-      for (const part of registered.get(eventId)?.userMessageRenderDocument
-        ?.parts ?? []) {
-        if (part.type === "file") {
-          visible.add(part.signals);
-        }
-      }
-    }
-    const trees = get(eventTrees$);
-    for (const eventId of eventIds) {
-      const tree = trees.get(eventId);
-      if (!tree) {
-        continue;
-      }
-      visit(tree, "element", (node) => {
-        if (node.data?.card?.kind === "artifact") {
-          visible.add(node.data.card.signals);
-        }
-      });
-    }
-    const previous = get(visibleArtifacts$);
-    for (const artifact of visible) {
-      if (!previous.has(artifact)) {
-        set(artifact.display.prepare$);
-      }
-    }
-    set(visibleArtifacts$, visible);
-  });
-  const prepareVisibleEventResources$ = command(
-    async ({ set }, events: readonly ChatEvent[], signal: AbortSignal) => {
-      set(
-        visibleEventIds$,
-        new Set(
-          events.map((event) => {
-            return event.id;
-          }),
-        ),
-      );
-      await set(ensureEventTrees$, events, signal);
-      signal.throwIfAborted();
-      set(prepareRenderedArtifacts$);
-    },
-  );
-  const retryVisibleRichEventTree$ = command(
-    async ({ set }, event: ChatEvent, signal: AbortSignal) => {
-      await set(retryRichEventTree$, event, signal);
-      signal.throwIfAborted();
-      set(prepareRenderedArtifacts$);
-    },
-  );
-  return {
-    ensureEventTrees$: prepareVisibleEventResources$,
-    retryRichEventTree$: retryVisibleRichEventTree$,
-  };
-}
-
 function createPagedEventResources(
   {
     chatActionContext,
@@ -2297,20 +2213,15 @@ function createPagedEventResources(
       set(registeredEvents$, next);
     },
   );
-  const visibleArtifacts = createVisibleArtifactPreparation(registeredEvents$, {
-    eventTrees$,
-    ensureEventTrees$,
-    retryRichEventTree$,
-  });
   return {
     artifactCardSignals,
     eventTrees$,
     eventTreeErrors$,
-    ensureEventTrees$: visibleArtifacts.ensureEventTrees$,
+    ensureEventTrees$,
     publicSignals: {
       browserSessionSignals,
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
-      retryRichEventTree$: visibleArtifacts.retryRichEventTree$,
+      retryRichEventTree$,
     },
     registeredEvents$,
     syncRegisteredEvents$,

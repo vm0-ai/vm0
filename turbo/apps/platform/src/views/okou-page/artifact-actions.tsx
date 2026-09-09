@@ -53,7 +53,6 @@ import {
 } from "../../signals/okou-page/settings/connectors.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { copyAttachmentLinkToClipboard } from "./attachment-url.ts";
-import { useAttachmentUrls } from "./attachment-resource.ts";
 import { shouldIgnoreImageArtifactNavigationKey } from "./artifact-image-navigation.ts";
 import type { ZoomableImageControls } from "./zoomable-image-canvas.tsx";
 
@@ -157,19 +156,19 @@ export function ArtifactActionTooltip({
 }
 
 export function ArtifactShareButton({
+  shareUrl,
   ariaLabel,
   className,
   iconSize = 16,
   url,
 }: {
+  shareUrl: string | null | undefined;
   ariaLabel?: string;
   className?: string;
   iconSize?: number;
   url: string;
 }) {
   const { t } = useTranslation();
-  const attachmentUrls = useAttachmentUrls(url);
-  const shareUrl = attachmentUrls?.shareUrl ?? null;
   const features = useLastResolved(featureSwitch$);
   const label =
     ariaLabel ??
@@ -177,7 +176,6 @@ export function ArtifactShareButton({
       return $.artifacts.actions.share;
     });
   if (
-    attachmentUrls &&
     shareUrl === null &&
     features?.[FeatureSwitchKey.PrivateArtifacts] &&
     isShareableArtifactReference(url)
@@ -191,7 +189,7 @@ export function ArtifactShareButton({
       />
     );
   }
-  if (shareUrl === null) {
+  if (!shareUrl) {
     // Private artifacts have no public address. Keep the action hidden while
     // resolving, and until explicit publication provides a share URL.
     return null;

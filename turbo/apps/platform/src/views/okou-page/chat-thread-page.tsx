@@ -5751,7 +5751,7 @@ function MessageAttachment({
   if (a.kind === "video") {
     return (
       <ChatVideoPreviewButton
-        display={a.signals.display}
+        resourceUrl$={a.signals.resourceUrl$}
         posterLoad={a.signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
@@ -5770,7 +5770,6 @@ function MessageAttachment({
           });
         }}
         posterClassName="h-full w-full"
-        url={a.url}
         videoClassName="h-full w-full object-contain"
       />
     );
@@ -6191,6 +6190,7 @@ function UserMessageFileReference({
   if (signals.kind === "video") {
     reference = (
       <ChatVideoPreviewButton
+        resourceUrl$={signals.resourceUrl$}
         posterLoad={signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
@@ -6209,7 +6209,6 @@ function UserMessageFileReference({
           });
         }}
         posterClassName="h-full w-full"
-        url={signals.url}
         videoClassName="h-full w-full object-contain"
       />
     );
