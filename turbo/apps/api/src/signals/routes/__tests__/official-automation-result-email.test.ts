@@ -397,7 +397,7 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).toContain(
-      '<img src="https://static.vm0.io/public/okou-morning-brief-hero-sun-36448a011642.png" width="600" height="225" alt="" role="presentation" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:18px;outline:none;text-decoration:none">',
+      '<img src="https://static.vm0.io/public/okou-morning-brief-hero-sun-00f08fd0907c.png" width="600" height="225" alt="" role="presentation" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:18px;outline:none;text-decoration:none">',
     );
     expect(html).toContain(
       "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif",
@@ -648,7 +648,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(text).toContain(longPlainText);
     expect(text).toContain("[Result truncated]");
     expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
-    expect(text).not.toContain("okou-morning-brief-hero-sun-36448a011642.png");
+    expect(text).not.toContain("okou-morning-brief-hero-sun-00f08fd0907c.png");
     expect(text).not.toContain('Result from Official <script> & " result');
     expect(text).toContain(
       `Sent by an Okou automation · Manage [${automationUrl}] · Unsubscribe [${accountUnsubscribeUrl}]`,

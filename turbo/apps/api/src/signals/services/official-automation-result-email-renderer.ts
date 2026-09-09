@@ -6,7 +6,7 @@ import { safeSync, safeUrlParse } from "../utils";
 
 const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
 const OKOU_AUTOMATION_EMAIL_HERO_URL =
-  "https://static.vm0.io/public/okou-morning-brief-hero-sun-36448a011642.png";
+  "https://static.vm0.io/public/okou-morning-brief-hero-sun-00f08fd0907c.png";
 
 const SAFE_LINK_INFO = "official-email-safe-link";
 const UNSAFE_LINK_INFO = "official-email-unsafe-link";
