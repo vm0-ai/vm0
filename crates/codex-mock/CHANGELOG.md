@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.10.30](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.29...codex-mock-v0.10.30) (2026-09-09)
+
 ## [0.10.29](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.28...codex-mock-v0.10.29) (2026-09-08)
 
 ## [0.10.28](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.27...codex-mock-v0.10.28) (2026-09-08)

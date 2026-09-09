@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   getAgent,
   getAgentCustomConnectorGrants,
@@ -12,8 +13,23 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { resolveConnectorAgentId } from "../agent-context";
 import { createCustomConnectorCommand } from "./create";
 import { updateCustomConnectorCommand } from "./update";
+import { connectorInspectionType } from "../inspection";
 
 const LABEL_WIDTH = 18;
+
+function customConnectorJson(
+  connector: CustomConnectorResponse,
+  agent: Awaited<ReturnType<typeof resolveCustomAgentContext>>,
+) {
+  const target = { kind: "custom", customConnectorId: connector.id } as const;
+  return {
+    ...connector,
+    target,
+    connectorType: connectorInspectionType(target, connector),
+    connectionId: connector.connectedAccountId ?? null,
+    authorized: agent ? agent.authorizedIds.has(connector.id) : null,
+  };
+}
 
 function renderConnected(connector: {
   readonly connected: boolean;
@@ -59,13 +75,35 @@ const listCommand = new Command()
     "--agent <id>",
     "Show per-agent authorization column (must match the current Agent inside a run)",
   )
+  .option("--json", "Output current org custom connectors as JSON")
   .action(
-    withErrorHandler(async (options: { agent?: string }) => {
+    withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
       const agentId = resolveConnectorAgentId(options.agent);
       const [connectors, agentCtx] = await Promise.all([
         listCustomConnectors(),
         resolveCustomAgentContext(agentId),
       ]);
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              context: "current",
+              agent: agentCtx
+                ? {
+                    agentId: agentCtx.agentId,
+                    displayName: agentCtx.displayName,
+                  }
+                : null,
+              connectors: connectors.map((connector) => {
+                return customConnectorJson(connector, agentCtx);
+              }),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
       const idWidth = Math.max(
         2,
         ...connectors.map((connector) => {
@@ -115,14 +153,45 @@ const statusCommand = new Command()
     "--agent <id>",
     "Show authorization state for the given Agent (must match the current Agent inside a run)",
   )
+  .option("--json", "Output current org custom connector status as JSON")
   .action(
     withErrorHandler(
-      async (connectorId: string, options: { agent?: string }) => {
+      async (
+        connectorId: string,
+        options: { agent?: string; json?: boolean },
+      ) => {
         const agentId = resolveConnectorAgentId(options.agent);
         const [connector, agentCtx] = await Promise.all([
           getCustomConnector(connectorId),
           resolveCustomAgentContext(agentId),
         ]);
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              {
+                context: "current",
+                target: { kind: "custom", customConnectorId: connectorId },
+                state: connector === null ? "unavailable" : "available",
+                agent: agentCtx
+                  ? {
+                      agentId: agentCtx.agentId,
+                      displayName: agentCtx.displayName,
+                    }
+                  : null,
+                connector:
+                  connector === null
+                    ? null
+                    : customConnectorJson(connector, agentCtx),
+              },
+              null,
+              2,
+            ),
+          );
+          if (connector === null) {
+            process.exitCode = 1;
+          }
+          return;
+        }
         if (!connector) {
           throw new Error(`Custom connector not found: ${connectorId}`);
         }

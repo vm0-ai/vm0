@@ -989,6 +989,9 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-upgrade-local.sh
 
+  # Keep this parallel to the elapsed-time-balanced behavior lanes: recent
+  # successful runs spend 70-149s compiling and 37-39s on the native proof.
+  # Durable result collection must not serialize this work behind a lane.
   host-cpu-fairness-test:
     runs-on: ubuntu-latest
     container:

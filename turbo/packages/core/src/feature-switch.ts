@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ComposerTaskChips]: {
+    maintainer: "bingjie@okou.ai",
+    description: "Lightweight chat task chips and contextual starting ideas",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerCreateCommands]: {
     maintainer: "bingjie@okou.ai",
     description: "Create commands and mode-specific composer controls",

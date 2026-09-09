@@ -12,6 +12,7 @@ import {
 import { padEndAnsi, stripAnsi } from "./connected-as";
 import {
   connectorDiscoveryItems,
+  connectorDiscoveryJson,
   isConnectorDiscoveryAuthorized,
   renderConnectorDiscoveryConnectedAsCell,
 } from "./discovery";
@@ -91,31 +92,14 @@ export const listCommand = new Command()
           JSON.stringify(
             {
               context: "current",
+              agent: agentCtx
+                ? {
+                    agentId: agentCtx.agentId,
+                    displayName: agentCtx.displayName,
+                  }
+                : null,
               connectors: discoveredConnectors.map((connector) => {
-                return connector.kind === "catalog"
-                  ? {
-                      kind: "builtin",
-                      slug: connector.slug,
-                      label: connector.label,
-                      connectionStatus:
-                        connector.catalogConnector.connectionStatus,
-                      connection: connector.catalogConnector.connection,
-                      authorized: agentCtx
-                        ? isConnectorDiscoveryAuthorized(connector, agentCtx)
-                        : null,
-                    }
-                  : {
-                      kind: "custom",
-                      id: connector.customConnector.id,
-                      slug: connector.slug,
-                      label: connector.label,
-                      connected: connector.customConnector.connected,
-                      missingRequiredFields:
-                        connector.customConnector.missingRequiredFields,
-                      authorized: agentCtx
-                        ? isConnectorDiscoveryAuthorized(connector, agentCtx)
-                        : null,
-                    };
+                return connectorDiscoveryJson(connector, agentCtx);
               }),
             },
             null,

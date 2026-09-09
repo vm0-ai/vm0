@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.86.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.21...guest-agent-v0.86.22) (2026-09-09)
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+
+
+### Refactoring
+
+* **pi-memory:** stop maintenance journal production and forwarding ([#32805](https://github.com/vm0-ai/vm0/issues/32805)) ([46576db](https://github.com/vm0-ai/vm0/commit/46576dbbca793e345e9b20e56618b998c3a8b629))
+
 ## [0.86.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.20...guest-agent-v0.86.21) (2026-09-09)
 
 

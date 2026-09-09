@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.6](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.5...guest-control-client-v0.19.6) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+
 ## [0.19.5](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.4...guest-control-client-v0.19.5) (2026-09-09)
 
 

@@ -20,15 +20,15 @@ export function isComputerUsePermissionTarget(
   );
 }
 
+export const computerUsePermissionGuidance = [
+  "Computer Use access is not managed as a connector permission.",
+  "The current run token needs computer-use:write, which is issued only when an Okou Desktop Computer Use host is selected for the chat or thread before the run starts.",
+  "Open Okou Desktop, make sure Computer Use is online, select the Computer Use host for this chat/thread, then start a new run. Existing run tokens cannot be upgraded in place.",
+  "Run `okou whoami` to confirm whether the current OKOU_TOKEN includes computer-use:write.",
+] as const;
+
 export function printComputerUsePermissionGuidance(): void {
-  console.log("Computer Use access is not managed as a connector permission.");
-  console.log(
-    "The current run token needs computer-use:write, which is issued only when an Okou Desktop Computer Use host is selected for the chat or thread before the run starts.",
-  );
-  console.log(
-    "Open Okou Desktop, make sure Computer Use is online, select the Computer Use host for this chat/thread, then start a new run. Existing run tokens cannot be upgraded in place.",
-  );
-  console.log(
-    "Run `okou whoami` to confirm whether the current OKOU_TOKEN includes computer-use:write.",
-  );
+  for (const line of computerUsePermissionGuidance) {
+    console.log(line);
+  }
 }

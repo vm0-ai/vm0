@@ -70,6 +70,12 @@ pub(super) struct ControlStreamState {
     stream: Mutex<UnixStream>,
     gate: Mutex<ControlStreamGate>,
     ready: Condvar,
+    // The gate mutex protects test waiter observation; the atomic only
+    // supplies interior mutability without another mutex.
+    #[cfg(test)]
+    waiters: AtomicUsize,
+    #[cfg(test)]
+    waiter_ready: Condvar,
 }
 
 /// RAII guard for the forwarder that owns the connected-stream gate.
@@ -351,6 +357,10 @@ impl ControlStreamState {
             stream: Mutex::new(stream),
             gate: Mutex::new(ControlStreamGate::Available),
             ready: Condvar::new(),
+            #[cfg(test)]
+            waiters: AtomicUsize::new(0),
+            #[cfg(test)]
+            waiter_ready: Condvar::new(),
         }
     }
 
@@ -400,17 +410,37 @@ impl ControlStreamState {
             let Some(wait) = duration_until(deadline) else {
                 return Err(ControlStreamLockError::Timeout);
             };
+            #[cfg(test)]
+            {
+                self.waiters.fetch_add(1, Ordering::Relaxed);
+                self.waiter_ready.notify_all();
+            }
             let (next_gate, wait_result) = self
                 .ready
                 .wait_timeout(gate, wait)
                 .unwrap_or_else(|e| e.into_inner());
             gate = next_gate;
+            #[cfg(test)]
+            self.waiters.fetch_sub(1, Ordering::Relaxed);
             // A timeout can race with gate notification; re-check the gate
             // unless the request deadline has actually elapsed.
             if wait_result.timed_out() && duration_until(deadline).is_none() {
                 return Err(ControlStreamLockError::Timeout);
             }
         }
+    }
+
+    /// The wire protocol cannot acknowledge entry into this private wait.
+    /// Acquiring the same gate after observing a waiter proves that the worker
+    /// has atomically released it into the real condition-variable wait.
+    #[cfg(test)]
+    pub(super) fn wait_for_waiter(&self, timeout: std::time::Duration) -> bool {
+        let gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
+        let (_gate, _) = self
+            .waiter_ready
+            .wait_timeout_while(gate, timeout, |_| self.waiters.load(Ordering::Relaxed) == 0)
+            .unwrap_or_else(|e| e.into_inner());
+        self.waiters.load(Ordering::Relaxed) > 0
     }
 
     fn notify_waiters(&self) {

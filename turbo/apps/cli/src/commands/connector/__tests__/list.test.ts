@@ -19,6 +19,7 @@ import {
 } from "../../__tests__/helpers/connector-catalog";
 import {
   customConnector,
+  customMcpConnector,
   stubAgentCustomConnectors,
   stubCustomConnectors,
 } from "../../__tests__/helpers/custom-connectors";
@@ -211,11 +212,16 @@ describe("okou connector list command", () => {
     });
 
     it("emits parseable current-context JSON without ANSI", async () => {
-      server.use(stubConnectors([connectedGithub]));
+      const custom = customConnector();
+      const mcp = customMcpConnector();
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubCustomConnectors([custom, mcp]),
+      );
 
       await listCommand.parseAsync(["node", "cli", "--json"]);
 
-      const output = String(mockConsoleLog.mock.calls[0]?.[0]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
       const json: unknown = JSON.parse(output);
       expect(json).toStrictEqual(
         expect.objectContaining({
@@ -223,8 +229,23 @@ describe("okou connector list command", () => {
           connectors: expect.arrayContaining([
             expect.objectContaining({
               kind: "builtin",
+              connectorType: "builtin",
+              target: { kind: "builtin", connectorSlug: "github" },
               slug: "github",
               connectionStatus: "connected",
+            }),
+            expect.objectContaining({
+              kind: "custom",
+              id: custom.id,
+              connectorType: "custom-http",
+              connected: false,
+              missingRequiredFields: ["apiKey"],
+            }),
+            expect.objectContaining({
+              kind: "custom",
+              id: mcp.id,
+              connectorType: "custom-mcp",
+              target: { kind: "custom", customConnectorId: mcp.id },
             }),
           ]),
         }),

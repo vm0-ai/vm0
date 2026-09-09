@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.189.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.19...runner-rs-v0.189.0) (2026-09-09)
+
+
+### Features
+
+* **pi:** prepare native claude consumers and accounting ([#32835](https://github.com/vm0-ai/vm0/issues/32835)) ([31133fc](https://github.com/vm0-ai/vm0/commit/31133fc7ba5eeecbc1c8a0cda32f16f1ff2b4602))
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+* **rpc:** dispatch complete request frames without waiting for eof ([#32821](https://github.com/vm0-ai/vm0/issues/32821)) ([cb025d6](https://github.com/vm0-ai/vm0/commit/cb025d643f9348b2f2a5f8ebc2725fb353c1524f))
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+* **runner:** defer blank memory reclamation until agent readiness ([#32824](https://github.com/vm0-ai/vm0/issues/32824)) ([29040ac](https://github.com/vm0-ai/vm0/commit/29040ac3b52f14bfb415bc5eeb0adcb7383b17d5))
+
 ## [0.188.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.18...runner-rs-v0.188.19) (2026-09-09)
 
 ## [0.188.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.17...runner-rs-v0.188.18) (2026-09-09)

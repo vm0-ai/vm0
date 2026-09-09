@@ -68,6 +68,7 @@ export enum FeatureSwitchKey {
   ChatDesktopSelection = "chatDesktopSelection",
   VoiceInputV2 = "voiceInputV2",
   ComposerCreateCommands = "composerCreateCommands",
+  ComposerTaskChips = "composerTaskChips",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
   AvatarNeckSweater = "avatarNeckSweater",

@@ -127,6 +127,7 @@ fn queued_control_request_is_not_delivered_after_close() {
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
     let (writer, mut host) = guest_writer_pair();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
 
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let worker = std::thread::spawn({
@@ -138,10 +139,19 @@ fn queued_control_request_is_not_delivered_after_close() {
                 owned_control_request(17, 9, 5000, "msg-after-close"),
                 writer,
             );
+            done_tx.send(()).unwrap();
         }
     });
 
+    assert!(
+        stream.wait_for_waiter(Duration::from_secs(1)),
+        "forwarder should enter the connected-stream wait before close"
+    );
     sink.close();
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("close should wake the queued forwarder before its request deadline");
+    worker.join().unwrap();
 
     let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
@@ -149,7 +159,6 @@ fn queued_control_request_is_not_delivered_after_close() {
     assert_eq!(status, ExecControlStatus::Inactive);
     assert_eq!(message_id, "msg-after-close");
     assert_eq!(diagnostic, "exec operation is not active");
-    worker.join().unwrap();
     assert_eq!(sink.pending.load(Ordering::Acquire), 0);
     drop(stream_guard);
 
@@ -168,6 +177,7 @@ fn queued_control_request_is_not_delivered_after_fail() {
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
     let (writer, mut host) = guest_writer_pair();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
 
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let worker = std::thread::spawn({
@@ -179,10 +189,19 @@ fn queued_control_request_is_not_delivered_after_fail() {
                 owned_control_request(23, 9, 5000, "msg-after-fail"),
                 writer,
             );
+            done_tx.send(()).unwrap();
         }
     });
 
+    assert!(
+        stream.wait_for_waiter(Duration::from_secs(1)),
+        "forwarder should enter the connected-stream wait before failure"
+    );
     sink.fail(ControlSinkFailure::Other("failed".to_owned()));
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("failure should wake the queued forwarder before its request deadline");
+    worker.join().unwrap();
 
     let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
@@ -190,7 +209,6 @@ fn queued_control_request_is_not_delivered_after_fail() {
     assert_eq!(status, ExecControlStatus::SinkError);
     assert_eq!(message_id, "msg-after-fail");
     assert_eq!(diagnostic, "failed");
-    worker.join().unwrap();
     assert_eq!(sink.pending.load(Ordering::Acquire), 0);
 
     let err = process_control_ipc::read_request(&mut peer).unwrap_err();

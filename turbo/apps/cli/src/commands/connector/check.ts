@@ -5,13 +5,13 @@ import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/conne
 
 import {
   buildDiagnosticRequest,
+  connectorCheckRetryCommand,
+  connectorPermissionRequestCommand,
   diagnosticEnvironmentNames,
   isComputerUseCheckTarget,
   printDiagnosticSummary,
   requireUrlRequest,
   resolveConnectorCheckDiagnostic,
-  shellQuoteArg,
-  stripUrlQueryAndFragment,
   validateCheckConnectorOptions,
   type CheckConnectorOptions,
   type ResolvedDiagnostic,
@@ -26,6 +26,7 @@ import {
   printCustomConnectorCheckStatus,
 } from "./check-custom";
 import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
+import { printConnectorCheckJson } from "./check-json";
 import {
   diagnoseConnectorCheck,
   getConnector,
@@ -34,7 +35,10 @@ import { getAgentUserConnectors } from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../lib/okou-env";
 import { toPlatformUrl } from "../doctor/platform-url";
-import { printComputerUsePermissionGuidance } from "./computer-use-guidance";
+import {
+  computerUsePermissionGuidance,
+  printComputerUsePermissionGuidance,
+} from "./computer-use-guidance";
 import {
   CALLBACK_PROMPT_PLACEHOLDER,
   connectorActionUrl,
@@ -433,14 +437,6 @@ function printNamedPolicyResult(
   }
 }
 
-function permissionRequestCommand(
-  connectorSlug: string,
-  permission: string,
-  request: UrlDiagnosticRequest,
-): string {
-  return `okou connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
-}
-
 function printPermissionRequestCommands(
   target: ConnectorRuntimeTarget,
   permission: string,
@@ -465,7 +461,7 @@ function printPermissionRequestCommands(
     );
     return;
   }
-  const command = permissionRequestCommand(
+  const command = connectorPermissionRequestCommand(
     target.connectorSlug,
     permission,
     request,
@@ -608,38 +604,12 @@ function printEnvironmentPermissionDiagnostic(
   console.log("");
 }
 
-function printRediagnoseHint(
-  opts: CheckConnectorOptions,
-  method: string,
-): void {
-  const args: string[] = [];
-  if (opts.url !== undefined) {
-    args.push(`--url ${shellQuoteArg(stripUrlQueryAndFragment(opts.url))}`);
-    if (opts.connector !== undefined) {
-      args.push(`--connector ${shellQuoteArg(opts.connector)}`);
-    }
-    if (opts.envName !== undefined) {
-      args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
-    }
-    if (method !== "GET") {
-      args.push(`--method ${shellQuoteArg(method)}`);
-    }
-  } else if (opts.envName !== undefined) {
-    args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
-  }
-  if (opts.checkPermission !== undefined) {
-    args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
-  }
-  console.log(
-    `To re-diagnose after changes, run: okou connector check ${args.join(" ")}`,
-  );
-}
-
 export const checkConnectorCommand = new Command()
   .name("check")
   .description(
     "Diagnose connector health: environment names, connector configuration, and permission policies",
   )
+  .option("--json", "Output connector diagnostics and next actions as JSON")
   .addOption(
     new Option(
       "--env-name <ENV_NAME>",
@@ -693,12 +663,34 @@ How connectors work:
     withErrorHandler(async (opts: CheckConnectorOptions, command: Command) => {
       validateCheckConnectorOptions(opts, command);
       if (isComputerUseCheckTarget(opts)) {
-        printComputerUsePermissionGuidance();
+        if (opts.json) {
+          console.log(
+            JSON.stringify(
+              {
+                context: isRunBoundConnectorContext() ? "run" : "current",
+                diagnostic: {
+                  outcome: "not-a-connector",
+                  capability: "computer-use:write",
+                },
+                guidance: computerUsePermissionGuidance,
+                actions: [{ kind: "command", command: "okou whoami" }],
+              },
+              null,
+              2,
+            ),
+          );
+        } else {
+          printComputerUsePermissionGuidance();
+        }
         return;
       }
       const method = opts.method.toUpperCase();
       const request = buildDiagnosticRequest(opts, method);
       const diagnostic = await diagnoseConnectorCheck(request);
+      if (opts.json) {
+        await printConnectorCheckJson(request, diagnostic);
+        return;
+      }
       const resolved = resolveConnectorCheckDiagnostic(request, diagnostic);
       const target = resolved.connector.target;
       const custom =
@@ -771,6 +763,8 @@ How connectors work:
         );
       }
 
-      printRediagnoseHint(opts, method);
+      console.log(
+        `To re-diagnose after changes, run: ${connectorCheckRetryCommand(request)}`,
+      );
     }),
   );

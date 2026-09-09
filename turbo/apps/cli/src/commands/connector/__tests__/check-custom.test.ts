@@ -12,7 +12,10 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../mocks/server";
-import { customConnector } from "../../__tests__/helpers/custom-connectors";
+import {
+  customConnector,
+  stubAgentCustomConnectors,
+} from "../../__tests__/helpers/custom-connectors";
 import {
   stubRunConnectorAccountInspection,
   writeRunConnectorAccountContext,
@@ -125,6 +128,7 @@ describe("custom connector URL diagnostics", () => {
   }
 
   beforeEach(() => {
+    checkConnectorCommand.setOptionValue("json", false);
     requests.length = 0;
     directory = mkdtempSync(join(tmpdir(), "okou-custom-check-"));
     contextPath = join(directory, "accounts.json");
@@ -138,6 +142,7 @@ describe("custom connector URL diagnostics", () => {
     ]);
     stubDiagnostic(resolvedCustom());
     server.use(
+      stubAgentCustomConnectors([]),
       http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
         return HttpResponse.json(
           customConnector({
@@ -162,7 +167,146 @@ describe("custom connector URL diagnostics", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    process.exitCode = undefined;
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("emits the exact custom account, subtype, and grant state as one JSON result", async () => {
+    await check("--connector", `custom:${CUSTOM_ID}`, "--json");
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      context: "run",
+      connector: {
+        target: TARGET,
+        label: "Renamed Acme",
+        connectorType: "custom-http",
+        definitionAvailable: true,
+      },
+      account: {
+        state: "available",
+        connectionId: ACCOUNT_ID,
+        metadata: { connectionStatus: "connected" },
+      },
+      connection: null,
+      authorization: { authorized: false },
+      diagnostic: {
+        run: { bases: ["https://api.acme.test/pinned"] },
+        permission: {
+          permissions: [{ name: "items:write", policy: { outcome: "deny" } }],
+        },
+      },
+    });
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(output()).not.toMatch(
+      /Default sibling|new-default|permission-request/,
+    );
+  });
+
+  it("reports unavailable definition metadata explicitly without replacing its account", async () => {
+    server.use(
+      http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+        return HttpResponse.json(
+          { error: { code: "NOT_FOUND", message: "Not found" } },
+          { status: 404 },
+        );
+      }),
+    );
+    await check("--json");
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      connector: {
+        target: TARGET,
+        label: CUSTOM_ID,
+        connectorType: null,
+        definitionAvailable: false,
+      },
+      account: { connectionId: ACCOUNT_ID },
+    });
+  });
+
+  it("uses current organization connection metadata outside a run", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
+    stubDiagnostic({
+      ...resolvedCustom({
+        kind: "unknown-endpoint",
+        policy: { outcome: "unavailable", basis: "not-run-scoped" },
+      }),
+      run: { status: "not-scoped" },
+    });
+    server.use(
+      http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+        return HttpResponse.json(
+          customConnector({
+            connected: true,
+            connectedAccountId: DEFAULT_ACCOUNT_ID,
+            missingRequiredFields: [],
+          }),
+        );
+      }),
+    );
+    await check("--json");
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      context: "current",
+      account: null,
+      authorization: null,
+      connection: { connected: true, connectionId: DEFAULT_ACCOUNT_ID },
+      diagnostic: { run: { status: "not-scoped" } },
+    });
+    expect(output()).not.toContain(ACCOUNT_ID);
+  });
+
+  it("keeps unavailable run context separate from current custom connection metadata", async () => {
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+    await check("--json");
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      context: "run",
+      connection: null,
+      account: { state: "context-unavailable", reason: "legacy-or-missing" },
+    });
+    expect(output()).not.toContain(DEFAULT_ACCOUNT_ID);
+  });
+
+  it("retains custom unknown-endpoint remediation without inventing a permission request", async () => {
+    stubDiagnostic(
+      resolvedCustom({
+        kind: "unknown-endpoint",
+        policy: { outcome: "ask", basis: "unknown-policy" },
+      }),
+    );
+    await check("--json");
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      actions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "link",
+          guidance: expect.stringContaining(
+            "There is no custom unknown-endpoint approval control",
+          ),
+        }),
+      ]),
+    });
+    expect(output()).not.toContain("permission-request");
+  });
+
+  it("retains target-unavailable reasons and the exact custom target in JSON", async () => {
+    stubDiagnostic({
+      outcome: "target-unavailable",
+      target: TARGET,
+      reason: "not-admitted",
+    });
+    await check("--json");
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      diagnostic: {
+        outcome: "target-unavailable",
+        target: TARGET,
+        reason: "not-admitted",
+      },
+      message: expect.stringContaining("was not admitted"),
+    });
+    expect(process.exitCode).toBe(1);
   });
 
   it("selects a stable UUID and displays current metadata with the pinned account and bases", async () => {

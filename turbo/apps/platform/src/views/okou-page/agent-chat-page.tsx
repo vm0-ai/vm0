@@ -24,6 +24,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { ChatComposer } from "./chat-composer.tsx";
 import { StartCards } from "./start-cards.tsx";
+import { ComposerTaskChips } from "./composer-task-chips.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
 import {
   chatPageTaglineDisplayed$,
@@ -336,6 +337,7 @@ export function AgentChatPage() {
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
   const composerSignals = useGet(agentChatComposerSignals$);
+  const taskChipsEnabled = useGet(composerSignals.taskChips.enabled$);
   const setInput = useSet(composerSignals.draft.setDraftInput$);
   const saveDraft = useSet(composerSignals.draft.save$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
@@ -374,7 +376,11 @@ export function AgentChatPage() {
 
           <ChatComposer signals={composerSignals} />
 
-          <StartCards onSelectPrompt={handleInputChange} />
+          {taskChipsEnabled ? (
+            <ComposerTaskChips signals={composerSignals} />
+          ) : (
+            <StartCards onSelectPrompt={handleInputChange} />
+          )}
         </div>
       </main>
       <PersonalClaudeCodeDeviceAuthDialog />

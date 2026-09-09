@@ -215,6 +215,8 @@ describe("okou connector status command", () => {
           connector: expect.objectContaining({
             slug: "github",
             connectionStatus: "connected",
+            connectorType: "builtin",
+            target: { kind: "builtin", connectorSlug: "github" },
           }),
           authorization: null,
         }),

@@ -303,7 +303,11 @@ export const statusCommand = new Command()
             JSON.stringify(
               {
                 context: "current",
-                connector,
+                connector: {
+                  ...connector,
+                  target: { kind: "builtin", connectorSlug: connector.slug },
+                  connectorType: "builtin",
+                },
                 authorization: agentCtx
                   ? {
                       agentId: agentCtx.agentId,

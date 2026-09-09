@@ -25,6 +25,7 @@ import {
 } from "../../__tests__/helpers/connector-catalog";
 import {
   customConnector,
+  customMcpConnector,
   stubAgentCustomConnectors,
   stubCustomConnectors,
 } from "../../__tests__/helpers/custom-connectors";
@@ -173,6 +174,7 @@ describe("okou connector search command", () => {
     searchCommand.setOptionValue("agent", undefined);
     searchCommand.setOptionValue("limit", undefined);
     searchCommand.setOptionValue("callbackPrompt", undefined);
+    searchCommand.setOptionValue("json", false);
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
@@ -182,6 +184,245 @@ describe("okou connector search command", () => {
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  describe("JSON output", () => {
+    it("identifies all three connector types and separates current connection from Agent grants", async () => {
+      const custom = customConnector({ connectedAccountId: RUN_CONNECTION_ID });
+      const mcp = customMcpConnector();
+      server.use(
+        stubConnectorCatalogStatus([
+          catalogStatusItem({ connectorSlug: "acme", label: "Acme Builtin" }),
+        ]),
+        stubCustomConnectors([custom, mcp]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, ["acme"]),
+        stubAgentCustomConnectors([
+          { customConnectorId: custom.id, permissionNames: [] },
+        ]),
+      );
+      chalk.level = 3;
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        " Acme ",
+        "--agent",
+        AGENT_UUID,
+        "--json",
+      ]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      const json: unknown = JSON.parse(output);
+      expect(json).toMatchObject({
+        context: "current",
+        query: { keyword: "Acme", limit: null },
+        agent: { agentId: AGENT_UUID },
+        total: 3,
+        exactMatch: true,
+        connectors: expect.arrayContaining([
+          expect.objectContaining({
+            connectorType: "builtin",
+            kind: "builtin",
+            target: { kind: "builtin", connectorSlug: "acme" },
+            connected: false,
+            authorized: true,
+          }),
+          expect.objectContaining({
+            connectorType: "custom-http",
+            kind: "custom",
+            id: custom.id,
+            connectionId: RUN_CONNECTION_ID,
+            authorized: true,
+          }),
+          expect.objectContaining({
+            connectorType: "custom-mcp",
+            target: { kind: "custom", customConnectorId: mcp.id },
+            authorized: false,
+          }),
+        ]),
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+      expect(output).not.toContain("\u001b[");
+    });
+
+    it("retains the total match count when results are limited", async () => {
+      server.use(
+        stubAvailableConnectors([
+          "google-ads",
+          "google-calendar",
+          "google-docs",
+        ]),
+      );
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "google",
+        "--limit",
+        "1",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        total: 3,
+        query: { limit: 1 },
+        connectors: [expect.objectContaining({ slug: expect.any(String) })],
+      });
+    });
+
+    it("returns a parseable empty result without guidance prose", async () => {
+      server.use(stubConnectors([]));
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "not-a-real-service-xyz",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        context: "current",
+        total: 0,
+        exactMatch: false,
+        connectors: [],
+        actions: [],
+      });
+    });
+
+    it("reports the exact reconnect-required run account independently of current grants", async () => {
+      const target = { kind: "builtin", connectorSlug: "github" } as const;
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      writeRunConnectorAccountContext(contextPath, [
+        { ...target, connectionId: RUN_CONNECTION_ID },
+      ]);
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, []),
+        stubRunConnectorAccountInspection([
+          {
+            kind: "available",
+            target,
+            connectionId: RUN_CONNECTION_ID,
+            authMethod: "oauth",
+            displayName: "Selected account",
+            externalId: "selected",
+            externalUsername: null,
+            externalEmail: null,
+            connectionStatus: "reconnect-required",
+            reconnectReason: "authorization_expired_or_revoked",
+          },
+        ]),
+      );
+      await searchCommand.parseAsync(["node", "cli", "github", "--json"]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      const json: unknown = JSON.parse(output);
+      expect(json).toMatchObject({
+        context: "run",
+        connectors: [
+          {
+            connectorType: "builtin",
+            target,
+            account: {
+              state: "available",
+              connectionId: RUN_CONNECTION_ID,
+              metadata: { connectionStatus: "reconnect-required" },
+            },
+            availableForRun: false,
+            authorized: false,
+          },
+        ],
+        actions: [
+          {
+            url: expect.stringContaining(
+              `/connectors/github/reconnect/${RUN_CONNECTION_ID}`,
+            ),
+          },
+        ],
+      });
+      expect(output).not.toContain("octocat");
+    });
+
+    it.each([
+      "not-admitted",
+      "context-unavailable",
+      "metadata-unavailable",
+    ] as const)("preserves the %s run state in JSON", async (state) => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      if (state === "not-admitted") {
+        writeRunConnectorAccountContext(contextPath, []);
+      } else if (state === "context-unavailable") {
+        vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+      } else {
+        writeRunConnectorAccountContext(contextPath, [
+          {
+            kind: "builtin",
+            connectorSlug: "github",
+            connectionId: RUN_CONNECTION_ID,
+          },
+        ]);
+      }
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+        stubRunConnectorAccountInspection([]),
+      );
+      await searchCommand.parseAsync(["node", "cli", "github", "--json"]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        context: "run",
+        connectors: [
+          {
+            account: { state },
+            availableForRun: state === "context-unavailable" ? null : false,
+            authorized: true,
+          },
+        ],
+      });
+      if (state === "metadata-unavailable") {
+        expect(json).toMatchObject({
+          connectors: [{ account: { connectionId: RUN_CONNECTION_ID } }],
+        });
+      }
+    });
+
+    it("preserves the callback URL and task inside the JSON action", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_UUID);
+      writeRunConnectorAccountContext(contextPath, []);
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubAgent(AGENT_UUID, "Agent"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--limit",
+        "1",
+        "--callback-prompt",
+        "Continue issue review",
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        actions: [
+          { supportsCallback: true, url: expect.stringContaining(THREAD_UUID) },
+        ],
+      });
+      expect(json).toMatchObject({
+        actions: [{ url: expect.stringContaining("Continue") }],
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("keyword validation", () => {

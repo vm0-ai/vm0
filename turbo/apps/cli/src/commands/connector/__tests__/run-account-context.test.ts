@@ -182,6 +182,8 @@ describe("run connector account inspection", () => {
           state: "available",
           connector: expect.objectContaining({
             target: { kind: "builtin", connectorSlug: "github" },
+            connectorType: "builtin",
+            definitionAvailable: true,
             account: expect.objectContaining({
               state: "available",
               connectionId: PINNED_CONNECTION_ID,
@@ -317,6 +319,60 @@ describe("run connector account inspection", () => {
     output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain(mcpConnectionId);
     expect(output).toContain("Current Status:");
+
+    mockConsoleLog.mockClear();
+    await listCommand.parseAsync(["node", "cli", "--json"]);
+    const json: unknown = JSON.parse(
+      mockConsoleLog.mock.calls.flat().join("\n"),
+    );
+    expect(json).toMatchObject({
+      context: "run",
+      connectors: [
+        {
+          target: { kind: "custom", customConnectorId: httpConnector.id },
+          connectorType: "custom-http",
+          definitionAvailable: true,
+          account: {
+            state: "metadata-unavailable",
+            connectionId: httpConnectionId,
+          },
+        },
+        {
+          target: { kind: "custom", customConnectorId: mcpConnector.id },
+          connectorType: "custom-mcp",
+          definitionAvailable: true,
+          account: {
+            state: "metadata-unavailable",
+            connectionId: mcpConnectionId,
+          },
+        },
+      ],
+    });
+    expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains a missing custom definition's UUID with an explicitly unknown subtype", async () => {
+    const customConnectorId = "33333333-3333-4333-8333-333333333333";
+    writeContext([{ kind: "custom", customConnectorId, connectionId: null }]);
+    server.use(stubConnectorCatalog([]), stubCustomConnectors([]));
+    await statusCommand.parseAsync([
+      "node",
+      "cli",
+      `custom:${customConnectorId}`,
+      "--json",
+    ]);
+    const json: unknown = JSON.parse(
+      mockConsoleLog.mock.calls.flat().join("\n"),
+    );
+    expect(json).toMatchObject({
+      context: "run",
+      connector: {
+        target: { kind: "custom", customConnectorId },
+        connectorType: null,
+        definitionAvailable: false,
+        account: { state: "not-admitted", connectionId: null },
+      },
+    });
   });
 
   it("retains exact IDs when the enrichment route is unavailable", async () => {

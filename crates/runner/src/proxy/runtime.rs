@@ -745,7 +745,11 @@ mod tests {
 
         let runtime = MitmdumpRuntime::acquire(root, lock_path).await.unwrap();
 
-        let status = child.child.wait().unwrap();
+        let status = child
+            .child
+            .try_wait()
+            .unwrap()
+            .expect("canonical-marked process is still running after reconciliation");
         assert!(
             !status.success(),
             "canonical-marked process was not signalled"
