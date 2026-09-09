@@ -45,6 +45,11 @@ const commandCases = [
     args: ["status", CUSTOM_CONNECTOR_ID],
   },
   {
+    name: "custom status by slug",
+    command: customConnectorCommand,
+    args: ["status", "_acme-search"],
+  },
+  {
     name: "builtin permission-request",
     command: permissionRequestCommand,
     args: [
