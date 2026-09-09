@@ -5072,7 +5072,7 @@ function AssistantRecoveryActions({
   };
 
   return (
-    <div className="col-start-2 row-start-2 flex max-w-full flex-wrap items-center gap-2 sm:col-start-3 sm:row-start-1 sm:ml-auto sm:shrink-0 sm:justify-end sm:self-center">
+    <div className="col-start-2 row-start-2 flex max-w-full flex-wrap items-center gap-2 @[640px]:col-start-3 @[640px]:row-start-1 @[640px]:ml-auto @[640px]:shrink-0 @[640px]:justify-end @[640px]:self-center">
       {hasResetAction && (
         <Button
           type="button"
@@ -5193,7 +5193,7 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:items-center"
     >
       {recovery.kind === "usage-limit" ||
       recovery.kind === "execution-timeout" ? (
