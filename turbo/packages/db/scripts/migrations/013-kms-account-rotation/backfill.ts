@@ -135,6 +135,16 @@ function isVerifiedOnTarget(
   );
 }
 
+function verificationConcurrency(
+  mode: Mode,
+  value: string | undefined,
+): number {
+  if (value !== undefined && mode !== "verify") {
+    throw new Error("verify_concurrency_requires_verify_mode");
+  }
+  return integer(value, 1, 16);
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
@@ -142,6 +152,7 @@ async function main(): Promise<void> {
       "target-key": { type: "string" },
       "batch-size": { type: "string" },
       "max-rows": { type: "string" },
+      "verify-concurrency": { type: "string" },
       "report-path": { type: "string" },
       cursor: { type: "string" },
       verify: { type: "boolean", default: false },
@@ -172,7 +183,15 @@ async function main(): Promise<void> {
       ? "verify"
       : "inventory";
   const batchSize = integer(values["batch-size"], 100, 500);
-  const maxRows = integer(values["max-rows"], 5_000, 100_000);
+  const maxRows = integer(
+    values["max-rows"],
+    5_000,
+    mode === "verify" ? 1_000_000 : 100_000,
+  );
+  const verifyConcurrency = verificationConcurrency(
+    mode,
+    values["verify-concurrency"],
+  );
   const reportPath = string(values["report-path"]);
   function initialCursor(): { fieldIndex: number; afterId: string | null } {
     let fieldIndex = 0;
@@ -415,8 +434,7 @@ async function main(): Promise<void> {
     async function processRow(
       raw: unknown,
       field: Field,
-      fieldCounts: Counts,
-    ): Promise<string> {
+    ): Promise<{ id: string; outcome: Counts }> {
       const row = object(raw);
       const id = string(row.id);
       const original = string(row.value);
@@ -475,11 +493,43 @@ async function main(): Promise<void> {
       if (mode === "migrate" && outcome.invalid) {
         throw new Error("invalid_ciphertext_blocks_migration");
       }
-      for (const name of Object.keys(outcome) as (keyof Counts)[]) {
-        fieldCounts[name] += outcome[name];
-        report.totals[name] += outcome[name];
+      return { id, outcome };
+    }
+
+    async function processRows(
+      rows: unknown[],
+      field: Field,
+      fieldCounts: Counts,
+    ): Promise<void> {
+      function record(result: { id: string; outcome: Counts }): void {
+        for (const name of Object.keys(result.outcome) as (keyof Counts)[]) {
+          fieldCounts[name] += result.outcome[name];
+          report.totals[name] += result.outcome[name];
+        }
+        afterId = result.id;
       }
-      return id;
+      if (mode === "verify" && verifyConcurrency > 1) {
+        for (let start = 0; start < rows.length; start += verifyConcurrency) {
+          // Drain every request before advancing the cursor or handling failure.
+          // Commit only the successful prefix in primary-key order, so a later
+          // response can never move a checkpoint past an unverified row.
+          const results = await Promise.allSettled(
+            rows.slice(start, start + verifyConcurrency).map((raw) => {
+              return processRow(raw, field);
+            }),
+          );
+          for (const result of results) {
+            if (result.status === "rejected") {
+              throw new Error("verification_failed_at_cursor");
+            }
+            record(result.value);
+          }
+        }
+      } else {
+        for (const raw of rows) {
+          record(await processRow(raw, field));
+        }
+      }
     }
 
     while (fieldIndex < fields.length && report.totals.rows < maxRows) {
@@ -501,9 +551,7 @@ async function main(): Promise<void> {
           afterId === null ? [size] : [size, afterId],
         )
       ).rows;
-      for (const raw of rows) {
-        afterId = await processRow(raw, field, fieldCounts);
-      }
+      await processRows(rows, field, fieldCounts);
       if (rows.length < size) {
         fieldIndex++;
         afterId = null;
