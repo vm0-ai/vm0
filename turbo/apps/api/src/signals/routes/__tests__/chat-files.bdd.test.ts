@@ -791,7 +791,7 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     });
     expect(prepared).toMatchObject({
       filename: "notes.txt",
-      contentType: "text/plain",
+      contentType: "text/plain;charset=UTF-8",
       size: 12,
     });
     expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
