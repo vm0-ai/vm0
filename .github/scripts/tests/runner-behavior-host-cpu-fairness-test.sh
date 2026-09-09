@@ -40,7 +40,8 @@ case "$destination" in
     exit 1
     ;;
 esac
-cp -- "$1" "${MOCK_CASE_DIR}/remote-bin"
+mkdir -p "${MOCK_CASE_DIR}/upload"
+cp -- "$1" "${MOCK_CASE_DIR}/upload/${destination##*/}"
 FAKE_SCP
 
 cat >"${fake_bin}/ssh" <<'FAKE_SSH'
@@ -51,7 +52,7 @@ set -euo pipefail
 map_paths() {
   local value=$1
   value=${value//"/tmp/vm0-runner-behavior/host-cpu-fairness-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"/"${MOCK_CASE_DIR}/durable"}
-  value=${value//"/tmp/runner-host-cpu-fairness-${JOB_REF}"/"${MOCK_CASE_DIR}/remote-bin"}
+  value=${value//"/tmp/runner-host-cpu-fairness-"/"${MOCK_CASE_DIR}/upload/runner-host-cpu-fairness-"}
   value=${value//"/run/lock/vm0-host-cpu-fairness"/"${MOCK_LOCK_ROOT}/pre-r5c"}
   value=${value//"/run/lock/runner-host-cpu-fairness"/"${MOCK_LOCK_ROOT}/interim"}
   value=${value//"/var/lib/vm0-runner/host-cpu-fairness"/"${MOCK_CASE_DIR}/base"}
@@ -86,8 +87,6 @@ if [ "$#" -eq 1 ]; then
   if [ "$phase" = stage ]; then
     worker_source=$(cat)
     worker_source=$(map_paths "$worker_source")
-    # BIN_DIR is the upload directory; bind the test binary to the fake host.
-    worker_source=${worker_source//'TEST_BIN="${BIN_DIR}/runner-host-cpu-fairness-${EXECUTION_KEY}"'/'TEST_BIN="${MOCK_CASE_DIR}/remote-bin"'}
     bash -c "$command_source" <<<"$worker_source"
   else
     bash -c "$command_source"
@@ -97,9 +96,8 @@ else
   shift 3
   remote_arguments=()
   for argument in "$@"; do
-    # Upload cleanup is called with the original, not durable, JOB_REF.
-    if [[ "$argument" == /tmp/runner-host-cpu-fairness-* ]]; then
-      remote_arguments+=("${MOCK_CASE_DIR}/remote-bin")
+    if [ "$argument" = /tmp ]; then
+      remote_arguments+=("${MOCK_CASE_DIR}/upload")
     else
       remote_arguments+=("$(map_paths "$argument")")
     fi
@@ -556,7 +554,8 @@ test_durable_recovery() (
   [ "$(grep -Fc "native fairness result: ${native_status}" "$output")" -eq 1 ] ||
     fail "recovered log was missing or duplicated"
   grep -q '^HOST_CPU_SELECTED_CPU=' "$output" || fail "CPU selection log was lost"
-  [ ! -e "${invocation_dir}/remote-bin" ] || fail "uploaded binary was not cleaned"
+  [ ! -e "${invocation_dir}/upload/runner-host-cpu-fairness-recovery-106-1" ] ||
+    fail "uploaded binary was not cleaned"
   [ ! -e "${invocation_dir}/durable" ] || fail "durable result was not cleaned"
   [ ! -d "${invocation_dir}/base/recovery-106-1" ] || fail "test state was not cleaned"
   grep -Fxq "runner-host-cpu-managed-recovery-106-1.service" \
