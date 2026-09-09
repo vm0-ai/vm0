@@ -1,4 +1,4 @@
-// oxlint-disable-next-line no-restricted-imports -- this file is the wrapper around @vercel/functions waitUntil, confirmed by ethan@vm0.ai
+// oxlint-disable-next-line no-restricted-imports -- this file owns the wrapper around @vercel/functions waitUntil
 import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 
 import { env } from "../../lib/env";

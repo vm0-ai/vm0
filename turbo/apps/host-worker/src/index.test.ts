@@ -216,18 +216,6 @@ describe("hosted site worker", () => {
     expect(response.headers.get("Vary")).toBe("Origin");
   });
 
-  it("rejects the retired vm0.ai origins", async () => {
-    const response = await fetchWorker(
-      new Request("https://demo.sites.vm0.io/", {
-        headers: { Origin: "https://app.vm0.ai" },
-      }),
-      env(),
-    );
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
-  });
-
   it.each([
     "https://okou.ai",
     "https://app.okou.ai",

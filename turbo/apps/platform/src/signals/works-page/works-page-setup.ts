@@ -51,7 +51,6 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(initWorksRedirect$);
   set(initSlackOrg$);
 
-  // confirmed by ethan@vm0.ai
   // eslint-disable-next-line ccstate/no-detach-in-signals -- route-scoped realtime subscriptions run until the /works route signal aborts
   detach(
     Promise.all([
