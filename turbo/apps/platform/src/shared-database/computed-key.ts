@@ -1,4 +1,3 @@
-import { DESKTOP_PRODUCTS } from "@okouai/api-contracts/contracts/client-headers";
 import { computerUseHostStatusSchema } from "@okouai/api-contracts/contracts/computer-use";
 import {
   queueResponseSchema,
@@ -29,7 +28,6 @@ export type ComputedKey = z.infer<typeof computedKeySchema>;
 export const listedComputerUseHostSchema = z
   .object({
     id: z.string(),
-    product: z.enum(DESKTOP_PRODUCTS),
     hostName: z.string(),
     displayName: z.string(),
     lastSeenAt: z.string(),

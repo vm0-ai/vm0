@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { desktopProductFromClientHeader } from "@okouai/api-contracts/contracts/client-headers";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 
 import type { ListedComputerUseHost } from "../../shared-database/computed-key.ts";
@@ -27,7 +26,6 @@ export const computerUseHosts$ = computed(
     return result.body.hosts.map((host) => {
       return {
         id: host.id,
-        product: desktopProductFromClientHeader(host.product),
         hostName: host.hostName ?? host.displayName,
         displayName: host.displayName,
         lastSeenAt: host.lastSeenAt,
