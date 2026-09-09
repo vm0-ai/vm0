@@ -343,6 +343,7 @@ describe("okou connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", API_BASE_URL);
+    vi.stubEnv("OKOU_APP_URL", undefined);
     vi.stubEnv("OKOU_TOKEN", buildOkouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);

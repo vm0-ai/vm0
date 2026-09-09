@@ -13,7 +13,7 @@ import { getOkouAppUrl } from "../../lib/okou-env";
  *   localhost:3000                → localhost:3000
  *   custom.example.com            → app.custom.example.com
  */
-export function toPlatformUrl(apiUrl: string): URL {
+function toPlatformUrl(apiUrl: string): URL {
   const parsed = new URL(apiUrl);
   const parts = parsed.hostname.split(".");
   const serviceLabel = parts[0]!;

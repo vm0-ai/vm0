@@ -20,7 +20,6 @@ import {
   type UrlDiagnosticRequest,
 } from "./check-diagnostic";
 
-import { getApiUrl } from "../../lib/api/config";
 import {
   loadCustomConnectorCheckContext,
   printCustomConnectorCheckStatus,
@@ -35,7 +34,7 @@ import {
 import { getAgentUserConnectors } from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../lib/okou-env";
-import { toPlatformUrl } from "../doctor/platform-url";
+import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   computerUsePermissionGuidance,
   printComputerUsePermissionGuidance,
@@ -734,14 +733,14 @@ Permission recovery:
       printDiagnosticSummary(request, result);
       console.log("");
 
-      const platformUrl = toPlatformUrl(await getApiUrl());
+      const platformOrigin = await getPlatformOrigin();
       const ctx: DiagContext = {
         environmentNames: diagnosticEnvironmentNames(result),
         label: result.connector.label,
         connectorAvailable: result.connector.visibility === "available",
         credentialResolution: result.connector.credentialResolution,
         run: result.run,
-        platformOrigin: platformUrl.origin,
+        platformOrigin,
         agentId: getOkouAgentId(),
         runBound: isRunBoundConnectorContext(),
       };

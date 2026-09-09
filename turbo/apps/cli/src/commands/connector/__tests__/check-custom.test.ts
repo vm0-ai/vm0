@@ -562,6 +562,25 @@ describe("custom connector URL diagnostics", () => {
     expect(error.mock.calls.flat().join("\n")).not.toContain("password");
   });
 
+  it("uses the configured app origin for reconnect, permission review, and callback links", async () => {
+    const appOrigin = "https://preview-app.example.com";
+    vi.stubEnv("OKOU_APP_URL", appOrigin);
+    server.use(
+      stubRunConnectorAccountInspection([account("reconnect-required")]),
+    );
+
+    await check();
+
+    const reconnectUrl = `${appOrigin}/connectors/_mutable-new-slug/reconnect/${ACCOUNT_ID}?agentId=agent-1`;
+    expect(output()).toContain(`[Reconnect Renamed Acme](${reconnectUrl})`);
+    expect(output()).toContain(
+      `${reconnectUrl}&threadId=thread-1&callbackPrompt=`,
+    );
+    expect(output()).toContain(
+      `[Custom connector settings](${appOrigin}/connectors?tab=custom&customConnectorId=${CUSTOM_ID}&view=access&permission=items%3Awrite&agentId=agent-1)`,
+    );
+  });
+
   it("retains a deleted pinned account identity without suggesting a sibling account", async () => {
     server.use(stubRunConnectorAccountInspection([]));
     await check();
