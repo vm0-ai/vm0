@@ -1025,15 +1025,15 @@ test("Open personal Settings and manage account security", async () => {
       screen.getByRole("heading", { name: "Preference" }),
     ).toBeInTheDocument();
     // Scoped to the dialog: the sidebar account row also carries the name.
-    expect(within(dialog).getByText("Account & Security")).toBeInTheDocument();
+    expect(within(dialog).getByText("Account & security")).toBeInTheDocument();
     expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
     expect(
       within(dialog).getByText("alex.rivera@example.test"),
     ).toBeInTheDocument();
     const morningBrief = within(dialog).getByTestId("morning-brief-preference");
-    expect(morningBrief.previousElementSibling).toContainElement(
-      within(dialog).getByText("Time zone"),
-    );
+    expect(
+      within(dialog).getByRole("region", { name: "Email subscriptions" }),
+    ).toContainElement(morningBrief);
     expect(within(dialog).queryByText("Send now")).toBeNull();
   });
 
@@ -1089,7 +1089,7 @@ test("Open personal Settings and manage account security from the production sat
     screen.getByRole("heading", { name: "Preference" }),
   ).toBeInTheDocument();
   expect(
-    within(settingsDialog).getByText("Account & Security"),
+    within(settingsDialog).getByText("Account & security"),
   ).toBeInTheDocument();
   expect(within(settingsDialog).getByText("Alex Rivera")).toBeInTheDocument();
   expect(
@@ -1146,7 +1146,7 @@ test("Toggle network-body capture in Debug settings", async () => {
       screen.getByRole("heading", { name: "Preference" }),
     ).toBeInTheDocument();
     // Scoped to the dialog: the sidebar account row also carries the name.
-    expect(within(dialog).getByText("Account & Security")).toBeInTheDocument();
+    expect(within(dialog).getByText("Account & security")).toBeInTheDocument();
     expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
     expect(
       within(dialog).getByText("alex.rivera@example.test"),

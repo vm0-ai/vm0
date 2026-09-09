@@ -5414,6 +5414,18 @@
           "unavailable": "Model tidak tersedia ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Email opsional, termasuk ringkasan dan pengingat, di seluruh ruang kerja Anda.",
+        "loading": "Memeriksa langganan email…",
+        "retryMessage": "Tidak dapat menyimpan atau memuat langganan email. Coba lagi.",
+        "saving": "Menyimpan…",
+        "sectionTitle": "Langganan email",
+        "subscribed": "Berlangganan",
+        "title": "Terima email dari Okou",
+        "unavailable": "Email tidak tersedia",
+        "unavailableDescription": "Periksa email di Akun & keamanan, atau hubungi dukungan jika pengiriman diblokir.",
+        "unsubscribed": "Berhenti berlangganan"
+      },
       "language": {
         "description": "Pilih bahasa pilihan Anda untuk antarmuka {{brandName}}",
         "label": "Bahasa",
@@ -5432,13 +5444,19 @@
         "title": "Bahasa"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + email",
+        "chatOnly": "Hanya Chat",
+        "checkEmailSubscription": "Periksa langganan email di atas untuk status pengiriman.",
         "conflict": "Morning Brief untuk sementara tidak tersedia karena status instalasinya tidak konsisten. Coba lagi setelah rekonsiliasi selesai.",
-        "description": "Dapatkan email harian pukul 07.00 di zona waktu Anda dengan prioritas dari Gmail, GitHub, Calendar, dan Chats yang belum dibaca.",
+        "description": "Dapatkan prioritas harian pukul 07.00 sesuai zona waktu Anda untuk ruang kerja ini.",
+        "emailOff": "Email nonaktif. Ringkasan tetap muncul di Chat.",
+        "emailWhenReady": "Anda akan menerima email saat ringkasan siap.",
         "loading": "Memuat pengaturan Morning Brief...",
         "missingDefaultAgent": "Pilih Agent default yang dapat digunakan sebelum mengaktifkan Morning Brief.",
         "missingTimezone": "Tetapkan zona waktu yang valid sebelum mengaktifkan Morning Brief.",
         "multipleInstallations": "Ada beberapa instalasi Morning Brief. Selesaikan konflik sebelum mengubah preferensi ini.",
-        "nextEmail": "Email berikutnya: {{date}} ({{timezone}})",
+        "nextBrief": "Ringkasan berikutnya {{date}} ({{timezone}})",
+        "paused": "Dijeda",
         "retry": "Coba lagi",
         "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
         "title": "Brief Pagi"

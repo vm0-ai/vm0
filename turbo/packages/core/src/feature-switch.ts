@@ -240,7 +240,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MorningBrief]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Enable the first-class Morning Brief experience in Preferences.",
+      "Enable Morning Brief and email subscription management in Preferences.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

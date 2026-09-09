@@ -5414,6 +5414,18 @@
           "unavailable": "利用できないモデル（{{model}}）"
         }
       },
+      "emailSubscription": {
+        "description": "すべてのワークスペースのブリーフやリマインダーなど、任意のメールを管理します。",
+        "loading": "メール配信設定を確認中…",
+        "retryMessage": "メール配信設定を保存または読み込めませんでした。もう一度お試しください。",
+        "saving": "保存中…",
+        "sectionTitle": "メール配信設定",
+        "subscribed": "配信登録済み",
+        "title": "Okouからのメールを受け取る",
+        "unavailable": "メールを利用できません",
+        "unavailableDescription": "「アカウントとセキュリティ」でメールアドレスを確認してください。配信がブロックされている場合はサポートにお問い合わせください。",
+        "unsubscribed": "配信停止中"
+      },
       "language": {
         "description": "{{brandName}}のインターフェースで使用する言語を選択します",
         "label": "言語",
@@ -5432,13 +5444,19 @@
         "title": "言語"
       },
       "morningBrief": {
+        "chatAndEmail": "チャット＋メール",
+        "chatOnly": "チャットのみ",
+        "checkEmailSubscription": "上のメール配信設定で配信状況を確認してください。",
         "conflict": "インストール状態に不整合があるため、Morning Brief は一時的に利用できません。調整が完了したら再試行してください。",
-        "description": "タイムゾーンの午前 7 時に、Gmail、GitHub、Calendar、未読 Chats の優先事項をまとめたメールを毎日受け取ります。",
+        "description": "このワークスペースの毎日の優先事項を、お使いのタイムゾーンの午前7時に確認できます。",
+        "emailOff": "メールはオフです。ブリーフは引き続きチャットに表示されます。",
+        "emailWhenReady": "ブリーフの準備ができるとメールが届きます。",
         "loading": "Morning Brief の設定を読み込んでいます...",
         "missingDefaultAgent": "Morning Brief を有効にする前に、使用可能なデフォルト Agent を選択してください。",
         "missingTimezone": "Morning Brief を有効にする前に、有効なタイムゾーンを設定してください。",
         "multipleInstallations": "Morning Brief のインストールが複数あります。この設定を変更する前に競合を解決してください。",
-        "nextEmail": "次のメール: {{date}} ({{timezone}})",
+        "nextBrief": "次のブリーフ {{date}}（{{timezone}}）",
+        "paused": "一時停止中",
         "retry": "再試行",
         "retryMessage": "Morning Brief の設定を読み込むか更新できませんでした。再試行してください。",
         "title": "モーニングブリーフ"

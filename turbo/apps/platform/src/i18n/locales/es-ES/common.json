@@ -5486,6 +5486,18 @@
           "unavailable": "Modelo no disponible ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Correos opcionales, incluidos resúmenes y recordatorios, en todos tus espacios de trabajo.",
+        "loading": "Comprobando la suscripción por correo…",
+        "retryMessage": "No se pudo guardar o cargar tu suscripción por correo. Inténtalo de nuevo.",
+        "saving": "Guardando…",
+        "sectionTitle": "Suscripciones por correo",
+        "subscribed": "Suscrito",
+        "title": "Recibir correos de Okou",
+        "unavailable": "Correo no disponible",
+        "unavailableDescription": "Revisa tu correo en Cuenta y seguridad o contacta con soporte si la entrega está bloqueada.",
+        "unsubscribed": "Suscripción cancelada"
+      },
       "language": {
         "description": "Elige tu idioma preferido para la interfaz de {{brandName}}",
         "label": "Idioma",
@@ -5504,13 +5516,19 @@
         "title": "Idioma"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + correo",
+        "chatOnly": "Solo Chat",
+        "checkEmailSubscription": "Consulta la suscripción por correo de arriba para ver el estado de entrega.",
         "conflict": "Morning Brief no está disponible temporalmente porque el estado de su instalación no es coherente. Vuelve a intentarlo cuando finalice la conciliación.",
-        "description": "Recibe un correo diario a las 7:00 en tu zona horaria con prioridades de Gmail, GitHub, Calendar y Chats sin leer.",
+        "description": "Recibe las prioridades diarias de este espacio de trabajo a las 7:00 en tu zona horaria.",
+        "emailOff": "El correo está desactivado. Tu resumen seguirá apareciendo en Chat.",
+        "emailWhenReady": "Recibirás un correo cuando tu resumen esté listo.",
         "loading": "Cargando la configuración de Morning Brief...",
         "missingDefaultAgent": "Elige un Agente predeterminado que se pueda utilizar antes de activar Morning Brief.",
         "missingTimezone": "Establece una zona horaria válida antes de activar Morning Brief.",
         "multipleInstallations": "Hay varias instalaciones de Morning Brief. Resuelve el conflicto antes de cambiar esta preferencia.",
-        "nextEmail": "Siguiente correo: {{date}} ({{timezone}})",
+        "nextBrief": "Próximo resumen {{date}} ({{timezone}})",
+        "paused": "En pausa",
         "retry": "Reintentar",
         "retryMessage": "No se pudo cargar o actualizar la configuración de Morning Brief. Vuelve a intentarlo para continuar.",
         "title": "Resumen matutino"

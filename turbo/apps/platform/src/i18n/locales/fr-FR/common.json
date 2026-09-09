@@ -5486,6 +5486,18 @@
           "unavailable": "Modèle indisponible ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "E-mails facultatifs, dont les synthèses et rappels, dans tous vos espaces de travail.",
+        "loading": "Vérification de l’abonnement aux e-mails…",
+        "retryMessage": "Impossible d’enregistrer ou de charger votre abonnement aux e-mails. Réessayez.",
+        "saving": "Enregistrement…",
+        "sectionTitle": "Abonnements aux e-mails",
+        "subscribed": "Abonné",
+        "title": "Recevoir les e-mails d’Okou",
+        "unavailable": "E-mail indisponible",
+        "unavailableDescription": "Vérifiez votre e-mail dans Compte et sécurité ou contactez l’assistance si la livraison est bloquée.",
+        "unsubscribed": "Désabonné"
+      },
       "language": {
         "description": "Choisissez votre langue préférée pour l'interface {{brandName}}",
         "label": "Langue",
@@ -5504,13 +5516,19 @@
         "title": "Langue"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + e-mail",
+        "chatOnly": "Chat uniquement",
+        "checkEmailSubscription": "Consultez l’abonnement aux e-mails ci-dessus pour connaître l’état de la livraison.",
         "conflict": "Morning Brief est temporairement indisponible, car l'état de son installation est incohérent. Réessayez une fois la réconciliation terminée.",
-        "description": "Recevez chaque jour à 7 h, dans votre fuseau horaire, un e-mail présentant les priorités de Gmail, GitHub, Calendar et des Chats non lus.",
+        "description": "Recevez les priorités quotidiennes de cet espace de travail à 7 h dans votre fuseau horaire.",
+        "emailOff": "Les e-mails sont désactivés. Votre synthèse apparaîtra toujours dans Chat.",
+        "emailWhenReady": "Vous recevrez un e-mail lorsque votre synthèse sera prête.",
         "loading": "Chargement des paramètres de Morning Brief...",
         "missingDefaultAgent": "Choisissez un Agent par défaut utilisable avant d'activer Morning Brief.",
         "missingTimezone": "Définissez un fuseau horaire valide avant d'activer Morning Brief.",
         "multipleInstallations": "Plusieurs installations de Morning Brief existent. Résolvez le conflit avant de modifier cette préférence.",
-        "nextEmail": "Prochain e-mail : {{date}} ({{timezone}})",
+        "nextBrief": "Prochaine synthèse {{date}} ({{timezone}})",
+        "paused": "En pause",
         "retry": "Réessayer",
         "retryMessage": "Les paramètres de Morning Brief n'ont pas pu être chargés ou mis à jour. Réessayez pour continuer.",
         "title": "Résumé du matin"

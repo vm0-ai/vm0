@@ -5414,6 +5414,18 @@
           "unavailable": "사용할 수 없는 모델 ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "모든 워크스페이스의 브리핑과 알림 등 선택적 이메일을 관리합니다.",
+        "loading": "이메일 구독 확인 중…",
+        "retryMessage": "이메일 구독을 저장하거나 불러오지 못했습니다. 다시 시도하세요.",
+        "saving": "저장 중…",
+        "sectionTitle": "이메일 구독",
+        "subscribed": "구독 중",
+        "title": "Okou 이메일 받기",
+        "unavailable": "이메일 사용 불가",
+        "unavailableDescription": "계정 및 보안에서 이메일을 확인하거나, 전송이 차단된 경우 지원팀에 문의하세요.",
+        "unsubscribed": "구독 해지됨"
+      },
       "language": {
         "description": "{{brandName}} 인터페이스에 사용할 기본 언어를 선택하세요",
         "label": "언어",
@@ -5432,13 +5444,19 @@
         "title": "언어"
       },
       "morningBrief": {
+        "chatAndEmail": "채팅 + 이메일",
+        "chatOnly": "채팅만",
+        "checkEmailSubscription": "위의 이메일 구독에서 전송 상태를 확인하세요.",
         "conflict": "설치 상태가 일관되지 않아 Morning Brief를 일시적으로 사용할 수 없습니다. 조정이 완료되면 다시 시도하세요.",
-        "description": "매일 오전 7시에 현재 시간대를 기준으로 Gmail, GitHub, Calendar 및 읽지 않은 Chats의 우선순위를 이메일로 받아보세요.",
+        "description": "이 워크스페이스의 일일 우선순위를 내 시간대의 오전 7시에 받아보세요.",
+        "emailOff": "이메일이 꺼져 있습니다. 브리핑은 계속 채팅에 표시됩니다.",
+        "emailWhenReady": "브리핑이 준비되면 이메일을 받게 됩니다.",
         "loading": "Morning Brief 설정을 불러오는 중...",
         "missingDefaultAgent": "Morning Brief를 활성화하기 전에 사용 가능한 기본 Agent를 선택하세요.",
         "missingTimezone": "Morning Brief를 활성화하기 전에 유효한 시간대를 설정하세요.",
         "multipleInstallations": "Morning Brief 설치가 여러 개 있습니다. 이 환경설정을 변경하기 전에 충돌을 해결하세요.",
-        "nextEmail": "다음 이메일: {{date}} ({{timezone}})",
+        "nextBrief": "다음 브리핑 {{date}} ({{timezone}})",
+        "paused": "일시 중지됨",
         "retry": "다시 시도",
         "retryMessage": "Morning Brief 설정을 불러오거나 업데이트할 수 없습니다. 계속하려면 다시 시도하세요.",
         "title": "모닝 브리프"

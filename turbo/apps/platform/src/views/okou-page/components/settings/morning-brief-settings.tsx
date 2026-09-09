@@ -6,6 +6,7 @@ import { AlertCircle, Loader2, RotateCcw, Sunrise } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { currentLocale } from "../../../../i18n/index.ts";
+import { emailSubscription$ } from "../../../../signals/okou-page/settings/email-subscription.ts";
 import {
   morningBriefPreference$,
   morningBriefPreferenceCardRef$,
@@ -17,7 +18,7 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { PreferenceCardRow } from "./preference-card-row.tsx";
 
-function nextEmailText(
+function nextBriefText(
   state: MorningBriefPreferenceState,
   format: (date: string, timezone: string) => string,
 ): string | null {
@@ -47,8 +48,8 @@ function MorningBriefStatus({
   const unavailable =
     state?.kind === "ready" ? state.preference.unavailableReason : null;
   const conflicted = state?.kind === "error";
-  const nextEmail = state
-    ? nextEmailText(state, (date, timezone) => {
+  const nextBrief = state
+    ? nextBriefText(state, (date, timezone) => {
         const formatted = new Intl.DateTimeFormat(currentLocale(), {
           dateStyle: "medium",
           timeStyle: "short",
@@ -56,14 +57,14 @@ function MorningBriefStatus({
         }).format(new Date(date));
         return t(
           ($) => {
-            return $.settings.preferences.morningBrief.nextEmail;
+            return $.settings.preferences.morningBrief.nextBrief;
           },
           { date: formatted, timezone },
         );
       })
     : null;
 
-  let status = nextEmail;
+  let status = nextBrief;
   if (loading) {
     status = t(($) => {
       return $.settings.preferences.morningBrief.loading;
@@ -101,6 +102,58 @@ function MorningBriefStatus({
       {showAlert && <AlertCircle className="size-3.5 shrink-0" />}
       {loading && <Loader2 className="size-3.5 animate-spin" />}
       <span>{status}</span>
+    </div>
+  );
+}
+
+function MorningBriefDeliveryStatus({
+  enabled,
+}: {
+  readonly enabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const subscription = useLoadable(emailSubscription$);
+  if (!enabled) {
+    return (
+      <span>
+        {t(($) => {
+          return $.settings.preferences.morningBrief.paused;
+        })}
+      </span>
+    );
+  }
+  if (subscription.state !== "hasData") {
+    return (
+      <span>
+        {t(($) => {
+          return $.settings.preferences.morningBrief.checkEmailSubscription;
+        })}
+      </span>
+    );
+  }
+  const receivesEmail =
+    subscription.data.subscribed &&
+    subscription.data.deliveryStatus === "available";
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="font-medium">
+        {receivesEmail
+          ? t(($) => {
+              return $.settings.preferences.morningBrief.chatAndEmail;
+            })
+          : t(($) => {
+              return $.settings.preferences.morningBrief.chatOnly;
+            })}
+      </span>
+      <span>
+        {receivesEmail
+          ? t(($) => {
+              return $.settings.preferences.morningBrief.emailWhenReady;
+            })
+          : t(($) => {
+              return $.settings.preferences.morningBrief.emailOff;
+            })}
+      </span>
     </div>
   );
 }
@@ -160,12 +213,20 @@ export function MorningBriefSettings() {
           return $.settings.preferences.morningBrief.description;
         })}
         status={
-          <MorningBriefStatus
-            state={state}
-            loading={loading}
-            loadFailed={loadFailed}
-            mutationFailed={mutationFailed}
-          />
+          <div
+            className="flex flex-col gap-1 text-xs text-muted-foreground"
+            aria-live="polite"
+          >
+            <MorningBriefStatus
+              state={state}
+              loading={loading || mutating}
+              loadFailed={loadFailed}
+              mutationFailed={mutationFailed}
+            />
+            {preference && unavailable === null && (
+              <MorningBriefDeliveryStatus enabled={preference.enabled} />
+            )}
+          </div>
         }
       >
         <div className="flex shrink-0 items-center gap-2">

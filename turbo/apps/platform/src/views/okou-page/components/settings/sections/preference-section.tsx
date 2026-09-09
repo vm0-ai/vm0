@@ -14,6 +14,7 @@ import {
 import { detach, Reason } from "../../../../../signals/utils.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
 import { MorningBriefSettings } from "../morning-brief-settings.tsx";
+import { EmailSubscriptionSettings } from "../email-subscription-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
 import { LanguageSettings } from "../language-settings.tsx";
@@ -105,6 +106,23 @@ export function PreferenceSection() {
         <AccountSection />
       </section>
 
+      {featureSwitches[FeatureSwitchKey.MorningBrief] ? (
+        <section
+          className="flex flex-col gap-3"
+          aria-labelledby="email-subscriptions-heading"
+        >
+          <div id="email-subscriptions-heading">
+            <SettingsSectionHeading
+              title={t(($) => {
+                return $.settings.preferences.emailSubscription.sectionTitle;
+              })}
+            />
+          </div>
+          <EmailSubscriptionSettings />
+          <MorningBriefSettings />
+        </section>
+      ) : null}
+
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
           title={t(($) => {
@@ -143,9 +161,6 @@ export function PreferenceSection() {
           })}
         />
         <TimezoneSettings />
-        {featureSwitches[FeatureSwitchKey.MorningBrief] ? (
-          <MorningBriefSettings />
-        ) : null}
       </section>
     </div>
   );

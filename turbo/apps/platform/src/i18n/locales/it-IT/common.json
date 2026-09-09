@@ -5486,6 +5486,18 @@
           "unavailable": "Modello non disponibile ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Email facoltative, inclusi riepiloghi e promemoria, in tutti i tuoi spazi di lavoro.",
+        "loading": "Verifica dell’iscrizione email…",
+        "retryMessage": "Impossibile salvare o caricare l’iscrizione email. Riprova.",
+        "saving": "Salvataggio…",
+        "sectionTitle": "Iscrizioni email",
+        "subscribed": "Iscrizione attiva",
+        "title": "Ricevi email da Okou",
+        "unavailable": "Email non disponibile",
+        "unavailableDescription": "Controlla l’email in Account e sicurezza o contatta l’assistenza se la consegna è bloccata.",
+        "unsubscribed": "Iscrizione annullata"
+      },
       "language": {
         "description": "Scegli la tua lingua preferita per l'interfaccia {{brandName}}",
         "label": "Lingua",
@@ -5504,13 +5516,19 @@
         "title": "Lingua"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + email",
+        "chatOnly": "Solo Chat",
+        "checkEmailSubscription": "Controlla l’iscrizione email qui sopra per lo stato della consegna.",
         "conflict": "Morning Brief non è temporaneamente disponibile perché lo stato dell'installazione non è coerente. Riprova al termine della riconciliazione.",
-        "description": "Ricevi ogni giorno alle 7:00, nel tuo fuso orario, un'email con le priorità da Gmail, GitHub, Calendar e Chats non lette.",
+        "description": "Ricevi le priorità quotidiane di questo spazio di lavoro alle 7:00 nel tuo fuso orario.",
+        "emailOff": "L’email è disattivata. Il riepilogo continuerà ad apparire in Chat.",
+        "emailWhenReady": "Riceverai un’email quando il riepilogo sarà pronto.",
         "loading": "Caricamento delle impostazioni di Morning Brief...",
         "missingDefaultAgent": "Scegli un Agent predefinito utilizzabile prima di attivare Morning Brief.",
         "missingTimezone": "Imposta un fuso orario valido prima di attivare Morning Brief.",
         "multipleInstallations": "Esistono più installazioni di Morning Brief. Risolvi il conflitto prima di modificare questa preferenza.",
-        "nextEmail": "Prossima email: {{date}} ({{timezone}})",
+        "nextBrief": "Prossimo riepilogo {{date}} ({{timezone}})",
+        "paused": "In pausa",
         "retry": "Riprova",
         "retryMessage": "Non è stato possibile caricare o aggiornare le impostazioni di Morning Brief. Riprova per continuare.",
         "title": "Riepilogo mattutino"

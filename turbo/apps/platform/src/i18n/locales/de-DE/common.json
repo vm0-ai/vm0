@@ -5427,6 +5427,18 @@
           "unavailable": "Modell nicht verfügbar ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Optionale E-Mails mit Briefings und Erinnerungen für alle deine Workspaces.",
+        "loading": "E-Mail-Abonnement wird geprüft…",
+        "retryMessage": "Dein E-Mail-Abonnement konnte nicht gespeichert oder geladen werden. Versuche es erneut.",
+        "saving": "Wird gespeichert…",
+        "sectionTitle": "E-Mail-Abonnements",
+        "subscribed": "Abonniert",
+        "title": "E-Mails von Okou erhalten",
+        "unavailable": "E-Mail nicht verfügbar",
+        "unavailableDescription": "Prüfe deine E-Mail unter Konto & Sicherheit oder kontaktiere den Support, wenn die Zustellung blockiert ist.",
+        "unsubscribed": "Abgemeldet"
+      },
       "language": {
         "description": "Wählen Sie Ihre bevorzugte Sprache für die Benutzeroberfläche von {{brandName}}",
         "label": "Sprache",
@@ -5445,13 +5457,19 @@
         "title": "Sprache"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + E-Mail",
+        "chatOnly": "Nur Chat",
+        "checkEmailSubscription": "Prüfe oben dein E-Mail-Abonnement für den Zustellstatus.",
         "conflict": "Morning Brief ist vorübergehend nicht verfügbar, da der Installationsstatus inkonsistent ist. Versuchen Sie es erneut, wenn die Abstimmung abgeschlossen ist.",
-        "description": "Erhalten Sie täglich um 7:00 Uhr in Ihrer Zeitzone eine E-Mail mit Prioritäten aus Gmail, GitHub, Kalender und ungelesenen Chats.",
+        "description": "Erhalte die täglichen Prioritäten für diesen Workspace um 7 Uhr in deiner Zeitzone.",
+        "emailOff": "E-Mail ist deaktiviert. Dein Briefing erscheint weiterhin im Chat.",
+        "emailWhenReady": "Du erhältst eine E-Mail, sobald dein Briefing bereit ist.",
         "loading": "Morning-Brief-Einstellungen werden geladen...",
         "missingDefaultAgent": "Wählen Sie einen verwendbaren Standard-Agenten aus, bevor Sie Morning Brief aktivieren.",
         "missingTimezone": "Legen Sie eine gültige Zeitzone fest, bevor Sie Morning Brief aktivieren.",
         "multipleInstallations": "Es sind mehrere Morning-Brief-Installationen vorhanden. Beheben Sie den Konflikt, bevor Sie diese Einstellung ändern.",
-        "nextEmail": "Nächste E-Mail: {{date}} ({{timezone}})",
+        "nextBrief": "Nächstes Briefing {{date}} ({{timezone}})",
+        "paused": "Pausiert",
         "retry": "Erneut versuchen",
         "retryMessage": "Die Morning-Brief-Einstellungen konnten nicht geladen oder aktualisiert werden. Versuchen Sie es erneut.",
         "title": "Morgenbrief"
