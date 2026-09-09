@@ -55,6 +55,11 @@ function createReference(options: {
     title: options.title,
     visibility: options.visibility ?? "private",
     ownerUserId,
+    creator: {
+      userId: ownerUserId,
+      displayName: null,
+      imageUrl: null,
+    },
     sourceFilename: `${options.title}.png`,
     contentType: "image/png",
     width: 1280,
