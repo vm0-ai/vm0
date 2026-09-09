@@ -336,7 +336,10 @@ function menuItemByText(text: string): HTMLElement {
 function queryMenuItemByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("menuitem").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+      return (
+        candidate.getAttribute("aria-label") === text ||
+        candidate.textContent?.replace(/\s+/g, " ").trim() === text
+      );
     }) ?? null
   );
 }
@@ -2273,7 +2276,13 @@ test("Recognize and pin sidebar conversation states", async () => {
   }
 
   openThreadMenu("Release plan");
-  click(menuItemByText("Pin chat"));
+  const pinItem = menuItemByText("Pin chat");
+  expect(pinItem).toHaveTextContent("Ctrl+Shift+D");
+  expect(pinItem).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Meta+Shift+D Control+Shift+D",
+  );
+  click(pinItem);
 
   await waitFor(() => {
     expect(
@@ -2288,7 +2297,9 @@ test("Recognize and pin sidebar conversation states", async () => {
       "chat-thread-pinned-indicator",
     ),
   );
-  click(menuItemByText("Unpin chat"));
+  const unpinItem = menuItemByText("Unpin chat");
+  expect(unpinItem).toHaveTextContent("Ctrl+Shift+D");
+  click(unpinItem);
 
   await waitFor(() => {
     expect(
@@ -2299,7 +2310,9 @@ test("Recognize and pin sidebar conversation states", async () => {
   });
 
   openThreadMenu("Running analysis");
-  expect(menuItemByText("Rename chat")).toBeInTheDocument();
+  const renameItem = menuItemByText("Rename chat");
+  expect(renameItem).toHaveTextContent("F2");
+  expect(renameItem).toHaveAttribute("aria-keyshortcuts", "F2");
   expect(menuItemByText("Delete chat")).toBeInTheDocument();
 });
 
