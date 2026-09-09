@@ -6,7 +6,7 @@ import { safeSync, safeUrlParse } from "../utils";
 
 const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
 const OKOU_AUTOMATION_EMAIL_HERO_URL =
-  "https://clever-flame-3d70727f81.media.strapiapp.com/okou_onboarding_banner_2x_6b7c3904fd.png";
+  "https://static.vm0.io/public/okou-morning-brief-hero-sun-36448a011642.png";
 
 const SAFE_LINK_INFO = "official-email-safe-link";
 const UNSAFE_LINK_INFO = "official-email-unsafe-link";
