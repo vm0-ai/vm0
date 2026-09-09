@@ -1,12 +1,14 @@
 import { withChatScrollLayout } from "./chat-scroll-layout.tsx";
 import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
 import { CopyButton } from "@okouai/ui";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { File, Image, Loader2, Video } from "lucide-react";
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { z } from "zod";
 
 import {
   escapeHtmlTags,
@@ -20,6 +22,8 @@ import type {
 } from "../../signals/chat-page/artifact-card-signals.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { isImageUrl, isSafeMediaUrl } from "../../lib/media-url.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { locale$ } from "../../signals/locale.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
@@ -30,6 +34,7 @@ type MarkdownNodeProp = { node?: Element };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
 type MarkdownSpanProps = ComponentPropsWithoutRef<"span"> & MarkdownNodeProp;
+type MarkdownTimeProps = ComponentPropsWithoutRef<"time"> & MarkdownNodeProp;
 type MarkdownDivProps = ComponentPropsWithoutRef<"div"> & {
   node?: Element;
 };
@@ -332,6 +337,32 @@ function MarkdownSpanRenderer(props: MarkdownSpanProps) {
   return <span {...omitMarkdownNodeProp(rest)}>{children}</span>;
 }
 
+const markdownDateTimeSchema = z.iso.datetime({ offset: true });
+
+function MarkdownTimeRenderer({
+  children,
+  dateTime,
+  ...rest
+}: MarkdownTimeProps) {
+  const features = useLastResolved(featureSwitch$);
+  const locale = useGet(locale$);
+  const timestamp = features?.[FeatureSwitchKey.MarkdownTime]
+    ? markdownDateTimeSchema.safeParse(dateTime)
+    : undefined;
+  const content = timestamp?.success
+    ? new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeStyle: "long",
+      }).format(new Date(timestamp.data))
+    : children;
+
+  return (
+    <time {...omitMarkdownNodeProp(rest)} dateTime={dateTime}>
+      {content}
+    </time>
+  );
+}
+
 // `rehypeMermaid` turns mermaid fences into `<div data-mermaid-code>`; every
 // other div renders as-is.
 // The pipeline marks copy buttons and mermaid diagrams on the node's `data`,
@@ -375,6 +406,7 @@ const PLAIN_MARKDOWN_COMPONENTS = {
   a: PlainLinkRenderer,
   img: PlainImageRenderer,
   span: MarkdownSpanRenderer,
+  time: MarkdownTimeRenderer,
   div: MarkdownDivRenderer,
 } as const;
 
@@ -384,6 +416,7 @@ const MEDIA_MARKDOWN_COMPONENTS = {
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
   span: MarkdownSpanRenderer,
+  time: MarkdownTimeRenderer,
   div: MarkdownDivRenderer,
 } as const;
 
