@@ -303,10 +303,11 @@ async fn wait_for_crash_or_stop(state_rx: &mut watch::Receiver<SandboxState>) {
 /// - **Inflate** uses `free_memory` (kernel `MemFree`) — only truly unused pages,
 ///   excluding reclaimable page cache. This prevents the balloon from evicting
 ///   file cache that improves guest I/O performance.
-/// - **Deflate** uses `available_memory` (kernel `MemAvailable`) — includes
-///   reclaimable cache, providing a more sensitive signal for memory pressure.
-///   When apps allocate memory, the kernel reclaims cache first, so `available`
-///   drops before `free` does, giving earlier deflate response.
+/// - **Deflate** uses `available_memory` (kernel `MemAvailable`) — an estimate
+///   of memory available for new applications without swapping, accounting for
+///   free memory and reclaimable cache. Low `MemFree` alone need not indicate
+///   memory pressure when reclaimable cache provides sufficient headroom;
+///   deflation responds to low estimated available headroom.
 ///
 /// Thresholds:
 /// - Inflate when `free_memory > TARGET_FREE + INFLATE_HYSTERESIS`
