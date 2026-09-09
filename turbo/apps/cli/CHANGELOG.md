@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.321.0](https://github.com/vm0-ai/vm0/compare/cli-v9.320.1...cli-v9.321.0) (2026-09-09)
+
+
+### Features
+
+* display automation times in agent and browser timezones ([#32899](https://github.com/vm0-ai/vm0/issues/32899)) ([98d2ec1](https://github.com/vm0-ai/vm0/commit/98d2ec14f6f36170b904ebfd40204d58050e252d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.421.0
+    * @okouai/core bumped to 8.644.0
+    * @okouai/pi-agent-runtime bumped to 1.24.4
+
 ## [9.320.1](https://github.com/vm0-ai/vm0/compare/cli-v9.320.0...cli-v9.320.1) (2026-09-09)
 
 

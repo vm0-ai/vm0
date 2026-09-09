@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.87.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.87.0...guest-agent-v0.87.1) (2026-09-09)
+
+
+### Refactoring
+
+* **naming:** correct residual retired-brand copy and internal names ([#32946](https://github.com/vm0-ai/vm0/issues/32946)) ([c5e6ef9](https://github.com/vm0-ai/vm0/commit/c5e6ef9e41593c017fd2fd57222a40d123270db5)), closes [#32939](https://github.com/vm0-ai/vm0/issues/32939)
+
 ## [0.87.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.23...guest-agent-v0.87.0) (2026-09-09)
 
 

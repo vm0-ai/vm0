@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.21](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.20...desktop-v0.48.21) (2026-09-09)
+
+
+### Refactoring
+
+* **naming:** correct residual retired-brand copy and internal names ([#32946](https://github.com/vm0-ai/vm0/issues/32946)) ([c5e6ef9](https://github.com/vm0-ai/vm0/commit/c5e6ef9e41593c017fd2fd57222a40d123270db5)), closes [#32939](https://github.com/vm0-ai/vm0/issues/32939)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.421.0
+
 ## [0.48.20](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.19...desktop-v0.48.20) (2026-09-09)
 
 

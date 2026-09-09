@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.189.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.3...runner-rs-v0.189.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** bound codex timestamp parsing across history encodings ([#32945](https://github.com/vm0-ai/vm0/issues/32945)) ([c625c2e](https://github.com/vm0-ai/vm0/commit/c625c2e0b216d5ac5641f2ed69f6a13e30b5bb5e))
+
+
+### Refactoring
+
+* **naming:** correct residual retired-brand copy and internal names ([#32946](https://github.com/vm0-ai/vm0/issues/32946)) ([c5e6ef9](https://github.com/vm0-ai/vm0/commit/c5e6ef9e41593c017fd2fd57222a40d123270db5)), closes [#32939](https://github.com/vm0-ai/vm0/issues/32939)
+
 ## [0.189.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.2...runner-rs-v0.189.3) (2026-09-09)
 
 
