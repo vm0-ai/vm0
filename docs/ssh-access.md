@@ -72,6 +72,10 @@ then custom Connectors. The trigger keeps its three-icon limit and existing
 computer/browser slots; SSH no longer displaces built-in Connector icons.
 It always uses that composer's Agent, including split-pane chats. No hosts hides
 the SSH row; **Add connectors** offers the same zero-host setup entry.
+Both the legacy dialog and the Discover directory include this entry when
+SSH is enabled and no hosts are configured. In Discover, it appears after
+built-in shelves and under **Remote access**, participates in search, and stays
+out of the Custom tab. Its link also supports normal keyboard activation.
 Opening the popover refreshes SSH reads without dropping the last confirmed
 display for the same user/workspace. Its switch waits for the refreshed result.
 Changing owner discards that retained display, and each composer selects only
