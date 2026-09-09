@@ -9,7 +9,9 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { useEditorState } from "@tiptap/react";
 import { Popover, type KeyboardEventLike } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { ComposerAgentSuggestion } from "../../signals/okou-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/okou-page/chat-thread-suggestion-domain.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
@@ -18,6 +20,7 @@ import {
   buildComposerSlashWorkflows,
   findWorkflowQueryMatches,
   type ComposerSlashWorkflow,
+  type ComposerSlashWorkflowMatch,
 } from "../../signals/okou-page/workflow-composer-domain";
 import {
   scrollSlashWorkflowIntoView,
@@ -283,10 +286,9 @@ interface ComposerSuggestionMenuState {
   readonly range: ComposerSuggestionRange | null;
   readonly selectedIndex: number;
   readonly close: () => void;
-  readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly workflows: readonly ComposerSlashWorkflowMatch[];
   readonly createModes: readonly ComposerCreateCommand[];
   readonly selectCreate: (mode: ComposerCreateCommand) => void;
-  readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
   readonly agents: readonly ComposerAgentSuggestion[];
@@ -323,6 +325,28 @@ function useComposerCreateSuggestions(
   });
 }
 
+function useComposerWorkflowSuggestions(
+  composer: ComposerSignals,
+  query: string | undefined,
+) {
+  const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
+  const fuzzyWorkflows =
+    useGet(featureSwitch$)[FeatureSwitchKey.ComposerWorkflowFuzzySearch] ===
+    true;
+  const workflows = buildComposerSlashWorkflows({
+    agentId: composer.agentId,
+    workflows:
+      workflowsLoadable.state === "hasData" ? workflowsLoadable.data : [],
+  });
+  return {
+    workflows:
+      query === undefined
+        ? []
+        : findWorkflowQueryMatches(workflows, query, fuzzyWorkflows),
+    loading: workflowsLoadable.state === "loading",
+  };
+}
+
 function useComposerSuggestionMenu({
   composer,
   onKeyDown,
@@ -350,15 +374,11 @@ function useComposerSuggestionMenu({
   const insertAgent = useSet(composer.suggestion.insertAgent$);
   const insertChatThread = useSet(composer.suggestion.insertChatThread$);
   const currentAgentId = composer.agentId;
-  const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
-  const workflows = buildComposerSlashWorkflows({
-    agentId: currentAgentId,
-    workflows:
-      workflowsLoadable.state === "hasData" ? workflowsLoadable.data : [],
-  });
-  const workflowSuggestions = slashRange
-    ? findWorkflowQueryMatches(workflows, slashRange.query)
-    : [];
+  const workflowResult = useComposerWorkflowSuggestions(
+    composer,
+    slashRange?.query,
+  );
+  const workflowSuggestions = workflowResult.workflows;
   const showWorkflows = slashRange !== null;
   const mentionResult =
     chatThreadRange &&
@@ -443,8 +463,7 @@ function useComposerSuggestionMenu({
     workflows: workflowSuggestions,
     createModes,
     selectCreate,
-    workflowQuery: slashRange?.query ?? "",
-    workflowsLoading: workflowsLoadable.state === "loading",
+    workflowsLoading: workflowResult.loading,
     showWorkflows,
     agents,
     chatThreads,
@@ -562,7 +581,6 @@ export function TiptapWorkflowComposer({
           workflows={suggestionMenu.workflows}
           createModes={suggestionMenu.createModes}
           onSelectCreate={suggestionMenu.selectCreate}
-          query={suggestionMenu.workflowQuery}
           loading={suggestionMenu.workflowsLoading}
           selectedIndex={suggestionMenu.selectedIndex}
           showWorkflowsPageLink
