@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.189.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.4...runner-rs-v0.189.5) (2026-09-09)
+
+
+### Refactoring
+
+* **runner:** delete retired mitmdump runtime marker tombstone tests ([#32973](https://github.com/vm0-ai/vm0/issues/32973)) ([011e6f0](https://github.com/vm0-ai/vm0/commit/011e6f0c62582cc594ff51655ac4a84143bc356a)), closes [#32937](https://github.com/vm0-ai/vm0/issues/32937)
+
 ## [0.189.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.3...runner-rs-v0.189.4) (2026-09-09)
 
 

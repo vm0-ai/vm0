@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.577.0](https://github.com/vm0-ai/vm0/compare/api-v1.576.0...api-v1.577.0) (2026-09-09)
+
+
+### Features
+
+* **api:** rank connector discovery and give every category a slice ([#32927](https://github.com/vm0-ai/vm0/issues/32927)) ([571b67f](https://github.com/vm0-ai/vm0/commit/571b67ff4bc5848abed2aa91061e33b0f517ae0a))
+* **chat:** persist model-aware reasoning effort selections ([#32926](https://github.com/vm0-ai/vm0/issues/32926)) ([5802f5b](https://github.com/vm0-ai/vm0/commit/5802f5ba59d8d47865139dccd1f49acdf50a2a02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.0
+    * @okouai/core bumped to 8.645.0
+    * @okouai/db bumped to 1.249.0
+    * @okouai/pi-agent-runtime bumped to 1.24.5
+
 ## [1.576.0](https://github.com/vm0-ai/vm0/compare/api-v1.575.3...api-v1.576.0) (2026-09-09)
 
 
