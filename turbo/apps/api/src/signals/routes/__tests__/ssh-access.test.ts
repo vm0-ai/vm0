@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
+import {
   agentSshAccessContract,
   sshHostsContract,
 } from "@okouai/api-contracts/contracts/ssh-access";
@@ -18,6 +22,7 @@ import { now } from "../../../lib/time";
 import { mockEnv } from "../../../lib/env";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { sshAccessRoutes } from "../ssh-access";
+import { agentsRoutes } from "../agents";
 import { sshConnectionsRoutes } from "../ssh-connections";
 import { runnerSshRoutes } from "../runner-ssh";
 import { testSshConnectionStateRoutes } from "../test-ssh-connection-state";
@@ -43,15 +48,7 @@ type RuntimeBody = Extract<
   { action: "create-runtime" }
 >;
 
-async function fixture(overrides: Partial<RuntimeBody> = {}) {
-  const owner = {
-    userId: `user_ssh_consumers_${randomUUID()}`,
-    orgId: `org_ssh_consumers_${randomUUID()}`,
-    ...overrides,
-  };
-  await updateFeatureSwitchesForUser(context, owner, {
-    [FeatureSwitchKey.SshAccess]: true,
-  });
+function authenticate(owner: { userId: string; orgId: string }) {
   mocks.clerk.session(owner.userId, owner.orgId);
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
     data: [
@@ -62,6 +59,18 @@ async function fixture(overrides: Partial<RuntimeBody> = {}) {
       },
     ],
   });
+}
+
+async function fixture(overrides: Partial<RuntimeBody> = {}) {
+  const owner = {
+    userId: `user_ssh_consumers_${randomUUID()}`,
+    orgId: `org_ssh_consumers_${randomUUID()}`,
+    ...overrides,
+  };
+  await updateFeatureSwitchesForUser(context, owner, {
+    [FeatureSwitchKey.SshAccess]: true,
+  });
+  authenticate(owner);
   // Infrastructure-only fixture supplies a claimed running sandbox. Grants and
   // connections below go through the production owner endpoints.
   const state = setupApp({ context, routes: testSshConnectionStateRoutes })(
@@ -110,6 +119,190 @@ async function fixture(overrides: Partial<RuntimeBody> = {}) {
 }
 
 describe("owner SSH grants and live Run inventory", () => {
+  async function createAgent(visibility: "public" | "private") {
+    context.mocks.s3.send.mockResolvedValue({});
+    const result = await accept(
+      setupApp({ context, routes: agentsRoutes })(agentsMainContract).create({
+        headers,
+        body: { displayName: "SSH authorization test", visibility },
+      }),
+      [201],
+    );
+    return { agentId: result.body.agentId };
+  }
+
+  async function createHost(host = "ssh.example.com") {
+    return await accept(
+      config().create({
+        headers,
+        body: {
+          displayName: "Deployment",
+          host,
+          username: "deploy",
+          privateKey: "test-private-key",
+        },
+      }),
+      [201],
+    );
+  }
+
+  it("automatically grants all visible Agents only on a zero-to-one host transition", async () => {
+    const f = await fixture();
+    const ownPrivate = await createAgent("private");
+    const other = await fixture({ orgId: f.orgId });
+    const otherPrivate = await createAgent("private");
+    const foreign = await fixture();
+    authenticate(f);
+    context.mocks.ably.publish.mockClear();
+    const first = await createHost();
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh-authority-invalidated", { runId: f.runId, connectionId: null }],
+    ]);
+    for (const params of [f.params, ownPrivate, other.params]) {
+      expect(
+        (await accept(grant().get({ headers, params }), [200])).body,
+      ).toStrictEqual({
+        enabled: true,
+      });
+    }
+    for (const params of [otherPrivate, foreign.params]) {
+      await accept(grant().get({ headers, params }), [404]);
+      await accept(
+        grant().update({ headers, params, body: { enabled: true } }),
+        [404],
+      );
+    }
+    // Granting a shared Agent never authorizes its creator's Run or hosts.
+    await accept(inventory().list({ headers: other.token() }), [404]);
+    await accept(
+      grant().update({ headers, params: f.params, body: { enabled: false } }),
+      [200],
+    );
+    const laterAgent = await createAgent("private");
+    const second = await createHost("second.example.com");
+    expect(
+      (await accept(grant().get({ headers, params: laterAgent }), [200])).body,
+    ).toStrictEqual({ enabled: false });
+    expect(
+      (await accept(grant().get({ headers, params: f.params }), [200])).body,
+    ).toStrictEqual({ enabled: false });
+    for (const connection of [first, second]) {
+      await accept(
+        config().delete({
+          headers,
+          params: { connectionId: connection.body.id },
+        }),
+        [204],
+      );
+    }
+    // Hiding an empty inventory must not erase the other existing grants.
+    expect(
+      (await accept(grant().get({ headers, params: ownPrivate }), [200])).body,
+    ).toStrictEqual({ enabled: true });
+    await createHost();
+    expect(
+      (await accept(grant().get({ headers, params: f.params }), [200])).body,
+    ).toStrictEqual({ enabled: true });
+  });
+
+  it("serializes concurrent first hosts and preserves successful creation when invalidation fails", async () => {
+    const f = await fixture();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Synthetic publish failure"),
+    );
+    await Promise.all([
+      createHost("one.example.com"),
+      createHost("two.example.com"),
+    ]);
+    expect(
+      (await accept(grant().get({ headers, params: f.params }), [200])).body,
+    ).toStrictEqual({ enabled: true });
+    expect(
+      (await accept(inventory().list({ headers: f.token() }), [200])).body
+        .hosts,
+    ).toHaveLength(2);
+  });
+
+  it("uses only the Run user's hosts for shared Agents and rejects current visibility loss", async () => {
+    const creator = await fixture();
+    const shared = await createAgent("public");
+    const creatorHost = await createHost("creator.example.com");
+    const runnerIdentity = { runnerId: randomUUID(), heartbeatGeneration: 1 };
+    const user = await fixture({
+      orgId: creator.orgId,
+      agentId: shared.agentId,
+      ...runnerIdentity,
+    });
+    const runnerSecret = "c".repeat(64);
+    mockEnv("OFFICIAL_RUNNER_SECRET", runnerSecret);
+    const runner = setupApp({ context, routes: runnerSshRoutes })(
+      runnerSshContract,
+    );
+    const host = await createHost("user.example.com");
+    expect(
+      (
+        await accept(inventory().list({ headers: user.token() }), [200])
+      ).body.hosts.map((value) => {
+        return value.id;
+      }),
+    ).toStrictEqual([host.body.id]);
+    const request = {
+      headers: { authorization: `Bearer vm0_official_${runnerSecret}` },
+      params: { runId: user.runId },
+      body: { runnerIdentity, connectionId: host.body.id },
+    };
+    expect((await accept(runner.resolve(request), [200])).body.outcome).toBe(
+      "resolved",
+    );
+    const observedHostKey = {
+      algorithm: "ssh-ed25519" as const,
+      fingerprint: `SHA256:${Buffer.alloc(32).toString("base64").replace(/=+$/u, "")}`,
+    };
+    const pin = {
+      ...request,
+      body: { ...request.body, expectedGeneration: 1, observedHostKey },
+    };
+    expect((await accept(runner.pin(pin), [200])).body.outcome).toBe("pinned");
+    const foreignRequest = {
+      ...request,
+      body: { ...request.body, connectionId: creatorHost.body.id },
+    };
+    expect(
+      (await accept(runner.resolve(foreignRequest), [200])).body,
+    ).toStrictEqual({
+      outcome: "unavailable",
+    });
+    expect(
+      (
+        await accept(
+          runner.pin({
+            ...pin,
+            body: { ...pin.body, connectionId: creatorHost.body.id },
+          }),
+          [200],
+        )
+      ).body,
+    ).toStrictEqual({ outcome: "unavailable" });
+    authenticate(creator);
+    await accept(
+      setupApp({ context, routes: agentsRoutes })(agentsByIdContract).update({
+        headers,
+        params: { id: shared.agentId },
+        body: { visibility: "private" },
+      }),
+      [200],
+    );
+    authenticate(user);
+    await accept(grant().get({ headers, params: shared }), [404]);
+    await accept(inventory().list({ headers: user.token() }), [404]);
+    expect((await accept(runner.resolve(request), [200])).body).toStrictEqual({
+      outcome: "unavailable",
+    });
+    expect((await accept(runner.pin(pin), [200])).body).toStrictEqual({
+      outcome: "unavailable",
+    });
+  });
+
   it("production grant revocation denies Runner resolution and first-use pinning", async () => {
     const runnerIdentity = { runnerId: randomUUID(), heartbeatGeneration: 1 };
     const f = await fixture(runnerIdentity);
@@ -136,13 +329,7 @@ describe("owner SSH grants and live Run inventory", () => {
       params: { runId: f.runId },
       body: { connectionId: host.body.id, runnerIdentity },
     };
-    expect((await accept(client.resolve(request), [200])).body.outcome).toBe(
-      "unavailable",
-    );
-    await accept(
-      grant().update({ headers, params: f.params, body: { enabled: true } }),
-      [200],
-    );
+    // The first host automatically grants access to this visible Agent.
     expect((await accept(client.resolve(request), [200])).body.outcome).toBe(
       "resolved",
     );
@@ -281,8 +468,16 @@ describe("owner SSH grants and live Run inventory", () => {
     ).toBeFalsy();
   });
 
-  it("hides another owner's Agent identically to an absent Agent and isolates invalidations", async () => {
+  it("hides another owner's private Agent identically to an absent Agent and isolates invalidations", async () => {
     const f = await fixture();
+    await accept(
+      setupApp({ context, routes: agentsRoutes })(agentsByIdContract).update({
+        headers,
+        params: { id: f.params.agentId },
+        body: { visibility: "private" },
+      }),
+      [200],
+    );
     const other = await fixture({ orgId: f.orgId });
     for (const params of [f.params, { agentId: randomUUID() }]) {
       await accept(grant().get({ headers, params }), [404]);

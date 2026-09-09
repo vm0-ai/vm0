@@ -13,7 +13,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -58,7 +58,7 @@ async function currentConnection(
       and(
         eq(agents.id, agentSessions.agentId),
         eq(agents.orgId, agentRuns.orgId),
-        eq(agents.owner, agentRuns.userId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, agentRuns.userId)),
       ),
     )
     .innerJoin(

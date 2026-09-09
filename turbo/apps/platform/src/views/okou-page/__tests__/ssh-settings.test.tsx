@@ -14,7 +14,12 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { catalogConnectorFixture } from "../../team-page/__tests__/team-page-test-helpers.ts";
@@ -559,7 +564,7 @@ test("Changing owner closes the credential form and clears its fields", async ()
   ).not.toBeInTheDocument();
 });
 
-test("An admin who is not the Agent owner gets no SSH grant control or grant fetch", async () => {
+test("A visible shared Agent offers the current user's SSH authorization", async () => {
   const agent: AgentResponse = {
     agentId,
     ownerId: "another-owner",
@@ -576,20 +581,96 @@ test("An admin who is not the Agent owner gets no SSH grant control or grant fet
   context.mocks.api(agentsByIdContract.get, ({ respond }) => {
     return respond(200, agent);
   });
-  let requests = 0;
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 1 });
+  });
+  let enabled = true;
   context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
-    requests++;
+    return respond(200, { enabled });
+  });
+  context.mocks.api(agentSshAccessContract.update, ({ body, respond }) => {
+    enabled = body.enabled;
+    return respond(200, { enabled });
+  });
+  await page(`/agents/${agentId}?tab=authorization`);
+  const control = await screen.findByRole("switch", {
+    name: "Revoke SSH access",
+  });
+  expect(control).toBeChecked();
+  click(control);
+  await screen.findByRole("switch", { name: "Grant SSH access" });
+  expect(
+    screen.getByRole("switch", { name: "Grant SSH access" }),
+  ).not.toBeChecked();
+});
+
+test("Deleting the last host hides Authorization without clearing its retained grant", async () => {
+  const agent: AgentResponse = {
+    agentId,
+    ownerId: auth.user.id,
+    displayName: "SSH Research",
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "public",
+  };
+  context.mocks.data.agents([agent]);
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+    return respond(200, agent);
+  });
+  let exists = true;
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: exists ? 1 : 0 });
+  });
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: exists ? [base] : [] });
+  });
+  context.mocks.api(sshConnectionsContract.delete, ({ respond }) => {
+    exists = false;
+    return respond(204);
+  });
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
     return respond(200, { enabled: true });
   });
   await page(`/agents/${agentId}?tab=authorization`);
+  await screen.findByRole("switch", { name: "Revoke SSH access" });
+  click(getAction("button", "Manage SSH hosts"));
+  await screen.findByText("1 host configured");
+  click(getAction("button", "Delete host"));
+  const dialog = await screen.findByRole("dialog");
+  click(getAction("button", "Delete host", dialog));
+  await screen.findByText("0 hosts configured");
+  click(
+    getAction(
+      "link",
+      "Agents",
+      screen.getByRole("navigation", { name: "Sidebar" }),
+    ),
+  );
+  const agentLink = await waitFor(() => {
+    const link = queryAllByRoleFast("link").find((candidate) => {
+      return candidate.getAttribute("href") === `/agents/${agentId}`;
+    });
+    expect(link).toBeDefined();
+    return link!;
+  });
+  click(agentLink);
+  await screen.findByRole("heading", { name: "SSH Research" });
+  click(getAction("button", "Authorization"));
   await screen.findByText(/No connected services yet/);
   expect(
     screen.queryByRole("switch", { name: /SSH access/ }),
   ).not.toBeInTheDocument();
-  expect(requests).toBe(0);
+  expect(queryAction("button", "Manage SSH hosts")).toBeNull();
 });
 
 test("Owner Authorization offers SSH access while Profile has no SSH controls", async () => {
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 1 });
+  });
   const agent: AgentResponse = {
     agentId,
     ownerId: auth.user.id,
@@ -657,6 +738,9 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
 test.each([false, true])(
   "SSH uses connector authorization search and survives ordinary permission failure (%s)",
   async (ordinaryFailure) => {
+    context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+      return respond(200, { configuredCount: 1 });
+    });
     const agent: AgentResponse = {
       agentId,
       ownerId: auth.user.id,

@@ -9,6 +9,7 @@ import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { and, asc, eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import { visibleJoinedAgentCondition } from "./agent-data.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { publishSshRuntimeInvalidation } from "./ssh-runtime-wakeup.service";
 
@@ -16,7 +17,7 @@ interface Owner {
   readonly orgId: string;
   readonly userId: string;
 }
-interface AgentOwner extends Owner {
+interface AgentAccessScope extends Owner {
   readonly agentId: string;
 }
 
@@ -34,15 +35,15 @@ export async function isSshAccessAvailable(
   return isFeatureEnabled(FeatureSwitchKey.SshAccess, context);
 }
 
-function ownedAgent(owner: AgentOwner) {
+function visibleAgent(owner: AgentAccessScope) {
   return and(
     eq(agents.id, owner.agentId),
     eq(agents.orgId, owner.orgId),
-    eq(agents.owner, owner.userId),
+    visibleJoinedAgentCondition(owner.userId),
   );
 }
 
-function ownedGrant(owner: AgentOwner) {
+function ownedGrant(owner: AgentAccessScope) {
   return and(
     eq(agentSshAccess.agentId, owner.agentId),
     eq(agentSshAccess.orgId, owner.orgId),
@@ -50,18 +51,21 @@ function ownedGrant(owner: AgentOwner) {
   );
 }
 
-export async function getAgentSshAccess(db: ReadonlyDb, owner: AgentOwner) {
+export async function getAgentSshAccess(
+  db: ReadonlyDb,
+  owner: AgentAccessScope,
+) {
   const [row] = await db
     .select({ grant: agentSshAccess.agentId })
     .from(agents)
     .leftJoin(agentSshAccess, ownedGrant(owner))
-    .where(ownedAgent(owner));
+    .where(visibleAgent(owner));
   return row ? { enabled: row.grant !== null } : null;
 }
 
 export async function updateAgentSshAccess(
   db: Db,
-  owner: AgentOwner,
+  owner: AgentAccessScope,
   enabled: boolean,
   signal: AbortSignal,
 ) {
@@ -69,7 +73,7 @@ export async function updateAgentSshAccess(
     const [agent] = await tx
       .select({ id: agents.id })
       .from(agents)
-      .where(ownedAgent(owner))
+      .where(visibleAgent(owner))
       .for("update");
     signal.throwIfAborted();
     if (!agent) {
@@ -120,7 +124,7 @@ export async function listRunSshHosts(
       and(
         eq(agents.id, agentSessions.agentId),
         eq(agents.orgId, agentRuns.orgId),
-        eq(agents.owner, agentRuns.userId),
+        visibleJoinedAgentCondition(owner.userId),
       ),
     )
     .innerJoin(

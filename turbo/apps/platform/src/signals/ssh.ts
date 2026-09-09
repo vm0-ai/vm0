@@ -305,11 +305,11 @@ export const currentAgentSshAccess$ = computed(async (get) => {
   if (!(await get(sshIdentity$))) {
     return null;
   }
-  const [agent, user] = await Promise.all([
+  const [agent, summary] = await Promise.all([
     get(currentAgent$),
-    get(currentUserInfo$),
+    get(sshSummary$),
   ]);
-  if (!agent || agent.ownerId !== user?.id) {
+  if (!agent || !summary || summary.configuredCount === 0) {
     return null;
   }
   const result = await accept(

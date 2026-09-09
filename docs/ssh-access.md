@@ -43,11 +43,19 @@ Reopen the host to review the current settings before saving again.
 Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
 with the same search and loading switch, not in Profile. The information tooltip
 explains the all-host grant and accepted Run-lifetime cache window.
-The management button opens the same global host page; adding a host does not
-grant an Agent access. The grant covers
-all current and future hosts belonging to that owner in that organization.
-Another user, an organization admin who is not the Agent owner, and the Agent
-itself cannot grant this access. It is not limited to chat-triggered Runs.
+The management button opens the same global host page. With no hosts, the SSH
+row is hidden without clearing grants. Adding the first host automatically
+authorizes all Agents currently visible to you, including other users' public
+Agents in the same workspace. Host creation and these grants commit together.
+Adding more hosts preserves manually disabled grants. Deleting every host and
+adding one again repeats automatic authorization, just like connecting the first
+Connector account; Agents created afterward are not automatically authorized.
+
+You can grant or revoke your own SSH access for any currently visible Agent.
+The grant covers all your current and future hosts in that workspace, only for
+your Runs. An Agent's creator or another user does not receive your credentials
+or your grant. Agents cannot grant themselves access. This is not limited to
+chat-triggered Runs.
 
 ## Agent commands
 
@@ -59,7 +67,7 @@ okou ssh exec <connection-id> --command 'uname -a' --json
 Use the exact UUID from the live inventory, not the display name or hostname.
 List again after an unavailable or unknown ID; never invent IDs or automatically
 replay a command whose effects are unknown.
-The inventory requires a current running Run, its owned Agent, a current grant,
+The inventory requires a current running Run, an Agent visible to its user, a current grant,
 and `ssh:read`. An authorized empty inventory is distinct from unavailable
 authority. Execution requires `ssh:write`. Both capabilities are minted only
 for feature-enabled Runs; newly eligible Runs must start with a fresh token.

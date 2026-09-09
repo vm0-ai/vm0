@@ -33,6 +33,7 @@ export const testSshConnectionStateActionBodySchema = z.discriminatedUnion(
     z
       .object({
         action: z.literal("create-runtime"),
+        agentId: z.uuid().optional(),
         runnerGroup: z.string().min(1).optional(),
         orgId: z.string().min(1),
         userId: z.string().min(1),

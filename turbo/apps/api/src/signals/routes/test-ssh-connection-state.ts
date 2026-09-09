@@ -141,18 +141,28 @@ async function createRuntime(
   db: Db,
   body: TestSshConnectionStateAction<"create-runtime">,
 ) {
-  const agentId = randomUUID();
+  const agentId = body.agentId ?? randomUUID();
   const sessionId = randomUUID();
   const runId = randomUUID();
   const threadId =
     body.chat || body.triggerSource === "goal" ? randomUUID() : null;
   await db.transaction(async (tx) => {
-    await tx.insert(agents).values({
-      id: agentId,
-      orgId: body.orgId,
-      owner: body.userId,
-      name: `ssh-${agentId}`,
-    });
+    if (body.agentId) {
+      const [agent] = await tx
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(eq(agents.id, agentId), eq(agents.orgId, body.orgId)));
+      if (!agent) {
+        throw new Error("Runtime fixture requires an Agent in its workspace");
+      }
+    } else {
+      await tx.insert(agents).values({
+        id: agentId,
+        orgId: body.orgId,
+        owner: body.userId,
+        name: `ssh-${agentId}`,
+      });
+    }
     await tx.insert(agentSessions).values({
       id: sessionId,
       agentId,

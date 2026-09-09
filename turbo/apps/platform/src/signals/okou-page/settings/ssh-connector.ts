@@ -4,7 +4,6 @@ import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { agents$ } from "../../agent.ts";
 import { apiClient$ } from "../../api-client.ts";
-import { currentUserInfo$ } from "../../auth.ts";
 import { sshSummary$ } from "../../ssh.ts";
 import {
   connectorsConnectionFilter$,
@@ -31,13 +30,10 @@ export const filteredSshSummary$ = computed(async (get) => {
     return null;
   }
   if (filter.kind === "agent") {
-    const [agents, user] = await Promise.all([
-      get(agents$),
-      get(currentUserInfo$),
-    ]);
+    const agents = await get(agents$);
     if (
       !agents.some((agent) => {
-        return agent.agentId === filter.agentId && agent.ownerId === user?.id;
+        return agent.agentId === filter.agentId;
       })
     ) {
       return null;

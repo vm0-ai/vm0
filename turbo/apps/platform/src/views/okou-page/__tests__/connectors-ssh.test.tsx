@@ -190,7 +190,7 @@ test.each([true, false])(
   },
 );
 
-test("Another owner's Agent filter never requests or displays SSH access", async () => {
+test("A shared Agent filter uses the current user's SSH grant", async () => {
   mockCatalog();
   context.mocks.data.agents([
     { ...listAgent(agentId, "Shared"), ownerId: "another-owner" },
@@ -198,9 +198,12 @@ test("Another owner's Agent filter never requests or displays SSH access", async
   context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
     return respond(200, { configuredCount: 2 });
   });
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+    return respond(200, { enabled: true });
+  });
   await page(`/connectors?keywords=ssh&connection=agent:${agentId}`);
-  await screen.findByText(/No connectors for this agent/);
-  expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
+  await screen.findByText("2 hosts configured");
+  expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
 });
 
 test("Returning from host management refreshes the SSH card after deleting the last host", async () => {

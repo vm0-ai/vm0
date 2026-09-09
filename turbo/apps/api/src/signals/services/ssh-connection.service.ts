@@ -7,12 +7,15 @@ import type {
   UpdateSshConnectionRequest,
 } from "@okouai/api-contracts/contracts/ssh-connections";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { agents } from "@okouai/db/schema/agent";
+import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
+import { visibleJoinedAgentCondition } from "./agent-data.service";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
@@ -37,7 +40,7 @@ const SSH_CONNECTION_ENDPOINT_CONFLICT =
 function failure(
   kind: SshConnectionFailure["kind"],
   message: string,
-): SshConnectionResult<never> {
+): SshConnectionFailure & { readonly ok: false } {
   return { ok: false, kind, message };
 }
 
@@ -278,7 +281,7 @@ export async function createSshConnection(args: {
     args.featureContext,
   );
 
-  return await args.db.transaction(async (tx) => {
+  const result = await args.db.transaction(async (tx) => {
     await lockSshConnectionOwner(tx, args.orgId, args.userId);
     if (
       await endpointExists(tx, {
@@ -291,6 +294,23 @@ export async function createSshConnection(args: {
       return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
     }
 
+    // Match Connector's zero-to-one account transition, including re-adding
+    // after all hosts were deleted. The owner lock serializes concurrent adds.
+    const firstHost =
+      (await countOwnerConnections(tx, args.orgId, args.userId)) === 0;
+    const visibleAgents = firstHost
+      ? await tx
+          .select({ id: agents.id })
+          .from(agents)
+          .where(
+            and(
+              eq(agents.orgId, args.orgId),
+              visibleJoinedAgentCondition(args.userId),
+            ),
+          )
+          .orderBy(asc(agents.id))
+          .for("update")
+      : [];
     const [connection] = await tx
       .insert(sshConnections)
       .values({
@@ -309,8 +329,34 @@ export async function createSshConnection(args: {
       connectionId: connection.id,
       ...encryptedCredentials,
     });
-    return { ok: true, value: toSshConnectionResponse(connection) };
+    if (visibleAgents.length > 0) {
+      await tx
+        .insert(agentSshAccess)
+        .values(
+          visibleAgents.map((agent) => {
+            return {
+              orgId: args.orgId,
+              userId: args.userId,
+              agentId: agent.id,
+            };
+          }),
+        )
+        .onConflictDoNothing();
+    }
+    return {
+      ok: true as const,
+      value: toSshConnectionResponse(connection),
+      authorizedAgents: visibleAgents.length > 0,
+    };
   });
+  if (result.ok && result.authorizedAgents) {
+    await publishSshRuntimeInvalidation(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectionId: null,
+    });
+  }
+  return result;
 }
 
 export async function updateSshConnection(args: {
