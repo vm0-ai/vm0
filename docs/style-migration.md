@@ -219,3 +219,19 @@ The corresponding source passed 27 focused page tests, App/UI/E2E types,
 formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
 This is bounded Chromium acceptance; the earlier native and motion exclusions
 remain in force.
+
+## Shared toggle button follow-up
+
+The three migrated consumers (Appearance, Send mode and Agent profile Tone)
+share a persistent selected-state contract. Rename their shared control to
+`ToggleButton`, retaining its native element, controlled `selected` prop,
+inline/tile layouts and existing activation and focus behavior. Share common
+button styles and optional tooltip composition with `Button`; tooltips remain
+off by default and require an accessible label when enabled. Group selection
+and arrow-key behavior remain owned by the existing callers.
+
+Before implementation, freeze the 33 Tone and 21 preference states against
+unchanged main code on the PR preview and require an unchanged-code replay.
+After implementation, replay those frozen cases and verify tooltip activation,
+disabled controls and existing Button trigger composition through focused
+component tests. Record commit-bound before/after evidence with the PR.
