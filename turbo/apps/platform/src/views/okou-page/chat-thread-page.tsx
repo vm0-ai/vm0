@@ -584,7 +584,6 @@ export function AutomationMenuButton({
   const open = sidebarTarget?.type === "automations";
 
   // Show the opener when the thread has a workflow automation.
-  // Goals live in the composer, so a goal-only thread has nothing here.
   if (workflowAutomations.length === 0) {
     return null;
   }

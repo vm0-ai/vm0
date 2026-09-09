@@ -31,7 +31,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   "__agent-loop": null,
   agent: "agent:read",
   workflow: "agent:read",
-  goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: ["connector:read", "connector:write"],
   mcp: "connector:read",
   ssh: ["ssh:read", "ssh:write"],
@@ -273,13 +272,6 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description: "Manage workflows",
     load: async () => {
       return (await import("./commands/workflow")).workflowCommand;
-    },
-  },
-  {
-    name: "goal",
-    description: "Manage the current thread goal",
-    load: async () => {
-      return (await import("./commands/goal")).goalCommand;
     },
   },
   {
