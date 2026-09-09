@@ -166,6 +166,11 @@ test("The image viewer navigates across one assistant response", async () => {
 
   await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
+  const expandHistory = await waitFor(() => {
+    return getButtonByName("Expand work history");
+  });
+  click(expandHistory);
+
   const firstImage = await screen.findByAltText("first.png");
   const previewButton = firstImage.closest<HTMLElement>("button");
   if (!previewButton) {
