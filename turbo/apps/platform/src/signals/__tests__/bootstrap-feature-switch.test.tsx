@@ -68,6 +68,7 @@ async function setupModelPickerRolloutPage(args: {
       switches: {},
       effectiveSwitches: {
         [FeatureSwitchKey.ModelPickerMenu]: false,
+        [FeatureSwitchKey.IntroVideo]: true,
       },
     });
   });
@@ -84,10 +85,36 @@ async function setupModelPickerRolloutPage(args: {
     },
     cachedFeatureSwitches: {
       [FeatureSwitchKey.ModelPickerMenu]: false,
+      [FeatureSwitchKey.IntroVideo]: false,
     },
   });
 
   await screen.findByRole("textbox", { name: "Message" });
+  // The explainer tab is visible only after the workspace feature response
+  // has been applied, so it marks the end of feature hydration.
+  const user = userEvent.setup({ delay: null });
+  await user.click(await screen.findByLabelText("Template"));
+  await screen.findByRole("dialog");
+  await waitFor(() => {
+    expect(explainerTab()).toBeVisible();
+  });
+  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+}
+
+// The legacy picker renders its trigger as a <button role="combobox">; only
+// the model picker menu renders a plain button named after the model.
+function modelMenuTrigger(): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((button) => {
+    const role = button.getAttribute("role");
+    return (
+      (role === null || role === "button") &&
+      (button.getAttribute("aria-label") === "Claude Sonnet 4.6" ||
+        button.textContent?.trim() === "Claude Sonnet 4.6")
+    );
+  });
 }
 
 test("Bingjie retains the model picker menu rollout after hydration", async () => {
@@ -97,7 +124,14 @@ test("Bingjie retains the model picker menu rollout after hydration", async () =
     userId: "user_bingjie",
   });
 
-  click(await screen.findByRole("button", { name: "Claude Sonnet 4.6" }));
+  const trigger = await waitFor(() => {
+    const button = modelMenuTrigger();
+    if (!button) {
+      throw new Error("Expected the model picker menu trigger");
+    }
+    return button;
+  });
+  click(trigger);
   await expect(
     screen.findByRole("region", { name: "Models" }),
   ).resolves.toBeVisible();
@@ -111,9 +145,7 @@ test("another member does not receive the model picker menu rollout", async () =
   });
 
   await expectComposerModel("Claude Sonnet 4.6");
-  expect(
-    screen.queryByRole("button", { name: "Claude Sonnet 4.6" }),
-  ).toBeNull();
+  expect(modelMenuTrigger()).toBeUndefined();
 });
 
 test("Image recognition remains available by default", async () => {
