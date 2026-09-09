@@ -2756,10 +2756,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     expect(confirmation.body).toStrictEqual({
       status: "completed",
       hostedInvoiceUrl: null,
-      googleAdsConversion: {
-        transactionId: invoiceId,
-        valueUsd: 20,
-      },
     });
     if (!usagePackSubscriptionId) {
       throw new Error("Expected the confirmed usage pack subscription ID");
@@ -15158,10 +15154,6 @@ describe("POST /api/billing/checkout/complete", () => {
       const responses = await Promise.all([complete(), complete()]);
       const completedBody = {
         completed: true,
-        googleAdsConversion: {
-          transactionId: paidInvoice.id,
-          valueUsd: 20,
-        },
       };
       for (const response of responses) {
         expect(response.body).toStrictEqual(completedBody);
@@ -15359,64 +15351,81 @@ describe("POST /api/billing/checkout/complete", () => {
     expect(status.currentPeriodEnd).toBeNull();
   });
 
-  it("returns the paid invoice conversion when the subscription is already stored", async () => {
-    const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
-    const fixture = await trackedSeed({
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: subscriptionId,
-      subscriptionStatus: "active",
-      tier: "team",
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  it.each([
+    { campaignId: "24220469665", accountId: "7935750692" },
+    { campaignId: "24154967178", accountId: null },
+    { campaignId: undefined, accountId: null },
+    { campaignId: "99999999999", accountId: null },
+  ])(
+    "returns a website paid conversion only for the owning account: $campaignId",
+    async ({ campaignId, accountId }) => {
+      const customerId = `cus_${randomUUID().slice(0, 8)}`;
+      const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+      const fixture = await trackedSeed({
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId,
+        subscriptionStatus: "active",
+        tier: "team",
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
-      id: "cs_test_completed",
-      mode: "subscription",
-      status: "complete",
-      customer: customerId,
-      subscription: subscriptionId,
-    });
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-      id: subscriptionId,
-      status: "active",
-      cancel_at_period_end: false,
-      latest_invoice: {
-        id: "in_checkout_paid",
-        status: "paid",
-        currency: "usd",
-        amount_paid: 20_000,
-      },
-      items: {
-        data: [
-          {
-            price: { id: TEST_PRICE_TEAM },
-            current_period_end: 1_800_000_000,
+      context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+        id: "cs_test_completed",
+        mode: "subscription",
+        status: "complete",
+        customer: customerId,
+        subscription: subscriptionId,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subscriptionId,
+        status: "active",
+        cancel_at_period_end: false,
+        latest_invoice: {
+          id: "in_checkout_paid",
+          metadata: {
+            gclid: "original-paid-click",
+            ...(campaignId ? { vm0_campaign_id: campaignId } : {}),
           },
-        ],
-      },
-    });
+          status: "paid",
+          currency: "usd",
+          amount_paid: 20_000,
+        },
+        items: {
+          data: [
+            {
+              price: { id: TEST_PRICE_TEAM },
+              current_period_end: 1_800_000_000,
+            },
+          ],
+        },
+      });
 
-    const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      billingCheckoutContract,
-    );
+      const client = setupApp({ context, routes: billingCheckoutRoutes })(
+        billingCheckoutContract,
+      );
 
-    const response = await accept(
-      client.complete({
-        body: { sessionId: "cs_test_completed" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+      const response = await accept(
+        client.complete({
+          body: { sessionId: "cs_test_completed" },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
 
-    expect(response.body).toStrictEqual({
-      completed: true,
-      googleAdsConversion: {
-        transactionId: "in_checkout_paid",
-        valueUsd: 200,
-      },
-    });
-  });
+      expect(response.body).toStrictEqual({
+        completed: true,
+        ...(accountId
+          ? {
+              googleAdsConversion: {
+                transactionId: "in_checkout_paid",
+                valueUsd: 200,
+                googleAdsAccountId: accountId,
+              },
+            }
+          : {}),
+      });
+    },
+  );
 
   it("returns 400 when completed checkout would downgrade the current tier", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;

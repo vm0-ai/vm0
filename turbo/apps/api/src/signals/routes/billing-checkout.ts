@@ -1,3 +1,7 @@
+import {
+  googleAdsAccountForAttribution,
+  GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
+} from "@okouai/core/google-ads-account";
 import { command } from "ccstate";
 import {
   billingCheckoutContract,
@@ -454,25 +458,62 @@ function usagePackCheckoutTierConflicts(
   );
 }
 
-function googleAdsPaidConversion(invoice: StripeInvoice | null):
-  | {
-      readonly transactionId: string;
-      readonly valueUsd: number;
+const googleAdsPaidConversion$ = command(
+  async (
+    { get },
+    invoice: StripeInvoice | null,
+    orgId: string,
+    signal: AbortSignal,
+  ) => {
+    if (
+      invoice?.status !== "paid" ||
+      invoice.currency.toLowerCase() !== "usd" ||
+      invoice.amount_paid <= 0
+    )
+      return undefined;
+
+    // Invoice attribution is a frozen checkout snapshot. Never fill an unknown
+    // invoice click with a campaign from a different touch or organization.
+    const snapshots = [
+      invoice.metadata,
+      invoice.parent?.subscription_details?.metadata,
+    ];
+    const attribution = snapshots.find((metadata) => {
+      return (
+        metadata &&
+        ["gclid", "gbraid", "wbraid", "vm0_campaign_id"].some((key) => {
+          return metadata[key];
+        })
+      );
+    });
+    let googleAdsAccountId: string | null;
+    if (attribution) {
+      googleAdsAccountId = googleAdsAccountForAttribution(attribution);
+    } else {
+      const [org] = await get(db$)
+        .select({
+          campaignId: orgMetadata.acquisitionCampaignId,
+          adGroupId: orgMetadata.acquisitionAdGroupId,
+        })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
+        .limit(1);
+      signal.throwIfAborted();
+      googleAdsAccountId = googleAdsAccountForAttribution({
+        vm0_campaign_id: org?.campaignId ?? undefined,
+        vm0_ad_group_id: org?.adGroupId ?? undefined,
+      });
     }
-  | undefined {
-  const amountPaidCents = invoice?.amount_paid ?? 0;
-  if (
-    invoice?.status !== "paid" ||
-    invoice.currency.toLowerCase() !== "usd" ||
-    amountPaidCents <= 0
-  ) {
-    return undefined;
-  }
-  return {
-    transactionId: invoice.id,
-    valueUsd: amountPaidCents / 100,
-  };
-}
+    // Legacy paid conversions are UPLOAD_CLICKS and remain on the offline path.
+    // Omitting this optional payload also protects already-open old clients.
+    if (googleAdsAccountId !== GOOGLE_ADS_ADSMARCH_ACCOUNT_ID) return undefined;
+    return {
+      transactionId: invoice.id,
+      valueUsd: invoice.amount_paid / 100,
+      googleAdsAccountId,
+    };
+  },
+);
 
 const confirmPlanPurchaseForOrg$ = command(
   async ({ set }, orgId: string, previewToken: string, signal: AbortSignal) => {
@@ -494,7 +535,12 @@ const confirmPlanPurchaseForOrg$ = command(
         );
       }
     }
-    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    const conversion = await set(
+      googleAdsPaidConversion$,
+      result.paidInvoice,
+      orgId,
+      signal,
+    );
     return {
       status: 200 as const,
       body:
@@ -698,7 +744,12 @@ const confirmUsagePackPurchaseForOrg$ = command(
         );
       }
     }
-    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    const conversion = await set(
+      googleAdsPaidConversion$,
+      result.paidInvoice,
+      orgId,
+      signal,
+    );
     return {
       status: 200 as const,
       body:
@@ -1810,7 +1861,12 @@ const checkoutCompleteAuthed$ = command(
       }
     }
 
-    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    const conversion = await set(
+      googleAdsPaidConversion$,
+      result.paidInvoice,
+      auth.orgId,
+      signal,
+    );
     return {
       status: 200 as const,
       body: {

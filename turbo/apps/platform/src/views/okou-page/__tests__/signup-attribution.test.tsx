@@ -126,29 +126,43 @@ async function openWorksPage(): Promise<void> {
   ).resolves.toBeInTheDocument();
 }
 
-test("A first-time sign-up conversion can queue before marketing scripts load", async () => {
-  const marketingWindow = installQueuedGtag();
-  context.mocks.api(
-    acquisitionAttributionContract.recordSignup,
-    ({ respond }) => {
-      return respond(200, { recorded: true });
-    },
-  );
+test.each([
+  {
+    accountId: "1001302527",
+    sendTo: SIGNUP_SEND_TO,
+    otherSendTo: ADSMARCH_SIGNUP_SEND_TO,
+  },
+  {
+    accountId: "7935750692",
+    sendTo: ADSMARCH_SIGNUP_SEND_TO,
+    otherSendTo: SIGNUP_SEND_TO,
+  },
+])(
+  "A first-time sign-up queues only the verified $accountId action",
+  async ({ accountId, sendTo, otherSendTo }) => {
+    const marketingWindow = installQueuedGtag();
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ respond }) => {
+        return respond(200, { recorded: true, googleAdsAccountId: accountId });
+      },
+    );
 
-  await setupAttributionPage(new Date(NOW), true);
-  await waitForAgentsPage();
+    await setupAttributionPage(new Date(NOW), true);
+    await waitForAgentsPage();
 
-  expect(marketingWindow.dataLayer).toContainEqual([
-    "event",
-    "conversion",
-    expect.objectContaining({ send_to: SIGNUP_SEND_TO }),
-  ]);
-  expect(marketingWindow.dataLayer).toContainEqual([
-    "event",
-    "conversion",
-    expect.objectContaining({ send_to: ADSMARCH_SIGNUP_SEND_TO }),
-  ]);
-});
+    expect(marketingWindow.dataLayer).toContainEqual([
+      "event",
+      "conversion",
+      expect.objectContaining({ send_to: sendTo }),
+    ]);
+    expect(marketingWindow.dataLayer).not.toContainEqual([
+      "event",
+      "conversion",
+      expect.objectContaining({ send_to: otherSendTo }),
+    ]);
+  },
+);
 
 test("A malformed analytics cookie is ignored", async () => {
   const gtag = installGtagMock();
@@ -197,7 +211,7 @@ test("A paid sign-up is attributed and converted once", async () => {
     ({ body, respond }) => {
       attributionRequests += 1;
       recordedAttribution = body.attribution;
-      return respond(200, { recorded: true });
+      return respond(200, { recorded: true, googleAdsAccountId: "7935750692" });
     },
   );
 
@@ -217,15 +231,6 @@ test("A paid sign-up is attributed and converted once", async () => {
     "event",
     "conversion",
     expect.objectContaining({
-      send_to: SIGNUP_SEND_TO,
-      value: 1,
-      currency: "USD",
-    }),
-  );
-  expect(gtag).toHaveBeenCalledWith(
-    "event",
-    "conversion",
-    expect.objectContaining({
       send_to: ADSMARCH_SIGNUP_SEND_TO,
       value: 1,
       currency: "USD",
@@ -235,7 +240,7 @@ test("A paid sign-up is attributed and converted once", async () => {
 
   await openWorksPage();
   expect(attributionRequests).toBe(1);
-  expect(gtag).toHaveBeenCalledTimes(2);
+  expect(gtag).toHaveBeenCalledTimes(1);
 });
 
 test("A recent organic sign-up records its analytics client identifier", async () => {
@@ -256,15 +261,7 @@ test("A recent organic sign-up records its analytics client identifier", async (
   expect(recordedAttribution).toStrictEqual({
     ga_client_id: "123456789.987654321",
   });
-  expect(gtag).toHaveBeenCalledWith(
-    "event",
-    "conversion",
-    expect.objectContaining({
-      send_to: SIGNUP_SEND_TO,
-      value: 1,
-      currency: "USD",
-    }),
-  );
+  expect(gtag).not.toHaveBeenCalled();
 });
 
 test("Previously recorded server attribution prevents a duplicate conversion", async () => {
@@ -350,3 +347,36 @@ test.each(["url", "cookie"])(
     });
   },
 );
+
+test("An unresolved signup can be sent after its account is verified", async () => {
+  const gtag = installGtagMock();
+  let accountId: string | null = null;
+  context.mocks.api(
+    acquisitionAttributionContract.recordSignup,
+    ({ respond }) => {
+      return respond(200, { recorded: true, googleAdsAccountId: null });
+    },
+  );
+  context.mocks.api(
+    acquisitionAttributionContract.resolveGoogleAdsAccount,
+    ({ respond }) => {
+      return respond(200, { googleAdsAccountId: accountId });
+    },
+  );
+  await setupAttributionPage(new Date(NOW), true);
+  await waitForAgentsPage();
+  expect(gtag).not.toHaveBeenCalled();
+  accountId = "7935750692";
+  await openWorksPage();
+  await waitFor(() => {
+    return expect(gtag).toHaveBeenCalledTimes(1);
+  });
+  expect(gtag).toHaveBeenCalledWith(
+    "event",
+    "conversion",
+    expect.objectContaining({
+      send_to: ADSMARCH_SIGNUP_SEND_TO,
+      transaction_id: "test-user-123",
+    }),
+  );
+});

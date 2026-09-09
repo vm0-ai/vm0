@@ -34,7 +34,7 @@ import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { isOrgAdmin$ } from "../org.ts";
-import { settle, tapError, withCleanup } from "../utils.ts";
+import { bestEffort, settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -823,7 +823,10 @@ export const startCheckout$ = command(
     if (!("url" in result.body)) {
       throw new Error("Plan checkout returned an unexpected confirmation");
     }
-    set(capturePaidOnboardingRedirectToStripe$, "paywall");
+    await bestEffort(
+      set(capturePaidOnboardingRedirectToStripe$, "paywall", signal),
+      signal,
+    );
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
@@ -950,7 +953,10 @@ export const confirmSubscriptionPurchase$ = command(
       );
       signal.throwIfAborted();
       if ("url" in refreshed.body) {
-        set(capturePaidOnboardingRedirectToStripe$, "paywall");
+        await bestEffort(
+          set(capturePaidOnboardingRedirectToStripe$, "paywall", signal),
+          signal,
+        );
         if (state.newTab) {
           window.open(refreshed.body.url, "_blank");
         } else {

@@ -30,6 +30,8 @@ surface; the index does not replace their detailed rules.
 
 ## Specialized Guidance
 
+- [Google Ads browser routing](./google-ads-browser-routing.md): verified account
+  ownership, conversion actions, rollout compatibility, and historical recovery.
 - [Connector inspection JSON](./connector-inspection-json.md): command output
   contracts, current versus run evidence, account identity, and next actions.
 - [Platform lint boundaries](./platform-lint.md): current transport and lifecycle

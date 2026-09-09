@@ -78,7 +78,10 @@ test("Each product milestone uses its defined conversion action", async () => {
     acquisitionAttributionContract.googleAdsMilestones,
     ({ respond }) => {
       milestoneReads += 1;
-      return respond(200, { milestones: [...milestones] });
+      return respond(200, {
+        milestones: [...milestones],
+        googleAdsAccountId: "7935750692",
+      });
     },
   );
 
@@ -143,7 +146,10 @@ test("Only newly earned conversion milestones are reported", async () => {
     acquisitionAttributionContract.googleAdsMilestones,
     ({ respond }) => {
       milestoneReads += 1;
-      return respond(200, { milestones: [...milestones] });
+      return respond(200, {
+        milestones: [...milestones],
+        googleAdsAccountId: "7935750692",
+      });
     },
   );
 
@@ -172,4 +178,36 @@ test("Only newly earned conversion milestones are reported", async () => {
   await context.store.set(syncGoogleAdsConversionMilestones$, context.signal);
 
   expect(reportedMilestoneEvents(googleTag, ALL_MILESTONES)).toHaveLength(1);
+});
+
+// Milestone polling has no page-visible control; this bootstrap test drives the
+// existing background synchronization boundary with external API responses.
+test("Unknown ownership leaves earned milestones eligible for later delivery", async () => {
+  const googleTag = vi.fn<GoogleTag>();
+  vi.stubGlobal("gtag", googleTag);
+  let accountId: string | null = "7935750692";
+  let milestones: readonly GoogleAdsConversionMilestone[] = [];
+  context.mocks.api(
+    acquisitionAttributionContract.googleAdsMilestones,
+    ({ respond }) => {
+      return respond(200, {
+        milestones: [...milestones],
+        googleAdsAccountId: accountId,
+      });
+    },
+  );
+  await setupPage({ context, path: "/agents", host: "app.okou.ai" });
+  await expect(
+    screen.findByRole("heading", { name: "Agents" }),
+  ).resolves.toBeVisible();
+  accountId = null;
+  milestones = ALL_MILESTONES;
+  await context.store.set(syncGoogleAdsConversionMilestones$, context.signal);
+  expect(reportedMilestoneEvents(googleTag, ALL_MILESTONES)).toHaveLength(0);
+  accountId = "1001302527";
+  await context.store.set(syncGoogleAdsConversionMilestones$, context.signal);
+  expect(reportedMilestoneEvents(googleTag, ALL_MILESTONES)).toHaveLength(0);
+  accountId = "7935750692";
+  await context.store.set(syncGoogleAdsConversionMilestones$, context.signal);
+  expect(reportedMilestoneEvents(googleTag, ALL_MILESTONES)).toHaveLength(6);
 });
