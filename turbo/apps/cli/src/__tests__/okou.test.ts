@@ -59,7 +59,6 @@ describe("Okou CLI program", () => {
       "chat",
       "resource",
       "workflow",
-      "goal",
       "slack",
       "feishu",
       "teams",
@@ -75,6 +74,7 @@ describe("Okou CLI program", () => {
       "video",
       "host",
       "presentation",
+      "presentation-template",
       "maps",
       "weather",
       "scrape",
@@ -122,8 +122,8 @@ describe("Okou CLI program", () => {
     expect(canonicalCommandNames).not.toContain("__intro-video-voice");
   });
 
-  it("should have exactly 41 canonical commands", () => {
-    expect(canonicalCommandNames).toHaveLength(41);
+  it("should have exactly 40 canonical commands", () => {
+    expect(canonicalCommandNames).toHaveLength(40);
   });
 });
 

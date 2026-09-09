@@ -436,8 +436,7 @@ type ComposerCustomConnectorItem = CustomConnectorResponse & {
 // strip's bottom edge so it reads as one tucked-behind queue layer.
 // ---------------------------------------------------------------------------
 
-// The three-bar "queue" mark, sized to sit inline beside the goal's target so a
-// queued row and the goal row differ only by their leading icon.
+// The three-bar "queue" mark leads each queued message row.
 function ComposerQueueGlyph() {
   return (
     <span

@@ -1,25 +1,79 @@
-# Temporary protected Goal search recovery (#32875)
+# Completed Goal search recovery (2026-09-09)
 
-This is the production execution entry for the accepted, unchanged operation
-[014](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md),
-under [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653). It repairs only
-receipt-addressed derived search documents. It does not change Goal lifecycle,
-1093/1094, raw history, snapshots, immutable public shares or search watermarks.
+**Status: completed and independently accepted. Dispatch instructions are retired.**
+The temporary execution entry from #32875 / #32978 is removed by
+[S3 #33023](https://github.com/vm0-ai/vm0/issues/33023). This dated record preserves
+its evidence and historical design; it does not authorize another dispatch,
+replay, retry, production approval or release. The sole recovery operator has
+stopped, and the controller deleted its separate Okou watcher and verified absence.
 
-The implementation owner stops at protected merge. The controller independently
-accepts the merged workflow and negative gates, then delegates execution to the
-existing sole recovery owner, chat `cacc99f2-1570-4e64-961c-40b3fe8db2cf`. Only that
-owner dispatches and handles actual `production` environment approvals. A merged
-entry is usable from `main` after controller acceptance; no API/App release is
-needed for this workflow. Its merge is not S2 production acceptance.
+## Final operation and acceptance
 
-## Serving and convergence prerequisite
+The sole successful apply was
+[run 34356992223 / job 102484085578](https://github.com/vm0-ai/vm0/actions/runs/34356992223/job/102484085578),
+attempt **1**, mode **apply**, source
+`aba3bd9692db398472b6033432d802f94d0579cc`. The job succeeded at
+**2026-09-09 15:38:53 UTC**. The
+[operator's complete certificate](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5604617146)
+and [independent controller acceptance](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5604844349)
+retain the exact ten source/run/attempt-bound records and production observations.
+The controller accepted S2 at **2026-09-09 15:59:18.802907 UTC**.
 
-Before **each dispatch**, the recovery owner records current normal API serving
-identity and outgoing normal projector completion/convergence evidence in the
-EPIC. Verify the repaired reader remains serving and the S1 creation/reactivation
-and continuation fences remain effective. Do not create a Goal canary. A release
-record or the passage of time alone is insufficient if serving has changed.
+| Complete phase           | Processed | Unchanged | Repairable | Repaired | Not indexed / deleted / revoked |
+| ------------------------ | --------: | --------: | ---------: | -------: | ------------------------------- |
+| Preflight                |     4,162 |     4,158 |          4 |        0 | 0 / 0 / 0                       |
+| Apply                    |     4,162 |     4,158 |          0 |        4 | 0 / 0 / 0                       |
+| Fresh final verification |     4,162 |     4,162 |          0 |        0 | 0 / 0 / 0                       |
+
+The four repaired results are **thread outcomes**, not a separately measured
+number of document writes. Before, immediately before apply, and after final
+verification, all **three complete cohorts** retained 4,162 Goals, 4,162 distinct
+threads and 4,162 complete receipts; 3,819 complete / 143 paused / 200 blocked /
+active 0; actual Goal-origin nonterminal runs 0 and unrevoked runless Goal inputs
+including reservations 0. Every full ID hash remained
+`aa033d67b27ff3fdbd30c945e482962b3e054cf4a1a4f74fce7edf74fed4e7f2`.
+Fresh final verification completed at **15:38:49.4093750 UTC**, followed by the
+after cohort at **15:38:50.8156683 UTC** and complete record at
+**15:38:50.8159048 UTC**.
+
+The complete workflow inventory contained four terminal operations: successful
+dry-runs [34329154556](https://github.com/vm0-ai/vm0/actions/runs/34329154556)
+and [34350816813](https://github.com/vm0-ai/vm0/actions/runs/34350816813), cancelled
+apply [34333317500](https://github.com/vm0-ai/vm0/actions/runs/34333317500), and the
+successful apply above. No active or queued operation remained. The cancelled
+apply's attributable commit count remains **UNKNOWN**; it cannot be inferred by
+subtracting four from the earlier nine repairable findings.
+
+Only receipt-addressed derived search documents were repaired. Original
+objectives/status archives, raw history, snapshots, immutable public shares and
+search watermarks were retained. S2 acceptance does not authorize S4 consumer
+removal or S5 physical schema cleanup without their separate gates.
+
+## Retired execution sources
+
+All deleted sources remain available at accepted commit
+[`30c84e22f32fb43bfc12af672fa1aec9a8969c47`](https://github.com/vm0-ai/vm0/commit/30c84e22f32fb43bfc12af672fa1aec9a8969c47):
+
+- [Temporary GitHub workflow](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/.github/workflows/temporary-goal-archive-search-recovery.yml).
+- [Dedicated workflow fixture](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/.github/scripts/tests/goal-archive-search-recovery-workflow-test.sh).
+- [Execution wrapper](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/turbo/packages/db/scripts/goal-archive-search-recovery/run.ts).
+- [Certificate validator](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/turbo/packages/db/scripts/goal-archive-search-recovery/certificate.ts).
+- [Dedicated certificate tests](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/turbo/packages/db/scripts/goal-archive-search-recovery/certificate.test.ts).
+
+The historical design below describes that accepted source. The original numbered
+[014 operation](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md),
+immutable 1093/1094 migrations, receipts and transition validator remain under
+repository migration policy. No execution or scheduling authority is added to
+history readers.
+
+## Historical serving and convergence prerequisite
+
+Before each historical dispatch, the sole recovery owner, chat
+`cacc99f2-1570-4e64-961c-40b3fe8db2cf`, recorded normal API serving identity and
+outgoing normal projector completion/convergence evidence in the EPIC. The gate
+required repaired readers and S1 creation/reactivation and continuation fences
+to remain effective, without creating a Goal canary. Release records or elapsed
+time alone did not establish that prerequisite.
 
 The actual accepted starting evidence is the
 [release owner's report](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5597708442):
@@ -41,31 +95,23 @@ The actual accepted starting evidence is the
   Actual Goal-origin queued/pending/running was zero without a time filter.
   These are publication-time observations, not recovery results.
 
-Recheck and record these normal-production prerequisites before execution. The
-workflow deliberately has no extra operator-assertion or source inputs. Its
-production approval and the controller's evidence ledger own this prerequisite;
-the workflow does not independently prove live serving identity. Historical
+These normal-production prerequisites were rechecked before execution. The
+workflow had no extra operator-assertion or source inputs. Its production
+approval and the controller's evidence ledger owned this prerequisite; the
+workflow did not independently prove live serving identity. Historical
 Vercel/fixed-deployment inventory is outside the
 [user-approved scope](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5595137042).
 Cron 200 or elapsed time never substitutes for the full data certificate below;
 `not-indexed > 0` requires normal projector convergence and investigation.
 
-## Exact invocation
+## Historical dispatch and source guards
 
-From an authorized GitHub CLI session, after controller acceptance:
+The original invocation examples are retained only in the
+[immutable accepted guide](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/docs/goal-archive-search-recovery.md#exact-invocation).
+The workflow and wrapper are deleted; these examples are not current operating
+instructions. No further dispatch is expected or authorized by this record.
 
-```bash
-# Default/read-only preflight (mode can be omitted; its default is dry-run).
-gh workflow run temporary-goal-archive-search-recovery.yml \
-  --repo vm0-ai/vm0 --ref main -f mode=dry-run
-
-# Independently repeats preflight in the same job before any mutation.
-gh workflow run temporary-goal-archive-search-recovery.yml \
-  --repo vm0-ai/vm0 --ref main -f mode=apply
-```
-
-Use the returned GitHub run identity and its job summary as evidence. Only
-`workflow_dispatch` on `refs/heads/main` reaches the finite 240-minute protected
+Only `workflow_dispatch` on `refs/heads/main` reached the finite 240-minute protected
 job. Both modes share one concurrency group with cancellation disabled. No push,
 PR, release, schedule, arbitrary SQL, command, ref, bucket, cursor, count or hash
 override is available. Checkout uses the dispatched `github.sha`, with credentials
@@ -87,16 +133,16 @@ No runtime logic changed. Any further difference, including another comment
 edit, must fail before production secrets are bound. Do not advance the whole
 closure to a newer main, ignore comments, omit paths or add a source override.
 
-Implementation and controller acceptance must execute the workflow's actual
+Implementation and controller acceptance required execution of the workflow's actual
 `Validate mode and accepted operation source` shell step against real Git history
 at the exact reviewed HEAD, with `GITHUB_SHA` set to that HEAD, for both modes.
 This check needs all three ancestor commits locally and no production credentials.
-Record that full SHA and the byte/ancestry results alongside the executable
+The full SHA and byte/ancestry results were recorded alongside the executable
 workflow fixture's independent missing-ancestor, changed-path, invalid-mode and
 dispatch-SHA rejection results. Shallow-checkout synthetic fixtures alone cannot
 prove that the reviewed source matches either accepted baseline. Before each
-production approval, the operator validates the actual dispatched main source
-and accepted execution files again if main has advanced.
+historical production approval, the operator revalidated the actual dispatched
+main source and accepted execution files if main had advanced.
 
 The resolver reuses existing `NEON_API_KEY`, the expected
 `NEON_PROJECT_ID=hidden-lab-39609750`, and a unique `production` branch. It rejects
@@ -106,12 +152,10 @@ it inside the protected job. Existing R2 account/bucket variables and access
 secrets are mounted only for execution. There is no credential export, new secret
 store or sandbox credential requirement.
 
-## Certificate and output
+## Historical certificate and output
 
-The small wrapper lives at
-[`scripts/goal-archive-search-recovery/run.ts`](../turbo/packages/db/scripts/goal-archive-search-recovery/run.ts),
-with the validation boundary in
-[`certificate.ts`](../turbo/packages/db/scripts/goal-archive-search-recovery/certificate.ts).
+The retired wrapper and certificate validator are linked to their immutable
+accepted sources above.
 Every invocation starts at the full inventory. A metadata-only, read-only SQL
 snapshot computes the complete ID hash, unique-thread count, complete receipts,
 statuses, actual Goal-origin nonterminal runs and unrevoked runless Goal inputs
@@ -157,7 +201,7 @@ object request timeout. Its existing snapshot decompression/history accumulation
 is unchanged. The workflow timeout bounds the job; it is **not a per-thread
 memory bound**.
 
-## Measured job budget and operator continuation (#32978)
+## Historical job budget and operator continuation (#32978)
 
 The first apply [run 34333317500 / job 102406764659](https://github.com/vm0-ai/vm0/actions/runs/34333317500/job/102406764659),
 attempt 1, dispatched source `99bd2254849a4890c0bf7dc12c151b6463b34726`, was
@@ -169,7 +213,7 @@ contains a complete preflight from **09:13:00 to 10:11:39 UTC** (**58m39s**):
 Both before and immediately-before-apply cohorts matched all 4,162 Goals,
 distinct threads and complete receipts, the fixed hash and every prerequisite.
 Apply started **10:11:41 UTC**. No complete apply report, fresh final verification
-or after cohort was emitted. The committed repair count is **unknown**; nine
+or after cohort was emitted. The committed repair count is **UNKNOWN**; nine
 repairable threads do not mean nine repaired threads or zero committed repairs.
 
 Apply requires three complete scans: fresh preflight, full apply and fresh full
@@ -180,8 +224,8 @@ for setup and timing variability; the earlier standalone dry-run took about
 three scans, the full cohort and all existing transaction, lock, statement,
 object-request and inventory bounds. There is no operator timeout override.
 
-A GitHub job can outlive an operator's **two-hour assistant run**. Before that
-assistant limit, the sole operator records a continuation checkpoint on the EPIC:
+The GitHub job could outlive an operator's **two-hour assistant run**. At that
+boundary, the historical continuation procedure required an EPIC checkpoint:
 
 1. Exact run and job URLs/IDs, attempt, dispatched full source SHA, mode,
    observation UTC, actual job/check status and approval state.
@@ -189,23 +233,22 @@ assistant limit, the sole operator records a continuation checkpoint on the EPIC
    identify the last started phase and every absent report. The wrapper captures
    child output until a complete phase validates, so a quiet active phase does
    not expose a committed repair count.
-3. Stop the assistant run while leaving the GitHub job intact. Controller
-   `9faa0333-002f-418a-b47d-185aa32afa4a` continues the same sole operator,
-   `cacc99f2-1570-4e64-961c-40b3fe8db2cf`, to read the same run/job and attempt.
-   Resume observation of that job whether it is still active or became terminal
-   between assistant runs. Do not dispatch, rerun, cancel or add an executor to
-   cross the assistant runtime boundary.
+3. The assistant stopped with the GitHub job intact. Controller
+   `9faa0333-002f-418a-b47d-185aa32afa4a` continued the same sole operator,
+   `cacc99f2-1570-4e64-961c-40b3fe8db2cf`, to observe the same run/job and attempt.
+   Crossing the assistant boundary did not permit another dispatch, rerun,
+   cancellation or executor. This completed owner is now stopped.
 
-An assistant continuation is not a GitHub retry or a completion certificate.
-If the GitHub job actually times out or fails again, preserve safe per-thread
-commits, report only observed counts and missing evidence, and return to the
-controller before any retry. After this repair is merged and independently
-accepted, the existing operator first rechecks the terminal two-run inventory
-(dry-run `34329154556`, apply `34333317500`), the actual accepted dispatch source
-and current normal serving/projector prerequisites, then follows the full fresh
-dry-run and apply certification path. Prior reports never replace these scans.
+Assistant continuation was not a GitHub retry or a completion certificate.
+After #32978 was merged and independently accepted, the existing operator
+rechecked the terminal two-run inventory (dry-run `34329154556`, apply
+`34333317500`), the actual accepted dispatch source and current normal
+serving/projector prerequisites. The new full dry-run and successful apply
+reported above then completed all fresh scans; prior reports did not replace
+them. Safe per-thread commits from the cancelled apply remained, with their
+attributable count still UNKNOWN.
 
-## Failure, partial commits and disposal
+## Historical failure handling and completed disposal
 
 Each apply thread commits independently. Failure rolls back its current
 transaction; earlier safe committed repairs remain. A clear can legitimately
@@ -215,19 +258,18 @@ also attempts a fresh metadata-only count/hash diagnostic, without rerunning
 the operation. If that read fails, the sanitized error says so; there is no
 certificate. Cancellation/timeout may prevent a final diagnostic or summary.
 
-Return the source/run identity, phase, observed counts/hash and sanitized error
-class to the controller. Never reconstruct Goals, shrink the cohort, reset a
-watermark, alter raw history, fabricate terminal success or retry apply blindly.
-The controller reconciles intentional deletion or commissions a separately
-bounded canonical-inventory repair. Only after the actual blocker is resolved
-may the owner rerun this same full entry; already-correct documents remain
-unchanged. A prior run's report or a resumed subset is never write authority or
-a completion certificate. The historical 014 README's low-level cursor example
-does not apply to this protected certification path.
+The historical failure procedure returned source/run identity, phase, observed
+counts/hash and sanitized error class to the controller. It prohibited Goal
+reconstruction, cohort shrinking, watermark resets, raw-history changes,
+fabricated terminal success and blind apply retries. A prior report or resumed
+subset was never write authority or a completion certificate; the historical
+014 README's low-level cursor example did not apply to this protected path.
 
-After successful recovery and independent S2 production acceptance, the
-controller assigns the next S3/S4 consumer-removal owner to delete the temporary
-workflow, wrapper and their dedicated tests. This must happen **before S5 drops
-receipt inventory**. Keep this dated operational record, the original numbered
-014 operation and immutable 1093/1094 history under repository migration policy.
-Retain the actual run and controller evidence on the EPIC before disposal.
+Independent S2 production acceptance closed the disposal gate. S3 #33023 removes
+the five temporary workflow/wrapper/dedicated-test files linked above, before
+S5 drops receipt inventory. The separate Okou S2 watcher was already deleted
+and its absence verified by the controller. This record and its immutable source,
+run and controller links remain; no recovery workflow is expected to run again.
+The numbered 014 operation, its package exports, immutable 1093/1094, migration
+journal/snapshots and S5 transition validator remain unchanged. Physical Goal
+schema, S1 fences and shared DB dependencies remain for the later staged gates.
