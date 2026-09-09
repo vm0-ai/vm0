@@ -133,6 +133,11 @@ export const modelPickerMenuEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ModelPickerMenu] ?? false;
 });
 
+/** The flyout replaces the drill-in menu's pages with two detached panels. */
+export const modelPickerFlyoutEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ModelPickerFlyout] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });

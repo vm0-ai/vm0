@@ -287,6 +287,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelPickerFlyout]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Pick a model from a detached flyout: model types on the left, that type's models in a panel beside it.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@okou.ai",
     description:
