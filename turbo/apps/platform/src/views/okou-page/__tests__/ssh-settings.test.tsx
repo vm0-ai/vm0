@@ -193,6 +193,10 @@ test.each(["paste", "file"])(
     );
     click(getAction("button", "Add host"));
     const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveAccessibleDescription("");
+    expect(
+      within(dialog).queryByText(/The first successful connection learns/u),
+    ).not.toBeInTheDocument();
     await fill(within(dialog).getByLabelText("Display name"), "Deployment");
     await fill(
       within(dialog).getByLabelText("Public hostname or IP address"),
@@ -418,6 +422,10 @@ test("Credential replacement is explicit and fields clear before the request fin
     }),
   );
   let dialog = await screen.findByRole("dialog");
+  expect(dialog).toHaveAccessibleDescription("");
+  expect(
+    within(dialog).queryByText(/The first successful connection learns/u),
+  ).not.toBeInTheDocument();
   await fill(within(dialog).getByLabelText("Private key"), "close-canary");
   click(getAction("button", "Cancel", dialog));
   await waitFor(() => {
@@ -484,6 +492,9 @@ test("Reset requires confirmation, generation conflict refreshes without retry, 
   expect(
     within(reset).getByText(/Only reset after independently verifying/),
   ).toBeInTheDocument();
+  expect(reset).toHaveAccessibleDescription(
+    "Only reset after independently verifying the new server identity. The next connection will trust and learn a new host key.",
+  );
   click(getAction("button", "Reset host key", reset));
   await screen.findByRole("alert");
   expect(resets).toBe(1);

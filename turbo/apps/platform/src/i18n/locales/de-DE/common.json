@@ -5768,7 +5768,6 @@
     "summary_one": "{{count}} Host konfiguriert",
     "summary_other": "{{count}} Hosts konfiguriert",
     "title": "SSH-Hosts",
-    "tofu": "Bei der ersten erfolgreichen Verbindung wird der Hostschlüssel des Servers gespeichert. Prüfen Sie unerwartete Schlüsseländerungen vor dem Zurücksetzen.",
     "unavailable": "SSH-Zugriff ist für dieses Konto nicht verfügbar.",
     "username": "SSH-Benutzername"
   },

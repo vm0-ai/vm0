@@ -249,9 +249,7 @@ function SshDialog() {
           ? t(($) => {
               return $.ssh.editHelp;
             })
-          : t(($) => {
-              return $.ssh.tofu;
-            });
+          : null;
   return (
     <Dialog
       open
@@ -267,7 +265,7 @@ function SshDialog() {
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <form
           className="grid gap-4"
@@ -284,12 +282,10 @@ function SshDialog() {
             detach(save(values, signal), Reason.DomCallback);
           }}
         >
-          {(dialog.kind === "create" || dialog.kind === "edit") && (
+          {["create", "edit"].includes(dialog.kind) && (
             <EndpointFields connection={dialog.connection} />
           )}
-          {(dialog.kind === "create" || dialog.kind === "rotate") && (
-            <CredentialFields />
-          )}
+          {["create", "rotate"].includes(dialog.kind) && <CredentialFields />}
           <div className="flex justify-end gap-2">
             <Button
               type="button"

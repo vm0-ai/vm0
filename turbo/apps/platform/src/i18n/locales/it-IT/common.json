@@ -5829,7 +5829,6 @@
     "summary_many": "{{count}} host configurati",
     "summary_other": "{{count}} host configurati",
     "title": "Host SSH",
-    "tofu": "La prima connessione riuscita memorizza la chiave host del server. Verifica le modifiche inattese prima di reimpostarla.",
     "unavailable": "L’accesso SSH non è disponibile per questo account.",
     "username": "Nome utente SSH"
   },

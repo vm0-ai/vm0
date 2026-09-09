@@ -5760,7 +5760,6 @@
     "summary_one": "{{count}} host configured",
     "summary_other": "{{count}} hosts configured",
     "title": "SSH hosts",
-    "tofu": "The first successful connection learns the server's host key. Verify unexpected key changes before resetting it.",
     "unavailable": "SSH access is not available for this account.",
     "username": "SSH username"
   },

@@ -5755,7 +5755,6 @@
     "summary_one": "호스트 {{count}}개 구성됨",
     "summary_other": "호스트 {{count}}개 구성됨",
     "title": "SSH 호스트",
-    "tofu": "처음 연결에 성공하면 서버의 호스트 키가 저장됩니다. 예상치 못한 키 변경은 재설정하기 전에 확인하세요.",
     "unavailable": "이 계정에서는 SSH 접근을 사용할 수 없습니다.",
     "username": "SSH 사용자 이름"
   },

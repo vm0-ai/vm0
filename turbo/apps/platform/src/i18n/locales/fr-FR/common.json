@@ -5829,7 +5829,6 @@
     "summary_many": "{{count}} hôtes configurés",
     "summary_other": "{{count}} hôtes configurés",
     "title": "Hôtes SSH",
-    "tofu": "La première connexion réussie mémorise la clé d’hôte du serveur. Vérifiez tout changement inattendu avant de la réinitialiser.",
     "unavailable": "L’accès SSH n’est pas disponible pour ce compte.",
     "username": "Nom d’utilisateur SSH"
   },

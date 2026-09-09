@@ -5755,7 +5755,6 @@
     "summary_one": "{{count}} host dikonfigurasi",
     "summary_other": "{{count}} host dikonfigurasi",
     "title": "Host SSH",
-    "tofu": "Koneksi pertama yang berhasil menyimpan kunci host server. Verifikasi perubahan kunci yang tidak terduga sebelum meresetnya.",
     "unavailable": "Akses SSH tidak tersedia untuk akun ini.",
     "username": "Nama pengguna SSH"
   },
