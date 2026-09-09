@@ -62,10 +62,10 @@ const fs = require('node:fs');
 const blocked = fs.existsSync(${JSON.stringify(permissionGate)});
 const lines = require('node:readline').createInterface({input:process.stdin});
 if (blocked) lines.on('close', () => {
-  fs.appendFileSync(${JSON.stringify(nativeEvents)}, 'exit-waiting\\n');
   const watcher = fs.watch(${JSON.stringify(directory)}, () => {
     if (fs.existsSync(${JSON.stringify(exitRelease)})) { watcher.close(); process.exit(0); }
   });
+  fs.appendFileSync(${JSON.stringify(nativeEvents)}, 'exit-waiting\\n');
 });
 fs.appendFileSync(${JSON.stringify(nativeEvents)}, 'start\\n');
 lines.on('line', line => {
