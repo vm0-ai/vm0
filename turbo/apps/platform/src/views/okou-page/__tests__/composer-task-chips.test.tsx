@@ -83,8 +83,14 @@ test.each([
     await waitFor(() => {
       expect(capture.runPrompts).toHaveLength(1);
     });
-    expect(capture.runPrompts[0]).toContain(instruction);
-    expect(capture.runPrompts[0]).toContain("My launch next week");
+    expect(capture.runPrompts).toStrictEqual(["My launch next week"]);
+    expect(capture.sentMessages[0]?.parts).toContainEqual({
+      type: "additional_info",
+      text: instruction,
+    });
+    await expect(
+      screen.findByText("My launch next week"),
+    ).resolves.toBeVisible();
   },
 );
 
