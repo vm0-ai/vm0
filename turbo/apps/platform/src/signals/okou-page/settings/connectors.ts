@@ -420,6 +420,30 @@ export function matchesConnectorSearch(
   return false;
 }
 
+/**
+ * Directory search. Widens `matchesConnectorSearch` to the description and the
+ * catalog tags, so intent words ("email", "chat", "crm") reach the connectors
+ * that serve them even when the product name shares no letters with the query.
+ */
+export function matchesConnectorDirectorySearch(
+  search: string,
+  connector: Pick<
+    PlatformConnectorCatalogStatusItem,
+    "slug" | "label" | "description" | "tags"
+  >,
+): boolean {
+  if (matchesConnectorSearch(search, connector)) {
+    return true;
+  }
+  const needle = search.trim().toLowerCase();
+  if (connector.description.toLowerCase().includes(needle)) {
+    return true;
+  }
+  return connector.tags.some((tag) => {
+    return tag.toLowerCase().includes(needle);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Search filter
 // ---------------------------------------------------------------------------

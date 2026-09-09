@@ -2,9 +2,16 @@ import type { ReactNode } from "react";
 import { useGet, type LoadableState } from "ccstate-react";
 import { connectorConnectionPending$ } from "../../../../signals/connector-connection-progress.ts";
 import { useTranslation } from "react-i18next";
-import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
+import {
+  ChevronRight,
+  CircleCheck,
+  EllipsisVertical,
+  Loader2,
+  Plus,
+} from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   Button,
@@ -107,8 +114,22 @@ type PermissionConnectorCardProps = {
   readonly onToggle: (checked: boolean) => void;
 };
 
+type DirectoryConnectorCardProps = {
+  readonly variant: "directory";
+  readonly connector: PlatformConnectorCatalogStatusItem;
+  readonly busy: boolean;
+  readonly connected: boolean;
+  readonly accountCount?: number;
+  readonly accountLabel?: string;
+  readonly unavailable?: boolean;
+  readonly active?: boolean;
+  readonly connect: ConnectorConnectHandlers;
+  readonly onOpenDetail?: () => void;
+};
+
 type ConnectorCardProps =
   | CatalogConnectorCardProps
+  | DirectoryConnectorCardProps
   | ConnectionConnectorCardProps
   | AccountsConnectorCardProps
   | OnboardingConnectorCardProps
@@ -191,6 +212,223 @@ function CatalogConnectorCard({
           {connector.description}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * `okou-card` and `okou-border` as utilities. The directory renders through a
+ * dialog portal, outside the `.okou-app` scope that owns the card tokens, so
+ * the radius and shadow values are inlined the way the other portalled
+ * surfaces already do.
+ */
+export const DIRECTORY_HAIRLINE =
+  "border-[0.7px] border-[hsl(var(--gray-400))]";
+export const DIRECTORY_SURFACE = cn(
+  "rounded-[1.25rem] bg-card transition-colors",
+  DIRECTORY_HAIRLINE,
+  "shadow-[0_2px_12px_hsl(30_6%_45%/0.05),0_0_0_0.5px_hsl(30_6%_45%/0.025)]",
+);
+
+/** Square container that gives every connector mark the same optical weight. */
+export function ConnectorIconTile({
+  icon,
+  size = "md",
+}: {
+  readonly icon: PublicConnectorCatalogIcon | undefined;
+  readonly size?: "md" | "lg";
+}) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-gray-50",
+        DIRECTORY_HAIRLINE,
+        size === "lg" ? "h-13 w-13 rounded-[14px]" : "h-9 w-9",
+      )}
+    >
+      <ConnectorIcon icon={icon} size={size === "lg" ? 32 : 22} />
+    </span>
+  );
+}
+
+function DirectoryConnectorStatusLine({
+  connector,
+  accountCount,
+  accountLabel,
+  unavailable,
+}: {
+  readonly connector: PlatformConnectorCatalogStatusItem;
+  readonly accountCount: number;
+  readonly accountLabel: string | undefined;
+  readonly unavailable: boolean;
+}) {
+  const { t } = useTranslation();
+  const connectionStatus = connectorCurrentConnectionStatus(connector);
+  if (unavailable) {
+    return (
+      <>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-500" />
+        <span className="truncate text-muted-foreground">
+          {t(($) => {
+            return $.chat.connectors.directory.askAdmin;
+          })}
+        </span>
+      </>
+    );
+  }
+  if (connectionStatus === "reconnect-required") {
+    return (
+      <>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+        <span className="truncate text-amber-600 dark:text-amber-400">
+          {t(($) => {
+            return $.connectors.card.connectionExpired;
+          })}
+        </span>
+      </>
+    );
+  }
+  if (connectionStatus === "scope-mismatch") {
+    return (
+      <>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+        <span className="truncate text-amber-600 dark:text-amber-400">
+          {t(($) => {
+            return $.connectors.card.updatePermissions;
+          })}
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+      <span className="truncate text-muted-foreground">
+        {accountLabel ??
+          t(($) => {
+            return $.connectors.card.connected;
+          })}
+      </span>
+      {accountCount > 1 && (
+        <span className="ml-auto shrink-0 rounded-full bg-state-selected px-2 py-0.5 text-[11px] text-muted-foreground">
+          {t(
+            ($) => {
+              return $.chat.connectors.directory.moreAccounts;
+            },
+            { count: accountCount - 1 },
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
+function DirectoryConnectorCard({
+  connector,
+  busy,
+  connected,
+  accountCount = 0,
+  accountLabel,
+  unavailable = false,
+  active = false,
+  connect,
+  onOpenDetail,
+}: DirectoryConnectorCardProps) {
+  const { t } = useTranslation();
+  const interactive = !busy && !unavailable;
+  const activate = () => {
+    if (!interactive) {
+      return;
+    }
+    if (connected) {
+      onOpenDetail?.();
+      return;
+    }
+    runConnect(connector, connect, busy);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={interactive ? 0 : -1}
+      data-connector-slug={connector.slug}
+      data-active={active ? "true" : undefined}
+      aria-label={
+        connected
+          ? t(
+              ($) => {
+                return $.chat.connectors.directory.openDetailAria;
+              },
+              { connector: connector.label },
+            )
+          : t(
+              ($) => {
+                return $.connectors.card.connectAria;
+              },
+              { connector: connector.label },
+            )
+      }
+      aria-disabled={!interactive}
+      className={cn(
+        DIRECTORY_SURFACE,
+        "flex flex-col overflow-hidden text-left",
+        interactive ? "cursor-pointer hover:bg-card-hover" : "cursor-default",
+        unavailable && "opacity-60",
+        active && "bg-state-selected",
+      )}
+      onClick={activate}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        }
+      }}
+    >
+      <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
+        <ConnectorIconTile icon={connector.icon} />
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span
+            data-testid="connector-card-label"
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+          >
+            {connector.label}
+          </span>
+        </span>
+        <span
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground",
+            !busy && !connected && !unavailable && "border border-border/60",
+          )}
+          aria-hidden="true"
+        >
+          {busy ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : connected ? (
+            <ChevronRight size={16} />
+          ) : (
+            <Plus size={14} />
+          )}
+        </span>
+      </div>
+      {connected || unavailable ? (
+        <div className="flex h-10 items-center gap-2 border-t border-border/50 px-4 text-xs">
+          <DirectoryConnectorStatusLine
+            connector={connector}
+            accountCount={accountCount}
+            accountLabel={accountLabel}
+            unavailable={unavailable}
+          />
+        </div>
+      ) : (
+        <div className="px-4 pb-3.5">
+          <div
+            data-testid="connector-help-text"
+            className="line-clamp-2 text-xs text-muted-foreground"
+          >
+            {connector.description}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -794,6 +1032,9 @@ function PermissionConnectorCard({
 export function ConnectorCard(props: ConnectorCardProps) {
   if (props.variant === "catalog") {
     return <CatalogConnectorCard {...props} />;
+  }
+  if (props.variant === "directory") {
+    return <DirectoryConnectorCard {...props} />;
   }
   if (props.variant === "connection") {
     return <ConnectionConnectorCard {...props} />;

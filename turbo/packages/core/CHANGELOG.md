@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.639.0](https://github.com/vm0-ai/vm0/compare/core-v8.638.1...core-v8.639.0) (2026-09-09)
+
+
+### Features
+
+* **app:** add the connector directory behind a feature switch ([#32703](https://github.com/vm0-ai/vm0/issues/32703)) ([b671bb4](https://github.com/vm0-ai/vm0/commit/b671bb4ad7e3fba6e154a66b2cce71323a4c4d82))
+
+## [8.638.1](https://github.com/vm0-ai/vm0/compare/core-v8.638.0...core-v8.638.1) (2026-09-09)
+
+
+### Refactoring
+
+* **platform:** remove chat run work folding switch ([#32727](https://github.com/vm0-ai/vm0/issues/32727)) ([1357f20](https://github.com/vm0-ai/vm0/commit/1357f20a71a4ddfad029682d776826593492f0cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.1
+
 ## [8.638.0](https://github.com/vm0-ai/vm0/compare/core-v8.637.2...core-v8.638.0) (2026-09-08)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.867.0",
+  "version": "0.868.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -36,7 +36,7 @@
     "@sentry/browser": "10.46.0",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
-    "@tiptap/core": "3.30.4",
+    "@tiptap/core": "3.30.5",
     "@tiptap/extension-blockquote": "3.30.4",
     "@tiptap/extension-bold": "3.30.4",
     "@tiptap/extension-code": "3.30.4",

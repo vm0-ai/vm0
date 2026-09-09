@@ -137,10 +137,6 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });
 
-export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
-});
-
 export const agentMessageMathEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AgentMessageMath] ?? false;
 });

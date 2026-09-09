@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 import { click } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
@@ -43,7 +42,6 @@ async function setupRunWithOutputCount(count: number): Promise<void> {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 }
@@ -197,7 +195,6 @@ test("Keep work history open and keyboard focus in place when another output arr
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
   const showAll = await findWorkHistoryToggle("collapsed");
@@ -253,7 +250,6 @@ test("Render a card-only history output without message folding", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 
@@ -311,7 +307,6 @@ test.each(["completed", "failed", "cancelled"] as const)(
     await setupPage({
       context,
       path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
     });
     await readyChat();
 

@@ -26,7 +26,6 @@ export {
   CHAT_GOAL_MARKER_EVENT_TYPES,
   chatEventCompatibilityRole,
   chatEventTypeSchema,
-  foldActiveChatGoalObjective,
   foldPendingChatQueueEvents,
   foldRunnableChatQueueEvents,
   foldChatRunStates,

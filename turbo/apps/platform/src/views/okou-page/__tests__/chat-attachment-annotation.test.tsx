@@ -407,6 +407,17 @@ test("An arrow can be selected and re-aimed by dragging its tip", async () => {
   });
 });
 
+/** The first vertex of the rendered freehand stroke, in percent-of-image units. */
+function firstPenPoint(): [number, number] {
+  const points =
+    screen.getByTestId("annotation-mark-1").getAttribute("points") ?? "";
+  const [x, y] = points.split(" ")[0]?.split(",").map(Number) ?? [];
+  if (x === undefined || y === undefined) {
+    throw new Error(`Expected stroke points, got "${points}"`);
+  }
+  return [x, y];
+}
+
 test("A freehand stroke can be selected and moved", async () => {
   const image = draftAttachment("sketch.png", {
     annotatedFileId: "draft-sketch-annotated",
@@ -423,11 +434,12 @@ test("A freehand stroke can be selected and moved", async () => {
   const surface = await openAnnotationEditor("sketch.png");
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
 
-  // A stroke has nothing to resize, so the dashed extent is the whole of what
-  // "selected" looks like on one.
-  const outline = screen.getByTestId("annotation-pen-outline");
-  expect(outline).toBeVisible();
-  expect(outline).toHaveStyle({ left: "20%", top: "25%" });
+  // A stroke draws no selection furniture of its own — its note popover opening
+  // is what says the click landed on it.
+  await waitFor(() => {
+    expect(screen.getByTestId("annotation-note-popover")).toBeVisible();
+  });
+  expect(firstPenPoint()).toStrictEqual([20, 25]);
 
   fireEvent.pointerDown(screen.getByTestId("annotation-mark-1"), {
     clientX: 280,
@@ -437,13 +449,13 @@ test("A freehand stroke can be selected and moved", async () => {
   fireEvent.pointerMove(surface, { clientX: 360, clientY: 250, pointerId: 3 });
   fireEvent.pointerUp(surface, { clientX: 360, clientY: 250, pointerId: 3 });
 
-  // Compared as numbers: the offset is accumulated in floating point, so the
-  // style lands on "30.000000000000004%" and an exact string match would be
-  // asserting the arithmetic rather than the move.
+  // Compared as numbers: the offset accumulates in floating point, so the point
+  // lands on 30.000000000000004 and an exact match would be asserting the
+  // arithmetic rather than the move.
   await waitFor(() => {
-    const moved = screen.getByTestId("annotation-pen-outline");
-    expect(Number.parseFloat(moved.style.left)).toBeCloseTo(30, 6);
-    expect(Number.parseFloat(moved.style.top)).toBeCloseTo(35, 6);
+    const [x, y] = firstPenPoint();
+    expect(x).toBeCloseTo(30, 6);
+    expect(y).toBeCloseTo(35, 6);
   });
 });
 

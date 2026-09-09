@@ -120,8 +120,6 @@ interface ChatEventFoldInput {
   readonly runId?: string | null;
   readonly interruptsRunId?: string;
   readonly revokesEventId?: string | null;
-  readonly seqId?: number;
-  readonly content?: string | null;
 }
 
 export interface ChatQueueFoldInput extends ChatEventFoldInput {
@@ -356,40 +354,6 @@ export function foldRunnableChatQueueEvents<TEvent extends ChatQueueFoldInput>(
   events: readonly TEvent[],
 ): TEvent[] {
   return foldPendingChatQueueEvents(events);
-}
-
-/** Narrow a fold input to the persisted shape that always carries `seq_id`. */
-function hasChatEventSeqId<TEvent extends ChatEventFoldInput>(
-  event: TEvent,
-): event is TEvent & { readonly seqId: number } {
-  return event.seqId !== undefined;
-}
-
-export function foldActiveChatGoalObjective(
-  events: readonly ChatEventFoldInput[],
-): string | null {
-  let objective: string | null = null;
-
-  const goalMarkers = events.filter((event) => {
-    return isChatGoalMarkerEventType(event.eventType);
-  });
-  const orderedEvents = goalMarkers.every(hasChatEventSeqId)
-    ? [...goalMarkers].sort((left, right) => {
-        return left.seqId - right.seqId;
-      })
-    : goalMarkers;
-
-  for (const event of orderedEvents) {
-    if (event.eventType === "goal.open") {
-      objective = event.content?.trim() || null;
-      continue;
-    }
-    if (event.eventType === "goal.close") {
-      objective = null;
-    }
-  }
-  const trimmed = objective?.trim();
-  return trimmed || null;
 }
 
 export function foldLatestChatUsageByRunId<

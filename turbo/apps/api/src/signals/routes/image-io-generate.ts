@@ -26,6 +26,7 @@ import { createBuiltInGenerationRealtimeSubscription } from "../external/realtim
 import {
   checkImageCredits$,
   generateBytePlusImage,
+  generateOpenAiImage,
   getMissingImagePricing,
   imagePricing$,
   insufficientCredits,
@@ -260,14 +261,15 @@ const submitImageProviderWebhookJob$ = command(
   },
 );
 
-const executeBytePlusImageProviderJob$ = command(
+const executeDirectImageProviderJob$ = command(
   async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
     signal.throwIfAborted();
-    const apiKey = env("BYTEPLUS_API_KEY");
+    const isOpenAi = args.options.provider === "openai";
+    const apiKey = env(isOpenAi ? "OPENAI_API_KEY" : "BYTEPLUS_API_KEY");
     if (!apiKey) {
       const unavailable = serviceUnavailable(
-        "BytePlus image generation is not configured",
+        `${isOpenAi ? "OpenAI" : "BytePlus"} image generation is not configured`,
         "NOT_CONFIGURED",
       );
       await set(
@@ -288,7 +290,12 @@ const executeBytePlusImageProviderJob$ = command(
     const generation =
       "status" in references
         ? references
-        : await generateBytePlusImage(args.options, references, apiKey, signal);
+        : await (isOpenAi ? generateOpenAiImage : generateBytePlusImage)(
+            args.options,
+            references,
+            apiKey,
+            signal,
+          );
     signal.throwIfAborted();
     if (isErrorResponse(generation)) {
       await set(
@@ -337,10 +344,10 @@ const executeBytePlusImageProviderJob$ = command(
   },
 );
 
-const runBytePlusImageProviderJob$ = command(
+const runDirectImageProviderJob$ = command(
   async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
     const execution = await settle(
-      set(executeBytePlusImageProviderJob$, args, signal),
+      set(executeDirectImageProviderJob$, args, signal),
       signal,
     );
     signal.throwIfAborted();
@@ -348,9 +355,10 @@ const runBytePlusImageProviderJob$ = command(
       return;
     }
 
-    L.error("BytePlus image generation failed", {
+    L.error("Image generation failed", {
       generationId: args.generationId,
       model: args.options.model,
+      provider: args.options.provider,
       error:
         execution.error instanceof Error
           ? execution.error.message
@@ -362,7 +370,10 @@ const runBytePlusImageProviderJob$ = command(
         generationId: args.generationId,
         error: {
           message: "Image generation failed",
-          code: "BYTEPLUS_IMAGE_REQUEST_FAILED",
+          code:
+            args.options.provider === "openai"
+              ? "OPENAI_IMAGE_REQUEST_FAILED"
+              : "BYTEPLUS_IMAGE_REQUEST_FAILED",
         },
       },
       signal,
@@ -382,9 +393,9 @@ const startImageProviderJob$ = command(
     args: ImageJobArgs,
     signal: AbortSignal,
   ): Promise<GenerationErrorResponse | null> => {
-    if (args.options.provider === "byteplus") {
+    if (args.options.provider !== "fal") {
       waitUntil(
-        set(runBytePlusImageProviderJob$, args, new AbortController().signal),
+        set(runDirectImageProviderJob$, args, new AbortController().signal),
       );
       return null;
     }
@@ -452,6 +463,12 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (options.provider === "byteplus" && !env("BYTEPLUS_API_KEY")) {
     return serviceUnavailable(
       "BytePlus image generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
+  if (options.provider === "openai" && !env("OPENAI_API_KEY")) {
+    return serviceUnavailable(
+      "OpenAI image generation is not configured",
       "NOT_CONFIGURED",
     );
   }
