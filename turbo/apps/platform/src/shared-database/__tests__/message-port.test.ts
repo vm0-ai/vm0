@@ -9,7 +9,10 @@ import {
   chatEventRowsResponse,
   testContext,
 } from "../../signals/__tests__/test-helpers.ts";
-import { createChildAbortController } from "../../signals/utils.ts";
+import {
+  createChildAbortController,
+  createDeferredPromise,
+} from "../../signals/utils.ts";
 import { mockNow } from "../../lib/time.ts";
 import { ApiError } from "../../lib/api-error.ts";
 import { SharedDatabaseHttpError } from "../http-error.ts";
@@ -24,15 +27,19 @@ import type {
   SharedDatabaseDataKey,
   SharedDatabaseIdentity,
 } from "../data-key.ts";
-import { MessagePortSharedDatabaseBridge } from "../message-port-client.ts";
+import {
+  MessagePortSharedDatabaseBridge,
+  type SharedDatabaseHeartbeatLoop,
+} from "../message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "../message-port-server.ts";
 import {
   sharedDatabaseClientMessageSchema,
   type SharedDatabaseConnectionStatus,
 } from "../protocol.ts";
 import {
+  recordConnectionHeartbeat$,
   registerConnection$,
-  requestTokenFromFirstConnection$,
+  requestTokenFromLatestConnection$,
 } from "../worker-context.ts";
 import {
   getComputedStoreMessage$,
@@ -143,6 +150,14 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
   };
 }
 
+const holdHeartbeatLoop: SharedDatabaseHeartbeatLoop = async (
+  heartbeat,
+  signal,
+): Promise<void> => {
+  heartbeat();
+  await createDeferredPromise<void>(signal).promise;
+};
+
 function initializeWorker(signal: AbortSignal = context.signal): void {
   const workerIdentity = identity();
   context.workerStore.set(
@@ -153,7 +168,7 @@ function initializeWorker(signal: AbortSignal = context.signal): void {
       apiBaseUrl: location.origin,
       getToken: (signal) => {
         return context.workerStore.set(
-          requestTokenFromFirstConnection$,
+          requestTokenFromLatestConnection$,
           signal,
         );
       },
@@ -187,101 +202,70 @@ function connectProtocolTransport(
       events,
       bridgeSignal,
       getToken,
+      holdHeartbeatLoop,
     ),
     platformPort,
     workerPort,
   };
 }
 
-async function destroyPage(port: InMemoryMessagePort): Promise<void> {
-  const registration = port.postedMessages
-    .map((message) => {
-      return sharedDatabaseClientMessageSchema.parse(message);
-    })
-    .find((message) => {
-      return message.type === "register-tab";
-    });
-  if (!registration) {
-    throw new Error("Expected tab registration");
-  }
-  // Destroyed documents stop port delivery and release their held Web Locks.
-  port.close();
-  await navigator.locks.request(
-    registration.lockName,
-    { steal: true },
-    () => {},
-  );
-  expect(port.postedMessages).not.toContainEqual({ type: "disconnect" });
-}
+test("share one Worker realtime subscription until tabs disconnect", async () => {
+  initializeWorker();
+  const firstOwner = createChildAbortController(context.signal);
+  const secondOwner = createChildAbortController(context.signal);
+  const first = connectProtocolTransport(firstOwner.signal);
+  const second = connectProtocolTransport(secondOwner.signal);
+  const firstMessages: unknown[] = [];
+  const secondMessages: unknown[] = [];
+  const topic = "connectorPermissionUpdated";
+  const channelName = `user:${identity().userId}`;
 
-test.each(["abort", "page-close"])(
-  "share one Worker realtime subscription until tabs %s",
-  async (teardown) => {
-    initializeWorker();
-    const firstOwner = createChildAbortController(context.signal);
-    const secondOwner = createChildAbortController(context.signal);
-    const first = connectProtocolTransport(firstOwner.signal);
-    const second = connectProtocolTransport(secondOwner.signal);
-    const firstMessages: unknown[] = [];
-    const secondMessages: unknown[] = [];
-    const topic = "connectorPermissionUpdated";
-    const channelName = `user:${identity().userId}`;
+  await first.bridge.registerTab(firstOwner.signal);
+  await second.bridge.registerTab(secondOwner.signal);
+  await Promise.all([
+    first.bridge.subscribeRealtime(
+      "first-subscription",
+      "user",
+      topic,
+      (message) => {
+        firstMessages.push(message.data);
+      },
+    ),
+    second.bridge.subscribeRealtime(
+      "second-subscription",
+      "user",
+      topic,
+      (message) => {
+        secondMessages.push(message.data);
+      },
+    ),
+  ]);
 
-    await first.bridge.registerTab(firstOwner.signal);
-    await second.bridge.registerTab(secondOwner.signal);
-    await Promise.all([
-      first.bridge.subscribeRealtime(
-        "first-subscription",
-        "user",
-        topic,
-        (message) => {
-          firstMessages.push(message.data);
-        },
-      ),
-      second.bridge.subscribeRealtime(
-        "second-subscription",
-        "user",
-        topic,
-        (message) => {
-          secondMessages.push(message.data);
-        },
-      ),
-    ]);
-
-    await vi.waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
-      ).toBeTruthy();
-    });
-    context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 1 });
-    await vi.waitFor(() => {
-      expect(firstMessages).toStrictEqual([{ revision: 1 }]);
-      expect(secondMessages).toStrictEqual([{ revision: 1 }]);
-    });
-
-    if (teardown === "abort") {
-      firstOwner.abort(new DOMException("First tab closed", "AbortError"));
-    } else {
-      await destroyPage(first.platformPort);
-    }
-    context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 2 });
-    await vi.waitFor(() => {
-      expect(secondMessages).toStrictEqual([{ revision: 1 }, { revision: 2 }]);
-    });
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
+    ).toBeTruthy();
+  });
+  context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 1 });
+  await vi.waitFor(() => {
     expect(firstMessages).toStrictEqual([{ revision: 1 }]);
+    expect(secondMessages).toStrictEqual([{ revision: 1 }]);
+  });
 
-    if (teardown === "abort") {
-      secondOwner.abort(new DOMException("Second tab closed", "AbortError"));
-    } else {
-      await destroyPage(second.platformPort);
-    }
-    await vi.waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
-      ).toBeFalsy();
-    });
-  },
-);
+  firstOwner.abort(new DOMException("First tab closed", "AbortError"));
+  context.mocks.ably.triggerOnChannel(channelName, topic, { revision: 2 });
+  await vi.waitFor(() => {
+    expect(secondMessages).toStrictEqual([{ revision: 1 }, { revision: 2 }]);
+  });
+  expect(firstMessages).toStrictEqual([{ revision: 1 }]);
+
+  secondOwner.abort(new DOMException("Second tab closed", "AbortError"));
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(channelName, topic),
+    ).toBeFalsy();
+  });
+});
 
 test("route workspace realtime subscriptions through the organization channel", async () => {
   initializeWorker();
@@ -451,7 +435,7 @@ test("Keep concurrent shared chat loads independent", async () => {
   await expect(first).resolves.toStrictEqual([firstRow]);
 });
 
-test("Authenticate worker requests through the first remaining registered tab", async () => {
+test("Authenticate worker requests through the tab with the latest heartbeat", async () => {
   initializeWorker();
   const firstOwner = createChildAbortController(context.signal);
   const secondOwner = createChildAbortController(context.signal);
@@ -461,7 +445,9 @@ test("Authenticate worker requests through the first remaining registered tab", 
   const second = connectProtocolTransport(secondOwner.signal, () => {
     return Promise.resolve("second-tab-token");
   });
+  mockNow(1000, context.signal);
   await first.bridge.registerTab(firstOwner.signal);
+  mockNow(2000, context.signal);
   await second.bridge.registerTab(secondOwner.signal);
   const key = dataKey(crypto.randomUUID());
   let requestTokens = new Set<string | null>();
@@ -488,13 +474,11 @@ test("Authenticate worker requests through the first remaining registered tab", 
       secondOwner.signal,
     ),
   ).resolves.toStrictEqual([]);
-  expect(requestTokens).toStrictEqual(new Set(["Bearer first-tab-token"]));
+  expect(requestTokens).toStrictEqual(new Set(["Bearer second-tab-token"]));
   requestTokens = new Set<string | null>();
 
-  await destroyPage(first.platformPort);
-  await vi.waitFor(() => {
-    expect(first.workerPort.closed).toBeTruthy();
-  });
+  mockNow(3000, context.signal);
+  first.platformPort.postMessage({ type: "heartbeat" });
   await expect(
     second.bridge.query(
       {
@@ -503,6 +487,20 @@ test("Authenticate worker requests through the first remaining registered tab", 
         consistency: "catch-up",
       },
       secondOwner.signal,
+    ),
+  ).resolves.toStrictEqual([]);
+  expect(requestTokens).toStrictEqual(new Set(["Bearer first-tab-token"]));
+  requestTokens = new Set<string | null>();
+
+  second.platformPort.postMessage({ type: "heartbeat" });
+  await expect(
+    first.bridge.query(
+      {
+        dataKey: dataKey(crypto.randomUUID()),
+        afterSeqId: null,
+        consistency: "catch-up",
+      },
+      firstOwner.signal,
     ),
   ).resolves.toStrictEqual([]);
   expect(requestTokens).toStrictEqual(new Set(["Bearer second-tab-token"]));
@@ -586,15 +584,41 @@ test("Disconnect one tab without interrupting another tab", async () => {
   expect(second.workerPort.closed).toBeFalsy();
 });
 
-test("Reject registration when the worker fails before the tab acquires its lock", async () => {
+test("Send a heartbeat immediately after tab registration", async () => {
   initializeWorker();
   const { bridge, platformPort } = connectProtocolTransport(context.signal);
-  const ready = bridge.registerTab(context.signal);
-  const failure = new Error("Worker failed during registration");
-  bridge.fail(failure);
+  await bridge.registerTab(context.signal);
 
-  await expect(ready).rejects.toBe(failure);
-  expect(platformPort.closed).toBeTruthy();
+  expect(
+    platformPort.postedMessages.slice(0, 2).map((message) => {
+      return sharedDatabaseClientMessageSchema.parse(message);
+    }),
+  ).toStrictEqual([{ type: "register-tab" }, { type: "heartbeat" }]);
+});
+
+test("Keep sending heartbeats while the tab bridge is active", async () => {
+  const [platformPort] = messagePortPair();
+  const owner = createChildAbortController(context.signal);
+  const bridge = new MessagePortSharedDatabaseBridge(
+    platformPort,
+    bridgeEvents(),
+    owner.signal,
+    () => {
+      return Promise.resolve("test-token");
+    },
+  );
+  await bridge.registerTab(owner.signal);
+
+  await vi.waitFor(() => {
+    expect(
+      platformPort.postedMessages.filter((message) => {
+        return (
+          sharedDatabaseClientMessageSchema.parse(message).type === "heartbeat"
+        );
+      }).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+  owner.abort(new DOMException("Tab closed", "AbortError"));
 });
 
 test("Reject shared-data access before the tab is registered", async () => {
@@ -926,6 +950,7 @@ test("Cancel waiting indicator reads when their Worker lifecycle ends", async ()
     },
     worker.signal,
   );
+  context.workerStore.set(recordConnectionHeartbeat$, connectionId);
   // Observe the Worker request directly: abort closes its message port before
   // the server can send a response to the client.
   const readIndicators = () => {
