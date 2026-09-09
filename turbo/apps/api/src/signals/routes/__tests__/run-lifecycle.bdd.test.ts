@@ -8486,7 +8486,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Flash and rejects paid models", async () => {
+  it("defaults limited-free runs to DeepSeek V4 Pro and rejects paid models", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -8542,7 +8542,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     }
 
-    for (const model of ["gpt-5.6-sol", "deepseek-v4-pro"] as const) {
+    for (const model of ["gpt-5.6-sol", "gpt-6-astra"] as const) {
       const rejectedThreadId = randomUUID();
       const rejected = await chat.requestSendEvent(
         actor,

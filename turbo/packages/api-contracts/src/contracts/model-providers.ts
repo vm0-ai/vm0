@@ -130,18 +130,16 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
 };
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
-  "claude-fable-5-1",
   "gpt-6-astra",
-  "gpt-5.6-sol",
   "gpt-5.6-luna",
-  "deepseek-v4-flash",
+  "deepseek-v4-pro",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "deepseek-v4-flash" as const satisfies SupportedRunModel;
+  "deepseek-v4-pro" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
-  "deepseek-v4-flash" as const satisfies SupportedRunModel;
+  "deepseek-v4-pro" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -467,6 +465,7 @@ const BUILT_IN_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
   "gpt-5.6-luna",
   "deepseek-v4-flash",
+  "deepseek-v4-pro",
 ]);
 
 export function normalizeBuiltInModelId(model: string): string {
