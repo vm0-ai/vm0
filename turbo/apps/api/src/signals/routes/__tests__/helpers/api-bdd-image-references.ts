@@ -160,13 +160,12 @@ export function createImageReferencesBddApi(context: TestContext) {
       authenticate(actor);
       installStorage();
       const prepared = await accept(
-        uploadClient().prepare({
+        imageClient().prepareUpload({
           headers,
           body: {
             filename: "chat-reference.png",
             contentType: "image/png",
             size: validPng.length,
-            purpose: "image-reference",
           },
         }),
         [200],
@@ -180,7 +179,7 @@ export function createImageReferencesBddApi(context: TestContext) {
         throw new Error("Prepared image upload did not sign a bucket and key");
       }
       storedObjects.set(objectIdentity(bucket, key), {
-        id: prepared.body.id,
+        id: prepared.body.sourceFileId,
         bucket,
         key,
         contentType: "image/png",
@@ -189,7 +188,7 @@ export function createImageReferencesBddApi(context: TestContext) {
       await accept(
         uploadClient().complete({
           headers,
-          body: { id: prepared.body.id },
+          body: { id: prepared.body.sourceFileId },
         }),
         [200],
       );
@@ -197,7 +196,7 @@ export function createImageReferencesBddApi(context: TestContext) {
         imageClient().create({
           headers,
           body: {
-            sourceFileId: prepared.body.id,
+            sourceFileId: prepared.body.sourceFileId,
             title: options.title ?? "Chat reference",
             visibility: options.visibility ?? "private",
           },
