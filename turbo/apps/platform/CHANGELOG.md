@@ -11,6 +11,13 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.881.0](https://github.com/vm0-ai/vm0/compare/app-v0.880.0...app-v0.881.0) (2026-09-09)
+
+
+### Features
+
+* **platform:** show chat menu shortcuts ([#33032](https://github.com/vm0-ai/vm0/issues/33032)) ([8b95a20](https://github.com/vm0-ai/vm0/commit/8b95a20d3d20a866def0152f8b9092cf156fa332))
+
 ## [0.880.0](https://github.com/vm0-ai/vm0/compare/app-v0.879.0...app-v0.880.0) (2026-09-09)
 
 
