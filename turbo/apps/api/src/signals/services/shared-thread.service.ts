@@ -274,7 +274,7 @@ export const createSharedThread$ = command(
       return { kind: "too-large" };
     }
 
-    const title = await generateSharedThreadTitle(messages);
+    const title = await generateSharedThreadTitle(messages, signal);
     signal.throwIfAborted();
     const createdAt = nowDate();
     const id = await database.transaction(async (transaction) => {

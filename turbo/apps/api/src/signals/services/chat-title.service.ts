@@ -243,6 +243,7 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
 /** Generate the immutable title stored with a public shared-thread snapshot. */
 export async function generateSharedThreadTitle(
   messages: readonly SharedMessage[],
+  signal: AbortSignal,
 ): Promise<string> {
   const recent = messages.slice(-TITLE_PRIOR_MESSAGE_CAP);
   const conversation = recent
@@ -250,21 +251,35 @@ export async function generateSharedThreadTitle(
       return `${message.role}: ${message.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
     })
     .join("\n");
-  const title = await generateFastPathText([
+  const title = await generateAuxiliary(
     {
-      role: "system",
-      content:
-        "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+      feature: "shared_thread_title",
+      generate: () => {
+        return generateFastPathText(
+          [
+            {
+              role: "system",
+              content:
+                "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+            },
+            {
+              role: "user",
+              content: conversation,
+            },
+          ],
+          512,
+          undefined,
+          signal,
+        );
+      },
+      usable: (value) => {
+        return Boolean(value);
+      },
     },
-    {
-      role: "user",
-      content: conversation,
-    },
-  ]);
-  if (!title) {
-    throw new Error("Shared thread title generation returned no title");
-  }
-  return title;
+    signal,
+  );
+  // Optional presentation only: never disclose the unshared source title.
+  return title || "Shared conversation";
 }
 
 async function getLatestTitleContextMessages(
