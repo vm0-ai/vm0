@@ -279,7 +279,10 @@ async function run() {
                   if (key === "sendMode") {
                     assert(value === "cmd-enter" || value === "enter");
                   } else {
-                    assert(key in preferences, `Unexpected preference: ${key}`);
+                    assert(
+                      Object.hasOwn(preferences, key),
+                      `Unexpected preference: ${key}`,
+                    );
                     assert.deepEqual(
                       value,
                       Reflect.get(preferences, key),
@@ -287,8 +290,14 @@ async function run() {
                     );
                   }
                 }
-                if (update.sendMode && savePending) await savePending;
-                Object.assign(preferences, update);
+                if (update.sendMode !== undefined) {
+                  assert(
+                    update.sendMode === "enter" ||
+                      update.sendMode === "cmd-enter",
+                  );
+                  if (savePending) await savePending;
+                  preferences.sendMode = update.sendMode;
+                }
               } else assert.equal(route.request().method(), "GET");
               await route.fulfill({
                 status: 200,
