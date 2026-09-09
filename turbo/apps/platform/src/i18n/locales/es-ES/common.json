@@ -5778,6 +5778,11 @@
       "action": "Volver al inicio",
       "description": "La página que buscas no existe.",
       "title": "Página no encontrada"
+    },
+    "workerFailure": {
+      "action": "Actualizar",
+      "description": "Se ha interrumpido tu conexión. Actualiza la página para continuar.",
+      "title": "Actualiza para continuar"
     }
   },
   "sharedThread": {

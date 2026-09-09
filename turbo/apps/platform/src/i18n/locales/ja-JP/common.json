@@ -5705,6 +5705,11 @@
       "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
+    },
+    "workerFailure": {
+      "action": "リフレッシュ",
+      "description": "接続が中断されました。続行するにはページを再読み込みしてください。",
+      "title": "続行するには再読み込みしてください"
     }
   },
   "sharedThread": {

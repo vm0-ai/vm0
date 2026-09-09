@@ -5705,6 +5705,11 @@
       "action": "Kembali ke beranda",
       "description": "Halaman yang Anda cari tidak ada.",
       "title": "Halaman tidak ditemukan"
+    },
+    "workerFailure": {
+      "action": "Muat ulang",
+      "description": "Koneksi Anda terputus. Muat ulang halaman untuk melanjutkan.",
+      "title": "Muat ulang untuk melanjutkan"
     }
   },
   "sharedThread": {

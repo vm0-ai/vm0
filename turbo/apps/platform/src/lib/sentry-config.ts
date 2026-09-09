@@ -57,6 +57,8 @@ function isExpectedErrorDescription(
 ): boolean {
   return (
     name === "NotAllowedError" ||
+    // Axiom telemetry and the refresh dialog own this browser failure.
+    name === "SharedDatabaseWorkerLoadError" ||
     (message !== undefined && EXPECTED_ERROR_MESSAGES.has(message))
   );
 }

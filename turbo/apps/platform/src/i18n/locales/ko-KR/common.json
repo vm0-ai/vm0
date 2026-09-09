@@ -5705,6 +5705,11 @@
       "action": "홈으로 돌아가기",
       "description": "찾으시는 페이지가 존재하지 않습니다.",
       "title": "페이지를 찾을 수 없습니다"
+    },
+    "workerFailure": {
+      "action": "새로 고침",
+      "description": "연결이 중단되었습니다. 계속하려면 페이지를 새로고침하세요.",
+      "title": "계속하려면 새로고침하세요"
     }
   },
   "sharedThread": {

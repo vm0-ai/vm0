@@ -68,7 +68,7 @@ import {
  * values but use an in-process transport. SharedWorker transport stories opt
  * into the complete MessagePort host explicitly.
  */
-export type SharedWorkerTestTransport = "direct" | "message-port";
+export type SharedWorkerTestTransport = "direct" | "message-port" | "browser";
 
 interface SetupSharedWorkerTestBootstrap {
   readonly afterRegistration?: () => Promise<void>;
@@ -415,6 +415,12 @@ export const setupSharedWorkerTestBootstrap$ = command(
         },
         signal,
       );
+    }
+
+    // Browser failure stories keep the production host and mock SharedWorker
+    // itself, so native error events reach the real page boundary.
+    if (options.transport === "browser") {
+      return;
     }
 
     let directBridge: DirectSharedDatabaseBridge | null = null;
