@@ -17,7 +17,7 @@ import { settle } from "../utils";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
-import { clerk$ } from "../external/clerk";
+import { clerk$, isClerkResourceNotFound } from "../external/clerk";
 import {
   copyArtifactShareObject,
   readArtifactSharePolicyObject,
@@ -232,14 +232,22 @@ const currentShareMember$ = command(
     userId: string,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const memberships = await get(
-      clerk$,
-    ).organizations.getOrganizationMembershipList(
-      { organizationId: orgId, userId: [userId], limit: 1 },
-      undefined,
+    const memberships = await settle(
+      get(clerk$).organizations.getOrganizationMembershipList(
+        { organizationId: orgId, userId: [userId], limit: 1 },
+        undefined,
+        signal,
+      ),
       signal,
     );
-    return memberships.data.some((member) => {
+    if (!memberships.ok) {
+      // The durable share may outlive its original Clerk organization.
+      if (isClerkResourceNotFound(memberships.error)) {
+        return false;
+      }
+      throw memberships.error;
+    }
+    return memberships.value.data.some((member) => {
       return member.publicUserData?.userId === userId;
     });
   },

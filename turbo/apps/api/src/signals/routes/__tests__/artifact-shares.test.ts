@@ -31,6 +31,15 @@ import { hostedTextFile } from "./helpers/api-bdd-host-files";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const headers = Object.freeze({ authorization: "Bearer clerk-session" });
+
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+
+  constructor(readonly status: number) {
+    super(`Clerk Backend API request failed with status ${status}`);
+  }
+}
+
 const api = () => {
   return setupApp({
     context,
@@ -262,6 +271,79 @@ test("organization resolution checks current original-org membership and never g
   );
   expect(anonymous.headers.get("cache-control")).toBe("private, no-store");
 });
+
+test("a deleted original organization makes an existing share unavailable", async () => {
+  const { session } = await fixture();
+  const target = await file();
+  const shared = await accept(
+    api()(artifactSharesContract).update({
+      headers,
+      body: { target, audience: "organization" },
+    }),
+    [200],
+  );
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+    new ClerkApiResponseTestError(404),
+  );
+  session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+  const response = await accept(
+    api()(artifactSharesContract).resolve({
+      headers,
+      params: { id: shared.body.shareId! },
+    }),
+    [404],
+  );
+  expect(response.body).toStrictEqual({
+    error: { code: "NOT_FOUND", message: "Artifact unavailable" },
+  });
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+
+  session();
+  await accept(
+    api()(artifactSharesContract).status({ headers, body: target }),
+    [404],
+  );
+  await accept(
+    api()(artifactSharesContract).update({
+      headers,
+      body: { target, audience: "public" },
+    }),
+    [404],
+  );
+});
+
+test.each([
+  ["provider outage", new ClerkApiResponseTestError(503)],
+  ["rate limit", new ClerkApiResponseTestError(429)],
+  [
+    "unclassified failure",
+    Object.assign(new Error("Failure"), { status: 404 }),
+  ],
+])(
+  "a membership %s remains an error rather than a missing organization",
+  async (_name, error) => {
+    await fixture();
+    const target = await file();
+    const shared = await accept(
+      api()(artifactSharesContract).update({
+        headers,
+        body: { target, audience: "organization" },
+      }),
+      [200],
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      error,
+    );
+    const response = await accept(
+      api()(artifactSharesContract).resolve({
+        headers,
+        params: { id: shared.body.shareId! },
+      }),
+      [500],
+    );
+    expect(response.body).not.toHaveProperty("url");
+  },
+);
 
 test("audience changes revoke old public tokens; rollback preserves grants and permits stopping", async () => {
   const { objects } = await fixture();

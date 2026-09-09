@@ -262,6 +262,10 @@ export function clerkReadUnavailable(
   return error instanceof ClerkReadUnavailableError ? error : null;
 }
 
+export function isClerkResourceNotFound(error: unknown): boolean {
+  return isClerkAPIResponseError(error) && error.status === 404;
+}
+
 interface ClerkRateLimitRetry {
   readonly kind: "rate_limit";
   readonly delayMs: number;
