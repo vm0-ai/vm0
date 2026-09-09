@@ -9,12 +9,7 @@ import {
   updateSearchParams$,
   detachedNavigateTo$,
 } from "../route.ts";
-import {
-  currentAgentId$,
-  defaultAgentId$,
-  agents$,
-  rememberLastUsedAgentId$,
-} from "../agent.ts";
+import { currentAgentId$, defaultAgentId$, agents$ } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { setTalkDraft$, talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -74,7 +69,6 @@ export const setupAgentChatPage$ = command(
       return;
     }
 
-    set(rememberLastUsedAgentId$, agentId);
     set(
       updateDocumentTitle$,
       agent.displayName ??
