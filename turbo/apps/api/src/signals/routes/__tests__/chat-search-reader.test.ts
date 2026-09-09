@@ -78,6 +78,60 @@ async function sendNoCreditMessage(
 }
 
 describe("GET /api/chat/search durable reader", () => {
+  it("finds older sparse matches and keeps frequent matches newest first", async () => {
+    const owner = bdd.user();
+    const source = await createSearchThread(
+      owner,
+      `search-history-${randomUUID().slice(0, 8)}`,
+    );
+    await api.ensureOrgModelProvider(owner);
+    const sparseKeyword = `sparse${randomUUID().replaceAll("-", "")}`;
+    const frequentKeyword = `frequent${randomUUID().replaceAll("-", "")}`;
+    const prompts = [
+      `${sparseKeyword} older`,
+      `${sparseKeyword} newer`,
+      ...Array.from({ length: 80 }, (_, index) => {
+        return `${frequentKeyword} ${index}`;
+      }),
+    ];
+    const baseTime = now();
+    await withMockNowForTest(baseTime, async () => {
+      for (const [index, prompt] of prompts.entries()) {
+        mockNow(baseTime + index * 1000);
+        const sent = await chat.requestSendEvent(
+          owner,
+          { ...source, prompt },
+          [201],
+        );
+        expect(sent).toMatchObject({ status: 201, body: { runId: null } });
+      }
+    });
+    await projectChatSearchMessages([source.threadId]);
+
+    const sparse = await chat.searchChat(owner, sparseKeyword, { limit: 1 });
+    expect(sparse.hasMore).toBeTruthy();
+    expect(sparse.results).toHaveLength(1);
+    expect(sparse.results[0]?.matchedMessage.content).toBe(
+      `${sparseKeyword} newer`,
+    );
+
+    const frequent = await chat.searchChat(owner, frequentKeyword, {
+      limit: 1,
+    });
+    expect(frequent.hasMore).toBeTruthy();
+    expect(frequent.results).toHaveLength(1);
+    expect(frequent.results[0]?.matchedMessage.content).toBe(
+      `${frequentKeyword} 79`,
+    );
+
+    const missing = await chat.searchChat(
+      owner,
+      `absent${randomUUID().replaceAll("-", "")}`,
+      { limit: 1 },
+    );
+    expect(missing).toStrictEqual({ results: [], hasMore: false });
+  });
+
   it("serves matched message identity after source events are deleted", async () => {
     const owner = bdd.user();
     const source = await createSearchThread(

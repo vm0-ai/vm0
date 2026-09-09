@@ -7,7 +7,7 @@ import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-
 import { agents } from "@okouai/db/schema/agent";
 import { chatEventSearchMessages } from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, or, sql, type SQL } from "drizzle-orm";
 
 import {
   chatSearchBigramTsquery,
@@ -50,6 +50,8 @@ const searchMessageColumns = {
   text: chatEventSearchMessages.text,
 } as const;
 
+const RECENT_SEARCH_CANDIDATE_MULTIPLIER = 16;
+
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   return {
     chatThreadId: row.chatThreadId,
@@ -85,6 +87,55 @@ function chatSearchCursorCondition(
   );
 }
 
+function chatSearchRecentMatches(
+  db: ReadonlyDb,
+  args: {
+    readonly scopeCondition: SQL | undefined;
+    readonly tsquery: string;
+    readonly limit: number;
+  },
+) {
+  // Common terms can fill a page from recent messages. Bound this ordered
+  // scan before applying the keyword so rare terms cannot scan all history.
+  const recentMessages = db
+    .select({
+      ...searchMessageColumns,
+      agentId: chatEventSearchMessages.agentId,
+      tsv: chatEventSearchMessages.tsv,
+    })
+    .from(chatEventSearchMessages)
+    .where(args.scopeCondition)
+    .orderBy(
+      sql`${desc(chatEventSearchMessages.createdAt)} NULLS LAST`,
+      desc(chatEventSearchMessages.chatThreadId),
+      desc(chatEventSearchMessages.seqId),
+    )
+    .limit(args.limit * RECENT_SEARCH_CANDIDATE_MULTIPLIER)
+    .as("chat_search_recent_messages");
+  return db.$with("chat_search_recent_matches").as(
+    db
+      .select({
+        chatThreadId: recentMessages.chatThreadId,
+        seqId: recentMessages.seqId,
+        runId: recentMessages.runId,
+        role: recentMessages.role,
+        createdAt: recentMessages.createdAt,
+        text: recentMessages.text,
+        agentId: recentMessages.agentId,
+      })
+      .from(recentMessages)
+      .where(
+        sql`${recentMessages.tsv} @@ to_tsquery('simple', ${args.tsquery})`,
+      )
+      .orderBy(
+        sql`${desc(recentMessages.createdAt)} NULLS LAST`,
+        desc(recentMessages.chatThreadId),
+        desc(recentMessages.seqId),
+      )
+      .limit(args.limit),
+  );
+}
+
 /**
  * Selects one bounded candidate page entirely from the durable projection.
  * Parent existence and the agent's current name are resolved only after the
@@ -107,37 +158,90 @@ async function chatSearchIndexedMatchBatch(
     return [];
   }
 
-  const indexedMatches = db
-    .select({
-      ...searchMessageColumns,
-      agentId: chatEventSearchMessages.agentId,
-    })
+  const scopeCondition = and(
+    eq(chatEventSearchMessages.userId, args.userId),
+    eq(chatEventSearchMessages.orgId, args.orgId),
+    args.agentId
+      ? eq(chatEventSearchMessages.agentId, args.agentId)
+      : undefined,
+    args.since ? gte(chatEventSearchMessages.createdAt, args.since) : undefined,
+    chatSearchCursorCondition(args.cursor),
+  );
+
+  const recentMatches = chatSearchRecentMatches(db, {
+    scopeCondition,
+    tsquery,
+    limit: args.limit,
+  });
+  const recentMatchCount = db.select({ count: count() }).from(recentMatches);
+
+  const projectionColumns = {
+    ...searchMessageColumns,
+    agentId: chatEventSearchMessages.agentId,
+  };
+  const keywordQuery = db
+    .select(projectionColumns)
     .from(chatEventSearchMessages)
     .where(
       and(
-        eq(chatEventSearchMessages.userId, args.userId),
-        eq(chatEventSearchMessages.orgId, args.orgId),
+        scopeCondition,
         sql`${chatEventSearchMessages.tsv} @@ to_tsquery('simple', ${tsquery})`,
-        args.agentId
-          ? eq(chatEventSearchMessages.agentId, args.agentId)
-          : undefined,
-        args.since
-          ? gte(chatEventSearchMessages.createdAt, args.since)
-          : undefined,
-        chatSearchCursorCondition(args.cursor),
       ),
-    )
-    // Keep the created_at prefix aligned with the scoped index while the
-    // remaining columns provide a stable keyset order for equal timestamps.
+    );
+  // OFFSET 0 keeps Top-N planning outside the complete keyword match. Unlike
+  // materializing every message body, it streams matches into a bounded sort.
+  // Drizzle omits a numeric .offset(0), so retain this SQL optimization fence.
+  const keywordMatches = db
+    .$with("chat_search_keyword_matches", projectionColumns)
+    .as(sql`${keywordQuery} OFFSET 0`);
+  const fullMatches = db
+    .select({
+      chatThreadId: keywordMatches.chatThreadId,
+      seqId: keywordMatches.seqId,
+      runId: keywordMatches.runId,
+      role: keywordMatches.role,
+      createdAt: keywordMatches.createdAt,
+      text: keywordMatches.text,
+      agentId: keywordMatches.agentId,
+    })
+    .from(keywordMatches)
     .orderBy(
-      sql`${desc(chatEventSearchMessages.createdAt)} NULLS LAST`,
-      desc(chatEventSearchMessages.chatThreadId),
-      desc(chatEventSearchMessages.seqId),
+      sql`${desc(keywordMatches.createdAt)} NULLS LAST`,
+      desc(keywordMatches.chatThreadId),
+      desc(keywordMatches.seqId),
     )
     .limit(args.limit)
+    .as("chat_search_full_matches");
+  const indexedMatches = db
+    .select({
+      chatThreadId: recentMatches.chatThreadId,
+      seqId: recentMatches.seqId,
+      runId: recentMatches.runId,
+      role: recentMatches.role,
+      createdAt: recentMatches.createdAt,
+      text: recentMatches.text,
+      agentId: recentMatches.agentId,
+    })
+    .from(recentMatches)
+    .where(eq(recentMatchCount, args.limit))
+    .unionAll(
+      db
+        .select({
+          chatThreadId: fullMatches.chatThreadId,
+          seqId: fullMatches.seqId,
+          runId: fullMatches.runId,
+          role: fullMatches.role,
+          createdAt: fullMatches.createdAt,
+          text: fullMatches.text,
+          agentId: fullMatches.agentId,
+        })
+        .from(fullMatches)
+        .where(lt(recentMatchCount, args.limit)),
+    )
     .as("chat_search_indexed_matches");
 
   return await db
+    .with(recentMatches, keywordMatches)
     .select({
       chatThreadId: indexedMatches.chatThreadId,
       seqId: indexedMatches.seqId,
