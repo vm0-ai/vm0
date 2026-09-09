@@ -148,9 +148,25 @@ Possible partial writes and start deadlines during/after writing stop further
 workspace, storage, and Agent preparation on that sandbox. Fresh preparation
 destroys it and may retry once with prefetch disabled, only after cleanup is
 confirmed. This consumes the existing shared preparation retry budget; uncertain
-cleanup or an already-consumed retry prevents another attempt. A direct run on
-an already-owned sandbox fails through its existing cleanup owner instead of
-replacing the sandbox in place.
+cleanup or an already-consumed retry prevents another attempt.
+
+Blank-pool runs inspect the same typed result before handing inputs to Agent
+execution. An unusable blank drains its prepared storage, unregisters its proxy,
+closes its network-log session and is destroyed before one fresh replacement
+with prefetch disabled. The replacement keeps the run/sandbox identity and caller
+budget ownership, acquires ordinary fresh pre-spawn admission, and cannot spend
+another DNS, workspace or prefetch retry. Run-scoped remote history work remains
+owned across replacement and is drained on terminal failure or cancellation.
+The retired blank's workspace lease is released without guest freeze or cache
+publication; guest-log copying and session-ID discovery are also skipped on that
+known-unusable connection. Cleanup uncertainty or cancellation suppresses creation.
+
+Successful fresh and blank paths keep their existing prefetch deadline and guest
+operations; already-prepared guest state is not restored twice. Exact reuse does
+not prefetch or enter this replacement path. A direct Agent-lifecycle invocation
+without the enclosing preparation owner still returns the typed start failure.
+Recoverable unsafe-prefetch/retirement messages are informational; final failure
+or uncertain cleanup remains a warning/error with unsuccessful telemetry.
 
 Ordinary write failures retain `start_failed` prefetch telemetry; typed request
 deadlines retain `start_timed_out`. The original write cause remains available

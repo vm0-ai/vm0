@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import {
@@ -336,7 +337,7 @@ describe("managed artifact privacy", () => {
       expect(stored?.Bucket).toBe(enabled ? privateBucket : publicBucket);
       if (enabled) {
         expect(result.url).toBe(
-          `https://api.okou.ai/api/web/download-file?file_id=${result.id}&filename=${result.filename}`,
+          artifactReferencePath(result.id, result.filename),
         );
         expect(result.sourceUrl).toBeUndefined();
         expect(result.embedUrl).toBeUndefined();
@@ -619,7 +620,7 @@ describe("managed artifact privacy", () => {
     ).toStrictEqual([]);
     mockEnv("R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID", "test-private-access-key");
     const retried = await completeImage(fixture, generationId);
-    expect(retried.url).toContain("/api/web/download-file?file_id=");
+    expect(retried.url).toContain("/artifacts/");
   });
 
   it("keeps BytePlus image completion private when the provider finishes after rollback", async () => {
@@ -657,7 +658,7 @@ describe("managed artifact privacy", () => {
     );
     expect(job.body.status).toBe("completed");
     const result = imageIoGenerateResponseSchema.parse(job.body.result);
-    expect(result.url).toContain("/api/web/download-file?file_id=");
+    expect(result.url).toContain("/artifacts/");
     expect(result.sourceUrl).toBeUndefined();
     expect(result.embedUrl).toBeUndefined();
     expect(
@@ -699,9 +700,7 @@ describe("managed artifact privacy", () => {
         .post({ headers, body: { text: "Private speech", voice: "alloy" } }),
       [200],
     );
-    expect(speech.body.url).toContain(
-      "https://api.okou.ai/api/web/download-file?file_id=",
-    );
+    expect(speech.body.url).toContain("/artifacts/");
     expect(
       [...objects.values()].find((object) => {
         return object.ContentType === "audio/wav";

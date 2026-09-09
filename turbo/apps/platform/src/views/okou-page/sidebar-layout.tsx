@@ -55,6 +55,10 @@ import {
 } from "../../signals/theme.ts";
 import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
 import { WorkspaceInset } from "./workspace-inset.tsx";
+import {
+  ChatThreadPinButton,
+  MobileChatThreadMoreMenu,
+} from "./chat-thread-header-actions.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -165,7 +169,13 @@ function MobileAutomationButtonLeaf() {
   );
 }
 
-function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
+function MobileShareButtonInner({
+  thread,
+  largeTarget = false,
+}: {
+  thread: ChatPanelSignals;
+  largeTarget?: boolean;
+}) {
   const { t } = useTranslation();
   const phase = useGet(thread.sharing.phase$);
   const start = useSet(thread.sharing.start$);
@@ -186,7 +196,8 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
       }}
       variant="quiet"
       size="icon-sm"
-      className="shrink-0"
+      iconSize={largeTarget ? "md" : "sm"}
+      className={cn("shrink-0", largeTarget && "size-11")}
       aria-label={t(($) => {
         return $.chat.sharing.start;
       })}
@@ -244,7 +255,27 @@ function MobileSharingOverlayLeaf() {
   return thread ? <MobileSharingOverlayInner thread={thread} /> : null;
 }
 
+function MobileChatThreadActions({ thread }: { thread: ChatPanelSignals }) {
+  const phase = useGet(thread.sharing.phase$);
+  if (phase !== "idle") {
+    return null;
+  }
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <ChatThreadPinButton thread={thread} mobile />
+      <MobileShareButtonInner thread={thread} largeTarget />
+      <MobileChatThreadMoreMenu thread={thread} />
+    </div>
+  );
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
+  const headerActionsEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatThreadHeaderActions];
+  const thread = useCurrentThread();
+  if (headerActionsEnabled && activeId === "chat" && thread) {
+    return <MobileChatThreadActions thread={thread} />;
+  }
   const inChatRoute = isChatRoute(activeId);
   const showInviteFallback = inChatRoute && activeId !== "chat";
   return (

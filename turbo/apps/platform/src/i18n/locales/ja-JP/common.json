@@ -1669,6 +1669,7 @@
       "saving": "保存中...",
       "send": "送信",
       "stop": "停止",
+      "undo": "元に戻す",
       "view": "見る"
     },
     "actionUnavailable": {
@@ -2590,7 +2591,10 @@
     },
     "toasts": {
       "copied": "コピーされました",
-      "deleted": "チャットが削除されました"
+      "deleted": "チャットが削除されました",
+      "pinned": "チャットをピン留めしました",
+      "pinUpdateFailed": "ピン留めの変更を確認できませんでした。ページを再読み込みして保存された状態を確認してください。",
+      "unpinned": "チャットのピン留めを解除しました"
     },
     "translation": {
       "action": "翻訳",
@@ -2745,7 +2749,6 @@
       "authorized": "認可された",
       "connectAria": "{{connector}} を接続します",
       "connected": "接続済み",
-      "connecting": "接続中…",
       "connectionExpired": "接続が期限切れになりました",
       "connectToContinue": "続行するにはこのアカウントを接続してください",
       "managePermissions": "権限の管理",

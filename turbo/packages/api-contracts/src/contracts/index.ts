@@ -1894,3 +1894,9 @@ export {
   type SharedThreadResponse,
   type SharedThreadsContract,
 } from "./shared-threads";
+
+export {
+  chatThreadActivitySummaryContract,
+  activitySummaryResponseSchema,
+  type ActivitySummaryResponse,
+} from "./chat-thread-activity-summary";

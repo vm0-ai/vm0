@@ -84,18 +84,20 @@ const AVATAR_FACE_CHIN_Y: Readonly<Record<AvatarComposerFaceShape, number>> = {
   oval: 334,
 };
 
-const AVATAR_FACE_TOP_Y = 116;
-
 /**
  * The chin of the Okou brand avatar rescaled onto the 380px canvas. The neck
  * and sweater are one shared pair of shapes, so they only fit in one place;
- * head layers are scaled about the top of the face until every chin reaches
- * this line and the same collar sits under all of them.
+ * head layers are moved down or up until every chin reaches this line and the
+ * same collar sits under all of them.
+ *
+ * Moved rather than scaled. The face assets are normalized on width — every one
+ * of them spans the same 270px — so scaling a head to reach this line also made
+ * it up to 1.24x wider or narrower than its neighbours, while the neck and the
+ * collar under it never change size. That is what made one avatar's body look
+ * too big for its head and the next one's too small. A translation reaches the
+ * same line and leaves the drawn width alone.
  */
 const AVATAR_CHIN_BASELINE_Y = 327.6;
-
-/** The face pivot (190, 116) of the 380px canvas, as a CSS transform origin. */
-export const AVATAR_HEAD_TRANSFORM_ORIGIN = "50% 30.5263%";
 
 /**
  * Visible hair tops, including strokes, on the 380px composer canvas. Square
@@ -134,7 +136,7 @@ interface AvatarContentBounds {
 
 function composerContentBounds(
   config: AvatarSvgConfig,
-  headScale: number,
+  headOffsetY: number,
   neckSweater: boolean,
 ): AvatarContentBounds {
   const hairTop =
@@ -148,10 +150,14 @@ function composerContentBounds(
         ? 316
         : AVATAR_FACE_CHIN_Y[config.face];
   return {
-    top: Math.max(
-      0,
-      AVATAR_FACE_TOP_Y + (hairTop - AVATAR_FACE_TOP_Y) * headScale,
-    ),
+    // Not clamped to the canvas. A face whose chin sits below the baseline
+    // moves up, and tall hair then reaches past the top of its own canvas; the
+    // framing rule has to see that overhang to fit and center the artwork
+    // rather than let the box crop it.
+    top: hairTop + headOffsetY,
+    // No offset here. Without the collar there is nothing for a chin to meet,
+    // so the head is never moved and this bound is only ever asked for at the
+    // drawn position.
     bottom: neckSweater
       ? 380
       : Math.min(380, Math.max(AVATAR_FACE_CHIN_Y[config.face], hairBottom)),
@@ -177,13 +183,14 @@ function contentScale({ top, bottom }: AvatarContentBounds): number {
 }
 
 interface AvatarSvgComposition {
-  /** Drawn behind the head, and never scaled with it. */
+  /** Drawn behind the head, and never moved with it. */
   readonly behind: readonly string[];
-  /** Head layers, scaled about `AVATAR_HEAD_TRANSFORM_ORIGIN`. */
+  /** Head layers, moved together so the chin meets the collar. */
   readonly head: readonly string[];
-  /** Drawn in front of the head, and never scaled with it. */
+  /** Drawn in front of the head, and never moved with it. */
   readonly front: readonly string[];
-  readonly headScale: number;
+  /** Percentage translation that lands the chin on the shared baseline. */
+  readonly headOffsetY: number;
   /** Percentage translation that centers the visible artwork vertically. */
   readonly contentOffsetY: number;
   /** Scale applied to the whole artwork, about the center of its box. */
@@ -197,6 +204,14 @@ interface AvatarSvgComposition {
  * expose it so they cannot drift apart.
  */
 export const AVATAR_ARTWORK_SLOT = { "data-avatar-artwork": "" } as const;
+
+/**
+ * The element carrying the chin-baseline placement, inside the artwork slot.
+ * Same reason as `AVATAR_ARTWORK_SLOT`: the placement is a transform with no
+ * page-observable result under jsdom, and a test should not have to know which
+ * element of the layer stack holds it.
+ */
+export const AVATAR_HEAD_SLOT = { "data-avatar-head": "" } as const;
 
 /**
  * The artwork transform for a composition, or null when it is the identity.
@@ -221,9 +236,9 @@ export function avatarSvgContentTransform(placement: {
 
 /**
  * `neckSweater` is the `avatarNeckSweater` switch. With it off the result is
- * byte-for-byte the four head layers at their original scale, because the neck
- * and the chin baseline are one change: a scaled head with no collar under it
- * is just a smaller or larger avatar than the one already saved.
+ * byte-for-byte the four head layers where they were drawn, because the neck
+ * and the chin baseline are one change: a moved head with no collar under it is
+ * just a misplaced version of the avatar already saved.
  *
  * `framing` is the `avatarFraming` switch. With it off `contentScale` stays at
  * the scale each family already shipped with, so only the callers that ask for
@@ -249,7 +264,7 @@ export function avatarSvgComposition(
         ),
       ],
       front: [],
-      headScale: 1,
+      headOffsetY: 0,
       contentOffsetY: 0,
       // Legacy heads are drawn without a neck, and this is the scale that has
       // always sized them against the rest. It is the framing rule for that
@@ -269,25 +284,23 @@ export function avatarSvgComposition(
     ),
   ];
   if (!neckSweater) {
-    const bounds = composerContentBounds(config, 1, false);
+    const bounds = composerContentBounds(config, 0, false);
     return {
       behind: [],
       head,
       front: [],
-      headScale: 1,
+      headOffsetY: 0,
       contentOffsetY: contentOffsetY(bounds),
       contentScale: framing ? contentScale(bounds) : 1,
     };
   }
-  const headScale =
-    (AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_TOP_Y) /
-    (AVATAR_FACE_CHIN_Y[config.face] - AVATAR_FACE_TOP_Y);
-  const bounds = composerContentBounds(config, headScale, true);
+  const headOffsetY = AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_CHIN_Y[config.face];
+  const bounds = composerContentBounds(config, headOffsetY, true);
   return {
     behind: [avatarComposerAssetUrl(`neck/${config.skin}.svg`)],
     head,
     front: [avatarComposerAssetUrl(`sweater/${config.sweater}.svg`)],
-    headScale,
+    headOffsetY: (headOffsetY / 380) * 100,
     contentOffsetY: contentOffsetY(bounds),
     contentScale: framing ? contentScale(bounds) : 1,
   };

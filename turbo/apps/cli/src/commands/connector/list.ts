@@ -64,12 +64,27 @@ async function printRunConnectorList(json: boolean): Promise<void> {
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List all connectors and their status")
+  .description("List connector status in the current run or member context")
   .option(
     "--agent <id>",
-    "Show per-agent authorization column (must match the current Agent inside a run)",
+    "Show per-agent authorization outside a run (must match the current Agent inside a run)",
   )
   .option("--json", "Output connector status as JSON")
+  .addHelpText(
+    "after",
+    `
+Scope:
+  Inside a run, lists builtin and custom HTTP/MCP targets from the current run's
+  account context, with the exact selected account or its unavailable state.
+  This is not the full connector catalog. Omit --agent or match the current
+  Agent; the flag does not select another Agent's run or accounts.
+  Outside a run, lists the builtin catalog and org custom definitions with the
+  current member's connection status and optional --agent authorization.
+
+Examples:
+  okou connector list --json
+  okou connector search github`,
+  )
   .action(
     withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
       const agentId = resolveConnectorAgentId(options.agent);

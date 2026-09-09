@@ -1,11 +1,13 @@
 """Integration coverage for asynchronous Codex catalog validation ownership."""
 
 import asyncio
+import gc
 import json
 import threading
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import ParamSpec, TypeVar
+from unittest.mock import patch
 
 import pytest
 from mitmproxy import http
@@ -117,16 +119,6 @@ async def _await_continuation(continuation: Awaitable[None]) -> None:
     await continuation
 
 
-def _replace_default_executor(
-    loop: asyncio.AbstractEventLoop,
-    executor: _ControlledValidationExecutor,
-) -> None:
-    loop.set_default_executor(
-        ThreadPoolExecutor(max_workers=1, thread_name_prefix="post-catalog-test")
-    )
-    executor.shutdown(wait=True)
-
-
 def test_non_catalog_response_hook_stays_synchronous(real_flow: _FlowFactory) -> None:
     assert mitm_addon.response(real_flow()) is None
 
@@ -138,13 +130,15 @@ async def test_dense_catalog_validations_are_serialized_off_event_loop(
     loop = asyncio.get_running_loop()
     loop_thread_id = threading.get_ident()
     executor = _ControlledValidationExecutor(loop)
-    loop.set_default_executor(executor)
     tasks: list[asyncio.Task[None]] = []
     first_body = _dense_catalog_body("first")
     second_body = _dense_catalog_body("second")
 
     try:
-        with mitm_ctx():
+        with (
+            mitm_ctx(),
+            patch.object(catalog_cache, "ThreadPoolExecutor", return_value=executor),
+        ):
             try:
                 _, first_continuation = await _start_catalog_response(
                     real_flow,
@@ -190,7 +184,7 @@ async def test_dense_catalog_validations_are_serialized_off_event_loop(
             assert hit.response.content == expected_body
             catalog_cache.release_flow_state(hit)
     finally:
-        _replace_default_executor(loop, executor)
+        executor.shutdown(wait=True)
 
 
 async def test_catalog_validation_cancellation_preserves_atomic_ownership(
@@ -199,13 +193,15 @@ async def test_catalog_validation_cancellation_preserves_atomic_ownership(
 ) -> None:
     loop = asyncio.get_running_loop()
     executor = _ControlledValidationExecutor(loop)
-    loop.set_default_executor(executor)
     tasks: list[asyncio.Task[None]] = []
     admitted_body = _dense_catalog_body("admitted")
     waiting_body = _dense_catalog_body("waiting")
 
     try:
-        with mitm_ctx():
+        with (
+            mitm_ctx(),
+            patch.object(catalog_cache, "ThreadPoolExecutor", return_value=executor),
+        ):
             try:
                 admitted_flow, admitted_continuation = await _start_catalog_response(
                     real_flow,
@@ -286,36 +282,193 @@ async def test_catalog_validation_cancellation_preserves_atomic_ownership(
         for owner in owners:
             catalog_cache.handle_error(owner)
     finally:
-        _replace_default_executor(loop, executor)
+        executor.shutdown(wait=True)
 
 
 async def test_executor_submission_failure_releases_catalog_owner(
     real_flow: _FlowFactory,
     mitm_ctx,
 ) -> None:
-    loop = asyncio.get_running_loop()
     failed_executor = ThreadPoolExecutor(
         max_workers=1,
         thread_name_prefix="failed-catalog-test",
     )
-    loop.set_default_executor(failed_executor)
     failed_executor.shutdown(wait=True)
 
-    try:
-        with mitm_ctx():
-            flow, continuation = await _start_catalog_response(
-                real_flow,
-                version="executor-failure",
-                body=b'{"models":[]}',
-            )
-            with pytest.raises(RuntimeError):
-                await continuation
-
-        assert "_codex_model_catalog_cache_state" not in flow.metadata
-        retry = catalog_flow(real_flow, version="executor-failure")
-        await prepare_miss(retry)
-        catalog_cache.handle_error(retry)
-    finally:
-        loop.set_default_executor(
-            ThreadPoolExecutor(max_workers=1, thread_name_prefix="post-catalog-failure-test")
+    with (
+        mitm_ctx(),
+        patch.object(catalog_cache, "ThreadPoolExecutor", return_value=failed_executor),
+    ):
+        flow, continuation = await _start_catalog_response(
+            real_flow,
+            version="executor-failure",
+            body=b'{"models":[]}',
         )
+        with pytest.raises(RuntimeError):
+            await continuation
+
+    assert "_codex_model_catalog_cache_state" not in flow.metadata
+    retry = catalog_flow(real_flow, version="executor-failure")
+    await prepare_miss(retry)
+    catalog_cache.handle_error(retry)
+
+
+async def test_worker_start_failures_release_queued_snapshots_and_recover(
+    real_flow: _FlowFactory,
+    mitm_ctx,
+) -> None:
+    loop = asyncio.get_running_loop()
+    executors: list[ThreadPoolExecutor] = []
+    original_start = threading.Thread.start
+    original_validate = catalog_cache._validate_response_snapshot
+    validations: list[int] = []
+    failed_starts = 0
+
+    def create_executor(*, max_workers: int, thread_name_prefix: str) -> ThreadPoolExecutor:
+        executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix=thread_name_prefix
+        )
+        executors.append(executor)
+        return executor
+
+    def fail_catalog_start(thread: threading.Thread) -> None:
+        nonlocal failed_starts
+        if thread.name.startswith("codex-catalog-validation_"):
+            failed_starts += 1
+            raise RuntimeError("can't start new thread")
+        original_start(thread)
+
+    def observe_validation(
+        snapshot: catalog_cache._ResponseValidationSnapshot,
+    ) -> catalog_cache._ValidatedResponse | str:
+        validations.append(id(snapshot))
+        return original_validate(snapshot)
+
+    try:
+        with (
+            mitm_ctx(),
+            patch.object(catalog_cache, "ThreadPoolExecutor", side_effect=create_executor),
+            patch.object(catalog_cache, "_validate_response_snapshot", observe_validation),
+        ):
+            with patch.object(threading.Thread, "start", fail_catalog_start):
+                assert (
+                    await loop.run_in_executor(None, threading.get_ident) != threading.get_ident()
+                )
+                for index in range(catalog_cache.MAX_IN_FLIGHT_REQUESTS + 4):
+                    version = f"start-failure-{index}"
+                    prefix = b'{"models":[],"padding":"' + version.encode()
+                    body = prefix + b"x" * (catalog_cache.MAX_ENTRY_BYTES - len(prefix) - 2) + b'"}'
+                    flow, continuation = await _start_catalog_response(
+                        real_flow, version=version, body=body
+                    )
+                    follower = catalog_flow(real_flow, version=version)
+                    follower_prepare = asyncio.create_task(
+                        catalog_cache.prepare_request(follower, request_end_stream=True)
+                    )
+                    try:
+                        await asyncio.sleep(0)
+                        assert not follower_prepare.done()
+                        with pytest.raises(RuntimeError, match="can't start new thread"):
+                            await continuation
+                        await asyncio.wait_for(follower_prepare, timeout=1)
+                        assert follower.response is None
+                        assert follower.request.headers["Accept-Encoding"] == "identity"
+                    finally:
+                        follower_prepare.cancel()
+                        await asyncio.gather(follower_prepare, return_exceptions=True)
+                        catalog_cache.handle_error(follower)
+                    assert "_codex_model_catalog_cache_state" not in flow.metadata
+                    # shutdown() leaves one wake-up sentinel, never a catalog job.
+                    assert executors[-1]._work_queue.qsize() == 1
+
+            assert failed_starts == catalog_cache.MAX_IN_FLIGHT_REQUESTS + 4
+            assert not validations
+            gc.collect()
+            retained_snapshots = sum(
+                isinstance(value, catalog_cache._ResponseValidationSnapshot)
+                for value in gc.get_objects()
+            )
+            assert retained_snapshots == 0
+
+            healthy_body = b'{"models":[{"slug":"healthy"}]}'
+            _, continuation = await _start_catalog_response(
+                real_flow, version="healthy-after-start-failure", body=healthy_body
+            )
+            await continuation
+            assert len(validations) == 1
+            hit = catalog_flow(real_flow, version="healthy-after-start-failure")
+            await catalog_cache.prepare_request(hit, request_end_stream=True)
+            assert hit.response is not None
+            assert hit.response.content == healthy_body
+            catalog_cache.release_flow_state(hit)
+            missing = catalog_flow(real_flow, version="start-failure-0")
+            await prepare_miss(missing)
+            catalog_cache.handle_error(missing)
+            assert await loop.run_in_executor(None, threading.get_ident) != threading.get_ident()
+    finally:
+        catalog_cache.shutdown()
+        for executor in executors:
+            executor.shutdown(wait=True, cancel_futures=True)
+    assert all(not thread.is_alive() for executor in executors for thread in executor._threads)
+
+
+@pytest.mark.parametrize("reporter_shutdown_fails", [False, True])
+async def test_done_joins_catalog_validation_and_closes_admission(
+    real_flow: _FlowFactory,
+    mitm_ctx,
+    reporter_shutdown_fails: bool,
+) -> None:
+    executor = _ControlledValidationExecutor(asyncio.get_running_loop())
+    tasks: list[asyncio.Task[None]] = []
+    body = b'{"models":[{"slug":"shutdown"}]}'
+    try:
+        with (
+            mitm_ctx(),
+            patch.object(catalog_cache, "ThreadPoolExecutor", return_value=executor),
+        ):
+            try:
+                _, continuation = await _start_catalog_response(
+                    real_flow, version="during-shutdown", body=body
+                )
+                task = asyncio.create_task(_await_continuation(continuation))
+                tasks.append(task)
+                await asyncio.wait_for(executor.started.wait(), timeout=1)
+                task.cancel()
+                await asyncio.sleep(0)
+                assert not task.done()
+                executor.release_workers()
+
+                if reporter_shutdown_fails:
+                    with (
+                        patch.object(
+                            mitm_addon.model_provider_failure,
+                            "shutdown",
+                            side_effect=RuntimeError("reporter shutdown failed"),
+                        ),
+                        pytest.raises(RuntimeError, match="reporter shutdown failed"),
+                    ):
+                        mitm_addon.done()
+                else:
+                    mitm_addon.done()
+
+                assert executor.worker_thread_ids
+                assert all(not thread.is_alive() for thread in executor._threads)
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                hit = catalog_flow(real_flow, version="during-shutdown")
+                await catalog_cache.prepare_request(hit, request_end_stream=True)
+                assert hit.response is not None
+                assert hit.response.content == body
+                catalog_cache.release_flow_state(hit)
+
+                flow, continuation = await _start_catalog_response(
+                    real_flow, version="after-shutdown", body=body
+                )
+                with pytest.raises(RuntimeError, match="Catalog validation is shut down"):
+                    await continuation
+                assert "_codex_model_catalog_cache_state" not in flow.metadata
+                assert executor.submission_count == 1
+            finally:
+                await _release_tasks(executor, tasks)
+    finally:
+        executor.shutdown(wait=True)

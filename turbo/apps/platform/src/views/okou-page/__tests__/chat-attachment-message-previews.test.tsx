@@ -193,12 +193,30 @@ test("Image navigation stays within the current message", async () => {
   expect(getNamedButton("Next image artifact")).toBeVisible();
 
   click(await findNamedButton("Zoom in"));
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("artifact-dialog-image-zoom-level"),
+    ).toHaveTextContent("115%");
+  });
+  click(getNamedButton("Enter fullscreen"));
+  await findNamedButton("Exit fullscreen");
+  expect(
+    screen.getByTestId("artifact-dialog-image-zoom-level"),
+  ).toHaveTextContent("115%");
+  click(getNamedButton("Exit fullscreen"));
+  await findNamedButton("Enter fullscreen");
+  expect(
+    screen.getByTestId("artifact-dialog-image-zoom-level"),
+  ).toHaveTextContent("115%");
   fireEvent.keyDown(document, { key: "ArrowRight" });
   await waitFor(() => {
     expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
       "alt",
       "gallery-second.png",
     );
+    expect(
+      screen.getByTestId("artifact-dialog-image-zoom-level"),
+    ).toHaveTextContent("100%");
   });
   click(getNamedButton("Previous image artifact"));
   await waitFor(() => {

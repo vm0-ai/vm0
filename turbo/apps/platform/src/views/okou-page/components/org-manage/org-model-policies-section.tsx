@@ -1576,7 +1576,7 @@ function ModelPolicyRouteDialog({
       }}
     >
       <DialogContent
-        className="max-w-3xl"
+        maxWidth="3xl"
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}

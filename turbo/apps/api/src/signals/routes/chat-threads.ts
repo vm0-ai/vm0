@@ -1,3 +1,4 @@
+import { chatThreadActivitySummaryRoutes } from "./chat-threads-activity-summary";
 import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
 import {
@@ -463,6 +464,7 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
       searchChatInner$,
     ),
   },
+  ...chatThreadActivitySummaryRoutes,
   ...chatThreadsArtifactsSyncRoutes,
   ...chatThreadComputerUseHostRoutes,
   ...chatThreadConnectorSelectionRoutes,

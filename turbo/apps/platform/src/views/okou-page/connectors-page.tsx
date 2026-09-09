@@ -80,6 +80,7 @@ import {
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
+  surfaceVariants,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -613,7 +614,9 @@ function renderBuiltinList({
             <div
               key={i}
               data-testid="connector-skeleton"
-              className="okou-card flex flex-col animate-pulse"
+              className={surfaceVariants({
+                className: "flex flex-col animate-pulse",
+              })}
             >
               <div className="flex h-14 items-center gap-2.5 px-5">
                 <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />

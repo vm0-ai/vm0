@@ -5,7 +5,7 @@ import {
 } from "../../signals/external/feature-switch.ts";
 import {
   AVATAR_ARTWORK_SLOT,
-  AVATAR_HEAD_TRANSFORM_ORIGIN,
+  AVATAR_HEAD_SLOT,
   avatarSvgComposition,
   avatarSvgContentTransform,
   type ResolvedAvatarSvgConfig,
@@ -33,7 +33,7 @@ export function AvatarSvgPreview({
 }: AvatarSvgPreviewProps) {
   const neckSweater = useGet(avatarNeckSweaterEnabled$);
   const framing = useGet(avatarFramingEnabled$);
-  const { behind, head, front, headScale, contentOffsetY, contentScale } =
+  const { behind, head, front, headOffsetY, contentOffsetY, contentScale } =
     avatarSvgComposition(config, { neckSweater, framing });
   // `centerContent` is the avatar maker asking for centering on its own while
   // the framing switch is off; the rule centers every avatar once it ships, and
@@ -61,10 +61,10 @@ export function AvatarSvgPreview({
       >
         {behind.map(layer)}
         <div
+          {...AVATAR_HEAD_SLOT}
           className="absolute inset-0"
           style={{
-            transform: `scale(${headScale})`,
-            transformOrigin: AVATAR_HEAD_TRANSFORM_ORIGIN,
+            transform: `translateY(${headOffsetY}%)`,
           }}
         >
           {head.map(layer)}

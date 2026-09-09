@@ -730,7 +730,7 @@ describe("Intro Video HeyGen presenter route", () => {
         contentType: "audio/mpeg",
         size: AUDIO_BYTES.byteLength,
         url: privateArtifacts
-          ? expect.stringContaining("/api/web/download-file?file_id=")
+          ? expect.stringMatching(/^\/artifacts\/[a-f0-9]{32}\.mp3$/u)
           : expect.stringContaining("https://a.okou.io/"),
         durationSeconds: 61,
         creditsCharged: 41,
@@ -1022,7 +1022,7 @@ describe("Intro Video HeyGen presenter route", () => {
         contentType: "video/webm",
         size: VIDEO_BYTES.byteLength,
         url: privateArtifacts
-          ? expect.stringContaining("/api/web/download-file?file_id=")
+          ? expect.stringMatching(/^\/artifacts\/[a-f0-9]{32}\.webm$/u)
           : expect.stringContaining("https://a.okou.io/"),
         durationSeconds: 61,
         creditsCharged: 1271,

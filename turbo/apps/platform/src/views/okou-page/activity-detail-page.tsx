@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { Search, Loader2, Download, ChartLine } from "lucide-react";
 import {
+  surfaceVariants,
   Button,
   Input,
   Tabs,
@@ -311,7 +312,7 @@ export function ActivityHeaderCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="okou-card shrink-0 px-4 py-3">
+    <div className={surfaceVariants({ className: "shrink-0 px-4 py-3" })}>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 flex-1">
@@ -1290,7 +1291,7 @@ function ActivitySkeleton() {
         </nav>
         <div className="mx-auto max-w-[900px] px-4 sm:px-6 pt-4 pb-[max(2rem,var(--sab))] w-full">
           {/* Header card skeleton */}
-          <div className="okou-card shrink-0 px-4 py-3">
+          <div className={surfaceVariants({ className: "shrink-0 px-4 py-3" })}>
             <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
               <div className="h-5 w-28 rounded bg-muted/50 animate-pulse" />
               <span

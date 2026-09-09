@@ -2,7 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
 import { ArrowUpRight, MessageCircle, Search } from "lucide-react";
-import { Card, CardContent, cn, Input } from "@okouai/ui";
+import { surfaceVariants, Card, CardContent, cn, Input } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./ideation-data.ts";
@@ -245,7 +245,7 @@ export function IdeationPage() {
                           return (
                             <Card
                               key={useCase.title}
-                              className="okou-card cursor-pointer hover:bg-state-hover transition-colors"
+                              className={surfaceVariants({ interactive: true })}
                               onClick={() => {
                                 return handleSelectPrompt(useCase.prompt);
                               }}

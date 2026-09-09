@@ -6,7 +6,8 @@
 //!
 //! The fresh path starts and prepares a new Firecracker VM and can notify the
 //! caller once the sandbox is ready to run the job. The reuse path runs in a
-//! kept-alive idle sandbox.
+//! kept-alive idle sandbox. An unusable blank can be retired before Agent start
+//! and replaced once through fresh preparation; exact reuse does not prefetch.
 //!
 //! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
 //! buffer. When `ExecuteOutcome::sandbox` is `Some`, the executor transfers
@@ -33,6 +34,7 @@ mod codex_model_catalog_prefetch;
 mod diagnostics;
 mod env;
 mod guest_state;
+mod reused_sandbox;
 mod sandbox_run;
 mod session_history_cpu;
 mod session_history_download;
@@ -61,9 +63,8 @@ use crate::active_input::ActiveInputSource;
 use agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls, RunStart};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
-use sandbox_run::{
-    NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
-};
+use reused_sandbox::{ReusedSandboxRun, execute_reused_sandbox};
+use sandbox_run::{FreshPreparation, NewSandboxHooks, execute_new_sandbox_with_prepared_notifier};
 pub(crate) use telemetry::{
     ExactReuseSpeculationTiming, FinalizingDiagnostics, FinalizingExactIdleLookup,
     FinalizingHandoffOutcome, FinalizingHandoffReason, RunnerPreSpawnConcurrency,
@@ -382,6 +383,21 @@ pub struct ExecuteOutcome {
 }
 
 impl ExecuteOutcome {
+    fn preparation_failure(error: impl ToString) -> Self {
+        Self {
+            failure: Some(ExecutionFailure::from_error(error.to_string())),
+            active_input_delivery_ids: Vec::new(),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
+            sandbox: None,
+            source_ip: String::new(),
+            network_log_session: None,
+            workspace_image: None,
+            workspace_reuse_result: None,
+            discovered_cli_agent_session_id: None,
+            restored_session_identity: None,
+        }
+    }
+
     fn reused_sandbox_failure(
         failure: ExecutionFailure,
         sandbox: Box<dyn Sandbox>,
@@ -653,6 +669,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             params,
             &mut telemetry,
             NewSandboxHooks {
+                preparation: FreshPreparation::Initial,
                 controls: RunControls::from_cancellation(cancellation, active_input_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
@@ -697,8 +714,11 @@ pub async fn execute_job_reuse(
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
     execute_job_reuse_with_hooks(
-        idle_sandbox,
-        SandboxReuseResult::Reused,
+        ReusedSandboxDispatch {
+            factory: &sandbox_mock::MockSandboxFactory::new(),
+            idle_sandbox,
+            reuse_result: SandboxReuseResult::Reused,
+        },
         context,
         config,
         params,
@@ -708,15 +728,25 @@ pub async fn execute_job_reuse(
     .await
 }
 
+pub(crate) struct ReusedSandboxDispatch<'a> {
+    pub(crate) factory: &'a dyn SandboxFactory,
+    pub(crate) idle_sandbox: ReusableIdleSandbox,
+    pub(crate) reuse_result: SandboxReuseResult,
+}
+
 pub(crate) async fn execute_job_reuse_with_hooks(
-    idle_sandbox: ReusableIdleSandbox,
-    reuse_result: SandboxReuseResult,
+    dispatch: ReusedSandboxDispatch<'_>,
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
     cancellation: RunCancellationSignals,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
+    let ReusedSandboxDispatch {
+        factory,
+        idle_sandbox,
+        reuse_result,
+    } = dispatch;
     let ExecutionHooks {
         sandbox_prepared: _,
         active_input_source,
@@ -814,8 +844,8 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         (None, None) => None,
     };
 
-    // execute_reused_sandbox never returns Err — it always returns the sandbox
-    // in the outcome so the caller can stop + destroy it on failure.
+    // The reuse owner either returns a live sandbox for caller finalization or
+    // retires an unusable blank before attempting its single replacement.
     let sandbox_id_string = sandbox_id.to_string();
     let outcome = match validate_execution_context_before_sandbox(
         &context,
@@ -830,9 +860,16 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             workspace_image,
         ),
         Ok(prepared_run_payload) => {
-            let mut outcome = execute_reused_sandbox(
-                sandbox,
-                &source_ip,
+            execute_reused_sandbox(
+                ReusedSandboxRun {
+                    sandbox_id,
+                    factory,
+                    params,
+                    sandbox,
+                    source_ip,
+                    workspace_image,
+                    kind,
+                },
                 &context,
                 config,
                 RunStart {
@@ -856,9 +893,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                     prepared_run_payload,
                 ),
             )
-            .await;
-            outcome.workspace_image = workspace_image;
-            outcome
+            .await
         }
     };
 

@@ -4,6 +4,7 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
+  ThreadActivitySummary = "threadActivitySummary",
   Dummy = "_dummy",
   AhrefsConnector = "ahrefsConnector",
   BillConnector = "billConnector",
@@ -74,4 +75,5 @@ export enum FeatureSwitchKey {
   AvatarNeckSweater = "avatarNeckSweater",
   AvatarFraming = "avatarFraming",
   ConnectorDirectory = "connectorDirectory",
+  ChatThreadHeaderActions = "chatThreadHeaderActions",
 }

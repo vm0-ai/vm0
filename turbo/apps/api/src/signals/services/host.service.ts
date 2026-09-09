@@ -26,6 +26,7 @@ import {
 } from "../external/s3";
 import { nowDate } from "../../lib/time";
 import { privateArtifactCreationEnabled } from "./private-artifact-storage.service";
+import { registerLegacyHostedSite$ } from "./artifact-delivery.service";
 import { privateHostedArtifactUrl } from "./private-hosted-preview.service";
 import {
   scheduleArtifactPreviewRender$,
@@ -967,6 +968,18 @@ const promoteHostedSiteDeployment$ = command(
           : site.activeDeploymentVersion === null ||
             args.deployment.deploymentVersion >= site.activeDeploymentVersion);
       if (shouldPromote) {
+        await set(
+          registerLegacyHostedSite$,
+          {
+            alias: args.deployment.manifest.publicSlug,
+            publicBrand: args.deployment.publicBrand,
+            pointerKey: activePointerKey(
+              args.deployment.publicBrand,
+              args.deployment.manifest.publicSlug,
+            ),
+          },
+          signal,
+        );
         await get(
           putHostedSitesS3Object(
             args.bucket,
@@ -1080,6 +1093,18 @@ export const completeHostedSiteDeployment$ = command(
     );
 
     if (deployment.deploymentVersion !== null && !deployment.manifest.access) {
+      await set(
+        registerLegacyHostedSite$,
+        {
+          alias: `dpl-${deployment.id}`,
+          publicBrand: deployment.publicBrand,
+          pointerKey: immutableDeploymentPointerKey(
+            deployment.publicBrand,
+            deployment.id,
+          ),
+        },
+        signal,
+      );
       await get(
         putHostedSitesS3Object(
           hostedR2.config.bucket,

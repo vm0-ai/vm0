@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ThreadActivitySummary]: {
+    maintainer: "lancy@okou.ai",
+    description:
+      "Generate short public activity summaries on visible-thread demand.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerTaskChips]: {
     maintainer: "bingjie@okou.ai",
     description: "Lightweight chat task chips and contextual starting ideas",
@@ -465,6 +471,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Connector directory in the chat composer: connected connectors separated from discovery, category browsing, per-connector detail, and keyboard navigation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatThreadHeaderActions]: {
+    maintainer: "lancy@okou.ai",
+    description:
+      "Pin chats from the desktop title and keep Pin, Share, and More visible in the mobile thread header.",
+    enabled: false,
   },
 };
 

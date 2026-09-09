@@ -25,6 +25,7 @@ import {
   formatCreditDate,
   type CreditAddition,
 } from "../../org-manage/org-usage-tab.tsx";
+import { emptyUsageImg } from "../../../platform-assets.ts";
 import { UserAvatar } from "../../../../components/avatar.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
@@ -502,7 +503,8 @@ function UsagePackMemberBalancesDialog({
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="okou-app flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        maxWidth="3xl"
+        contentClassName="okou-app flex flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 pb-4 pt-6">
           <DialogTitle>
@@ -606,6 +608,23 @@ function UsagePackCreditCard({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+function CreditBalanceEmptyState() {
+  return (
+    <div
+      data-testid="credit-balance-empty"
+      className="flex min-h-[20rem] items-center justify-center px-6"
+    >
+      <img
+        src={emptyUsageImg}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        className="h-24 w-24 object-contain opacity-80"
+      />
+    </div>
+  );
+}
+
 export function CreditBalanceSection() {
   const { t } = useTranslation();
   const setActiveSection = useSet(setSettingsActiveSection$);
@@ -639,7 +658,14 @@ export function CreditBalanceSection() {
   // Members only see credits assigned by their usage pack. Organization
   // balances remain available to organization admins.
   if (!isAdmin) {
-    return <div>{usagePackCreditCard}</div>;
+    const showEmptyState =
+      isAdminLoadable.state === "hasData" && capabilities !== undefined;
+    return (
+      <div>
+        {usagePackCreditCard ??
+          (showEmptyState ? <CreditBalanceEmptyState /> : null)}
+      </div>
+    );
   }
 
   return (

@@ -37,6 +37,11 @@ replacement owner. Publication and capacity release are idempotent, and an old o
 remove itself only while it is still current; terminal cleanup supplies the no-entry fallback
 for abandoned flows.
 
+Validation uses a cache-owned single-worker executor. Failed submissions cancel its queued
+work before releasing admission; the next response can create a new executor. Once a future
+is returned, cancellation waits for validation and publication to finish. Addon shutdown
+closes validation admission and joins the worker without cancelling accepted futures.
+
 Response modes and authenticated ETags
 ---------------------------------------
 Ordinary owners require identity responses. Prefetch owners request Brotli; for an eligible
@@ -66,6 +71,7 @@ import time
 import urllib.parse
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import NoReturn
 
@@ -207,6 +213,8 @@ _active_flow_states = 0
 _process_hmac_key = secrets.token_bytes(32)
 _validation_loop: asyncio.AbstractEventLoop | None = None
 _validation_semaphore: asyncio.Semaphore | None = None
+_validation_executor: ThreadPoolExecutor | None = None
+_validation_shut_down = False
 
 
 def _bounded_milliseconds(seconds: float) -> int:
@@ -997,10 +1005,26 @@ def _validation_semaphore_for_running_loop() -> asyncio.Semaphore:
 async def _validate_response_off_loop(
     snapshot: _ResponseValidationSnapshot,
 ) -> tuple[_ValidatedResponse | str, asyncio.CancelledError | None]:
+    global _validation_executor
     semaphore = _validation_semaphore_for_running_loop()
     async with semaphore:
+        if _validation_shut_down:
+            raise RuntimeError("Catalog validation is shut down")
+        if _validation_executor is None:
+            _validation_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="codex-catalog-validation",
+            )
+        executor = _validation_executor
         loop = asyncio.get_running_loop()
-        validation = loop.run_in_executor(None, _validate_response_snapshot, snapshot)
+        try:
+            validation = loop.run_in_executor(executor, _validate_response_snapshot, snapshot)
+        except BaseException:
+            # submit() queues before starting a worker and may raise without returning
+            # its future. Own and drain that queue before the caller releases admission.
+            _validation_executor = None
+            executor.shutdown(wait=True, cancel_futures=True)
+            raise
         cancellation: asyncio.CancelledError | None = None
         while True:
             try:
@@ -1176,10 +1200,23 @@ def release_flow_state(flow: http.HTTPFlow) -> None:
     flow.metadata.pop(_PREFETCH_REQUEST, None)
 
 
+def shutdown() -> None:
+    """Close validation admission and join accepted work before addon exit."""
+    global _validation_executor, _validation_shut_down
+    _validation_shut_down = True
+    executor = _validation_executor
+    _validation_executor = None
+    if executor is not None:
+        # Accepted futures must complete: their continuations still own publication
+        # and flow capacity, including when the awaiting task has been cancelled.
+        executor.shutdown(wait=True)
+
+
 def reset_for_tests() -> None:
     """Reset process cache ownership between tests."""
     global _active_flow_states, _owned_body_bytes, _process_hmac_key
-    global _validation_loop, _validation_semaphore
+    global _validation_loop, _validation_semaphore, _validation_shut_down
+    shutdown()
     for in_flight in _in_flight.values():
         if not in_flight.future.done():
             in_flight.future.set_result(None)
@@ -1190,3 +1227,4 @@ def reset_for_tests() -> None:
     _process_hmac_key = secrets.token_bytes(32)
     _validation_loop = None
     _validation_semaphore = None
+    _validation_shut_down = False

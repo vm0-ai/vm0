@@ -34,13 +34,15 @@ const TALL_HAIR_AGENT_ID = "c0000000-0000-4000-a000-000000000022";
 const LEGACY_AGENT_ID = "c0000000-0000-4000-a000-000000000023";
 
 /**
- * The share of the avatar box each artwork covers as drawn, before any framing.
- * These are properties of the composer assets — the flattest hair leaves the
- * canvas's whole forehead margin empty, the tallest fills it — and they are what
- * makes one agent card look larger than the next.
+ * The share of the avatar box each artwork covers as drawn, before any framing:
+ * from the top of the hair, once the head has been moved onto the chin
+ * baseline, down to the bottom of the sweater. These are properties of the
+ * composer assets — the flattest hair leaves the canvas's whole forehead margin
+ * empty, the tallest reaches past the top of it — and they are what makes one
+ * agent card look larger than the next.
  */
-const FLAT_HAIR_SHIPPED_FILL = 264 / 380;
-const TALL_HAIR_SHIPPED_FILL = 373.6826 / 380;
+const FLAT_HAIR_DRAWN_FILL = 250.4 / 380;
+const TALL_HAIR_DRAWN_FILL = 383.4 / 380;
 
 function agent(agentId: string, avatarUrl: string): AgentResponse {
   return {
@@ -157,12 +159,11 @@ test("Center each composer avatar and pull the cast toward one size", async () =
   const flat = avatarFramingTransform(FLAT_HAIR_AGENT_ID);
   const tall = avatarFramingTransform(TALL_HAIR_AGENT_ID);
 
-  // Both move up, because both artworks hang below the middle of their canvas.
-  // The flat-haired one leaves the whole forehead margin empty, so it has much
-  // further to travel than the one whose bun already fills that margin.
-  expect(centeringOffset(flat)).toBeLessThan(0);
-  expect(centeringOffset(tall)).toBeLessThan(0);
-  expect(centeringOffset(flat)).toBeLessThan(centeringOffset(tall));
+  // The flat-haired artwork leaves the whole forehead margin of its canvas
+  // empty, so centering moves it a long way up. The one whose bun already
+  // reaches past the top of the canvas is close to centered where it is.
+  expect(centeringOffset(flat)).toBeLessThan(-10);
+  expect(Math.abs(centeringOffset(tall))).toBeLessThan(1);
 
   // The smaller artwork grows and the larger one shrinks, and neither moves far
   // enough to make its face the odd one out.
@@ -170,20 +171,62 @@ test("Center each composer avatar and pull the cast toward one size", async () =
   const tallScale = framingScale(tall);
   expect(flatScale).toBeGreaterThan(1);
   expect(tallScale).toBeLessThan(1);
-  expect(flatScale).toBeLessThan(1.2);
+  expect(flatScale).toBeLessThan(1.25);
   expect(tallScale).toBeGreaterThan(0.9);
 
-  // What the framing is for: as drawn these two differ by more than 1.4x, which
-  // is what makes a row of cards look uneven. Framed, they differ by under 1.2x.
-  const shippedRatio = TALL_HAIR_SHIPPED_FILL / FLAT_HAIR_SHIPPED_FILL;
+  // What the framing is for. As drawn these two differ by more than 1.5x, which
+  // is what makes a row of cards look uneven. Framed, they are half that far
+  // apart in log space — the rule corrects half the difference, so the framed
+  // spread is the square root of the drawn one.
+  const drawnRatio = TALL_HAIR_DRAWN_FILL / FLAT_HAIR_DRAWN_FILL;
   const framedRatio =
-    (TALL_HAIR_SHIPPED_FILL * tallScale) / (FLAT_HAIR_SHIPPED_FILL * flatScale);
-  expect(shippedRatio).toBeGreaterThan(1.4);
-  expect(framedRatio).toBeLessThan(1.2);
+    (TALL_HAIR_DRAWN_FILL * tallScale) / (FLAT_HAIR_DRAWN_FILL * flatScale);
+  expect(drawnRatio).toBeGreaterThan(1.5);
+  expect(framedRatio).toBeLessThan(drawnRatio);
+  expect(framedRatio).toBeCloseTo(Math.sqrt(drawnRatio), 2);
 });
 
 test("Keep legacy avatars on the scale they already shipped with", async () => {
   await setupAgentsPage([agent(LEGACY_AGENT_ID, "svg:r3s2h4c1f5h")], true);
 
   expect(avatarFramingTransform(LEGACY_AGENT_ID)).toBe("scale(1.25)");
+});
+
+/**
+ * The head group carries only the chin-baseline placement, so it is the layer
+ * that proves the head is moved rather than resized. Same boundary exception as
+ * above: a resized head has no page-observable result under jsdom.
+ */
+function headPlacementTransform(agentId: string): string {
+  const head =
+    agentCard(agentId).querySelector<HTMLElement>("[data-avatar-head]");
+  if (!head) {
+    throw new Error(`${agentId} avatar head group not found`);
+  }
+  return head.style.transform;
+}
+
+test("Move the head to the chin baseline instead of resizing it", async () => {
+  await setupAgentsPage(
+    [
+      agent(FLAT_HAIR_AGENT_ID, FLAT_HAIR_AVATAR_URL),
+      agent(TALL_HAIR_AGENT_ID, TALL_HAIR_AVATAR_URL),
+    ],
+    true,
+  );
+
+  // The face assets are all drawn at one width. Resizing a head to reach the
+  // shared collar made it up to 1.24x wider than its neighbour while the neck
+  // and collar under it stayed fixed, which is what made one body look too big
+  // for its head. Neither head carries a scale any more.
+  for (const id of [FLAT_HAIR_AGENT_ID, TALL_HAIR_AGENT_ID]) {
+    expect(headPlacementTransform(id)).not.toMatch(/scale\(/u);
+    expect(headPlacementTransform(id)).toMatch(/^translateY\(-?[\d.]+%\)$/u);
+  }
+
+  // The two faces have different chins, so they move by different amounts to
+  // land on the same collar.
+  expect(headPlacementTransform(FLAT_HAIR_AGENT_ID)).not.toBe(
+    headPlacementTransform(TALL_HAIR_AGENT_ID),
+  );
 });

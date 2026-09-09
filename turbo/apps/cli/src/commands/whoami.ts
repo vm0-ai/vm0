@@ -346,7 +346,10 @@ async function showLocalInfo(): Promise<void> {
 export const whoamiCommand = new Command()
   .name("whoami")
   .description("Show agent identity, run ID, and capabilities")
-  .option("--permissions", "Show connector enablement and permission details")
+  .option(
+    "--permissions",
+    "Show connector enablement and permission details in a sandbox",
+  )
   .addHelpText(
     "after",
     `
@@ -356,8 +359,14 @@ Examples:
 
 Notes:
   - Inside sandbox: shows agent ID, run ID, org ID, and granted capabilities
-  - Use --permissions to see connector permissions and custom connector Agent enablement
-  - Custom connectors with permission bundles also show selections and effective policies
+  - Connector account identity comes from the current run's admitted accounts
+  - --permissions shows builtin permission rules and custom connector Agent enablement
+  - Custom HTTP permission bundles also show selections and effective policies
+    when available. MCP connectors and custom HTTP connectors without bundles
+    use connector-level authorization. Missing details do not establish access.
+  - Manage custom HTTP permissions in Connectors > agent access > Permissions
+  - Outside a sandbox, shows authentication and org information;
+    --permissions does not expand connector permissions
   - Your agent ID is also available as $OKOU_AGENT_ID`,
   )
   .action(

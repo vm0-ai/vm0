@@ -25,6 +25,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { artifactCatalogRoutes } from "../artifact-catalog";
+import { artifactReferenceRoutes } from "../artifact-references";
 import { avatarVideoRoutes } from "../avatar-video";
 import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
@@ -71,6 +72,7 @@ function createAvatarVideoTestApp(
     routes: [
       ...avatarVideoRoutes,
       ...artifactCatalogRoutes,
+      ...artifactReferenceRoutes,
       ...builtInGenerationRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...billingStatusRoutes,
@@ -526,7 +528,7 @@ describe("JoggAI built-in avatar video routes", () => {
       expect(statusBody.status).toBe("completed");
       expect(statusBody.result).toMatchObject({
         url: privateArtifacts
-          ? expect.stringContaining("/api/web/download-file?file_id=")
+          ? expect.stringMatching(/^\/artifacts\/[a-f0-9]{32}\.mp4$/u)
           : expect.stringMatching(
               /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u,
             ),
@@ -595,6 +597,35 @@ describe("JoggAI built-in avatar video routes", () => {
             );
           }),
         ).toBeFalsy();
+
+        const result = asRecord(statusBody.result);
+        if (typeof result.url !== "string") {
+          throw new Error("Expected a private avatar artifact reference");
+        }
+        const resolvePath = `/api/artifact-references/${result.url.slice("/artifacts/".length)}`;
+        const resolved = await app.request(resolvePath, {
+          headers: authHeaders(),
+        });
+        expect(resolved.status).toBe(200);
+        expect(resolved.headers.get("cache-control")).toBe("private, no-store");
+        await expect(resolved.json()).resolves.toMatchObject({
+          url: expect.stringMatching(/^https:\/\//u),
+          contentType: "video/mp4",
+          target: { kind: "file", id: result.id },
+        });
+
+        const peerUserId = `user_${randomUUID()}`;
+        await store.set(
+          seedOrgMembership$,
+          { orgId: fixture.orgId, userId: peerUserId, role: "member" },
+          context.signal,
+        );
+        mocks.clerk.session(peerUserId, fixture.orgId);
+        const denied = await app.request(resolvePath, {
+          headers: authHeaders(),
+        });
+        expect(denied.status).toBe(404);
+        mocks.clerk.session(fixture.userId, fixture.orgId);
       }
       expect(detail).toMatchObject({
         kind: "avatar",

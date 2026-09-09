@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
+  artifactReferencesContract,
+  parseArtifactReference,
+} from "@okouai/api-contracts/contracts/artifact-references";
+import {
   artifactSharesContract,
   type ArtifactShareStatus,
   type ArtifactShareTarget,
@@ -11,7 +15,7 @@ import { resolveApiBase } from "./api-base.ts";
 import { isAuthenticatedAttachmentUrl } from "./attachment-resource-url.ts";
 import { pageSignal$ } from "./page-signal.ts";
 
-export function artifactSharingTarget(url: string): ArtifactShareTarget | null {
+function artifactSharingTarget(url: string): ArtifactShareTarget | null {
   const id = privateHostedDeploymentId(url, resolveApiBase());
   if (id) {
     return { kind: "html", id };
@@ -23,6 +27,31 @@ export function artifactSharingTarget(url: string): ArtifactShareTarget | null {
   return fileId ? { kind: "file", id: fileId } : null;
 }
 
+export function isShareableArtifactReference(url: string): boolean {
+  return (
+    parseArtifactReference(url, location.origin) !== null ||
+    artifactSharingTarget(url) !== null
+  );
+}
+
+const resolveSharingTarget$ = command(
+  async ({ get }, url: string, signal: AbortSignal) => {
+    const reference = parseArtifactReference(url, location.origin);
+    if (!reference) {
+      return artifactSharingTarget(url);
+    }
+    const response = await accept(
+      get(apiClient$)(artifactReferencesContract).resolve({
+        params: { reference: `${reference.hash}${reference.extension}` },
+        fetchOptions: { signal, cache: "no-store" },
+      }),
+      [200],
+      signal,
+    );
+    return response.body.target;
+  },
+);
+
 const pageStatusState$ = computed((get) => {
   get(pageSignal$);
   return state<Readonly<Record<string, ArtifactShareStatus>>>({});
@@ -33,7 +62,7 @@ export const artifactShareStatuses$ = computed((get) => {
 
 export const loadArtifactShare$ = command(
   async ({ get, set }, url: string, signal: AbortSignal) => {
-    const target = artifactSharingTarget(url);
+    const target = await set(resolveSharingTarget$, url, signal);
     if (!target) {
       return;
     }
@@ -64,18 +93,18 @@ export const shareArtifact$ = command(
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
-    const target = artifactSharingTarget(args.url);
-    if (!target) {
-      return null;
-    }
     const status = get(artifactShareStatuses$)[args.url];
     if (
       status?.url &&
       status.audience === args.audience &&
-      status.selectedTarget?.kind === target.kind &&
-      status.selectedTarget.id === target.id
+      status.selectedTarget &&
+      status.selectedVersion === status.candidateVersion
     ) {
       return status.url;
+    }
+    const target = await set(resolveSharingTarget$, args.url, signal);
+    if (!target) {
+      return null;
     }
     const response = await accept(
       get(apiClient$)(artifactSharesContract).update({

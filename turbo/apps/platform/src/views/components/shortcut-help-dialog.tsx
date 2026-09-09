@@ -37,7 +37,7 @@ export function ShortcutHelpDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-sm"
+        maxWidth="sm"
         closeLabel={t(($) => {
           return $.appShell.shortcutHelp.close;
         })}

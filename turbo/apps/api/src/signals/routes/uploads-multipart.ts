@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { registerLegacyArtifactFile$ } from "../services/artifact-delivery.service";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -70,6 +71,18 @@ const completeMultipartInner$ = command(
       throw new Error("Completed R2 multipart upload was not found");
     }
 
+    if (!completed.isPrivate) {
+      await set(
+        registerLegacyArtifactFile$,
+        {
+          key: completed.key,
+          filename: completed.filename,
+          contentType: completed.contentType,
+          publicBrand: completed.publicBrand,
+        },
+        signal,
+      );
+    }
     return {
       status: 200 as const,
       body: {

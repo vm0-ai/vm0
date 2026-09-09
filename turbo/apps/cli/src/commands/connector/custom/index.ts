@@ -70,12 +70,23 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
 const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List org custom connectors")
+  .description(
+    "List org custom HTTP/MCP definitions and member connection status",
+  )
   .option(
     "--agent <id>",
     "Show per-agent authorization column (must match the current Agent inside a run)",
   )
   .option("--json", "Output current org custom connectors as JSON")
+  .addHelpText(
+    "after",
+    `
+Lists org definitions with the current member's connection status, including
+inside a run. This is separate from the accounts admitted to the current run;
+use connector list for that view. The ID column contains UUIDs for custom
+status/update and custom:<uuid> diagnostic selectors.
+Omit --agent inside a run to inspect the current Agent's access.`,
+  )
   .action(
     withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
       const agentId = resolveConnectorAgentId(options.agent);
@@ -147,13 +158,24 @@ const listCommand = new Command()
 
 const statusCommand = new Command()
   .name("status")
-  .description("Show detailed status of a custom connector")
-  .argument("<connector-id>", "Custom connector id")
+  .description("Show a custom HTTP/MCP definition and member connection status")
+  .argument(
+    "<connector-id>",
+    "Custom connector UUID from connector custom list",
+  )
   .option(
     "--agent <id>",
     "Show authorization state for the given Agent (must match the current Agent inside a run)",
   )
   .option("--json", "Output current org custom connector status as JSON")
+  .addHelpText(
+    "after",
+    `
+Accepts a custom connector UUID, not a public slug or custom:<uuid> selector.
+Shows current org definition/member status, including inside a run. For the
+account admitted to a run, use connector status with its connector list slug.
+Omit --agent inside a run to inspect the current Agent's access.`,
+  )
   .action(
     withErrorHandler(
       async (
@@ -262,6 +284,21 @@ export const customConnectorCommand = new Command()
   .addHelpText(
     "after",
     `
+Types and authentication:
+  HTTP: none, manual, oauth.
+  MCP over Streamable HTTP: none, manual, oauth, automatic.
+  The definition's authMode is required. Automatic is MCP-only and discovers
+  the server's authentication requirements when a member connects.
+
+Definitions and access:
+  create/update manage org definitions; list/status show current-member metadata.
+  Creating a definition is separate from connecting a member account, granting
+  Agent access, and selecting any fine-grained permissions. This also applies
+  to none/automatic definitions. Members finish connection in the web flow.
+  Custom HTTP connectors with a permission bundle use Connectors > agent access
+  > Permissions. MCP connectors have Agent access but no HTTP permission bundle.
+  Builtin permission-request approval links do not apply to custom connectors.
+
 To add a custom connector:
   Run "okou connector custom create -h" and follow the definition-only creation workflow.`,
   );

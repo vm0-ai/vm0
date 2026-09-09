@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { randomUUID } from "node:crypto";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { testContext } from "../../../__tests__/test-context";
@@ -41,7 +42,7 @@ async function fixture(enabled = true) {
 test("keeps runless deployments private across switch rollback and only issues owner previews", async () => {
   const { actor, capture, body } = await fixture();
   const draft = await api.prepareHostedSite(actor, body);
-  const canonical = `https://api.okou.ai/api/host/private-deployments/${draft.deploymentId}/view`;
+  const canonical = artifactReferencePath(draft.deploymentId, "index.html");
   expect(draft).toMatchObject({ url: canonical, artifactUrl: canonical });
   expect(draft.aliasUrl).toBeUndefined();
   await billing.updateFeatureSwitches(actor, {
@@ -207,9 +208,12 @@ test("does not move the existing public version when the same site gets a privat
   ).toBe(draft.deploymentId);
 });
 
-test("requires private delivery configuration without publishing a fallback", async () => {
+test("creates hostless references without requiring an API hostname", async () => {
   const { actor, body, capture } = await fixture();
   mockEnv("OKOU_API_BACKEND_URL", undefined);
-  await api.requestPrepareHostedSite(actor, body, [500]);
+  const draft = await api.prepareHostedSite(actor, body);
+  expect(draft.url).toBe(
+    artifactReferencePath(draft.deploymentId, "index.html"),
+  );
   expect(capture.puts).toStrictEqual([]);
 });
