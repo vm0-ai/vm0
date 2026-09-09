@@ -7,6 +7,7 @@ import {
 } from "@okouai/ui";
 import type { SignIn } from "@clerk/react";
 import type { ComponentProps } from "react";
+import { platformOkouWordmarkLightImg } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import {
   AUTH_V1_ERROR_ALERT_CLASS,
@@ -77,11 +78,13 @@ const authV1ResendCodeLinkClass = cn(
 export function getAuthV1ComponentAppearance(
   authBrand: AuthBrandContext,
   mode: AuthV1ComponentMode,
+  theme: "light" | "dark",
 ): ClerkAppearance {
   return {
     theme: "simple",
     options: {
       elevation: "raised",
+      logoImageUrl: theme === "dark" ? platformOkouWordmarkLightImg : undefined,
       logoLinkUrl: authBrand.homeUrl,
       socialButtonsPlacement: "top",
       socialButtonsVariant: "blockButton",

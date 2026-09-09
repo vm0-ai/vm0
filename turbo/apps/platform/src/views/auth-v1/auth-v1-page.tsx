@@ -11,6 +11,7 @@ import {
   resolveAuthBrandContext,
 } from "../../signals/auth.ts";
 import { authV1PageMountRef$ } from "../../signals/auth-v1-page-mount.ts";
+import { theme$ } from "../../signals/theme.ts";
 import { AuthV1Layout } from "./auth-v1-layout.tsx";
 import { AuthV1ClerkProvider } from "./clerk-provider.tsx";
 import { getAuthV1ComponentAppearance } from "./component-appearance.ts";
@@ -44,6 +45,7 @@ function AuthLoadingFallback() {
 function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
   const authPageMountRef = useSet(authV1PageMountRef$);
   const activeRoute = useGet(activeRoute$);
+  const theme = useGet(theme$);
   const authBrand = resolveAuthBrandContext();
 
   if (mode === "sign-in") {
@@ -68,7 +70,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
             ref={authPageMountRef}
           >
             <SignIn
-              appearance={getAuthV1ComponentAppearance(authBrand, mode)}
+              appearance={getAuthV1ComponentAppearance(authBrand, mode, theme)}
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
               forceRedirectUrl={redirectUrl}
@@ -97,7 +99,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
         ref={authPageMountRef}
       >
         <SignUp
-          appearance={getAuthV1ComponentAppearance(authBrand, mode)}
+          appearance={getAuthV1ComponentAppearance(authBrand, mode, theme)}
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
           forceRedirectUrl={redirectUrl}

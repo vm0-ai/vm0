@@ -211,6 +211,41 @@ for (const device of [
       await expect(failure).toHaveCount(0);
     });
 
+    test("hosted entry logos follow theme changes without resetting the form", async ({
+      page,
+    }) => {
+      for (const path of ["/v1/sign-in", "/v1/sign-up"] as const) {
+        await openAuth(page, path, "light");
+        const logo = page.locator(".cl-logoImage");
+        const lightLogoSrc = await logo.getAttribute("src");
+        if (!lightLogoSrc) throw new Error("Expected the dashboard logo URL");
+
+        const email = page.getByLabel("Email address", { exact: true });
+        await email.fill("theme-preview@example.com");
+        const toggle = page.getByRole("button", { name: "Toggle theme" });
+        await toggle.click();
+        await expect(page.locator("html")).toHaveAttribute(
+          "data-theme",
+          "dark",
+        );
+        await expect(logo).toHaveAttribute(
+          "src",
+          "https://static.okou.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg",
+        );
+        await expectLogo(page);
+        await expect(email).toHaveValue("theme-preview@example.com");
+
+        await toggle.click();
+        await expect(page.locator("html")).toHaveAttribute(
+          "data-theme",
+          "light",
+        );
+        await expect(logo).toHaveAttribute("src", lightLogoSrc);
+        await expectLogo(page);
+        await expect(email).toHaveValue("theme-preview@example.com");
+      }
+    });
+
     test("hosted password feedback and reveal remain clear after reflow", async ({
       page,
     }) => {
