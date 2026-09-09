@@ -1,7 +1,6 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
-import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";

@@ -566,7 +566,6 @@ const startImageProviderJob$ = command(
 
 const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const db = get(db$);
   const bodyResult = await get(imageBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -577,9 +576,8 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "agent" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const publicBrand = PUBLIC_BRAND;
   const runImageModelDefault = await loadRunImageModelDefault(
-    db,
+    get(db$),
     auth.orgId,
     auth.userId,
     runId,
@@ -666,13 +664,10 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         imageRequestRecord(options),
         {
           admissionId: admission?.id,
-          publicBrand,
+          publicBrand: PUBLIC_BRAND,
           provider: options.provider,
           providerTask: "image",
-          imageReferenceCount:
-            options.savedImageReferenceCount === 0
-              ? undefined
-              : options.savedImageReferenceCount,
+          imageReferenceCount: options.savedImageReferenceCount || undefined,
         },
       ),
     },
@@ -686,7 +681,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       runId,
-      publicBrand,
+      publicBrand: PUBLIC_BRAND,
       privateArtifacts,
       admission,
       options,

@@ -407,14 +407,13 @@ async function createImageReferenceViaApi(
 ): Promise<CreatedImageReference> {
   useImageReferenceActor(actor);
   const title = options?.title ?? "Generation reference";
-  const prepare = await app.request("/api/uploads/prepare", {
+  const prepare = await app.request("/api/image-references/uploads/prepare", {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
       filename: "reference.png",
       contentType: "image/png",
       size: REFERENCE_IMAGE_BYTES.byteLength,
-      purpose: "image-reference",
     }),
   });
   expect(prepare.status).toBe(200);
@@ -422,8 +421,8 @@ async function createImageReferenceViaApi(
   if (
     typeof prepared !== "object" ||
     prepared === null ||
-    !("id" in prepared) ||
-    typeof prepared.id !== "string"
+    !("sourceFileId" in prepared) ||
+    typeof prepared.sourceFileId !== "string"
   ) {
     throw new Error("Expected a prepared reference upload");
   }
@@ -440,7 +439,7 @@ async function createImageReferenceViaApi(
         typeof metadata === "object" &&
         metadata !== null &&
         "artifact-id" in metadata &&
-        metadata["artifact-id"] === prepared.id
+        metadata["artifact-id"] === prepared.sourceFileId
       );
     });
   const uploadInput = s3CommandInput(uploadCommand);
@@ -452,7 +451,7 @@ async function createImageReferenceViaApi(
   }
   expect(bucket).toBe(PRIVATE_ARTIFACTS_BUCKET);
   storage.storedObjects.set(storedReferenceIdentity(bucket, key), {
-    id: prepared.id,
+    id: prepared.sourceFileId,
     bucket,
     key,
     contentType: "image/png",
@@ -462,7 +461,7 @@ async function createImageReferenceViaApi(
   const complete = await app.request("/api/uploads/complete", {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ id: prepared.id }),
+    body: JSON.stringify({ id: prepared.sourceFileId }),
   });
   expect(complete.status).toBe(200);
 
@@ -470,7 +469,7 @@ async function createImageReferenceViaApi(
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
-      sourceFileId: prepared.id,
+      sourceFileId: prepared.sourceFileId,
       title,
       visibility: options?.visibility ?? "private",
     }),
