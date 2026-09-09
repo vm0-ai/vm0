@@ -1,5 +1,7 @@
 import { useGet, useLastResolved } from "ccstate-react";
+import type { Element, Root } from "hast";
 import { useTranslation } from "react-i18next";
+import { SKIP, visit } from "unist-util-visit";
 
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
 import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
@@ -9,6 +11,12 @@ import {
   markdownCardKey,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
+import { createAttachmentResourceUrlResolver } from "../../signals/attachment-resource-url.ts";
+import {
+  createArtifactPreviewImageUrls$,
+  createArtifactSignals,
+  type ArtifactDescriptor,
+} from "../../signals/chat-page/artifact-card-signals.ts";
 import type { MarkdownCardRef } from "../../signals/chat-page/markdown-card-ref.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { assistantName$ } from "../../signals/branding.ts";
@@ -33,15 +41,64 @@ import { AgentAvatarImg } from "./sidebar-shared.tsx";
  */
 const TEAM_DIAGRAM_SLOT = "okou://welcome-diagram/team";
 const SLACK_DIAGRAM_SLOT = "okou://welcome-diagram/slack";
-const VIDEO_PREVIEW_SLOT = "okou://welcome-video/preview";
+const WELCOME_THREAD_ID = "welcome";
 
 const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS.find(({ slug }) => {
-  return slug === "shadow-pop";
+  return slug === "sunlit-gouache";
 })!;
+const welcomeImageUrl =
+  welcomeImage.previewImages[0] ?? welcomeImage.previewImage;
 const welcomePresentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 const welcomeVideo = VIDEO_TEMPLATE_ITEMS[0]!;
 
-const WELCOME_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map([
+const welcomeArtifactPreviewImages$ = createArtifactPreviewImageUrls$([
+  [welcomePresentation.embedUrl, welcomePresentation.previewImage],
+  [welcomeVideo.previewVideo, welcomeVideo.previewImage],
+]);
+const resolveWelcomeArtifactResourceUrl = createAttachmentResourceUrlResolver();
+
+function welcomeArtifactCard(
+  descriptor: ArtifactDescriptor,
+): Extract<MarkdownCardRef, { kind: "artifact" }> {
+  return {
+    kind: "artifact",
+    signals: createArtifactSignals(
+      descriptor,
+      welcomeArtifactPreviewImages$,
+      resolveWelcomeArtifactResourceUrl,
+    ),
+    threadId: WELCOME_THREAD_ID,
+  };
+}
+
+const WELCOME_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map<
+  string,
+  MarkdownCardRef
+>([
+  [
+    markdownCardKey(welcomeImageUrl),
+    welcomeArtifactCard({
+      filename: "campaign-visual.jpg",
+      kind: "image",
+      url: welcomeImageUrl,
+    }),
+  ],
+  [
+    markdownCardKey(welcomePresentation.embedUrl),
+    welcomeArtifactCard({
+      filename: "sproutpop-launch-deck.html",
+      kind: "html",
+      url: welcomePresentation.embedUrl,
+    }),
+  ],
+  [
+    markdownCardKey(welcomeVideo.previewVideo),
+    welcomeArtifactCard({
+      filename: "product-launch-film.mp4",
+      kind: "video",
+      url: welcomeVideo.previewVideo,
+    }),
+  ],
   [
     markdownCardKey(TEAM_DIAGRAM_SLOT),
     { kind: "welcome-diagram", diagram: "team" } satisfies MarkdownCardRef,
@@ -50,16 +107,33 @@ const WELCOME_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map([
     markdownCardKey(SLACK_DIAGRAM_SLOT),
     { kind: "welcome-diagram", diagram: "slack" } satisfies MarkdownCardRef,
   ],
-  [
-    markdownCardKey(VIDEO_PREVIEW_SLOT),
-    {
-      kind: "welcome-video",
-      posterUrl: welcomeVideo.previewImage,
-      videoUrl: welcomeVideo.previewVideo,
-      webmUrl: welcomeVideo.previewWebm,
-    } satisfies MarkdownCardRef,
-  ],
 ]);
+
+function markdownResourceUrl(node: Element): string | undefined {
+  const value =
+    node.tagName === "a"
+      ? node.properties.href
+      : node.tagName === "img"
+        ? node.properties.src
+        : undefined;
+  return typeof value === "string" ? value : undefined;
+}
+
+/** Inline image and text links keep their Markdown shape while using the same
+ * artifact signals and preview interactions as a regular chat message. */
+function embedWelcomeArtifactCards(tree: Root): void {
+  visit(tree, "element", (node) => {
+    if (node.data?.card) {
+      return SKIP;
+    }
+    const url = markdownResourceUrl(node);
+    const card = url ? WELCOME_CARDS.get(markdownCardKey(url)) : undefined;
+    if (card?.kind === "artifact") {
+      node.data = { ...node.data, card };
+    }
+    return undefined;
+  });
+}
 
 function WelcomeThreadAvatar() {
   const { t } = useTranslation();
@@ -104,14 +178,14 @@ function WelcomeThreadMessage() {
     {
       assistantName,
       docsUrl,
-      imageUrl: welcomeImage.previewImage,
+      imageUrl: welcomeImageUrl,
       inviteUrl,
-      presentationPreviewUrl: welcomePresentation.previewImage,
+      presentationPreviewUrl: welcomePresentation.embedUrl,
       presentationUrl: welcomePresentation.embedUrl,
       slackDiagramUrl: SLACK_DIAGRAM_SLOT,
       slideCount: welcomePresentation.slideCount ?? 15,
       teamDiagramUrl: TEAM_DIAGRAM_SLOT,
-      videoUrl: VIDEO_PREVIEW_SLOT,
+      videoUrl: welcomeVideo.previewVideo,
       worksUrl,
     },
   );
@@ -119,6 +193,7 @@ function WelcomeThreadMessage() {
     cards: WELCOME_CARDS,
     mermaid: true,
   });
+  embedWelcomeArtifactCards(tree);
   embedMermaidSignals(tree, (code) => {
     return createMermaidDiagramSignals(code, pageSignal);
   });
@@ -130,7 +205,7 @@ function WelcomeThreadMessage() {
         <div className="relative flex flex-col gap-2">
           <ChatAssistantMessageBody
             data-testid="welcome-thread-content"
-            className="pt-2.5 [&_p:has(>img)]:w-full [&_p:has(>img)]:max-w-lg [&_p>img]:block [&_p>img]:h-auto [&_p>img]:w-auto [&_p>img]:max-w-full [&_p>img]:max-h-[22rem] [&_p>img]:object-contain"
+            className="pt-2.5"
           >
             <MarkdownEventBody tree={tree} mediaPreview />
           </ChatAssistantMessageBody>

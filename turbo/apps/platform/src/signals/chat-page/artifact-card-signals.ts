@@ -44,11 +44,20 @@ export type ArtifactCardSignalsRegistry = CardSignalsRegistry<
   ArtifactSignals
 >;
 
+export function createArtifactPreviewImageUrls$(
+  entries: readonly (readonly [string, string])[],
+): Computed<Promise<ReadonlyMap<string, string>>> {
+  const previewImageUrlsByUrl = new Map(entries);
+  return computed(() => {
+    return Promise.resolve(previewImageUrlsByUrl);
+  });
+}
+
 function needsTextPreview(kind: ArtifactKind): boolean {
   return isTextPreviewKind(kind);
 }
 
-function createArtifactSignals(
+export function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
   resolveResourceUrl: AttachmentResourceUrlResolver,

@@ -78,7 +78,6 @@ import { MailDraftCard } from "./mail-draft-card.tsx";
 import {
   WelcomeSlackDiagram,
   WelcomeTeamDiagram,
-  WelcomeVideoPreview,
 } from "./welcome-thread-diagrams.tsx";
 
 type ChatImagePreviewLinkProps = {
@@ -321,15 +320,6 @@ export function MarkdownCardView({
         <WelcomeTeamDiagram />
       ) : (
         <WelcomeSlackDiagram />
-      );
-    }
-    case "welcome-video": {
-      return (
-        <WelcomeVideoPreview
-          posterUrl={card.posterUrl}
-          videoUrl={card.videoUrl}
-          webmUrl={card.webmUrl}
-        />
       );
     }
     case "computer-use-authorization": {

@@ -36,13 +36,6 @@ export type MarkdownCardRef =
       readonly diagram: "team" | "slack";
     }
   | {
-      /** A static, first-party video example in the built-in welcome thread. */
-      readonly kind: "welcome-video";
-      readonly posterUrl: string;
-      readonly videoUrl: string;
-      readonly webmUrl: string;
-    }
-  | {
       readonly kind: "computer-use-authorization";
       readonly signals: ComputerUseAuthorizationSignals;
     }

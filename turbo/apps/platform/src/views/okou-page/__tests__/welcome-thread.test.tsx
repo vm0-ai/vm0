@@ -18,8 +18,31 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 warmMermaidParser();
 
+async function closeArtifactPreview() {
+  const dialog = await screen.findByTestId("attachment-lightbox");
+  const closeButton = queryAllByRoleFast("button", dialog).find((candidate) => {
+    return candidate.getAttribute("aria-label") === "Close";
+  });
+  if (!closeButton) {
+    throw new Error("Expected the artifact preview close button");
+  }
+  click(closeButton);
+  await waitFor(() => {
+    expect(screen.queryByTestId("attachment-lightbox")).not.toBeInTheDocument();
+  });
+}
+
+function getArtifactPreviewFrame(): HTMLIFrameElement {
+  const container = screen.getByTestId("artifact-dialog-site-frame");
+  const frame = container.querySelector("iframe");
+  if (!frame) {
+    throw new Error("Expected the artifact dialog to contain a preview frame");
+  }
+  return frame;
+}
+
 describe("built-in welcome thread", () => {
-  it("stays closed until selected and renders native rich-text deliverables without thread actions", async () => {
+  it("stays closed until selected and renders real artifact previews without thread actions", async () => {
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
@@ -60,14 +83,30 @@ describe("built-in welcome thread", () => {
     });
     expect(campaignVisual).toBeInTheDocument();
     expect(campaignVisual.getAttribute("src")).toContain(
-      "/ref-default-mail-l2.png",
+      "/ref-bookshop-interior.jpg",
     );
+    const presentationPreview = within(content).getByTestId(
+      "attachment-preview-html",
+    );
+    expect(presentationPreview).toHaveAttribute(
+      "title",
+      "Presentation delivered by Okou",
+    );
+    const videoPreview = queryAllByRoleFast("button", content).find(
+      (candidate) => {
+        return (
+          candidate.getAttribute("aria-label") ===
+          "Preview product-launch-film.mp4"
+        );
+      },
+    );
+    if (!videoPreview) {
+      throw new Error("Expected the video artifact preview action");
+    }
+    expect(videoPreview).toBeInTheDocument();
     expect(
-      within(content).getByRole("img", {
-        name: "Presentation delivered by Okou",
-      }),
-    ).toBeInTheDocument();
-    expect(content.querySelector("video")).toBeInTheDocument();
+      within(content).queryByTestId("welcome-video-preview"),
+    ).not.toBeInTheDocument();
     expect(
       within(content).getByText("Qualify inbound leads"),
     ).toBeInTheDocument();
@@ -108,6 +147,35 @@ describe("built-in welcome thread", () => {
     await waitFor(() => {
       expect(content.querySelector("a[href^='okou://']")).toBeNull();
     });
+
+    const imagePreview = campaignVisual.closest("button");
+    if (!imagePreview) {
+      throw new Error("Expected the campaign artifact preview action");
+    }
+    click(imagePreview);
+    await expect(
+      screen.findByTestId("attachment-lightbox-image"),
+    ).resolves.toHaveAttribute(
+      "src",
+      expect.stringContaining("/ref-bookshop-interior.jpg"),
+    );
+    await closeArtifactPreview();
+
+    click(presentationPreview);
+    await screen.findByTestId("artifact-dialog-site-frame");
+    await waitFor(() => {
+      expect(getArtifactPreviewFrame()).toHaveAttribute(
+        "src",
+        expect.stringContaining("/playful-launch-presentation.html"),
+      );
+    });
+    await closeArtifactPreview();
+
+    click(videoPreview);
+    await expect(
+      screen.findByLabelText("Video preview for product-launch-film.mp4"),
+    ).resolves.toBeVisible();
+    await closeArtifactPreview();
   });
 
   it("hides the entry and redirects the built-in route while the feature is disabled", async () => {
