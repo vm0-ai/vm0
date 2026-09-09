@@ -346,22 +346,6 @@ async fn run(runtime: GuestRuntime) -> i32 {
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
 
     let t = Instant::now();
-    let metrics_sources = metrics::MetricsSources::new(
-        std::path::PathBuf::from("/proc/stat"),
-        runtime
-            .workload_containment
-            .as_ref()
-            .map(guest_agent::workload_containment::WorkloadContainment::cpu_stat_paths),
-    );
-    let metrics_handle = tokio::spawn({
-        let shutdown = shutdown.clone();
-        let metrics_log_file = runtime.paths.metrics_log_file().to_string();
-        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file, metrics_sources).await }
-    });
-    log_info!(LOG_TAG, "Metrics collector started");
-    record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
-
-    let t = Instant::now();
     let telemetry = Telemetry::spawn_for_paths(
         runtime.config.run_id.clone(),
         &runtime.paths,
@@ -370,6 +354,30 @@ async fn run(runtime: GuestRuntime) -> i32 {
     );
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
+
+    let t = Instant::now();
+    let mut metrics_sources = metrics::MetricsSources::new(
+        std::path::PathBuf::from("/proc/stat"),
+        runtime
+            .workload_containment
+            .as_ref()
+            .map(guest_agent::workload_containment::WorkloadContainment::cpu_stat_paths),
+    );
+    if let Some(containment) = runtime.workload_containment.clone() {
+        metrics_sources = metrics_sources.with_evidence(
+            containment,
+            telemetry
+                .incident_reporter()
+                .with_sandbox_id(runtime.config.sandbox_id.clone()),
+        );
+    }
+    let metrics_handle = tokio::spawn({
+        let shutdown = shutdown.clone();
+        let metrics_log_file = runtime.paths.metrics_log_file().to_string();
+        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file, metrics_sources).await }
+    });
+    log_info!(LOG_TAG, "Metrics collector started");
+    record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
 
     // Execute main logic (init + CLI + checkpoint/recovery + /complete).
     // On the success path, `execute` overlaps the pre-checkpoint telemetry
@@ -600,6 +608,17 @@ async fn execute(
         }
     };
     if let Some(workload_containment) = runtime.workload_containment.as_ref() {
+        let reason = if cli_execution_succeeded {
+            guest_contracts::oom_evidence::CaptureReason::Sample
+        } else {
+            guest_contracts::oom_evidence::CaptureReason::CliError
+        };
+        if let Some(evidence) = workload_containment.oom_evidence(reason) {
+            telemetry
+                .incident_reporter()
+                .with_sandbox_id(runtime.config.sandbox_id.clone())
+                .record(evidence);
+        }
         match workload_containment.resource_diagnostics() {
             Ok(diagnostics) => {
                 if let Some(pressure) = diagnostics.pressure {

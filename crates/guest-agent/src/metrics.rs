@@ -15,6 +15,8 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Serialize)]
 struct MetricsEntry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory: Option<guest_contracts::oom_evidence::OomEvidence>,
     ts: String,
     cpu: f64,
     cpu_steal_percent: f64,
@@ -42,6 +44,10 @@ struct MetricsEntry {
 pub struct MetricsSources {
     proc_stat: PathBuf,
     cgroup_cpu_stat: Option<CgroupCpuStatPaths>,
+    evidence: Option<(
+        crate::workload_containment::WorkloadContainment,
+        crate::telemetry::IncidentReporter,
+    )>,
 }
 
 impl MetricsSources {
@@ -50,7 +56,18 @@ impl MetricsSources {
         Self {
             proc_stat,
             cgroup_cpu_stat,
+            evidence: None,
         }
+    }
+
+    /// Reuse the existing metrics tick for the root-owned evidence capture.
+    pub fn with_evidence(
+        mut self,
+        containment: crate::workload_containment::WorkloadContainment,
+        reporter: crate::telemetry::IncidentReporter,
+    ) -> Self {
+        self.evidence = Some((containment, reporter));
+        self
     }
 }
 
@@ -313,6 +330,16 @@ fn collect_metrics(
         .as_ref()
         .and_then(|paths| read_cgroup_cpu_stat(paths.workload()));
     MetricsEntry {
+        memory: sources
+            .evidence
+            .as_ref()
+            .and_then(|(containment, reporter)| {
+                let mut evidence = containment
+                    .oom_evidence(guest_contracts::oom_evidence::CaptureReason::Sample)?;
+                reporter.record(evidence.clone());
+                evidence.incidents.clear();
+                Some(evidence)
+            }),
         ts: guest_telemetry::log::timestamp(),
         cpu: cpu.busy,
         cpu_steal_percent: cpu.steal,

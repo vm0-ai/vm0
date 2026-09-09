@@ -1756,6 +1756,7 @@ dependencies = [
 name = "guest-control-server"
 version = "0.20.4"
 dependencies = [
+ "chrono",
  "guest-contracts",
  "guest-control-proto",
  "libc",
@@ -1763,6 +1764,7 @@ dependencies = [
  "serde_json",
  "shell-quote",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]
