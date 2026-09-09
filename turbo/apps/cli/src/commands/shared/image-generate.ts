@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { generateWebImage } from "../../lib/api/domains/web";
 import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { createArtifactPresentation } from "./artifact-return";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
 import { runDefaultImageModelFromEnvironment } from "./run-default-image-model";
 import {
@@ -332,6 +333,9 @@ Output:
   --style <id> --prompt "..." --compile, prints a prompt-compilation packet
   for the current agent.
 
+  Successful results include inline-link and rich-preview Markdown guidance.
+  --json includes inlineMarkdownLink, previewMarkdownBlock, and artifactPresentationContext.
+
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful image generation
@@ -472,8 +476,15 @@ ${formatRegistryListing(styles, "image styles")}`;
           imagePromptStrength,
         });
 
+        const presentation = createArtifactPresentation(
+          result.filename,
+          result.url,
+          result.embedUrl !== undefined && result.embedUrl !== result.url
+            ? `${result.url} is the artifact reference for chat. ${result.embedUrl} is for embedding the image in authored HTML.`
+            : undefined,
+        );
         if (options.json) {
-          console.log(JSON.stringify(result));
+          console.log(JSON.stringify({ ...result, ...presentation.json }));
           return;
         }
 
@@ -504,6 +515,7 @@ ${formatRegistryListing(styles, "image styles")}`;
         console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
         console.log(chalk.dim(`  Model: ${result.model}`));
         console.log(chalk.dim(`  Provider: ${result.provider}`));
+        console.log(`\n${presentation.text}`);
       }),
     );
 }

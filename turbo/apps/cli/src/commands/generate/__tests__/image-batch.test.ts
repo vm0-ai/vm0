@@ -8,6 +8,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
+import { imageBatchCommand } from "../image-batch";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -67,6 +68,11 @@ describe("okou generate image-batch command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    imageBatchCommand.commands
+      .find((command) => {
+        return command.name() === "wait";
+      })
+      ?.setOptionValue("json", false);
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
   });
@@ -194,9 +200,48 @@ describe("okou generate image-batch command", () => {
         "",
       ].join("\n"),
     );
+    const metadata = JSON.parse(
+      await readFile(join(stateDirectory, "artifacts.json"), "utf8"),
+    );
+    expect(metadata).toMatchObject({
+      resultsPath: join(stateDirectory, "results.tsv"),
+      artifacts: [
+        {
+          assetId: "hero",
+          asset: "https://embed.example/hero-dog-portrait.png",
+          url: "https://cdn.example/hero-dog-portrait.png",
+          inlineMarkdownLink:
+            "[hero](<https://cdn.example/hero-dog-portrait.png>)",
+          previewMarkdownBlock:
+            "![hero](<https://cdn.example/hero-dog-portrait.png>)",
+        },
+        { assetId: "detail" },
+        { assetId: "retry" },
+        { assetId: "team" },
+        { assetId: "fifth" },
+      ],
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
+    });
+    await writeFile(join(stateDirectory, "pid"), String(process.pid));
+    mockConsoleLog.mockClear();
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image-batch",
+      "wait",
+      stateDirectory,
+      "--json",
+    ]);
+    expect(mockConsoleLog.mock.calls).toHaveLength(1);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual(
+      metadata,
+    );
+    expect(attempts.get("Hero dog portrait")).toBe(1);
   });
 
-  it("bundles authenticated private images as local optimized assets without persisting URLs", async () => {
+  it("bundles private images locally and retains their stable chat references", async () => {
     const root = await makeTemporaryDirectory();
     const manifestPath = join(root, "images.tsv");
     const stateDirectory = join(root, "state");
@@ -262,6 +307,96 @@ describe("okou generate image-batch command", () => {
       ]),
     );
     expect(vi.mocked(execFile).mock.calls.at(-1)?.[1]).not.toContain("-vf");
+    expect(
+      JSON.parse(
+        await readFile(join(stateDirectory, "artifacts.json"), "utf8"),
+      ),
+    ).toMatchObject({
+      artifacts: [
+        {
+          assetId: "hero",
+          asset: "assets/image-hero.webp",
+          url: reference,
+          inlineMarkdownLink: `[hero](<${reference}>)`,
+          previewMarkdownBlock: `![hero](<${reference}>)`,
+        },
+      ],
+    });
+    await writeFile(join(stateDirectory, "pid"), String(process.pid));
+    mockConsoleLog.mockClear();
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image-batch",
+      "wait",
+      stateDirectory,
+    ]);
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("hero\tassets/image-hero.webp");
+    expect(stdout).toContain(join(stateDirectory, "artifacts.json"));
+    expect(stdout).toContain("only available inside the agent runtime");
+  });
+
+  it.each([false, true])(
+    "reads a stored TSV-only batch with upload guidance (JSON: %s)",
+    async (json) => {
+      const stateDirectory = await makeTemporaryDirectory();
+      await writeFile(join(stateDirectory, "pid"), String(process.pid));
+      await writeFile(join(stateDirectory, "done"), "0\n");
+      await writeFile(
+        join(stateDirectory, "results.tsv"),
+        "hero\tassets/image-hero.webp\n",
+      );
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image-batch",
+        "wait",
+        stateDirectory,
+        ...(json ? ["--json"] : []),
+      ]);
+      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+      if (json) {
+        expect(JSON.parse(stdout)).toEqual({
+          resultsPath: join(stateDirectory, "results.tsv"),
+          artifactPresentationContext: expect.stringContaining(
+            "okou web upload-file",
+          ),
+        });
+      } else {
+        expect(stdout).toContain("hero\tassets/image-hero.webp");
+        expect(stdout).toContain("no artifact presentation metadata");
+        expect(stdout).toContain("okou web upload-file");
+      }
+    },
+  );
+
+  it("reports malformed presentation metadata instead of accepting it as a TSV-only batch", async () => {
+    const stateDirectory = await makeTemporaryDirectory();
+    await writeFile(join(stateDirectory, "pid"), String(process.pid));
+    await writeFile(join(stateDirectory, "done"), "0\n");
+    await writeFile(
+      join(stateDirectory, "results.tsv"),
+      "hero\tassets/image-hero.webp\n",
+    );
+    await writeFile(
+      join(stateDirectory, "artifacts.json"),
+      '{"artifacts": "invalid"}',
+    );
+    await expect(
+      generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image-batch",
+        "wait",
+        stateDirectory,
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+    expect(mockConsoleLog.mock.calls).toHaveLength(0);
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "artifacts",
+    );
   });
 
   it("does not automatically retry an async output safety block", async () => {
@@ -554,6 +689,12 @@ await writeFile(join(stateDirectory, "done"), "0\\n", "utf8");
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(`Image batch started: ${stateDirectory}`);
+    expect(stdout).toContain(
+      `okou generate image-batch wait '${stateDirectory}'`,
+    );
+    expect(stdout).toContain(
+      "reuse this batch instead of starting another one",
+    );
     expect(stdout).toContain("hero\thttps://cdn.example/dog.png");
     expect(stdout).toContain(
       `Image batch joined: ${join(stateDirectory, "results.tsv")}`,

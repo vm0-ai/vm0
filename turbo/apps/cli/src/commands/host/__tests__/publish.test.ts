@@ -213,6 +213,9 @@ describe("okou host publish command", () => {
           Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
         inlineMarkdownLink: `[demo-site](<${url}>)`,
         previewMarkdownBlock: `![demo-site](<${url}>)`,
+        artifactPresentationContext: expect.stringContaining(
+          "outside code fences",
+        ),
       });
       if (privateArtifact) {
         expect(parsed.aliasUrl).toBeUndefined();
@@ -280,6 +283,9 @@ describe("okou host publish command", () => {
       url: legacyUrl,
       inlineMarkdownLink: `[demo-site](<${legacyUrl}>)`,
       previewMarkdownBlock: `![demo-site](<${legacyUrl}>)`,
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
     });
     expect(parsed.deploymentVersion).toBeUndefined();
     expect(parsed.artifactUrl).toBeUndefined();

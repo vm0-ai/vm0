@@ -1,7 +1,5 @@
-type ArtifactMarkdownOutput = {
-  readonly inlineMarkdownLink: string;
-  readonly previewMarkdownBlock: string;
-};
+export const ARTIFACT_PRESENTATION_CONTEXT =
+  "inlineMarkdownLink remains a link in normal prose. previewMarkdownBlock displays a standalone preview when placed in its own Markdown paragraph, with a blank line before and after it, outside code fences. Both forms reference the same artifact; including both creates two user-facing references.";
 
 function escapeMarkdownLabel(label: string): string {
   return label
@@ -12,33 +10,34 @@ function escapeMarkdownLabel(label: string): string {
     .replace(/\]/gu, String.raw`\]`);
 }
 
-export function createArtifactMarkdownOutput(
+export function createArtifactPresentation(
   label: string,
   url: string,
-): ArtifactMarkdownOutput {
+  usageContext?: string,
+) {
   const escapedLabel = escapeMarkdownLabel(label);
-  return {
+  const json = {
     inlineMarkdownLink: `[${escapedLabel}](<${url}>)`,
     previewMarkdownBlock: `![${escapedLabel}](<${url}>)`,
+    artifactPresentationContext: usageContext
+      ? `${usageContext} ${ARTIFACT_PRESENTATION_CONTEXT}`
+      : ARTIFACT_PRESENTATION_CONTEXT,
   };
-}
-
-export function formatArtifactPresentationContext(
-  output: ArtifactMarkdownOutput,
-): string {
-  return [
+  const text = [
     "Artifact presentation context:",
     "",
     "Inline Markdown link:",
-    output.inlineMarkdownLink,
+    json.inlineMarkdownLink,
     "This form remains a link in normal prose.",
     "",
     "Rich preview Markdown:",
     "",
-    output.previewMarkdownBlock,
+    json.previewMarkdownBlock,
     "",
     "The rich-preview form is displayed as a standalone preview when it occupies its own Markdown paragraph, with a blank line before and after it, and is outside a code fence.",
     "",
     "Both forms reference the same artifact. Including both in one response creates two user-facing references.",
+    ...(usageContext ? [usageContext] : []),
   ].join("\n");
+  return { json, text };
 }
