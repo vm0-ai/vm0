@@ -1658,7 +1658,7 @@ fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
         (
             {
                 let mut config = pi_model_config_v2_for_test("openai-responses");
-                config["schemaVersion"] = json!(4);
+                config["schemaVersion"] = json!(5);
                 config
             },
             "Pi model config generation is unsupported",
@@ -2093,4 +2093,66 @@ async fn build_env_json_with_memory_as_artifact() {
     assert!(artifacts.contains("\"memory\""));
     assert!(artifacts.contains("\"/memory\""));
     assert!(artifacts.contains("\"v2\""));
+}
+
+#[test]
+fn native_pi_context_preserves_the_wire_and_only_materializes_opaque_credentials() {
+    let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/pi-native.json"
+    )).unwrap();
+    for fixture in fixtures {
+        let config = fixture["config"].clone();
+        let mut context = pi_context_for_test();
+        context.pi_model_config = Some(config.clone());
+        let environment = context.environment.get_or_insert_with(HashMap::new);
+        for binding in config["credentialBindings"].as_array().unwrap() {
+            environment.insert(
+                binding["environment"].as_str().unwrap().into(),
+                api_contracts::generated::constants::runners::PI_NATIVE_CREDENTIAL_PLACEHOLDER
+                    .into(),
+            );
+        }
+        let payload = validate_context_for_test(&context);
+        assert!(payload.is_ok(), "{}: {:?}", fixture["name"], payload.err());
+        let binding = &config["credentialBindings"][0];
+        context.environment.as_mut().unwrap().insert(
+            binding["environment"].as_str().unwrap().into(),
+            "real-secret".into(),
+        );
+        assert!(
+            validate_context_for_test(&context)
+                .unwrap_err()
+                .contains("opaque firewall markers")
+        );
+    }
+}
+
+#[test]
+fn native_pi_context_rejects_wrong_dialects_credentials_and_regions() {
+    let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/pi-native.json"
+    )).unwrap();
+    for fixture in fixtures {
+        for (field, invalid) in [
+            ("schemaVersion", json!(99)),
+            ("transport", json!("websocket")),
+            ("catalogModel", json!("claude-fable-5")),
+            ("api", json!("openai-responses")),
+            ("credentialOwner", json!("subscription")),
+            (
+                "requestPolicy",
+                json!({"maxAttempts": 3, "cacheRetention": "short"}),
+            ),
+        ] {
+            let mut context = pi_context_for_test();
+            let mut config = fixture["config"].clone();
+            config[field] = invalid;
+            context.pi_model_config = Some(config);
+            assert!(
+                validate_context_for_test(&context).is_err(),
+                "{} {field}",
+                fixture["name"]
+            );
+        }
+    }
 }

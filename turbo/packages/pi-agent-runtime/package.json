@@ -29,18 +29,23 @@
     "@earendil-works/pi-ai": "0.85.1",
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@okouai/api-contracts": "workspace:*",
+    "@smithy/node-http-handler": "4.7.3",
     "gpt-tokenizer": "^3.4.0",
-    "yaml": "^2.9.0"
+    "http-proxy-agent": "7.0.2",
+    "https-proxy-agent": "7.0.6",
+    "yaml": "^2.9.0",
+    "undici": "7.28.0",
+    "@okouai/connectors": "workspace:*"
   },
   "devDependencies": {
-    "msw": "^2.13.2",
-    "@types/node": "^24.3.0",
     "@okouai/eslint-config": "workspace:*",
     "@okouai/typescript-config": "workspace:*",
+    "@types/node": "^24.3.0",
+    "@typescript/native": "npm:typescript@7.0.2",
     "eslint": "^9.34.0",
+    "msw": "^2.13.2",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",
-    "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.11"
   }

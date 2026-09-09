@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 
+import {
+  piNativeCatalogModelSchema,
+  type PiModelConfigV4,
+} from "@okouai/api-contracts/contracts/pi-native";
+import type { z } from "zod";
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
 import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
 import { usageEvent } from "@okouai/db/schema/usage-event";
@@ -18,7 +23,8 @@ const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 type PiApiFirstTurnUsageProvider =
   | PiGptModel
   | typeof DEEPSEEK_FLASH_MODEL
-  | typeof DEEPSEEK_PRO_MODEL;
+  | typeof DEEPSEEK_PRO_MODEL
+  | z.infer<typeof piNativeCatalogModelSchema>;
 
 function gptLongContextMinimumInputTokens(model: PiGptModel): number {
   const minimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[model];
@@ -51,7 +57,8 @@ interface RecordPiApiFirstTurnUsageArgs {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
   readonly piProvider: PiModelConfig["provider"];
-  readonly requestedServiceTier: PiModelConfig["serviceTier"];
+  readonly nativeModelConfig?: PiModelConfigV4;
+  readonly requestedServiceTier: "priority" | "fast" | undefined;
   readonly turn: PiApiFirstTurnResult;
 }
 
@@ -110,8 +117,8 @@ function gptApiFirstTurnUsageEntries(
   });
 }
 
-/** DeepSeek pricing uses only base token categories, independent of Pi tiers. */
-function deepSeekApiFirstTurnUsageEntries(
+/** Native Claude and DeepSeek retain the canonical base token categories. */
+function baseApiFirstTurnUsageEntries(
   turn: PiApiFirstTurnResult,
 ): readonly PiApiFirstTurnUsageEntry[] {
   const usage = turn.assistantMessage.usage;
@@ -152,7 +159,8 @@ function piApiFirstTurnUsageProvider(
   ) {
     return provider;
   }
-  return null;
+  const native = piNativeCatalogModelSchema.safeParse(provider);
+  return native.success ? native.data : null;
 }
 
 function isFastPiApiFirstTurn(args: RecordPiApiFirstTurnUsageArgs): boolean {
@@ -176,12 +184,35 @@ export async function recordPiApiFirstTurnUsage(
   db: Db,
   args: RecordPiApiFirstTurnUsageArgs,
 ): Promise<void> {
+  if (args.nativeModelConfig?.billingOwner === "user") {
+    return;
+  }
+  if (
+    args.nativeModelConfig &&
+    args.modelUsageProvider !== args.nativeModelConfig.catalogModel
+  ) {
+    throw new Error(
+      "Pi native model billing identity does not match its catalog",
+    );
+  }
   const hasBillableModelProvider = args.billableFirewalls.some((firewall) => {
     return firewall.startsWith("model-provider:");
   });
   const provider = piApiFirstTurnUsageProvider(args.modelUsageProvider);
   if (!hasBillableModelProvider || provider === null) {
     return;
+  }
+  if (
+    args.nativeModelConfig &&
+    args.turn.assistantMessage.usage.cacheWrite1h !== undefined
+  ) {
+    const longCache = usageQuantity(
+      args.turn.assistantMessage.usage.cacheWrite1h,
+      "one-hour-cache-creation",
+    );
+    if (longCache > args.turn.assistantMessage.usage.cacheWrite) {
+      throw new Error("Pi native cache TTL partition is invalid");
+    }
   }
   const responseSourceId = sourceId(args.turn);
   const entries = isPiGptModel(provider)
@@ -190,7 +221,7 @@ export async function recordPiApiFirstTurnUsage(
         args.turn,
         isFastPiApiFirstTurn(args),
       )
-    : deepSeekApiFirstTurnUsageEntries(args.turn);
+    : baseApiFirstTurnUsageEntries(args.turn);
   const usageRows = entries.map((entry) => {
     return {
       runId: args.runId,

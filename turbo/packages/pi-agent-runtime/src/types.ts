@@ -12,9 +12,13 @@ export type PiAgentThinkingLevel = (typeof PI_AGENT_THINKING_LEVELS)[number];
 
 export type PiAgentServiceTier = "priority" | "fast";
 
-export type PiAgentDialect = "openai-responses" | "openai-codex-responses";
+export type PiAgentDialect =
+  | "openai-responses"
+  | "openai-codex-responses"
+  | "anthropic-messages"
+  | "bedrock-converse-stream";
 
-export type PiAgentTransport = "sse";
+export type PiAgentTransport = "sse" | "aws-event-stream";
 
 export type PiAgentCredentialTarget = "direct" | "sandbox-firewall";
 
@@ -26,11 +30,27 @@ export interface PiAgentCredentialHeaderTemplate {
 }
 
 export interface PiAgentCredentialReference {
-  readonly kind: "api-key" | "access-token" | "account-id";
+  readonly kind:
+    | "api-key"
+    | "access-token"
+    | "account-id"
+    | "aws-bearer-token"
+    | "aws-access-key-id"
+    | "aws-secret-access-key"
+    | "aws-session-token";
   readonly environment: string;
   readonly secretName: string;
   readonly credentialHeader?: PiAgentCredentialHeaderTemplate;
 }
+
+export type PiAgentBedrockAuth =
+  | { readonly kind: "bearer"; readonly token: string }
+  | {
+      readonly kind: "sigv4";
+      readonly accessKeyId: string;
+      readonly secretAccessKey: string;
+      readonly sessionToken?: string;
+    };
 
 /** Model endpoint and credential resolved at a Pi execution edge. */
 export interface PiAgentModelConfig {
@@ -48,6 +68,8 @@ export interface PiAgentModelConfig {
   readonly dialect: PiAgentDialect;
   /** Explicit ChatGPT account identity required by the Codex dialect. */
   readonly accountId?: string;
+  readonly region?: string;
+  readonly bedrockAuth?: PiAgentBedrockAuth;
   /** Route-owned transport policy. Codex subscriptions are SSE-only. */
   readonly transport?: PiAgentTransport;
   /** Omitted by legacy launch payloads, which retain Pi's medium default. */

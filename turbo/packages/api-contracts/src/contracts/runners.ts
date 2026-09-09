@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { piCredentialHeaderSchema } from "./pi-credential";
+import { piModelConfigV4Schema } from "./pi-native";
 
 import { authHeadersSchema, initContract } from "./base";
 import {
@@ -24,6 +26,11 @@ import {
   runnerHostnameSchema,
 } from "./runner-primitives";
 import { eventSequenceNumberSchema } from "./runs";
+
+export {
+  PI_MODEL_CONFIG_NATIVE_GENERATION,
+  piModelConfigV4Schema,
+} from "./pi-native";
 
 export { BUILTIN_FIREWALL_CATALOG_MAX_BYTES } from "@okouai/connectors/connector-catalog/contracts";
 
@@ -973,30 +980,6 @@ export const piApiFirstTurnConfigSchema = z
  * runtime environment entry used by the Sandbox, while `credentialSecretName`
  * names the API-owned encrypted secret that backs that entry.
  */
-const piCredentialHeaderSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1)
-      .max(128)
-      .regex(/^[A-Za-z][A-Za-z0-9-]*$/),
-    valueTemplate: z
-      .string()
-      .min(1)
-      .max(1024)
-      .refine((value) => {
-        const staticTemplate = value.replace("{{secret}}", "");
-        return (
-          !value.includes("\r") &&
-          !value.includes("\n") &&
-          value.split("{{secret}}").length === 2 &&
-          !staticTemplate.includes("{{") &&
-          !staticTemplate.includes("}}")
-        );
-      }, "Credential header template must contain {{secret}} exactly once, no other template references, and no line breaks"),
-  })
-  .strict()
-  .readonly();
 
 export const piModelConfigLegacySchema = z
   .object({
@@ -1195,6 +1178,7 @@ export const piModelConfigSchema = z.union([
   piModelConfigLegacySchema,
   piModelConfigV2Schema,
   piModelConfigV3Schema,
+  piModelConfigV4Schema,
 ]);
 
 const lowercaseSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);

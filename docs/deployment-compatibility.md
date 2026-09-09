@@ -739,3 +739,7 @@ For persisted state changes:
 Do not add broad defensive fallbacks just to hide incompatibility. The goal is a
 specific compatibility contract for the rollout window, with clear deletion
 criteria after the old version is gone.
+
+## Pi native provider reader preparation
+
+For the generation 4 reader-first release, see [Pi native provider preparation](pi-native-provider-preparation.md). Its model generation is independent of launch snapshot V3. Native writers remain absent until the controller verifies compatible API readers and rollback targets, Runner capabilities, pinned CLI artifacts and existing-route health. The preparation merge alone does not close these gates.
