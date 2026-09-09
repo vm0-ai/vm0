@@ -191,6 +191,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         destroyed: true,
         is_parked: false,
         park_outcome: None,
+        park_memory_policy: ParkMemoryPolicy::Reclaim,
         park_fence: None,
         guest_rpc_endpoint: None,
         runtime_cancel: CancellationToken::new(),
@@ -534,13 +535,16 @@ async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     stream.write_all(&response).await.unwrap();
 }
 
-async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+async fn send_exec_started(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
     let started = guest_control_proto::encode_exec_started(pid).unwrap();
     let started =
         guest_control_proto::encode(guest_control_proto::MSG_EXEC_STARTED, exec_seq, &started)
             .unwrap();
     stream.write_all(&started).await.unwrap();
+}
 
+async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+    send_exec_started(stream, exec_seq, pid).await;
     let ready =
         guest_control_proto::encode_exec_agent_ready(guest_control_proto::ExecAgentReadyTiming {
             containment_create_us: 11,
@@ -5905,7 +5909,11 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
             &mut controller,
             api.socket_path(),
             "stats-error",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         ))
         .await;
@@ -5959,6 +5967,7 @@ async fn exact_handoff_skips_balloon_target_but_still_pauses() {
             PhysicalParkRequest {
                 guest: Arc::new(tokio::sync::Mutex::new(None)),
                 handoff: Some(&handoff),
+                memory_policy: ParkMemoryPolicy::Reclaim,
             },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
@@ -6020,6 +6029,7 @@ async fn exact_handoff_interrupts_in_flight_balloon_settle() {
             PhysicalParkRequest {
                 guest: Arc::new(tokio::sync::Mutex::new(None)),
                 handoff: Some(&handoff),
+                memory_policy: ParkMemoryPolicy::Reclaim,
             },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         );
@@ -6371,7 +6381,11 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
             &mut controller,
             api.socket_path(),
             "test-park-small",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
@@ -6855,7 +6869,11 @@ async fn park_balloon_failure_leaves_flag_false() {
             &mut controller,
             api.socket_path(),
             "test-park-fail",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
@@ -7409,7 +7427,11 @@ async fn severe_park_collects_terminal_guest_memory_before_pause() {
             &mut controller,
             &socket_path,
             "terminal-memory-snapshot",
-            guest,
+            PhysicalParkRequest {
+                guest,
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(None),
         )
         .await;
@@ -7476,7 +7498,11 @@ async fn reusable_park_does_not_request_terminal_guest_memory() {
             &mut controller,
             api.socket_path(),
             "reusable-no-memory-snapshot",
-            guest,
+            PhysicalParkRequest {
+                guest,
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
@@ -7532,7 +7558,11 @@ async fn park_small_vm_pause_failure_preserves_controller() {
             &mut controller,
             api.socket_path(),
             "small-fail",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
