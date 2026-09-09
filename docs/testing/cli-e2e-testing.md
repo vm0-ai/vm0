@@ -105,7 +105,7 @@ shards. Coverage that needs mutable account-level state requires a dedicated
 identity or a serialized lane.
 
 Use a different organization-scoped connector slug in each file that can run in
-parallel. Assert sandbox-visible output and vm0-owned telemetry; do not treat an
+parallel. Assert sandbox-visible output and Okou-owned telemetry; do not treat an
 external provider's exact response status or body as the test oracle.
 
 For active-run connector refresh cases, coordinate through a run-scoped output
