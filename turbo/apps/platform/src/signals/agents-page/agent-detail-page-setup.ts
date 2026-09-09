@@ -14,9 +14,11 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { setActiveAgent$ } from "../okou-page/job-detail";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { i18n } from "../../i18n/index.ts";
+import { refreshSsh$ } from "../ssh.ts";
 
 export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(refreshSsh$);
     set(updatePage$, createElement(JobDetailPage), "sidebar");
 
     const agentId = get(currentAgentId$);

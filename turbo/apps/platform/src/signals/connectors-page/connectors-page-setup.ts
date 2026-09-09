@@ -6,10 +6,12 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-account-dialogs.ts";
+import { refreshSsh$ } from "../ssh.ts";
 
 export const setupConnectorsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(resetConnectorAccountDialogs$);
+    set(refreshSsh$);
     set(updatePage$, createElement(ConnectorsPage), "sidebar");
     set(
       updateDocumentTitle$,

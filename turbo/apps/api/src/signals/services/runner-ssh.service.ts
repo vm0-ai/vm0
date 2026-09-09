@@ -1,3 +1,4 @@
+import { publishSshClientInvalidation } from "./ssh-client-invalidation.service";
 import {
   sshHostKeySchema,
   type RunnerSshResolveRequest,
@@ -7,14 +8,13 @@ import {
 } from "@okouai/api-contracts/contracts/runner-ssh";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -59,7 +59,7 @@ async function currentConnection(
       and(
         eq(agents.id, agentSessions.agentId),
         eq(agents.orgId, agentRuns.orgId),
-        eq(agents.owner, agentRuns.userId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, agentRuns.userId)),
       ),
     )
     .innerJoin(
@@ -105,7 +105,7 @@ async function currentConnection(
       })
     : await query;
   signal.throwIfAborted();
-  if (!row || !isStaffOrg(row.orgId)) {
+  if (!row) {
     return null;
   }
   const featureContext = await loadUserFeatureSwitchContext(
@@ -171,7 +171,7 @@ export async function pinRunnerSsh(
   if (!initial) {
     return unavailable;
   }
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction<RunnerSshPinResponse>(async (tx) => {
     // Same row as owner edit/reset, scoped only after non-locking authorization.
     const [locked] = await tx
       .select({ id: sshConnections.id })
@@ -222,4 +222,12 @@ export async function pinRunnerSsh(
     signal.throwIfAborted();
     return { outcome: "pinned", generation: row.generation + 1 };
   });
+  if (result.outcome === "pinned") {
+    await publishSshClientInvalidation({
+      orgId: initial.orgId,
+      userId: initial.userId,
+    });
+  }
+  signal.throwIfAborted();
+  return result;
 }

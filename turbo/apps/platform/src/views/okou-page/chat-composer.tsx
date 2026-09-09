@@ -82,6 +82,7 @@ import {
   Route,
   Search,
   SlidersHorizontal,
+  Terminal,
   Square,
   SwatchBook,
   Trash2,
@@ -235,6 +236,15 @@ import {
 } from "../../signals/connector-connection-progress.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  sshAgentAccessSnapshot$,
+  sshIdentity$,
+  updateAgentSshAccess$,
+  invalidateSsh$,
+  sshSummary$,
+} from "../../signals/ssh.ts";
+import { SshLoadError } from "./ssh-load-error.tsx";
+import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
 import {
@@ -6998,12 +7008,15 @@ function ConnectorTriggerIcons({
   customConnectors,
   hasComputerUse,
   hasCloudBrowser,
+  hasSsh,
 }: {
   connectors: ComposerConnectorItem[];
   customConnectors: ComposerCustomConnectorItem[];
   hasComputerUse: boolean;
   hasCloudBrowser: boolean;
+  hasSsh: boolean;
 }) {
+  const { t } = useTranslation();
   const enabledConnectors = connectors.filter((connector) => {
     return connector.authorized;
   });
@@ -7016,19 +7029,24 @@ function ConnectorTriggerIcons({
     ...enabledConnectors.map((connector) => {
       return { kind: "builtin" as const, connector };
     }),
+    ...(hasSsh ? [{ kind: "ssh" as const }] : []),
     ...enabledCustomConnectors.map((connector) => {
       return { kind: "custom" as const, connector };
     }),
   ].slice(0, connectorIconLimit);
   const hasComputerAccess = hasComputerUse || hasCloudBrowser;
-  if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
+  if (enabled.length === 0 && !hasComputerAccess) {
     return <Plug size={18} />;
   }
   return (
     <span className="flex items-center sm:-space-x-1.5">
       {enabled.map((item, index) => {
         const key =
-          item.kind === "builtin" ? item.connector.slug : item.connector.id;
+          item.kind === "ssh"
+            ? "ssh"
+            : item.kind === "builtin"
+              ? item.connector.slug
+              : item.connector.id;
         return (
           <span
             key={key}
@@ -7037,8 +7055,21 @@ function ConnectorTriggerIcons({
               (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7">
-              {item.kind === "builtin" ? (
+            <span
+              className={cn(
+                "flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7",
+                item.kind === "ssh" && "text-brand-text",
+              )}
+            >
+              {item.kind === "ssh" ? (
+                <Terminal
+                  size={16}
+                  role="img"
+                  aria-label={t(($) => {
+                    return $.ssh.label;
+                  })}
+                />
+              ) : item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
               ) : (
                 <CustomConnectorIcon
@@ -7189,7 +7220,13 @@ function AddConnectorsDialog({
   const filteredCustom = unconnectedCustom.filter((item) => {
     return matchesCustomConnectorSearch(search, item);
   });
-  const visibleConnectorCount = filtered.length + filteredCustom.length;
+  const sshSummary = useLoadable(sshSummary$);
+  const showSsh =
+    sshSummary.state === "hasData" &&
+    sshSummary.data?.configuredCount === 0 &&
+    "ssh".includes(search.trim().toLowerCase());
+  const visibleConnectorCount =
+    filtered.length + filteredCustom.length + Number(showSsh);
 
   return (
     <Dialog
@@ -7243,6 +7280,11 @@ function AddConnectorsDialog({
         </div>
         <div className="overflow-y-auto -mx-6 px-6">
           <div className="grid grid-cols-2 gap-3">
+            {showSsh && sshSummary.state === "hasData" && sshSummary.data && (
+              <SshConnectorCard
+                configuredCount={sshSummary.data.configuredCount}
+              />
+            )}
             {filtered.map((item) => {
               return (
                 <ConnectorCard
@@ -7503,6 +7545,14 @@ function ComposerConnectorPermissionDialog({
 
 type ComposerPopoverConnectorItem =
   | {
+      readonly kind: "ssh";
+      readonly connector: {
+        readonly id: "ssh";
+        readonly label: string;
+        readonly authorized: boolean;
+      };
+    }
+  | {
       readonly kind: "builtin";
       readonly connector: ComposerConnectorItem;
     }
@@ -7518,7 +7568,7 @@ function composerPopoverConnectorId(
 }
 
 function composerPopoverConnectorTarget(
-  item: ComposerPopoverConnectorItem,
+  item: Exclude<ComposerPopoverConnectorItem, { kind: "ssh" }>,
 ): ConnectorAccountTarget {
   return item.kind === "builtin"
     ? { kind: "builtin", connectorSlug: item.connector.slug }
@@ -7529,6 +7579,11 @@ function matchesComposerPopoverConnectorSearch(
   search: string,
   item: ComposerPopoverConnectorItem,
 ): boolean {
+  if (item.kind === "ssh") {
+    return item.connector.label
+      .toLowerCase()
+      .includes(search.trim().toLowerCase());
+  }
   return item.kind === "builtin"
     ? matchesConnectorSearch(search, item.connector)
     : matchesCustomConnectorSearch(search, item.connector);
@@ -8085,6 +8140,11 @@ function deriveComposerConnectorPopoverState(args: {
 }) {
   const sorted = args.sortOrder
     ? [...args.connectorItems].sort((a, b) => {
+        const order = { builtin: 0, ssh: 1, custom: 2 };
+        const kindOrder = order[a.kind] - order[b.kind];
+        if (kindOrder !== 0) {
+          return kindOrder;
+        }
         const ai = args.sortOrder?.indexOf(composerPopoverConnectorId(a)) ?? -1;
         const bi = args.sortOrder?.indexOf(composerPopoverConnectorId(b)) ?? -1;
         if (ai === -1 && bi === -1) {
@@ -8120,7 +8180,7 @@ function ComposerConnectorAccountAction({
 }: {
   readonly signals: ComposerSignals;
   readonly actions: ComposerConnectorActions;
-  readonly item: ComposerPopoverConnectorItem;
+  readonly item: Exclude<ComposerPopoverConnectorItem, { kind: "ssh" }>;
 }) {
   const preference = useLastResolved(
     signals.connector.accounts.preferenceState$,
@@ -8160,6 +8220,22 @@ function ComposerConnectorAccountAction({
       defaultConnection={summary.defaultConnection}
     />
   );
+}
+
+function useComposerSshAccess(agentId: string | null) {
+  const identity = useLoadable(sshIdentity$);
+  const rows = useLoadable(sshAgentAccessSnapshot$);
+  const retained = useLastLoadable(sshAgentAccessSnapshot$);
+  const access =
+    identity.state === "hasData" &&
+    identity.data !== null &&
+    retained.state === "hasData" &&
+    retained.data.identity === identity.data
+      ? retained.data.rows?.find((row) => {
+          return row.agent.agentId === agentId;
+        })
+      : undefined;
+  return { rows, access };
 }
 
 function ConnectorsPopoverButton({
@@ -8208,10 +8284,29 @@ function ConnectorsPopoverButton({
     signals.computer.setComputerUseDownloadDialogOpen$,
   );
   const permissionConnectorSlug = connectorUi.permissionConnectorSlug;
+  const { rows: sshRows, access: sshAccess } = useComposerSshAccess(agentId);
+  const [sshSaving, updateSshAccess] = useLoadableSet(updateAgentSshAccess$);
+  const pageSignal = useGet(pageSignal$);
+  const reloadSsh = useSet(invalidateSsh$);
+  const waitingForConnectors = connectorsLoading && !sshAccess;
   const connectorItems: ComposerPopoverConnectorItem[] = [
     ...agentConnectors.map((connector) => {
       return { kind: "builtin" as const, connector };
     }),
+    ...(sshAccess
+      ? [
+          {
+            kind: "ssh" as const,
+            connector: {
+              id: "ssh" as const,
+              label: t(($) => {
+                return $.ssh.label;
+              }),
+              authorized: sshAccess.enabled,
+            },
+          },
+        ]
+      : []),
     ...agentCustomConnectors.map((connector) => {
       return { kind: "custom" as const, connector };
     }),
@@ -8232,6 +8327,7 @@ function ConnectorsPopoverButton({
       const freshSort = connectorItems.map(composerPopoverConnectorId);
       updateConnectorUi({ popoverSortOrder: freshSort });
       openAccountsPopover();
+      reloadSsh();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
       closeAccountMenu();
@@ -8267,12 +8363,13 @@ function ConnectorsPopoverButton({
                   return $.chat.connectors.title;
                 })}
               >
-                {!connectorsLoading && (
+                {!waitingForConnectors && (
                   <ConnectorTriggerIcons
                     connectors={agentConnectors}
                     customConnectors={agentCustomConnectors}
                     hasComputerUse={Boolean(computerUse?.selectedHostId)}
                     hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
+                    hasSsh={sshAccess?.enabled ?? false}
                   />
                 )}
               </button>
@@ -8315,7 +8412,7 @@ function ConnectorsPopoverButton({
                 />
               </div>
             )}
-            {connectorsLoading ? (
+            {waitingForConnectors ? (
               <div className="flex flex-col animate-pulse">
                 {Array.from({ length: 3 }, (_, i) => {
                   return (
@@ -8336,6 +8433,44 @@ function ConnectorsPopoverButton({
                 className="flex max-h-64 min-h-0 flex-1 flex-col overflow-y-auto"
               >
                 {visibleConnectors.map((item) => {
+                  if (item.kind === "ssh") {
+                    return (
+                      <ComposerConnectorAccessRow
+                        key={item.connector.id}
+                        icon={<Terminal size={16} />}
+                        connectorLabel={item.connector.label}
+                        checked={item.connector.authorized}
+                        loading={
+                          sshSaving.state === "loading" ||
+                          sshRows.state === "loading"
+                        }
+                        onCheckedChange={onDomEventFn(async (checked) => {
+                          if (agentId) {
+                            await updateSshAccess(agentId, checked, pageSignal);
+                          }
+                        })}
+                        ariaLabel={
+                          item.connector.authorized
+                            ? t(
+                                ($) => {
+                                  return $.chat.connectors.remove;
+                                },
+                                {
+                                  connectorName: item.connector.label,
+                                },
+                              )
+                            : t(
+                                ($) => {
+                                  return $.chat.connectors.add;
+                                },
+                                {
+                                  connectorName: item.connector.label,
+                                },
+                              )
+                        }
+                      />
+                    );
+                  }
                   if (item.kind === "custom") {
                     const connector = item.connector;
                     return (
@@ -8461,6 +8596,11 @@ function ConnectorsPopoverButton({
                 })}
               </div>
             )}
+          </div>
+        )}
+        {sshRows.state === "hasError" && (
+          <div className="px-3 py-2">
+            <SshLoadError />
           </div>
         )}
         <div className="flex shrink-0 flex-col p-1">

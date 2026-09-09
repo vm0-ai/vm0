@@ -26,6 +26,7 @@ export const ROUTES = {
   browserAuthorize: "/browser/authorize/:requestToken",
   ideas: "/ideas",
   connectors: "/connectors",
+  connectorSsh: "/connectors/ssh",
   computerUseAuthorize: "/computer-use/authorize/:requestToken",
   bankingConnectReturn: "/banking/connect/return",
   bankingConnectReturnResult: "/banking/connect/return/:bankingConnectStatus",

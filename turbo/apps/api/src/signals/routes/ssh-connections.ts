@@ -1,13 +1,16 @@
+import {
+  SSH_ERROR_CODES,
+  type SshErrorCode,
+} from "@okouai/api-contracts/contracts/ssh-errors";
+import { sshErrorResponse } from "../../lib/ssh-error";
 import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
 import {
   isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { command, computed } from "ccstate";
 
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
@@ -24,7 +27,11 @@ import {
 } from "../services/ssh-connection.service";
 
 const sshConfigurationUnavailable = Object.freeze(
-  notFound("SSH configuration is not available"),
+  sshErrorResponse(
+    404,
+    SSH_ERROR_CODES.UNAVAILABLE,
+    "SSH configuration is not available",
+  ),
 );
 
 const sshAuth = {
@@ -36,10 +43,6 @@ const sshAuth = {
 const sshFeatureContext$ = computed(
   async (get): Promise<FeatureSwitchContext | null> => {
     const auth = get(organizationAuthContext$);
-    if (!isStaffOrg(auth.orgId)) {
-      return null;
-    }
-
     const context = await get(
       userFeatureSwitchContext(auth.orgId, auth.userId),
     );
@@ -52,16 +55,17 @@ const sshFeatureContext$ = computed(
 function mapSshFailure(result: {
   readonly kind: "bad_request" | "not_found" | "conflict";
   readonly message: string;
+  readonly code: SshErrorCode;
 }) {
   switch (result.kind) {
     case "bad_request": {
-      return badRequestMessage(result.message);
+      return sshErrorResponse(400, result.code, result.message);
     }
     case "not_found": {
-      return notFound(result.message);
+      return sshErrorResponse(404, result.code, result.message);
     }
     case "conflict": {
-      return conflict(result.message);
+      return sshErrorResponse(409, result.code, result.message);
     }
   }
 }
@@ -116,7 +120,11 @@ const createSshConnectionInner$ = command(
     const bodyResult = await get(bodyResultOf(sshConnectionsContract.create));
     signal.throwIfAborted();
     if (!bodyResult.ok) {
-      return bodyResult.response;
+      return sshErrorResponse(
+        400,
+        SSH_ERROR_CODES.INVALID_INPUT,
+        "Invalid SSH configuration",
+      );
     }
 
     const result = await createSshConnection({
@@ -149,7 +157,11 @@ const updateSshConnectionInner$ = command(
     ]);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
-      return bodyResult.response;
+      return sshErrorResponse(
+        400,
+        SSH_ERROR_CODES.INVALID_INPUT,
+        "Invalid SSH configuration",
+      );
     }
 
     const result = await updateSshConnection({
@@ -208,7 +220,11 @@ const resetSshConnectionHostKeyInner$ = command(
     ]);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
-      return bodyResult.response;
+      return sshErrorResponse(
+        400,
+        SSH_ERROR_CODES.INVALID_INPUT,
+        "Invalid SSH configuration",
+      );
     }
 
     const result = await resetSshConnectionHostKey({

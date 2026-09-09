@@ -5,7 +5,6 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const SSH_CONNECTION_LIMIT = 64;
 export const SSH_DISPLAY_NAME_MAX_LENGTH = 128;
 export const SSH_HOST_MAX_LENGTH = 253;
 export const SSH_USERNAME_MAX_LENGTH = 255;
@@ -101,10 +100,7 @@ export const sshConnectionsListResponseSchema = z
   .strict();
 
 export const sshConnectionsSummaryResponseSchema = z
-  .object({
-    configuredCount: z.int().nonnegative(),
-    limit: z.literal(SSH_CONNECTION_LIMIT),
-  })
+  .object({ configuredCount: z.int().nonnegative() })
   .strict();
 
 export const sshConnectionsContract = c.router({

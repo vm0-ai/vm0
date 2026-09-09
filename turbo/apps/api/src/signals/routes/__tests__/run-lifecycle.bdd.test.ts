@@ -16162,6 +16162,46 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
   });
 
+  it.each([true, false])(
+    "gates SSH guidance and Run scopes only on enabled=%s for an ordinary organization",
+    async (enabled) => {
+      const api = createRunsApi(context);
+      const connectors = createConnectorBddApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.SshAccess]: enabled,
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "inspect my SSH hosts",
+        modelProvider: "anthropic-api-key",
+      });
+      const prompt =
+        (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+      if (enabled) {
+        expect(prompt).toContain("okou ssh host list --json");
+        expect(prompt).toContain("failure_reason and effects, not error text");
+      } else {
+        expect(prompt).not.toContain("okou ssh");
+      }
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      const token = claim.platformEnvironment.OKOU_TOKEN;
+      if (!token) {
+        throw new Error("Expected a minted Run token");
+      }
+      const capabilities = verifyOkouToken(token)?.capabilities;
+      if (enabled) {
+        expect(capabilities).toContain("ssh:read");
+        expect(capabilities).toContain("ssh:write");
+      } else {
+        expect(capabilities).not.toContain("ssh:read");
+        expect(capabilities).not.toContain("ssh:write");
+      }
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
+
   it("advertises connector account switching", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
