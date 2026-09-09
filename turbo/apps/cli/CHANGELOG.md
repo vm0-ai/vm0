@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.322.0](https://github.com/vm0-ai/vm0/compare/cli-v9.321.3...cli-v9.322.0) (2026-09-09)
+
+
+### Features
+
+* **ssh:** add owner controls and agent ssh commands ([#32722](https://github.com/vm0-ai/vm0/issues/32722)) ([0c27252](https://github.com/vm0-ai/vm0/commit/0c27252592810ab55baa97169773056a7453ab30))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.423.0
+    * @okouai/core bumped to 8.647.0
+    * @okouai/pi-agent-runtime bumped to 1.24.8
+
 ## [9.321.3](https://github.com/vm0-ai/vm0/compare/cli-v9.321.2...cli-v9.321.3) (2026-09-09)
 
 

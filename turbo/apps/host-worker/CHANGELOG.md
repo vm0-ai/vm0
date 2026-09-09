@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.9](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.8...host-worker-v1.4.9) (2026-09-09)
+
+
+### Bug Fixes
+
+* **host-worker:** stop restoring the retired file route ([#33017](https://github.com/vm0-ai/vm0/issues/33017)) ([f2b4eca](https://github.com/vm0-ai/vm0/commit/f2b4ecad8d37efd4c016071c2b524af48795f21a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.423.0
+
 ## [1.4.8](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.7...host-worker-v1.4.8) (2026-09-09)
 
 

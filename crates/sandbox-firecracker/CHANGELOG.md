@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.1](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.0...sandbox-firecracker-v0.41.1) (2026-09-09)
+
+
+### Documentation
+
+* **rust:** correct balloon memory-pressure rationale ([#33008](https://github.com/vm0-ai/vm0/issues/33008)) ([deee43a](https://github.com/vm0-ai/vm0/commit/deee43a537f64f80bf37a1e64671a2f47497fe50))
+
 ## [0.41.0](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.7...sandbox-firecracker-v0.41.0) (2026-09-09)
 
 
