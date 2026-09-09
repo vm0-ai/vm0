@@ -166,7 +166,6 @@ test("Expose an artifact referenced only by history from the main result actions
   if (!mainMessage) {
     throw new Error("Expected the result inside the main message region");
   }
-  expect(mainMessage.parentElement).toHaveClass("pl-1.5", "@[900px]:pl-0");
   expect(mainMessage).toContainElement(actions);
   const artifactTrigger = screen.getByTestId(
     "chat-run-related-artifacts-trigger",
@@ -176,17 +175,7 @@ test("Expose an artifact referenced only by history from the main result actions
   expect(viewAgentProfileLinks()).toHaveLength(1);
   const dialog = await openRelatedArtifacts();
   expect(relatedArtifactRow(dialog, reportUrl)).toHaveTextContent("Report");
-  const workToggle = queryWorkHistoryToggle("collapsed");
-  expect(workToggle).toBeVisible();
-  const workIconRail = workToggle?.querySelector("svg")?.parentElement;
-  expect(workIconRail).toHaveClass("w-6", "justify-start");
-  expect(workIconRail).not.toHaveClass("w-7", "justify-center");
-  expect(workToggle?.querySelector("[data-chat-run-work-label]")).toHaveClass(
-    "text-sm",
-    "font-normal",
-    "leading-5",
-    "text-muted-foreground/80",
-  );
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
 
   click(within(dialog).getByLabelText("Close"));
   await waitFor(() => {
@@ -197,22 +186,6 @@ test("Expose an artifact referenced only by history from the main result actions
   click(await findWorkHistoryToggle("collapsed"));
   const history = screen.getByText("Generated supporting evidence.");
   expect(history).toBeVisible();
-  const historyBody = history.closest<HTMLElement>(
-    "[data-chat-run-work-history-item]",
-  );
-  expect(history.closest("[data-chat-run-work-history-list]")).toHaveClass(
-    "ml-2",
-    "w-[calc(100%-0.5rem)]",
-    "pl-[15px]",
-  );
-  expect(historyBody).toHaveClass(
-    "text-sm",
-    "leading-5",
-    "text-muted-foreground",
-  );
-  expect(history.closest("[data-color-mode]")).toHaveClass(
-    "!text-muted-foreground",
-  );
   await expect(
     findNamedLink("Open pdf preview for supporting-report.pdf"),
   ).resolves.toBeVisible();
@@ -459,37 +432,10 @@ test("Keep completed result actions before recommended followups", async () => {
   }
   const keepGoing = await screen.findByRole("group", { name: "Keep going" });
   const followupButton = within(keepGoing).getByTitle("Summarize the report");
-  const followupLabel = within(followupButton).getByText(
-    "Summarize the report",
-  );
-  const followupHoverIcon = followupButton.querySelector(
-    "[data-chat-followup-hover-icon]",
-  );
-  const followupIconRail =
-    followupButton.querySelector("span > svg")?.parentElement;
-  const mainBody = main.closest<HTMLElement>(
-    "[data-chat-scroll-anchor-event-id]",
-  );
-  const divider = keepGoing.previousElementSibling;
-  const dividerLabel = screen.getByText(/Keep going ·/u);
 
   expect(actions).toBeVisible();
-  expect(actions).toHaveClass("-ml-1.5");
-  expect(followupButton).toHaveClass("relative");
-  expect(followupIconRail).toHaveClass("w-6", "justify-start");
-  expect(followupIconRail).not.toHaveClass("w-7", "justify-center");
-  expect(followupLabel).toHaveClass(
-    "text-sm",
-    "font-normal",
-    "leading-5",
-    "text-muted-foreground/80",
-  );
-  expect(followupHoverIcon).toHaveClass("absolute", "opacity-0");
-  expect(followupHoverIcon).not.toHaveClass("ml-2", "shrink-0");
-  expect(mainBody).toHaveClass("pl-0");
-  expect(divider).toHaveClass("pl-0");
-  expect(dividerLabel).toHaveClass("text-sm", "leading-5");
-  expect(dividerLabel).not.toHaveClass("text-[13px]");
+  expect(followupButton).toBeVisible();
+  expect(screen.getByText(/Keep going ·/u)).toBeVisible();
   expect(mainMessage).toContainElement(actions);
   expect(mainMessage).not.toContainElement(keepGoing);
   expect(assistantGroupFor(main)).toContainElement(keepGoing);

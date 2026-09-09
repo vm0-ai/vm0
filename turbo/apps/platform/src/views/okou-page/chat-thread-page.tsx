@@ -3528,7 +3528,6 @@ function RunWorkSectionRow({
         <Hourglass aria-hidden />
       </span>
       <span
-        data-chat-run-work-label
         className={cn(
           "inline-flex min-w-0 items-center gap-1",
           CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
@@ -4066,7 +4065,6 @@ function RecommendedFollowupList({
             </span>
             <ArrowUpRight
               aria-hidden
-              data-chat-followup-hover-icon
               size={16}
               className={cn(
                 "pointer-events-none absolute right-2 top-1/2 box-content -translate-y-1/2 bg-state-hover pl-3 text-muted-foreground/60 opacity-0 transition-[color,opacity] group-hover:text-foreground group-hover:opacity-100",
@@ -7262,7 +7260,6 @@ function PagedAssistantEventItem({
     return (
       <ChatAssistantMessageBody
         className={cn(workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS)}
-        data-chat-run-work-history-item={workHistory ? "" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7286,7 +7283,6 @@ function PagedAssistantEventItem({
           CHAT_THREAD_RESPONSE_FLUSH_CLASS,
           workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
         )}
-        data-chat-run-work-history-item={workHistory ? "" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >

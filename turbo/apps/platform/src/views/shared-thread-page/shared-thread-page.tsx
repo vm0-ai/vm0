@@ -17,7 +17,6 @@ import {
 import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import {
@@ -122,10 +121,14 @@ function SharedMessageCopyButton({ content }: { readonly content: string }) {
   });
 
   return (
-    <IconTooltipButton
+    <Button
       type="button"
+      variant="quiet"
+      size="icon-xs"
+      iconSize="sm"
+      showTooltip
       data-shared-message-copy=""
-      className="rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
+      className="text-muted-foreground/60"
       aria-label={label}
       onClick={() => {
         detach(
@@ -150,8 +153,8 @@ function SharedMessageCopyButton({ content }: { readonly content: string }) {
         );
       }}
     >
-      <Copy size={18} />
-    </IconTooltipButton>
+      <Copy />
+    </Button>
   );
 }
 
@@ -243,7 +246,7 @@ function SharedAssistantGroup({
           data-shared-message-actions="assistant"
           className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS}
         >
-          <div className="flex items-center gap-1">
+          <div className="-ml-1.5 flex items-center gap-1">
             <SharedMessageCopyButton content={content} />
           </div>
         </div>
