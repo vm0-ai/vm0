@@ -166,7 +166,7 @@ test("Expose an artifact referenced only by history from the main result actions
   if (!mainMessage) {
     throw new Error("Expected the result inside the main message region");
   }
-  expect(mainMessage.parentElement).toHaveClass("pl-3.5", "@[900px]:pl-0");
+  expect(mainMessage.parentElement).toHaveClass("pl-1.5", "@[900px]:pl-0");
   expect(mainMessage).toContainElement(actions);
   const artifactTrigger = screen.getByTestId(
     "chat-run-related-artifacts-trigger",
