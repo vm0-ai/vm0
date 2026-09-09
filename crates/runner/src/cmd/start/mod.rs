@@ -1221,6 +1221,7 @@ enum StartLoopEvent {
     RoutineHeartbeatRequested { mode: RunnerMode },
     WorkspaceCacheChangeObserved,
     MaintenanceDrainEntered,
+    RunningJobsDrainEntered,
     DestroyTasksDrainEntered,
     DestroyTasksDrainCompleted,
     FinalizingCapacityWaitEntered { run_id: RunId },
@@ -2656,6 +2657,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let remaining = jobs.len();
     let phase = teardown.phase_start("running_jobs_drain");
+    #[cfg(test)]
+    test_hooks
+        .test_observer
+        .record(StartLoopEvent::RunningJobsDrainEntered);
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
         while !jobs.is_empty() {
