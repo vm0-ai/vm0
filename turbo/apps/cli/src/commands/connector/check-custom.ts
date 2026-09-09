@@ -1,4 +1,5 @@
 import { getCustomConnector } from "../../lib/api/domains/connectors";
+import { getAgentCustomConnectorGrants } from "../../lib/api/domains/agents";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   connectorActionUrl,
@@ -10,35 +11,42 @@ import {
   runConnectorAccountUnavailableMessage,
   type RunConnectorAccountLookup,
 } from "./run-account-context";
-import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
+import { runConnectorSearchAction } from "./search-guidance";
 
 interface CustomConnectorCheckContext {
-  readonly id: string;
   readonly label: string;
   readonly definition: CustomConnectorResponse | null;
   readonly account: RunConnectorAccountLookup | null;
+  readonly authorized: boolean | null;
 }
 
 export async function loadCustomConnectorCheckContext(
   customConnectorId: string,
+  agentId: string | undefined,
 ): Promise<CustomConnectorCheckContext> {
-  const [definition, accounts] = await Promise.all([
+  const [definition, accounts, grants] = await Promise.all([
     getCustomConnector(customConnectorId),
     isRunBoundConnectorContext()
       ? resolveRunConnectorAccountLookups([
           { kind: "custom", customConnectorId },
         ])
       : null,
+    agentId ? getAgentCustomConnectorGrants(agentId) : null,
   ]);
   const account = accounts === null ? null : accounts[0];
   if (account === undefined) {
     throw new Error("Missing run account lookup for custom connector");
   }
   return {
-    id: customConnectorId,
     label: definition?.displayName ?? customConnectorId,
     definition,
     account,
+    authorized:
+      grants === null
+        ? null
+        : grants.some((grant) => {
+            return grant.customConnectorId === customConnectorId;
+          }),
   };
 }
 
@@ -87,15 +95,12 @@ export function printCustomConnectorCheckStatus(
         break;
     }
   }
-  if (
-    !context.definition ||
-    (account === null
-      ? !context.definition.connected
-      : account.state !== "available" ||
-        account.metadata.connectionStatus === "reconnect-required")
-  ) {
-    printCustomConnectorRecovery(context, platformOrigin, agentId);
+  if (context.definition && context.authorized !== null) {
+    console.log(
+      `${context.label} is ${context.authorized ? "authorized" : "not authorized"} for this agent (${agentId}).`,
+    );
   }
+  printCustomConnectorRecovery(context, platformOrigin, agentId);
   console.log(
     "Routing and permission diagnostics describe current intended state; they do not confirm that the runner has applied the latest update.",
   );
@@ -107,33 +112,47 @@ function printCustomConnectorRecovery(
   platformOrigin: string,
   agentId: string | undefined,
 ): void {
-  const { definition, account } = context;
+  const { definition, account, authorized } = context;
   if (!definition) {
     console.log(
       `Open [Custom connectors](${connectorActionUrl({ origin: platformOrigin, path: "/connectors?tab=custom", agentId })}) and select an available connector manually. Changes apply to future runs; settings review does not support callbacks.`,
     );
     return;
   }
-  const path =
-    account?.state === "available" &&
-    account.metadata.connectionStatus === "reconnect-required"
-      ? `/connectors/${definition.slug}/reconnect/${account.connectionId}`
-      : (account === null || account.state === "not-admitted") &&
-          !definition.connected
-        ? `/connectors/${definition.slug}/connect`
+  const action =
+    account !== null
+      ? runConnectorSearchAction(
+          {
+            kind: "custom",
+            slug: definition.slug,
+            label: context.label,
+            customConnector: definition,
+          },
+          account,
+          authorized,
+        )
+      : !definition.connected
+        ? {
+            label: `Connect ${context.label}`,
+            path: `/connectors/${definition.slug}/connect`,
+            supportsCallback: true,
+          }
         : null;
-  if (path === null) {
+  if (action === null) {
+    return;
+  }
+  const url = connectorActionUrl({
+    origin: platformOrigin,
+    path: action.path,
+    agentId,
+  });
+  if (!action.supportsCallback) {
+    console.log(`Open [${action.label}](${url}).`);
     console.log(
-      customConnectorSettingsGuidance(
-        context.id,
-        platformOrigin,
-        undefined,
-        agentId,
-      ),
+      "Settings review does not support callbacks. Opening this link does not grant access or select an account. Connection and selection changes apply to future runs.",
     );
     return;
   }
-  const url = connectorActionUrl({ origin: platformOrigin, path, agentId });
   console.log(
     `Open [${account?.state === "available" ? "Reconnect" : "Connect"} ${context.label}](${url}). Changes apply to future runs.`,
   );

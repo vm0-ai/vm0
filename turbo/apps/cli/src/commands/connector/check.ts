@@ -719,9 +719,13 @@ Permission recovery:
       }
       const resolved = resolveConnectorCheckDiagnostic(request, diagnostic);
       const target = resolved.connector.target;
+      const agentId = getOkouAgentId();
       const custom =
         target.kind === "custom"
-          ? await loadCustomConnectorCheckContext(target.customConnectorId)
+          ? await loadCustomConnectorCheckContext(
+              target.customConnectorId,
+              agentId,
+            )
           : null;
       const result = custom
         ? {
@@ -741,7 +745,7 @@ Permission recovery:
         credentialResolution: result.connector.credentialResolution,
         run: result.run,
         platformOrigin,
-        agentId: getOkouAgentId(),
+        agentId,
         runBound: isRunBoundConnectorContext(),
       };
 

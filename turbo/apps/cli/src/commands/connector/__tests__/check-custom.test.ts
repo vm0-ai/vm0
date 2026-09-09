@@ -270,6 +270,105 @@ describe("custom connector URL diagnostics", () => {
     },
   );
 
+  it.each(
+    [
+      customConnector({ connected: true, missingRequiredFields: [] }),
+      customMcpConnector({
+        id: CUSTOM_ID,
+        connected: true,
+        missingRequiredFields: [],
+      }),
+    ].flatMap((connector) => {
+      return [true, false].map((admitted) => {
+        return { kind: connector.kind, connector, admitted };
+      });
+    }),
+  )(
+    "targets Agent access in text for a connected $kind connector with admitted=$admitted",
+    async ({ connector, admitted }) => {
+      vi.stubEnv("OKOU_APP_URL", "https://preview-app.example.com");
+      writeRunConnectorAccountContext(
+        contextPath,
+        admitted ? [{ ...TARGET, connectionId: ACCOUNT_ID }] : [],
+      );
+      stubDiagnostic({
+        ...resolvedCustom({
+          kind: "unknown-endpoint",
+          policy: {
+            outcome: "unavailable",
+            basis: "connector-not-configured",
+          },
+        }),
+        run: { status: "not-configured" },
+      });
+      server.use(
+        http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+          return HttpResponse.json(connector);
+        }),
+      );
+
+      await check();
+
+      expect(output()).toContain(
+        `${connector.displayName} is not authorized for this agent (agent-1).`,
+      );
+      expect(output()).toContain(
+        `https://preview-app.example.com/connectors?tab=custom&customConnectorId=${CUSTOM_ID}&view=access&agentId=agent-1`,
+      );
+      expect(output()).toContain("Settings review does not support callbacks");
+      expect(output()).not.toMatch(
+        /view=accounts|\/connectors\/[^\s]+\/(connect|authorize|reconnect)|callbackPrompt=/,
+      );
+    },
+  );
+
+  it("keeps an authorized connected custom account out of text recovery", async () => {
+    stubDiagnostic(
+      resolvedCustom({
+        kind: "matched",
+        permissions: [
+          {
+            name: "items:write",
+            policy: { outcome: "allow", basis: "allow-list" },
+          },
+        ],
+      }),
+    );
+    server.use(
+      stubAgentCustomConnectors([
+        { customConnectorId: CUSTOM_ID, permissionNames: ["items:write"] },
+      ]),
+    );
+
+    await check();
+
+    expect(output()).toContain(
+      "Renamed Acme is authorized for this agent (agent-1).",
+    );
+    expect(output()).toContain(`Connection ID: ${ACCOUNT_ID}`);
+    expect(output()).not.toMatch(/view=|\/connectors\/|callbackPrompt=/);
+  });
+
+  it("propagates a custom authorization lookup failure in text without suggesting a grant", async () => {
+    server.use(
+      http.get(`${ORIGIN}/api/agents/agent-1/custom-connectors`, () => {
+        return HttpResponse.json(
+          {
+            error: { code: "INTERNAL", message: "Authorization lookup failed" },
+          },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await expect(check()).rejects.toThrow("process.exit called");
+
+    expect(error.mock.calls.flat().join("\n")).toContain(
+      "Authorization lookup failed",
+    );
+    expect(output()).toBe("");
+  });
+
   it("offers the directed custom connect flow outside a run in JSON", async () => {
     vi.stubEnv("OKOU_AGENT_ID", "");
 
