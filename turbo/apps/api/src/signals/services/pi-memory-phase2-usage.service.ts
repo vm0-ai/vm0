@@ -18,9 +18,9 @@ export const PI_MEMORY_PHASE2_USAGE_DRAIN_MS =
   AGENT_EXECUTION_TIMEOUT_SECONDS * 1000 + CANCELLATION_RECOVERY_STALE_AFTER_MS;
 
 /**
- * Proxy accounting owns every sandbox Phase 2 attempt, including persisted
- * contexts whose pinned CLI cannot write a journal. Never elect an owner from
- * arrival order or a mutable job lease: failed/revoked attempts still cost.
+ * Identify private Phase 2 runs whose bindings must survive late proxy usage.
+ * Use the dispatched immutable binding, not a mutable job lease:
+ * failed/revoked attempts still cost.
  */
 export async function loadPiMemoryPhase2UsageBinding(
   db: Pick<Db, "select">,
