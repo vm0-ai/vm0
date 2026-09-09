@@ -422,24 +422,28 @@ describe("auxiliary generation outcomes", () => {
       response: () => {
         return completion("A usable summary", "stop", successUsage);
       },
-      outcome: "success",
-      reason: "none",
-      completion_tokens: 118,
-      reasoning_tokens: 96,
+      expected: {
+        outcome: "success",
+        reason: "none",
+        completion_tokens: 118,
+        reasoning_tokens: 96,
+      },
     },
     {
       name: "an exhausted token budget",
       response: () => {
         return completion(secret, "length", exhaustedUsage);
       },
-      outcome: "degraded",
-      reason: "output_truncated",
-      completion_tokens: 2048,
-      reasoning_tokens: 2041,
+      expected: {
+        outcome: "degraded",
+        reason: "output_truncated",
+        completion_tokens: 2048,
+        reasoning_tokens: 2041,
+      },
     },
   ])(
     "records provider token counts on $name",
-    async ({ response, ...expected }) => {
+    async ({ response, expected }) => {
       const title = await prepareChatTitle();
       mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
       createChatCallbacksApi(context).mockOpenRouterCompletions((body) => {
