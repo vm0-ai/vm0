@@ -36,6 +36,7 @@ declare -a stylesheet_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
+declare -a clerk_ui_files=()
 find "$assets_directory" -type f \( -name '*.js' -o -name '*.css' \) -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$assets_directory"/}"
@@ -44,6 +45,7 @@ while IFS= read -r -d '' source_path; do
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
+    clerk-ui-*.js) clerk_ui_files+=("$relative_path") ;;
     app-*.js|index-*.js) app_files+=("$relative_path") ;;
   esac
 done < "$layout_files"
@@ -53,9 +55,10 @@ if ((
   ${#stylesheet_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
-  ${#worker_files[@]} != 1
+  ${#worker_files[@]} != 1 ||
+  ${#clerk_ui_files[@]} != 1
 )); then
-  echo "Expected exactly one app stylesheet plus one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
+  echo "Expected exactly one app stylesheet plus one app, vendor, Rolldown runtime, SharedWorker, and optional-route Clerk UI JavaScript asset" >&2
   exit 1
 fi
 
@@ -68,6 +71,7 @@ stylesheet_asset_url="${document_assets_url}/${stylesheet_files[0]}"
 vendor_asset_url="${document_assets_url}/${vendor_files[0]}"
 runtime_asset_url="${document_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
+clerk_ui_asset_url="${document_assets_url}/${clerk_ui_files[0]}"
 document_url="${app_url}/sign-up"
 document_retry_delay_seconds=10
 document_wait_started=$SECONDS
@@ -95,7 +99,8 @@ for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
       "$app_asset_url" \
       "$runtime_asset_url" \
       "$vendor_asset_url" \
-      "$stylesheet_asset_url" 2>"$probe_evidence" <<'PY'
+      "$stylesheet_asset_url" \
+      "$clerk_ui_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
 import re
@@ -114,6 +119,7 @@ class AppDocumentParser(HTMLParser):
         super().__init__()
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
+        self.clerk_ui_sources: list[str | None] = []
         self.main_stylesheets: list[dict[str, str | None]] = []
         self.main_stylesheet_loader_count = 0
         self.runtime_metadata: dict[str, list[str | None]] = {
@@ -124,6 +130,8 @@ class AppDocumentParser(HTMLParser):
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         attributes = dict(attrs)
+        if tag == "meta" and attributes.get("name") == "okou-clerk-ui-script":
+            self.clerk_ui_sources.append(attributes.get("content"))
         if tag == "link" and attributes.get("id") == MAIN_STYLESHEET_ID:
             self.main_stylesheets.append(attributes)
         if (
@@ -181,6 +189,12 @@ if observed_metadata != expected_metadata:
 expected_script = [sys.argv[3]]
 expected_preloads = {sys.argv[4], sys.argv[5]}
 expected_stylesheet = sys.argv[6]
+expected_clerk_ui_sources = [sys.argv[7]]
+if parser.clerk_ui_sources != expected_clerk_ui_sources:
+    raise RuntimeError(
+        f"Expected one optional Clerk UI source {expected_clerk_ui_sources}, "
+        f"got {parser.clerk_ui_sources}"
+    )
 if parser.module_scripts != expected_script:
     raise RuntimeError(
         f"Expected one CDN app module script {expected_script}, got {parser.module_scripts}"
@@ -262,7 +276,8 @@ for asset_url in \
   "$stylesheet_asset_url" \
   "$app_asset_url" \
   "$vendor_asset_url" \
-  "$runtime_asset_url"; do
+  "$runtime_asset_url" \
+  "$clerk_ui_asset_url"; do
   curl \
     --fail \
     --silent \
@@ -298,9 +313,10 @@ if [[ "$worker_status" != "206" ]]; then
   exit 1
 fi
 
-printf 'Verified app runtime: stylesheet=%s app=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'Verified app runtime: stylesheet=%s app=%s vendor=%s runtime=%s worker=%s clerk-ui=%s\n' \
   "$stylesheet_asset_url" \
   "$app_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url" \
-  "$worker_asset_url"
+  "$worker_asset_url" \
+  "$clerk_ui_asset_url"

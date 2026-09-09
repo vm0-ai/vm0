@@ -271,13 +271,16 @@ export function parseClerkTestOrganizationMetadata(
   return parsedRole ? { jobRef, generation, role: parsedRole } : null;
 }
 
-export async function createUser(email: string): Promise<string> {
+export async function createUser(
+  email: string,
+  password?: string,
+): Promise<string> {
   const response = await requestClerkCreate("create Clerk user", "/users", {
     method: "POST",
     headers: getClerkHeaders(),
     body: JSON.stringify({
       email_address: [email],
-      skip_password_requirement: true,
+      ...(password ? { password } : { skip_password_requirement: true }),
       legal_accepted_at: new Date().toISOString(),
     }),
   });

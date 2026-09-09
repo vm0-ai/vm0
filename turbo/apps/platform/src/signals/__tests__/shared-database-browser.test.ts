@@ -12,6 +12,7 @@ import {
   installedSharedDatabaseBridge$,
 } from "../shared-database-bridge-state.ts";
 import { sharedDatabaseConnectionStatus$ } from "../shared-database.ts";
+import { setRootSignal$ } from "../root-signal.ts";
 import { detach, Reason } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -126,6 +127,7 @@ function installSharedWorkerMock(): {
 }
 
 function setupBridge(): void {
+  context.store.set(setRootSignal$, context.signal);
   const clerk = context.mocks.clerk();
   clerk.user(
     {

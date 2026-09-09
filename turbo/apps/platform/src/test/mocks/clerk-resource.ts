@@ -15,6 +15,7 @@ interface ClerkResourceRequest {
 
 interface ClerkResourceMock {
   readonly requests: ClerkResourceRequest[];
+  readonly uiRequests: string[];
   readonly pending: () => ReturnType<typeof createDeferredPromise<void>>;
   readonly unavailable: (error?: Error) => void;
 }
@@ -23,6 +24,13 @@ interface ClerkResourceBehavior {
   failure: Error | null;
   gate: Promise<void>;
   readonly requests: ClerkResourceRequest[];
+  readonly uiRequests: string[];
+}
+
+const CLERK_UI_GLOBAL = "__okouClerkUI";
+
+function MockClerkUI(): void {
+  return;
 }
 
 const activeBehavior$ = state<ClerkResourceBehavior | null>(null);
@@ -33,6 +41,7 @@ export function mockClerkResource(signal: AbortSignal): ClerkResourceMock {
     failure: null,
     gate: Promise.resolve(),
     requests: [],
+    uiRequests: [],
   };
   behaviorStore.set(activeBehavior$, behavior);
   signal.addEventListener(
@@ -42,12 +51,14 @@ export function mockClerkResource(signal: AbortSignal): ClerkResourceMock {
         behaviorStore.set(activeBehavior$, null);
       }
       Reflect.deleteProperty(globalThis, "Clerk");
+      Reflect.deleteProperty(window, CLERK_UI_GLOBAL);
     },
     { once: true },
   );
 
   return {
     requests: behavior.requests,
+    uiRequests: behavior.uiRequests,
     pending() {
       const deferred = createDeferredPromise<void>(signal);
       behavior.gate = deferred.promise;
@@ -83,5 +94,25 @@ export async function loadClerkJSScript(
     mockedClerk.initialize(options.publishableKey);
   }
   Reflect.set(globalThis, "Clerk", mockedClerk);
+  return null;
+}
+
+export async function loadScript(src: string): Promise<null> {
+  if (Reflect.has(window, CLERK_UI_GLOBAL)) {
+    return null;
+  }
+  const behavior = behaviorStore.get(activeBehavior$);
+  if (!behavior) {
+    throw new Error("Clerk resource behavior was not configured");
+  }
+  behavior.uiRequests.push(src);
+  await behavior.gate;
+  if (behavior.failure) {
+    throw behavior.failure;
+  }
+  Reflect.set(window, CLERK_UI_GLOBAL, {
+    ClerkUI: MockClerkUI,
+    version: "1.26.0",
+  });
   return null;
 }

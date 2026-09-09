@@ -68,9 +68,7 @@ async function expectAccessibleLinkContrast(
     .toBeGreaterThanOrEqual(4.5);
 }
 
-test("stable auth routes render Auth v2 on desktop", async ({
-  page,
-}) => {
+test("stable auth routes render Auth v2 on desktop", async ({ page }) => {
   const stableRoutes = [
     "/sign-in",
     "/sign-in/factor-one?auth_v2_e2e=nested#/factor-one",
@@ -109,6 +107,11 @@ test("primary actions retain brand styling while links remain accessible", async
   });
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(root).toHaveCSS("border-radius", "12px");
+  await expect(continueButton).toHaveCSS("font-size", "13px");
+  // cn replaces text-sm with text-[13px], including the text-sm line height.
+  // The original V2 control therefore inherits the document's 1.5 ratio.
+  await expect(continueButton).toHaveCSS("line-height", "19.5px");
   await expect(continueButton).toHaveCSS(
     "background-color",
     AUTH_V2_PRIMARY_BACKGROUND_COLOR,
@@ -197,9 +200,8 @@ test.describe("unsupported browser", () => {
     await expect(
       page.getByRole("heading", { name: "Update Chrome to continue" }),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Update Chrome" })).toHaveAttribute(
-      "href",
-      "https://www.google.com/chrome/",
-    );
+    await expect(
+      page.getByRole("link", { name: "Update Chrome" }),
+    ).toHaveAttribute("href", "https://www.google.com/chrome/");
   });
 });

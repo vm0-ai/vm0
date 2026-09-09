@@ -12,6 +12,7 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
+  cardClassName,
 } from "./components/ui/card";
 export { Checkbox } from "./components/ui/checkbox";
 export { ChoiceButton } from "./components/ui/choice-button";

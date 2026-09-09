@@ -83,6 +83,10 @@ import {
   setupSignInV2Page$,
   setupSignUpV2Page$,
 } from "./auth-v2-page-setup.ts";
+import {
+  setupSignInV1Page$,
+  setupSignUpV1Page$,
+} from "./auth-v1-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
@@ -220,6 +224,22 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.signUpCatchAll,
     setup: setupPageWrapper(setupSignUpV2Page$),
+  },
+  {
+    path: ROUTES.signInV1,
+    setup: setupPageWrapper(setupSignInV1Page$),
+  },
+  {
+    path: ROUTES.signInV1CatchAll,
+    setup: setupPageWrapper(setupSignInV1Page$),
+  },
+  {
+    path: ROUTES.signUpV1,
+    setup: setupPageWrapper(setupSignUpV1Page$),
+  },
+  {
+    path: ROUTES.signUpV1CatchAll,
+    setup: setupPageWrapper(setupSignUpV1Page$),
   },
 
   // --- New routes ---

@@ -68,6 +68,21 @@ Do not export the class or instance, expose its collection, or introduce another
 tracker for test cases. The constructor exception applies only to this private
 implementation.
 
+## Import boundaries
+
+`no-restricted-imports` keeps the modular Clerk and Ably runtimes out of the
+eagerly loaded application bundle. `@clerk/clerk-js` stays behind
+`lib/clerk-runtime.ts` and is restricted in every form; `ably` stays behind
+`lib/ably-realtime.ts` and still permits type-only imports.
+
+`@clerk/ui` is a live dependency again, used only by the `/v1` comparison
+routes. `src/clerk-ui.ts` is the single entry allowed to import it at runtime;
+it is built as its own asset by `scripts/clerk-ui.ts` and requested through
+`ensureClerkUiLoaded$`. Every other `src/**` module may import the package for
+types only. `scripts/check-runtime-imports.node.mjs` asserts that boundary from
+the real ESLint configuration, so the entry cannot regain a lint suppression and
+other entries cannot acquire a runtime import.
+
 ## Retired configuration
 
 These entries describe removed implementations; they are not live lint policy:
@@ -79,9 +94,10 @@ These entries describe removed implementations; they are not live lint policy:
 - The old claim that ts-rest cannot handle multipart uploads predates the
   current contract transport.
 - The `custom-eslint/**/*.*` override referred to a removed local plugin tree.
-- `@clerk/ui` and `@solana/web3.js` belonged to retired authentication bundles;
-  `katex`, `rehype-katex`, and `remark-math` belonged to retired Markdown math;
+- `@solana/web3.js` belonged to a retired authentication bundle; `katex`,
+  `rehype-katex`, and `remark-math` belonged to retired Markdown math;
   `@tabler/icons-react` belonged to the replaced icon stack. Their historical
   removal is documented here instead of maintaining a dependency tombstone in
   `no-restricted-imports`. Current architecture still requires the modular Ably
-  and Clerk runtime boundaries.
+  and Clerk runtime boundaries. `@clerk/ui` returned as a live dependency and is
+  no longer a retired entry; see the import boundary above.

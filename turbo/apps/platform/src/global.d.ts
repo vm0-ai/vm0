@@ -1,3 +1,5 @@
+import type { ClerkUIConstructor } from "@clerk/shared/ui";
+import type { ui } from "@clerk/ui";
 import type { PlatformClerk } from "./lib/clerk-runtime";
 import type { DebugLoggers } from "./types/global-method";
 
@@ -14,7 +16,13 @@ interface OkouClerkBootstrap {
   readonly domain?: string;
   readonly loadOptions: OkouClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
+  uiLoaded?: Promise<typeof ui>;
   readonly publishableKey: string;
+  /**
+   * Resolves the hosted UI constructor promise the page passed to its early
+   * `clerk.load`. The app calls it once the UI script is available.
+   */
+  readonly resolveClerkUI: (ui: ClerkUIConstructor) => void;
 }
 
 interface OkouGlobal {
@@ -32,6 +40,7 @@ declare global {
   interface Window {
     _okou: OkouGlobal | undefined;
     __okouClerkBootstrap?: OkouClerkBootstrap;
+    __okouClerkUI?: typeof ui;
     /**
      * Set inline in `index.html` at the start of `<head>` parsing. Used by
      * `captureFirstSkeletonHide` to measure total time from page entry to

@@ -245,6 +245,7 @@
       defer
       type="text/javascript"
     ></script>
+    <meta name="okou-clerk-ui-script" content="__OKOU_CLERK_UI_SCRIPT_URL__" />
     <script data-okou-clerk-bootstrap="">
       (function () {
         var hostname = location.hostname.toLowerCase();
@@ -260,11 +261,23 @@
           signUpUrl: new URL("/sign-up", authOrigin).toString(),
         };
 
+        // Clerk accepts its hosted UI constructor as a promise, so the core
+        // starts now and only the v1 comparison routes resolve the UI.
+        var resolveClerkUI;
+        var clerkUI = new Promise(function (resolve) {
+          resolveClerkUI = resolve;
+        });
+
         var bootstrap = {
           loadOptions: loadOptions,
           publishableKey: publishableKey,
+          resolveClerkUI: resolveClerkUI,
         };
         window.__okouClerkBootstrap = bootstrap;
+
+        function isAuthV1Route(pathname) {
+          return /^\/v1\/sign-(?:in|up)(?:\/|$)/.test(pathname || "");
+        }
 
         function startClerk() {
           var clerk = window.Clerk;
@@ -277,24 +290,49 @@
           }
           if (bootstrap.loaded) return;
 
-          var subscribeToStatus = clerk.on.bind(clerk);
-          clerk.on = function (event, handler, options) {
-            subscribeToStatus(
-              event,
-              handler,
-              Object.assign({}, options, { notify: true }),
-            );
-          };
-
-          var loadClerk = clerk.load.bind(clerk);
-          var loadPromise;
-          clerk.load = function (options) {
-            if (!loadPromise) loadPromise = loadClerk(options);
-            return loadPromise;
-          };
-
           bootstrap.clerk = clerk;
-          bootstrap.loaded = clerk.load(loadOptions);
+          bootstrap.loaded = clerk.load(
+            Object.assign({}, loadOptions, { ui: { ClerkUI: clerkUI } }),
+          );
+        }
+
+        // Direct v1 route entries start the installed UI alongside the app.
+        // Stable auth routes keep the platform-owned UI without this download.
+        function startClerkUI() {
+          if (!isAuthV1Route(location.pathname)) return;
+          var uiScript = document.createElement("script");
+          uiScript.src = "__OKOU_CLERK_UI_SCRIPT_URL__";
+          uiScript.type = "module";
+          uiScript.crossOrigin = "anonymous";
+          uiScript.async = true;
+          bootstrap.uiLoaded = new Promise(function (resolve, reject) {
+            uiScript.onerror = function () {
+              uiScript.remove();
+              reject(new Error("Clerk UI resource is unavailable"));
+            };
+            uiScript.onload = function () {
+              uiScript.remove();
+              var ui = window.__okouClerkUI;
+              if (
+                !ui ||
+                typeof ui.ClerkUI !== "function" ||
+                ui.version !== "__OKOU_CLERK_UI_VERSION__"
+              ) {
+                reject(
+                  new Error("Clerk UI entry did not expose its public export"),
+                );
+                return;
+              }
+              resolveClerkUI(ui.ClerkUI);
+              resolve(ui);
+            };
+          });
+          // The route awaits the same promise and surfaces the startup failure.
+          // Own a rejection that can occur before the app graph is evaluated.
+          bootstrap.uiLoaded.catch(function (error) {
+            console.error("Clerk UI bootstrap failed", error);
+          });
+          document.head.appendChild(uiScript);
         }
 
         var script = document.getElementById("okou-clerk-core-script");
@@ -305,6 +343,7 @@
           script.remove();
         };
         script.onload = startClerk;
+        startClerkUI();
       })();
     </script>
     <link

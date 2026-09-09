@@ -609,7 +609,9 @@ function clearMockedAuth() {
   mockSignUpConfiguration({});
   mockSignUpPasswordValidation({ complexity: {}, strength: undefined });
   clerkListeners.length = 0;
+  clerkStatusListeners.clear();
   mockedClerk.on = defaultClerkStatusOn;
+  mockedClerk.off = defaultClerkStatusOff;
   mockedClerk.signOut.mockReset();
   mockedClerk.setActive.mockReset();
   mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
@@ -722,15 +724,31 @@ export function clearMockedAuthOnAbort(signal: AbortSignal): void {
 }
 
 const clerkListeners: MockedClerkListener[] = [];
+// Status subscriptions the SDK is still holding. A route that subscribes must
+// release its handler through `off`, so tests can observe the leak directly.
+const clerkStatusListeners = new Set<unknown>();
 const defaultClerkStatusOn: BrowserClerk["on"] = (
   event,
   handler,
   options,
 ): void => {
-  if (event === "status" && options?.notify) {
+  if (event !== "status") {
+    return;
+  }
+  clerkStatusListeners.add(handler);
+  if (options?.notify) {
     handler(internalMockedClerkLoaded ? "ready" : "loading");
   }
 };
+const defaultClerkStatusOff: BrowserClerk["off"] = (event, handler): void => {
+  if (event === "status" && handler) {
+    clerkStatusListeners.delete(handler);
+  }
+};
+
+export function mockedClerkStatusListenerCount(): number {
+  return clerkStatusListeners.size;
+}
 
 export function emitMockedClerkEvent(): void {
   const resources = { session: mockedClerk.session };
@@ -1031,6 +1049,7 @@ export interface MockedClerkLoadOptions {
   signInUrl?: string;
   signUpUrl?: string;
   touchSession?: boolean;
+  ui?: unknown;
 }
 
 interface MockedSignInRedirectOptions {
@@ -1321,6 +1340,7 @@ export const mockedClerk = {
   }),
   load: mockedClerkLoad,
   on: defaultClerkStatusOn,
+  off: defaultClerkStatusOff,
   addListener: (
     cb: MockedClerkListener,
     _options?: MockedClerkListenerOptions,

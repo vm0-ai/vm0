@@ -57,8 +57,8 @@ grep -Fq '["blob", { outputDir: "blob-report" }]' "$PLAYWRIGHT_CONFIG" ||
   fail "Playwright CI must emit mergeable blob reports"
 grep -Fq 'name: "auth-v2"' "$PLAYWRIGHT_CONFIG" ||
   fail "Playwright must register the dedicated Auth v2 project"
-grep -Fq 'testMatch: "auth-v2.spec.ts"' "$PLAYWRIGHT_CONFIG" ||
-  fail "the Auth v2 project must remain isolated from existing test specs"
+grep -Fq 'testMatch: ["auth-v2.spec.ts", "auth-v1.spec.ts"]' "$PLAYWRIGHT_CONFIG" ||
+  fail "the auth project must cover both auth versions without unrelated specs"
 grep -Fq 'workers: 1' "$PLAYWRIGHT_CONFIG" ||
   fail "the Auth v2 project must use one worker"
 grep -Fq 'trace: "off"' "$PLAYWRIGHT_CONFIG" ||

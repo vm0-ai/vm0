@@ -42,6 +42,7 @@ interface InlineBootstrapWindow {
 }
 
 interface InlineBootstrapScript {
+  src?: string;
   dataset: Record<string, string>;
   onerror: (() => void) | null;
   onload: (() => void) | null;
@@ -50,8 +51,12 @@ interface InlineBootstrapScript {
 
 type InlineBootstrap = (
   window: InlineBootstrapWindow,
-  document: { getElementById: (id: string) => InlineBootstrapScript },
-  location: { hostname: string; origin: string },
+  document: {
+    getElementById: (id: string) => InlineBootstrapScript;
+    createElement: (tag: string) => InlineBootstrapScript;
+    head: { appendChild: (script: InlineBootstrapScript) => void };
+  },
+  location: { hostname: string; origin: string; pathname: string },
 ) => void;
 
 function inlineBootstrapSource(): string {
@@ -64,7 +69,7 @@ function inlineBootstrapSource(): string {
 }
 
 /** Runs the bootstrap the deployed page runs. */
-function runInlineBootstrap(hostname: string): InlineBootstrapConfiguration {
+function runInlineBootstrap(hostname: string, pathname = "/sign-in") {
   const runBootstrap = new Function(
     "window",
     "document",
@@ -80,20 +85,27 @@ function runInlineBootstrap(hostname: string): InlineBootstrapConfiguration {
     },
   };
   const bootstrapWindow: InlineBootstrapWindow = {};
+  const appendedScripts: InlineBootstrapScript[] = [];
   runBootstrap(
     bootstrapWindow,
     {
       getElementById: () => {
         return script;
       },
+      createElement: () => ({ ...script }),
+      head: {
+        appendChild: (uiScript) => {
+          appendedScripts.push(uiScript);
+        },
+      },
     },
-    { hostname, origin: `https://${hostname}` },
+    { hostname, origin: `https://${hostname}`, pathname },
   );
   const bootstrap = bootstrapWindow.__okouClerkBootstrap;
   if (!bootstrap) {
     throw new Error("The inline Clerk bootstrap published no configuration");
   }
-  return bootstrap;
+  return { bootstrap, appendedScripts };
 }
 
 const PAGE_HOSTNAMES = [
@@ -109,7 +121,7 @@ const PAGE_HOSTNAMES = [
 // the other is a silent split-brain that type checking cannot catch.
 test("The inline Clerk bootstrap never configures a satellite", () => {
   for (const hostname of PAGE_HOSTNAMES) {
-    const bootstrap = runInlineBootstrap(hostname);
+    const { bootstrap } = runInlineBootstrap(hostname);
 
     expect({
       hostname,
@@ -122,5 +134,28 @@ test("The inline Clerk bootstrap never configures a satellite", () => {
       pageIsSatellite: false,
       pageSignInUrl: `https://${hostname}/sign-in`,
     });
+  }
+});
+
+test("The inline bootstrap loads installed UI only for v1 auth routes", () => {
+  for (const pathname of [
+    "/agents",
+    "/sign-in",
+    "/sign-up",
+    "/v1/sign-invader",
+  ]) {
+    expect(
+      runInlineBootstrap("app.okou.ai", pathname).appendedScripts,
+    ).toStrictEqual([]);
+  }
+  for (const pathname of [
+    "/v1/sign-in",
+    "/v1/sign-in/tasks/choose-organization",
+    "/v1/sign-up",
+    "/v1/sign-up/tasks/choose-organization",
+  ]) {
+    const { appendedScripts } = runInlineBootstrap("app.okou.ai", pathname);
+    expect(appendedScripts).toHaveLength(1);
+    expect(appendedScripts[0]?.src).toBe("__OKOU_CLERK_UI_SCRIPT_URL__");
   }
 });

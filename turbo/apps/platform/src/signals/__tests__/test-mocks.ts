@@ -10,6 +10,7 @@ import {
   mockClerkSessionSignedOut,
   mockedClerk,
   mockedClerkLoad,
+  mockedClerkStatusListenerCount,
   mockOrganization,
   mockUser,
   type MockedClerkLoadOptions,
@@ -18,6 +19,10 @@ import {
   clerkLocalizationFixtureForRequest,
   type ClerkLocalizationLocale,
 } from "../../mocks/handlers/clerk-localizations.ts";
+import {
+  resetMockClerkAuthComponentMounted,
+  setMockClerkAuthComponentMounted,
+} from "../../test/mocks/clerk-react.ts";
 import { mockClerkResource } from "../../test/mocks/clerk-resource.ts";
 import {
   mockSentry,
@@ -232,9 +237,18 @@ interface ClerkResourceRequest {
 }
 
 interface ClerkMock {
+  /**
+   * Keeps the hosted Clerk components in their loading fallback until the
+   * returned `mount` runs, the way a slow hosted UI script would.
+   */
+  readonly deferAuthComponentMount: () => { readonly mount: () => void };
   readonly loads: readonly (MockedClerkLoadOptions | undefined)[];
   readonly localizationRequests: ClerkLocalizationLocale[];
   readonly resourceRequests: ClerkResourceRequest[];
+  /** Hosted UI script requests; only v1 comparison routes should add one. */
+  readonly uiRequests: string[];
+  /** Clerk `status` handlers the SDK still holds, so leaks stay observable. */
+  readonly statusListenerCount: () => number;
   readonly loaded: (loaded: boolean) => void;
   readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;
   readonly organization: (...args: Parameters<typeof mockOrganization>) => void;
@@ -720,13 +734,31 @@ function mockClerk(
   });
 
   return {
+    deferAuthComponentMount() {
+      setMockClerkAuthComponentMounted(false);
+      restoreOnAbort(signal, resetMockClerkAuthComponentMounted);
+      return {
+        mount: () => {
+          setMockClerkAuthComponentMounted(true);
+        },
+      };
+    },
     get loads() {
       return mockedClerkLoad.mock.calls.map(([options]) => {
-        return options;
+        if (!options) {
+          return options;
+        }
+        // The hosted UI handle is a pending promise; `uiRequests` reports
+        // whether the UI script itself was requested.
+        const loadOptions: MockedClerkLoadOptions = { ...options };
+        delete loadOptions.ui;
+        return loadOptions;
       });
     },
     localizationRequests,
     resourceRequests: resource.requests,
+    uiRequests: resource.uiRequests,
+    statusListenerCount: mockedClerkStatusListenerCount,
     loaded: mockClerkLoaded,
     localizationUnavailable(locale): void {
       unavailableLocalizations.add(locale);

@@ -73,7 +73,8 @@ export default defineConfig({
     },
     {
       name: "auth-v2",
-      testMatch: "auth-v2.spec.ts",
+      // Keep the default AuthV2 baseline and hosted V1 adapter in one auth lane.
+      testMatch: ["auth-v2.spec.ts", "auth-v1.spec.ts"],
       workers: 1,
       use: {
         screenshot: "off",

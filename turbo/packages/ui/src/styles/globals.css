@@ -159,6 +159,10 @@
   --font-size-sm: 14px;
   --font-size-xs: 12px;
 
+  /* Figma action-label role, used by compact primary actions. */
+  --text-action: 13px;
+  --text-action--line-height: 17px;
+
   /* Line Height (from Figma) */
   --line-height-8: 32px;
   --line-height-7: 28px;
