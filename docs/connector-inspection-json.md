@@ -8,13 +8,21 @@ okou connector check --url https://api.github.com/repos/owner/repo --json
 okou connector list --json
 okou connector status github --json
 okou connector custom list --json
-okou connector custom status <connector-id> --json
+okou connector custom status <selector> --json
 ```
 
 An inspection result occupies all of stdout as one JSON value, without ANSI
 formatting or appended guidance. Commands without `--json` keep their existing
 human-readable output. Existing list/status JSON fields are preserved; new
 identity fields are additive.
+
+Selectors accept full slugs, custom UUIDs, and exact unique display names
+within the command's supported connector types. Full identifiers take
+precedence over names. Use `builtin:<slug-or-name>` or
+`custom:<uuid-slug-or-name>` to disambiguate types; a remaining collision is an
+error with explicit candidate identities. Custom UUIDs remain the stable
+choice for automation. Selecting an alias preserves the canonical `target`
+and the existing run-selected account in JSON.
 
 ## Identity and evidence
 

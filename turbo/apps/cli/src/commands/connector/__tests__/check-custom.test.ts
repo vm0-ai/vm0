@@ -177,36 +177,54 @@ describe("custom connector URL diagnostics", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  it("emits the exact custom account, subtype, and grant state as one JSON result", async () => {
-    await check("--connector", `custom:${CUSTOM_ID}`, "--json");
-    const json: unknown = JSON.parse(output());
-    expect(json).toMatchObject({
-      context: "run",
-      connector: {
-        target: TARGET,
-        label: "Renamed Acme",
-        connectorType: "custom-http",
-        definitionAvailable: true,
-      },
-      account: {
-        state: "available",
-        connectionId: ACCOUNT_ID,
-        metadata: { connectionStatus: "connected" },
-      },
-      connection: null,
-      authorization: { authorized: false },
-      diagnostic: {
-        run: { bases: ["https://api.acme.test/pinned"] },
-        permission: {
-          permissions: [{ name: "items:write", policy: { outcome: "deny" } }],
+  it.each([
+    `custom:${CUSTOM_ID}`,
+    CUSTOM_ID,
+    "_mutable-new-slug",
+    "Renamed Acme",
+  ])(
+    "emits the exact custom account, subtype, and grant state for %s as JSON",
+    async (selector) => {
+      server.use(
+        stubCustomConnectors([
+          customConnector({
+            id: CUSTOM_ID,
+            slug: "_mutable-new-slug",
+            displayName: "Renamed Acme",
+          }),
+        ]),
+      );
+      await check("--connector", selector, "--json");
+      const json: unknown = JSON.parse(output());
+      expect(json).toMatchObject({
+        context: "run",
+        request: { target: TARGET },
+        connector: {
+          target: TARGET,
+          label: "Renamed Acme",
+          connectorType: "custom-http",
+          definitionAvailable: true,
         },
-      },
-    });
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(output()).not.toMatch(
-      /Default sibling|new-default|permission-request/,
-    );
-  });
+        account: {
+          state: "available",
+          connectionId: ACCOUNT_ID,
+          metadata: { connectionStatus: "connected" },
+        },
+        connection: null,
+        authorization: { authorized: false },
+        diagnostic: {
+          run: { bases: ["https://api.acme.test/pinned"] },
+          permission: {
+            permissions: [{ name: "items:write", policy: { outcome: "deny" } }],
+          },
+        },
+      });
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(output()).not.toMatch(
+        /Default sibling|new-default|permission-request/,
+      );
+    },
+  );
 
   it("reports unavailable definition metadata explicitly without replacing its account", async () => {
     server.use(

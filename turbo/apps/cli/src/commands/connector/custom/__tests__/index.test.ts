@@ -95,10 +95,22 @@ describe("okou connector custom readers", () => {
     });
   });
 
-  it.each([customConnector(), customMcpConnector()])(
-    "exposes $kind definition details through status JSON",
-    async (connector) => {
+  it.each(
+    [customConnector(), customMcpConnector()].flatMap((connector) => {
+      return [
+        connector.id,
+        connector.slug,
+        `custom:${connector.id}`,
+        connector.displayName,
+      ].map((selector) => {
+        return { connector, selector };
+      });
+    }),
+  )(
+    "exposes $connector.kind definition details selected by $selector through JSON",
+    async ({ connector, selector }) => {
       server.use(
+        stubCustomConnectors([connector]),
         http.get(
           `http://localhost:3000/api/custom-connectors/${connector.id}`,
           () => {
@@ -110,13 +122,14 @@ describe("okou connector custom readers", () => {
         "node",
         "okou",
         "status",
-        connector.id,
+        selector,
         "--json",
       ]);
       const json: unknown = JSON.parse(consoleLog.mock.calls.flat().join("\n"));
       expect(json).toMatchObject({
         context: "current",
         state: "available",
+        target: { kind: "custom", customConnectorId: connector.id },
         connector: {
           ...connector,
           connectorType: `custom-${connector.kind}`,
