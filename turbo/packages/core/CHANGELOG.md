@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.648.1](https://github.com/vm0-ai/vm0/compare/core-v8.648.0...core-v8.648.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* remove obsolete brand tombstones ([#33049](https://github.com/vm0-ai/vm0/issues/33049)) ([0b757ba](https://github.com/vm0-ai/vm0/commit/0b757ba3de7fc497cbc8c9a02ad461a30314dc01))
+
 ## [8.648.0](https://github.com/vm0-ai/vm0/compare/core-v8.647.0...core-v8.648.0) (2026-09-09)
 
 
