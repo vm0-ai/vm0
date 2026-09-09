@@ -42,7 +42,7 @@ test("SSH is absent from global Connectors when disabled, without requesting SSH
 test("The remote-access category is localized independently of the SSH service name", async () => {
   mockCatalog();
   context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-    return respond(200, { configuredCount: 0, limit: 64 });
+    return respond(200, { configuredCount: 0 });
   });
   await setupPage({
     context,
@@ -56,13 +56,24 @@ test("The remote-access category is localized independently of the SSH service n
   ).toHaveTextContent("SSH");
 });
 
+test("The SSH card tolerates an older API summary with an extra limit field", async () => {
+  mockCatalog();
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    const legacySummary = { configuredCount: 2, limit: 64 };
+    return respond(200, legacySummary);
+  });
+  await page("/connectors?keywords=ssh");
+  await screen.findByText("2 hosts configured");
+  expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();
+});
+
 test.each([0, 1, 2])(
   "Global SSH entry shows %i configured hosts and opens management without an Agent",
   async (count) => {
     mockCatalog();
     context.mocks.data.agents([]);
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-      return respond(200, { configuredCount: count, limit: 64 });
+      return respond(200, { configuredCount: count });
     });
     context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
       return respond(200, { connections: [] });
@@ -108,7 +119,7 @@ test.each([0, 1, 2])(
 test("SSH participates in search and configured filters without changing generic connector actions", async () => {
   mockCatalog();
   context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-    return respond(200, { configuredCount: 2, limit: 64 });
+    return respond(200, { configuredCount: 2 });
   });
   await page();
   await screen.findByText("2 hosts configured");
@@ -140,7 +151,7 @@ test("SSH participates in search and configured filters without changing generic
 test("An empty SSH inventory matches Not connected but not Connected", async () => {
   mockCatalog();
   context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-    return respond(200, { configuredCount: 0, limit: 64 });
+    return respond(200, { configuredCount: 0 });
   });
   await page("/connectors?keywords=ssh&connection=not-connected");
   await screen.findByText(
@@ -162,7 +173,7 @@ test.each([true, false])(
     mockCatalog();
     context.mocks.data.agents([listAgent(agentId, "Research")]);
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-      return respond(200, { configuredCount: 0, limit: 64 });
+      return respond(200, { configuredCount: 0 });
     });
     context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
       return respond(200, { enabled });
@@ -185,7 +196,7 @@ test("Another owner's Agent filter never requests or displays SSH access", async
     { ...listAgent(agentId, "Shared"), ownerId: "another-owner" },
   ]);
   context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-    return respond(200, { configuredCount: 2, limit: 64 });
+    return respond(200, { configuredCount: 2 });
   });
   await page(`/connectors?keywords=ssh&connection=agent:${agentId}`);
   await screen.findByText(/No connectors for this agent/);
@@ -207,7 +218,7 @@ test("Returning from host management refreshes the SSH card after deleting the l
     updatedAt: "2026-09-01T00:00:00Z",
   };
   context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-    return respond(200, { configuredCount: exists ? 1 : 0, limit: 64 });
+    return respond(200, { configuredCount: exists ? 1 : 0 });
   });
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: exists ? [host] : [] });

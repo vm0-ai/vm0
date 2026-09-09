@@ -58,7 +58,14 @@ test("SSH is a Connectors detail page with a working return breadcrumb", async (
     return respond(200, { connections: [] });
   });
   await page();
-  await screen.findByText("0 / 64 hosts configured");
+  await screen.findByText("0 hosts configured");
+  expect(queryAction("button", "Refresh")).toBeNull();
+  expect(
+    screen.queryByText(/Changes notify active Runs/u),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/The first successful connection learns/u),
+  ).not.toBeInTheDocument();
   expect(pathname()).toBe("/connectors/ssh");
   const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
   expect(within(breadcrumb).getByText("SSH")).toHaveAttribute(
@@ -83,7 +90,7 @@ test("Mobile SSH management retains its Connectors section and return navigation
     return respond(200, { connections: [] });
   });
   await page();
-  await screen.findByText("0 / 64 hosts configured");
+  await screen.findByText("0 hosts configured");
   const name = await screen.findByTestId("breadcrumb-name");
   expect(name).toHaveTextContent("SSH");
   const section = name.parentElement;
@@ -96,9 +103,9 @@ test("Mobile SSH management retains its Connectors section and return navigation
 });
 
 test.each([
-  { count: 0, label: "0 / 64 hosts configured" },
-  { count: 1, label: "1 / 64 host configured" },
-  { count: 2, label: "2 / 64 hosts configured" },
+  { count: 0, label: "0 hosts configured" },
+  { count: 1, label: "1 host configured" },
+  { count: 2, label: "2 hosts configured" },
 ])(
   "Shows the translated configured host count for $count hosts",
   async ({ count, label }) => {
@@ -113,6 +120,53 @@ test.each([
     expect(configuredCount).toBeInTheDocument();
   },
 );
+
+test("Allows adding a host when more than 64 hosts are configured", async () => {
+  let hosts = Array.from({ length: 65 }, (_, index) => {
+    return {
+      ...base,
+      id: `b0000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+      displayName: `Host ${index}`,
+      host: `host-${index}.example.com`,
+    };
+  });
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: hosts });
+  });
+  context.mocks.api(sshConnectionsContract.create, ({ body, respond }) => {
+    const connection = {
+      ...base,
+      id: "b0000000-0000-4000-8000-000000000066",
+      displayName: body.displayName,
+      host: body.host,
+      port: body.port,
+      username: body.username,
+    };
+    hosts = [...hosts, connection];
+    return respond(201, connection);
+  });
+  await page();
+  await screen.findByText("65 hosts configured");
+  click(getAction("button", "Add host"));
+  const dialog = await screen.findByRole("dialog");
+  await fill(within(dialog).getByLabelText("Display name"), "Additional host");
+  const port = within(dialog).getByLabelText("Port");
+  await fill(port, "0");
+  expect(port).toBeInvalid();
+  await fill(port, "65536");
+  expect(port).toBeInvalid();
+  await fill(port, "22");
+  expect(port).toBeValid();
+  await fill(
+    within(dialog).getByLabelText("Public hostname or IP address"),
+    "additional.example.com",
+  );
+  await fill(within(dialog).getByLabelText("SSH username"), "deploy");
+  await fill(within(dialog).getByLabelText("Private key"), "test-key");
+  click(getAction("button", "Save", dialog));
+  await screen.findByText("66 hosts configured");
+  expect(screen.getByText("Additional host")).toBeInTheDocument();
+});
 
 test("Create a configured host with write-only credentials, then edit without replacing them", async () => {
   let hosts: SshConnectionResponse[] = [];

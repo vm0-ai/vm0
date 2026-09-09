@@ -13,7 +13,6 @@ import {
   Textarea,
 } from "@okouai/ui";
 import {
-  SSH_CONNECTION_LIMIT,
   SSH_DISPLAY_NAME_MAX_LENGTH,
   SSH_HOST_MAX_LENGTH,
   SSH_USERNAME_MAX_LENGTH,
@@ -27,7 +26,6 @@ import {
   sshDialog$,
   openSshDialog$,
   closeSshDialog$,
-  refreshSsh$,
   saveSsh$,
 } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -80,6 +78,7 @@ function EndpointFields({
         <Input
           name="port"
           type="number"
+          className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           required
           min={1}
           max={65_535}
@@ -355,7 +354,6 @@ function SshHosts() {
   const hosts = useLoadable(sshConnections$);
   const conflict = useGet(sshConflict$);
   const open = useSet(openSshDialog$);
-  const refresh = useSet(refreshSsh$);
   const signal = useGet(pageSignal$);
   if (hosts.state === "loading") {
     return (
@@ -381,49 +379,23 @@ function SshHosts() {
         <p className="text-sm text-muted-foreground">
           {t(
             ($) => {
-              return $.ssh.count;
+              return $.ssh.summary;
             },
             {
               count: hosts.data.length,
-              limit: SSH_CONNECTION_LIMIT,
             },
           )}
         </p>
-        <div className="flex gap-2">
-          <Button
-            disabled={hosts.data.length >= SSH_CONNECTION_LIMIT}
-            onClick={() => {
-              return detach(open("create", null, signal), Reason.DomCallback);
-            }}
-          >
-            <Plus size={16} aria-hidden="true" />
-            {t(($) => {
-              return $.ssh.add;
-            })}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              return refresh();
-            }}
-          >
-            {t(($) => {
-              return $.ssh.refresh;
-            })}
-          </Button>
-        </div>
-      </div>
-      <div className="space-y-2 rounded-xl border p-4 text-sm text-muted-foreground">
-        <p>
+        <Button
+          onClick={() => {
+            return detach(open("create", null, signal), Reason.DomCallback);
+          }}
+        >
+          <Plus size={16} aria-hidden="true" />
           {t(($) => {
-            return $.ssh.cache;
+            return $.ssh.add;
           })}
-        </p>
-        <p>
-          {t(($) => {
-            return $.ssh.tofu;
-          })}
-        </p>
+        </Button>
       </div>
       {conflict && (
         <p role="alert" className="text-sm">

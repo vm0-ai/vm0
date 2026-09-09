@@ -1,11 +1,10 @@
 import { isIP } from "node:net";
 import { domainToASCII } from "node:url";
 
-import {
-  SSH_CONNECTION_LIMIT,
-  type CreateSshConnectionRequest,
-  type SshConnectionResponse,
-  type UpdateSshConnectionRequest,
+import type {
+  CreateSshConnectionRequest,
+  SshConnectionResponse,
+  UpdateSshConnectionRequest,
 } from "@okouai/api-contracts/contracts/ssh-connections";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
@@ -34,7 +33,6 @@ const SSH_CONNECTION_GENERATION_CONFLICT =
   "SSH connection was modified by another request";
 const SSH_CONNECTION_ENDPOINT_CONFLICT =
   "An SSH connection for this host and port already exists";
-const SSH_CONNECTION_LIMIT_CONFLICT = `SSH connection limit of ${SSH_CONNECTION_LIMIT} reached`;
 
 function failure(
   kind: SshConnectionFailure["kind"],
@@ -225,10 +223,9 @@ export async function summarizeSshConnections(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
-): Promise<{ readonly configuredCount: number; readonly limit: 64 }> {
+): Promise<{ readonly configuredCount: number }> {
   return {
     configuredCount: await countOwnerConnections(db, orgId, userId),
-    limit: SSH_CONNECTION_LIMIT,
   };
 }
 
@@ -266,20 +263,14 @@ export async function createSshConnection(args: {
     return canonicalHost;
   }
 
-  const [duplicate, configuredCount] = await Promise.all([
-    endpointExists(args.db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      host: canonicalHost.value,
-      port: args.body.port,
-    }),
-    countOwnerConnections(args.db, args.orgId, args.userId),
-  ]);
+  const duplicate = await endpointExists(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    host: canonicalHost.value,
+    port: args.body.port,
+  });
   if (duplicate) {
     return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
-  }
-  if (configuredCount >= SSH_CONNECTION_LIMIT) {
-    return failure("conflict", SSH_CONNECTION_LIMIT_CONFLICT);
   }
 
   const encryptedCredentials = await encryptSshCredentials(
@@ -298,12 +289,6 @@ export async function createSshConnection(args: {
       })
     ) {
       return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
-    }
-    if (
-      (await countOwnerConnections(tx, args.orgId, args.userId)) >=
-      SSH_CONNECTION_LIMIT
-    ) {
-      return failure("conflict", SSH_CONNECTION_LIMIT_CONFLICT);
     }
 
     const [connection] = await tx

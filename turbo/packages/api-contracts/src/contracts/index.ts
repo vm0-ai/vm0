@@ -137,7 +137,6 @@ export {
   type ModelPoliciesMainContract,
 } from "./model-policies";
 export {
-  SSH_CONNECTION_LIMIT,
   SSH_DISPLAY_NAME_MAX_LENGTH,
   SSH_HOST_MAX_LENGTH,
   SSH_PASSPHRASE_MAX_LENGTH,

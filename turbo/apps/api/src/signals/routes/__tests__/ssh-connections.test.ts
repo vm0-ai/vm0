@@ -2,10 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  SSH_CONNECTION_LIMIT,
-  sshConnectionsContract,
-} from "@okouai/api-contracts/contracts/ssh-connections";
+import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
 import { testSshConnectionStateContract } from "@okouai/api-contracts/contracts/test-ssh-connection-state";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -187,7 +184,7 @@ describe("SSH connection routes", () => {
       client().summary({ headers: authHeaders() }),
       [200],
     );
-    expect(summary.body).toStrictEqual({ configuredCount: 1, limit: 64 });
+    expect(summary.body).toStrictEqual({ configuredCount: 1 });
     const listed = await accept(
       client().list({ headers: authHeaders() }),
       [200],
@@ -523,7 +520,7 @@ describe("SSH connection routes", () => {
     expect(otherList.body.connections).toStrictEqual([]);
   });
 
-  it("serializes duplicate creates and the final quota slots", async () => {
+  it("serializes duplicate creates", async () => {
     useSecretKmsProbe();
     const duplicateOwner = actor("concurrent-duplicate");
     await enableSsh(duplicateOwner);
@@ -544,11 +541,14 @@ describe("SSH connection routes", () => {
         })
         .sort(),
     ).toStrictEqual([201, 409]);
+  });
 
-    const quotaOwner = actor("concurrent-quota");
-    await enableSsh(quotaOwner);
+  it("allows concurrent creates beyond 64 configured hosts", async () => {
+    useSecretKmsProbe();
+    const owner = actor("concurrent-above-64");
+    await enableSsh(owner);
     const seeded = await Promise.all(
-      Array.from({ length: SSH_CONNECTION_LIMIT - 1 }, (_, index) => {
+      Array.from({ length: 63 }, (_, index) => {
         return client().create({
           headers: authHeaders(),
           body: createBody(`seed-${index}.example.com`),
@@ -561,7 +561,7 @@ describe("SSH connection routes", () => {
       }),
     ).toBeTruthy();
 
-    const quotaResults = await Promise.all([
+    const results = await Promise.all([
       client().create({
         headers: authHeaders(),
         body: createBody("final-a.example.com"),
@@ -572,17 +572,26 @@ describe("SSH connection routes", () => {
       }),
     ]);
     expect(
-      quotaResults
+      results
         .map((result) => {
           return result.status;
         })
         .sort(),
-    ).toStrictEqual([201, 409]);
+    ).toStrictEqual([201, 201]);
     const summary = await accept(
       client().summary({ headers: authHeaders() }),
       [200],
     );
-    expect(summary.body.configuredCount).toBe(SSH_CONNECTION_LIMIT);
+    expect(summary.body).toStrictEqual({ configuredCount: 65 });
+    const list = await accept(client().list({ headers: authHeaders() }), [200]);
+    expect(list.body.connections).toHaveLength(65);
+    expect(
+      list.body.connections.map((connection) => {
+        return connection.host;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining(["final-a.example.com", "final-b.example.com"]),
+    );
   });
 
   it("leaves no visible row when KMS encryption fails", async () => {

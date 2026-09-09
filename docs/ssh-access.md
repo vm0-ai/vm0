@@ -9,7 +9,7 @@ accounts nor connector permissions.
 
 ## Owner setup
 
-Open **Connectors -> Remote access -> SSH** (`/connectors/ssh`) to manage up to 64 hosts for your
+Open **Connectors -> Remote access -> SSH** (`/connectors/ssh`) to manage hosts for your
 current organization and user, without selecting or creating an Agent. The SSH
 card uses the same presentation as connector cards: no hosts shows the service
 description and add affordance; configured hosts show a compact host-count
@@ -34,8 +34,8 @@ submissions require entering them again.
 `Configured` is not a connectivity test. Configuration does not establish an
 SSH session. Use **Replace credentials** to rotate a key or passphrase; ordinary
 metadata edits leave credentials unchanged. Host/port changes clear the learned
-host identity. A stale generation is not retried: refresh and reopen the host
-to review the current settings.
+host identity. A stale generation is not retried: the list refreshes automatically.
+Reopen the host to review the current settings before saving again.
 
 Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
 with the same search and loading switch, not in Profile. The information tooltip
