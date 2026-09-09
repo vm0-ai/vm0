@@ -1,20 +1,78 @@
 import { agentSshAccessContract } from "@okouai/api-contracts/contracts/ssh-access";
 import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   getConnectorAction,
   listAgent,
   mockConnectors,
   mockPublicConnectorStatus,
+  publicStatusItem,
   queryConnectorAction,
 } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
 const agentId = "c0000000-0000-4000-8000-000000000001";
+
+test.each([0, 2])(
+  "SSH with %i hosts remains visible in shelves and respects category selection",
+  async (configuredCount) => {
+    mockCatalog();
+    mockPublicConnectorStatus(
+      context,
+      Array.from({ length: 8 }, (_, index) => {
+        return publicStatusItem({
+          connectorSlug: connectorSlugSchema.parse(`mail-${index}`),
+          label: `Mail ${index}`,
+          category: "communication-collaboration",
+          popularityRank: index,
+          connected: false,
+        });
+      }),
+    );
+    context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+      return respond(200, { configuredCount });
+    });
+    await setupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.SshAccess]: true,
+        [FeatureSwitchKey.ConnectorDirectory]: true,
+      },
+    });
+    await screen.findByTestId("connector-shelf-communication-collaboration");
+    await screen.findByRole("heading", { name: "Remote access" });
+    expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
+      "href",
+      configuredCount === 0 ? "/connectors/ssh?add=1" : "/connectors/ssh",
+    );
+    const communication = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.startsWith("Communication");
+    });
+    if (!communication) {
+      throw new Error("Expected the Communication category chip");
+    }
+    click(communication);
+    await screen.findByTestId("connector-category-communication-collaboration");
+    expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
+    click(getConnectorAction("button", "Remote access1"));
+    await screen.findByRole("heading", { name: "Remote access" });
+    expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
+    expect(
+      screen.queryByTestId("connector-category-communication-collaboration"),
+    ).toBeNull();
+  },
+);
 
 test("The global card manages visible Agent grants with Connector presentation and search", async () => {
   mockCatalog();

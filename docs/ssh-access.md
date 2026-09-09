@@ -86,9 +86,10 @@ Refresh button and background failures do not show raw server-message toasts.
 Successful host and grant changes publish best-effort `ssh:changed` on the owner's
 user channel with only `{ orgId }`. Learning a new host key also refreshes the
 browser. Platform checks the workspace and invalidates host, summary and grant
-reads; reconnect and foreground catch-up recover missed updates. These refreshes
-do not close dialogs, clear unsaved keys or automatically grant access. Browser
-notifications are separate from Runner authority invalidation and do not tighten
+reads. Initial subscription also refreshes them; reconnect and foreground events
+do not trigger extra reads. These refreshes do not close dialogs, clear unsaved
+keys or automatically grant access. Browser notifications are separate from
+Runner authority invalidation and do not tighten
 the accepted Run-lifetime cache window.
 
 ## Agent commands

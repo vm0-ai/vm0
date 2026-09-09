@@ -49,7 +49,9 @@ export function getAction(
 export function getIntegrationCard(title: string): HTMLElement {
   const card = screen
     .getByText(title)
-    .closest('[data-slot="connector-entry-card"], [data-slot="integration-card"]');
+    .closest(
+      '[data-slot="connector-entry-card"], [data-slot="integration-card"]',
+    );
   if (!(card instanceof HTMLElement)) {
     throw new Error(`Expected integration card titled "${title}"`);
   }

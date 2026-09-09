@@ -123,9 +123,10 @@ import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import { SshAccessManagementDialog } from "./components/settings/ssh-access-management-dialog.tsx";
 import { SshLoadError } from "./ssh-load-error.tsx";
 import { sshSummary$, sshAgentAccessRows$ } from "../../signals/ssh.ts";
-import { filteredSshSummary$ } from "../../signals/okou-page/settings/ssh-connector.ts";
-
-const REMOTE_ACCESS_CATEGORY = "remote-access";
+import {
+  filteredSshSummary$,
+  REMOTE_ACCESS_CATEGORY,
+} from "../../signals/okou-page/settings/ssh-connector.ts";
 
 function withRemoteAccessCategory(
   metadata: PublicConnectorCatalogCategoryMetadata | undefined,
@@ -145,6 +146,7 @@ type ConnectorPresentation =
       readonly kind: "catalog";
       readonly connector: PlatformConnectorCatalogStatusItem;
       readonly category: string;
+      readonly popularityRank: number | undefined;
       readonly label: string;
       readonly connected: boolean;
     }
@@ -869,6 +871,8 @@ function buildConnectorsBrowseModel({
   categoryFilter,
   connectionFilter,
   ready,
+  sshAvailable,
+  remoteAccessLabel,
 }: {
   readonly catalogItems: readonly PlatformConnectorCatalogStatusItem[];
   readonly allConnectors: readonly PlatformConnectorCatalogStatusItem[];
@@ -880,6 +884,8 @@ function buildConnectorsBrowseModel({
   readonly categoryFilter: string | null;
   readonly connectionFilter: ConnectorsConnectionFilter;
   readonly ready: boolean;
+  readonly sshAvailable: boolean;
+  readonly remoteAccessLabel: string;
 }): ConnectorsBrowseModel {
   const filtered =
     search.trim().length > 0 ||
@@ -907,6 +913,16 @@ function buildConnectorsBrowseModel({
     // The page's card grid is three wide, so six is two whole rows.
     previewSize: 6,
   });
+  const chipSections = sectionsOf(allConnectors);
+  if (sshAvailable) {
+    chipSections.push({
+      category: REMOTE_ACCESS_CATEGORY,
+      label: remoteAccessLabel,
+      menuLabel: remoteAccessLabel,
+      groupId: null,
+      connectors: [],
+    });
+  }
   return {
     // Shelves need something to shelve: a catalog too small for any category to
     // fill one falls through to the plain list.
@@ -917,8 +933,10 @@ function buildConnectorsBrowseModel({
     }),
     // Chips come from the whole catalog, not the filtered view: a chip row
     // that empties itself when you pick a chip cannot be used to pick another.
-    chipSections: sectionsOf(allConnectors),
-    categoryCounts,
+    chipSections,
+    categoryCounts: sshAvailable
+      ? { ...categoryCounts, [REMOTE_ACCESS_CATEGORY]: 1 }
+      : categoryCounts,
   };
 }
 
@@ -1239,6 +1257,37 @@ function SshDirectoryLoadError() {
   ) : null;
 }
 
+function sshSummaryData(summary: Loadable<{ configuredCount: number } | null>) {
+  return summary.state === "hasData" ? summary.data : null;
+}
+
+function SshShelfCategory({
+  enabled,
+  groups,
+  renderCard,
+}: {
+  readonly enabled: boolean;
+  readonly groups: ConnectorCategoryGroup<ConnectorPresentation>[];
+  readonly renderCard: (item: ConnectorPresentation) => ReactNode;
+}) {
+  if (!enabled) {
+    return null;
+  }
+  return groups
+    .filter((group) => {
+      return group.id === REMOTE_ACCESS_CATEGORY;
+    })
+    .map((group) => {
+      return (
+        <ConnectorCategoryGroupSection
+          key={group.id}
+          group={group}
+          renderCard={renderCard}
+        />
+      );
+    });
+}
+
 export function ConnectorsPage() {
   const { t } = useTranslation();
   const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
@@ -1419,20 +1468,22 @@ export function ConnectorsPage() {
         kind: "catalog",
         connector,
         category: connector.category,
+        popularityRank: connector.popularityRank,
         label: connector.label,
         connected: connector.connected,
       };
     },
   );
-  if (filteredSshSummary.state === "hasData" && filteredSshSummary.data) {
+  const visibleSsh = sshSummaryData(filteredSshSummary);
+  if (visibleSsh) {
     presentationItems.push({
       kind: "ssh",
       category: REMOTE_ACCESS_CATEGORY,
       label: t(($) => {
         return $.ssh.label;
       }),
-      connected: filteredSshSummary.data.configuredCount > 0,
-      configuredCount: filteredSshSummary.data.configuredCount,
+      connected: visibleSsh.configuredCount > 0,
+      configuredCount: visibleSsh.configuredCount,
     });
   }
   const remoteAccessLabel = t(($) => {
@@ -1456,21 +1507,24 @@ export function ConnectorsPage() {
     categoryFilter,
     connectionFilter,
     ready: shelfEnabled && filteredCatalogItemsLoadable.state === "hasData",
+    sshAvailable: Boolean(sshSummaryData(sshSummary)),
+    remoteAccessLabel,
   });
 
+  const renderPresentationCard = (item: ConnectorPresentation) => {
+    return item.kind === "ssh" ? (
+      <SshConnectorCard key="ssh" configuredCount={item.configuredCount} />
+    ) : (
+      renderCard(item.connector)
+    );
+  };
   const builtinList = renderBuiltinList({
     loadingState: filteredCatalogItemsLoadable.state,
     grouped,
     filteredCount:
       presentationItems.length +
       (filteredSshSummary.state === "loading" ? 1 : 0),
-    renderCard: (item) => {
-      return item.kind === "ssh" ? (
-        <SshConnectorCard key="ssh" configuredCount={item.configuredCount} />
-      ) : (
-        renderCard(item.connector)
-      );
-    },
+    renderCard: renderPresentationCard,
     search,
     connectionFilter,
   });
@@ -1557,7 +1611,14 @@ export function ConnectorsPage() {
               </>
             )}
             {(shelfEnabled || activeTab === "builtin") && (
-              <SshDirectoryLoadError />
+              <>
+                <SshDirectoryLoadError />
+                <SshShelfCategory
+                  enabled={browse.showShelves}
+                  groups={grouped}
+                  renderCard={renderPresentationCard}
+                />
+              </>
             )}
           </div>
         </div>

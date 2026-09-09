@@ -46,7 +46,7 @@ const base: SshConnectionResponse = Object.freeze({
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
 
-test("A notification or reconnect refreshes hosts without clearing an open credential form", async () => {
+test("Live notifications refresh hosts across reconnect without clearing an open credential form", async () => {
   let host = base;
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: [host] });
@@ -74,7 +74,13 @@ test("A notification or reconnect refreshes hosts without clearing an open crede
   expect(dialog).toBeInTheDocument();
   expect(queryAction("button", "Refresh")).toBeNull();
   host = { ...host, displayName: "Changed while offline" };
-  context.mocks.ably.triggerReconnect();
+  await act(async () => {
+    context.mocks.ably.triggerReconnect();
+    await Promise.resolve();
+  });
+  expect(screen.getByText("Changed remotely")).toBeInTheDocument();
+  expect(screen.queryByText("Changed while offline")).toBeNull();
+  context.mocks.ably.trigger("ssh:changed", { orgId });
   await screen.findByText("Changed while offline");
   expect(key).toHaveValue("unsaved-key");
 });

@@ -263,7 +263,6 @@ function SshDialog() {
     >
       <DialogContent
         key={`${dialog.identity}:${dialog.kind}:${dialog.connection?.id ?? "new"}`}
-        className="max-h-[90vh] overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
