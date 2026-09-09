@@ -4,12 +4,10 @@ import { mockedClerk } from "../../__tests__/mock-auth.ts";
 import { createDeferredPromise } from "../../signals/utils.ts";
 
 interface ClerkResourceOptions {
-  readonly domain?: string;
   readonly publishableKey: string;
 }
 
 interface ClerkResourceRequest {
-  readonly domain: string | undefined;
   readonly publishableKey: string;
 }
 
@@ -81,17 +79,11 @@ export async function loadClerkJSScript(
     throw new Error("Clerk resource behavior was not configured");
   }
   behavior.requests.push({
-    domain: options.domain,
     publishableKey: options.publishableKey,
   });
   await behavior.gate;
   if (behavior.failure) {
     throw behavior.failure;
-  }
-  if (options.domain) {
-    mockedClerk.initialize(options.publishableKey, { domain: options.domain });
-  } else {
-    mockedClerk.initialize(options.publishableKey);
   }
   Reflect.set(globalThis, "Clerk", mockedClerk);
   return null;

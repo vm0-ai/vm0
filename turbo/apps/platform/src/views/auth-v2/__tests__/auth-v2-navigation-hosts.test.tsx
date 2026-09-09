@@ -213,7 +213,6 @@ test("Preview authentication stays in the preview environment", async () => {
   const signInUrl = new URL(location.href);
   expect(signInUrl.origin).toBe("https://pr-18532-app.omby.ai:8443");
   expect(signInUrl.pathname).toBe("/sign-in");
-  expect(signInUrl.searchParams.has("domain")).toBeFalsy();
   expect(clerk.loads).toContainEqual({
     afterSignOutUrl: "https://pr-18532-app.omby.ai:8443/sign-in",
     signInUrl: "https://pr-18532-app.omby.ai:8443/sign-in",
@@ -234,7 +233,6 @@ test("An unregistered Okou sibling authenticates against itself", async () => {
     expect(location.origin).toBe("https://console.okou.ai");
     expect(location.pathname).toBe("/sign-in");
   });
-  expect(new URL(location.href).searchParams.has("domain")).toBeFalsy();
   expect(clerk.loads).toContainEqual({
     afterSignOutUrl: "https://console.okou.ai/sign-in",
     signInUrl: "https://console.okou.ai/sign-in",

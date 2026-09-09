@@ -717,7 +717,6 @@ function clearMockedAuth() {
   mockedClerk.redirectToSignIn.mockImplementation(defaultRedirectToSignInImpl);
   mockedClerk.redirectToSignUp.mockReset();
   mockedClerk.redirectToSignUp.mockImplementation(defaultRedirectToSignUpImpl);
-  mockedClerk.initialize.mockReset();
 }
 
 export function clearMockedAuthOnAbort(signal: AbortSignal): void {
@@ -1185,11 +1184,6 @@ async function defaultSetActiveImpl(
   }
 }
 
-const initialize =
-  vi.fn<
-    (publishableKey: string, options?: { readonly domain?: string }) => void
-  >();
-
 type MockedCreateOrganization = (
   params: CreateOrganizationParams,
 ) => Promise<{ readonly id: string }>;
@@ -1200,7 +1194,6 @@ export const mockedClerk = {
   userCreateBackupCode,
   userVerifyTOTP,
   userCreatePhoneNumber,
-  initialize,
   get loaded() {
     return internalMockedClerkLoaded;
   },

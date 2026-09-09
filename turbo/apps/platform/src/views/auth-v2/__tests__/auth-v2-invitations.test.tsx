@@ -186,11 +186,11 @@ test("Invitation exchange preserves the return URL in Clerk's auth fragment", as
     context,
     host: "app.okou.ai",
     auth: null,
-    path: `/sign-in?__clerk_status=sign_in&__clerk_ticket=${ticket}#/?redirect_url=${encodeURIComponent("https://app.okou.ai/agents?__clerk_synced=false")}`,
+    path: `/sign-in?__clerk_status=sign_in&__clerk_ticket=${ticket}#/?redirect_url=${encodeURIComponent("https://app.okou.ai/agents?source=invitation")}`,
   });
   await screen.findByRole("heading", { name: "Sign-in complete" });
   expect(location.origin).toBe("https://app.okou.ai");
   expect(location.pathname).toBe("/agents");
-  expect(location.search).toBe("?__clerk_synced=false");
+  expect(location.search).toBe("?source=invitation");
   expect(location.href).not.toContain(ticket);
 });
