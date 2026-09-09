@@ -1328,7 +1328,7 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
-      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF status, member_invitation_allowed ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
     schemaName: "public",
     tableName: "org_plan_entitlements",
     triggerName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
@@ -1479,7 +1479,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "b56c623aa66a35e3426be67d4cffbe4f",
+    bodyHash: "c3d7d4a52f4ef3f9fd6250cc8a5460fc",
     functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
     kind: "f",

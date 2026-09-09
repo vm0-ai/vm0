@@ -5559,12 +5559,12 @@
           },
           "roleLabel": "Rolle",
           "send": "Einladung senden",
-          "title": "Mitglied einladen",
-          "upgrade": {
-            "action": "Auf Pro upgraden",
-            "description": "Mitgliedereinladungen sind im Pro-Tarif verfügbar. Führen Sie für diesen Arbeitsbereich ein Upgrade durch, um Personen einzuladen und ihre Rollen zu verwalten.",
-            "title": "Upgrade zum Einladen von Mitgliedern"
-          }
+          "suspended": {
+            "action": "Tarife ansehen",
+            "description": "Reaktivieren Sie den Tarif Ihres Arbeitsbereichs, um Mitglieder einzuladen.",
+            "title": "Zum Einladen von Mitgliedern reaktivieren"
+          },
+          "title": "Mitglied einladen"
         },
         "joined": "Beigetreten",
         "joinRequests": "Beitrittsanfragen",

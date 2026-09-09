@@ -359,12 +359,12 @@ type InviteDialogMode =
   | "loading"
   | "packages"
   | "setup"
-  | "upgrade";
+  | "suspended";
 
 function resolveInviteDialogMode(args: {
   readonly capabilities:
     | {
-        readonly memberInvitationAllowed: boolean;
+        readonly status: "active" | "suspended";
       }
     | undefined;
   readonly catalogLoading: boolean;
@@ -375,8 +375,8 @@ function resolveInviteDialogMode(args: {
   if (!args.capabilities) {
     return "loading";
   }
-  if (!args.capabilities.memberInvitationAllowed) {
-    return "upgrade";
+  if (args.capabilities.status === "suspended") {
+    return "suspended";
   }
   if (args.catalogLoading) {
     return "loading";
@@ -520,19 +520,19 @@ function InviteDialogContent({
   readonly usagePacks: readonly MemberUsagePackOption[] | null;
 }) {
   const { t } = useTranslation();
-  if (mode === "upgrade") {
+  if (mode === "suspended") {
     return (
       <>
         <DialogHeader>
           <DialogTitle>
             {t(($) => {
-              return $.settings.workspace.members.invite.upgrade.title;
+              return $.settings.workspace.members.invite.suspended.title;
             })}
           </DialogTitle>
         </DialogHeader>
         <DialogDescription className="py-2 leading-6">
           {t(($) => {
-            return $.settings.workspace.members.invite.upgrade.description;
+            return $.settings.workspace.members.invite.suspended.description;
           })}
         </DialogDescription>
       </>
@@ -592,9 +592,9 @@ function InvitePrimaryActionLabel({
   readonly usagePackUsd: MemberUsageSelection;
 }) {
   const { t } = useTranslation();
-  if (mode === "upgrade") {
+  if (mode === "suspended") {
     return t(($) => {
-      return $.settings.workspace.members.invite.upgrade.action;
+      return $.settings.workspace.members.invite.suspended.action;
     });
   }
   if (mode === "loading") {
@@ -729,7 +729,7 @@ function InviteDialog() {
   };
 
   const handlePrimary = () => {
-    if (mode === "setup" || mode === "upgrade") {
+    if (mode === "setup" || mode === "suspended") {
       openPackageConfiguration();
       return;
     }

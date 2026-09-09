@@ -8,10 +8,10 @@ import {
 } from "./billing.ts";
 
 export interface OrgPlanCapabilities {
+  readonly status: "active" | "suspended";
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
   readonly showUsagePack: boolean;
-  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -25,7 +25,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   free: {
     canBuyConcurrency: false,
     canBuyCredits: true,
-    memberInvitationAllowed: false,
+    status: "active",
     autoRechargeAllowed: false,
     supportByok: true,
     restrictedVm0Models: false,
@@ -35,7 +35,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   "limited-free-1": {
     canBuyConcurrency: false,
     canBuyCredits: false,
-    memberInvitationAllowed: false,
+    status: "active",
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
@@ -45,7 +45,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   "pro-suspend": {
     canBuyConcurrency: false,
     canBuyCredits: false,
-    memberInvitationAllowed: false,
+    status: "suspended",
     autoRechargeAllowed: false,
     // Preserve the model picker behavior of browsers talking to an older API.
     // New APIs always return these two capabilities explicitly.
@@ -57,7 +57,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   pro: {
     canBuyConcurrency: false,
     canBuyCredits: true,
-    memberInvitationAllowed: true,
+    status: "active",
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -67,7 +67,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   team: {
     canBuyConcurrency: true,
     canBuyCredits: true,
-    memberInvitationAllowed: true,
+    status: "active",
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -77,7 +77,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   custom: {
     canBuyConcurrency: true,
     canBuyCredits: true,
-    memberInvitationAllowed: true,
+    status: "active",
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -94,8 +94,7 @@ export function orgPlanCapabilitiesFromBilling(
     canBuyConcurrency: billing.canBuyConcurrency ?? fallback.canBuyConcurrency,
     canBuyCredits: billing.canBuyCredits ?? fallback.canBuyCredits,
     showUsagePack: billing.showUsagePack,
-    memberInvitationAllowed:
-      billing.memberInvitationAllowed ?? fallback.memberInvitationAllowed,
+    status: billing.status ?? fallback.status,
     autoRechargeAllowed:
       billing.autoRechargeAllowed ?? fallback.autoRechargeAllowed,
     supportByok: billing.supportByok ?? fallback.supportByok,

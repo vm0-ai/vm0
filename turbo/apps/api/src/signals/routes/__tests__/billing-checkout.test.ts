@@ -11262,7 +11262,7 @@ describe("usage pack allocation management", () => {
       await seedOrgMetadata({ orgId: fixture.orgId, tier, credits: 0 });
       authenticateOrg(fixture);
       const billing = await readBillingStatus(fixture);
-      expect(billing.memberInvitationAllowed).toBeTruthy();
+      expect(billing.status).toBe("active");
       expect(billing.showUsagePack).toBeFalsy();
       const invited = await accept(
         setupApp({ context, routes: orgInviteRoutes })(
@@ -11432,7 +11432,7 @@ describe("usage pack allocation management", () => {
       });
       await expect(readBillingStatus(fixture)).resolves.toMatchObject({
         tier,
-        memberInvitationAllowed: true,
+        status: "active",
         showUsagePack: true,
       });
       const management = await accept(
@@ -12884,9 +12884,30 @@ describe("usage pack allocation management", () => {
         [403],
       );
       expect(blocked.body.error).toStrictEqual({
-        message: "Upgrade to Pro to invite members",
+        message: "Reactivate your workspace plan to invite members",
         code: "FORBIDDEN",
       });
+      const preview = await accept(
+        client.previewPurchase({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            email: `${tier}@example.test`,
+            role: "member",
+            usagePackUsd: 20,
+          },
+        }),
+        [403],
+      );
+      const confirm = await accept(
+        client.confirmPurchase({
+          headers: { authorization: "Bearer clerk-session" },
+          params: { purchaseId: randomUUID() },
+          body: {},
+        }),
+        [403],
+      );
+      expect(preview.body.error).toStrictEqual(blocked.body.error);
+      expect(confirm.body.error).toStrictEqual(blocked.body.error);
     }
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,

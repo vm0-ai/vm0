@@ -80,6 +80,8 @@ const usageAllowanceSchema = z.object({
 
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
+  // Existing entitlement state; optional while older API targets can serve.
+  status: z.enum(["active", "suspended"]).optional(),
   canBuyConcurrency: z.boolean().optional(),
   // The current API omits the amount when the configured Stripe Price is
   // unavailable.
@@ -90,6 +92,8 @@ const billingStatusResponseSchema = z.object({
   // Current APIs omit it. Remove after the API rollback gate in #32575.
   memberInviteUsagePackRequired: z.boolean().optional(),
   showUsagePack: z.boolean(),
+  // Outgoing Apps still consume this derived status alias. Current Apps ignore
+  // it; there is no independent invitation capability. Cleanup: #32575.
   memberInvitationAllowed: z.boolean().optional(),
   autoRechargeAllowed: z.boolean().optional(),
   supportByok: z.boolean().optional(),

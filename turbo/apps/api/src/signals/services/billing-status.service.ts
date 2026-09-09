@@ -131,10 +131,12 @@ interface BillingOrgRow {
 
 interface BillingStatusResponse {
   tier: string;
+  status: OrgPlanCapabilities["status"];
   canBuyConcurrency: boolean;
   concurrencyPurchaseReviewAvailable: boolean;
   canBuyCredits: boolean;
   showUsagePack: boolean;
+  // Wire compatibility for outgoing Apps only; derived from status (#32575).
   memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
@@ -581,7 +583,7 @@ function billingStatusResponse(args: {
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
   showUsagePack: boolean;
-  memberInvitationAllowed: boolean;
+  status: OrgPlanCapabilities["status"];
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -612,7 +614,8 @@ function billingStatusResponse(args: {
     concurrencyPurchaseReviewAvailable: true,
     canBuyCredits: args.canBuyCredits,
     showUsagePack: args.showUsagePack,
-    memberInvitationAllowed: args.memberInvitationAllowed,
+    status: args.status,
+    memberInvitationAllowed: args.status === "active",
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
@@ -675,10 +678,10 @@ function billingStatusResponse(args: {
   };
 }
 
-function memberInvitationAllowed(
+function billingPlanStatus(
   capabilities: OrgPlanCapabilities | null,
-): boolean {
-  return capabilities?.memberInvitationAllowed ?? false;
+): OrgPlanCapabilities["status"] {
+  return capabilities?.status ?? "suspended";
 }
 
 export function orgBillingStatus(
@@ -760,7 +763,7 @@ export function orgBillingStatus(
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
       showUsagePack: capabilities?.showUsagePack === true,
-      memberInvitationAllowed: memberInvitationAllowed(capabilities),
+      status: billingPlanStatus(capabilities),
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,

@@ -232,16 +232,14 @@ function mockMemberInviteEntitlement(
   showUsagePack?: boolean,
   invitation?: {
     readonly tier: string;
-    readonly allowed: boolean;
+    readonly status?: "active" | "suspended";
   },
   overrides: Partial<BillingStatusResponse> = {},
 ): void {
   const response: BillingStatusResponse = {
     tier: invitation?.tier ?? "pro",
     ...(showUsagePack === undefined ? {} : { showUsagePack }),
-    ...(invitation === undefined
-      ? {}
-      : { memberInvitationAllowed: invitation.allowed }),
+    ...(invitation === undefined ? {} : { status: invitation.status }),
     credits: 0,
     onboardingPaymentPending: false,
     subscriptionStatus: "active",
@@ -503,10 +501,11 @@ test.each(["free", "limited-free-1", "pro", "team"])(
     mockMembersStory();
     mockMemberInviteEntitlement(
       false,
-      { tier, allowed: true },
+      { tier, status: "active" },
       {
         hasSubscription: tier === "pro" || tier === "team",
         memberInviteUsagePackRequired: true,
+        memberInvitationAllowed: false,
       },
     );
 
@@ -556,7 +555,7 @@ test.each([
     mockMembersStory();
     mockMemberInviteEntitlement(
       true,
-      { tier, allowed: true },
+      { tier, status: "active" },
       { hasSubscription },
     );
     if (hasSubscription) {
@@ -622,7 +621,7 @@ test.each(["pro", "team"] as const)(
     mockMembersStory();
     mockMemberInviteEntitlement(
       true,
-      { tier, allowed: true },
+      { tier, status: "active" },
       {
         hasSubscription: false,
         subscriptionStatus: "atom_grant",
@@ -666,7 +665,7 @@ test.each([
     const story = mockMembersStory();
     mockMemberInviteEntitlement(
       hasVisibilityCapability ? true : undefined,
-      { tier, allowed: true },
+      { tier, status: "active" },
       { memberInviteUsagePackRequired: !supportsFreeMembers },
     );
     mockUsagePackManagement({ tier });
@@ -770,12 +769,12 @@ test.each([
   },
 );
 
-test("Preserve invitation restrictions reported by an older API", async () => {
+test.each([
+  { tier: "pro", status: "suspended" },
+  { tier: "pro-suspend" },
+] as const)("Block invitations on suspended plans ($tier)", async (plan) => {
   mockMembersStory();
-  mockMemberInviteEntitlement(false, {
-    tier: "limited-free-1",
-    allowed: false,
-  });
+  mockMemberInviteEntitlement(false, plan, { memberInvitationAllowed: true });
   mockUsagePackCatalog();
 
   await setupPage({
@@ -787,27 +786,27 @@ test("Preserve invitation restrictions reported by an older API", async () => {
   });
   click(buttonByText("Add member"));
   const inviteDialog = await screen.findByRole("dialog", {
-    name: "Upgrade to invite members",
+    name: "Reactivate to invite members",
   });
   expect(
     within(inviteDialog).getByText(
-      /Member invitations are available on the Pro plan/u,
+      /Reactivate your workspace plan to invite members/u,
     ),
   ).toBeVisible();
   expect(
     within(inviteDialog).queryByPlaceholderText("email@example.com"),
   ).not.toBeInTheDocument();
   expect(within(inviteDialog).queryByText("Role")).not.toBeInTheDocument();
-  const upgrade = buttonByText("Upgrade to Pro", inviteDialog);
-  expect(upgrade).toBeEnabled();
-  click(upgrade);
+  const viewPlans = buttonByText("View plans", inviteDialog);
+  expect(viewPlans).toBeEnabled();
+  click(viewPlans);
 
   await expect(
     screen.findByRole("heading", { name: "Choose a plan" }),
   ).resolves.toBeInTheDocument();
-  await expect(
-    screen.findByRole("article", { name: "Pro plan" }),
-  ).resolves.toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "Reactivate to invite members" }),
+  ).not.toBeInTheDocument();
 });
 
 test("Accept and reject workspace membership requests", async () => {

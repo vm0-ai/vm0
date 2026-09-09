@@ -23,7 +23,6 @@ interface OrgPlanEntitlementFixtureState {
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
   readonly showUsagePack: boolean;
-  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -47,7 +46,6 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly canBuyConcurrency?: boolean;
   readonly canBuyCredits?: boolean;
   readonly showUsagePack?: boolean;
-  readonly memberInvitationAllowed?: boolean;
   readonly autoRechargeAllowed?: boolean;
   readonly supportByok?: boolean;
   readonly restrictedVm0Models?: boolean;
@@ -64,7 +62,6 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     canBuyConcurrency: values.canBuyConcurrency,
     canBuyCredits: values.canBuyCredits,
     showUsagePack: values.showUsagePack,
-    memberInvitationAllowed: values.memberInvitationAllowed,
     autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
     restrictedBuiltInModels: values.restrictedVm0Models,
@@ -99,9 +96,6 @@ export async function upsertOrgPlanEntitlementFixture(values: {
           : {
               showUsagePack: row.showUsagePack,
             }),
-        ...(row.memberInvitationAllowed === undefined
-          ? {}
-          : { memberInvitationAllowed: row.memberInvitationAllowed }),
         ...(row.autoRechargeAllowed === undefined
           ? {}
           : { autoRechargeAllowed: row.autoRechargeAllowed }),
@@ -168,7 +162,6 @@ export async function readOrgPlanEntitlementFixture(
       canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
       canBuyCredits: orgPlanEntitlements.canBuyCredits,
       showUsagePack: orgPlanEntitlements.showUsagePack,
-      memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
       supportByok: orgPlanEntitlements.supportByok,
       restrictedBuiltInModels: orgPlanEntitlements.restrictedBuiltInModels,

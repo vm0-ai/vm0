@@ -12,7 +12,6 @@ export interface OrgPlanCapabilities {
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
   readonly showUsagePack: boolean;
-  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -29,7 +28,6 @@ const CAPABILITY_SELECTION = {
   canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
   canBuyCredits: orgPlanEntitlements.canBuyCredits,
   showUsagePack: orgPlanEntitlements.showUsagePack,
-  memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
   autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
   supportByok: orgPlanEntitlements.supportByok,
   restrictedBuiltInModels: orgPlanEntitlements.restrictedBuiltInModels,

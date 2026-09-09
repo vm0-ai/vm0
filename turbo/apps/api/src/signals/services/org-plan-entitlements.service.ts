@@ -109,7 +109,6 @@ export async function upsertOrgPlanEntitlement(
     // Retire this write before dropping the legacy column; rollout gates: #32575.
     legacyMemberInviteUsagePackRequired: showUsagePack,
     showUsagePack,
-    memberInvitationAllowed: limits.memberInvitationAllowed,
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
     restrictedBuiltInModels: limits.restrictedBuiltInModels,
@@ -142,7 +141,6 @@ export async function upsertOrgPlanEntitlement(
         canBuyCredits: values.canBuyCredits,
         legacyMemberInviteUsagePackRequired: showUsagePack,
         showUsagePack,
-        memberInvitationAllowed: limits.memberInvitationAllowed,
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,
         restrictedBuiltInModels: values.restrictedBuiltInModels,

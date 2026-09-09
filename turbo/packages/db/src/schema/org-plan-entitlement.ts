@@ -32,9 +32,6 @@ function orgPlanEntitlementColumnsBeforeModelRestriction() {
       .notNull()
       .default(false),
     showUsagePack: boolean("show_usage_pack").notNull().default(false),
-    memberInvitationAllowed: boolean("member_invitation_allowed")
-      .notNull()
-      .default(false),
     autoRechargeAllowed: boolean("auto_recharge_allowed")
       .notNull()
       .default(false),
@@ -103,6 +100,11 @@ export const orgPlanEntitlements = pgTable(
     ...orgPlanEntitlementColumnsBeforeModelRestriction(),
     ...orgPlanEntitlementColumnsAfterModelRestriction(),
     restrictedBuiltInModels: canonicalModelRestrictionColumn(),
+    // Physical compatibility for outgoing API statements only. Current readers
+    // use status and canonical inserts omit this column. Cleanup: #32575.
+    legacyMemberInvitationAllowed: boolean("member_invitation_allowed")
+      .notNull()
+      .default(false),
   },
   (table) => {
     return [
