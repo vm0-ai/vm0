@@ -3,10 +3,10 @@ import { cva } from "class-variance-authority";
 
 import { cn } from "../../lib/utils";
 import {
+  ButtonBase,
   buttonBaseClassName,
-  ButtonTooltip,
   type ButtonTooltipOptions,
-} from "./button-shared";
+} from "./button-base";
 
 const toggleButtonVariants = cva(
   [
@@ -44,32 +44,15 @@ export function ToggleButton({
   selected,
   layout = "inline",
   className,
-  children,
-  showTooltip = false,
   ...props
 }: ToggleButtonProps) {
-  const { title: _title, ...propsWithoutTitle } = props;
-  const buttonProps = showTooltip ? propsWithoutTitle : props;
-  const button = (
-    <button
+  return (
+    <ButtonBase
       type="button"
-      {...buttonProps}
+      {...props}
       aria-pressed={selected}
       className={cn(toggleButtonVariants({ selected, layout }), className)}
-    >
-      {children}
-    </button>
-  );
-
-  if (!showTooltip) return button;
-
-  return (
-    <ButtonTooltip
-      disabled={buttonProps.disabled}
-      label={buttonProps["aria-label"]}
-      fullWidth={layout === "tile"}
-    >
-      {button}
-    </ButtonTooltip>
+      tooltipFullWidth={layout === "tile"}
+    />
   );
 }

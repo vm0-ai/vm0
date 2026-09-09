@@ -55,9 +55,11 @@ Migrate consumers individually and retain the legacy definition until its last
 consumer is removed.
 
 `Button` represents an action; `ToggleButton` represents a persistent pressed
-state. They share base typography, radius, keyboard focus and tooltip composition
-through `button-shared.tsx`. Their dimensions, icon sizing, transitions and
-disabled appearance remain owned by each control. `ToggleButton` keeps the
+state. Both render through the internal `ButtonBase` in `button-base.tsx`, which
+owns the Base UI button primitive, ref forwarding, render/asChild composition,
+native-title handling and optional tooltip. Their typography, radius and focus
+styles also share one base definition. Dimensions, icon sizing, transitions and
+disabled appearance remain owned by each styled control. `ToggleButton` keeps the
 native button and `onClick` contract; it does not manage state or change group
 keyboard behavior. Single-value settings keep a selection when the active
 choice is activated again. Use the existing `SegmentControl` for a new radio

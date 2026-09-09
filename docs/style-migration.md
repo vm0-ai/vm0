@@ -225,8 +225,9 @@ remain in force.
 The three migrated consumers (Appearance, Send mode and Agent profile Tone)
 share a persistent selected-state contract through `ToggleButton`, retaining
 its native element, controlled `selected` prop, inline/tile layouts and existing
-activation and focus behavior. Common button styles and optional tooltip
-composition are shared with `Button`; tooltips remain off by default and require an accessible label when enabled. Group selection
+activation and focus behavior. Both `Button` and `ToggleButton` render through
+the internal `ButtonBase`, sharing the Base UI primitive, refs, native-title
+handling and optional tooltip. Tooltips remain off by default and require an accessible label when enabled. Group selection
 and arrow-key behavior remain owned by the existing callers.
 
 Before implementation, freeze the 33 Tone and 21 preference states against
@@ -245,13 +246,15 @@ also freezes that Agent's empty user-connectors and permission-grants GET
 responses, so preview database resets cannot invalidate ancillary reads.
 Geometry assertions run against the same settled paint that is archived.
 
-The [AFTER archive](https://a.okou.io/2ylnq5pvv1.zip) and
+The [initial AFTER archive](https://a.okou.io/2ylnq5pvv1.zip) and
 [quick comparison](https://a.okou.io/eirvvzcyr7.png) record all 54 states with
 zero changed pixels and identical control observations on App/API build
 `7da162302e3de54931c8c9c66e49f4c1d3211960`, from source
 `92f0e94405a15b7c5f94fdd05660ab698a22f7af`. Real API Save, reload, Discard
 and restoration of the original tone passed. The 15 shared UI tests, 27 page
 tests, relevant types/lint/Knip checks and all source-head CI gates passed.
+These results predate the shared `ButtonBase` rendering follow-up; that change
+requires a new replay against the same frozen BEFORE evidence.
 The legacy inventory remains 94 tokens, 534 declarations, 309 production uses
 and two injections.
 

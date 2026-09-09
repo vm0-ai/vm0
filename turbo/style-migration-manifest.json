@@ -240,7 +240,7 @@
         "tone-dark",
         "tone-mobile"
       ],
-      "status": "verified",
+      "status": "implemented",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay-with-calibration",
