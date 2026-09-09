@@ -18,7 +18,6 @@ function hasOpenDialog(doc: Document): boolean {
 const attachMainThreadFocusFallback$ = command(
   (_, el: HTMLElement, signal: AbortSignal) => {
     const doc = el.ownerDocument;
-    const win = doc.defaultView;
 
     const focusMainThreadIfDocumentFocused = (
       target: EventTarget | null = doc.activeElement,
@@ -43,13 +42,6 @@ const attachMainThreadFocusFallback$ = command(
       "focusin",
       (event) => {
         focusMainThreadIfDocumentFocused(event.target);
-      },
-      { signal },
-    );
-    win?.addEventListener(
-      "focus",
-      () => {
-        focusMainThreadIfDocumentFocused();
       },
       { signal },
     );

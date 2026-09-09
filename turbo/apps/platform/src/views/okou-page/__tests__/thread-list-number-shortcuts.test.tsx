@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -162,7 +162,7 @@ test.each([
   },
 );
 
-test("Cancel a short hold and clear hints on release and blur", async () => {
+test("Cancel a short hold and clear hints on release", async () => {
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -192,14 +192,6 @@ test("Cancel a short hold and clear hints on release and blur", async () => {
     expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
   });
   expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
-  fireEvent.blur(window);
-  await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual([]);
-  });
-  await user.keyboard("{/Control}{Control>}");
-  await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
-  });
   await user.keyboard("{/Control}");
   await waitFor(() => {
     expect(hintKeys(list)).toStrictEqual([]);

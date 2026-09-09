@@ -12,7 +12,7 @@ import { clerk$, resolveAppAuthUrl } from "../auth.ts";
 import { updatePage$ } from "../react-router.ts";
 import { replaceState } from "../location.ts";
 import { searchParams$ } from "../route.ts";
-import { resetSignal, setLoop, settle } from "../utils.ts";
+import { setLoop, settle } from "../utils.ts";
 import {
   callbackScheme,
   completeDesktopSession$,
@@ -453,21 +453,12 @@ function createDesktopAuthSignals(
 export type DesktopAuthSignals = ReturnType<typeof createDesktopAuthSignals>;
 
 export function setupDesktopAuthPage(mode: DesktopAuthRoute) {
-  const resetPageSignal$ = resetSignal();
   return command(async ({ get, set }, signal: AbortSignal) => {
     const params = new URLSearchParams(get(searchParams$));
-    const lifetime = set(resetPageSignal$, signal);
-    window.addEventListener(
-      "pagehide",
-      () => {
-        set(resetPageSignal$);
-      },
-      { once: true, signal: lifetime },
-    );
-    const signals = createDesktopAuthSignals(mode, params, lifetime);
+    const signals = createDesktopAuthSignals(mode, params, signal);
     set(updatePage$, createElement(DesktopAuthPage, { signals, mode }));
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
-    await set(signals.initialize$, lifetime);
+    await set(signals.initialize$, signal);
   });
 }

@@ -76,7 +76,6 @@ export const setupKeyboardShortcutHints$ = command(
       capture: true,
       signal,
     });
-    window.addEventListener("blur", clearModifiers, { signal });
     signal.addEventListener("abort", clearModifiers, { once: true });
   },
 );

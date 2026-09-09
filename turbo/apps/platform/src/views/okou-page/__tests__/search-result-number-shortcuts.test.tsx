@@ -414,7 +414,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
 });
 
-test("Search shortcuts preserve typing and reset hints when focus is lost or the dialog closes", async () => {
+test("Search shortcuts preserve typing and reset hints when the modifier is released or the dialog closes", async () => {
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -464,7 +464,7 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
   });
   expect(dialog).toBeInTheDocument();
   expect(search).toHaveValue("");
-  fireEvent.blur(window);
+  fireEvent.keyUp(search, { key: "Control", ctrlKey: false });
   await waitFor(() => {
     expect(numberedHints(dialog)).toStrictEqual([]);
   });
