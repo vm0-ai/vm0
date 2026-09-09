@@ -11,6 +11,37 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.873.0](https://github.com/vm0-ai/vm0/compare/app-v0.872.0...app-v0.873.0) (2026-09-09)
+
+
+### Features
+
+* send presentation slide counts in additional info ([#32887](https://github.com/vm0-ai/vm0/issues/32887)) ([6a0746b](https://github.com/vm0-ai/vm0/commit/6a0746bb167dfc693674cdc5eed8e850933e8812))
+
+
+### Bug Fixes
+
+* **app:** rename slides task chip to presentation ([#32905](https://github.com/vm0-ai/vm0/issues/32905)) ([eaf0fbf](https://github.com/vm0-ai/vm0/commit/eaf0fbfa49920d5eda5f9c86bb2c72c8f758b1a7))
+* **connectors:** verify browser oauth completion by attempt ([#32880](https://github.com/vm0-ai/vm0/issues/32880)) ([b328433](https://github.com/vm0-ai/vm0/commit/b328433c0c4c17f3bd7e0a4dee9f349e9d6d6b1a))
+* **platform:** add opt-in custom touch selection in chat ([#32045](https://github.com/vm0-ai/vm0/issues/32045)) ([4d4f6b7](https://github.com/vm0-ai/vm0/commit/4d4f6b78893a82caa720a150b5416eed105e709b))
+* **platform:** isolate markdown display parsing ([#32662](https://github.com/vm0-ai/vm0/issues/32662)) ([8383ab2](https://github.com/vm0-ai/vm0/commit/8383ab277064340fac9256f9bf3a691f01a56968))
+* **platform:** show minutes in chat run durations over an hour ([#32882](https://github.com/vm0-ai/vm0/issues/32882)) ([fd6bae7](https://github.com/vm0-ai/vm0/commit/fd6bae7e1d4b0ada9308bc051e71bff65b6772d3)), closes [#32881](https://github.com/vm0-ai/vm0/issues/32881)
+
+
+### Refactoring
+
+* **app:** replace legacy card styles with typed surfaces ([#32604](https://github.com/vm0-ai/vm0/issues/32604)) ([a4abff8](https://github.com/vm0-ai/vm0/commit/a4abff8ecd382a0051d5ccaace5de4d76ed899f9))
+* remove chat desktop selection feature switch ([#32894](https://github.com/vm0-ai/vm0/issues/32894)) ([2bd3fc5](https://github.com/vm0-ai/vm0/commit/2bd3fc51412b398b1214c31b4a45d190aa375ac3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.2
+    * @okouai/core bumped to 8.642.1
+    * @okouai/ui bumped to 1.6.8
+
 ## [0.872.0](https://github.com/vm0-ai/vm0/compare/app-v0.871.0...app-v0.872.0) (2026-09-09)
 
 
