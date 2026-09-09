@@ -15,10 +15,7 @@ import { tapError } from "../signals/utils.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "./resources.ts";
 
 type ClerkLocalization = typeof enUS;
-export type ClerkLocalizationCache = ReadonlyMap<
-  SupportedLocale,
-  ClerkLocalization
->;
+type ClerkLocalizationCache = ReadonlyMap<SupportedLocale, ClerkLocalization>;
 type NonDefaultLocale = Exclude<SupportedLocale, typeof DEFAULT_LOCALE>;
 
 const L = logger("ClerkLocalization");

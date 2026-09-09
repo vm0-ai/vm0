@@ -1,11 +1,24 @@
 // Mock for @clerk/react
 import {
+  createContext,
   createElement,
   Fragment,
   type ReactNode,
   useSyncExternalStore,
+  useContext,
 } from "react";
 import { vi } from "vitest";
+import type { BrowserClerk } from "@clerk/shared/types";
+
+const MockClerkContext = createContext<BrowserClerk | null>(null);
+
+export function useClerk(): BrowserClerk {
+  const clerk = useContext(MockClerkContext);
+  if (!clerk) {
+    throw new Error("Clerk hook requires its provider");
+  }
+  return clerk;
+}
 
 const CLERK_AUTH_COMPONENT_MOUNT_EVENT = "okou:test-clerk-auth-component-mount";
 const getClerkAuthComponentMounted = vi.fn<() => boolean>(() => {
@@ -38,21 +51,13 @@ function subscribeToClerkAuthComponent(listener: () => void): () => void {
 }
 
 interface ClerkProviderProps {
+  Clerk: BrowserClerk;
   afterSignOutUrl?: string;
   children: ReactNode;
   allowedRedirectOrigins?: readonly (string | RegExp)[];
   localization?: {
     signIn?: {
-      emailCode?: { subtitle?: string };
-      resetPassword?: { formButtonPrimary?: string };
       start?: { actionLink?: string; title?: string };
-    };
-    unstable__errors?: {
-      form_code_incorrect?: string;
-      form_password_incorrect?: string;
-      form_password_not_strong_enough?: string;
-      not_allowed_access?: string;
-      user_banned?: string;
     };
   };
   signInFallbackRedirectUrl?: string;
@@ -62,34 +67,22 @@ interface ClerkProviderProps {
 }
 
 export function ClerkProvider({
+  Clerk,
   afterSignOutUrl,
   children,
   localization,
   signInUrl,
   signUpUrl,
 }: ClerkProviderProps) {
-  const {
-    signIn: { emailCode = {}, resetPassword = {}, start = {} } = {},
-    unstable__errors: errors = {},
-  } = localization ?? {};
+  const { signIn: { start = {} } = {} } = localization ?? {};
   return createElement(
-    Fragment,
-    null,
+    MockClerkContext.Provider,
+    { value: Clerk },
     createElement("span", {
-      "data-clerk-sign-in-email-code-subtitle": emailCode.subtitle,
       "data-clerk-sign-in-start-action-link": start.actionLink,
-      "data-clerk-sign-in-start-title": start.title,
-      "data-clerk-access-not-allowed-error": errors.not_allowed_access,
-      "data-clerk-form-code-incorrect-error": errors.form_code_incorrect,
-      "data-clerk-form-password-incorrect-error":
-        errors.form_password_incorrect,
-      "data-clerk-form-password-not-strong-enough-error":
-        errors.form_password_not_strong_enough,
       "data-clerk-after-sign-out-url": afterSignOutUrl,
       "data-clerk-provider-sign-in-url": signInUrl,
       "data-clerk-provider-sign-up-url": signUpUrl,
-      "data-clerk-user-banned-error": errors.user_banned,
-      "data-clerk-reset-password-action": resetPassword.formButtonPrimary,
       "data-testid": "clerk-provider-config",
       hidden: true,
     }),

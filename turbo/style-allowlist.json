@@ -2,66 +2,6 @@
   "version": 1,
   "selectors": [
     {
-      "file": "apps/platform/src/views/auth-v1/semantic-adapter.css",
-      "atRules": ["@layer components"],
-      "selector": ".okou-clerk-root a",
-      "kind": "third-party-dom-adapter",
-      "owner": "frontend-platform",
-      "rationale": "Clerk-owned authentication markup maps filled controls and text links to distinct Okou design-system semantics. Classes are public appearance.elements slots; state attributes are covered by pinned-version browser tests.",
-      "upstream": "@clerk/ui@1.26.0 public authentication elements",
-      "removal": "Remove with the V1 Clerk integration or when supported element-specific options express these semantic distinctions without a generated-DOM adapter."
-    },
-    {
-      "file": "apps/platform/src/views/auth-v1/semantic-adapter.css",
-      "atRules": ["@layer components"],
-      "selector": ".okou-clerk-button:is([data-variant=\"solid\"],[data-variant=\"bordered\"])[data-color=\"primary\"]",
-      "kind": "third-party-dom-adapter",
-      "owner": "frontend-platform",
-      "rationale": "Clerk-owned authentication markup maps filled controls and text links to distinct Okou design-system semantics. Classes are public appearance.elements slots; state attributes are covered by pinned-version browser tests.",
-      "upstream": "@clerk/ui@1.26.0 public authentication elements",
-      "removal": "Remove with the V1 Clerk integration or when supported element-specific options express these semantic distinctions without a generated-DOM adapter."
-    },
-    {
-      "file": "apps/platform/src/views/auth-v1/semantic-adapter.css",
-      "atRules": ["@layer components"],
-      "selector": ".okou-clerk-footer-link",
-      "kind": "third-party-dom-adapter",
-      "owner": "frontend-platform",
-      "rationale": "Clerk-owned authentication markup maps filled controls and text links to distinct Okou design-system semantics. Classes are public appearance.elements slots; state attributes are covered by pinned-version browser tests.",
-      "upstream": "@clerk/ui@1.26.0 public authentication elements",
-      "removal": "Remove with the V1 Clerk integration or when supported element-specific options express these semantic distinctions without a generated-DOM adapter."
-    },
-    {
-      "file": "apps/platform/src/views/auth-v1/semantic-adapter.css",
-      "atRules": ["@layer components"],
-      "selector": ".cl-footerAction__signIn .okou-clerk-footer-link,.cl-footerAction__signUp .okou-clerk-footer-link",
-      "kind": "third-party-dom-adapter",
-      "owner": "frontend-platform",
-      "rationale": "Clerk-owned authentication markup maps filled controls and text links to distinct Okou design-system semantics. Classes are public appearance.elements slots; state attributes are covered by pinned-version browser tests.",
-      "upstream": "@clerk/ui@1.26.0 public authentication elements",
-      "removal": "Remove with the V1 Clerk integration or when supported element-specific options express these semantic distinctions without a generated-DOM adapter."
-    },
-    {
-      "file": "apps/platform/src/views/auth-v1/semantic-adapter.css",
-      "atRules": ["@layer components"],
-      "selector": ".okou-clerk-button[data-variant=\"outline\"],.cl-footerAction__usePasskey .okou-clerk-footer-link",
-      "kind": "third-party-dom-adapter",
-      "owner": "frontend-platform",
-      "rationale": "Clerk-owned authentication markup maps filled controls and text links to distinct Okou design-system semantics. Classes are public appearance.elements slots; state attributes are covered by pinned-version browser tests.",
-      "upstream": "@clerk/ui@1.26.0 public authentication elements",
-      "removal": "Remove with the V1 Clerk integration or when supported element-specific options express these semantic distinctions without a generated-DOM adapter."
-    },
-    {
-      "file": "apps/platform/src/views/auth-v1/semantic-adapter.css",
-      "atRules": ["@layer components"],
-      "selector": ".cl-footerAction__usePasskey .okou-clerk-footer-link",
-      "kind": "third-party-dom-adapter",
-      "owner": "frontend-platform",
-      "rationale": "Clerk-owned authentication markup maps filled controls and text links to distinct Okou design-system semantics. Classes are public appearance.elements slots; state attributes are covered by pinned-version browser tests.",
-      "upstream": "@clerk/ui@1.26.0 public authentication elements",
-      "removal": "Remove with the V1 Clerk integration or when supported element-specific options express these semantic distinctions without a generated-DOM adapter."
-    },
-    {
       "file": "apps/platform/src/views/css/index.css",
       "atRules": ["@layer base"],
       "selector": ".cl-drawerHeader",

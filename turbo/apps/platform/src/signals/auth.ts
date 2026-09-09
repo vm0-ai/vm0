@@ -311,12 +311,6 @@ const clerkRuntime$ = computed(async (get) => {
   );
 });
 
-/** Clerk core is available once its browser script has initialized. */
-export const clerkInstance$ = computed(async (get) => {
-  const runtime = await get(clerkRuntime$);
-  return runtime.clerk;
-});
-
 /** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async (get) => {
   const runtime = await get(clerkRuntime$);

@@ -91,25 +91,6 @@ function createClerkUiLoader(
   };
 }
 
-function patchSharedClerkInstance(clerk: PlatformClerk): void {
-  // @clerk/react subscribes in a passive effect without requesting the current
-  // value. Replaying status prevents a provider mounted after core bootstrap
-  // from remaining in its loading fallback.
-  const subscribeToStatus = clerk.on.bind(clerk);
-  clerk.on = (event, handler, options) => {
-    subscribeToStatus(event, handler, { ...options, notify: true });
-  };
-
-  // Signals and the route-scoped React provider share this browser instance.
-  // Keep all callers on the first initialization request.
-  const loadClerk = clerk.load.bind(clerk);
-  let loadPromise: Promise<void> | undefined;
-  clerk.load = (options) => {
-    loadPromise ??= loadClerk(options);
-    return loadPromise;
-  };
-}
-
 function matchesEarlyLoadOptions(
   early: EarlyClerkBootstrap["loadOptions"],
   current: ClerkRuntimeLoadOptions,
@@ -178,7 +159,6 @@ export async function startClerkBrowserRuntime(
     return earlyRuntime;
   }
 
-  patchSharedClerkInstance(clerk);
   // Clerk accepts the UI constructor as a promise, so core initialization does
   // not wait for a download that most routes never need.
   const clerkUI = createDeferredPromise<ClerkUIConstructor>(signal);

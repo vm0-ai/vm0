@@ -117,7 +117,7 @@ for (const theme of ["light", "dark"] as const) {
       { path: "/v1/sign-up", action: "Sign in", target: "/v1/sign-in" },
       { path: "/v1/sign-in", action: "Sign up", target: "/v1/sign-up" },
     ] as const) {
-      test(`${route.path} keeps its footer action on one line and keyboard reachable`, async ({
+      test(`${route.path} keeps its native footer action in the viewport and keyboard reachable`, async ({
         page,
       }) => {
         await openAuth(page, route.path, theme);
@@ -129,8 +129,6 @@ for (const theme of ["light", "dark"] as const) {
         for (const width of [320, 390]) {
           await page.setViewportSize({ width, height: 568 });
           await action.scrollIntoViewIfNeeded();
-          // Check rendered geometry, not the presence of a nowrap class.
-          await expect(action).toHaveCSS("height", "20px");
           const fits = await action.evaluate((element) => {
             const box = element.getBoundingClientRect();
             return (
@@ -274,20 +272,13 @@ for (const device of [
       await legalConsent.focus();
       await page.keyboard.press("Space");
       await expect(legalConsent).toBeChecked();
-      await expect(legalConsent).toHaveCSS(
-        "background-color",
-        "rgb(255, 165, 0)",
-      );
       await page.keyboard.press("Space");
       await expect(legalConsent).not.toBeChecked();
       const legalLinks = page.locator(".cl-formFieldCheckboxLabel a");
       await expect(legalLinks).toHaveCount(2);
       for (const link of await legalLinks.all()) {
-        await expect(link).toHaveCSS(
-          "color",
-          device.theme === "light" ? "rgb(136, 86, 0)" : "rgb(255, 165, 0)",
-        );
-        await expect(link).toHaveCSS("text-decoration-line", "underline");
+        await expect(link).toBeVisible();
+        await expect(link).toHaveAttribute("href", /^https:\/\//);
       }
       await show.focus();
       await page.keyboard.press("Enter");
@@ -303,7 +294,7 @@ for (const device of [
       await expectPasswordControlFits(password, show);
     });
 
-    test("hosted signup keeps long OTP errors clear of inputs and resend on retry", async ({
+    test("hosted signup keeps native OTP feedback clear of inputs and resend on retry", async ({
       page,
     }) => {
       await openAuth(page, "/v1/sign-up", device.theme);
@@ -314,10 +305,9 @@ for (const device of [
         .getByLabel("Password", { exact: true })
         .fill("A-Strong-Password-For-OTP-Layout!2026");
       await page.getByRole("checkbox").check();
-      await expectPrimary(
-        page,
+      await expect(
         page.getByRole("button", { exact: true, name: "Continue" }),
-      );
+      ).toBeEnabled();
       await page.getByRole("button", { exact: true, name: "Continue" }).click();
 
       const inputs = page.locator(".cl-otpCodeFieldInputs");
@@ -328,19 +318,15 @@ for (const device of [
         name: "Enter verification code",
       });
       await code.fill("1");
-      const activeSlot = page.locator(".cl-otpCodeFieldInput").nth(1);
-      await expect(activeSlot).toHaveCSS("border-color", "rgb(255, 165, 0)");
-      await expect(activeSlot).toHaveCSS("box-shadow", /3px/);
+      await expect(code).toBeFocused();
+      await expect(code).toHaveValue("1");
       await code.clear();
       await enterInvalidCode(page, "000000");
       await expect(error).not.toBeEmpty();
       await expectSeparated(inputs, error);
       await expectSeparated(error, resend);
       for (const slot of await page.locator(".cl-otpCodeFieldInput").all()) {
-        await expect(slot).toHaveCSS(
-          "border-color",
-          device.theme === "light" ? "rgb(188, 53, 0)" : "rgb(255, 144, 113)",
-        );
+        await expect(slot).toHaveAttribute("aria-invalid", "true");
       }
 
       await page.setViewportSize({ width: 375, height: 812 });
@@ -372,15 +358,8 @@ for (const device of [
           ".cl-footerAction__usePasskey .cl-footerActionLink",
         );
         if (await passkey.count()) {
-          await expect(passkey).toHaveCSS("height", "36px");
-          await expect(passkey).toHaveCSS("text-decoration-line", "none");
-          const target = await passkey.boundingBox();
-          const row = await page
-            .locator(".cl-footerAction__usePasskey")
-            .boundingBox();
-          if (!target || !row)
-            throw new Error("Expected the passkey action and row");
-          expect(Math.abs(target.width - row.width)).toBeLessThanOrEqual(1);
+          await expect(passkey).toBeVisible();
+          await expect(passkey).toBeEnabled();
         }
         await page.getByLabel("Email address", { exact: true }).fill(email);
         await page
@@ -393,29 +372,16 @@ for (const device of [
         const otherMethod = page.getByRole("link", {
           name: "Use another method",
         });
-        await expect(otherMethod).toHaveCSS("text-decoration-line", "none");
         await otherMethod.click();
         const emailMethod = page.getByRole("button", { name: /email code/i });
         await expect(emailMethod).toBeVisible();
-        await expect(
-          emailMethod.locator(".cl-alternativeMethodsBlockButtonText"),
-        ).toHaveCSS("text-align", "left");
-        await expect(
-          emailMethod.locator(".cl-alternativeMethodsBlockButtonArrow"),
-        ).toHaveCSS("opacity", "1");
-        await expect(
-          emailMethod.locator(".cl-alternativeMethodsBlockButtonArrow"),
-        ).toHaveCSS("transform", "none");
 
         await page.getByRole("link", { name: "Get help" }).click();
-        await expectPrimary(
-          page,
+        await expect(
           page.getByRole("button", { name: /email support/i }),
-        );
+        ).toBeEnabled();
         const back = page.getByRole("link", { exact: true, name: "Back" });
-        await expect(back).toHaveCSS("text-decoration-line", "none");
-        await back.hover();
-        await expect(back).toHaveCSS("text-decoration-line", "none");
+        await expect(back).toBeVisible();
         await back.click();
         await page.getByRole("link", { name: "Back", exact: true }).click();
         await expect(
@@ -426,8 +392,7 @@ for (const device of [
         const reset = page.getByRole("button", {
           name: /reset your password/i,
         });
-        await expectPrimary(page, reset);
-        await expect(reset).toHaveCSS("justify-content", "center");
+        await expect(reset).toBeEnabled();
         await reset.click();
         await enterInvalidCode(page, "000000");
         await expectSeparated(

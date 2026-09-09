@@ -1322,6 +1322,7 @@ export const mockedClerk = {
   }),
   load: mockedClerkLoad,
   on: defaultClerkStatusOn,
+  off: vi.fn<BrowserClerk["off"]>(),
   addListener: (
     cb: MockedClerkListener,
     _options?: MockedClerkListenerOptions,

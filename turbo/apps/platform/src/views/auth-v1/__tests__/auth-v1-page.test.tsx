@@ -117,27 +117,12 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
     "data-clerk-provider-sign-up-url",
     "https://app.okou.ai/v1/sign-up",
   );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-user-banned-error",
-    expect.stringContaining("support@okou.ai"),
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-form-code-incorrect-error",
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-form-password-not-strong-enough-error",
-    "Your password is not strong enough.",
-  );
-  expect(clerkProviderConfig()).not.toHaveAttribute(
-    "data-clerk-form-password-incorrect-error",
-  );
   expect(
     document.querySelector("[data-auth-v1-legacy-clerk-css]"),
   ).not.toBeInTheDocument();
 });
 
-test("The hosted form waits behind the skeleton until Clerk mounts it", async () => {
+test("Clerk's public fallback takes over after core initialization", async () => {
   const clerk = context.mocks.clerk();
   const clerkLoad = clerk.runtimePending();
   const authComponent = clerk.deferAuthComponentMount();
@@ -150,28 +135,26 @@ test("The hosted form waits behind the skeleton until Clerk mounts it", async ()
   });
 
   const appSkeleton = await screen.findByTestId("app-skeleton");
-  await expect(
-    screen.findByTestId("clerk-auth-loading"),
-  ).resolves.toBeInTheDocument();
   expect(appSkeleton).not.toHaveAttribute("aria-hidden");
-  expect(screen.getByTestId("clerk-sign-up")).toBeEmptyDOMElement();
-  expect(clerk.uiRequests).toHaveLength(1);
+  expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
   await act(async () => {
     clerkLoad.resolve();
     await clerkLoad.promise;
   });
 
-  expect(screen.getByTestId("clerk-auth-loading")).toBeInTheDocument();
-  expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+  await expect(
+    screen.findByTestId("clerk-auth-loading"),
+  ).resolves.toBeVisible();
+  await page.ready;
+  expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+  expect(screen.getByTestId("clerk-sign-up")).toBeEmptyDOMElement();
 
   act(() => {
     authComponent.mount();
   });
-  await page.ready;
 
   expect(screen.getByTestId("clerk-sign-up")).toHaveTextContent("/v1/sign-up");
-  expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
   expect(screen.queryByTestId("clerk-auth-loading")).not.toBeInTheDocument();
 });
 
@@ -191,34 +174,6 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   expect(document.title).toBe("Sign in | Okou");
   expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
   expect(okouBrandLink()).toHaveAttribute("href", "/");
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-sign-in-start-title",
-    "Sign in to Okou",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-sign-in-email-code-subtitle",
-    "to continue to Okou",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-user-banned-error",
-    expect.stringContaining("support@okou.ai"),
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-form-code-incorrect-error",
-    "That code is incorrect. Try again.",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-form-password-incorrect-error",
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-form-password-not-strong-enough-error",
-    "Your password is not strong enough.",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-reset-password-action",
-    "Reset password",
-  );
 });
 
 test("Okou auth intent survives Clerk moving the redirect into the hash", async () => {

@@ -1,10 +1,9 @@
-import { Button, Card, cn } from "@okouai/ui";
+import { Button, Card } from "@okouai/ui";
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { hideAppSkeletonOnContentReadyRef$ } from "../../signals/app-skeleton.ts";
 import { resolveAuthBrandContext } from "../../signals/auth.ts";
-import { AUTH_V1_PRIMARY_ACTION_CLASS } from "./action-styles.ts";
 import { AuthV1Layout } from "./auth-v1-layout.tsx";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
@@ -40,10 +39,7 @@ export function AuthV1LoadError() {
             </a>
           </p>
           <Button
-            className={cn(
-              AUTH_V1_PRIMARY_ACTION_CLASS,
-              "text-[length:var(--text-action)] leading-[var(--text-action--line-height)]",
-            )}
+            className="border-0 py-0 bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed text-[length:var(--text-action)] leading-[var(--text-action--line-height)]"
             onClick={() => {
               return window.location.reload();
             }}

@@ -260,22 +260,6 @@
           }
           if (bootstrap.loaded) return;
 
-          var subscribeToStatus = clerk.on.bind(clerk);
-          clerk.on = function (event, handler, options) {
-            subscribeToStatus(
-              event,
-              handler,
-              Object.assign({}, options, { notify: true }),
-            );
-          };
-
-          var loadClerk = clerk.load.bind(clerk);
-          var loadPromise;
-          clerk.load = function (options) {
-            if (!loadPromise) loadPromise = loadClerk(options);
-            return loadPromise;
-          };
-
           bootstrap.clerk = clerk;
           bootstrap.loaded = clerk.load(
             Object.assign({}, loadOptions, { ui: { ClerkUI: clerkUI } }),

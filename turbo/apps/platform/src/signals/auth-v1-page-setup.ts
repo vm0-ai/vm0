@@ -8,7 +8,6 @@ import {
 } from "../views/auth-v1/auth-v1-page.tsx";
 import {
   clerk$,
-  clerkInstance$,
   ensureClerkUiLoaded$,
   resolveAuthBrandContext,
 } from "./auth.ts";
@@ -17,6 +16,7 @@ import { updatePage$ } from "./react-router.ts";
 import { AuthV1LoadError } from "../views/auth-v1/auth-v1-load-error.tsx";
 import { logger } from "./log.ts";
 import { throwIfAbort } from "./utils.ts";
+import { createAuthV1ClerkSignals } from "./auth-v1-clerk.ts";
 
 const L = logger("AuthV1");
 
@@ -35,7 +35,9 @@ function setupAuthV1Page(mode: AuthV1PageMode) {
           }),
       authBrand.brandName,
     );
-    const clerk = await get(clerkInstance$);
+    // The app runtime owns initialization. Mounting the external React UI only
+    // after readiness lets its provider reuse the loaded instance directly.
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
     // Only the v1 comparison routes request Clerk's optional UI. Stable auth
     // routes continue to use the platform-owned auth v2 implementation.
@@ -51,9 +53,8 @@ function setupAuthV1Page(mode: AuthV1PageMode) {
       return;
     }
     signal.throwIfAborted();
-    set(updatePage$, createElement(AuthV1Page, { clerk, mode, ui }));
-    await get(clerk$);
-    signal.throwIfAborted();
+    const signals = createAuthV1ClerkSignals();
+    set(updatePage$, createElement(AuthV1Page, { clerk, mode, ui, signals }));
   });
 }
 

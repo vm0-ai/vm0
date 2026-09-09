@@ -7,23 +7,28 @@ type Appearance = NonNullable<ClerkProviderProps["appearance"]>;
  * Component-level appearance owns the visual rules, so unrelated Clerk
  * surfaces cannot inherit authentication-specific element overrides.
  */
-export function getAuthV1ProviderAppearance(): Appearance {
+export function getAuthV1ProviderAppearance(
+  theme: "light" | "dark",
+): Appearance {
   return {
     cssLayerName: "clerk",
-    variables: clerkVariables(),
+    variables: clerkVariables(theme),
   };
 }
 
-function clerkVariables(): Record<string, string> {
+function clerkVariables(theme: "light" | "dark"): Record<string, string> {
   return {
-    // This token also colors filled controls (including Help and recovery).
-    // Text actions and legal links have a separate component-level adapter.
-    colorPrimary: "hsl(var(--primary))",
+    // Clerk shares the primary color between text links and filled controls.
+    // Use the readable brand pair and retain its native control hierarchy.
+    colorPrimary: "hsl(var(--brand-text))",
     colorBackground: "hsl(var(--card))",
     colorNeutral: "hsl(var(--foreground))",
     colorForeground: "hsl(var(--foreground))",
     colorMutedForeground: "hsl(var(--muted-foreground))",
-    colorPrimaryForeground: "hsl(var(--primary-foreground))",
+    colorPrimaryForeground:
+      theme === "dark"
+        ? "hsl(var(--primary-foreground))"
+        : "hsl(var(--on-filled))",
     colorMuted: "hsl(var(--muted))",
     colorInput: "hsl(var(--input))",
     colorInputForeground: "hsl(var(--foreground))",

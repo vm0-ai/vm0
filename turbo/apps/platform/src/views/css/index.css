@@ -2,7 +2,6 @@
 
 @import "tailwindcss";
 @import "@okouai/ui/styles/globals.css";
-@import "../auth-v1/semantic-adapter.css";
 
 @custom-variant pointer-coarse (@media (pointer: coarse));
 

@@ -1,38 +1,65 @@
-import { ClerkProvider as BaseClerkProvider } from "@clerk/react";
+import { ClerkProvider as BaseClerkProvider, useClerk } from "@clerk/react";
 import type { BrowserClerk } from "@clerk/shared/types";
 import type { ui } from "@clerk/ui";
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import { clerkLocalizations$ } from "../../i18n/clerk-localization.ts";
+import {
+  clerkLocalizationForLocale,
+  clerkLocalizations$,
+} from "../../i18n/clerk-localization.ts";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import { locale$ } from "../../signals/locale.ts";
+import type { AuthV1ClerkSignals } from "../../signals/auth-v1-clerk.ts";
+import { theme$ } from "../../signals/theme.ts";
 import {
   getAllowedAuthRedirectOriginsForCurrentPage,
-  resolveAuthBrandContext,
   resolveAppAuthUrl,
   resolveAppUrl,
 } from "../../signals/auth.ts";
-import { getClerkLocalization } from "./clerk-localization.ts";
 import { getAuthV1ProviderAppearance } from "./provider-appearance.ts";
 
 interface ClerkProviderProps {
   readonly children: ReactNode;
   readonly clerk: BrowserClerk;
-  readonly mode: "sign-in" | "sign-up";
   readonly ui: typeof ui;
+  readonly signals: AuthV1ClerkSignals;
+}
+
+function ClerkRuntimeBoundary({
+  children,
+  signals,
+}: Pick<ClerkProviderProps, "children" | "signals">) {
+  const clerk = useClerk();
+  const ready = useGet(signals.ready$);
+  const attach = useSet(signals.attach$);
+
+  return (
+    <>
+      <span
+        hidden
+        ref={(element) => {
+          // The public hook supplies this provider's runtime. Bind it only
+          // after commit and forward the onRef cleanup to React.
+          if (element) {
+            return attach(element, clerk);
+          }
+          return undefined;
+        }}
+      />
+      {ready ? children : null}
+    </>
+  );
 }
 
 export function AuthV1ClerkProvider({
   children,
   clerk,
-  mode,
   ui,
+  signals,
 }: ClerkProviderProps) {
-  const { t } = useTranslation();
   const clerkLocalizations = useGet(clerkLocalizations$);
   const locale = useGet(locale$);
-  const clerkBrandName = resolveAuthBrandContext().brandName;
+  const theme = useGet(theme$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -43,19 +70,17 @@ export function AuthV1ClerkProvider({
     ui,
     afterSignOutUrl: resolveAppAuthUrl("/v1/sign-in"),
     allowedRedirectOrigins,
-    appearance: getAuthV1ProviderAppearance(),
-    localization: getClerkLocalization(
-      mode,
-      clerkBrandName,
-      locale,
-      clerkLocalizations,
-      t,
-    ),
+    appearance: getAuthV1ProviderAppearance(theme),
+    localization: clerkLocalizationForLocale(clerkLocalizations, locale),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/v1/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/v1/sign-up"),
   };
-  return <BaseClerkProvider {...providerProps}>{children}</BaseClerkProvider>;
+  return (
+    <BaseClerkProvider {...providerProps}>
+      <ClerkRuntimeBoundary signals={signals}>{children}</ClerkRuntimeBoundary>
+    </BaseClerkProvider>
+  );
 }
