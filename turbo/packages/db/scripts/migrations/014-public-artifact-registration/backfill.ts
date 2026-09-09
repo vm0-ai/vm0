@@ -12,6 +12,7 @@ import {
 } from "@aws-sdk/client-s3";
 import postgres from "postgres";
 import { forEachConcurrent } from "./concurrent";
+import { resolveLegacyClickTrackContentType } from "./legacy-click-track";
 // Frozen v1 format: numbered data migrations must remain runnable after app
 // contracts evolve. Only confirmed historical Public records are constructed.
 type PublicBrand = "vm0" | "okou";
@@ -342,7 +343,14 @@ async function inventory(
           brand,
           filename,
         )) ??
-        (await options.resolveMissingContentType?.(key));
+        (await options.resolveMissingContentType?.(key)) ??
+        (await resolveLegacyClickTrackContentType(
+          publicClient,
+          options.publicBucket,
+          key,
+          filename,
+          head,
+        ));
       if (!contentType)
         throw new Error(`Historical artifact has no content type: ${key}`);
       if (!head.ContentType) resolvedContentTypes++;
@@ -666,6 +674,10 @@ async function main() {
         resolveMissingContentType: async (key) => {
           const rows =
             await db`select distinct content_type from run_uploaded_files where storage_key = ${key} and content_type is not null`;
+          if (rows.length > 1)
+            throw new Error(
+              `Historical artifact has conflicting database content types: ${key}`,
+            );
           if (rows.length !== 1 || typeof rows[0]?.content_type !== "string")
             return undefined;
           return rows[0].content_type;

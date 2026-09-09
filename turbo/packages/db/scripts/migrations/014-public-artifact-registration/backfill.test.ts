@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -22,6 +23,7 @@ function fixture() {
   const metadata = new Map<string, Record<string, string>>();
   const contentTypes = new Map<string, string | undefined>();
   const writes: string[] = [];
+  const beforeGet = vi.fn((_key: string) => {});
   const multipart: { Key: string; UploadId: string }[] = [];
   const id = "00000000-0000-4000-8000-000000000001";
   const prefix = `sites/demo/deployments/${id}`;
@@ -46,6 +48,29 @@ function fixture() {
   });
   objects.set("hosted/sites/demo/active.json", pointer);
   objects.set(`hosted/sites/deployments/${id}.json`, pointer);
+  function readObject(command: GetObjectCommand) {
+    beforeGet(`${command.input.Bucket}/${command.input.Key}`);
+    const body = objects.get(`${command.input.Bucket}/${command.input.Key}`);
+    if (body === undefined)
+      throw Object.assign(new Error("Missing"), { name: "NoSuchKey" });
+    const etag = `"${createHash("md5").update(body).digest("hex")}"`;
+    if (command.input.IfMatch && command.input.IfMatch !== etag)
+      throw Object.assign(new Error("Object changed"), {
+        name: "PreconditionFailed",
+      });
+    return {
+      ContentLength: Buffer.byteLength(body),
+      ETag: etag,
+      Body: {
+        transformToString: async () => {
+          return body;
+        },
+        transformToByteArray: async () => {
+          return Buffer.from(body);
+        },
+      },
+    };
+  }
   const sender: {
     send(
       command:
@@ -93,25 +118,19 @@ function fixture() {
           offset + 1 < keys.length ? String(offset + 1) : undefined,
       };
     }
-    if (command instanceof HeadObjectCommand)
+    if (command instanceof HeadObjectCommand) {
+      const body = objects.get(`${command.input.Bucket}/${command.input.Key}`);
+      if (body === undefined) throw new Error("Missing fixture object");
       return {
+        ContentLength: Buffer.byteLength(body),
+        ETag: `"${createHash("md5").update(body).digest("hex")}"`,
         ContentType: contentTypes.has(command.input.Key!)
           ? contentTypes.get(command.input.Key!)
           : "application/pdf",
         Metadata: metadata.get(command.input.Key!) ?? {},
       };
-    if (command instanceof GetObjectCommand) {
-      const body = objects.get(`${command.input.Bucket}/${command.input.Key}`);
-      if (body === undefined)
-        throw Object.assign(new Error("Missing"), { name: "NoSuchKey" });
-      return {
-        Body: {
-          transformToString: async () => {
-            return body;
-          },
-        },
-      };
     }
+    if (command instanceof GetObjectCommand) return readObject(command);
     if (command instanceof PutObjectCommand) {
       const key = `${command.input.Bucket}/${command.input.Key}`;
       if (command.input.IfNoneMatch === "*" && objects.has(key))
@@ -144,6 +163,7 @@ function fixture() {
     metadata,
     contentTypes,
     writes,
+    beforeGet,
     multipart,
     options,
     reconcile,
@@ -431,6 +451,180 @@ test("missing R2 content types require authoritative upload metadata", async () 
     missing: 0,
     resolvedContentTypes: 1,
   });
+});
+
+function clickTrackFixture(f: ReturnType<typeof fixture>, extended = false) {
+  const key = "artifacts/abcdefghij.json";
+  const filename = "screen-recording-1788354885159.clicks.json";
+  const track = {
+    version: 1,
+    recording: {
+      startedAtUnixMs: 1788354885159,
+      durationMs: 1000,
+      video: { width: 1920, height: 1080, frameRate: 30 },
+      capture: {
+        originX: 0,
+        originY: 0,
+        widthPoints: 1920,
+        heightPoints: 1080,
+        scale: 1,
+      },
+    },
+    clicks: [],
+    droppedOutOfFrameClicks: 0,
+    warnings: [],
+    ...(extended ? { pointerEvents: [], typingBursts: [] } : {}),
+  };
+  const body = JSON.stringify(track);
+  f.objects.set(`public/${key}`, body);
+  f.metadata.set(key, { filename });
+  f.contentTypes.set(key, undefined);
+  return { key, filename, body, track };
+}
+
+test.each([false, true])(
+  "recovers verified recorder JSON without rewriting source bytes (extended=%s)",
+  async (extended) => {
+    const f = fixture();
+    const track = clickTrackFixture(f, extended);
+    const dryRun = await registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      f.options,
+      async () => {},
+    );
+    expect(dryRun).toMatchObject({ resolvedContentTypes: 1, missing: 4 });
+    expect(f.writes).toHaveLength(0);
+
+    const result = await registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    );
+    expect(result).toMatchObject({
+      finalFiles: 2,
+      missing: 0,
+      verified: true,
+      finalized: false,
+    });
+    expect(
+      JSON.parse(
+        f.objects.get(
+          `hosted/${artifactDeliveryKey("vm0", "file", "abcdefghij.json")}`,
+        )!,
+      ),
+    ).toStrictEqual({
+      version: 1,
+      kind: "legacy-file",
+      audience: "public",
+      publicBrand: "vm0",
+      key: track.key,
+      filename: track.filename,
+      contentType: "application/json",
+    });
+    expect(f.objects.get(`public/${track.key}`)).toBe(track.body);
+    expect(f.contentTypes.get(track.key)).toBeUndefined();
+
+    await expect(
+      registerHistoricalPublicArtifacts(
+        f.client,
+        f.client,
+        { ...f.options, verify: true },
+        async () => {},
+      ),
+    ).resolves.toMatchObject({ existing: 4, missing: 0, verified: true });
+  },
+);
+
+test.each([
+  { label: "invalid JSON", body: "<html>not a recording</html>" },
+  { label: "unrelated JSON", body: '{"version":1,"data":[]}' },
+  { label: "oversized content", body: "x".repeat(1024 * 1024 + 1) },
+])("blocks $label before registration", async ({ body }) => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.objects.set(`public/${track.key}`, body);
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toThrow("Historical click track");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("does not classify another filename from its JSON contents", async () => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.metadata.set(track.key, { filename: "report.json" });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toThrow("has no content type");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("blocks an unsupported recorder version before registration", async () => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.objects.set(
+    `public/${track.key}`,
+    JSON.stringify({ ...track.track, version: 2 }),
+  );
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toThrow("unrecognized format");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("blocks a recording replaced between HEAD and content inspection", async () => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.beforeGet.mockImplementation((key) => {
+    if (key === `public/${track.key}`)
+      f.objects.set(key, JSON.stringify({ ...track.track, version: 2 }));
+  });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toMatchObject({ name: "PreconditionFailed" });
+  expect(f.writes).toHaveLength(0);
+});
+
+test("content inspection cannot hide an authoritative metadata conflict", async () => {
+  const f = fixture();
+  clickTrackFixture(f);
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      {
+        ...f.options,
+        migrate: true,
+        resolveMissingContentType: async () => {
+          throw new Error("Conflicting authoritative MIME metadata");
+        },
+      },
+      async () => {},
+    ),
+  ).rejects.toThrow("Conflicting authoritative MIME metadata");
+  expect(f.writes).toHaveLength(0);
 });
 
 test("historical public HTML drafts are included in verified coverage", async () => {

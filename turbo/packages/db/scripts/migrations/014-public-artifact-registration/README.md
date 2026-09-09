@@ -97,14 +97,23 @@ after complete production coverage and the old-writer drain are verified.
 The 2026-09-09 public inventory also contains legacy `html-edit-drafts/<uuid>.html`
 objects and 29 Desktop recording sidecars without R2 Content-Type. Drafts undergo
 the same private-metadata and authoritative-database checks as all public files.
-Missing HTTP metadata requires either an exact existing public registration or a
-unique non-null `run_uploaded_files.content_type`; absent/conflicting evidence
-still blocks registration. Pre-registration also covers an uploaded object whose
+Missing HTTP metadata first uses an exact existing public registration or a
+unique non-null `run_uploaded_files.content_type`. Desktop recorder uploads can
+have neither: the old Blob PUT omitted Content-Type, and the DB row is created
+only when the recording is attached to chat. For the recorder's exact filename
+and storage-key patterns, the migration can recover `application/json` by reading
+at most 1 MiB with the HEAD ETag as an `If-Match` condition and verifying the byte
+length, UTF-8 JSON and frozen v1 recording signature. A changed object, invalid
+JSON, unknown format or oversized body blocks the pass before any registration.
+This is limited to the migration; ordinary missing MIME types still fail.
+Pre-registration also covers an uploaded object whose
 client has not called completion yet. Existing upload headers/signature semantics
 remain compatible with already-deployed App, CLI and Desktop clients. This
 persisted-data compatibility is owned by #32492 and can be retired when historical
 delivery no longer requires this migration. No MIME type is inferred from a file
-extension, and no source object is rewritten.
+extension alone, and no source object is rewritten. The read-only audit of all 29
+historical sidecars found matching v1 JSON bodies (269–54,078 bytes); both older
+click-only records and later optional pointer/typing fields are recognized.
 
 ## Production phases
 
