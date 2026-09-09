@@ -1,7 +1,6 @@
 // The current file still contains .cache and .zyn only because it is currently used for testing purposes,
 // and there hasn't been time to adjust the paradigms within this file yet.
 // In the long term, this file should also stop using .cache and .zyn.
-// confirmed by ethan@vm0.ai
 // oxlint-disable promise/prefer-await-to-then
 import { createDeferredPromise } from "../signals/utils.ts";
 

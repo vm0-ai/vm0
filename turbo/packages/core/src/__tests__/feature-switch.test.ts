@@ -253,13 +253,13 @@ describe("getAllFeatureStates", () => {
 
   it("should enable onboarding chat for Ming only", () => {
     const mingStates = getAllFeatureStates({
-      email: "MING@VM0.AI",
+      email: "MING@OKOU.AI",
       orgId: "org_nonexistent",
     });
     expect(mingStates[FeatureSwitchKey.OnboardingChat]).toBe(true);
 
     const otherStaffStates = getAllFeatureStates({
-      email: "ethan@vm0.ai",
+      email: "ethan@okou.ai",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(otherStaffStates[FeatureSwitchKey.OnboardingChat]).toBe(false);

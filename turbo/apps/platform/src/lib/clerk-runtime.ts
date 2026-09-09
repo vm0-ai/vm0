@@ -14,8 +14,6 @@ interface ClerkRuntimeOptions {
 
 interface ClerkRuntimeLoadOptions {
   readonly afterSignOutUrl: string;
-  readonly isSatellite?: true;
-  readonly satelliteAutoSync?: true;
   readonly signInUrl: string;
   readonly signUpUrl: string;
 }
@@ -97,8 +95,6 @@ function matchesEarlyLoadOptions(
 ): boolean {
   return (
     early.afterSignOutUrl === current.afterSignOutUrl &&
-    early.isSatellite === current.isSatellite &&
-    early.satelliteAutoSync === current.satelliteAutoSync &&
     early.signInUrl === current.signInUrl &&
     early.signUpUrl === current.signUpUrl
   );

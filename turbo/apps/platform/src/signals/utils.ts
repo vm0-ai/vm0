@@ -37,7 +37,6 @@ export function detach<T>(
 
   if (isPromise) {
     // This instance is necessary because detach itself is a controlled way to generate a floating promise.
-    // confirmed by ethan@vm0.ai
     // oxlint-disable-next-line promise/prefer-await-to-then
     silencePromise = Promise.resolve(promise).then(
       () => {},
@@ -135,7 +134,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
   // We must use this approach to silence the exception here. This is because
   // the function itself is designed to help the caller avoid having to handle
   // the try-catch block manually.
-  // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
     return JSON.parse(value) as T;
@@ -156,7 +154,6 @@ export async function bestEffort(
   p: Promise<unknown>,
   signal?: AbortSignal,
 ): Promise<void> {
-  // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
     await p;
@@ -177,7 +174,6 @@ export async function tapError<T>(
   p: Promise<T>,
   onError?: (error: unknown) => unknown,
 ): Promise<T | undefined> {
-  // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
     return await p;
@@ -200,7 +196,6 @@ export async function onRejection<T>(
   operation: Promise<T> | (() => Promise<T> | T),
   fn: (error: unknown) => unknown,
 ): Promise<T> {
-  // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
     return await (typeof operation === "function" ? operation() : operation);
@@ -225,7 +220,6 @@ export async function settle<T>(
   p: Promise<T>,
   signal?: AbortSignal,
 ): Promise<Settled<T>> {
-  // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
     const value = await p;
@@ -362,7 +356,6 @@ export async function setLoop(
     }
 
     // use try-catch here to implement an automatic retry.
-    // confirmed by ethan@vm0.ai
     // eslint-disable-next-line no-restricted-syntax
     try {
       const done = await loopBody(signal);

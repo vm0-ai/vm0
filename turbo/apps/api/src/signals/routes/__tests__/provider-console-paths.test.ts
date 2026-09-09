@@ -29,23 +29,6 @@ interface ResponseSnapshot {
   readonly body: string;
 }
 
-// Every block below is now narrowed to the single path that serves it, because
-// every provider console and producer that held a branded form has moved. Each
-// request used to be replayed on both branded forms as well, so the assertion
-// was that all three answered identically rather than merely that the neutral
-// path was routed; a dropped branded compatibility row showed up here as one of
-// the three answering differently.
-//
-// #28600 put the Slack OAuth callback and the three inbound webhooks on neutral
-// paths with rows for both branded forms, and #30668 retired those four rows
-// once the Slack app console was repointed at `/api/webhooks/slack/*` and
-// `routes/slack-oauth.ts` began emitting the neutral `redirect_uri`. The Feishu
-// OAuth callback was narrowed the same way by #28709 and the Teams OAuth
-// callback by #30812, which left nothing in this file holding a branded form.
-// #31088 then emptied the table outright and #31090 removed it, so no path
-// anywhere has one. What each block still pins is that the console flow reaches
-// its handler.
-
 async function snapshot(response: Response): Promise<ResponseSnapshot> {
   return {
     status: response.status,
@@ -54,35 +37,18 @@ async function snapshot(response: Response): Promise<ResponseSnapshot> {
   };
 }
 
-async function snapshotEachPath(
-  paths: readonly string[],
-  send: (path: string) => Promise<Response>,
-): Promise<readonly ResponseSnapshot[]> {
-  const snapshots: ResponseSnapshot[] = [];
-  for (const path of paths) {
-    snapshots.push(await snapshot(await send(path)));
-  }
-  return snapshots;
-}
-
-function repeated(
-  expected: ResponseSnapshot,
-  paths: readonly string[],
-): readonly ResponseSnapshot[] {
-  return paths.map(() => {
-    return expected;
-  });
-}
-
 function jsonBody(body: unknown): string {
   return JSON.stringify(body);
 }
 
-function getRequest(routes: readonly RouteEntry[]) {
-  return async (path: string): Promise<Response> => {
-    const app = createAppWithRoutes({ signal: context.signal, routes });
-    return await app.request(`${REQUEST_ORIGIN}${path}`, { method: "GET" });
-  };
+async function getRequest(
+  routes: readonly RouteEntry[],
+  path: string,
+): Promise<ResponseSnapshot> {
+  const app = createAppWithRoutes({ signal: context.signal, routes });
+  return await snapshot(
+    await app.request(`${REQUEST_ORIGIN}${path}`, { method: "GET" }),
+  );
 }
 
 function signedSlackHeaders(body: string): Record<string, string> {
@@ -95,26 +61,27 @@ function signedSlackHeaders(body: string): Record<string, string> {
   };
 }
 
-function slackIngressRequest(args: {
+async function slackIngressRequest(args: {
   readonly routes: readonly RouteEntry[];
+  readonly path: string;
   readonly body: string;
   readonly contentType: string;
   readonly signed: boolean;
-}) {
-  return async (path: string): Promise<Response> => {
-    const app = createAppWithRoutes({
-      signal: context.signal,
-      routes: args.routes,
-    });
-    return await app.request(`${REQUEST_ORIGIN}${path}`, {
+}): Promise<ResponseSnapshot> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: args.routes,
+  });
+  return await snapshot(
+    await app.request(`${REQUEST_ORIGIN}${args.path}`, {
       method: "POST",
       headers: {
         "content-type": args.contentType,
         ...(args.signed ? signedSlackHeaders(args.body) : {}),
       },
       body: args.body,
-    });
-  };
+    }),
+  );
 }
 
 describe("provider console paths", () => {
@@ -129,269 +96,175 @@ describe("provider console paths", () => {
   });
 
   describe("GET /api/integrations/slack/oauth/callback", () => {
-    const paths = ["/api/integrations/slack/oauth/callback"];
+    const path = "/api/integrations/slack/oauth/callback";
 
-    it("rejects a callback without an authorization code identically", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
-        getRequest(slackOauthRoutes),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 400,
-            location: null,
-            body: jsonBody({ error: "Missing authorization code" }),
-          },
-          paths,
-        ),
-      );
+    it("rejects a callback without an authorization code", async () => {
+      await expect(getRequest(slackOauthRoutes, path)).resolves.toStrictEqual({
+        status: 400,
+        location: null,
+        body: jsonBody({ error: "Missing authorization code" }),
+      });
     });
 
-    it("builds the same failure redirect for a denied authorization", async () => {
-      const send = getRequest(slackOauthRoutes);
-      const snapshots = await snapshotEachPath(paths, (path) => {
-        return send(`${path}?error=access_denied`);
+    it("builds the failure redirect for a denied authorization", async () => {
+      await expect(
+        getRequest(slackOauthRoutes, `${path}?error=access_denied`),
+      ).resolves.toStrictEqual({
+        status: 307,
+        location: `${APP_ORIGIN}/slack/failed?error=access_denied`,
+        body: "",
       });
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 307,
-            location: `${APP_ORIGIN}/slack/failed?error=access_denied`,
-            body: "",
-          },
-          paths,
-        ),
-      );
     });
   });
 
-  // Kept here after #28545 moved the contract onto the final path, and narrowed
-  // to that path by #30812. The branded forms were held by the Microsoft app
-  // registration and by `callbackRedirectUri`, which emitted the `zero` form for
-  // the VM0 brand until #30667 unified it; a `redirect_uri` is computed per
-  // request, so that deploy bounded the branded form to authorizations already
-  // in flight. The block stays because the callback is still reached from a
-  // Microsoft console flow.
   describe("GET /api/integrations/teams/oauth/callback", () => {
-    const paths = ["/api/integrations/teams/oauth/callback"];
+    const path = "/api/integrations/teams/oauth/callback";
 
-    it("rejects a callback without an authorization code identically", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
-        getRequest(teamsOauthRoutes),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 400,
-            location: null,
-            body: jsonBody({ error: "Missing authorization code" }),
-          },
-          paths,
-        ),
-      );
+    it("rejects a callback without an authorization code", async () => {
+      await expect(getRequest(teamsOauthRoutes, path)).resolves.toStrictEqual({
+        status: 400,
+        location: null,
+        body: jsonBody({ error: "Missing authorization code" }),
+      });
     });
 
-    it("builds the same failure redirect for a denied authorization", async () => {
-      const send = getRequest(teamsOauthRoutes);
-      const snapshots = await snapshotEachPath(paths, (path) => {
-        return send(`${path}?error=access_denied`);
+    it("builds the failure redirect for a denied authorization", async () => {
+      await expect(
+        getRequest(teamsOauthRoutes, `${path}?error=access_denied`),
+      ).resolves.toStrictEqual({
+        status: 307,
+        location: `${APP_ORIGIN}/settings/teams?error=access_denied`,
+        body: "",
       });
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 307,
-            location: `${APP_ORIGIN}/settings/teams?error=access_denied`,
-            body: "",
-          },
-          paths,
-        ),
-      );
     });
   });
 
-  // #28544 moved this contract to the neutral path and gave it a branded
-  // compatibility row; #28709 removed that row, because the only thing holding
-  // the branded form was an already-loaded platform tab forwarding a code, a
-  // window that closed well before the retained request log begins, and #31088
-  // emptied the table itself before #31090 removed it. The case stays because the
-  // callback is still reached from a Feishu console flow, narrowed to the path
-  // that serves it.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
     it("rejects a callback without connect state", async () => {
-      const snapshots = await snapshotEachPath(
-        ["/api/integrations/feishu/oauth/callback"],
-        getRequest(feishuOauthRoutes),
-      );
-
-      expect(snapshots).toStrictEqual([
-        {
-          status: 400,
-          location: null,
-          body: jsonBody({ error: "Invalid or expired connect state" }),
-        },
-      ]);
+      await expect(
+        getRequest(
+          feishuOauthRoutes,
+          "/api/integrations/feishu/oauth/callback",
+        ),
+      ).resolves.toStrictEqual({
+        status: 400,
+        location: null,
+        body: jsonBody({ error: "Invalid or expired connect state" }),
+      });
     });
   });
 
   describe("POST /api/webhooks/slack/events", () => {
-    const paths = ["/api/webhooks/slack/events"];
+    const path = "/api/webhooks/slack/events";
     const body = jsonBody({
       type: "url_verification",
       challenge: "provider-console-challenge",
     });
 
     it("verifies the Slack signature and answers URL verification", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
+      await expect(
         slackIngressRequest({
           routes: slackEventsRoutes,
+          path,
           body,
           contentType: "application/json",
           signed: true,
         }),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 200,
-            location: null,
-            body: jsonBody({ challenge: "provider-console-challenge" }),
-          },
-          paths,
-        ),
-      );
+      ).resolves.toStrictEqual({
+        status: 200,
+        location: null,
+        body: jsonBody({ challenge: "provider-console-challenge" }),
+      });
     });
 
-    it("rejects an unsigned request identically", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
+    it("rejects an unsigned request", async () => {
+      await expect(
         slackIngressRequest({
           routes: slackEventsRoutes,
+          path,
           body,
           contentType: "application/json",
           signed: false,
         }),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 401,
-            location: null,
-            body: jsonBody({ error: "Missing Slack signature headers" }),
-          },
-          paths,
-        ),
-      );
+      ).resolves.toStrictEqual({
+        status: 401,
+        location: null,
+        body: jsonBody({ error: "Missing Slack signature headers" }),
+      });
     });
   });
 
   describe("POST /api/webhooks/slack/commands", () => {
-    const paths = ["/api/webhooks/slack/commands"];
+    const path = "/api/webhooks/slack/commands";
     const body = "command=%2Fokou&text=help";
 
     it("verifies the Slack signature before parsing the command", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
+      await expect(
         slackIngressRequest({
           routes: slackCommandsRoutes,
+          path,
           body,
           contentType: FORM_CONTENT_TYPE,
           signed: true,
         }),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 400,
-            location: null,
-            body: jsonBody({ error: "Missing required Slack command fields" }),
-          },
-          paths,
-        ),
-      );
+      ).resolves.toStrictEqual({
+        status: 400,
+        location: null,
+        body: jsonBody({ error: "Missing required Slack command fields" }),
+      });
     });
 
-    it("rejects an unsigned request identically", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
+    it("rejects an unsigned request", async () => {
+      await expect(
         slackIngressRequest({
           routes: slackCommandsRoutes,
+          path,
           body,
           contentType: FORM_CONTENT_TYPE,
           signed: false,
         }),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 401,
-            location: null,
-            body: jsonBody({ error: "Missing Slack signature headers" }),
-          },
-          paths,
-        ),
-      );
+      ).resolves.toStrictEqual({
+        status: 401,
+        location: null,
+        body: jsonBody({ error: "Missing Slack signature headers" }),
+      });
     });
   });
 
   describe("POST /api/webhooks/slack/interactive", () => {
-    const paths = ["/api/webhooks/slack/interactive"];
+    const path = "/api/webhooks/slack/interactive";
     const body = "not_a_payload=1";
 
     it("verifies the Slack signature before parsing the payload", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
+      await expect(
         slackIngressRequest({
           routes: slackInteractiveRoutes,
+          path,
           body,
           contentType: FORM_CONTENT_TYPE,
           signed: true,
         }),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 400,
-            location: null,
-            body: jsonBody({ error: "Missing payload" }),
-          },
-          paths,
-        ),
-      );
+      ).resolves.toStrictEqual({
+        status: 400,
+        location: null,
+        body: jsonBody({ error: "Missing payload" }),
+      });
     });
 
-    it("rejects an unsigned request identically", async () => {
-      const snapshots = await snapshotEachPath(
-        paths,
+    it("rejects an unsigned request", async () => {
+      await expect(
         slackIngressRequest({
           routes: slackInteractiveRoutes,
+          path,
           body,
           contentType: FORM_CONTENT_TYPE,
           signed: false,
         }),
-      );
-
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 401,
-            location: null,
-            body: jsonBody({ error: "Missing Slack signature headers" }),
-          },
-          paths,
-        ),
-      );
+      ).resolves.toStrictEqual({
+        status: 401,
+        location: null,
+        body: jsonBody({ error: "Missing Slack signature headers" }),
+      });
     });
   });
 });

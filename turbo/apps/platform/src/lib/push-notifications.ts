@@ -59,7 +59,7 @@ export const ensurePushSubscription$ = command(
       return;
     }
     set(subscribing$, true);
-    // TODO: The try-catch block here needs to be cleaned up. confirmed by ethan@vm0.ai
+    // TODO: The try-catch block here needs to be cleaned up.
     // eslint-disable-next-line no-restricted-syntax
     try {
       const createClient = get(apiClient$);

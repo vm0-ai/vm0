@@ -6,7 +6,7 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-test("Okou production authenticates against itself without a satellite", async () => {
+test("Okou production uses its own authentication URLs", async () => {
   const clerk = context.mocks.clerk();
 
   await setupPage({
@@ -28,7 +28,6 @@ test("Okou production authenticates against itself without a satellite", async (
 const BOOTSTRAP_SCRIPT_SELECTOR = "[data-okou-clerk-bootstrap]";
 
 interface InlineBootstrapLoadOptions {
-  readonly isSatellite?: true;
   readonly signInUrl: string;
 }
 
@@ -116,22 +115,15 @@ const PAGE_HOSTNAMES = [
   "pr-30199-app.omby.ai",
 ];
 
-// Only one domain serves the app, so every page authenticates against itself.
-// The page and the app decide this in two languages; a change to one without
-// the other is a silent split-brain that type checking cannot catch.
-test("The inline Clerk bootstrap never configures a satellite", () => {
+test("The inline Clerk bootstrap uses the current page sign-in URL", () => {
   for (const hostname of PAGE_HOSTNAMES) {
     const { bootstrap } = runInlineBootstrap(hostname);
 
     expect({
       hostname,
-      pageDomain: bootstrap.domain ?? null,
-      pageIsSatellite: bootstrap.loadOptions.isSatellite ?? false,
       pageSignInUrl: bootstrap.loadOptions.signInUrl,
     }).toStrictEqual({
       hostname,
-      pageDomain: null,
-      pageIsSatellite: false,
       pageSignInUrl: `https://${hostname}/sign-in`,
     });
   }

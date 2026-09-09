@@ -5,8 +5,6 @@ import type { DebugLoggers } from "./types/global-method";
 
 interface OkouClerkBootstrapLoadOptions {
   readonly afterSignOutUrl: string;
-  readonly isSatellite?: true;
-  readonly satelliteAutoSync?: true;
   readonly signInUrl: string;
   readonly signUpUrl: string;
 }
