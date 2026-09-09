@@ -11,7 +11,10 @@ import {
   readCuaFrames,
   type CuaOperation,
 } from "./cua-process-protocol";
-import { loadPackagedCuaSdk, type CuaSdk } from "./cua-runtime-files";
+import { loadPackagedCuaSdk } from "./cua-runtime-files";
+import { readResult } from "./cua-adapter-contract";
+
+type CuaSdk = Awaited<ReturnType<typeof loadPackagedCuaSdk>>;
 
 const [root, directory, bundleId, generationText] = process.argv.slice(-4);
 if (
@@ -66,7 +69,10 @@ async function execute(
         { name: "HOME", value: directory! },
       ],
       inheritStderr: false,
-      noOverlay: true,
+      // CUA 0.23.2 only pumps AppKit with the cursor renderer enabled. Its
+      // NSWorkspace app inventory otherwise never refreshes after launch/quit.
+      // Keep the loop alive and disable drawing for each owned session below.
+      noOverlay: false,
     });
     connection = await host.start();
     // The adapter does not consume the SDK MCP launcher configuration.
@@ -125,7 +131,18 @@ async function execute(
   const { session } = operation.input;
   if (operation.method === "sessionStart") {
     sessions.add(session);
-    return client.startSession({ session }, { signal });
+    const result = await client.startSession({ session }, { signal });
+    if (!result.active || result.state.session !== session)
+      throw new Error("CUA did not establish the owned session");
+    const cursor = readResult(
+      await client.setAgentCursorEnabled(
+        { session, enabled: false },
+        { signal },
+      ),
+    );
+    if (cursor.session !== session || cursor.enabled !== false)
+      throw new Error("CUA did not disable the owned session cursor");
+    return result;
   }
   if (!sessions.has(session)) throw new Error("Foreign CUA session");
   if (operation.method === "sessionEnd") {
