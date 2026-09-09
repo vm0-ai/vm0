@@ -385,6 +385,46 @@ function formatRunTime(value: string | null): string {
   return value ? formatRelativeTime(value) : chalk.dim("-");
 }
 
+function formatRunTimestamp(value: string | null): string {
+  if (value === null) {
+    return chalk.dim("-");
+  }
+
+  const timestamp = new Date(value);
+  const offsetMinutes = -timestamp.getTimezoneOffset();
+  const localTimestamp = new Date(timestamp.getTime() + offsetMinutes * 60_000)
+    .toISOString()
+    .replace(/(?:\.000)?Z$/, "");
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const hours = String(Math.floor(Math.abs(offsetMinutes) / 60)).padStart(
+    2,
+    "0",
+  );
+  const minutes = String(Math.abs(offsetMinutes) % 60).padStart(2, "0");
+  return `${localTimestamp}${sign}${hours}:${minutes}`;
+}
+
+function printRunTimeGuidance(value: string | null): void {
+  if (value === null) {
+    return;
+  }
+  const timestamp = formatRunTimestamp(value);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  console.log("");
+  console.log(chalk.bold("Time display guidance:"));
+  console.log(
+    "  If you show a run time to the user, use a <time> tag directly in prose:",
+  );
+  console.log(`    <time datetime="${timestamp}">${timestamp}</time>`);
+  console.log(
+    `  Use the current environment timezone (${timezone}) for datetime and`,
+  );
+  console.log(
+    "  visible text, retaining the numeric UTC offset for that date.",
+  );
+  console.log("  Do not wrap the tag in inline code or a code block.");
+}
+
 function workflowAutomationKindLabel(
   automation: WorkflowAutomationSummary,
 ): string {
@@ -503,10 +543,15 @@ export function printWorkflowAutomationsTable(
         formatWorkflowAutomationEntry(automation, options).padEnd(
           scheduleWidth,
         ),
-        formatRunTime(automation.nextRunAt),
+        formatRunTimestamp(automation.nextRunAt),
       ].join("  "),
     );
   }
+  printRunTimeGuidance(
+    automations.find((automation) => {
+      return automation.nextRunAt !== null;
+    })?.nextRunAt ?? null,
+  );
   if (!options.showStripeDetails) {
     return;
   }
@@ -892,10 +937,11 @@ export function printWorkflowAutomationDetails(
   );
   printWorkflowAutomationThreadModel(options.threadModel);
   console.log(
-    `${"Next run:".padEnd(14)}${formatRunTime(automation.nextRunAt)}`,
+    `${"Next run:".padEnd(14)}${formatRunTimestamp(automation.nextRunAt)}`,
   );
   console.log(
-    `${"Last run:".padEnd(14)}${formatRunTime(automation.lastRunAt)}`,
+    `${"Last run:".padEnd(14)}${formatRunTimestamp(automation.lastRunAt)}`,
   );
+  printRunTimeGuidance(automation.nextRunAt ?? automation.lastRunAt);
   printManagementCommands(automation, options);
 }

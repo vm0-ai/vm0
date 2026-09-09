@@ -459,6 +459,7 @@ describe("okou workflow automation commands", () => {
 
   describe("add", () => {
     it("should add a cron automation to a workflow id", async () => {
+      vi.stubEnv("TZ", "Asia/Shanghai");
       const captured = captureCreateAutomation(cronAutomation);
 
       await automationCommand.parseAsync([
@@ -488,6 +489,18 @@ describe("okou workflow automation commands", () => {
       );
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
+      expect(logCalls).toContain("Next run:     2026-06-12T17:00:00+08:00");
+      expect(logCalls).toContain("Last run:     -");
+      expect(logCalls).toContain("Time display guidance:");
+      expect(logCalls).toContain(
+        '<time datetime="2026-06-12T17:00:00+08:00">2026-06-12T17:00:00+08:00</time>',
+      );
+      expect(logCalls).toContain(
+        "current environment timezone (Asia/Shanghai)",
+      );
+      expect(logCalls).toContain(
+        "Do not wrap the tag in inline code or a code block.",
+      );
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
       expect(logCalls).toContain("Thread priority:  enabled");
       expect(logCalls).toContain("Manage with Okou CLI:");
@@ -1877,6 +1890,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should switch to a cron schedule", async () => {
+      vi.stubEnv("TZ", "America/New_York");
       const captured = captureUpdateAutomation(cronAutomation);
 
       await automationCommand.parseAsync([
@@ -1902,6 +1916,10 @@ describe("okou workflow automation commands", () => {
         `Automation ${AUTOMATION_ID} updated`,
       );
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Next run:     2026-06-12T05:00:00-04:00");
+      expect(logCalls).toContain(
+        '<time datetime="2026-06-12T05:00:00-04:00">2026-06-12T05:00:00-04:00</time>',
+      );
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
       expect(logCalls).not.toContain("Manage with Okou CLI:");
     });
@@ -2193,6 +2211,7 @@ describe("okou workflow automation commands", () => {
 
   describe("list", () => {
     it("should display workflow automations", async () => {
+      vi.stubEnv("TZ", "Asia/Shanghai");
       server.use(
         http.get(
           "http://localhost:3000/api/workflows/:workflowId/automations",
@@ -2217,6 +2236,8 @@ describe("okou workflow automation commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
+      expect(logCalls).toContain("2026-06-12T17:00:00+08:00");
+      expect(logCalls).toContain("Time display guidance:");
       expect(logCalls).toContain("every 15m");
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('from contains "@acme.com"');
@@ -2298,6 +2319,59 @@ describe("okou workflow automation commands", () => {
   });
 
   describe("show", () => {
+    it.each([
+      {
+        timezone: "America/Los_Angeles",
+        nextRun: "2026-09-09T00:00:00-07:00",
+        lastRun: "2026-01-08T23:00:00.123-08:00",
+      },
+      {
+        timezone: "Asia/Kathmandu",
+        nextRun: "2026-09-09T12:45:00+05:45",
+        lastRun: "2026-01-09T12:45:00.123+05:45",
+      },
+      {
+        timezone: "UTC",
+        nextRun: "2026-09-09T07:00:00+00:00",
+        lastRun: "2026-01-09T07:00:00.123+00:00",
+      },
+    ])(
+      "should display precise run timestamps in the environment timezone $timezone",
+      async ({ timezone, nextRun, lastRun }) => {
+        vi.stubEnv("TZ", timezone);
+        const automation = {
+          ...cronAutomation,
+          nextRunAt: "2026-09-09T07:00:00Z",
+          lastRunAt: "2026-01-09T07:00:00.123Z",
+        };
+        server.use(
+          http.get("http://localhost:3000/api/workflow-automations/:id", () => {
+            return HttpResponse.json(automation);
+          }),
+          http.get("http://localhost:3000/api/workflow-automations", () => {
+            return HttpResponse.json([
+              { workflow: workflowSummary, automation },
+            ]);
+          }),
+        );
+
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "show",
+          AUTOMATION_ID,
+        ]);
+
+        const output = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(output).toContain(`Next run:     ${nextRun}`);
+        expect(output).toContain(`Last run:     ${lastRun}`);
+        expect(output).toContain("Automation:   0 9 * * * (UTC)");
+        expect(output).toContain(
+          `<time datetime="${nextRun}">${nextRun}</time>`,
+        );
+      },
+    );
+
     it("should display automation details", async () => {
       server.use(
         http.get("http://localhost:3000/api/workflow-automations/:id", () => {
