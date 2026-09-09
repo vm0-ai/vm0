@@ -319,6 +319,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
