@@ -83,7 +83,8 @@ browser processes. Larger color changes, denser differences, alpha changes,
 dimensions and any control observation difference still fail. Every raw changed
 pixel remains visible in the diff and counted separately in the manifest.
 There are no masks. This is a bounded visual noise budget, not byte identity.
-Chromium uses fixed sRGB/software rendering arguments; those arguments and the
+Chromium uses fixed sRGB/software rendering arguments and disables partial
+raster; image decoding completes before capture. Those arguments and the
 dependency lock are part of the runner hash. Normal-motion,
 WebKit and native PWA/Desktop cases must be added before migrating their
 contracts; the initial cases do not certify those surfaces.
@@ -137,3 +138,48 @@ evidence visible. The issue closes only after a fresh main audit proves zero
 first-party selectors, zero legacy business/test dependencies and unapproved
 injections, with validated environment/adapter contracts and relevant visual,
 interaction and native-platform evidence.
+
+## Agent profile Tone batch
+
+`tone-cases.json` is a separate case source registered through the manifest's
+`caseFiles` array. Run `pnpm style:migration:tone` from `e2e` with the same
+App/API, build, source, authentication, output and optional baseline arguments
+as the preferences runner, plus:
+
+```bash
+--agent-fixture "$STYLE_SYNTHETIC_AGENT_JSON" \
+--aria-mode legacy
+```
+
+The fixture is metadata from an isolated TEST account's Agent, with an empty
+string description and initial `professional` sound. It contains no credentials.
+The route substitutes its `agentId` into `/agents/:agentId?tab=profile`. Freeze
+this fixture with the baseline; its hash is checked on every replay. Only the
+exact API origin's preferences, agent list and that agent's metadata endpoints
+have controlled responses. The stateful metadata response supports a delayed
+PATCH and a later GET. This checks client saving and reloading; independently
+verify real API persistence on the preview with these routes unmodified.
+
+Narrow captures center the complete Tone section and require both the choices
+and sample to be in the viewport, with the sample above the pending-edit bar.
+Each viewport checks all four tone labels, hints and sample replies; selected
+and inactive hover; keyboard focus and Space activation; Discard; pending Save;
+successful Save; and reload. Capture every state against unchanged code and
+require an A/A replay before editing business styles. Reuse the existing
+rounding limits, with no masks, and retain failed calibration attempts.
+
+The legacy native buttons have no `aria-pressed`. The shared choice control
+intentionally adds that accessibility state. Use `--aria-mode legacy` for the
+baseline and A/A, and `--aria-mode pressed` for the migrated UI. The runner
+asserts and records the four attributes separately in each capture; all other
+button semantics, geometry and computed styles must match exactly. The mode
+change does not permit any pixel or layout difference. Re-run the original
+21 preference states whenever changing the shared ChoiceButton.
+
+The Tone calibration initially queried the wrong Save label; that attempt is
+retained. A subsequent unchanged-code comparison exposed clipped-edge raster
+variation outside the choices (with identical control observations). Both
+runners now share the same capture helper and disable Chromium partial raster.
+The acceptance archive preserves the earlier failures and separately identifies
+the new unchanged-build pairs; no pixel threshold was widened. These paired
+checks demonstrate bounded reproducibility, not an unattended cross-browser gate.
