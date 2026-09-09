@@ -518,6 +518,7 @@ interface RefreshState {
   readonly inputValues: Readonly<Record<string, string | null>>;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
+  readonly reconnectReason: string | null;
   readonly lastRefreshErrorCode: string | null;
   readonly updatedAtMicros: bigint;
 }
@@ -528,6 +529,7 @@ interface RefreshStateRow {
   readonly storageVersion: number | null;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
+  readonly reconnectReason: string | null;
   readonly lastRefreshErrorCode: string | null;
   readonly updatedAtMicros: bigint;
 }
@@ -968,6 +970,21 @@ function isTerminalCodexRefreshState(
     prepared.providerKey === "codex-oauth-token" &&
     state.needsReconnect &&
     isTerminalChatgptRefreshErrorCode(state.lastRefreshErrorCode)
+  );
+}
+
+function isExpiredAwsSigninRefreshState(
+  prepared: PreparedRefreshTokenContext,
+  state: RefreshState,
+): boolean {
+  // Reconnect clears this reason with the credentials under the same lock.
+  // Other needsReconnect states retain their existing refresh/recovery policy.
+  return (
+    prepared.sourceType === "connector" &&
+    prepared.connectorSlug === "aws" &&
+    state.authMethod === "cli" &&
+    state.needsReconnect &&
+    state.reconnectReason === "credential_expired"
   );
 }
 
@@ -2100,6 +2117,7 @@ async function loadModelProviderRefreshStateRow(
         tokenExpiresAt: modelProviderAccounts.tokenExpiresAt,
         needsReconnect: modelProviderAccounts.needsReconnect,
         lastRefreshErrorCode: modelProviderAccounts.lastRefreshErrorCode,
+        reconnectReason: sql`NULL`.mapWith(pgNullDecoder),
         updatedAtMicros:
           sql`(EXTRACT(EPOCH FROM ${modelProviderAccounts.updatedAt}) * 1000000)::bigint`.mapWith(
             pgInt8ToBigIntDecoder,
@@ -2133,6 +2151,7 @@ async function loadModelProviderRefreshStateRow(
       tokenExpiresAt: modelProviders.tokenExpiresAt,
       needsReconnect: modelProviders.needsReconnect,
       lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+      reconnectReason: sql`NULL`.mapWith(pgNullDecoder),
       updatedAtMicros:
         sql`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`.mapWith(
           pgInt8ToBigIntDecoder,
@@ -2177,6 +2196,7 @@ async function loadConnectorRefreshStateRow(
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
       lastRefreshErrorCode: sql`NULL`.mapWith(pgNullDecoder),
+      reconnectReason: connectors.reconnectReason,
       updatedAtMicros:
         sql`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`.mapWith(
           pgInt8ToBigIntDecoder,
@@ -2268,6 +2288,7 @@ async function loadRefreshState(
     tokenExpiresAt: row.tokenExpiresAt,
     needsReconnect: row.needsReconnect,
     lastRefreshErrorCode: row.lastRefreshErrorCode,
+    reconnectReason: row.reconnectReason,
     updatedAtMicros: row.updatedAtMicros,
   };
 }
@@ -2552,6 +2573,34 @@ async function markAndReturnRefreshFailure(
   signal: AbortSignal,
   shouldLogWarning: boolean,
 ): Promise<RefreshAccessTokenResult> {
+  const connectorAccess = args.connectorAccessBySlug.get(args.accessSourceKey);
+  if (
+    args.sourceType === "connector" &&
+    args.accessSourceKey === "aws" &&
+    connectorAccess?.authMethod === "cli" &&
+    isOAuthProviderHttpError(error) &&
+    error.status === 401 &&
+    error.providerErrorCode === "TOKEN_EXPIRED"
+  ) {
+    await markRefreshFailure(
+      args,
+      context,
+      "invalid_grant",
+      "reconnect_required",
+      "credential_expired",
+    );
+    L.debug("AWS Sign-In refresh token expired; reconnect required", {
+      accessSourceKey: args.accessSourceKey,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: connectorAccess.connectorId,
+      errorCode: "invalid_grant",
+      failureReason: "reconnect_required",
+      providerErrorCode: "TOKEN_EXPIRED",
+      oauthStatus: error.status,
+    });
+    return refreshFailedResult("reconnect_required");
+  }
   const message = error instanceof Error ? error.message : "Unknown error";
   const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
   if (shouldLogWarning) {
@@ -2819,7 +2868,10 @@ async function refreshLockedAccessToken(args: {
     return sourceMissingResult();
   }
 
-  if (isTerminalCodexRefreshState(args.prepared, lockedState)) {
+  if (
+    isTerminalCodexRefreshState(args.prepared, lockedState) ||
+    isExpiredAwsSigninRefreshState(args.prepared, lockedState)
+  ) {
     return refreshFailedResult("reconnect_required");
   }
 
