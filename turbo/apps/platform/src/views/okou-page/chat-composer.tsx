@@ -9481,8 +9481,7 @@ function ComposerRunModelPickerControl({
   const modelMenuEnabled = useGet(modelPickerMenuEnabled$);
   // The flyout needs the room a phone does not have; narrow viewports keep the
   // menu's pages until the sheet layout lands.
-  const modelFlyoutEnabled =
-    useGet(modelPickerFlyoutEnabled$) && desktopLayout;
+  const modelFlyoutEnabled = useGet(modelPickerFlyoutEnabled$) && desktopLayout;
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
@@ -9496,7 +9495,9 @@ function ComposerRunModelPickerControl({
         })}
         triggerClassName={composerModelPickerTriggerClassName()}
         menuSignals={
-          modelMenuEnabled || modelFlyoutEnabled ? signals.model.menu : undefined
+          modelMenuEnabled || modelFlyoutEnabled
+            ? signals.model.menu
+            : undefined
         }
         flyoutLayout={modelFlyoutEnabled}
         compactTrigger

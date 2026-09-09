@@ -731,9 +731,7 @@ test("Choose a model from the flyout without leaving the type list", async () =>
   click(await findButton("GPT 5.6 Sol"));
   // One panel, no pages: every model is reachable without a drill-in step.
   const list = await screen.findByRole("listbox", { name: "Chat models" });
-  expect(
-    screen.queryByRole("button", { name: "Back to models" }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Back to models")).not.toBeInTheDocument();
   const current = within(list).getByRole("option", { name: /GPT 5.6 Sol/u });
   expect(current).toHaveAttribute("aria-selected", "true");
   expect(current).toHaveFocus();

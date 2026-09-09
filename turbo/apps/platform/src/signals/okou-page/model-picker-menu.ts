@@ -85,8 +85,7 @@ export function createModelPickerMenuSignals() {
         '[role="option"][aria-selected="true"]',
       );
       (
-        selected ??
-        element.querySelector<HTMLButtonElement>('[role="option"]')
+        selected ?? element.querySelector<HTMLButtonElement>('[role="option"]')
       )?.focus();
     }),
   );

@@ -695,11 +695,12 @@ export function ModelPickerFlyoutContent({
         className={cn(
           "flex max-h-[284px] w-[252px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
           "rounded-xl border border-border bg-popover p-1 shadow-md",
-          "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150",
           types.length > 1
             ? cn(
                 "absolute bottom-0",
-                side === "right" ? "left-[calc(100%+6px)]" : "right-[calc(100%+6px)]",
+                side === "right"
+                  ? "left-[calc(100%+6px)]"
+                  : "right-[calc(100%+6px)]",
               )
             : "w-[252px]",
         )}
@@ -762,7 +763,8 @@ function moveFlyoutFocus(
   }
   event.preventDefault();
   const next =
-    (current + (event.key === "ArrowDown" ? 1 : -1) + ring.length) % ring.length;
+    (current + (event.key === "ArrowDown" ? 1 : -1) + ring.length) %
+    ring.length;
   ring[next]?.focus();
 }
 
