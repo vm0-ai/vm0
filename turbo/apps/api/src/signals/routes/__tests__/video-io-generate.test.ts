@@ -424,7 +424,6 @@ function okouToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly "file:write"[];
-  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -433,7 +432,6 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: args.capabilities ?? ["file:write"],
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -1356,7 +1354,6 @@ describe("POST /api/video-io/generate", () => {
         userId: fixture.userId,
         orgId: fixture.orgId,
         runId,
-        publicBrand: "okou",
       });
       const app = createVideoIoTestApp(fixture.pricingResolution);
       const response = await app.request("/api/video-io/generate", {

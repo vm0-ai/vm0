@@ -15,7 +15,6 @@ import {
   publishTeamsChanged$,
 } from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("TeamsBrowserConnect");
 const REDIRECT_STATUS = 307;
@@ -190,7 +189,6 @@ function resolveBrowserConnectOrgId(args: {
 
 const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const publicBrand = PUBLIC_BRAND;
   const auth = await set(requiredAuthContext$, {}, signal);
   signal.throwIfAborted();
 
@@ -238,7 +236,6 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId,
       orgRole: auth.orgRole === "admin" ? "admin" : "member",
       tenantId,
-      publicBrand,
       tenantName: query.tenantName ?? installation.teamsTenantName ?? undefined,
       teamsUserId,
       teamsAadObjectId,

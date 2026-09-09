@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  afterAll,
+  afterEach,
+  beforeEach,
+} from "vitest";
 import chalk from "chalk";
 import { mkdtempSync } from "fs";
 import * as fs from "fs/promises";
@@ -8,18 +16,13 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { mapsCommand } from "../index";
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "maps-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
+const TEST_OUTPUT_DIR = mkdtempSync(path.join(os.tmpdir(), "maps-output-"));
 
 describe("okou maps command", () => {
+  afterAll(async () => {
+    await fs.rm(TEST_OUTPUT_DIR, { recursive: true, force: true });
+  });
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -28,19 +31,17 @@ describe("okou maps command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-okou-token");
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
   it("posts directions requests to the maps API and prints JSON", async () => {
@@ -196,7 +197,7 @@ describe("okou maps command", () => {
   });
 
   it("writes OSM download GeoJSON output", async () => {
-    const outputPath = path.join(TEST_HOME, "map.geojson");
+    const outputPath = path.join(TEST_OUTPUT_DIR, "map.geojson");
     let requestBody: unknown;
     server.use(
       http.post(
@@ -271,7 +272,7 @@ describe("okou maps command", () => {
   });
 
   it("writes OSM render PNG output", async () => {
-    const outputPath = path.join(TEST_HOME, "map.png");
+    const outputPath = path.join(TEST_OUTPUT_DIR, "map.png");
     const pngBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
     let requestBody: unknown;
     server.use(

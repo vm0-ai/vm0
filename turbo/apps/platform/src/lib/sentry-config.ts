@@ -18,7 +18,7 @@ interface SentryLoggerContext {
   readonly user?: User;
 }
 
-const SENTRY_LOG_CONTEXT = Symbol("vm0.sentry-log-context");
+const SENTRY_LOG_CONTEXT = Symbol("okou.sentry-log-context");
 
 interface SentryLogContextArgument {
   readonly [SENTRY_LOG_CONTEXT]: SentryLoggerContext;

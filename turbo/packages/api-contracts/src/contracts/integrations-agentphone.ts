@@ -11,11 +11,8 @@ const agentPhoneConnectBodySchema = z.object({
   timestamp: z.number(),
   signature: z.string().min(1),
   channel: z.string().min(1).optional(),
-  // Old Platform -> new API rollout compatibility: old web/app clients can stay
-  // active for about two days. Remove with #27750 after the client floor
-  // excludes the old Platform and cutoff-eligible ten-minute links expire.
-  publicBrand: publicBrandSchema.optional(),
-  publicBrandSignature: z.string().min(1).optional(),
+  publicBrand: publicBrandSchema,
+  publicBrandSignature: z.string().min(1),
 });
 
 const agentPhoneConnectResponseSchema = z.object({
@@ -128,6 +125,9 @@ export const integrationsAgentPhoneContract = c.router({
 
 export type IntegrationsAgentPhoneContract =
   typeof integrationsAgentPhoneContract;
+export type AgentPhoneConnectRequest = z.infer<
+  typeof agentPhoneConnectBodySchema
+>;
 export type AgentPhoneConnectResponse = z.infer<
   typeof agentPhoneConnectResponseSchema
 >;

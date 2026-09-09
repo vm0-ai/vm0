@@ -1,4 +1,4 @@
-# Testing at vm0
+# Testing at Okou
 
 Test the contract an external user or caller relies on. Provide context through
 the production entry point and verify externally observable state or an HTTP

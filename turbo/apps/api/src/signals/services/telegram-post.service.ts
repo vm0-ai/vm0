@@ -392,7 +392,6 @@ async function getTelegramCommandAgentName(args: {
   readonly db: Db;
   readonly agentId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const displayName = await getWorkspaceAgentDisplayLabel(
     args.db,
@@ -465,7 +464,6 @@ async function configureTelegramBot(
     readonly webhookSecret: string;
     readonly agentId: string;
     readonly orgId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<ReturnType<typeof badGateway> | undefined> {
@@ -473,7 +471,6 @@ async function configureTelegramBot(
     db: args.db,
     agentId: args.agentId,
     orgId: args.orgId,
-    publicBrand: args.publicBrand,
   });
   signal.throwIfAborted();
   const webhookConfigured = await tapError(
@@ -599,7 +596,6 @@ const handleExistingInstallation$ = command(
         webhookSecret,
         agentId: resolvedAgent.agentId,
         orgId: args.auth.orgId,
-        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -761,7 +757,6 @@ export const registerTelegramBot$ = command(
         webhookSecret,
         agentId: resolvedAgent.agentId,
         orgId: auth.orgId,
-        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -826,7 +821,6 @@ export const setupTelegramStatus$ = command(
     { get, set },
     args: {
       readonly auth: OrganizationAuth;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {

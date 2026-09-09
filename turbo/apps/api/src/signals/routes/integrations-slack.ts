@@ -1,5 +1,4 @@
 import { command, computed, type Computed } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
@@ -7,10 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/integrations-slack";
 import { integrationsSlackDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import {
-  PUBLIC_BRAND_PRESENTATION,
-  PUBLIC_BRAND,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
@@ -133,14 +129,12 @@ const getSlackEnvironment$ = computed(
 
 const getSlackStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
   const status = await get(
     slackOrgStatus({
       apiOrigin: getOAuthApiOrigin(get(request$).raw),
       orgId: auth.orgId,
       userId: auth.userId,
       orgRole: auth.orgRole,
-      publicBrand,
     }),
   );
 
@@ -187,7 +181,6 @@ function buildConnectUrl(workspaceId: string, slackUserId: string): string {
 function buildDisconnectedAppHomeView(args: {
   readonly workspaceId: string;
   readonly slackUserId: string;
-  readonly publicBrand: PublicBrand;
 }): SlackView {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return {
@@ -295,7 +288,6 @@ const uninstallSlackIntegration$ = command(
       readonly db: Db;
       readonly orgId: string;
       readonly userId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -392,7 +384,6 @@ const disconnectSlackIntegration$ = command(
       readonly db: Db;
       readonly orgId: string;
       readonly userId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -457,7 +448,6 @@ const disconnectSlackIntegration$ = command(
         buildDisconnectedAppHomeView({
           workspaceId: installation.slackWorkspaceId,
           slackUserId: connection.slackUserId,
-          publicBrand: args.publicBrand,
         }),
       ),
     );
@@ -473,7 +463,6 @@ const disconnectSlackIntegration$ = command(
 const deleteSlackIntegration$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = PUBLIC_BRAND;
     const query = get(deleteSlackIntegrationQuery$);
     const db = set(writeDb$);
 
@@ -484,14 +473,14 @@ const deleteSlackIntegration$ = command(
 
       return await set(
         uninstallSlackIntegration$,
-        { db, orgId: auth.orgId, userId: auth.userId, publicBrand },
+        { db, orgId: auth.orgId, userId: auth.userId },
         signal,
       );
     }
 
     return await set(
       disconnectSlackIntegration$,
-      { db, orgId: auth.orgId, userId: auth.userId, publicBrand },
+      { db, orgId: auth.orgId, userId: auth.userId },
       signal,
     );
   },

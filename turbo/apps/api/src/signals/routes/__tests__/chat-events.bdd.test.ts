@@ -40,7 +40,6 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
@@ -962,7 +961,6 @@ async function configureBuiltInPiModelOnOpenRouter(
 async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
-  publicBrand: PublicBrand = "vm0",
   usagePricingResolution?: UsagePricingFixture["resolution"],
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const { template, ...canonicalBody } = body;
@@ -974,7 +972,6 @@ async function sendChatRun(
     clientEventId: body.clientEventId ?? randomUUID(),
   };
   const sent = await chat.requestSendEvent(actor, requestBody, [201], {
-    publicBrand,
     usagePricingResolution,
   });
   if (sent.status !== 201) {
@@ -3151,7 +3148,6 @@ describe("thread-bound Pi Automation and Goal execution", () => {
       const user = await sendChatRun(
         actor,
         { agentId, threadId, prompt: "continue this Automation conversation" },
-        "vm0",
         usagePricingResolution,
       );
       await expectThreadPiTerminal(actor, threadId, user.runId);
@@ -5471,9 +5467,7 @@ describe("CHAT-02: admission without spendable credits", () => {
       model: "claude-sonnet-5",
       clientEventId,
     };
-    const sent = await chat.requestSendEvent(actor, sendBody, [201], {
-      publicBrand: "okou",
-    });
+    const sent = await chat.requestSendEvent(actor, sendBody, [201]);
     if (sent.status !== 201) {
       throw new Error("Expected the blocked send to return 201 without a run");
     }
@@ -5545,7 +5539,6 @@ describe("CHAT-02: admission without spendable credits", () => {
       actor,
       { ...sendBody, threadId: sent.body.threadId },
       [201],
-      { publicBrand: "okou" },
     );
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
@@ -6580,7 +6573,6 @@ async function queueCapabilityProvenPiRun(args: {
           ? {}
           : { runOptions: { codexServiceTier: args.codexServiceTier } }),
       },
-      "vm0",
       usagePricingResolution,
     );
   });
@@ -7459,7 +7451,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "complete through the Pi API-first slot",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, first.runId, "completed", 10_000);
@@ -7498,7 +7489,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "handoff with the pinned Pi memory mount",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
@@ -7661,7 +7651,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "freeze the projection miss",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     const frozenMissManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${frozenMiss.runId}/manifest.json`;
@@ -7689,7 +7678,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "capture the now-ready projection in a new session",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     const newSessionManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${newSession.runId}/manifest.json`;
@@ -7745,7 +7733,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "establish the captured Pi session family",
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, baseline.runId, "completed", 10_000);
@@ -8222,7 +8209,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "capture memory generation at launch",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await firstProviderEntered.promise;
@@ -8315,7 +8301,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "replace the leased candidate with a newer exact history",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, second.runId, "completed", 10_000);
@@ -8448,7 +8433,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "replace the synthetic Phase 2 selection watermark",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, third.runId, "completed", 10_000);
@@ -8618,7 +8602,6 @@ describe("CHAT-02: model-first provider policies", () => {
                 model: selectedModel,
                 runOptions: { codexServiceTier: tier },
               },
-              "vm0",
               usagePricingResolution,
             );
           });
@@ -8733,7 +8716,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: firstPrompt,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, first.runId, "completed");
@@ -8806,7 +8788,6 @@ describe("CHAT-02: model-first provider policies", () => {
           threadId: first.threadId,
           prompt: secondPrompt,
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, second.runId, "completed");
@@ -8922,7 +8903,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: `route ${selectedModel} through the custom Pi gateway`,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await flushWaitUntilForTest();
@@ -8971,7 +8951,6 @@ describe("CHAT-02: model-first provider policies", () => {
               prompt: `continue the custom session with ${tier ?? "standard"}`,
               runOptions: { codexServiceTier: tier },
             },
-            "vm0",
             usagePricingResolution,
           );
           await flushWaitUntilForTest();
@@ -9070,7 +9049,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "hand off custom gateway tools exactly once",
           runOptions: { codexServiceTier: tier },
         },
-        "vm0",
         usagePricingResolution,
       );
       const prefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}`;
@@ -9904,7 +9882,6 @@ describe("CHAT-02: model-first provider policies", () => {
             prompt: `run ${selectedModel} on its managed fallback`,
             model: selectedModel,
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -9999,7 +9976,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: `reuse matching ${selectedModel} billing identities`,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await providerEntered.promise;
@@ -10102,7 +10078,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: `reject a conflicting ${selectedModel} billing identity`,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await providerEntered.promise;
@@ -10197,7 +10172,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "seed the canonical Pi binding",
           model: "gpt-5.6-terra",
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -10284,7 +10258,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt,
           model: "gpt-5.6-terra",
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -10411,7 +10384,6 @@ describe("CHAT-02: model-first provider policies", () => {
             prompt: prompts[0],
             model: selectedModel,
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -10437,7 +10409,6 @@ describe("CHAT-02: model-first provider policies", () => {
             model: selectedModel,
             runOptions: { codexServiceTier: "fast" },
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -10464,7 +10435,6 @@ describe("CHAT-02: model-first provider policies", () => {
             prompt: prompts[2],
             model: selectedModel,
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -10679,7 +10649,6 @@ describe("CHAT-02: model-first provider policies", () => {
               model: selectedModel,
               runOptions: { codexServiceTier: "fast" },
             },
-            "vm0",
             usagePricingResolution,
           );
         });
@@ -10873,7 +10842,6 @@ describe("CHAT-02: model-first provider policies", () => {
       const run = await sendChatRun(
         actor,
         { agentId, threadId, model, prompt: `continue with ${model}` },
-        "vm0",
         usagePricingResolution,
       );
       threadId = run.threadId;
@@ -13367,7 +13335,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           prompt: "finish one API-first answer",
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, run.runId, "failed");
@@ -13708,7 +13675,6 @@ describe("CHAT-02: model-first provider policies", () => {
         model: "gpt-5.6-terra",
         prompt: "create the last complete checkpoint",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, first.runId, "completed");
@@ -13745,7 +13711,6 @@ describe("CHAT-02: model-first provider policies", () => {
         threadId: first.threadId,
         prompt: "produce incomplete output on the existing session",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, failed.runId, "failed");
@@ -13768,7 +13733,6 @@ describe("CHAT-02: model-first provider policies", () => {
         threadId: first.threadId,
         prompt: "continue the preserved canonical session with tools",
       },
-      "vm0",
       usagePricingResolution,
     );
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${next.runId}/manifest.json`;
@@ -14048,7 +14012,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "continue the long session",
           model: "gpt-5.6-terra",
         },
-        "vm0",
         queued.usagePricingResolution,
       );
       await flushWaitUntilForTest();
@@ -14170,7 +14133,6 @@ describe("CHAT-02: model-first provider policies", () => {
               prompt: originalPrompt,
               model: "gpt-5.6-terra",
             },
-            "vm0",
             queued.usagePricingResolution,
           );
         }
@@ -14340,7 +14302,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "ordinary prose with /skill:handoff-skill later in the text",
           model: "gpt-5.6-terra",
         },
-        "vm0",
         queued.usagePricingResolution,
       );
       await flushWaitUntilForTest();
@@ -14855,7 +14816,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           runOptions: { codexServiceTier: "fast" },
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -14906,7 +14866,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           runOptions: { codexServiceTier: "fast" },
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -15237,7 +15196,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "hand a built-in DeepSeek tool response to Sandbox",
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
@@ -15405,7 +15363,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           runOptions: { codexServiceTier: "fast" },
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -17936,7 +17893,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "run with the selected built-in DeepSeek provider",
           model: "deepseek-v4-flash",
         },
-        "vm0",
         usagePricingResolution,
       );
       runId = run.runId;
@@ -23583,26 +23539,22 @@ describe("CHAT-02: generation templates and attachments", () => {
     const filename = "legacy-brand.txt";
     chat.mockCompletedUploadObject(actor, fileId, filename, 24);
 
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "read the legacy attachment",
-        userMessage: {
-          version: 1,
-          parts: [
-            {
-              type: "file",
-              fileId,
-              filenameSnapshot: filename,
-              contentType: "text/plain",
-            },
-            { type: "text", text: "read the legacy attachment" },
-          ],
-        },
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read the legacy attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: filename,
+            contentType: "text/plain",
+          },
+          { type: "text", text: "read the legacy attachment" },
+        ],
       },
-      "okou",
-    );
+    });
     await flushWaitUntilForTest();
 
     const catalog = await chat.listArtifactCatalog(actor, {
@@ -23851,14 +23803,10 @@ describe("CHAT-02: default assistant identity", () => {
       throw new Error("Expected the system default agent to exist");
     }
 
-    const anchor = await sendChatRun(
-      actor,
-      {
-        agentId: defaultAgentId,
-        prompt: "start an Okou run",
-      },
-      "okou",
-    );
+    const anchor = await sendChatRun(actor, {
+      agentId: defaultAgentId,
+      prompt: "start an Okou run",
+    });
     const anchorRun = await api.readRun(actor, anchor.runId);
     expect(anchorRun.appendSystemPrompt).toContain("Your name is Okou.");
 
@@ -23879,7 +23827,6 @@ describe("CHAT-02: default assistant identity", () => {
         clientEventId: queuedEventId,
       },
       [201],
-      { publicBrand: "okou" },
     );
     if (queued.status !== 201) {
       throw new Error("Expected the Okou follow-up to enter the chat queue");
@@ -23898,9 +23845,6 @@ describe("CHAT-02: default assistant identity", () => {
       contextType: "web",
       contextId: "0bdfae9e-63be-43dd-8193-a96e07787c20",
     });
-    // The previous strict raw-row reader accepts this event because the new
-    // context uses existing outer fields and does not widen payload JSONB.
-    expect(rawQueuedEvent.payload).not.toHaveProperty("publicBrand");
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -23939,11 +23883,10 @@ describe("CHAT-02: default assistant identity", () => {
       displayName: "Zero",
       visibility: "private",
     });
-    const customRun = await sendChatRun(
-      actor,
-      { agentId: customZero.agentId, prompt: "keep my custom name" },
-      "okou",
-    );
+    const customRun = await sendChatRun(actor, {
+      agentId: customZero.agentId,
+      prompt: "keep my custom name",
+    });
     const customPrompt = (await api.readRun(actor, customRun.runId))
       .appendSystemPrompt;
     expect(customPrompt).toContain("Your name is Zero.");
@@ -23995,14 +23938,10 @@ describe("CHAT-02: default assistant identity", () => {
       ),
     );
 
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "deliver an Okou GitHub response",
-      },
-      "okou",
-    );
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "deliver an Okou GitHub response",
+    });
     const claim = await claimChatRun(runnerGroup, run.runId);
     await setChatCallbackGitHubDeliveryFixture({
       runId: run.runId,

@@ -9,7 +9,6 @@ import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation"
 import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -476,7 +475,6 @@ interface TeamsAdmissionFailurePresentation {
 
 async function resolveTeamsAdmissionFailurePresentation(
   args: TeamsChatAdmissionFailureArgs,
-  publicBrand: PublicBrand,
   signal: AbortSignal,
 ): Promise<TeamsAdmissionFailurePresentation> {
   const [mentionerCount, featureContext, orgRows, agentRows] =
@@ -564,7 +562,6 @@ export async function deliverTeamsChatAdmissionFailure(
   }
   const presentation = await resolveTeamsAdmissionFailurePresentation(
     args,
-    args.target.publicBrand,
     signal,
   );
   const serviceUrl =

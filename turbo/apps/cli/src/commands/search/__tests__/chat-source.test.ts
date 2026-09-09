@@ -62,8 +62,10 @@ describe("okou search --source chat", () => {
   });
 
   it("renders the matched message grouped by thread", async () => {
+    let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/chat/search", () => {
+      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
         return HttpResponse.json({
           results: [
             {
@@ -74,7 +76,6 @@ describe("okou search --source chat", () => {
               }),
             },
           ],
-          hasMore: false,
         });
       }),
     );
@@ -85,6 +86,7 @@ describe("okou search --source chat", () => {
     expect(logs).toContain("thread-abc");
     expect(logs).toContain("my-agent");
     expect(logs).toContain("OOM killed the build");
+    expect(capturedUrl?.searchParams.has("limit")).toBeFalsy();
   });
 
   it("tolerates invalid chat message timestamps", async () => {
@@ -101,7 +103,6 @@ describe("okou search --source chat", () => {
               }),
             },
           ],
-          hasMore: false,
         });
       }),
     );
@@ -116,7 +117,7 @@ describe("okou search --source chat", () => {
   it("handles no matches", async () => {
     server.use(
       http.get("http://localhost:3000/api/chat/search", () => {
-        return HttpResponse.json({ results: [], hasMore: false });
+        return HttpResponse.json({ results: [] });
       }),
     );
 
@@ -138,7 +139,7 @@ describe("okou search --source chat", () => {
     server.use(
       http.get("http://localhost:3000/api/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], hasMore: false });
+        return HttpResponse.json({ results: [] });
       }),
     );
 
@@ -161,7 +162,7 @@ describe("okou search --source chat", () => {
     server.use(
       http.get("http://localhost:3000/api/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], hasMore: false });
+        return HttpResponse.json({ results: [] });
       }),
     );
 
@@ -213,59 +214,7 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("Invalid agent ID");
   });
 
-  it("rejects --limit outside the 1..50 range", async () => {
-    await expect(
-      searchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--limit",
-        "500",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--limit must be between 1 and 50");
-  });
-
-  it("rejects partial numeric limit values", async () => {
-    await expect(
-      searchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--limit",
-        "1abc",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    let errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--limit must be between 1 and 50");
-
-    mockConsoleError.mockClear();
-    searchCommand.setOptionValue("source", []);
-
-    await expect(
-      searchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--limit",
-        "",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--limit must be between 1 and 50");
-  });
-
-  it("shows the hasMore hint when the API reports more results", async () => {
+  it("renders an older API response without a pagination hint", async () => {
     server.use(
       http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({
@@ -290,7 +239,10 @@ describe("okou search --source chat", () => {
     ]);
 
     const logs = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logs).toContain("--limit");
+    expect(logs).toContain("thread-x");
+    expect(logs).toContain("match");
+    expect(logs).not.toContain("--limit");
+    expect(logs).not.toContain("Showing first");
   });
 
   it("surfaces API authentication errors", async () => {

@@ -343,7 +343,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
+      "Enable Okou Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

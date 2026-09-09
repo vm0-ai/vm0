@@ -83,7 +83,6 @@ function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
-  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
@@ -92,7 +91,6 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: ["file:write"],
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -409,7 +407,7 @@ describe("JoggAI built-in avatar video routes", () => {
         },
         context.signal,
       );
-      const token = okouToken({ ...fixture, runId, publicBrand: "okou" });
+      const token = okouToken({ ...fixture, runId });
       const videoDownloadStarted = createDeferredPromise<void>(context.signal);
       const releaseVideoDownload = createDeferredPromise<void>(context.signal);
       let observedBody: unknown = null;

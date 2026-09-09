@@ -1,8 +1,3 @@
-import { mkdtempSync } from "node:fs";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-
 import { HttpResponse, http } from "msw";
 import {
   afterAll,
@@ -22,17 +17,6 @@ const spawnSyncMock = vi.hoisted(() => {
 });
 vi.mock("node:child_process", () => {
   return { spawnSync: spawnSyncMock };
-});
-
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "browser-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
 });
 
 const THREAD_ID = "c0000000-0000-4000-a000-000000000010";
@@ -65,34 +49,25 @@ describe("okou browser command", () => {
     throw new Error("process.exit called");
   }) as never);
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), {
-      recursive: true,
-      force: true,
-    });
+  beforeEach(() => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
     spawnSyncMock.mockReturnValue({ status: 0 });
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     consoleLog.mockClear();
     consoleError.mockClear();
     processExit.mockClear();
     spawnSyncMock.mockReset();
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), {
-      recursive: true,
-      force: true,
-    });
   });
 
-  afterAll(async () => {
+  afterAll(() => {
     consoleLog.mockRestore();
     consoleError.mockRestore();
     processExit.mockRestore();
-    await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
   it("exposes only thread-keyed lifecycle commands", () => {

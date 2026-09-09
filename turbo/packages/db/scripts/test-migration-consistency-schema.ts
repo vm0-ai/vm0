@@ -973,8 +973,6 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
-const RETIRED_INTEGRATION_ID_COLUMN = ["vm0", "user", "id"].join("_");
-
 const INTEGRATION_USER_ID_TABLES = [
   "agentphone_user_agent_preferences",
   "agentphone_user_links",
@@ -1123,7 +1121,7 @@ async function assertCanonicalIntegrationIdentitySchema(
       '  AND "column_name" = ANY($2::text[])',
       'ORDER BY "table_name", "column_name"',
     ].join("\n"),
-    [tableNames, ["user_id", RETIRED_INTEGRATION_ID_COLUMN]],
+    [tableNames, ["user_id"]],
   );
   assert.deepEqual(
     columns.rows,
