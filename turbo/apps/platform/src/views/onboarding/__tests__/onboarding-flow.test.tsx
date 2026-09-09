@@ -43,8 +43,6 @@ import { mockOAuthCompletions } from "../../okou-page/__tests__/connector-page-t
 
 const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";
-const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
 function onboardingAgent(agentId: string): AgentResponse {
   return {
@@ -393,24 +391,7 @@ test("Website creation opens its template gallery", async () => {
 });
 
 test("Creative onboarding uses the current workspace's default agent", async () => {
-  const browserStorage = Reflect.get(window, "localStorage");
-  if (!(browserStorage instanceof Storage)) {
-    throw new Error("Expected browser local storage");
-  }
-  browserStorage.setItem(LAST_USED_AGENT_STORAGE_KEY, STALE_AGENT_ID);
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      browserStorage.removeItem(LAST_USED_AGENT_STORAGE_KEY);
-    },
-    { once: true },
-  );
-  let firstAgentRoute: string | null = null;
   context.mocks.api(agentsMainContract.list, ({ respond }) => {
-    const currentPath = pathname();
-    if (firstAgentRoute === null && currentPath.startsWith("/agents/")) {
-      firstAgentRoute = currentPath;
-    }
     return respond(200, [onboardingAgent(DEFAULT_AGENT_ID)]);
   });
 
@@ -418,7 +399,7 @@ test("Creative onboarding uses the current workspace's default agent", async () 
   chooseMakeOption("Generate a presentation");
 
   await waitFor(() => {
-    expect(firstAgentRoute).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+    expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
   });
   await waitFor(() => {
     const presentationTab = queryAllByRoleFast("tab").find((candidate) => {

@@ -4,7 +4,7 @@ import { createElement } from "react";
 
 import { i18n } from "../../i18n/index.ts";
 import { WelcomeThreadPage } from "../../views/okou-page/welcome-thread-page.tsx";
-import { agents$, defaultAgentId$, homeAgentId$ } from "../agent.ts";
+import { defaultAgentId$ } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { assistantName$ } from "../branding.ts";
@@ -36,17 +36,8 @@ export const setupWelcomeThreadPage$ = command(
       return;
     }
 
-    const preferredAgentId = await get(homeAgentId$);
+    const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
-    const agents = await get(agents$);
-    signal.throwIfAborted();
-    const fallbackAgentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-    const agentId = agents.some((agent) => {
-      return agent.agentId === preferredAgentId;
-    })
-      ? preferredAgentId
-      : fallbackAgentId;
 
     if (!agentId) {
       set(detachedNavigateTo$, ROUTES.agents, { replace: true });

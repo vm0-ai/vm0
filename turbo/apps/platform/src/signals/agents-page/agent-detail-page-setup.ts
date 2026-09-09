@@ -4,12 +4,7 @@ import { JobDetailPage } from "../../views/team-page/job-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import {
-  currentAgentId$,
-  agents$,
-  defaultAgentId$,
-  rememberLastUsedAgentId$,
-} from "../agent.ts";
+import { currentAgentId$, agents$, defaultAgentId$ } from "../agent.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { setActiveAgent$ } from "../okou-page/job-detail";
 import { setChatAgentId$ } from "../agent-chat.ts";
@@ -53,7 +48,6 @@ export const setupAgentDetailPage$ = command(
     // Activate the agent to trigger dependent signals (detail, automation, etc.)
     set(setActiveAgent$, agentId);
     set(setChatAgentId$, agentId);
-    set(rememberLastUsedAgentId$, agentId);
     const displayName =
       agent.displayName ??
       i18n.t(
