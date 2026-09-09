@@ -68,6 +68,7 @@ async fn blank_prefetch_recovery_preserves_history_identity_budget_and_one_compl
         assert_eq!(overrides.create_configs().len(), 1);
         assert_eq!(budget.allocated().2, 1);
         assert!(env.active_runs.contains(run_id));
+        assert!(overrides.write_file_calls().is_empty());
         assert!(overrides.start_agent_process_calls().is_empty());
         assert!(env.handle.completions.lock().unwrap().is_empty());
         drop(holder);
@@ -98,11 +99,17 @@ async fn blank_prefetch_recovery_preserves_history_identity_budget_and_one_compl
         let creates = overrides.create_configs();
         assert_eq!(creates.len(), if cancelled { 1 } else { 2 });
         assert!(creates.iter().all(|config| config.id == blank_id));
+        let writes = overrides.write_file_calls();
+        assert_eq!(
+            writes.len(),
+            usize::from(!cancelled),
+            "restore retained history exactly once, and never after cancellation"
+        );
         if !cancelled {
+            assert_eq!(writes[0].content, HISTORY);
             assert_eq!(
-                overrides.write_file_calls().len(),
-                1,
-                "restore the retained history once"
+                writes[0].path,
+                "/home/user/.codex/sessions/2026/07/13/rollout-2026-07-13T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
             );
         }
         server.assert_finished().await;
