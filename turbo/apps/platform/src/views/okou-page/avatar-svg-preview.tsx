@@ -5,6 +5,7 @@ import {
 } from "../../signals/external/feature-switch.ts";
 import {
   AVATAR_ARTWORK_SLOT,
+  AVATAR_HEAD_SLOT,
   avatarSvgComposition,
   avatarSvgContentTransform,
   type ResolvedAvatarSvgConfig,
@@ -60,6 +61,7 @@ export function AvatarSvgPreview({
       >
         {behind.map(layer)}
         <div
+          {...AVATAR_HEAD_SLOT}
           className="absolute inset-0"
           style={{
             transform: `translateY(${headOffsetY}%)`,

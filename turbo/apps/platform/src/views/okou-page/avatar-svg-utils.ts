@@ -155,12 +155,12 @@ function composerContentBounds(
     // framing rule has to see that overhang to fit and center the artwork
     // rather than let the box crop it.
     top: hairTop + headOffsetY,
+    // No offset here. Without the collar there is nothing for a chin to meet,
+    // so the head is never moved and this bound is only ever asked for at the
+    // drawn position.
     bottom: neckSweater
       ? 380
-      : Math.min(
-          380,
-          Math.max(AVATAR_FACE_CHIN_Y[config.face], hairBottom) + headOffsetY,
-        ),
+      : Math.min(380, Math.max(AVATAR_FACE_CHIN_Y[config.face], hairBottom)),
   };
 }
 
@@ -204,6 +204,14 @@ interface AvatarSvgComposition {
  * expose it so they cannot drift apart.
  */
 export const AVATAR_ARTWORK_SLOT = { "data-avatar-artwork": "" } as const;
+
+/**
+ * The element carrying the chin-baseline placement, inside the artwork slot.
+ * Same reason as `AVATAR_ARTWORK_SLOT`: the placement is a transform with no
+ * page-observable result under jsdom, and a test should not have to know which
+ * element of the layer stack holds it.
+ */
+export const AVATAR_HEAD_SLOT = { "data-avatar-head": "" } as const;
 
 /**
  * The artwork transform for a composition, or null when it is the identity.

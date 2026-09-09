@@ -198,12 +198,8 @@ test("Keep legacy avatars on the scale they already shipped with", async () => {
  * above: a resized head has no page-observable result under jsdom.
  */
 function headPlacementTransform(agentId: string): string {
-  const artwork = agentCard(agentId).querySelector<HTMLElement>(
-    "[data-avatar-artwork]",
-  );
-  const head = artwork?.querySelector<HTMLElement>(
-    ":scope > div, :scope > span",
-  );
+  const head =
+    agentCard(agentId).querySelector<HTMLElement>("[data-avatar-head]");
   if (!head) {
     throw new Error(`${agentId} avatar head group not found`);
   }

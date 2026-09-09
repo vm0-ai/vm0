@@ -8,6 +8,7 @@ import {
 } from "../../views/okou-page/avatar-utils.ts";
 import {
   AVATAR_ARTWORK_SLOT,
+  AVATAR_HEAD_SLOT,
   avatarSvgComposition,
   avatarSvgContentTransform,
 } from "../../views/okou-page/avatar-svg-utils.ts";
@@ -123,11 +124,17 @@ function renderAgentMentionAvatar(
   if (svgConfig) {
     const { behind, head, front, headOffsetY, contentOffsetY, contentScale } =
       avatarSvgComposition(svgConfig, switches);
+    const applySlot = (
+      element: HTMLElement,
+      slot: Readonly<Record<string, string>>,
+    ) => {
+      for (const [name, value] of Object.entries(slot)) {
+        element.setAttribute(name, value);
+      }
+    };
     const layers = document.createElement("span");
     layers.className = "absolute inset-0";
-    for (const [name, value] of Object.entries(AVATAR_ARTWORK_SLOT)) {
-      layers.setAttribute(name, value);
-    }
+    applySlot(layers, AVATAR_ARTWORK_SLOT);
     const transform = avatarSvgContentTransform({
       contentOffsetY: switches.framing ? contentOffsetY : 0,
       contentScale,
@@ -146,6 +153,7 @@ function renderAgentMentionAvatar(
     };
     const headLayers = document.createElement("span");
     headLayers.className = "absolute inset-0";
+    applySlot(headLayers, AVATAR_HEAD_SLOT);
     headLayers.style.transform = `translateY(${headOffsetY}%)`;
     appendLayers(layers, behind);
     appendLayers(headLayers, head);
