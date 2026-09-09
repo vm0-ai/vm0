@@ -88,9 +88,13 @@ export const setupCustomConnectorRecovery$ = command(
     ) {
       return;
     }
+    const initialDialog = get(customConnectorDialog$);
     const connectors = await get(customConnectors$);
     signal.throwIfAborted();
-    if (get(searchParams$).toString() !== params.toString()) {
+    if (
+      get(searchParams$).toString() !== params.toString() ||
+      get(customConnectorDialog$) !== initialDialog
+    ) {
       return;
     }
     const connector = connectors.find((item) => {

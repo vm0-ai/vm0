@@ -648,6 +648,73 @@ test.each([
   },
 );
 
+test.each(
+  (["accounts", "access"] as const).flatMap((view) => {
+    return [false, true].map((dismissed) => {
+      return { view, dismissed };
+    });
+  }),
+)(
+  "Preserve manual dialog intent when delayed $view recovery finishes with dismissed=$dismissed",
+  async ({ view, dismissed }) => {
+    const connector = connectedDefinition("http");
+    mockDefinition(connector);
+    context.mocks.data.org({ id: "org_1", name: "Test Org", role: "admin" });
+    const release = context.mocks.deferred<void>();
+    context.mocks.api(customConnectorsContract.list, async ({ respond }) => {
+      await release.promise;
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, {
+        connections: [account(connector)],
+        nextCursor: null,
+      });
+    });
+    await setupPage({
+      context,
+      path: `/connectors?tab=custom&customConnectorId=${connector.id}&view=${view}&agentId=${AGENT_ID}`,
+    });
+    const create = await waitFor(() => {
+      return getConnectorAction("button", "New connector");
+    });
+    click(create);
+    const draft = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    await fill(within(draft).getByLabelText("Display name"), "My draft");
+    if (dismissed) {
+      click(getConnectorAction("button", "Close", draft));
+    }
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "New custom connector" }) !== null,
+      ).toBe(!dismissed);
+    });
+
+    release.resolve();
+
+    await waitFor(() => {
+      expect(getConnectorCard(connector.displayName)).toBeInTheDocument();
+    });
+    expect({
+      draftOpen:
+        screen.queryByRole("dialog", { name: "New custom connector" }) !== null,
+      draftValuePresent: screen.queryByDisplayValue("My draft") !== null,
+      dialogCount: screen.queryAllByRole("dialog").length,
+    }).toStrictEqual({
+      draftOpen: !dismissed,
+      draftValuePresent: !dismissed,
+      dialogCount: dismissed ? 0 : 1,
+    });
+    expect(
+      screen.queryByRole("dialog", {
+        name: `Manage ${connector.displayName} ${view}`,
+      }),
+    ).not.toBeInTheDocument();
+  },
+);
+
 test("Keep a closed custom access review closed when Agent grants arrive", async () => {
   const connector = customConnector({
     connected: true,
