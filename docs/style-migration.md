@@ -201,3 +201,21 @@ those external responses before rendering; otherwise real preferences or Agent
 metadata can bypass browser request interception. Bootstrap handling is included
 in the frozen runner hash. Failed baseline attempts retain page evidence and
 must never be accepted by a replay.
+
+### Agent Tone acceptance record (#32873)
+
+The [canonical BEFORE and A/A archive](https://a.okou.io/cwffgb0gk5.zip)
+records unmigrated build `8207962cbb710165210f6c8a1282d77adda7ae0d`.
+The [AFTER and raw-diff archive](https://a.okou.io/66hlqknk2r.zip) records
+build `6b567009e0b93e2b1e0b562af0d7100474413b86`, from source
+`8b8c003cab1645a4a8b933f37e5e731185033f0f`.
+All 33 Tone and 21 preference states have zero changed pixels and identical
+control observations apart from the intentional, separately checked pressed
+state. The same limits also held after retaining main's card-surface migration.
+Real API Save, reload and Discard passed; the TEST account's original tone was
+restored. The manifest contains immutable URLs, hashes and build commits,
+including a [quick comparison image](https://a.okou.io/rrdnuv8uyy.png).
+The corresponding source passed 27 focused page tests, App/UI/E2E types,
+formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
+This is bounded Chromium acceptance; the earlier native and motion exclusions
+remain in force.
