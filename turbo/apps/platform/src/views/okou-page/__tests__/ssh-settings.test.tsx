@@ -48,6 +48,25 @@ async function page(path = "/settings/ssh", enabled = true) {
   });
 }
 
+test.each([
+  { count: 0, label: "0 / 64 hosts configured" },
+  { count: 1, label: "1 / 64 host configured" },
+  { count: 2, label: "2 / 64 hosts configured" },
+])(
+  "Shows the translated configured host count for $count hosts",
+  async ({ count, label }) => {
+    const hosts = Array.from({ length: count }, (_, index) => {
+      return { ...base, id: `b0000000-0000-4000-8000-00000000000${index}` };
+    });
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: hosts });
+    });
+    await page();
+    const configuredCount = await screen.findByText(label);
+    expect(configuredCount).toBeInTheDocument();
+  },
+);
+
 test("Create a configured host with write-only credentials, then edit without replacing them", async () => {
   let hosts: SshConnectionResponse[] = [];
   const requests: unknown[] = [];
