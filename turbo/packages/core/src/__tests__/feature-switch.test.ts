@@ -229,7 +229,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadHeaderActions]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadHeaderActions]).toBe(
+      false,
+    );
   });
 
   it("should enable the model picker menu for Bingjie by email outside the staff org", () => {
