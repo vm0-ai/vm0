@@ -217,16 +217,14 @@ test("Authoritative switch activation replaces the legacy fallback in the mounte
       return respond(200, summary({ status: "pending", phrase: null }));
     },
   );
-  const page = startPage({
+  const page = await startPage({
     context,
     path: RUN_PATH,
     cachedFeatureSwitches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
   });
+  await page.ready;
   await expect(screen.findByText(LEGACY_FALLBACK)).resolves.toBeVisible();
   featureResponse.resolve(undefined);
-  await (
-    await page
-  ).ready;
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
   expect(screen.queryByText(LEGACY_FALLBACK)).not.toBeInTheDocument();
   events.push(
