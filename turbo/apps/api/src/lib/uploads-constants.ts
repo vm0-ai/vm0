@@ -1,3 +1,6 @@
+import { MIMEType } from "node:util";
+import { safeSync } from "../signals/utils";
+
 /**
  * Upload limits shared by the presigned-URL prepare endpoint and its callers.
  *
@@ -112,8 +115,18 @@ export function isAllowedUploadType(contentType: string): boolean {
  * bytes. Slack canonical assets use isAllowedUploadType as a separate gate.
  */
 export function normalizeWebUploadContentType(contentType: string): string {
-  const normalized = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  return isAllowedUploadType(normalized)
-    ? normalized
+  const parsed = safeSync(() => {
+    return new MIMEType(contentType);
+  });
+  if ("error" in parsed) {
+    if (!(parsed.error instanceof TypeError)) {
+      throw parsed.error;
+    }
+    return GENERIC_UPLOAD_CONTENT_TYPE;
+  }
+  // Classify by the media type, but retain parameters needed to decode the
+  // original bytes in storage, downloads and public shares.
+  return isAllowedUploadType(parsed.ok.essence)
+    ? parsed.ok.toString()
     : GENERIC_UPLOAD_CONTENT_TYPE;
 }

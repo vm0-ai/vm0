@@ -1,4 +1,5 @@
 import { fetchResource } from "../../lib/resource-fetch.ts";
+import { textUploadContentType } from "../../lib/text-upload.ts";
 import {
   command,
   computed,
@@ -189,7 +190,7 @@ function uploadContentTypeByExtension(ext: string): string | undefined {
 function inferUploadContentType(file: File): string {
   const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
   if (explicitType && explicitType !== "application/octet-stream") {
-    return explicitType;
+    return file.type.trim();
   }
   const ext = file.name.split(".").pop()?.toLowerCase();
   return ext
@@ -256,7 +257,12 @@ const uploadFileToStorage$ = command(
   async ({ get, set }, file: File, signal: AbortSignal): Promise<FileInfo> => {
     const createClient = get(apiClient$);
     const client = createClient(uploadsContract);
-    const contentType = inferUploadContentType(file);
+    const contentType = await textUploadContentType(
+      file,
+      inferUploadContentType(file),
+      signal,
+    );
+    signal.throwIfAborted();
 
     // Step 1: ask the server to sign either one PUT URL or retryable R2
     // multipart URLs. The file body never travels through the app runtime.

@@ -2,6 +2,7 @@ import { rootSignal$ } from "./root-signal.ts";
 import { fetchResource } from "../lib/resource-fetch.ts";
 import { computed, type Computed } from "ccstate";
 import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
+import { decodeText } from "../lib/text-encoding.ts";
 
 export type TextPreviewKind = "markdown" | "text" | "json" | "csv";
 export type TextPreviewComputed = Computed<Promise<string>>;
@@ -51,7 +52,7 @@ async function readLimitedText(response: Response): Promise<string> {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(bytes);
+  return decodeText(bytes, response.headers.get("content-type") ?? "");
 }
 
 export async function fetchPreviewText(

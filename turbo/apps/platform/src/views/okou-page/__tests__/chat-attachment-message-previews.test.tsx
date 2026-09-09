@@ -2,6 +2,7 @@ import type {
   ChatThreadArtifactFile,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -149,6 +150,77 @@ test("A short Okou artifact link opens as a rich preview", async () => {
     );
   });
 });
+
+test.each([
+  {
+    privateFile: false,
+    contentType: "text/plain;charset=gbk",
+    bytes: Uint8Array.of(0xd6, 0xd0, 0xce, 0xc4),
+    text: "中文",
+  },
+  {
+    privateFile: true,
+    contentType: 'text/plain; charset="utf-16le"',
+    bytes: Uint8Array.of(0x2d, 0x4e, 0x87, 0x65),
+    text: "中文",
+  },
+  {
+    privateFile: false,
+    contentType: "text/plain",
+    bytes: new TextEncoder().encode("中文 😀"),
+    text: "中文 😀",
+  },
+  {
+    privateFile: true,
+    contentType: "text/plain",
+    bytes: Uint8Array.of(0xff, 0xfe, 0x2d, 0x4e, 0x87, 0x65),
+    text: "中文",
+  },
+])(
+  "Preview and download an uploaded text attachment ($contentType, private=$privateFile)",
+  async ({ privateFile, contentType, bytes, text }) => {
+    const fileId = "encoded-upload";
+    const filename = "encoded.txt";
+    const url = privateFile
+      ? privateAttachmentUrl(fileId)
+      : publicArtifactUrl(filename);
+    const resourceUrl = privateFile
+      ? "https://private-files.example/encoded.txt"
+      : url;
+    mockAttachmentChat(context, {
+      chatEvents: [
+        sentUserMessage(userMessage([filePart(fileId, filename, contentType)])),
+      ],
+      artifacts: [artifactFile(filename, { id: fileId, contentType, url })],
+    });
+    context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      return respond(200, {
+        url: resourceUrl,
+        publicUrl: privateFile ? null : resourceUrl,
+      });
+    });
+    context.mocks.http.get(resourceUrl, () => {
+      return new HttpResponse(bytes, {
+        headers: { "Content-Type": contentType },
+      });
+    });
+    const downloads = context.mocks.browser.blobDownload();
+    await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+    click(await findNamedButton(`Open text preview for ${filename}`));
+    await expect(screen.findByText(text)).resolves.toBeVisible();
+    click(getNamedButton("Download options"));
+    click(await findNamedMenuItem("Download"));
+    await waitFor(() => {
+      expect(downloads.downloads).toHaveLength(1);
+    });
+    expect(downloads.downloads[0]?.filename).toBe(filename);
+    const downloaded = downloads.downloads[0]?.blob;
+    if (!downloaded) {
+      throw new Error("Expected the downloaded original file");
+    }
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toStrictEqual(bytes);
+  },
+);
 
 test("Image navigation stays within the current message", async () => {
   vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(

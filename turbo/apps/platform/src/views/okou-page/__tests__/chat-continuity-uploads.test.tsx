@@ -120,7 +120,9 @@ test("Attach supported files by picker or drag and drop", async () => {
     expect(fastButton("Remove release-notes.md")).toBeVisible();
     expect(fastButton("Remove sample.uncommon")).toBeVisible();
   });
-  expect(contentTypes.get("release-notes.md")).toBe("text/markdown");
+  expect(contentTypes.get("release-notes.md")).toBe(
+    "text/markdown; charset=utf-8",
+  );
   expect(contentTypes.get("sample.uncommon")).toBe("application/octet-stream");
   expect(transferCredentials).toStrictEqual([
     {
@@ -155,7 +157,7 @@ test("Attach supported files by picker or drag and drop", async () => {
   await waitFor(() => {
     expect(fastButton("Remove dropped.txt")).toBeVisible();
   });
-  expect(contentTypes.get("dropped.txt")).toBe("text/plain");
+  expect(contentTypes.get("dropped.txt")).toBe("text/plain; charset=utf-8");
   expect(contentTypes.has("archive.iso")).toBeFalsy();
 });
 
@@ -420,3 +422,168 @@ test("Wait for an attachment upload before sending the draft", async () => {
     expect(deliveredAttachments).toStrictEqual(["delayed.txt"]);
   });
 });
+
+test("Upload original bytes with validated or explicitly declared text encodings", async () => {
+  const thread = continuityThread(51, 1, "Text upload encodings");
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 51,
+    threads: [thread],
+  });
+  const contentTypes = new Map<string, string>();
+  installSimpleUploads(51, contentTypes);
+  const transferred = new Map<
+    string,
+    { bytes: ArrayBuffer; contentType: string | null }
+  >();
+  context.mocks.http.put(
+    "https://uploads.vm7.test/51/*",
+    async ({ request }) => {
+      const filename = decodeURIComponent(
+        new URL(request.url).pathname.split("/").at(-1) ?? "",
+      );
+      transferred.set(filename, {
+        bytes: await request.arrayBuffer(),
+        contentType: request.headers.get("content-type"),
+      });
+      return new HttpResponse(null, { status: 200 });
+    },
+  );
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    ...workspace.pageOptions,
+  });
+  await messageComposer();
+  const cases = [
+    {
+      file: new File(["# 中文 😀"], "chinese.md"),
+      type: "text/markdown; charset=utf-8",
+    },
+    {
+      file: new File([Uint8Array.of(0xd6, 0xd0, 0xce, 0xc4)], "gbk.txt", {
+        type: 'text/plain; charset="gbk"',
+      }),
+      type: 'text/plain; charset="gbk"',
+    },
+    {
+      file: new File(
+        [Uint8Array.of(0xff, 0xfe, 0x2d, 0x4e, 0x87, 0x65)],
+        "utf16.txt",
+        { type: "text/plain; charset=utf-16le" },
+      ),
+      type: "text/plain; charset=utf-16le",
+    },
+    {
+      file: new File([Uint8Array.of(0x2d, 0x4e, 0, 0)], "undeclared-utf16.txt"),
+      type: "text/plain",
+    },
+    {
+      file: new File([Uint8Array.of(0xd6, 0xd0)], "undeclared-gbk.txt"),
+      type: "text/plain",
+    },
+    {
+      file: new File(["中文 😀"], "unknown.custom"),
+      type: "application/octet-stream",
+    },
+    {
+      file: new File([Uint8Array.of(0, 255, 1)], "binary.bin"),
+      type: "application/octet-stream",
+    },
+    {
+      file: new File(['<meta charset="gbk">ASCII'], "declared.html"),
+      type: "text/html",
+    },
+  ];
+  for (const { file, type } of cases) {
+    await userEvent.upload(composerFileInput(), file);
+    await waitFor(() => {
+      expect(fastButton(`Remove ${file.name}`)).toBeVisible();
+    });
+    expect(contentTypes.get(file.name)).toBe(type);
+    expect(transferred.get(file.name)?.contentType).toBe(type);
+    expect(
+      new Uint8Array(transferred.get(file.name)?.bytes ?? new ArrayBuffer(0)),
+    ).toStrictEqual(new Uint8Array(await file.arrayBuffer()));
+  }
+});
+
+test.each([false, true])(
+  "Validate the entire multipart text upload (invalid suffix: %s)",
+  async (invalidSuffix) => {
+    const thread = continuityThread(52, 1, "Multipart text encoding");
+    const workspace = installContinuityWorkspace(context, {
+      caseId: 52,
+      threads: [thread],
+    });
+    const filename = "large.txt";
+    const partSize = 5 * 1024 * 1024;
+    const file = new File(
+      [
+        "a".repeat(partSize - 1),
+        "中文😀",
+        invalidSuffix ? Uint8Array.of(0xd6) : "",
+      ],
+      filename,
+      { type: "text/plain" },
+    );
+    const expectedType = invalidSuffix
+      ? "text/plain"
+      : "text/plain; charset=utf-8";
+    const parts: ArrayBuffer[] = [];
+    const headers: (string | null)[] = [];
+    context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
+      expect(body.contentType).toBe(expectedType);
+      expect(body.multipart).toBeTruthy();
+      return respond(200, {
+        id: uploadId(52, 1),
+        filename,
+        contentType: body.contentType,
+        size: body.size,
+        url: "https://cdn.vm7.io/large.txt",
+        multipart: {
+          uploadId: "text-upload",
+          partSize,
+          parts: [1, 2].map((partNumber) => {
+            return {
+              partNumber,
+              uploadUrl: `https://uploads.vm7.test/52/${partNumber}`,
+            };
+          }),
+        },
+      });
+    });
+    context.mocks.http.put(
+      "https://uploads.vm7.test/52/*",
+      async ({ request }) => {
+        parts.push(await request.arrayBuffer());
+        headers.push(request.headers.get("content-type"));
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+    context.mocks.api(
+      uploadsContract.completeMultipart,
+      ({ body, respond }) => {
+        return respond(200, {
+          id: body.id,
+          url: "https://cdn.vm7.io/large.txt",
+        });
+      },
+    );
+    await setupPage({
+      context,
+      path: `/chats/${thread.id}`,
+      ...workspace.pageOptions,
+    });
+    await messageComposer();
+    await userEvent.upload(composerFileInput(), file);
+    await waitFor(() => {
+      expect(fastButton(`Remove ${filename}`)).toBeVisible();
+    });
+    expect(headers).toStrictEqual([expectedType, expectedType]);
+    await expect(
+      crypto.subtle.digest("SHA-256", await new Blob(parts).arrayBuffer()),
+    ).resolves.toStrictEqual(
+      await crypto.subtle.digest("SHA-256", await file.arrayBuffer()),
+    );
+  },
+);

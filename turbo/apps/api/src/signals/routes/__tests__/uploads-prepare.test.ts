@@ -442,7 +442,7 @@ describe("POST /api/uploads/prepare", () => {
     expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("normalizes parameterized content types before signing", async () => {
+  it("preserves encoding parameters in the response and storage signature", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -462,12 +462,12 @@ describe("POST /api/uploads/prepare", () => {
     if (response.status !== 200) {
       return;
     }
-    expect(response.body.contentType).toBe("text/plain");
+    expect(response.body.contentType).toBe("text/plain;charset=UTF-8");
 
     const command = context.mocks.s3.getSignedUrl.mock.calls[0]?.[1] as {
       input: { ContentType: string };
     };
-    expect(command.input.ContentType).toBe("text/plain");
+    expect(command.input.ContentType).toBe("text/plain;charset=UTF-8");
   });
 
   it("uses the public S3 endpoint for externally consumed upload URLs", async () => {

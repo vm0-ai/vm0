@@ -460,6 +460,60 @@ test("explicit historical Public file registration preserves bytes without enabl
   ).toBe(404);
 });
 
+test.each(["publication", "legacy-file"] as const)(
+  "serves the registered charset and original bytes for %s files",
+  async (kind) => {
+    const f = fixture();
+    const contentType = "text/plain;charset=utf-8";
+    const text = "中文 😀";
+    const alias = "0123456789.txt";
+    const key = `artifacts/${alias}`;
+    let url = origin;
+    if (kind === "legacy-file") {
+      f.objects.set(key, text);
+      f.objects.set(
+        artifactDeliveryKey("okou", "file", alias),
+        JSON.stringify({
+          version: 1,
+          kind,
+          publicBrand: "okou",
+          audience: "public",
+          key,
+          filename: "notes.txt",
+          contentType,
+        }),
+      );
+      url = `https://f.okou.io/${alias}`;
+    } else {
+      if (f.policy.target.kind !== "file")
+        throw new Error("Expected file policy");
+      f.objects.set(f.policy.target.key, text);
+      f.objects.set(
+        policyKey,
+        JSON.stringify({
+          ...f.policy,
+          target: { ...f.policy.target, contentType },
+        }),
+      );
+    }
+    const env = {
+      ...f.env,
+      PUBLIC_ARTIFACTS_BUCKET: f.env.HOSTED_SITES_BUCKET,
+    };
+    for (const method of ["GET", "HEAD"]) {
+      const response = await fetchWorker(new Request(url, { method }), env);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(contentType);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await response.arrayBuffer()).toEqual(
+        method === "HEAD"
+          ? new ArrayBuffer(0)
+          : new TextEncoder().encode(text).buffer,
+      );
+    }
+  },
+);
+
 test("media byte ranges remain authorized after a full response warms the cache", async () => {
   const f = fixture();
   await fetchWorker(new Request(origin), f.env);
