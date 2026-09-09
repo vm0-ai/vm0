@@ -10,6 +10,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import postgres from "postgres";
+import { forEachConcurrent } from "./concurrent";
 // Frozen v1 format: numbered data migrations must remain runnable after app
 // contracts evolve. Only confirmed historical Public records are constructed.
 type PublicBrand = "vm0" | "okou";
@@ -47,6 +48,11 @@ interface Options {
   readonly verify: boolean;
   readonly finalize: boolean;
   readonly maxObjects: number;
+  readonly concurrency?: number;
+  readonly onProgress?: (phase: string, completed: number) => void;
+  readonly resolveMissingContentType?: (
+    key: string,
+  ) => Promise<string | undefined>;
 }
 interface Entry {
   readonly key: string;
@@ -174,6 +180,37 @@ async function historicalSiteEntry(
   };
 }
 
+async function registeredContentType(
+  hostedClient: S3Client,
+  options: Options,
+  key: string,
+  brand: PublicBrand,
+  filename: string,
+) {
+  const value = await readJson(
+    hostedClient,
+    options.hostedBucket,
+    artifactDeliveryKey(brand, "file", key.slice("artifacts/".length)),
+  );
+  if (value === undefined) return undefined;
+  const record = objectRecord(value);
+  if (
+    record.version !== 1 ||
+    record.kind !== "legacy-file" ||
+    record.audience !== "public" ||
+    record.key !== key ||
+    record.publicBrand !== brand ||
+    record.filename !== filename ||
+    typeof record.contentType !== "string" ||
+    !record.contentType
+  ) {
+    throw new Error(
+      "Existing registration cannot resolve missing public MIME metadata",
+    );
+  }
+  return record.contentType;
+}
+
 /** Enumerate only the historical public artifact namespace and public pointers. */
 async function inventory(
   publicClient: S3Client,
@@ -193,68 +230,93 @@ async function inventory(
       throw new Error("Conflicting historical aliases");
     entries.set(entry.key, entry);
   }
-  for await (const key of keys(
-    publicClient,
-    options.publicBucket,
-    "artifacts/",
-    options.maxObjects,
-  )) {
-    // These are the two key shapes emitted by historical artifact writers.
-    if (
-      !/^artifacts\/(?:[a-z0-9]{10}\.[^/]+|[^/]+\/[^/]+\/[^/]+)$/u.test(key)
-    ) {
-      skipped++;
-      continue;
-    }
-    const head = await publicClient.send(
-      new HeadObjectCommand({ Bucket: options.publicBucket, Key: key }),
-    );
-    if (
-      head.Metadata?.storage === "private-artifact-v1" ||
-      head.Metadata?.access === "owner-private-v1"
-    )
-      throw new Error(
-        "Private metadata found in historical public storage; investigate without publishing it",
+  let scannedFiles = 0;
+  let resolvedContentTypes = 0;
+  await forEachConcurrent(
+    keys(publicClient, options.publicBucket, "artifacts/", options.maxObjects),
+    options.concurrency ?? 16,
+    async (key) => {
+      // The draft namespace is also present in the existing public bucket.
+      // Private metadata and database ownership are checked before any write.
+      if (
+        !/^artifacts\/(?:[a-z0-9]{10}\.[^/]+|[^/]+\/[^/]+\/[^/]+|html-edit-drafts\/[0-9a-f-]{36}\.html)$/u.test(
+          key,
+        )
+      ) {
+        skipped++;
+        return;
+      }
+      const head = await publicClient.send(
+        new HeadObjectCommand({ Bucket: options.publicBucket, Key: key }),
       );
-    const brand = head.Metadata?.["public-brand"] ?? "vm0";
-    if (brand !== "okou" && brand !== "vm0")
-      throw new Error("Invalid historical artifact brand");
-    const filename = head.Metadata?.filename
-      ? decodeURIComponent(head.Metadata.filename)
-      : decodeURIComponent(key.slice(key.lastIndexOf("/") + 1));
-    if (!head.ContentType)
-      throw new Error(`Historical artifact has no content type: ${key}`);
-    const record: HistoricalPublicRecord = {
-      version: 1,
-      kind: "legacy-file",
-      publicBrand: brand,
-      audience: "public",
-      key,
-      filename,
-      contentType: head.ContentType,
-    };
-    sourceFiles.add(key);
-    add({
-      key: artifactDeliveryKey(brand, "file", key.slice("artifacts/".length)),
-      record,
-    });
-  }
-  for await (const key of keys(
-    hostedClient,
-    options.hostedBucket,
-    "sites/",
-    options.maxObjects,
-  )) {
-    const site = await historicalSiteEntry(hostedClient, options, key);
-    if (!site) continue;
-    if (site.skipped) {
-      skipped++;
-      continue;
-    }
-    sourceDeployments.add(site.deploymentId);
-    add(site.entry);
-  }
-  return { entries, sourceFiles, sourceDeployments, skipped };
+      if (
+        head.Metadata?.storage === "private-artifact-v1" ||
+        head.Metadata?.access === "owner-private-v1"
+      )
+        throw new Error(
+          "Private metadata found in historical public storage; investigate without publishing it",
+        );
+      const brand = head.Metadata?.["public-brand"] ?? "vm0";
+      if (brand !== "okou" && brand !== "vm0")
+        throw new Error("Invalid historical artifact brand");
+      const filename = head.Metadata?.filename
+        ? decodeURIComponent(head.Metadata.filename)
+        : decodeURIComponent(key.slice(key.lastIndexOf("/") + 1));
+      // Desktop click tracks can lack R2 HTTP metadata. A pre-registration
+      // remains authoritative even if an upload has not completed in the DB.
+      const contentType =
+        head.ContentType ??
+        (await registeredContentType(
+          hostedClient,
+          options,
+          key,
+          brand,
+          filename,
+        )) ??
+        (await options.resolveMissingContentType?.(key));
+      if (!contentType)
+        throw new Error(`Historical artifact has no content type: ${key}`);
+      if (!head.ContentType) resolvedContentTypes++;
+      const record: HistoricalPublicRecord = {
+        version: 1,
+        kind: "legacy-file",
+        publicBrand: brand,
+        audience: "public",
+        key,
+        filename,
+        contentType,
+      };
+      sourceFiles.add(key);
+      add({
+        key: artifactDeliveryKey(brand, "file", key.slice("artifacts/".length)),
+        record,
+      });
+      scannedFiles++;
+      if (scannedFiles % 1000 === 0)
+        options.onProgress?.("inventory-files", scannedFiles);
+    },
+  );
+  await forEachConcurrent(
+    keys(hostedClient, options.hostedBucket, "sites/", options.maxObjects),
+    options.concurrency ?? 16,
+    async (key) => {
+      const site = await historicalSiteEntry(hostedClient, options, key);
+      if (!site) return;
+      if (site.skipped) {
+        skipped++;
+        return;
+      }
+      sourceDeployments.add(site.deploymentId);
+      add(site.entry);
+    },
+  );
+  return {
+    entries,
+    sourceFiles,
+    sourceDeployments,
+    skipped,
+    resolvedContentTypes,
+  };
 }
 
 function digest(entries: ReadonlyMap<string, Entry>): string {
@@ -292,16 +354,23 @@ async function readExistingAliases(
 ) {
   const previousRecords = new Map<string, unknown>();
   const conflicts: string[] = [];
-  for (const entry of initial.entries.values()) {
-    const previous = await readJson(
-      hostedClient,
-      options.hostedBucket,
-      entry.key,
-    );
-    previousRecords.set(entry.key, previous);
-    if (previous !== undefined && !isDeepStrictEqual(previous, entry.record))
-      conflicts.push(entry.key);
-  }
+  let checked = 0;
+  await forEachConcurrent(
+    initial.entries.values(),
+    options.concurrency ?? 16,
+    async (entry) => {
+      const previous = await readJson(
+        hostedClient,
+        options.hostedBucket,
+        entry.key,
+      );
+      previousRecords.set(entry.key, previous);
+      if (previous !== undefined && !isDeepStrictEqual(previous, entry.record))
+        conflicts.push(entry.key);
+      if (++checked % 1000 === 0)
+        options.onProgress?.("check-existing-aliases", checked);
+    },
+  );
   if (conflicts.length)
     throw new RegistrationConflictError({
       status: "blocked",
@@ -314,6 +383,14 @@ async function readExistingAliases(
 }
 
 /** API/CLI-driven writes continue to register while this idempotent pass runs. */
+function validateOptions(options: Options) {
+  const concurrency = options.concurrency ?? 16;
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 64)
+    throw new Error("Concurrency must be between 1 and 64");
+  if (options.finalize && (!options.migrate || !options.verify))
+    throw new Error("--finalize requires --migrate --verify");
+}
+
 export async function registerHistoricalPublicArtifacts(
   publicClient: S3Client,
   hostedClient: S3Client,
@@ -323,8 +400,7 @@ export async function registerHistoricalPublicArtifacts(
     deployments: ReadonlySet<string>,
   ) => Promise<void>,
 ) {
-  if (options.finalize && (!options.migrate || !options.verify))
-    throw new Error("--finalize requires --migrate --verify");
+  validateOptions(options);
   const initial = await inventory(publicClient, hostedClient, options);
   await reconcile(initial.sourceFiles, initial.sourceDeployments);
   const previousRecords = await readExistingAliases(
@@ -334,65 +410,80 @@ export async function registerHistoricalPublicArtifacts(
   );
   let existing = 0;
   let registered = 0;
-  for (const entry of initial.entries.values()) {
-    const previous = previousRecords.get(entry.key);
-    const body = JSON.stringify(entry.record);
-    if (previous !== undefined) {
-      existing++;
-    } else if (options.migrate) {
-      try {
-        await hostedClient.send(
-          new PutObjectCommand({
-            Bucket: options.hostedBucket,
-            Key: entry.key,
-            Body: body,
-            ContentType: "application/json",
-            IfNoneMatch: "*",
-          }),
-        );
-        registered++;
-      } catch (error) {
-        if (!(error instanceof Error) || error.name !== "PreconditionFailed")
-          throw error;
-        const concurrent = await readJson(
+  let processed = 0;
+  await forEachConcurrent(
+    initial.entries.values(),
+    options.concurrency ?? 16,
+    async (entry) => {
+      const previous = previousRecords.get(entry.key);
+      const body = JSON.stringify(entry.record);
+      if (previous !== undefined) {
+        existing++;
+      } else if (options.migrate) {
+        try {
+          await hostedClient.send(
+            new PutObjectCommand({
+              Bucket: options.hostedBucket,
+              Key: entry.key,
+              Body: body,
+              ContentType: "application/json",
+              IfNoneMatch: "*",
+            }),
+          );
+          registered++;
+        } catch (error) {
+          if (!(error instanceof Error) || error.name !== "PreconditionFailed")
+            throw error;
+          const concurrent = await readJson(
+            hostedClient,
+            options.hostedBucket,
+            entry.key,
+          );
+          if (!isDeepStrictEqual(concurrent, entry.record))
+            throw new Error(
+              "Concurrent alias registration conflicts with the inventory",
+            );
+          existing++;
+        }
+      }
+      if (options.verify || options.migrate) {
+        const actual = await readJson(
           hostedClient,
           options.hostedBucket,
           entry.key,
         );
-        if (!isDeepStrictEqual(concurrent, entry.record))
-          throw new Error(
-            "Concurrent alias registration conflicts with the inventory",
-          );
-        existing++;
+        if (!isDeepStrictEqual(actual, entry.record))
+          throw new Error("Public registration read-back failed");
       }
-    }
-    if (options.verify || options.migrate) {
-      const actual = await readJson(
-        hostedClient,
-        options.hostedBucket,
-        entry.key,
-      );
-      if (!isDeepStrictEqual(actual, entry.record))
-        throw new Error("Public registration read-back failed");
-    }
-  }
+      processed++;
+      if (processed % 1000 === 0)
+        options.onProgress?.("registration", processed);
+    },
+  );
   const final = await inventory(publicClient, hostedClient, options);
   await reconcile(final.sourceFiles, final.sourceDeployments);
-  const inventoryHash = digest(initial.entries);
-  if (inventoryHash !== digest(final.entries))
+  // Online writers register before exposing objects. Accept concurrent additions
+  // only after independently verifying their exact records in the final inventory.
+  const finalRecords = await readExistingAliases(hostedClient, options, final);
+  const missing = [...final.entries.keys()].filter((key) => {
+    return finalRecords.get(key) === undefined;
+  }).length;
+  if ((options.migrate || options.verify) && missing > 0) {
     throw new Error(
-      "Historical inventory changed during registration; rerun to include concurrent writes",
+      "Final inventory contains unregistered public artifacts; rerun to repair missing aliases",
     );
+  }
+  if ((options.migrate || options.verify) && final.skipped > 0)
+    throw new Error(
+      "Unclassified historical artifact objects require reconciliation before verification",
+    );
+  const inventoryHash = digest(final.entries);
   if (options.finalize) {
-    if (initial.skipped > 0)
-      throw new Error(
-        "Unclassified historical artifact objects require reconciliation before finalization",
-      );
     const marker = JSON.stringify({
       version: 1,
       complete: true,
       inventoryHash,
-      count: initial.entries.size,
+      count: final.entries.size,
       completedAt: new Date().toISOString(),
     });
     for (const brand of ["vm0", "okou"] as const) {
@@ -420,8 +511,11 @@ export async function registerHistoricalPublicArtifacts(
     aliases: initial.entries.size,
     existing,
     registered,
-    skipped: initial.skipped,
-    missing: initial.entries.size - existing - registered,
+    skipped: final.skipped,
+    missing,
+    finalFiles: final.sourceFiles.size,
+    finalAliases: final.entries.size,
+    resolvedContentTypes: final.resolvedContentTypes,
     verified: options.verify || options.migrate,
     finalized: options.finalize,
   };
@@ -440,6 +534,7 @@ async function main() {
       verify: { type: "boolean", default: false },
       finalize: { type: "boolean", default: false },
       "max-objects": { type: "string", default: "100000" },
+      concurrency: { type: "string", default: "16" },
       report: { type: "string" },
     },
   });
@@ -481,6 +576,17 @@ async function main() {
         verify: values.verify,
         finalize: values.finalize,
         maxObjects,
+        concurrency: Number(values.concurrency),
+        onProgress: (phase, completed) => {
+          console.error(JSON.stringify({ phase, completed }));
+        },
+        resolveMissingContentType: async (key) => {
+          const rows =
+            await db`select distinct content_type from run_uploaded_files where storage_key = ${key} and content_type is not null`;
+          if (rows.length !== 1 || typeof rows[0]?.content_type !== "string")
+            return undefined;
+          return rows[0].content_type;
+        },
       },
       async (files, deployments) => {
         const privateRows =

@@ -411,6 +411,15 @@ describe("managed artifact privacy", () => {
           [401],
         );
       } else {
+        const writes = [...objects.keys()];
+        const contentWrite = writes.findIndex((key) => {
+          return key.startsWith(`${publicBucket}/artifacts/`);
+        });
+        const registrationWrite = writes.findIndex((key) => {
+          return key.startsWith("test-hosted-sites/artifact-delivery/files/");
+        });
+        expect(registrationWrite).toBeGreaterThanOrEqual(0);
+        expect(contentWrite).toBeGreaterThan(registrationWrite);
         expect(result.url).toMatch(/^https:\/\/a\.okou\.io\//u);
         expect(result.sourceUrl).toBe(sourceUrl);
         expect(result.embedUrl).toContain("cdn-cgi/image/");

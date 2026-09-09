@@ -23,11 +23,116 @@ import {
 
 import { env } from "../../lib/env";
 import { detach, Mechanism, settle } from "../utils";
+import {
+  artifactDeliveryKey,
+  artifactDeliveryRecordSchema,
+} from "@okouai/api-contracts/contracts/artifact-delivery";
 
 export interface S3Object {
   readonly key: string;
   readonly size: number;
   readonly lastModified: Date;
+}
+
+interface LegacyArtifactWrite {
+  readonly key: string;
+  readonly contentType: string;
+  readonly metadata?: Readonly<Record<string, string>>;
+}
+
+/** Reserve public delivery before bytes or upload credentials can escape. */
+async function registerLegacyArtifactWrite(
+  client: S3Client,
+  bucket: string,
+  write: LegacyArtifactWrite,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (
+    write.metadata?.storage === "private-artifact-v1" ||
+    write.metadata?.access === "owner-private-v1"
+  ) {
+    throw new Error(
+      "Private artifacts cannot use public delivery registration",
+    );
+  }
+  // Historical public writers without brand/filename metadata use the same
+  // interpretation as migration 014; #32492 owns this persisted-data boundary.
+  const record = artifactDeliveryRecordSchema.parse({
+    version: 1,
+    kind: "legacy-file",
+    publicBrand: write.metadata?.["public-brand"] ?? "vm0",
+    audience: "public",
+    key: write.key,
+    filename: decodeURIComponent(
+      write.metadata?.filename ??
+        write.key.slice(write.key.lastIndexOf("/") + 1),
+    ),
+    contentType: write.contentType,
+  });
+  const key = artifactDeliveryKey(
+    null,
+    "file",
+    write.key.slice("artifacts/".length),
+  );
+  const body = JSON.stringify(record);
+  const written = await settle(
+    client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: "application/json",
+        IfNoneMatch: "*",
+      }),
+      { abortSignal: signal },
+    ),
+  );
+  signal?.throwIfAborted();
+  if (written.ok) {
+    return;
+  }
+  if (!isS3PreconditionFailedError(written.error)) {
+    throw written.error;
+  }
+  const existing = await client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
+    { abortSignal: signal },
+  );
+  if (!existing.Body) {
+    throw new Error("Public artifact registration has no body");
+  }
+  const previous = artifactDeliveryRecordSchema.parse(
+    JSON.parse(await existing.Body.transformToString()),
+  );
+  if (JSON.stringify(previous) !== body) {
+    throw new Error("Artifact delivery alias is already allocated");
+  }
+  signal?.throwIfAborted();
+}
+
+function publicArtifactWriteRegistration(
+  bucket: string,
+  write: LegacyArtifactWrite,
+  signal?: AbortSignal,
+): Computed<Promise<void>> {
+  return computed(async (get) => {
+    if (
+      bucket !== env("R2_USER_ARTIFACTS_BUCKET_NAME") ||
+      !write.key.startsWith("artifacts/")
+    ) {
+      return;
+    }
+    const registryBucket = env("R2_HOSTED_SITES_BUCKET_NAME");
+    if (!registryBucket) {
+      throw new Error("Artifact delivery registry storage is not configured");
+    }
+    await registerLegacyArtifactWrite(
+      get(hostedSitesS3Client$),
+      registryBucket,
+      write,
+      signal,
+    );
+  });
 }
 
 interface S3ObjectPage {
@@ -548,25 +653,17 @@ export function generatePresignedPutUrl(
   bucket: string,
   key: string,
   contentType: string,
-  expiresIn: number,
-  options:
-    | boolean
-    | {
-        readonly usePublicEndpoint?: boolean;
-        readonly metadata?: Readonly<Record<string, string>>;
-      } = false,
+  options: {
+    readonly expiresIn: number;
+    readonly usePublicEndpoint?: boolean;
+    readonly metadata?: Readonly<Record<string, string>>;
+  },
+  signal?: AbortSignal,
 ): Computed<Promise<string>> {
-  const usePublicEndpoint =
-    typeof options === "boolean"
-      ? options
-      : (options.usePublicEndpoint ?? false);
-  const metadata = typeof options === "boolean" ? undefined : options.metadata;
   return generatePresignedPutUrlWithClient(
-    s3ClientForBucket(bucket, usePublicEndpoint),
-    bucket,
-    key,
-    contentType,
-    { expiresIn, metadata },
+    s3ClientForBucket(bucket, options.usePublicEndpoint ?? false),
+    { bucket, key, contentType, ...options },
+    signal,
   );
 }
 
@@ -589,6 +686,13 @@ export function createMultipartS3Upload(
 ): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const client = get(s3ClientForBucket(bucket));
+    await get(
+      publicArtifactWriteRegistration(
+        bucket,
+        { key, contentType, metadata },
+        signal,
+      ),
+    );
     const response = await client.send(
       new CreateMultipartUploadCommand({
         Bucket: bucket,
@@ -734,16 +838,25 @@ export function abortMultipartS3Upload(
 
 function generatePresignedPutUrlWithClient(
   client$: Computed<S3Client>,
-  bucket: string,
-  key: string,
-  contentType: string,
   options: {
+    readonly bucket: string;
+    readonly key: string;
+    readonly contentType: string;
     readonly expiresIn: number;
     readonly metadata?: Readonly<Record<string, string>>;
   },
+  signal?: AbortSignal,
 ): Computed<Promise<string>> {
-  return computed((get): Promise<string> => {
+  return computed(async (get): Promise<string> => {
     const client = get(client$);
+    const { bucket, key, contentType } = options;
+    await get(
+      publicArtifactWriteRegistration(
+        bucket,
+        { key, contentType, metadata: options.metadata },
+        signal,
+      ),
+    );
     const metadataHeaders = options.metadata
       ? s3MetadataHeaders(options.metadata)
       : undefined;
@@ -773,10 +886,7 @@ export function generateHostedSitesPresignedPutUrl(
 ): Computed<Promise<string>> {
   return generatePresignedPutUrlWithClient(
     usePublicEndpoint ? hostedSitesPublicS3Client$ : hostedSitesS3Client$,
-    bucket,
-    key,
-    contentType,
-    { expiresIn },
+    { bucket, key, contentType, expiresIn },
   );
 }
 
@@ -894,6 +1004,7 @@ function putS3ObjectWithClient(
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(client$);
+    await get(publicArtifactWriteRegistration(args.bucket, args, signal));
     await client.send(
       new PutObjectCommand({
         Bucket: args.bucket,
@@ -940,6 +1051,13 @@ export function putImmutableS3Object(
   return computed(async (get): Promise<void> => {
     const writeOptions = isAbortSignal(options) ? { signal: options } : options;
     const client = get(s3ClientForBucket(bucket));
+    await get(
+      publicArtifactWriteRegistration(
+        bucket,
+        { key, contentType, metadata: writeOptions?.metadata },
+        writeOptions?.signal,
+      ),
+    );
     const uploaded = await settle(
       client.send(
         new PutObjectCommand({

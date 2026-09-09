@@ -19,6 +19,7 @@ function fixture() {
   });
   const objects = new Map<string, string>();
   const metadata = new Map<string, Record<string, string>>();
+  const contentTypes = new Map<string, string | undefined>();
   const writes: string[] = [];
   const id = "00000000-0000-4000-8000-000000000001";
   const prefix = `sites/demo/deployments/${id}`;
@@ -73,7 +74,9 @@ function fixture() {
     }
     if (command instanceof HeadObjectCommand)
       return {
-        ContentType: "application/pdf",
+        ContentType: contentTypes.has(command.input.Key!)
+          ? contentTypes.get(command.input.Key!)
+          : "application/pdf",
         Metadata: metadata.get(command.input.Key!) ?? {},
       };
     if (command instanceof GetObjectCommand) {
@@ -114,7 +117,16 @@ function fixture() {
       expect([...deployments]).toStrictEqual([id]);
     },
   );
-  return { client, objects, metadata, writes, options, reconcile, send };
+  return {
+    client,
+    objects,
+    metadata,
+    contentTypes,
+    writes,
+    options,
+    reconcile,
+    send,
+  };
 }
 
 test("dry-run inventories all pages and reconciles twice without writing", async () => {
@@ -254,3 +266,134 @@ test("bounds and unclassified keys prevent a completion marker", async () => {
     }),
   ).toBe(false);
 });
+
+test("missing R2 content types require authoritative upload metadata", async () => {
+  const f = fixture();
+  f.contentTypes.set("artifacts/0123456789.pdf", undefined);
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      f.reconcile,
+    ),
+  ).rejects.toThrow("has no content type");
+  expect(f.writes).toHaveLength(0);
+  const resolveMissingContentType = vi.fn((key: string) => {
+    expect(key).toBe("artifacts/0123456789.pdf");
+    return Promise.resolve("application/pdf");
+  });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true, resolveMissingContentType },
+      f.reconcile,
+    ),
+  ).resolves.toMatchObject({ missing: 0, verified: true });
+  expect(resolveMissingContentType).toHaveBeenCalledTimes(1);
+  // An issued upload can exist before its client completes the database write.
+  // Its exact pre-registration is sufficient for the independent verification.
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, verify: true },
+      f.reconcile,
+    ),
+  ).resolves.toMatchObject({
+    existing: 3,
+    missing: 0,
+    resolvedContentTypes: 1,
+  });
+});
+
+test("historical public HTML drafts are included in verified coverage", async () => {
+  const f = fixture();
+  const key =
+    "artifacts/html-edit-drafts/00000000-0000-4000-8000-000000000002.html";
+  f.objects.set(`public/${key}`, "historical public HTML");
+  f.contentTypes.set(key, "text/html");
+  const result = await registerHistoricalPublicArtifacts(
+    f.client,
+    f.client,
+    { ...f.options, migrate: true },
+    async () => {},
+  );
+  expect(result).toMatchObject({
+    finalFiles: 2,
+    finalAliases: 4,
+    missing: 0,
+    skipped: 0,
+  });
+  expect(
+    JSON.parse(
+      f.objects.get(
+        `hosted/${artifactDeliveryKey("vm0", "file", key.slice("artifacts/".length))}`,
+      )!,
+    ),
+  ).toMatchObject({
+    kind: "legacy-file",
+    key,
+    contentType: "text/html",
+    audience: "public",
+  });
+});
+
+test.each([true, false])(
+  "concurrent public writes require exact registration (registered=%s)",
+  async (registered) => {
+    const f = fixture();
+    let passes = 0;
+    const reconcile = async () => {
+      if (++passes !== 1) return;
+      f.objects.set("public/artifacts/abcdefghij.pdf", "concurrent bytes");
+      if (registered) {
+        f.objects.set(
+          `hosted/${artifactDeliveryKey("vm0", "file", "abcdefghij.pdf")}`,
+          JSON.stringify({
+            version: 1,
+            kind: "legacy-file",
+            publicBrand: "vm0",
+            audience: "public",
+            key: "artifacts/abcdefghij.pdf",
+            filename: "abcdefghij.pdf",
+            contentType: "application/pdf",
+          }),
+        );
+      }
+    };
+    const operation = registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true, verify: true },
+      reconcile,
+    );
+    if (registered) {
+      await expect(operation).resolves.toMatchObject({
+        files: 1,
+        finalFiles: 2,
+        finalAliases: 4,
+        missing: 0,
+        verified: true,
+        finalized: false,
+      });
+    } else {
+      await expect(operation).rejects.toThrow("unregistered public artifacts");
+      // A partial pass is safe to rerun; it fills only the new missing record.
+      await expect(
+        registerHistoricalPublicArtifacts(
+          f.client,
+          f.client,
+          { ...f.options, migrate: true, verify: true },
+          async () => {},
+        ),
+      ).resolves.toMatchObject({ existing: 3, registered: 1, missing: 0 });
+    }
+    expect(
+      f.writes.some((key) => {
+        return key.endsWith("registration.json");
+      }),
+    ).toBe(false);
+  },
+);
