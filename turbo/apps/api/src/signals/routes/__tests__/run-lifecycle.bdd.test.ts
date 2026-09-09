@@ -5558,7 +5558,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       true,
       run.runId,
       [400],
-      {},
+      { capabilities: { piModelConfigGenerations: [1, 2, 3] } },
     );
     expectApiError(rejected.body);
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
@@ -5596,6 +5596,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           heartbeatGeneration: 1,
         },
         runnerHostname: "x".repeat(256),
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
       },
     );
     expectApiError(invalidHostname.body);
