@@ -55,7 +55,7 @@ grep -Fq \
   'App bundle layout: app=app-AbCd1234.js vendor=vendor-EfGh5678.js runtime=rolldown-runtime-IjKl9012.js worker=shared-database-worker-MnOp3456.js clerk-ui=clerk-ui-AbCd123456789012.js' \
   <<< "$output" || fail "bundle layout was not reported"
 grep -Fq \
-  'Verified 9 immutable app assets on https://static.test/okou-app/assets' \
+  'Verified 10 immutable app assets on https://static.test/okou-app/assets' \
   <<< "$output" || fail "verification summary is incorrect"
 
 for relative_path in \
