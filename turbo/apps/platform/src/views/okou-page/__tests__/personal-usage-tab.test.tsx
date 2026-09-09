@@ -21,6 +21,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { emptyUsageImg } from "../platform-assets.ts";
 
 const context = testContext();
 
@@ -374,6 +375,19 @@ test("Show an empty member-package balance for the new Pro plan", async () => {
   expect(
     within(card).queryByText("Configure member packages"),
   ).not.toBeInTheDocument();
+});
+
+test("Show an illustrated empty credit balance when a member has no usage pack", async () => {
+  mockPersonalUsageStory(usageRows(), "limited-free-1", false, "member");
+
+  await openUsageSettings();
+
+  const emptyState = await screen.findByTestId("credit-balance-empty");
+  expect(emptyState.querySelector("img")).toHaveAttribute("src", emptyUsageImg);
+  expect(
+    screen.queryByTestId("usage-pack-credit-card"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByTestId("credit-balance-info")).not.toBeInTheDocument();
 });
 
 test("Hide Usage package controls when the capability is disabled, even with credits", async () => {

@@ -1,3 +1,4 @@
+import { oomEvidenceSchema } from "./oom-evidence";
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
@@ -875,6 +876,7 @@ export const webhookHeartbeatContract = c.router({
  * Metric data point schema
  */
 const metricDataSchema = z.object({
+  memory: oomEvidenceSchema.optional(),
   ts: z.string(),
   cpu: z.number(),
   cpu_steal_percent: z.number().optional(),
@@ -1044,6 +1046,8 @@ export const webhookTelemetryContract = c.router({
       runnerHostname: runnerHostnameSchema.optional(),
       runnerVersion: runnerVersionSchema.optional(),
       systemLog: z.string().optional(),
+      oomEvidence: oomEvidenceSchema.optional(),
+      sandboxId: z.uuid().optional(),
       metrics: z.array(metricDataSchema).optional(),
       networkLogs: z.array(networkLogEntrySchema).optional(),
       sandboxOperations: z.array(sandboxOperationSchema).optional(),
@@ -1052,6 +1056,7 @@ export const webhookTelemetryContract = c.router({
       200: z.object({
         success: z.boolean(),
         id: z.string(),
+        oomEvidenceVersion: z.literal(1).optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

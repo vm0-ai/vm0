@@ -16,7 +16,7 @@ export const PRESENTATION_SLIDE_COUNTS = [
   "20-24",
 ] as const;
 
-type PresentationSlideCount = (typeof PRESENTATION_SLIDE_COUNTS)[number];
+export type PresentationSlideCount = (typeof PRESENTATION_SLIDE_COUNTS)[number];
 
 export type ComposerCreateMode = (typeof COMPOSER_CREATE_MODES)[number];
 export type ComposerCreateCommand = ComposerCreateMode | "choose";
@@ -113,7 +113,11 @@ export function createComposerCreateSignals(
     },
   );
   const enabled$ = computed((get) => {
-    return get(featureSwitch$)[FeatureSwitchKey.ComposerCreateCommands];
+    const features = get(featureSwitch$);
+    return (
+      features[FeatureSwitchKey.ComposerCreateCommands] ||
+      features[FeatureSwitchKey.ComposerTaskChips]
+    );
   });
   const mode$ = computed((get) => {
     const mode = get(internalMode$);

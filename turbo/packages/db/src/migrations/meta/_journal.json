@@ -127,6 +127,13 @@
       "when": 1788929076141,
       "tag": "1095_blue_lake",
       "breakpoints": true
+    },
+    {
+      "idx": 1096,
+      "version": "7",
+      "when": 1788934062730,
+      "tag": "1096_shiny_black_bolt",
+      "breakpoints": true
     }
   ]
 }

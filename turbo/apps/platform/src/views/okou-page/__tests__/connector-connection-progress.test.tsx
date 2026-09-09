@@ -100,13 +100,11 @@ async function dismissProgress(
   } else if (method === "Escape") {
     await user.keyboard("{Escape}");
   } else {
-    const overlay = dialog.parentElement?.querySelector(
-      '[data-slot="dialog-overlay"]',
-    );
-    if (!(overlay instanceof HTMLElement)) {
-      throw new Error("Expected the connection dialog backdrop");
+    const viewport = dialog.closest('[data-slot="dialog-viewport"]');
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("Expected the connection dialog viewport");
     }
-    await user.click(overlay);
+    await user.click(viewport);
   }
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).toBeNull();

@@ -59,6 +59,7 @@ const observation = singleton(() => {
       cooldown: 0,
       success: 0,
       rate_limited: 0,
+      unavailable: 0,
       local_timeout: 0,
       unexpected_failure: 0,
     },
@@ -211,6 +212,12 @@ async function fetchDetails(args: Credentials, signal: AbortSignal) {
       cooldownUntil: retryAfterDeadline(response.headers.get("retry-after")),
     };
   }
+  if (response.status === 503) {
+    return {
+      outcome: "unavailable" as const,
+      cooldownUntil: now() + COOLDOWN_MS,
+    };
+  }
   if (!response.ok) {
     throw new Error(
       `Codex reset credit details request failed with status ${response.status}`,
@@ -268,11 +275,11 @@ async function load(
   }
   if (result.ok) {
     record(result.value.outcome);
-    if (result.value.outcome === "rate_limited") {
-      entry.cooldownUntil = result.value.cooldownUntil;
-    } else {
+    if (result.value.outcome === "success") {
       entry.expiresAt = result.value.expiresAt;
       entry.trustedUntil = now() + TTL_MS;
+    } else {
+      entry.cooldownUntil = result.value.cooldownUntil;
     }
   } else if (timedOut) {
     record("local_timeout");

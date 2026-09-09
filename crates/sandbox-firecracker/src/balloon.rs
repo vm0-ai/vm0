@@ -1,6 +1,7 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tracing::{info, warn};
 
 use crate::api::ApiClient;
@@ -56,11 +57,15 @@ const STATUS_INTERVAL_TICKS: u64 = 12;
 
 pub(crate) struct ControllerHandle {
     task: Option<tokio::task::JoinHandle<()>>,
+    agent_ready: Option<Arc<Notify>>,
 }
 
 enum ControllerStartup {
     Active,
-    AwaitUnparkDeflation { log_id: String },
+    AwaitUnparkDeflation {
+        log_id: String,
+        agent_ready: Option<Arc<Notify>>,
+    },
 }
 
 impl ControllerHandle {
@@ -70,8 +75,19 @@ impl ControllerHandle {
         state_rx: watch::Receiver<SandboxState>,
         startup: ControllerStartup,
     ) -> Self {
+        let agent_ready = match &startup {
+            ControllerStartup::Active => None,
+            ControllerStartup::AwaitUnparkDeflation { agent_ready, .. } => agent_ready.clone(),
+        };
         Self {
             task: Some(tokio::spawn(run_loop(client, memory_mb, state_rx, startup))),
+            agent_ready,
+        }
+    }
+
+    pub(crate) fn notify_agent_ready(&self) {
+        if let Some(ready) = &self.agent_ready {
+            ready.notify_one();
         }
     }
 
@@ -90,7 +106,10 @@ impl ControllerHandle {
 
     #[cfg(test)]
     pub(crate) fn from_task_for_test(task: tokio::task::JoinHandle<()>) -> Self {
-        Self { task: Some(task) }
+        Self {
+            task: Some(task),
+            agent_ready: None,
+        }
     }
 
     #[cfg(test)]
@@ -143,7 +162,31 @@ pub(crate) fn spawn_after_unpark_deflation(
         client,
         memory_mb,
         state_rx,
-        ControllerStartup::AwaitUnparkDeflation { log_id },
+        ControllerStartup::AwaitUnparkDeflation {
+            log_id,
+            agent_ready: None,
+        },
+    )
+}
+
+/// Keep optional reclamation out of a preserved blank's first Agent startup.
+///
+/// Unpark has already requested target zero. Only this owned background task
+/// waits for convergence and Agent readiness; Guest operations remain available.
+pub(crate) fn spawn_after_blank_unpark(
+    client: ApiClient,
+    memory_mb: u32,
+    state_rx: watch::Receiver<SandboxState>,
+    log_id: String,
+) -> ControllerHandle {
+    ControllerHandle::spawn(
+        client,
+        memory_mb,
+        state_rx,
+        ControllerStartup::AwaitUnparkDeflation {
+            log_id,
+            agent_ready: Some(Arc::new(Notify::new())),
+        },
     )
 }
 
@@ -161,10 +204,20 @@ async fn run_loop(
         );
         return;
     }
-    if let ControllerStartup::AwaitUnparkDeflation { log_id } = startup
-        && !wait_for_unpark_deflation(&client, &mut state_rx, &log_id).await
+    if let ControllerStartup::AwaitUnparkDeflation {
+        log_id,
+        agent_ready,
+    } = startup
     {
-        return;
+        if !wait_for_unpark_deflation(&client, &mut state_rx, &log_id).await {
+            return;
+        }
+        if let Some(ready) = agent_ready {
+            tokio::select! {
+                () = ready.notified() => {}
+                () = wait_for_crash_or_stop(&mut state_rx) => return,
+            }
+        }
     }
     let mut interval = tokio::time::interval(POLL_INTERVAL);
     let mut tick_count: u64 = 0;
@@ -583,6 +636,53 @@ mod tests {
             api.drain_requests().is_empty(),
             "cancellation must not issue a policy request"
         );
+    }
+
+    #[tokio::test]
+    async fn blank_controller_retains_early_readiness_until_deflation_finishes() {
+        let mut api = MockFirecrackerApi::with_responses([
+            MockResponse::ok_body(
+                r#"{"target_mib":0,"actual_mib":256,"target_pages":0,"actual_pages":65536}"#,
+            ),
+            MockResponse::ok_body(
+                r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#,
+            ),
+            MockResponse::ok_body(
+                r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0,"free_memory":1073741824,"available_memory":1073741824}"#,
+            ),
+            MockResponse::no_content(),
+        ]);
+        let client = ApiClient::new(api.socket_path()).unwrap();
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
+        let controller =
+            spawn_after_blank_unpark(client, 4096, state_rx, "blank-early-ready".into());
+        // No background work has run yet on this current-thread runtime.
+        controller.notify_agent_ready();
+        for _ in 0..3 {
+            assert_firecracker_request(&api.next_request().await, "GET", "/balloon/statistics");
+        }
+        let request = api.next_request().await;
+        assert_firecracker_request(&request, "PATCH", "/balloon");
+        assert_eq!(patch_amount_mib(&request.body), 256);
+        controller.abort_and_join().await;
+        assert!(api.drain_requests().is_empty());
+    }
+
+    #[tokio::test]
+    async fn blank_controller_without_agent_readiness_stops_without_reinflating() {
+        for state in [SandboxState::Stopped, SandboxState::Crashed] {
+            let mut api = MockFirecrackerApi::repeating(MockResponse::ok_body(
+                r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0,"free_memory":1073741824,"available_memory":1073741824}"#,
+            ));
+            let client = ApiClient::new(api.socket_path()).unwrap();
+            let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+            let controller =
+                spawn_after_blank_unpark(client, 4096, state_rx, "blank-without-agent".into());
+            assert_firecracker_request(&api.next_request().await, "GET", "/balloon/statistics");
+            state_tx.send(state).unwrap();
+            await_controller_exit(controller, "blank controller before Agent readiness").await;
+            assert!(api.drain_requests().is_empty());
+        }
     }
 
     #[tokio::test]

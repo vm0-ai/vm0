@@ -15,9 +15,9 @@ use guest_contracts::session_history_identity::{
     SessionHistoryIdentityError,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
-    SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
+    ExecTermination, GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle,
+    ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome, ProcessOutputMode,
+    Sandbox, SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -29,9 +29,8 @@ use super::codex_model_catalog_prefetch::{
 use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
-    check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
-    drain_stdout_to_file, explicit_enospc_evidence, failure_diagnostic_reports_workload_memory_oom,
-    host_oom_evidence_since_now, log_agent_abnormal_exit_env_diagnostics,
+    check_host_oom, collect_agent_abnormal_exit_diagnostics, drain_stdout_to_file,
+    explicit_enospc_evidence, host_oom_evidence_since_now, log_agent_abnormal_exit_env_diagnostics,
     log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
     read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
@@ -58,15 +57,15 @@ use super::workspace_session_history_materializer::{
     WorkspaceSessionHistoryTimings,
 };
 use super::{
-    EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
-    JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
-    RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
-    SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
-    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_supervisor_timeout,
-    job_terminal_wait_timeout, normalize_failure_exit_code,
+    EXIT_SIGKILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT, JOB_TIMEOUT_EXIT_CODE,
+    ResourceFailureDiagnostics, ResourceFailureKind, RunnerError, RunnerResult,
+    SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult, SandboxReuseTerminal,
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, agent_exit_failure_message,
+    guest_runtime_dir, guest_runtime_path, job_supervisor_timeout, job_terminal_wait_timeout,
+    normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
-use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
+use crate::helper_exec::helper_exec_succeeded;
 use crate::paths::guest;
 use crate::restored_session_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionFinalMetadataVerification,
@@ -683,16 +682,15 @@ impl CancellationDisposition {
     fn observed(self) -> bool {
         self != Self::None
     }
-
-    fn used_hard_fallback(self) -> bool {
-        self == Self::HardFallback
-    }
 }
 
 struct ProcessWaitOutcome {
     result: sandbox::Result<sandbox::ProcessExit>,
     cancellation: CancellationDisposition,
     interrupt_stdout_drain: bool,
+    // Proof from the provider result, never from our synthetic Cancelled exit.
+    hard_cancel_terminal_confirmed: bool,
+    oom_evidence: Option<guest_contracts::oom_evidence::OomEvidence>,
 }
 
 impl ProcessWaitOutcome {
@@ -702,6 +700,8 @@ impl ProcessWaitOutcome {
             result,
             cancellation: CancellationDisposition::None,
             interrupt_stdout_drain,
+            hard_cancel_terminal_confirmed: false,
+            oom_evidence: None,
         }
     }
 
@@ -710,6 +710,8 @@ impl ProcessWaitOutcome {
             result: Ok(exit),
             cancellation: CancellationDisposition::Cooperative,
             interrupt_stdout_drain: false,
+            hard_cancel_terminal_confirmed: false,
+            oom_evidence: None,
         }
     }
 
@@ -725,6 +727,8 @@ impl ProcessWaitOutcome {
             )),
             cancellation: CancellationDisposition::HardFallback,
             interrupt_stdout_drain,
+            hard_cancel_terminal_confirmed: false,
+            oom_evidence: None,
         }
     }
 }
@@ -784,13 +788,23 @@ where
     )
     .await
     {
-        Ok(Ok(exit)) => {
+        Ok(Ok(mut exit)) => {
             info!(
                 run_id = %run_id,
                 pid = guest_process_pid,
                 "cancelled guest process reached terminal status"
             );
-            ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false)
+            let mut outcome =
+                ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false);
+            // Preserve metadata before replacing the terminal result, and keep
+            // it separate from the real diagnostic used for cancellation proof.
+            outcome.oom_evidence = take_oom_evidence(&mut exit.diagnostic);
+            outcome.hard_cancel_terminal_confirmed = exit.diagnostic.is_empty()
+                && matches!(
+                    exit.termination,
+                    ExecTermination::Exited { .. } | ExecTermination::Cancelled
+                );
+            outcome
         }
         Ok(Err(error)) => {
             warn!(
@@ -813,23 +827,50 @@ where
     }
 }
 
+enum CooperativeCancellationSend {
+    Accepted,
+    Force,
+    Closed(std::io::Error),
+}
+
+fn control_closed_before_cancellation(outcome: &ProcessControlOutcome) -> bool {
+    match outcome {
+        ProcessControlOutcome::GuestStatus { status, .. } => matches!(
+            status,
+            ProcessControlGuestStatus::Inactive | ProcessControlGuestStatus::SinkClosed
+        ),
+        ProcessControlOutcome::Failed {
+            kind: ProcessControlFailureKind::Operation,
+            error,
+            ..
+        } => matches!(
+            error.kind(),
+            std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::UnexpectedEof
+        ),
+        _ => false,
+    }
+}
+
 async fn send_cooperative_user_cancellation(
     run_id: crate::ids::RunId,
     process_control: &GuestProcessControlHandle,
     hard_cancel: &CancellationToken,
     timeout: Duration,
-) -> bool {
+) -> CooperativeCancellationSend {
     let message_id = format!("user-cancellation:{run_id}");
     tokio::select! {
         biased;
-        () = hard_cancel.cancelled() => false,
-        result = process_control.control(
+        () = hard_cancel.cancelled() => CooperativeCancellationSend::Force,
+        outcome = process_control.control_outcome(
             &message_id,
             USER_CANCELLATION_CONTROL_PAYLOAD,
             timeout,
         ) => {
-            match result {
-                Ok(ack) if ack.message_id == message_id => true,
+            let closed = control_closed_before_cancellation(&outcome);
+            match outcome.into_ack() {
+                Ok(ack) if ack.message_id == message_id => CooperativeCancellationSend::Accepted,
                 Ok(ack) => {
                     warn!(
                         run_id = %run_id,
@@ -837,15 +878,16 @@ async fn send_cooperative_user_cancellation(
                         acknowledged_message_id = %ack.message_id,
                         "guest acknowledged the wrong user-cancellation message"
                     );
-                    false
+                    CooperativeCancellationSend::Force
                 }
+                Err(error) if closed => CooperativeCancellationSend::Closed(error),
                 Err(error) => {
                     warn!(
                         run_id = %run_id,
                         error = %error,
                         "failed to send cooperative user cancellation"
                     );
-                    false
+                    CooperativeCancellationSend::Force
                 }
             }
         }
@@ -864,15 +906,15 @@ async fn wait_for_cooperative_user_cancellation<F>(
 where
     F: Future<Output = sandbox::Result<sandbox::ProcessExit>>,
 {
-    if !send_cooperative_user_cancellation(
+    let sent = send_cooperative_user_cancellation(
         run_id,
         process_control,
         hard_cancel,
         process_cancel_timeouts.write,
     )
-    .await
-    {
-        return force_cancel_guest_process(
+    .await;
+    if !matches!(sent, CooperativeCancellationSend::Accepted) {
+        let outcome = force_cancel_guest_process(
             run_id,
             guest_process_pid,
             process_cancel,
@@ -880,6 +922,24 @@ where
             wait_process,
         )
         .await;
+        if let CooperativeCancellationSend::Closed(error) = sent {
+            if outcome.hard_cancel_terminal_confirmed {
+                info!(
+                    run_id = %run_id,
+                    error = %error,
+                    recovered_after_cancellation = true,
+                    "failed to send cooperative user cancellation"
+                );
+            } else {
+                warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    recovered_after_cancellation = false,
+                    "failed to send cooperative user cancellation"
+                );
+            }
+        }
+        return outcome;
     }
 
     tokio::select! {
@@ -1037,13 +1097,35 @@ fn sandbox_reuse_disposition_for_process_exit(
     }
 }
 
-fn process_exit_oom_candidate(exit: &sandbox::ProcessExit) -> bool {
-    matches!(
-        exit.termination,
-        ExecTermination::Exited {
-            exit_code: EXIT_SIGKILL | EXIT_SIGNAL_KILL
-        }
-    )
+fn take_oom_evidence(
+    diagnostic: &mut String,
+) -> Option<guest_contracts::oom_evidence::OomEvidence> {
+    use guest_contracts::oom_evidence::{
+        EVIDENCE_PREFIX, MAX_EVIDENCE_BYTES, MAX_INCIDENTS, MAX_KERNEL_EVENTS, OomEvidence,
+    };
+    let mut evidence = None;
+    let retained = diagnostic
+        .lines()
+        .filter(|line| {
+            let Some(json) = line.strip_prefix(EVIDENCE_PREFIX) else {
+                return true;
+            };
+            if json.len() <= MAX_EVIDENCE_BYTES
+                && let Ok(parsed) = serde_json::from_str::<OomEvidence>(json)
+                && parsed.incidents.len() <= MAX_INCIDENTS
+                && parsed
+                    .incidents
+                    .iter()
+                    .all(|incident| incident.kernel_events.len() <= MAX_KERNEL_EVENTS)
+            {
+                evidence = Some(parsed);
+            }
+            false
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    *diagnostic = retained;
+    evidence
 }
 
 fn process_failure_exit_code(exit: &sandbox::ProcessExit) -> i32 {
@@ -1241,6 +1323,40 @@ impl PreparedGuestRuntime {
 }
 
 impl RunControls {
+    pub(super) async fn prepare_codex_model_catalog_prefetch(
+        &mut self,
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        start: &RunStart<'_>,
+        telemetry: &mut JobTelemetry,
+    ) -> Option<PreparedGuestRuntime> {
+        if !is_codex_model_catalog_prefetch_eligible(context, start.reuse_result) {
+            return None;
+        }
+        if self.guest_state_prepared {
+            Some(
+                PreparedGuestRuntime::start_codex_model_catalog_prefetch(
+                    sandbox,
+                    context,
+                    start.reuse_result,
+                    &self.cancel,
+                    telemetry,
+                )
+                .await,
+            )
+        } else {
+            PreparedGuestRuntime::prepare_for_codex_model_catalog_prefetch(
+                sandbox,
+                context,
+                start.restore_guest_state,
+                start.reuse_result,
+                &self.cancel,
+                telemetry,
+            )
+            .await
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn new(
         cancel: CancellationToken,
@@ -1633,12 +1749,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
+            session_history_restore_plan.cancel_and_drain().await;
             return Err(error);
         }
         PreparedGuestRuntime::Failed(error) => {
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
+            session_history_restore_plan.cancel_and_drain().await;
             return Err(error);
         }
         PreparedGuestRuntime::Cancelled => {
@@ -1659,6 +1777,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .as_ref()
                     .map(|failure| failure.error.as_str()),
             );
+            session_history_restore_plan.cancel_and_drain().await;
             return Ok(result);
         }
     };
@@ -1684,6 +1803,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
             model_catalog_prefetch.finish(telemetry).await;
+            session_history_restore_plan.cancel_and_drain().await;
             return Err(error);
         }
         None => {
@@ -1705,6 +1825,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .as_ref()
                     .map(|failure| failure.error.as_str()),
             );
+            session_history_restore_plan.cancel_and_drain().await;
             return Ok(result);
         }
     };
@@ -2346,9 +2467,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         result,
         cancellation,
         interrupt_stdout_drain,
+        oom_evidence,
+        ..
     } = wait_outcome;
     let cancellation_observed = cancellation.observed();
-    let used_hard_cancellation_fallback = cancellation.used_hard_fallback();
 
     // Stop locally owned post-spawn work before interpreting terminal process
     // state. Join active input and model prefetch; drain or abort stdout based
@@ -2388,7 +2510,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         stream_overflowed: false,
         stream_incomplete: stdout_drain_report.stream_incomplete,
     };
-    let exit = match result {
+    let mut exit = match result {
         Ok(exit) => exit,
         Err(e) => {
             // Sandbox crashed — check host dmesg for OOM evidence naming the
@@ -2446,6 +2568,26 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 .with_active_input_delivery_ids(active_input_delivery_ids));
         }
     };
+    if let Some(evidence) = take_oom_evidence(&mut exit.diagnostic).or(oom_evidence) {
+        if evidence
+            .incidents
+            .iter()
+            .any(|incident| !incident.kernel_events.is_empty())
+        {
+            info!(run_id = %context.run_id, operation_id = %evidence.operation_id,
+                evidence_kind = ResourceFailureKind::GuestMemoryOomKilled.as_str(),
+                "preserved operation-scoped guest kernel oom evidence");
+        }
+        let path = config.log_paths.oom_evidence_log(context.run_id);
+        if let Ok(bytes) = serde_json::to_vec(&evidence) {
+            let retained =
+                tokio::time::timeout(Duration::from_secs(1), tokio::fs::write(path, bytes)).await;
+            if !matches!(retained, Ok(Ok(()))) {
+                warn!(run_id = %context.run_id, "guest oom evidence persistence unavailable or timed out");
+            }
+        }
+        telemetry.upload_oom_evidence(&evidence, sandbox.id()).await;
+    }
     if exit.stream_overflowed {
         warn!(run_id = %context.run_id, "agent stdout stream overflowed before process exit");
     }
@@ -2484,54 +2626,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
-    // Check for OOM kill when process was terminated by SIGKILL. Skip only
-    // after hard fallback, where the SIGKILL exit code is synthetic. A
-    // cooperative guest exit remains real process evidence. A guest-authored
-    // workload OOM diagnostic is more specific than VM-wide dmesg output.
-    if !used_hard_cancellation_fallback
-        && process_exit_oom_candidate(&exit)
-        && !failure_diagnostic_reports_workload_memory_oom(failure_diagnostic.as_ref())
-    {
-        let dmesg_req = ExecRequest {
-            cmd: "dmesg | tail -20 2>/dev/null",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: true,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        };
-        match sandbox
-            .exec_with_diagnostic_label(&dmesg_req, "oom-dmesg")
-            .await
-        {
-            Ok(dmesg)
-                if helper_exec_succeeded(&dmesg)
-                    && dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) =>
-            {
-                warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
-                // Return exit code 1 with descriptive message instead of raw 137,
-                // so callers see a clear error rather than an opaque signal code.
-                let error = "Agent process killed by OOM killer";
-                telemetry.record("agent_execute", t.elapsed(), false, Some(error));
-                return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-                    .with_active_input_delivery_ids(active_input_delivery_ids));
-            }
-            Err(e) => {
-                warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
-            }
-            Ok(dmesg) if !helper_exec_succeeded(&dmesg) => {
-                warn!(
-                    run_id = %context.run_id,
-                    termination = helper_exec_termination_label(&dmesg),
-                    "dmesg OOM check helper failed"
-                );
-            }
-            _ => {}
-        }
-    }
+    // OOM evidence is captured by trusted Guest control before cleanup and
+    // uploaded above, independently of workload counters. An unscoped dmesg
+    // tail cannot attribute this operation or override its terminal outcome.
 
     let failure = if cancellation_observed {
         // Cancellation remains authoritative over guest failure files. Hard

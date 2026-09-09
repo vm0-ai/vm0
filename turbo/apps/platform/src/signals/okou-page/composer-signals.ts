@@ -1,5 +1,9 @@
 import { stopAndTranscribe$ } from "../voice-io/voice-io-stt.ts";
 import {
+  createComposerTaskChipsSignals,
+  type ComposerTaskChipsSignals,
+} from "./composer-task-chips.ts";
+import {
   createComposerVoiceInputSignals,
   type ComposerVoiceInputSignals,
 } from "./composer-voice-input.ts";
@@ -54,6 +58,7 @@ import {
   type ComposerUiSignalGroups,
 } from "./chat-composer.ts";
 import { videoRunOptionsForSend } from "./video-run-options.ts";
+import { buildComposerAdditionalInfo } from "./composer-additional-info.ts";
 import {
   createImageAnnotationSignals,
   type ImageAnnotationSignals,
@@ -113,9 +118,8 @@ export interface ComposerSubmission {
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"];
   /**
-   * Video parameters for this send only. Absent unless the user moved one off
-   * the effective model's default; the send path forwards it as a run option
-   * rather than writing it anywhere.
+   * Video parameters for composers outside the Create rollout. Enabled
+   * composers carry their settings in the message's additional_info part.
    */
   readonly videoRunOptions: ChatRunVideoOptionsRequest | undefined;
 }
@@ -254,6 +258,7 @@ interface ComposerTemplateSignals
 
 export interface ComposerSignals {
   readonly create: ComposerCreateSignals;
+  readonly taskChips: ComposerTaskChipsSignals;
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
@@ -596,6 +601,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     create,
+    taskChips: createComposerTaskChipsSignals(create),
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,
@@ -883,34 +889,30 @@ function createSubmitCurrentInput(
           ? undefined
           : await set(readVideoRunOptions$, signal);
       signal.throwIfAborted();
-      const instruction = mode
-        ? `Create ${mode === "image" ? "an" : "a"} ${mode}.`
-        : null;
-      const document = submission.editorDocument.toEditorDocument();
-      const editorDocument = instruction
+      // Keep the new persisted part within the existing Create rollout.
+      const additionalInfo = get(create.enabled$)
+        ? buildComposerAdditionalInfo(
+            mode,
+            videoRunOptions,
+            get(create.presentationSlideCount$),
+          )
+        : undefined;
+      const editorDocument = additionalInfo
         ? createEditorDocumentSnapshot(
-            workflowComposer.editor.schema.nodeFromJSON({
-              ...document,
-              content: [
-                {
-                  type: "paragraph",
-                  content: [{ type: "text", text: instruction }],
-                },
-                ...(document.content ?? []),
-              ],
-            }),
+            workflowComposer.editor.schema.nodeFromJSON(
+              submission.editorDocument.toEditorDocument(),
+            ),
+            additionalInfo,
           )
         : submission.editorDocument;
       return await set(
         options.submitMessage$,
         action,
         {
-          prompt: instruction
-            ? `${instruction}\n\n${visiblePrompt}`
-            : visiblePrompt,
+          prompt: visiblePrompt,
           generationTemplate: get(draft.generationTemplate$),
           editorDocument,
-          videoRunOptions,
+          videoRunOptions: additionalInfo ? undefined : videoRunOptions,
         },
         signal,
       );

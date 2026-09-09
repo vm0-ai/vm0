@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { Pencil, Loader2 } from "lucide-react";
-import { Button } from "@okouai/ui";
+import { surfaceVariants, Button } from "@okouai/ui";
 
 interface UnsavedBarProps {
   onDiscard: () => void;
@@ -23,7 +23,10 @@ export function UnsavedBar({
     <div className="okou-app fixed bottom-[max(1.5rem,var(--sab))] left-0 right-0 z-40 flex justify-center px-4">
       <div
         data-testid="unsaved-bar"
-        className="okou-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
+        className={surfaceVariants({
+          className:
+            "flex max-w-md items-center justify-between gap-4 px-5 py-4",
+        })}
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
           <Pencil size={18} className="shrink-0" />

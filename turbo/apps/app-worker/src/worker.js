@@ -908,7 +908,10 @@ export function createWorker(
         apiFetcher,
       );
       const result = withAppHeaders(response, requestUrl);
-      if (requestUrl.pathname.startsWith("/share/artifacts/")) {
+      if (
+        requestUrl.pathname.startsWith("/artifacts/") ||
+        requestUrl.pathname.startsWith("/share/artifacts/")
+      ) {
         const headers = new Headers(result.headers);
         headers.set("Cache-Control", "private, no-store");
         headers.set("Referrer-Policy", "no-referrer");

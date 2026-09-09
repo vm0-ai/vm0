@@ -1,6 +1,6 @@
 import type { ChatEventRow } from "./chat-event-rows";
 import { chatEventSchema, type ChatEvent } from "./chat-threads";
-import { visiblePiMemoryCitationText } from "./pi-memory-citations";
+import { visibleChatEventRowContent } from "./retired-goal-archive";
 
 function requiredRowField<T>(
   value: T | null,
@@ -22,10 +22,7 @@ function requiredRowField<T>(
  */
 export function chatEventFromRow(row: ChatEventRow): ChatEvent {
   const payload = row.payload;
-  const visibleContent =
-    payload?.content === undefined
-      ? null
-      : visiblePiMemoryCitationText(payload.content);
+  const visibleContent = visibleChatEventRowContent(row);
   const base = {
     id: row.id,
     threadId: row.chatThreadId,

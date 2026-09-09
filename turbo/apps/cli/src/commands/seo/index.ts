@@ -121,9 +121,10 @@ function renderResponse(response: SeoResponse, json?: boolean): void {
 function addAnalysisOptions(command: Command): Command {
   return command
     .addOption(
-      new Option("--location <name>", "Search location").default(
-        SEO_DEFAULT_LOCATION,
-      ),
+      new Option(
+        "--location <name>",
+        "Supported country or region name, or ISO country code",
+      ).default(SEO_DEFAULT_LOCATION),
     )
     .addOption(
       new Option("--language <code>", "Search language code")
@@ -135,7 +136,16 @@ function addAnalysisOptions(command: Command): Command {
         .default(SEO_DEFAULT_ANALYSIS_LIMIT)
         .argParser(parseLimit(SEO_MAX_ANALYSIS_LIMIT)),
     )
-    .option("--json", "Print the raw Okou SEO response as JSON");
+    .option("--json", "Print the raw Okou SEO response as JSON")
+    .addHelpText(
+      "after",
+      `
+Locations:
+  Use a supported country or region name, or its ISO country code.
+  Examples: "United States", US/USA, "United Kingdom", GB/UK.
+  City and state locations are not supported.
+  Supported locations: https://docs.dataforseo.com/v3/dataforseo_labs_locations_and_languages/`,
+    );
 }
 
 const serpCommand = new Command()

@@ -1,3 +1,4 @@
+mod cooperative_cancellation;
 mod create_destroy;
 mod outer_panic;
 mod parking_cleanup;

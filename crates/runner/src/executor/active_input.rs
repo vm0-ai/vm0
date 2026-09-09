@@ -335,7 +335,9 @@ fn classify_control_outcome(
                 }
                 ForwardDisposition::Retry
             }
-            ProcessControlGuestStatus::SinkTimeout | ProcessControlGuestStatus::SinkError => {
+            ProcessControlGuestStatus::SinkTimeout
+            | ProcessControlGuestStatus::SinkError
+            | ProcessControlGuestStatus::SinkClosed => {
                 if warn_retryable_failure {
                     warn!(
                         run_id = %run_id,
@@ -449,6 +451,7 @@ fn guest_status_label(status: ProcessControlGuestStatus) -> &'static str {
         ProcessControlGuestStatus::SinkTimeout => "sink_timeout",
         ProcessControlGuestStatus::QueueFull => "queue_full",
         ProcessControlGuestStatus::SinkError => "sink_error",
+        ProcessControlGuestStatus::SinkClosed => "sink_closed",
     }
 }
 

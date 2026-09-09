@@ -242,4 +242,62 @@ describe("okou seo command", () => {
     expect(help).toContain("google_news  desktop only");
     expect(help).toContain("google_maps returns at most 20 results on mobile");
   });
+
+  it.each(["keyword-ideas", "ranked-keywords"])(
+    "explains supported locations in %s help",
+    (operation) => {
+      const command = seoCommand.commands.find((candidate) => {
+        return candidate.name() === operation;
+      });
+      if (!command) {
+        throw new Error(`Okou SEO ${operation} command is missing`);
+      }
+      let help = "";
+      command.configureOutput({
+        writeOut: (value) => {
+          help += value;
+        },
+      });
+
+      command.outputHelp();
+
+      expect(help).toContain("country or region");
+      expect(help).toContain("US/USA");
+      expect(help).toContain("GB/UK");
+      expect(help).toContain("City and state locations are not supported");
+      expect(help).toContain(
+        "https://docs.dataforseo.com/v3/dataforseo_labs_locations_and_languages/",
+      );
+    },
+  );
+
+  it("shows the API location guidance and exits unsuccessfully", async () => {
+    const message =
+      'Use a supported country or region, such as "United States" or "US". City and state locations are not supported.';
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/seo/keyword-ideas", () => {
+        apiRequests += 1;
+        return HttpResponse.json(
+          { error: { code: "DATAFORSEO_INVALID_REQUEST", message } },
+          { status: 400 },
+        );
+      }),
+    );
+
+    await expect(
+      seoCommand.parseAsync([
+        "node",
+        "okou",
+        "keyword-ideas",
+        "technical seo",
+        "--location",
+        "Austin, Texas, United States",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(message);
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(apiRequests).toBe(1);
+  });
 });

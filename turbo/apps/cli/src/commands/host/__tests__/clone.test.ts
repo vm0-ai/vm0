@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -56,7 +57,7 @@ describe("okou host clone command", () => {
 
   it.each([
     ARTIFACT_URL,
-    "http://localhost:3000/api/host/private-deployments/00000000-0000-4000-8000-000000000002/view",
+    artifactReferencePath("00000000-0000-4000-8000-000000000002", "index.html"),
   ])("downloads owned deployment files from %s", async (sourceUrl) => {
     const index = Buffer.from("<!doctype html><h1>Hello</h1>");
     const script = Buffer.from("console.log('hello');");

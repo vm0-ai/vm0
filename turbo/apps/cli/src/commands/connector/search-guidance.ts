@@ -18,7 +18,7 @@ export interface ConnectorSearchAction {
 }
 
 function accountSettingsAction(
-  connector: ConnectorDiscoveryDefinition,
+  connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
 ): ConnectorSearchAction {
   return {
     label: `Review ${connector.label} accounts and agent access`,
@@ -28,7 +28,7 @@ function accountSettingsAction(
 }
 
 function connectAction(
-  connector: ConnectorDiscoveryDefinition,
+  connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
 ): ConnectorSearchAction {
   return connector.kind === "custom"
     ? accountSettingsAction(connector)
@@ -40,7 +40,7 @@ function connectAction(
 }
 
 export function runConnectorSearchAction(
-  connector: ConnectorDiscoveryDefinition,
+  connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
   lookup: RunConnectorAccountLookup,
 ): ConnectorSearchAction | null {
   switch (lookup.state) {
@@ -89,18 +89,13 @@ export function currentConnectorSearchAction(
       };
 }
 
-export function printConnectorSearchGuidance(args: {
+export function connectorSearchActionLinks(args: {
   readonly actions: readonly ConnectorSearchAction[];
   readonly origin: string;
   readonly agentId: string | undefined;
-  readonly runBound: boolean;
   readonly callbackPrompt: string | undefined;
-}): void {
-  if (args.actions.length === 0) {
-    return;
-  }
-
-  const links = args.actions.map((action) => {
+}) {
+  return args.actions.map((action) => {
     if (args.callbackPrompt !== undefined && !action.supportsCallback) {
       throw new Error(
         "This connector needs an account or access review in Connectors settings, which does not support --callback-prompt.",
@@ -111,8 +106,25 @@ export function printConnectorSearchGuidance(args: {
       path: action.path,
       agentId: args.agentId,
     });
-    return `[${action.label}](${finalizeActionUrl(new URL(url), args.callbackPrompt, args.agentId)})`;
+    return {
+      label: action.label,
+      url: finalizeActionUrl(new URL(url), args.callbackPrompt, args.agentId),
+      supportsCallback: action.supportsCallback,
+    };
   });
+}
+
+export function printConnectorSearchGuidance(args: {
+  readonly actions: readonly ConnectorSearchAction[];
+  readonly origin: string;
+  readonly agentId: string | undefined;
+  readonly runBound: boolean;
+  readonly callbackPrompt: string | undefined;
+}): void {
+  if (args.actions.length === 0) {
+    return;
+  }
+  const links = connectorSearchActionLinks(args);
 
   console.log("");
   console.log("Connection context:");
@@ -125,7 +137,7 @@ export function printConnectorSearchGuidance(args: {
     );
   }
   for (const link of links) {
-    console.log(`  ${link}`);
+    console.log(`  [${link.label}](${link.url})`);
   }
 
   if (args.callbackPrompt !== undefined) {

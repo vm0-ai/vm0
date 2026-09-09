@@ -217,6 +217,48 @@ There is no history truncation, migration, or alternate reader for that rollback
 
 ### Runner
 
+#### Pi maintenance usage journal retirement
+
+Producer retirement in [#32787](https://github.com/vm0-ai/vm0/issues/32787)
+removes the CLI's private usage journal and Guest forwarding. The existing
+runner proxy remains the accounting authority established by
+[#32639](https://github.com/vm0-ai/vm0/pull/32639). The independent private
+checkpoint validation marker remains required for publication.
+
+The API keeps the authenticated, immutable-binding-validated journal ACK while
+old reporters remain supported:
+
+| CLI artifact | Guest artifact | Completion behavior                                            |
+| ------------ | -------------- | -------------------------------------------------------------- |
+| Old          | Old            | Reports to the retained validated ACK.                         |
+| New          | Old            | Old Guest accepts the missing journal.                         |
+| Old          | New            | Guest completes without reading the old CLI's private journal. |
+| New          | New            | Consolidation and checkpoint publication use no journal.       |
+
+The runtime package is bundled into the CLI artifact; removing its journal-only
+usage observer does not change already-pinned CLI packages. Aggregate provider
+results and lifecycle observation remain independent of that observer.
+
+Endpoint removal is tracked by
+[#32788](https://github.com/vm0-ai/vm0/issues/32788), under delivery parent
+[#32783](https://github.com/vm0-ai/vm0/issues/32783). Before removing the ACK,
+record the exact CLI commit-addressed and Runner/Guest artifacts, serving
+deployment times, last possible old-context creation/admission cutoff, and
+supported rollback floor. Verify zero old queued/running contexts, zero live
+reporting processes, and completed bounded finalization/retries. Reconcile
+context and artifact identities, terminal/process evidence, and content-free
+endpoint traffic across up to two hours queued plus two hours executing plus
+bounded finalization. Elapsed time or missing telemetry alone is not proof.
+Keep the ACK while supported rollback can restore an incompatible reporter.
+
+This source change does not establish those production cutoffs or alter rollback
+policy. Verify the proxy accounting prerequisite for supported API/Runner
+artifacts separately. The 122-minute private binding retention starts at terminal
+settlement to protect late proxy usage; it is not the journal drain gate and
+remains unchanged, along with ordinary pending-usage/callback cleanup blockers.
+
+#### Runner process drain
+
 Runner deployment is draining, not instant. The production promote playbook
 starts the new runner service, verifies it, and then sends a soft-drain signal
 to old runner services. Promotion observes a bounded acknowledgement from the

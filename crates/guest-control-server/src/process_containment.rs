@@ -83,6 +83,7 @@ struct CgroupGuard {
     workload_placement: Option<OwnedFd>,
     tools_path: Option<PathBuf>,
     create_elapsed: Duration,
+    oom_evidence: Option<Arc<Mutex<crate::oom_evidence::EvidenceMonitor>>>,
 }
 
 pub(crate) struct PreparedProcessContainmentCommand<'a> {
@@ -320,6 +321,15 @@ impl ExecProcessContainment {
         self.cleanup_with_evidence(mode).map(|_| ())
     }
 
+    pub(crate) fn capture_error(&self) {
+        if let ContainmentBackend::Cgroup(guard) = &self.backend
+            && let Some(monitor) = &guard.oom_evidence
+            && let Ok(mut monitor) = monitor.lock()
+        {
+            monitor.capture(guest_contracts::oom_evidence::CaptureReason::CliError);
+        }
+    }
+
     pub(crate) fn cleanup_with_evidence(
         self,
         mode: ProcessContainmentCleanupMode,
@@ -493,6 +503,11 @@ impl CgroupGuard {
         };
 
         Ok(Self {
+            oom_evidence: trusted_control.then(|| {
+                Arc::new(Mutex::new(crate::oom_evidence::EvidenceMonitor::new(
+                    group_path.clone(),
+                )))
+            }),
             group_name,
             group_path,
             outer_placement,
@@ -559,6 +574,7 @@ impl CgroupGuard {
         let cancel = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = mpsc::channel();
         let worker_cancel = Arc::clone(&cancel);
+        let oom_evidence = self.oom_evidence.clone();
         let workload_worker = thread::Builder::new()
             .name(THREAD_WORKLOAD_BOOTSTRAP.to_owned())
             .spawn(move || {
@@ -570,7 +586,24 @@ impl CgroupGuard {
                     &worker_cancel,
                     workload_cancel_reader.as_raw_fd(),
                 );
-                let _ = ready_tx.send(result);
+                match result {
+                    Ok(stream) => {
+                        let _ = ready_tx.send(Ok(()));
+                        if let Some(evidence) = oom_evidence {
+                            serve_oom_evidence(
+                                stream,
+                                evidence,
+                                expected_uid,
+                                &expected_cgroup,
+                                &worker_cancel,
+                                workload_cancel_reader.as_raw_fd(),
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        let _ = ready_tx.send(Err(error));
+                    }
+                }
             })
             .map_err(|error| {
                 ProcessContainmentError::new("start workload placement bootstrap worker", error)
@@ -624,12 +657,25 @@ impl CgroupGuard {
             workload_placement,
             tools_path: _,
             create_elapsed,
+            oom_evidence,
         } = self;
         drop(outer_placement);
         drop(workload_placement);
 
         log_resource_events(&group_name, &group_path.join(WORKLOAD_CGROUP_NAME));
 
+        // Capture before any cleanup enumeration, signal or removal. Placement
+        // workers have joined, so this lock cannot wait behind socket IO.
+        let oom_diagnostic = oom_evidence.and_then(|monitor| {
+            let mut monitor = monitor.lock().ok()?;
+            let evidence = monitor.capture(guest_contracts::oom_evidence::CaptureReason::Cleanup);
+            if evidence.incidents.is_empty() {
+                return None;
+            }
+            let json = serde_json::to_string(&evidence).ok()?;
+            (json.len() <= guest_contracts::oom_evidence::MAX_EVIDENCE_BYTES)
+                .then(|| format!("{}{json}", guest_contracts::oom_evidence::EVIDENCE_PREFIX))
+        });
         let result = cleanup_cgroup(&group_path, mode);
         match result {
             Ok(report) => {
@@ -643,7 +689,7 @@ impl CgroupGuard {
                 if let Some(evidence) = evidence.as_deref() {
                     log("INFO", evidence);
                 }
-                Ok(evidence)
+                Ok(oom_diagnostic.or(evidence))
             }
             Err(error) => {
                 log(
@@ -1068,7 +1114,7 @@ fn serve_workload_placement(
     expected_cgroup: &Path,
     cancel: &AtomicBool,
     cancel_fd: RawFd,
-) -> io::Result<()> {
+) -> io::Result<UnixStream> {
     loop {
         let stream = match accept_placement_or_cancelled(&listener, cancel, cancel_fd) {
             Ok(Some(stream)) => stream,
@@ -1092,7 +1138,7 @@ fn serve_workload_placement(
                         "workload placement peer left the control cgroup before confirmation",
                     ));
                 }
-                return Ok(());
+                return Ok(stream);
             }
             Ok(false) => {
                 log(
@@ -1106,6 +1152,51 @@ fn serve_workload_placement(
                     &format!("workload placement bootstrap peer validation failed: {error}"),
                 );
             }
+        }
+    }
+}
+
+fn serve_oom_evidence(
+    mut stream: UnixStream,
+    monitor: Arc<Mutex<crate::oom_evidence::EvidenceMonitor>>,
+    expected_uid: libc::uid_t,
+    expected_cgroup: &Path,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) {
+    use guest_contracts::oom_evidence::{CaptureReason, EVIDENCE_IO_TIMEOUT, write_evidence};
+    use std::io::Read;
+    if stream.set_nonblocking(false).is_err()
+        || stream.set_read_timeout(Some(EVIDENCE_IO_TIMEOUT)).is_err()
+    {
+        return;
+    }
+    loop {
+        if wait_placement_stream_or_cancelled(&stream, libc::POLLIN, cancel, cancel_fd).is_err() {
+            return;
+        }
+        if !matches!(
+            workload_bootstrap_peer_matches(&stream, expected_uid, expected_cgroup),
+            Ok(true)
+        ) {
+            return;
+        }
+        let mut request = [0];
+        if stream.read_exact(&mut request).is_err() {
+            return;
+        }
+        let reason = match request[0] {
+            1 => CaptureReason::Sample,
+            2 => CaptureReason::CliError,
+            _ => return,
+        };
+        let evidence = match monitor.lock() {
+            Ok(mut monitor) => monitor.capture(reason),
+            Err(_) => return,
+        };
+        // Never retain the monitor lock while waiting for a recipient.
+        if write_evidence(&stream, &evidence).is_err() {
+            return;
         }
     }
 }
@@ -1572,6 +1663,10 @@ fn remove_test_cgroup_interface_files(group_path: &Path) {
         CPU_STAT_FILE,
         CPU_WEIGHT_FILE,
         MEMORY_EVENTS_FILE,
+        "memory.events.local",
+        "memory.current",
+        "memory.peak",
+        "memory.stat",
         MEMORY_HIGH_FILE,
         MEMORY_MAX_FILE,
         MEMORY_MIN_FILE,
@@ -1662,6 +1757,88 @@ mod tests {
             let _ = self.0.kill();
             let _ = self.0.wait();
         }
+    }
+
+    #[test]
+    fn oom_evidence_is_captured_before_forced_cleanup_removes_sources() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("exec-281-10-3");
+        for suffix in ["", "workload", "workload/runtime", "workload/tools"] {
+            let path = root.join(suffix);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("cgroup.events"), "populated 0\n").unwrap();
+            fs::write(path.join("memory.current"), "4096").unwrap();
+            fs::write(path.join("memory.peak"), "8192").unwrap();
+            fs::write(path.join("memory.max"), "16384").unwrap();
+            fs::write(
+                path.join("memory.stat"),
+                "anon 1024\nfile 2048\nkernel 1024\n",
+            )
+            .unwrap();
+            fs::write(path.join("memory.events"), "oom 0\noom_kill 0\n").unwrap();
+        }
+        let monitor = crate::oom_evidence::EvidenceMonitor::without_kernel_for_test(root.clone());
+        fs::write(root.join("workload/memory.events"), "oom 1\noom_kill 1\n").unwrap();
+        let guard = CgroupGuard {
+            group_name: "exec-281-10-3".into(),
+            group_path: root.clone(),
+            outer_placement: fs::File::open(&root).unwrap().into(),
+            workload_placement: None,
+            tools_path: None,
+            create_elapsed: Duration::ZERO,
+            oom_evidence: Some(Arc::new(Mutex::new(monitor))),
+        };
+        let diagnostic = guard
+            .cleanup(ProcessContainmentCleanupMode::Forced)
+            .unwrap()
+            .unwrap();
+        assert!(!root.exists());
+        let evidence: guest_contracts::oom_evidence::OomEvidence = serde_json::from_str(
+            diagnostic
+                .strip_prefix(guest_contracts::oom_evidence::EVIDENCE_PREFIX)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(evidence.incidents[0].groups[0].current, Some(4096));
+        assert_eq!(evidence.incidents[0].groups[0].delta.oom_kill, Some(1));
+        assert!(evidence.incidents[0].before_cleanup);
+    }
+
+    #[test]
+    fn oom_evidence_exchange_is_owned_by_authenticated_peer_and_cancel_wake() {
+        let directory = tempfile::tempdir().unwrap();
+        let monitor = crate::oom_evidence::EvidenceMonitor::without_kernel_for_test(
+            directory.path().to_path_buf(),
+        );
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let expected = current_cgroup_path();
+        // SAFETY: geteuid only returns the current identity.
+        let uid = unsafe { libc::geteuid() };
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            serve_oom_evidence(
+                server,
+                Arc::new(Mutex::new(monitor)),
+                uid,
+                &expected,
+                &cancel,
+                cancel_reader.as_raw_fd(),
+            );
+            done_tx.send(()).unwrap();
+        });
+        client.write_all(&[1]).unwrap();
+        let first = guest_contracts::oom_evidence::read_evidence(&client).unwrap();
+        client.write_all(&[2]).unwrap();
+        let error = guest_contracts::oom_evidence::read_evidence(&client).unwrap();
+        assert_eq!(first.operation_id, error.operation_id);
+        assert!(first.incidents.is_empty());
+        assert_eq!(error.incidents.len(), 1);
+        assert!(error.incidents[0].kernel_events.is_empty());
+        drop(cancel_writer);
+        done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
     }
 
     #[test]

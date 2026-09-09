@@ -21,12 +21,6 @@ impl HostOomEvidenceSince {
     }
 }
 
-/// Returns true if dmesg output indicates an OOM kill.
-pub(in crate::executor) fn dmesg_indicates_oom(stdout: &str) -> bool {
-    let lower = stdout.to_lowercase();
-    lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
-}
-
 /// Checks host `dmesg` output for OOM evidence naming a specific Firecracker process.
 ///
 /// Invokes `dmesg` directly under the runner's current privileges and accepts

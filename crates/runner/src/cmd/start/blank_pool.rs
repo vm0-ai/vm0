@@ -569,7 +569,7 @@ async fn prepare_blank_sandbox(
         }
     }
 
-    match run_background_stage(sandbox.park(), &cancel, &mut pre_spawn_lease).await {
+    match run_background_stage(sandbox.park_for_blank_pool(), &cancel, &mut pre_spawn_lease).await {
         BackgroundStageResult::Completed(Ok(SandboxParkOutcome::Reusable)) => {
             drop(pre_spawn_lease.take());
             BlankPrepareResult::Ready {

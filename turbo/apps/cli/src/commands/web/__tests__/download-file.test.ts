@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 /**
  * Tests for okou web download-file command
  *
@@ -45,47 +46,60 @@ describe("okou web download-file command", () => {
   });
 
   describe("successful download", () => {
-    it("should stream file bytes to the provided output path and print JSON result", async () => {
-      const payload = Buffer.from("hello world");
-      const outPath = join(tmpDir, "result.txt");
+    it.each([
+      "abc-123-def",
+      artifactReferencePath(
+        "00000000-0000-4000-8000-000000000023",
+        "result.txt",
+      ),
+    ])(
+      "streams an authenticated file ID or hostless reference (%s)",
+      async (input) => {
+        const payload = Buffer.from("hello world");
+        const outPath = join(tmpDir, "result.txt");
 
-      server.use(
-        http.get(DOWNLOAD_URL, ({ request }) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("file_id")).toBe("abc-123-def");
-          expect(request.headers.get("authorization")).toBe(
-            "Bearer test-token",
-          );
-          return new HttpResponse(payload, {
-            status: 200,
-            headers: {
-              "content-type": "text/plain",
-              "content-length": String(payload.length),
-              "x-file-mimetype": "text/plain",
-            },
-          });
-        }),
-      );
+        server.use(
+          http.get(DOWNLOAD_URL, ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("file_id")).toBe(
+              input.startsWith("/artifacts/")
+                ? "00000000-0000-4000-8000-000000000023"
+                : input,
+            );
+            expect(request.headers.get("authorization")).toBe(
+              "Bearer test-token",
+            );
+            return new HttpResponse(payload, {
+              status: 200,
+              headers: {
+                "content-type": "text/plain",
+                "content-length": String(payload.length),
+                "x-file-mimetype": "text/plain",
+              },
+            });
+          }),
+        );
 
-      await downloadFileCommand.parseAsync([
-        "node",
-        "cli",
-        "abc-123-def",
-        "-o",
-        outPath,
-      ]);
+        await downloadFileCommand.parseAsync([
+          "node",
+          "cli",
+          input,
+          "-o",
+          outPath,
+        ]);
 
-      expect(existsSync(outPath)).toBe(true);
-      expect(readFileSync(outPath).equals(payload)).toBe(true);
+        expect(existsSync(outPath)).toBe(true);
+        expect(readFileSync(outPath).equals(payload)).toBe(true);
 
-      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-      const parsed = JSON.parse(stdout) as Record<string, unknown>;
-      expect(parsed).toMatchObject({
-        path: outPath,
-        mimetype: "text/plain",
-        size: payload.length,
-      });
-    });
+        const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+        const parsed = JSON.parse(stdout) as Record<string, unknown>;
+        expect(parsed).toMatchObject({
+          path: outPath,
+          mimetype: "text/plain",
+          size: payload.length,
+        });
+      },
+    );
 
     it("should derive default output path when -o is omitted", async () => {
       const payload = Buffer.from("default-path");

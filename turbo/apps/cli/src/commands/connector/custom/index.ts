@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   getAgent,
   getAgentCustomConnectorGrants,
@@ -9,11 +10,26 @@ import {
   listCustomConnectors,
 } from "../../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { getOkouAgentId } from "../../../lib/okou-env";
+import { resolveConnectorAgentId } from "../agent-context";
 import { createCustomConnectorCommand } from "./create";
 import { updateCustomConnectorCommand } from "./update";
+import { connectorInspectionType } from "../inspection";
 
 const LABEL_WIDTH = 18;
+
+function customConnectorJson(
+  connector: CustomConnectorResponse,
+  agent: Awaited<ReturnType<typeof resolveCustomAgentContext>>,
+) {
+  const target = { kind: "custom", customConnectorId: connector.id } as const;
+  return {
+    ...connector,
+    target,
+    connectorType: connectorInspectionType(target, connector),
+    connectionId: connector.connectedAccountId ?? null,
+    authorized: agent ? agent.authorizedIds.has(connector.id) : null,
+  };
+}
 
 function renderConnected(connector: {
   readonly connected: boolean;
@@ -33,13 +49,12 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
   readonly displayName: string;
   readonly authorizedIds: Set<string>;
 } | null> {
-  const resolvedAgentId = agentId ?? getOkouAgentId();
-  if (!resolvedAgentId) {
+  if (!agentId) {
     return null;
   }
   const [agent, grants] = await Promise.all([
-    getAgent(resolvedAgentId),
-    getAgentCustomConnectorGrants(resolvedAgentId),
+    getAgent(agentId),
+    getAgentCustomConnectorGrants(agentId),
   ]);
   return {
     agentId: agent.agentId,
@@ -55,14 +70,51 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
 const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List org custom connectors")
-  .option("--agent <id>", "Show per-agent authorization column")
+  .description(
+    "List org custom HTTP/MCP definitions and member connection status",
+  )
+  .option(
+    "--agent <id>",
+    "Show per-agent authorization column (must match the current Agent inside a run)",
+  )
+  .option("--json", "Output current org custom connectors as JSON")
+  .addHelpText(
+    "after",
+    `
+Lists org definitions with the current member's connection status, including
+inside a run. This is separate from the accounts admitted to the current run;
+use connector list for that view. The ID column contains UUIDs for custom
+status/update and custom:<uuid> diagnostic selectors.
+Omit --agent inside a run to inspect the current Agent's access.`,
+  )
   .action(
-    withErrorHandler(async (options: { agent?: string }) => {
+    withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
+      const agentId = resolveConnectorAgentId(options.agent);
       const [connectors, agentCtx] = await Promise.all([
         listCustomConnectors(),
-        resolveCustomAgentContext(options.agent),
+        resolveCustomAgentContext(agentId),
       ]);
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              context: "current",
+              agent: agentCtx
+                ? {
+                    agentId: agentCtx.agentId,
+                    displayName: agentCtx.displayName,
+                  }
+                : null,
+              connectors: connectors.map((connector) => {
+                return customConnectorJson(connector, agentCtx);
+              }),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
       const idWidth = Math.max(
         2,
         ...connectors.map((connector) => {
@@ -106,16 +158,62 @@ const listCommand = new Command()
 
 const statusCommand = new Command()
   .name("status")
-  .description("Show detailed status of a custom connector")
-  .argument("<connector-id>", "Custom connector id")
-  .option("--agent <id>", "Show authorization state for the given agent")
+  .description("Show a custom HTTP/MCP definition and member connection status")
+  .argument(
+    "<connector-id>",
+    "Custom connector UUID from connector custom list",
+  )
+  .option(
+    "--agent <id>",
+    "Show authorization state for the given Agent (must match the current Agent inside a run)",
+  )
+  .option("--json", "Output current org custom connector status as JSON")
+  .addHelpText(
+    "after",
+    `
+Accepts a custom connector UUID, not a public slug or custom:<uuid> selector.
+Shows current org definition/member status, including inside a run. For the
+account admitted to a run, use connector status with its connector list slug.
+Omit --agent inside a run to inspect the current Agent's access.`,
+  )
   .action(
     withErrorHandler(
-      async (connectorId: string, options: { agent?: string }) => {
+      async (
+        connectorId: string,
+        options: { agent?: string; json?: boolean },
+      ) => {
+        const agentId = resolveConnectorAgentId(options.agent);
         const [connector, agentCtx] = await Promise.all([
           getCustomConnector(connectorId),
-          resolveCustomAgentContext(options.agent),
+          resolveCustomAgentContext(agentId),
         ]);
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              {
+                context: "current",
+                target: { kind: "custom", customConnectorId: connectorId },
+                state: connector === null ? "unavailable" : "available",
+                agent: agentCtx
+                  ? {
+                      agentId: agentCtx.agentId,
+                      displayName: agentCtx.displayName,
+                    }
+                  : null,
+                connector:
+                  connector === null
+                    ? null
+                    : customConnectorJson(connector, agentCtx),
+              },
+              null,
+              2,
+            ),
+          );
+          if (connector === null) {
+            process.exitCode = 1;
+          }
+          return;
+        }
         if (!connector) {
           throw new Error(`Custom connector not found: ${connectorId}`);
         }
@@ -186,6 +284,21 @@ export const customConnectorCommand = new Command()
   .addHelpText(
     "after",
     `
+Types and authentication:
+  HTTP: none, manual, oauth.
+  MCP over Streamable HTTP: none, manual, oauth, automatic.
+  The definition's authMode is required. Automatic is MCP-only and discovers
+  the server's authentication requirements when a member connects.
+
+Definitions and access:
+  create/update manage org definitions; list/status show current-member metadata.
+  Creating a definition is separate from connecting a member account, granting
+  Agent access, and selecting any fine-grained permissions. This also applies
+  to none/automatic definitions. Members finish connection in the web flow.
+  Custom HTTP connectors with a permission bundle use Connectors > agent access
+  > Permissions. MCP connectors have Agent access but no HTTP permission bundle.
+  Builtin permission-request approval links do not apply to custom connectors.
+
 To add a custom connector:
   Run "okou connector custom create -h" and follow the definition-only creation workflow.`,
   );

@@ -42,7 +42,7 @@ import {
   Quote,
   Code,
 } from "lucide-react";
-import { cn } from "@okouai/ui";
+import { surfaceVariants, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 interface TiptapInstructionsEditorProps {
@@ -254,7 +254,7 @@ export function TiptapInstructionsEditor({
     <div
       className={cn(
         "relative transition-colors",
-        surface === "card" ? "okou-card focus-within:border-primary" : "",
+        surface === "card" ? surfaceVariants() : "",
         disabled ? "pointer-events-none opacity-60" : "",
       )}
     >

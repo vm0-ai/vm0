@@ -402,6 +402,48 @@ impl JobTelemetry {
         }
     }
 
+    pub(crate) async fn upload_oom_evidence(
+        &self,
+        evidence: &guest_contracts::oom_evidence::OomEvidence,
+        sandbox_id: &str,
+    ) {
+        let payload = serde_json::json!({
+            "runId": self.run_id.to_string(), "sandboxId": sandbox_id,
+            "oomEvidence": evidence,
+        });
+        let send = async {
+            let mut response = self
+                .http
+                .request_route(
+                    routes::webhooks::agent::telemetry::SEND,
+                    &self.sandbox_token,
+                )
+                .timeout(Duration::from_secs(2))
+                .json(&payload)
+                .send("oom-evidence")
+                .await
+                .ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.ok()? {
+                if bytes.len() + chunk.len() > 1024 {
+                    return None;
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            let body: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+            (body.get("oomEvidenceVersion")?.as_u64() == Some(1)).then_some(())
+        };
+        if !matches!(
+            tokio::time::timeout(Duration::from_secs(2), send).await,
+            Ok(Some(()))
+        ) {
+            warn!(run_id = %self.run_id, "guest oom evidence upload unacknowledged; host evidence retained");
+        }
+    }
+
     fn record_inner(
         &mut self,
         action_type: &str,

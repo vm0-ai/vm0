@@ -136,6 +136,7 @@ async fn workspace_sidecar_materialization_overlaps_sandbox_creation() {
             &params,
             &mut telemetry,
             NewSandboxHooks {
+                preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
                 controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
                     .with_session_history_restore_plan(
                         SessionHistoryRestorePlan::DeferredHashBacked {
@@ -245,6 +246,7 @@ async fn workspace_sidecar_probe_miss_falls_back_and_records_reason() {
             &params,
             &mut telemetry,
             NewSandboxHooks {
+                preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
                 controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
                     .with_session_history_restore_plan(
                         SessionHistoryRestorePlan::DeferredHashBacked {
@@ -346,6 +348,7 @@ async fn workspace_retry_cancels_sidecar_materialization_before_cache_invalidati
             &params,
             &mut telemetry,
             NewSandboxHooks {
+                preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
                 controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
                     .with_session_history_restore_plan(
                         SessionHistoryRestorePlan::DeferredHashBacked {
@@ -1394,6 +1397,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
             &params,
             &mut telemetry,
             NewSandboxHooks {
+                preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
                 controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
                     .with_session_history_restore_plan(
                         SessionHistoryRestorePlan::DeferredHashBacked {

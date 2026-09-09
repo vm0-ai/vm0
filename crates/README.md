@@ -103,6 +103,18 @@ binary overrides must use flags and environment keys matching the runner revisio
 - [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
   build, deploy, and validate architecture-specific runner artifacts.
 
+### Local active input
+
+`runner local input` requires a claimed local job with active-input forwarding
+enabled. Ordinary submissions leave forwarding disabled. Enable it when submitting
+the job with `runner local submit --active-input after=1s,text=hello` and the other
+required submission arguments. An already-running job cannot enable forwarding
+retroactively; resubmit it with the option when input is needed.
+
+The input command rejects disabled forwarding or unavailable job metadata without
+creating an input entry. A successful command reports file publication, not an
+acknowledgement that the running agent consumed the input.
+
 ### Orphan sandbox termination
 
 `runner kill --sandbox <ID>` first asks the owning runner to terminate the

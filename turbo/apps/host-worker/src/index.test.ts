@@ -40,6 +40,7 @@ function textStream(value: string): ReadableStream<Uint8Array> {
 
 function objectBody(body: string, contentType = "application/json"): R2Object {
   return {
+    size: byteLength(body),
     body: textStream(body),
     httpEtag: '"test-etag"',
     writeHttpMetadata(headers: Headers): void {
@@ -185,6 +186,9 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
     HOST_DOMAIN: options.hostDomain ?? "sites.vm0.io",
     OKOU_HOST_DOMAIN: options.okouHostDomain ?? "okou.app",
     HOSTED_SITES_BUCKET: {
+      head: async (key) => {
+        return objects.get(key) ?? null;
+      },
       get(key: string): Promise<R2Object | null> {
         return Promise.resolve(objects.get(key) ?? null);
       },

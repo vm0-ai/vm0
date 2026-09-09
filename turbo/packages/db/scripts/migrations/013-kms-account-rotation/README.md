@@ -39,6 +39,46 @@ does not grant runtime users `ReEncrypt`. A migrate command must run separately
 under the existing migration operator's permissions and with an authorized
 production database connection.
 
+## Preserve the effective production configuration
+
+After preflight succeeds, run **KMS Production Backup** on `main`. Supply the
+current production API Vercel deployment ID as `expected_deployment_id` and
+approve its protected GitHub `production` environment job. This backup is a
+separate operation from deployment or ciphertext migration.
+
+The job verifies the exact old production IAM user and resolves the configured
+key through `GenerateDataKey`, emitting only the returned key ARN. It captures
+the effective `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SECRETS_KMS_KEY_ID`,
+and `AWS_REGION` from the production environment, along with the current API
+deployment ID, URL, commit, and workflow provenance. The Vercel production target
+must still match the supplied deployment ID immediately before backup.
+
+The existing production-only Doppler OIDC identity writes one masked
+`KMS_BACKUP_JSON` secret to `vm0-kms-rollback-32264/prd`. This isolated project
+has no deployment integration. The existing `vm0` project membership remains
+read-only; only the backup project's `prd` environment receives temporary
+Collaborator access. After successful backup and independent verification,
+downgrade that backup-project membership to Viewer. The development service
+account receives no access to the backup project. No new AWS or static Doppler
+credentials are created.
+
+An existing backup blocks the job. The write also uses Doppler's conditional
+new-secret operation so a concurrent writer cannot be overwritten. Both the raw
+and computed read-back must exactly match the snapshot, with masked visibility.
+Only sanitized metadata is uploaded to the seven-day GitHub artifact; credential
+values pass directly from the protected runner to Doppler. The report includes a
+SHA-256 digest of the complete snapshot for independent verification against a
+later Doppler read. Provider error bodies are suppressed because they can contain
+secrets. A missing success report or failed read-back is a blocker for replacing
+production configuration.
+
+The stored deployment is a rollback reference, not proof that rolling back its
+code is still compatible with later schema changes. Recheck the current
+deployment and release compatibility before cutover. Restore configuration from
+the saved snapshot through the normal protected operational process; do not
+paste credential values into issues or chat. Retain the backup and old KMS access
+until the agreed rollback and recovery windows end.
+
 ## CLI modes
 
 Run from `turbo/packages/db` with a direct, unpooled `DATABASE_URL` set in the execution environment.
@@ -129,10 +169,11 @@ dual-key read access must remain enabled for partial batches and rollback.
 1. Review a complete read-only production report and successful actual-runtime
    canary. Resolve unknown/malformed ciphertext and non-ARN references. The
    credentials and keys already exist; do not create replacements.
-2. Record the current immutable production API deployment and preserve the old
-   effective `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SECRETS_KMS_KEY_ID` in
-   an approved secret store before replacing anything. GitHub cannot read back
-   existing secret values; metadata alone is not a rollback backup.
+2. Complete **KMS Production Backup**, verify its Doppler read-back and sanitized
+   report, and downgrade its temporary backup-project access to Viewer. This
+   preserves the old effective credentials, KMS configuration, and current
+   immutable production API deployment before replacing anything. GitHub cannot
+   read back existing secret values; metadata alone is not a rollback backup.
 3. Update those three **GitHub `production` environment secrets** to the existing
    target values. `AWS_REGION` remains `us-west-2`. The normal protected API
    release lifecycle consumes them through `.github/actions/web-api-env`.

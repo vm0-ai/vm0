@@ -115,6 +115,7 @@ import type {
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { emptyChatImg, thinkingSpinnerImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { ChatThreadPinButton } from "./chat-thread-header-actions.tsx";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
 import { hasChatEventBodyContent } from "../../signals/chat-page/chat-event-body-blocks.ts";
@@ -671,6 +672,8 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
 
 function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
+  const headerActionsEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatThreadHeaderActions];
   const pageSignal = useGet(pageSignal$);
   const sharingPhase = useGet(thread.sharing.phase$);
   const selectedCount = useGet(thread.sharing.selectedCount$);
@@ -708,8 +711,15 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
 
   return (
     <header className={CHAT_THREAD_HEADER_CLASS}>
-      <ChatThreadHeaderTitle thread={thread} />
-      <div className="flex items-center gap-0.5">
+      {headerActionsEnabled ? (
+        <div className="flex min-w-0 items-center gap-2 pr-3">
+          <ChatThreadHeaderTitle thread={thread} />
+          <ChatThreadPinButton thread={thread} />
+        </div>
+      ) : (
+        <ChatThreadHeaderTitle thread={thread} />
+      )}
+      <div className="flex shrink-0 items-center gap-0.5">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2164,11 +2174,11 @@ function HeaderWorkflowAutomationEditDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={
+        maxWidth={
           automation.kind === "event" &&
           automation.eventType === "gmail-new-message"
-            ? "max-w-2xl"
-            : ""
+            ? "2xl"
+            : "lg"
         }
       >
         <DialogHeader>
@@ -3374,13 +3384,24 @@ function formatCompactDuration(totalSeconds: number): string {
       },
     );
   }
-  const totalHours = Math.round(totalMinutes / 60);
-  return i18n.t(
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  const hours = i18n.t(
     ($) => {
       return $.chat.run.duration.hoursShort;
     },
     { count: totalHours },
   );
+  if (remainingMinutes === 0) {
+    return hours;
+  }
+  const minutes = i18n.t(
+    ($) => {
+      return $.chat.run.duration.minutesShort;
+    },
+    { count: remainingMinutes },
+  );
+  return `${hours} ${minutes}`;
 }
 
 const RUN_SECTION_LABEL_CLASS =
@@ -7496,7 +7517,8 @@ function RelatedArtifactsDialog({
       </TooltipProvider>
       <DialogContent
         aria-describedby={undefined}
-        className="!flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl"
+        smMaxWidth="xl"
+        contentClassName="flex flex-col overflow-hidden gap-0 p-0"
         data-testid="chat-run-related-artifacts-dialog"
       >
         <DialogHeader className="shrink-0 px-5 pb-4 pt-5 pr-12">

@@ -1,5 +1,53 @@
 # Changelog
 
+## [9.319.1](https://github.com/vm0-ai/vm0/compare/cli-v9.319.0...cli-v9.319.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** validate dataforseo labs locations ([#32785](https://github.com/vm0-ai/vm0/issues/32785)) ([f2c8fff](https://github.com/vm0-ai/vm0/commit/f2c8fff24537303713047f2abe9a690d913046b0))
+* **cli:** show custom connector authorization in whoami ([#32860](https://github.com/vm0-ai/vm0/issues/32860)) ([2a30ef2](https://github.com/vm0-ai/vm0/commit/2a30ef26f39de146f12251c181d30b66175a4f4a))
+
+
+### Documentation
+
+* **cli:** align connector help with supported scopes and auth modes ([#32849](https://github.com/vm0-ai/vm0/issues/32849)) ([16f88fa](https://github.com/vm0-ai/vm0/commit/16f88fa0906a37fb32506a431df5385f8ed5ce27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.420.1
+    * @okouai/core bumped to 8.642.0
+    * @okouai/pi-agent-runtime bumped to 1.24.1
+
+## [9.319.0](https://github.com/vm0-ai/vm0/compare/cli-v9.318.5...cli-v9.319.0) (2026-09-09)
+
+
+### Features
+
+* **pi:** prepare native claude consumers and accounting ([#32835](https://github.com/vm0-ai/vm0/issues/32835)) ([31133fc](https://github.com/vm0-ai/vm0/commit/31133fc7ba5eeecbc1c8a0cda32f16f1ff2b4602))
+
+
+### Bug Fixes
+
+* **cli:** reject conflicting run-bound connector agent selectors ([#32844](https://github.com/vm0-ai/vm0/issues/32844)) ([1c5fe7b](https://github.com/vm0-ai/vm0/commit/1c5fe7bcf02ff884413a36475ada06c40533db1e))
+
+
+### Refactoring
+
+* **pi-memory:** stop maintenance journal production and forwarding ([#32805](https://github.com/vm0-ai/vm0/issues/32805)) ([46576db](https://github.com/vm0-ai/vm0/commit/46576dbbca793e345e9b20e56618b998c3a8b629))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.420.0
+    * @okouai/core bumped to 8.641.1
+    * @okouai/pi-agent-runtime bumped to 1.24.0
+
 ## [9.318.5](https://github.com/vm0-ai/vm0/compare/cli-v9.318.4...cli-v9.318.5) (2026-09-09)
 
 

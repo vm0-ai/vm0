@@ -5,10 +5,14 @@ import {
   listCustomConnectors,
 } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
+import {
+  resolveConnectorAgentId,
+  resolveConnectorDiscoveryAgentContext,
+} from "./agent-context";
 import { padEndAnsi, stripAnsi } from "./connected-as";
 import {
   connectorDiscoveryItems,
+  connectorDiscoveryJson,
   isConnectorDiscoveryAuthorized,
   renderConnectorDiscoveryConnectedAsCell,
 } from "./discovery";
@@ -60,11 +64,30 @@ async function printRunConnectorList(json: boolean): Promise<void> {
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List all connectors and their status")
-  .option("--agent <id>", "Show per-agent authorization column")
+  .description("List connector status in the current run or member context")
+  .option(
+    "--agent <id>",
+    "Show per-agent authorization outside a run (must match the current Agent inside a run)",
+  )
   .option("--json", "Output connector status as JSON")
+  .addHelpText(
+    "after",
+    `
+Scope:
+  Inside a run, lists builtin and custom HTTP/MCP targets from the current run's
+  account context, with the exact selected account or its unavailable state.
+  This is not the full connector catalog. Omit --agent or match the current
+  Agent; the flag does not select another Agent's run or accounts.
+  Outside a run, lists the builtin catalog and org custom definitions with the
+  current member's connection status and optional --agent authorization.
+
+Examples:
+  okou connector list --json
+  okou connector search github`,
+  )
   .action(
     withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
+      const agentId = resolveConnectorAgentId(options.agent);
       if (isRunBoundConnectorContext()) {
         await printRunConnectorList(options.json ?? false);
         return;
@@ -72,7 +95,7 @@ export const listCommand = new Command()
       const [{ connectors }, customConnectors, agentCtx] = await Promise.all([
         listConnectorCatalogStatus(),
         listCustomConnectors(),
-        resolveConnectorDiscoveryAgentContext(options.agent),
+        resolveConnectorDiscoveryAgentContext(agentId),
       ]);
       const discoveredConnectors = connectorDiscoveryItems(
         connectors,
@@ -84,31 +107,14 @@ export const listCommand = new Command()
           JSON.stringify(
             {
               context: "current",
+              agent: agentCtx
+                ? {
+                    agentId: agentCtx.agentId,
+                    displayName: agentCtx.displayName,
+                  }
+                : null,
               connectors: discoveredConnectors.map((connector) => {
-                return connector.kind === "catalog"
-                  ? {
-                      kind: "builtin",
-                      slug: connector.slug,
-                      label: connector.label,
-                      connectionStatus:
-                        connector.catalogConnector.connectionStatus,
-                      connection: connector.catalogConnector.connection,
-                      authorized: agentCtx
-                        ? isConnectorDiscoveryAuthorized(connector, agentCtx)
-                        : null,
-                    }
-                  : {
-                      kind: "custom",
-                      id: connector.customConnector.id,
-                      slug: connector.slug,
-                      label: connector.label,
-                      connected: connector.customConnector.connected,
-                      missingRequiredFields:
-                        connector.customConnector.missingRequiredFields,
-                      authorized: agentCtx
-                        ? isConnectorDiscoveryAuthorized(connector, agentCtx)
-                        : null,
-                    };
+                return connectorDiscoveryJson(connector, agentCtx);
               }),
             },
             null,

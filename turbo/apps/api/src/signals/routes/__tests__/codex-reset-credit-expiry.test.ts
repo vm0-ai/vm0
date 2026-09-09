@@ -235,6 +235,141 @@ describe("Codex expiry metadata resilience", () => {
     expect(remote.detailsCalls).toBe(3);
   });
 
+  it.each([false, true])(
+    "quietly cools down after 503 and restores expiry at 60 seconds, accounts=%s",
+    async (accounts) => {
+      mockNow(Date.UTC(2030, 0, 1));
+      const remote = upstream();
+      const user = await fixture({ accounts });
+      remote.details = () => {
+        return new HttpResponse(null, {
+          status: 503,
+          headers: { "Retry-After": "120" },
+        });
+      };
+      const expiryLogs = () => {
+        return context.mocks.axiomLogging.info.mock.calls.filter(
+          ([message]) => {
+            return (
+              typeof message === "string" &&
+              message.includes("codex reset credit expiry")
+            );
+          },
+        );
+      };
+      const start = now();
+      expectExpiry(await user.list(), null, 2);
+      expectExpiry(await user.list(), null, 3);
+      mockNow(start + 59_999);
+      expectExpiry(await user.list(), null, 4);
+      expect(remote.detailsCalls).toBe(2);
+      expect(expiryLogs()).toHaveLength(0);
+
+      remote.details = () => {
+        return expiryResponse(remote.expiry);
+      };
+      mockNow(start + 60_000);
+      expectExpiry(await user.list(), remote.expiry, 5);
+      expect(remote.detailsCalls).toBe(3);
+      // The warm-instance aggregate spans bindings; its window need not align
+      // with this entry's cooldown. It may emit at most once in this minute.
+      const summaries = expiryLogs();
+      expect(summaries.length).toBeLessThanOrEqual(1);
+      for (const [message] of summaries) {
+        expect(message).toBe("codex reset credit expiry outcomes");
+      }
+      for (const sensitive of [
+        user.orgId,
+        user.userId,
+        user.auth.accountId,
+        user.auth.accessToken,
+      ]) {
+        expect(JSON.stringify(summaries)).not.toContain(sensitive);
+      }
+      expectExpiry(await user.list(), remote.expiry, 6);
+      expect(remote.detailsCalls).toBe(3);
+      expect(expiryLogs()).toHaveLength(summaries.length);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+      expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "does not revive a cached date after its TTL expires during a 503 outage, accounts=%s",
+    async (accounts) => {
+      mockNow(Date.UTC(2030, 0, 1));
+      const remote = upstream();
+      const user = await fixture({ accounts });
+      const start = now();
+      expectExpiry(await user.list(), remote.expiry, 2);
+      remote.details = () => {
+        return new HttpResponse(null, { status: 503 });
+      };
+      mockNow(start + 299_999);
+      expectExpiry(await user.list(), remote.expiry, 3);
+      expect(remote.detailsCalls).toBe(2);
+      mockNow(start + 300_000);
+      expectExpiry(await user.list(), null, 4);
+      expect(remote.detailsCalls).toBe(3);
+      mockNow(start + 359_999);
+      expectExpiry(await user.list(), null, 5);
+      expect(remote.detailsCalls).toBe(3);
+      mockNow(start + 360_000);
+      expectExpiry(await user.list(), null, 6);
+      expect(remote.detailsCalls).toBe(4);
+
+      const recoveredExpiry = new Date(start + 7_200_000).toISOString();
+      remote.details = () => {
+        return expiryResponse(recoveredExpiry);
+      };
+      mockNow(start + 419_999);
+      expectExpiry(await user.list(), null, 7);
+      expect(remote.detailsCalls).toBe(4);
+      mockNow(start + 420_000);
+      expectExpiry(await user.list(), recoveredExpiry, 8);
+      expect(remote.detailsCalls).toBe(5);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "shares a concurrent 503 attempt and its cooldown while refreshing each count, accounts=%s",
+    async (accounts) => {
+      mockNow(Date.UTC(2030, 0, 1));
+      const remote = upstream();
+      const user = await fixture({ accounts });
+      const started = createDeferredPromise<void>(context.signal);
+      const release = createDeferredPromise<Response>(context.signal);
+      const bothUsage = createDeferredPromise<void>(context.signal);
+      remote.details = () => {
+        started.resolve();
+        return release.promise;
+      };
+      remote.usage = () => {
+        if (remote.usageCalls === 3) {
+          bothUsage.resolve();
+        }
+        return HttpResponse.json({
+          rate_limit_reset_credits: { available_count: remote.usageCalls },
+        });
+      };
+      const first = user.list();
+      await started.promise;
+      const second = user.list();
+      await bothUsage.promise;
+      release.resolve(new HttpResponse(null, { status: 503 }));
+      const results = await Promise.all([first, second]);
+      expectExpiry(results[0], null, 2);
+      expectExpiry(results[1], null, 3);
+      expectExpiry(await user.list(), null, 4);
+      expect(remote.detailsCalls).toBe(2);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+      expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ["120", 120_000],
     ["Tue, 01 Jan 2030 00:02:00 GMT", 120_000],
@@ -387,17 +522,21 @@ describe("Codex expiry metadata resilience", () => {
     expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
   });
 
-  it.each([401, 500, "schema", "transport"] as const)(
+  it.each([401, 500, "json", "schema", "transport"] as const)(
     "keeps unexpected %s failures diagnosable and preserves the count",
     async (failure) => {
       const remote = upstream();
       const user = await fixture();
       remote.details = () => {
-        return failure === "schema"
-          ? HttpResponse.json({ credits: "invalid" })
-          : failure === "transport"
-            ? HttpResponse.error()
-            : new HttpResponse(null, { status: failure });
+        return failure === "json"
+          ? new HttpResponse("{invalid json", {
+              headers: { "Content-Type": "application/json" },
+            })
+          : failure === "schema"
+            ? HttpResponse.json({ credits: "invalid" })
+            : failure === "transport"
+              ? HttpResponse.error()
+              : new HttpResponse(null, { status: failure });
       };
       expectExpiry(await user.list(), null, 2);
       expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(

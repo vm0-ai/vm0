@@ -1958,8 +1958,11 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     let mut context = minimal_context();
     context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
     let (_outcome, telemetry) = execute_job_reuse_with_hooks(
-        idle_sandbox,
-        SandboxReuseResult::Reused,
+        crate::executor::ReusedSandboxDispatch {
+            factory: &MockSandboxFactory::new(),
+            idle_sandbox,
+            reuse_result: SandboxReuseResult::Reused,
+        },
         context,
         &config,
         &default_params(),
@@ -2073,8 +2076,11 @@ async fn execute_job_claims_blank_sandbox_without_changing_cold_path_attribution
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
-        idle_sandbox,
-        SandboxReuseResult::PoolMiss,
+        crate::executor::ReusedSandboxDispatch {
+            factory: &MockSandboxFactory::new(),
+            idle_sandbox,
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
         minimal_context(),
         &config,
         &params,
@@ -2124,8 +2130,11 @@ async fn assert_reused_private_write_timeout_telemetry(
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
-        idle_sandbox,
-        SandboxReuseResult::Reused,
+        crate::executor::ReusedSandboxDispatch {
+            factory: &MockSandboxFactory::new(),
+            idle_sandbox,
+            reuse_result: SandboxReuseResult::Reused,
+        },
         context,
         &config,
         &default_params(),
@@ -2178,8 +2187,11 @@ async fn assert_reused_required_private_batch_failure(
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
-        idle_sandbox,
-        SandboxReuseResult::Reused,
+        crate::executor::ReusedSandboxDispatch {
+            factory: &MockSandboxFactory::new(),
+            idle_sandbox,
+            reuse_result: SandboxReuseResult::Reused,
+        },
         context,
         &config,
         &default_params(),

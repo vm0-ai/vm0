@@ -106,6 +106,25 @@ function configureProviders(): void {
   mockEnv("OKOU_SEO_DATAFORSEO_PASSWORD", "test-dataforseo-password");
 }
 
+function requestLabsLocation(
+  actor: OrgApiTestUser,
+  operation: "keyword-ideas" | "ranked-keywords",
+  location: string,
+) {
+  const seoClient = client(actor.usagePricingResolution)(seoContract);
+  const headers = authenticate(actor);
+  const body = { location, languageCode: "en", limit: 10 };
+  return operation === "keyword-ideas"
+    ? seoClient.keywordIdeas({
+        headers,
+        body: { ...body, keyword: "technical seo" },
+      })
+    : seoClient.rankedKeywords({
+        headers,
+        body: { ...body, target: "example.com" },
+      });
+}
+
 function dataForSeoResponse(cost: number, result: unknown) {
   return {
     version: "0.1.20260810",
@@ -168,6 +187,146 @@ function noSearchResultsResponse(cost: number) {
 }
 
 describe("SEO routes", () => {
+  describe.each([
+    { operation: "keyword-ideas", endpoint: "keyword_ideas" },
+    { operation: "ranked-keywords", endpoint: "ranked_keywords" },
+  ] as const)("$operation Labs locations", ({ operation, endpoint }) => {
+    it.each([
+      { location: " us ", code: 2840 },
+      { location: "uSa", code: 2840 },
+      { location: "  united   states  ", code: 2840 },
+      { location: "GB", code: 2826 },
+      { location: "uk", code: 2826 },
+      { location: "Hong Kong", code: 2344 },
+    ])(
+      "resolves $location to the supported location code",
+      async ({ location, code }) => {
+        const actor = await seedActor();
+        configureProviders();
+        const beforeCredits = await credits(actor);
+        const observed: unknown[] = [];
+        const providerResponse = dataForSeoResponse(0.024, [
+          { keyword: "seo audit", location_code: code },
+        ]);
+        server.use(
+          http.post(
+            `${DATAFORSEO_BASE_URL}/v3/dataforseo_labs/${endpoint}/live`,
+            async ({ request }) => {
+              observed.push(await request.json());
+              return HttpResponse.json(providerResponse);
+            },
+          ),
+        );
+
+        const response = await accept(
+          requestLabsLocation(actor, operation, location),
+          [200],
+        );
+
+        expect(response.body.result).toStrictEqual(providerResponse);
+        expect(response.body.creditsCharged).toBe(30);
+        expect(observed).toStrictEqual([
+          [
+            {
+              ...(operation === "keyword-ideas"
+                ? { keywords: ["technical seo"] }
+                : { target: "example.com" }),
+              location_code: code,
+              language_code: "en",
+              limit: 10,
+            },
+          ],
+        ]);
+        await expect(credits(actor)).resolves.toBe(beforeCredits - 30);
+      },
+    );
+
+    it.each(["Austin, Texas, United States", "Texas", "Atlantis", "ZZ", "RU"])(
+      "rejects unsupported location %s before the provider without charging or alerting",
+      async (location) => {
+        const actor = await seedActor();
+        configureProviders();
+        const beforeCredits = await credits(actor);
+        let providerRequests = 0;
+        server.use(
+          http.post(
+            `${DATAFORSEO_BASE_URL}/v3/dataforseo_labs/${endpoint}/live`,
+            () => {
+              providerRequests += 1;
+              return HttpResponse.json(dataForSeoResponse(0.024, []));
+            },
+          ),
+        );
+        context.mocks.axiomLogging.warn.mockClear();
+        context.mocks.axiomLogging.error.mockClear();
+        context.mocks.sentry.captureException.mockClear();
+
+        const response = await accept(
+          requestLabsLocation(actor, operation, location),
+          [400],
+        );
+
+        expect(response.body.error.code).toBe("DATAFORSEO_INVALID_REQUEST");
+        expect(response.body.error.message).toContain(
+          "supported country or region",
+        );
+        expect(response.body.error.message).toContain(
+          '"United States" or "US"',
+        );
+        expect(providerRequests).toBe(0);
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        await expect(credits(actor)).resolves.toBe(beforeCredits);
+      },
+    );
+
+    it("keeps diagnostics when the provider rejects a validated location without retrying or charging", async () => {
+      const actor = await seedActor();
+      configureProviders();
+      const beforeCredits = await credits(actor);
+      const providerResponse = dataForSeoResponse(0, null);
+      let providerRequests = 0;
+      server.use(
+        http.post(
+          `${DATAFORSEO_BASE_URL}/v3/dataforseo_labs/${endpoint}/live`,
+          () => {
+            providerRequests += 1;
+            return HttpResponse.json({
+              ...providerResponse,
+              tasks_error: 1,
+              tasks: providerResponse.tasks.map((task) => {
+                return {
+                  ...task,
+                  status_code: 40_501,
+                  status_message: "Invalid Field: 'location_code'.",
+                  result_count: 0,
+                };
+              }),
+            });
+          },
+        ),
+      );
+      context.mocks.axiomLogging.warn.mockClear();
+
+      const response = await accept(
+        requestLabsLocation(actor, operation, "United States"),
+        [400],
+      );
+
+      expect(response.body.error).toStrictEqual({
+        code: "DATAFORSEO_INVALID_REQUEST",
+        message: "Invalid Field: 'location_code'.",
+      });
+      expect(providerRequests).toBe(1);
+      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+        "DataForSEO task failed",
+        expect.objectContaining({ operation, taskStatusCode: 40_501 }),
+      );
+      await expect(credits(actor)).resolves.toBe(beforeCredits);
+    });
+  });
+
   it("rejects agent tokens without the seo capability", async () => {
     const actor = await seedActor();
     if (!actor.orgId) {
@@ -728,7 +887,7 @@ describe("SEO routes", () => {
       [
         {
           keywords: ["technical seo"],
-          location_name: "United States",
+          location_code: 2840,
           language_code: "en",
           limit: 100,
         },
@@ -736,7 +895,7 @@ describe("SEO routes", () => {
       [
         {
           target: "example.com",
-          location_name: "United States",
+          location_code: 2840,
           language_code: "en",
           limit: 50,
         },

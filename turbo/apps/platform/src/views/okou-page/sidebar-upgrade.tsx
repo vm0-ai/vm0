@@ -1,3 +1,4 @@
+import { surfaceVariants } from "@okouai/ui";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -66,8 +67,10 @@ export function SidebarUpgradeCard() {
       ref={refreshLayoutRef}
       type="button"
       onClick={handleClick}
-      className="flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-state-hover okou-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
-      style={{ borderRadius: "12px" }}
+      className={surfaceVariants({
+        radius: "compact",
+        className: "flex w-full items-center gap-3 p-2.5 text-left",
+      })}
     >
       <div className="min-w-0 flex-1">
         <p className="okou-nav-copy text-sm font-medium text-foreground">

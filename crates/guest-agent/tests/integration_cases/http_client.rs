@@ -60,7 +60,7 @@ impl HeldOpenResponseServer {
     }
 }
 
-async fn read_raw_request(socket: &mut TcpStream) -> std::io::Result<()> {
+pub(super) async fn read_raw_request(socket: &mut TcpStream) -> std::io::Result<()> {
     let mut request = Vec::new();
     let header_end = loop {
         if let Some(index) = request.windows(4).position(|window| window == b"\r\n\r\n") {

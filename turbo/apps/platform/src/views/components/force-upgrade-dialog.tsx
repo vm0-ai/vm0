@@ -35,7 +35,7 @@ export function ForceUpgradeDialog({
         eventDetails.cancel();
       }}
     >
-      <DialogContent className="max-w-md [&_[aria-label='Close']]:hidden">
+      <DialogContent maxWidth="md" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

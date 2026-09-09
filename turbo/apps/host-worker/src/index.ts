@@ -1,21 +1,36 @@
 import {
+  artifactDeliveryKey,
+  artifactDeliveryRecordSchema,
+  artifactDeliveryRegistrationKey,
+  type ArtifactDeliveryRecord,
+} from "@okouai/api-contracts/contracts/artifact-delivery";
+import {
   artifactSharePolicySchema,
   type ArtifactSharePolicy,
 } from "@okouai/api-contracts/contracts/artifact-shares";
 
 interface R2ObjectBody {
+  readonly size: number;
   readonly body: ReadableStream;
   readonly httpEtag: string;
   writeHttpMetadata(headers: Headers): void;
 }
 
 interface R2Bucket {
-  get(key: string): Promise<R2ObjectBody | null>;
+  get(
+    key: string,
+    options?: {
+      readonly range: { readonly offset: number; readonly length: number };
+    },
+  ): Promise<R2ObjectBody | null>;
+  head(key: string): Promise<Pick<R2ObjectBody, "size" | "httpEtag"> | null>;
 }
 
 interface Env {
   readonly HOSTED_SITES_BUCKET: R2Bucket;
   readonly PRIVATE_ARTIFACTS_BUCKET?: R2Bucket;
+  readonly PUBLIC_ARTIFACTS_BUCKET?: R2Bucket;
+  readonly PUBLIC_ARTIFACT_HOST?: string;
   readonly HOST_DOMAIN: string;
   readonly OKOU_HOST_DOMAIN: string;
 }
@@ -61,7 +76,9 @@ interface HostedSiteManifest {
 }
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Headers": "Accept, Content-Type",
+  "Access-Control-Allow-Headers": "Accept, Content-Type, Range, If-Range",
+  "Access-Control-Expose-Headers":
+    "Accept-Ranges, Content-Length, Content-Range, ETag",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Max-Age": "86400",
 } as const;
@@ -255,6 +272,7 @@ async function resolvePointerForBrand(
   publicBrand: PublicBrand,
   publicSlug: string,
   deploymentId: string | undefined,
+  registered = false,
 ): Promise<ResolvedPointer | null> {
   let pointer = deploymentId
     ? await readJson<ActiveSitePointer>(
@@ -269,6 +287,7 @@ async function resolvePointerForBrand(
   ) {
     return null;
   }
+  if (!pointer && deploymentId && registered) return null;
   if (!pointer) {
     pointer = await readJson<ActiveSitePointer>(
       bucket,
@@ -374,32 +393,34 @@ async function serveHostedSite(
   }
 
   const url = new URL(request.url);
-  const target = hostedSiteRequestTarget(url.hostname, env);
-  if (!target) {
-    return notFoundResponse();
-  }
-
   const pathname = normalizeRequestPath(url.pathname);
-  if (!pathname) {
-    return new Response("Bad path", { status: 400 });
-  }
-
-  const shared = /^sh-([a-f0-9]{32})-([a-f0-9]{24})$/u.exec(target.publicSlug);
+  if (!pathname) return new Response("Bad path", { status: 400 });
+  const fileHost = url.hostname === env.PUBLIC_ARTIFACT_HOST;
+  const target = hostedSiteRequestTarget(url.hostname, env);
+  if (!fileHost && !target) return notFoundResponse();
+  // Previously emitted share links survive the URL change. Keep this reader
+  // until #32492 verifies that no retained pre-registry share links need it.
+  const shared = target
+    ? /^sh-([a-f0-9]{32})-([a-f0-9]{24})$/u.exec(target.publicSlug)
+    : null;
   if (shared?.[1] && shared[2]) {
-    const result = await serveSharedArtifact(
-      request,
+    const hash = shared[1];
+    const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20)}`;
+    const policy = await readPublicShare(
       env,
-      target.publicBrands,
-      pathname,
-      shared[1],
+      target!.publicBrands,
+      id,
       shared[2],
-      execution,
     );
-    if (result) return result;
+    if (policy instanceof Response) return policy;
+    if (policy)
+      return serveAuthorizedArtifact(request, env, pathname, policy, execution);
   }
-
-  const previewToken = /^p[vs]-([a-f0-9]{48})$/u.exec(target.publicSlug)?.[1];
-  if (previewToken) {
+  const previewToken =
+    !fileHost && target
+      ? /^p[vs]-([a-f0-9]{48})$/u.exec(target.publicSlug)?.[1]
+      : undefined;
+  if (previewToken && target) {
     const preview = await servePrivatePreview(
       request,
       env,
@@ -412,17 +433,173 @@ async function serveHostedSite(
     }
   }
 
+  return serveArtifactDelivery(
+    request,
+    env,
+    pathname,
+    target,
+    fileHost,
+    execution,
+  );
+}
+
+/** Alias ownership is immutable; permission state is read separately on every request. */
+async function readDeliveryRecord(
+  request: Request,
+  bucket: R2Bucket,
+  key: string,
+  execution: ExecutionContext,
+): Promise<ArtifactDeliveryRecord | null> {
+  const cache = await caches.open("artifact-delivery-v1");
+  const cacheKey = new Request(
+    new URL(`/__artifact-delivery/${encodeURIComponent(key)}`, request.url),
+  );
+  const cached = await cache.match(cacheKey);
+  if (cached) return artifactDeliveryRecordSchema.parse(await cached.json());
+  const object = await bucket.get(key);
+  if (!object) return null;
+  const record = artifactDeliveryRecordSchema.parse(
+    await new Response(object.body).json(),
+  );
+  execution.waitUntil(
+    cache.put(
+      cacheKey,
+      new Response(JSON.stringify(record), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=86400",
+        },
+      }),
+    ),
+  );
+  return record;
+}
+
+async function serveArtifactDelivery(
+  request: Request,
+  env: Env,
+  pathname: string,
+  target: HostedSiteRequestTarget | null,
+  fileHost: boolean,
+  execution: ExecutionContext,
+): Promise<Response> {
+  const brands = fileHost ? [null] : target!.publicBrands;
+  const alias = fileHost ? pathname.slice(1) : target!.publicSlug;
+  const records = await Promise.all(
+    brands.map(async (brand) => {
+      const record = await readDeliveryRecord(
+        request,
+        env.HOSTED_SITES_BUCKET,
+        artifactDeliveryKey(brand, fileHost ? "file" : "html", alias),
+        execution,
+      );
+      if (!record) return null;
+      if (brand !== null && record.publicBrand !== brand)
+        throw new Error("Artifact delivery brand mismatch");
+      return record;
+    }),
+  );
+  const registered = records.filter(
+    (record): record is ArtifactDeliveryRecord => {
+      return record !== null;
+    },
+  );
+  if (registered.length > 1) return privateResponse(notFoundResponse());
+  const record = registered[0];
+  if (record?.kind === "publication") {
+    if ((record.targetKind === "file") !== fileHost)
+      return privateResponse(notFoundResponse());
+    const policy = await readPublicShare(
+      env,
+      [record.publicBrand],
+      record.shareId,
+      record.publicToken,
+    );
+    if (policy instanceof Response) return policy;
+    if (!policy || policy.target.kind !== record.targetKind)
+      return privateResponse(notFoundResponse());
+    return await serveAuthorizedArtifact(
+      request,
+      env,
+      fileHost ? "/" : pathname,
+      policy,
+      execution,
+    );
+  }
+  if (fileHost) {
+    if (record?.kind !== "legacy-file" || !env.PUBLIC_ARTIFACTS_BUCKET)
+      return privateResponse(notFoundResponse());
+    return serveArtifactFile(request, env.PUBLIC_ARTIFACTS_BUCKET, record);
+  }
+  if (!target) return notFoundResponse();
+  if (record && record.kind !== "legacy-site")
+    return privateResponse(notFoundResponse());
+
+  return serveLegacyHostedSite(request, env, pathname, target, record);
+}
+
+async function registrationComplete(
+  bucket: R2Bucket,
+  brand: PublicBrand,
+): Promise<boolean> {
+  const object = await bucket.get(artifactDeliveryRegistrationKey(brand));
+  if (!object) return false;
+  const marker: unknown = await new Response(object.body).json();
+  if (
+    !marker ||
+    typeof marker !== "object" ||
+    !("version" in marker) ||
+    marker.version !== 1 ||
+    !("complete" in marker) ||
+    marker.complete !== true
+  ) {
+    throw new Error("Invalid artifact registration marker");
+  }
+  return true;
+}
+
+async function serveLegacyHostedSite(
+  request: Request,
+  env: Env,
+  pathname: string,
+  target: HostedSiteRequestTarget,
+  record: Extract<ArtifactDeliveryRecord, { kind: "legacy-site" }> | undefined,
+): Promise<Response> {
   const deploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(
     target.publicSlug,
   )?.[1];
+  let legacyBrands = target.publicBrands;
+  if (!record) {
+    // Existing public aliases predate the delivery registry. Remove this
+    // compatibility read after #32492 verifies registration for every brand
+    // and old API writers have drained; the completion marker closes it now.
+    const completed = await Promise.all(
+      target.publicBrands.map((brand) => {
+        return registrationComplete(env.HOSTED_SITES_BUCKET, brand);
+      }),
+    );
+    legacyBrands = target.publicBrands.filter((_, index) => {
+      return !completed[index];
+    });
+    if (legacyBrands.length === 0) return privateResponse(notFoundResponse());
+  }
   const pointers = (
     await Promise.all(
-      target.publicBrands.map((publicBrand) => {
+      legacyBrands.map((publicBrand) => {
+        if (record?.kind === "legacy-site") {
+          if (record.publicBrand !== publicBrand) return Promise.resolve(null);
+          const expectedKey = deploymentId
+            ? immutableDeploymentPointerKey(publicBrand, deploymentId)
+            : activePointerKey(publicBrand, target.publicSlug);
+          if (record.pointerKey !== expectedKey)
+            throw new Error("Legacy artifact pointer mismatch");
+        }
         return resolvePointerForBrand(
           env.HOSTED_SITES_BUCKET,
           publicBrand,
           target.publicSlug,
           deploymentId,
+          record?.kind === "legacy-site",
         );
       }),
     )
@@ -440,8 +617,11 @@ async function serveHostedSite(
   if (
     !manifest ||
     manifest.access !== undefined ||
-    pointer.prefix.startsWith("private-sites/") ||
+    manifest.version !== 1 ||
+    pointer.version !== 1 ||
+    !pointer.prefix.startsWith("sites/") ||
     manifest.deploymentId !== pointer.deploymentId ||
+    manifest.siteId !== pointer.siteId ||
     storedPublicBrand(manifest) !== publicBrand
   ) {
     return notFoundResponse();
@@ -487,6 +667,85 @@ async function serveManifestFile(
 
   return new Response(request.method === "HEAD" ? null : object.body, {
     status: 200,
+    headers,
+  });
+}
+
+async function artifactFileRange(
+  request: Request,
+  bucket: R2Bucket,
+  key: string,
+): Promise<{ offset: number; length: number } | Response | undefined> {
+  let range: { offset: number; length: number } | undefined;
+  const requested =
+    request.method === "GET" ? request.headers.get("Range") : null;
+  if (requested) {
+    const head = await bucket.head(key);
+    if (!head) return notFoundResponse();
+    const ifRange = request.headers.get("If-Range");
+    const match = /^bytes=(\d*)-(\d*)$/u.exec(requested);
+    // HTTP permits ignoring malformed/multipart ranges and stale If-Range.
+    if (match && (!ifRange || ifRange === head.httpEtag)) {
+      const start = match[1]
+        ? Number(match[1])
+        : Math.max(0, head.size - Number(match[2]));
+      const end =
+        match[1] && match[2]
+          ? Math.min(Number(match[2]), head.size - 1)
+          : head.size - 1;
+      if (
+        (!match[1] && !match[2]) ||
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start > end ||
+        start >= head.size
+      ) {
+        return new Response(null, {
+          status: 416,
+          headers: {
+            "Content-Range": `bytes */${head.size}`,
+            "Accept-Ranges": "bytes",
+          },
+        });
+      }
+      range = { offset: start, length: end - start + 1 };
+    }
+  }
+  return range;
+}
+
+async function serveArtifactFile(
+  request: Request,
+  bucket: R2Bucket,
+  file: {
+    readonly key: string;
+    readonly filename: string;
+    readonly contentType: string;
+  },
+): Promise<Response> {
+  const range = await artifactFileRange(request, bucket, file.key);
+  if (range instanceof Response) return range;
+  const object = await bucket.get(file.key, range ? { range } : undefined);
+  if (!object) return notFoundResponse();
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", file.contentType);
+  headers.set("Content-Length", String(range?.length ?? object.size));
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("ETag", object.httpEtag);
+  headers.set("X-Content-Type-Options", "nosniff");
+  if (range)
+    headers.set(
+      "Content-Range",
+      `bytes ${range.offset}-${range.offset + range.length - 1}/${object.size}`,
+    );
+  if (/html|svg|xml/iu.test(file.contentType))
+    headers.set(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+    );
+  return new Response(request.method === "HEAD" ? null : object.body, {
+    status: range ? 206 : 200,
     headers,
   });
 }
@@ -658,7 +917,6 @@ async function readPublicShare(
       headers: { "Cache-Control": "private, no-store" },
     });
   }
-  // Preserve historical aliases with a coincidentally matching hostname.
   if (records.length === 0) return null;
   const policy = records[0];
   if (
@@ -672,22 +930,17 @@ async function readPublicShare(
   return policy;
 }
 
-/** Authorization is deliberately uncached and precedes every content-cache hit. */
-async function serveSharedArtifact(
+/** Callers must read current authorization before every content-cache hit. */
+async function serveAuthorizedArtifact(
   request: Request,
   env: Env,
-  brands: readonly PublicBrand[],
   pathname: string,
-  compactId: string,
-  token: string,
+  policy: ArtifactSharePolicy,
   execution: ExecutionContext,
-): Promise<Response | null> {
-  const id = `${compactId.slice(0, 8)}-${compactId.slice(8, 12)}-${compactId.slice(12, 16)}-${compactId.slice(16, 20)}-${compactId.slice(20)}`;
+): Promise<Response> {
   const denied = () => {
     return privateResponse(notFoundResponse());
   };
-  const policy = await readPublicShare(env, brands, id, token);
-  if (!policy || policy instanceof Response) return policy;
   const target = policy.target;
   if (target.kind === "file" && pathname !== "/") return denied();
   const cacheUrl = new URL(request.url);
@@ -697,7 +950,8 @@ async function serveSharedArtifact(
   // Cache only bytes on this Worker's own host. Browser/CDN caches outside
   // this Worker must re-enter authorization; public responses are no-store.
   const cache = (caches as CacheStorage & { readonly default: Cache }).default;
-  const cached = await cache.match(key);
+  const rangedFile = target.kind === "file" && request.headers.has("Range");
+  const cached = rangedFile ? undefined : await cache.match(key);
   if (cached)
     return privateResponse(
       new Response(request.method === "HEAD" ? null : cached.body, cached),
@@ -716,26 +970,13 @@ async function serveSharedArtifact(
     );
   } else {
     if (!env.PRIVATE_ARTIFACTS_BUCKET) return denied();
-    const object = await env.PRIVATE_ARTIFACTS_BUCKET.get(target.key);
-    if (!object) return denied();
-    const headers = new Headers();
-    object.writeHttpMetadata(headers);
-    headers.set("Content-Type", target.contentType);
-    headers.set("ETag", object.httpEtag);
-    headers.set("X-Content-Type-Options", "nosniff");
-    // Active uploaded formats execute only as downloads; hosted HTML uses the
-    // isolated bundle path with its sandbox and disabled service workers.
-    if (/html|svg|xml/iu.test(target.contentType)) {
-      headers.set(
-        "Content-Disposition",
-        `attachment; filename*=UTF-8''${encodeURIComponent(target.filename)}`,
-      );
-    }
-    response = new Response(request.method === "HEAD" ? null : object.body, {
-      headers,
-    });
+    response = await serveArtifactFile(
+      request,
+      env.PRIVATE_ARTIFACTS_BUCKET,
+      target,
+    );
   }
-  if (request.method === "GET" && response.status === 200) {
+  if (request.method === "GET" && response.status === 200 && !rangedFile) {
     const stored = response.clone();
     stored.headers.set("Cache-Control", "public, max-age=86400");
     execution.waitUntil(cache.put(key, stored));
@@ -752,8 +993,16 @@ export default {
     if (request.method === "OPTIONS") {
       return Promise.resolve(optionsResponse(request));
     }
-    return serveHostedSite(request, env, execution).then((response) => {
-      return corsResponse(response, request);
-    });
+    return serveHostedSite(request, env, execution)
+      .catch(() => {
+        // A registry/policy/storage failure is unavailable, never anonymous access.
+        return new Response("Artifact unavailable", {
+          status: 503,
+          headers: { "Cache-Control": "private, no-store" },
+        });
+      })
+      .then((response) => {
+        return corsResponse(response, request);
+      });
   },
 };

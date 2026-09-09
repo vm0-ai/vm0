@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { randomUUID } from "node:crypto";
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
@@ -199,7 +200,7 @@ describe("POST /api/uploads/complete", () => {
       [200],
     );
     expect(response.body).toMatchObject({
-      url: `https://api.vm0.ai/api/web/download-file?file_id=${prepared.body.id}&filename=private-report.pdf`,
+      url: artifactReferencePath(prepared.body.id, "private-report.pdf"),
     });
     const catalog = await chat.listArtifactCatalog(fixture.actor, {
       kind: "file",

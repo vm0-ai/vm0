@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/runner-rpc-client-v0.3.0...runner-rpc-client-v0.3.1) (2026-09-09)
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/runner-rpc-client-v0.2.1...runner-rpc-client-v0.3.0) (2026-09-08)
 
 

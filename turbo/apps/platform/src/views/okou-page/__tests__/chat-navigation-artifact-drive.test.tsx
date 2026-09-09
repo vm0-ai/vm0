@@ -590,6 +590,8 @@ test.each([
   "Reuse the artifact preview for Drive OAuth ($state, dismissal: $dismiss)",
   async ({ state, dismiss }) => {
     useWideScreen();
+    // Native outside-press needs complete pointer sequences to detect drags.
+    const user = userEvent.setup();
     const popup = installAuthorizationPopup();
     const syncing = context.mocks.deferred<void>();
     const sync = context.mocks.deferred<void>();
@@ -604,17 +606,17 @@ test.each([
       path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
       host: "app.okou.ai",
     });
-    click(await findNamedLink("Drive preview"));
+    await user.click(await findNamedLink("Drive preview"));
     const preview = await screen.findByRole("dialog", {
       name: "drive-report.pdf preview",
     });
-    click(buttonNamed("Download options", preview));
+    await user.click(buttonNamed("Download options", preview));
     await waitFor(() => {
       expect(
         roleItemNamed("menuitem", "Connect Google Drive"),
       ).not.toHaveAttribute("aria-disabled", "true");
     });
-    click(roleItemNamed("menuitem", "Connect Google Drive"));
+    await user.click(roleItemNamed("menuitem", "Connect Google Drive"));
     await expect(
       within(preview).findByRole("status"),
     ).resolves.toHaveTextContent(
@@ -627,13 +629,16 @@ test.each([
     });
 
     if (dismiss) {
-      const user = userEvent.setup();
       if (dismiss === "Close") {
         await user.click(buttonNamed("Close", preview));
       } else if (dismiss === "Escape") {
         await user.keyboard("{Escape}");
       } else {
-        await user.click(screen.getByTestId("attachment-lightbox-backdrop"));
+        const viewport = preview.closest('[data-slot="dialog-viewport"]');
+        if (!(viewport instanceof HTMLElement)) {
+          throw new Error("Expected the artifact preview viewport");
+        }
+        await user.click(viewport);
       }
     }
     await waitFor(() => {

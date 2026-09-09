@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+  artifactReferencePath,
+  parseArtifactReference,
+} from "@okouai/api-contracts/contracts/artifact-references";
 import { command, computed } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -32,6 +36,13 @@ export function privateArtifactCreationEnabled(orgId: string, userId: string) {
 export function artifactFileReference(
   value: string,
 ): { readonly id: string } | null {
+  const reference = parseArtifactReference(value, env("APP_URL"));
+  if (reference) {
+    return { id: reference.id };
+  }
+  if (value.startsWith("/artifacts/")) {
+    return { id: "" };
+  }
   const origin = apiBackendUrl();
   const url = safeUrlParse(value);
   if (
@@ -50,16 +61,7 @@ export function artifactFileReference(
 }
 
 export function privateArtifactUrl(id: string, filename: string): string {
-  const origin = apiBackendUrl();
-  if (!origin) {
-    throw new Error("OKOU_API_BACKEND_URL is required for private artifacts");
-  }
-  const url = new URL("/api/web/download-file", origin);
-  url.searchParams.set("file_id", id);
-  // A display hint lets Markdown classify the file without an unauthenticated
-  // metadata request. Authorization and storage lookup use only file_id.
-  url.searchParams.set("filename", filename);
-  return url.toString();
+  return artifactReferencePath(id, filename);
 }
 
 function privateArtifactsBucket(): string {

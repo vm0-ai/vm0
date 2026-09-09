@@ -22,11 +22,12 @@ use super::super::env::{
     guest_connector_account_context_file_path, guest_run_payload_file_path,
     guest_user_env_file_path, prepare_run_payload_for_run,
 };
+use super::super::reused_sandbox::{ReusedSandboxRun, execute_reused_sandbox};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
     execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
-    execute_prepared_sandbox_run_with_process_cancel_timeouts, execute_reused_sandbox,
-    log_proxy_register_failure, log_proxy_register_success, register_proxy,
+    execute_prepared_sandbox_run_with_process_cancel_timeouts, log_proxy_register_failure,
+    log_proxy_register_success, register_proxy,
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JOB_TIMEOUT,
@@ -55,6 +56,7 @@ use crate::workspace_image_cache::{
 use tracing::Level;
 use tracing_subscriber::prelude::*;
 
+mod blank_prefetch;
 mod execution_diagnostics;
 mod fresh_sandbox;
 mod idle_pool;

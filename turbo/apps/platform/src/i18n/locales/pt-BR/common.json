@@ -1694,6 +1694,7 @@
       "saving": "Salvando...",
       "send": "Enviar",
       "stop": "Parar",
+      "undo": "Desfazer",
       "view": "Ver"
     },
     "actionUnavailable": {
@@ -2010,12 +2011,9 @@
         "emptyCustomTitle": "Nenhum conector personalizado ainda",
         "emptyYoursBody": "Conecte um aplicativo e o Okou poderá ler e agir nele por você.",
         "emptyYoursTitle": "Você ainda não conectou nada",
-        "keyMove": "navegar",
-        "keyOpen": "abrir",
         "matchCount_one": "{{count}} resultado",
         "matchCount_many": "{{count}} resultados",
         "matchCount_other": "{{count}} resultados",
-        "matchedOn": "Correspondência por nome, descrição e tags",
         "moreAccounts_one": "+{{count}}",
         "moreAccounts_many": "+{{count}}",
         "moreAccounts_other": "+{{count}}",
@@ -2393,6 +2391,199 @@
       "startWithPrompt": "Criar",
       "templates": "Modelos"
     },
+    "taskChips": {
+      "chooseTask": "Escolha uma tarefa",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Criar um convite de aniversário",
+            "prompt": "Criar um convite de aniversário"
+          },
+          "brandCharacter": {
+            "label": "Criar um personagem para minha marca",
+            "prompt": "Criar um personagem para minha marca"
+          },
+          "businessLogo": {
+            "label": "Criar um logotipo para meu negócio",
+            "prompt": "Criar um logotipo para meu negócio"
+          },
+          "cafeMenu": {
+            "label": "Criar um cardápio para meu café",
+            "prompt": "Criar um cardápio para meu café"
+          },
+          "eventPoster": {
+            "label": "Criar um pôster para meu evento",
+            "prompt": "Criar um pôster para meu evento"
+          },
+          "finishedSketch": {
+            "label": "Transformar meu esboço em uma imagem final",
+            "prompt": "Transformar meu esboço em uma imagem final"
+          },
+          "greetingCard": {
+            "label": "Criar um cartão pessoal",
+            "prompt": "Criar um cartão pessoal"
+          },
+          "headshot": {
+            "label": "Criar uma foto profissional minha",
+            "prompt": "Criar uma foto profissional minha"
+          },
+          "infographic": {
+            "label": "Transformar uma ideia em infográfico",
+            "prompt": "Transformar uma ideia em infográfico"
+          },
+          "newsletterCover": {
+            "label": "Criar uma capa para minha newsletter",
+            "prompt": "Criar uma capa para minha newsletter"
+          },
+          "packaging": {
+            "label": "Explorar embalagens para meu produto",
+            "prompt": "Explorar embalagens para meu produto"
+          },
+          "photoLighting": {
+            "label": "Melhorar a iluminação da minha foto",
+            "prompt": "Melhorar a iluminação da minha foto"
+          },
+          "presentationVisual": {
+            "label": "Criar um visual para minha apresentação",
+            "prompt": "Criar um visual para minha apresentação"
+          },
+          "productScene": {
+            "label": "Colocar meu produto em um novo cenário",
+            "prompt": "Colocar meu produto em um novo cenário"
+          },
+          "profileBanner": {
+            "label": "Renovar meu banner de perfil",
+            "prompt": "Renovar meu banner de perfil"
+          },
+          "roomDesign": {
+            "label": "Experimentar um novo visual para meu quarto",
+            "prompt": "Experimentar um novo visual para meu quarto"
+          },
+          "storePhoto": {
+            "label": "Preparar uma foto para minha loja",
+            "prompt": "Preparar uma foto para minha loja"
+          },
+          "websiteImage": {
+            "label": "Criar uma imagem para meu site",
+            "prompt": "Criar uma imagem para meu site"
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "Transformar uma foto em vídeo",
+            "prompt": "Anime uma foto que eu fornecer com movimentos naturais. Mantenha o assunto reconhecível e pergunte o que deve se mover."
+          },
+          "brandIntro": {
+            "label": "Criar uma abertura para minha marca",
+            "prompt": "Crie uma abertura curta para minha marca com o logotipo e os detalhes que eu fornecer. Ajude a escolher o clima."
+          },
+          "eventPromo": {
+            "label": "Divulgar meu evento",
+            "prompt": "Crie um vídeo promocional curto para meu evento. Pergunte sobre o evento, o público e os detalhes a incluir."
+          },
+          "loopingBackground": {
+            "label": "Criar um fundo em loop",
+            "prompt": "Crie um fundo de vídeo em loop contínuo com movimentos suaves. Pergunte qual cenário e clima eu quero."
+          },
+          "productDemo": {
+            "label": "Mostrar meu produto em movimento",
+            "prompt": "Crie um vídeo curto a partir da foto do meu produto. Preserve sua aparência e destaque a característica que eu escolher."
+          },
+          "socialClip": {
+            "label": "Criar um vídeo para redes sociais",
+            "prompt": "Crie um vídeo curto para redes sociais. Ajude a escolher uma mensagem clara e um estilo visual adequado ao meu público."
+          },
+          "videoGreeting": {
+            "label": "Criar uma mensagem de vídeo comemorativa",
+            "prompt": "Crie uma mensagem curta em vídeo para um aniversário, feriado ou celebração. Pergunte a ocasião, o destinatário e a mensagem."
+          },
+          "visualExplainer": {
+            "label": "Explicar uma ideia visualmente",
+            "prompt": "Crie um vídeo curto que torne uma ideia fácil de entender. Pergunte qual ideia explicar e para quem."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Criar uma página para agendar meus serviços",
+            "prompt": "Crie uma página explicando meus serviços e como agendá-los. Use meu link de agendamento existente e pergunte os detalhes dos serviços."
+          },
+          "businessSite": {
+            "label": "Criar um site para meu negócio",
+            "prompt": "Crie um site que apresente meu negócio, serviços e formas de contato. Comece pelos detalhes do negócio e pelo público."
+          },
+          "cafeMenu": {
+            "label": "Publicar o cardápio do meu café",
+            "prompt": "Crie um site para meu café com cardápio, preços, horários e localização. Use as informações e fotos que eu fornecer."
+          },
+          "coursePage": {
+            "label": "Criar uma página para meu curso",
+            "prompt": "Crie uma página apresentando meu curso, público e resultados de aprendizagem. Use meu link de inscrição para as matrículas."
+          },
+          "eventPage": {
+            "label": "Criar uma página para meu evento",
+            "prompt": "Crie uma página de evento com data, local, programação e link de inscrição que eu fornecer. Pergunte pelos detalhes ausentes."
+          },
+          "linkPage": {
+            "label": "Reunir meus links em uma página",
+            "prompt": "Crie uma página simples de links com minha apresentação, trabalho e redes sociais. Pergunte quais links incluir."
+          },
+          "portfolio": {
+            "label": "Mostrar meu trabalho em um portfólio",
+            "prompt": "Crie um site de portfólio para meu trabalho. Ajude a organizar projetos, apresentação pessoal e informações de contato."
+          },
+          "productLaunch": {
+            "label": "Lançar uma página para meu produto",
+            "prompt": "Crie uma página de produto com benefícios, imagens e uma próxima ação clara. Pergunte o que vou lançar e para quem."
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "Receber meu resumo de e-mails pela manhã",
+            "prompt": "Resuma pela manhã os e-mails importantes, as respostas pendentes e as ações necessárias. Confirme a caixa de entrada e o horário desejado."
+          },
+          "fileOrganization": {
+            "label": "Organizar os arquivos que chegam",
+            "prompt": "Organize arquivos novos conforme regras combinadas de nomes e arquivamento. Confirme origem, pasta de destino e categorias."
+          },
+          "meetingActions": {
+            "label": "Transformar notas de reunião em tarefas",
+            "prompt": "Quando chegarem novas notas de reunião, extraia tarefas, responsáveis e prazos. Sinalize detalhes ausentes e confirme onde encontrar as notas."
+          },
+          "meetingPrep": {
+            "label": "Ajudar a preparar minhas reuniões",
+            "prompt": "Antes das reuniões, prepare informações sobre participantes, contexto e pontos de discussão. Confirme calendário, materiais e antecedência do lembrete."
+          },
+          "numbersBrief": {
+            "label": "Receber meu resumo diário de números",
+            "prompt": "Resuma diariamente os números que acompanho e as mudanças desde a última atualização. Confirme a fonte, os indicadores e o horário."
+          },
+          "progressRecap": {
+            "label": "Resumir meu progresso e próximos passos",
+            "prompt": "Resuma regularmente o trabalho concluído, as pendências e as próximas prioridades. Confirme a fonte dos registros e a frequência diária ou semanal."
+          },
+          "replyWatch": {
+            "label": "Avisar quando um e-mail receber resposta",
+            "prompt": "Acompanhe a resposta a um e-mail específico, depois me avise e resuma o conteúdo. Confirme primeiro qual e-mail acompanhar."
+          },
+          "topicUpdates": {
+            "label": "Acompanhar novidades sobre um tema",
+            "prompt": "Acompanhe um tema que me interessa e resuma novas informações importantes com fontes. Pergunte o tema e a frequência desejada."
+          }
+        }
+      },
+      "ideasLabel": "Ideias para começar",
+      "label": "Tarefas para começar",
+      "moreIdeas": "Mais ideias",
+      "moreTemplates": "Mais modelos",
+      "presentationTemplates": "Modelos de apresentação",
+      "tasks": {
+        "image": "Imagem",
+        "presentation": "Slides",
+        "video": "Vídeo",
+        "website": "Site",
+        "workflow": "Fluxo de trabalho"
+      }
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustração",
@@ -2453,7 +2644,10 @@
     },
     "toasts": {
       "copied": "Copiado",
-      "deleted": "Conversa excluída"
+      "deleted": "Conversa excluída",
+      "pinned": "Conversa fixada",
+      "pinUpdateFailed": "Não foi possível confirmar a alteração. Atualize a página para verificar o estado salvo.",
+      "unpinned": "Conversa desafixada"
     },
     "translation": {
       "action": "Traduzir",
@@ -2616,7 +2810,6 @@
       "authorized": "Autorizado",
       "connectAria": "Conectar {{connector}}",
       "connected": "Conectado",
-      "connecting": "Conectando…",
       "connectionExpired": "A conexão expirou",
       "connectToContinue": "Conecte esta conta para continuar",
       "managePermissions": "Gerenciar permissões",

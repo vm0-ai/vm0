@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/feishu-connect";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
-import { Button } from "@okouai/ui";
+import { surfaceVariants, Button } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
@@ -1382,8 +1382,9 @@ export function FeishuCard() {
   return (
     <Link
       pathname={ROUTES.settingsFeishu}
+      data-slot="integration-card"
       data-testid="feishu-setup-button"
-      className="okou-card block transition-colors hover:bg-state-hover"
+      className={surfaceVariants({ className: "block" })}
     >
       <div className="flex items-center gap-4 p-4">
         <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
@@ -1755,7 +1756,7 @@ function FeishuBotsCard({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="okou-card overflow-hidden">
+    <section className={surfaceVariants({ className: "overflow-hidden" })}>
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
         <h2 className="text-sm font-medium text-foreground">
           {t(($) => {
@@ -1790,7 +1791,7 @@ function FeishuSetupFaq() {
   const { t } = useTranslation();
   return (
     <section
-      className="okou-card overflow-hidden"
+      className={surfaceVariants({ className: "overflow-hidden" })}
       aria-labelledby="feishu-setup-faq-title"
     >
       <div className="border-b border-border/50 px-4 py-3">
@@ -1852,7 +1853,7 @@ function FeishuSetupFaq() {
 function FeishuSettingsSkeleton() {
   return (
     <section
-      className="okou-card overflow-hidden"
+      className={surfaceVariants({ className: "overflow-hidden" })}
       data-testid="feishu-settings-loading"
     >
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
@@ -1975,7 +1976,9 @@ function FeishuSetupDialog({
       }}
     >
       <DialogContent
-        className="!flex h-[min(800px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-2xl !flex-col !overflow-hidden"
+        maxWidth="2xl"
+        height={800}
+        contentClassName="flex flex-col overflow-hidden"
         closeLabel={t(($) => {
           return $.connectors.actions.close;
         })}
@@ -2233,7 +2236,11 @@ export function FeishuSettingsPage() {
       <main className="flex-1 overflow-auto px-4 pb-[max(2rem,var(--sab))] pt-3 sm:px-6">
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
           {hasError ? (
-            <div className="okou-card px-6 py-10 text-center text-sm text-destructive">
+            <div
+              className={surfaceVariants({
+                className: "px-6 py-10 text-center text-sm text-destructive",
+              })}
+            >
               {t(($) => {
                 return $.connectors.providerSettings.feishu.loadError;
               })}

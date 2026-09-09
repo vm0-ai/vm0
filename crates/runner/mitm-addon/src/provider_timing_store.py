@@ -13,7 +13,7 @@ transfers delivery ownership to ``usage.webhook``. The store then clears its pen
 releases the buffered lease.
 Retry-eligible run IDs are indexed in the pending subset of current LRU order so global retries do
 not visit completed or incomplete-context state.
-Eviction, explicit discard, and reset release any lease that remains locally retained.
+Eviction and reset release any lease that remains locally retained.
 
 See ``codex_output_timing.py`` and ``claude_output_timing.py`` for provider usage, and
 ``tests/test_provider_output_timing.py``, ``tests/test_codex_output_timing.py``, and
@@ -127,16 +127,6 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
         self._run_states.move_to_end(run_id)
         if run_id in self._retryable_run_ids:
             self._retryable_run_ids.move_to_end(run_id)
-
-    def discard_locked(self, run_id: str) -> None:
-        """Discard a tracked run and release any retained buffered-report lease.
-
-        The caller must hold ``locked()``. Pending operations and reporting context for the run are
-        discarded with its state; no delivery retry remains after this terminal removal.
-        """
-        state = self._run_states.pop(run_id)
-        self._retryable_run_ids.pop(run_id, None)
-        self._release_buffered_report_locked(state)
 
     def admit_pending_locked(
         self,

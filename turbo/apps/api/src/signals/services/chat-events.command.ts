@@ -148,7 +148,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
-import { buildVideoRunOptionsPrompt } from "../../lib/video-run-options-prompt";
+import { buildVideoRunOptionsPrompt } from "@okouai/core/video-run-options-prompt";
 import {
   additionalVolumesForRun,
   authorizedUserPresentationTemplateIds,

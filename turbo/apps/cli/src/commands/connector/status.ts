@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { resolveAgentContext } from "./agent-context";
+import { resolveAgentContext, resolveConnectorAgentId } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   availableConnectorSlugs,
@@ -261,23 +261,47 @@ async function printRunConnectorStatus(
 
 export const statusCommand = new Command()
   .name("status")
-  .description("Show detailed status of a connector")
-  .argument("<slug>", "Connector slug (e.g., github)")
-  .option("--agent <id>", "Show authorization state for the given agent")
+  .description("Show run account status, or builtin status outside a run")
+  .argument(
+    "<slug>",
+    "Slug shown by connector list (builtin only outside a run)",
+  )
+  .option(
+    "--agent <id>",
+    "Show per-agent authorization outside a run (must match the current Agent inside a run)",
+  )
   .option("--json", "Output connector status as JSON")
+  .addHelpText(
+    "after",
+    `
+Scope:
+  Inside a run, accepts builtin or custom HTTP/MCP slugs shown by connector list
+  and reports the account selected for that run. Missing account context is
+  reported as unavailable. Omit --agent or match the current Agent; the flag
+  does not change the run's accounts.
+  Outside a run, accepts builtin catalog slugs and shows the current member's
+  connection plus optional --agent authorization.
+  For org custom definition/member status, use connector custom status <uuid>.
+
+Examples:
+  okou connector status github --json
+  okou connector custom list
+  okou connector custom status <connector-id>`,
+  )
   .action(
     withErrorHandler(
       async (
         connectorSlug: string,
         options: { agent?: string; json?: boolean },
       ) => {
+        const agentId = resolveConnectorAgentId(options.agent);
         if (isRunBoundConnectorContext()) {
           await printRunConnectorStatus(connectorSlug, options.json ?? false);
           return;
         }
         const [catalog, agentCtx] = await Promise.all([
           listConnectorCatalogStatus(),
-          resolveAgentContext(options.agent),
+          resolveAgentContext(agentId),
         ]);
         const connector = findConnectorStatusItem(
           catalog.connectors,
@@ -299,7 +323,11 @@ export const statusCommand = new Command()
             JSON.stringify(
               {
                 context: "current",
-                connector,
+                connector: {
+                  ...connector,
+                  target: { kind: "builtin", connectorSlug: connector.slug },
+                  connectorType: "builtin",
+                },
                 authorization: agentCtx
                   ? {
                       agentId: agentCtx.agentId,
