@@ -158,6 +158,40 @@ describe("okou connector permission-request command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("rejects custom slugs from the builtin permission-request flow", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "agent-1");
+    server.use(
+      http.post("https://app.okou.ai/api/connectors/diagnostics/check", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message: "Invalid builtin connector slug",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    await expect(
+      permissionRequestCommand.parseAsync([
+        "node",
+        "okou",
+        "_acme-mcp",
+        "--permission",
+        "items:write",
+        "--url",
+        "https://api.acme.test/items",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Invalid builtin connector slug",
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
   it("outputs an allow grant link without choosing the user's duration", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.okou.ai");
     vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");

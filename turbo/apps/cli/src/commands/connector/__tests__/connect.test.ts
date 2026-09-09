@@ -14,6 +14,10 @@ import chalk from "chalk";
 import { server } from "../../../mocks/server";
 import { connectCommand } from "../connect";
 import {
+  customConnector,
+  stubCustomConnectors,
+} from "../../__tests__/helpers/custom-connectors";
+import {
   catalogStatusItem,
   manualAuthMethod,
   stubConnectorCatalogStatus,
@@ -116,6 +120,27 @@ describe("okou connector connect command", () => {
     expect(output).toContain("Zendesk connected");
     expect(output).toContain("okou connector status zendesk");
     expect(output).not.toContain("secret-token");
+  });
+
+  it("rejects a custom slug from the builtin manual-connect flow", async () => {
+    const connector = customConnector();
+    server.use(stubCustomConnectors([connector]));
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "okou",
+        connector.slug,
+        "--add",
+        "--value",
+        "apiKey=test-custom-key",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      `Unknown or unavailable connector: ${connector.slug}`,
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
   });
 
   it("preserves reconnect syntax and resolves the current default exactly", async () => {

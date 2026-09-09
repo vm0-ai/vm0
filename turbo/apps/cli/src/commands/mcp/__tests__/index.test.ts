@@ -24,7 +24,9 @@ import {
 
 import { server } from "../../../mocks/server";
 import {
+  customConnector,
   runMcpConnector,
+  stubCustomConnectors,
   stubRunMcpConnectors,
 } from "../../__tests__/helpers/custom-connectors";
 import { mcpCommand } from "../index";
@@ -838,6 +840,22 @@ describe("okou mcp command", () => {
     expect(seen).toHaveLength(0);
     expect(outputText(consoleError)).toContain(
       'MCP connector "_not-admitted" is not authorized for this Agent',
+    );
+  });
+
+  it("rejects an HTTP custom slug from MCP commands", async () => {
+    const connector = customConnector();
+    stubConnectorList();
+    server.use(stubCustomConnectors([connector]));
+    const seen = stubMcpServer({ era: "modern" });
+
+    await expect(
+      mcpCommand.parseAsync(["node", "okou", "list-tools", connector.slug]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(seen).toHaveLength(0);
+    expect(outputText(consoleError)).toContain(
+      `MCP connector "${connector.slug}" is not authorized for this Agent`,
     );
   });
 

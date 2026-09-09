@@ -27,6 +27,7 @@ import {
 } from "./check-custom";
 import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
 import { printConnectorCheckJson } from "./check-json";
+import { resolveCustomConnectorId } from "./custom-connector-selector";
 import {
   diagnoseConnectorCheck,
   getConnector,
@@ -625,7 +626,7 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--connector <selector>",
-      "Select a builtin slug or custom:<uuid> when connectors own the same URL route",
+      "Select a builtin/custom slug or custom:<uuid> when connectors own the same URL route",
     ),
   )
   .addOption(
@@ -661,6 +662,7 @@ Examples:
   okou connector check --url https://api.github.com/repos/owner/repo
   okou connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
   okou connector check --url https://api.acme.example/v1/items --connector custom:<connector-id>
+  okou connector check --url https://api.acme.example/v1/items --connector _acme-search
   okou connector check --url https://slack.com/api/chat.postMessage --method POST
   okou connector check --env-name SLACK_TOKEN --check-permission chat:write
 
@@ -705,7 +707,10 @@ Permission recovery:
         return;
       }
       const method = opts.method.toUpperCase();
-      const request = buildDiagnosticRequest(opts, method);
+      const connector = opts.connector?.startsWith("_")
+        ? `custom:${await resolveCustomConnectorId(opts.connector)}`
+        : opts.connector;
+      const request = buildDiagnosticRequest({ ...opts, connector }, method);
       const diagnostic = await diagnoseConnectorCheck(request);
       if (opts.json) {
         await printConnectorCheckJson(request, diagnostic);
