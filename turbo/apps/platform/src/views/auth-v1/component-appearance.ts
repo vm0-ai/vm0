@@ -6,12 +6,7 @@ import {
   inputClassName,
 } from "@okouai/ui";
 import type { SignIn } from "@clerk/react";
-import type { ComponentProps, CSSProperties } from "react";
-
-import {
-  platformOkouWordmarkDarkImg,
-  platformOkouWordmarkLightImg,
-} from "../../lib/static-assets.ts";
+import type { ComponentProps } from "react";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import {
   AUTH_V1_ERROR_ALERT_CLASS,
@@ -73,47 +68,6 @@ const authV1ResendCodeLinkClass = cn(
   authV1TextActionClass,
 );
 
-// Clerk always adds `crossorigin="anonymous"` to its logo image. The public
-// static host only grants that native image path to app.okou.ai; previews
-// retain the self-contained fallback without broadening that CORS boundary.
-function transparentClerkLogoImageUrl(): string {
-  const { width, height } = { width: 1934, height: 512 };
-  return `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27${width}%27 height=%27${height}%27 viewBox=%270 0 ${width} ${height}%27%3E%3C/svg%3E`;
-}
-
-function authV1LogoImageUrl(theme: "light" | "dark"): string {
-  return theme === "dark"
-    ? platformOkouWordmarkLightImg
-    : platformOkouWordmarkDarkImg;
-}
-
-function authV1LogoElements(
-  logoImageUrl: string,
-  usesNativeLogoImage: boolean,
-): { logoBox: string | CSSProperties; logoImage: string } {
-  if (usesNativeLogoImage) {
-    return {
-      logoBox: "m-0 self-center justify-self-center",
-      logoImage: "block h-[var(--okou-auth-card-logo-height)] w-auto",
-    };
-  }
-  return {
-    logoBox: {
-      alignSelf: "center",
-      backgroundImage: `url("${logoImageUrl}")`,
-      backgroundPosition: "center",
-      backgroundRepeat: "no-repeat",
-      backgroundSize: "contain",
-      height: "var(--okou-auth-card-logo-height)",
-      justifySelf: "center",
-      margin: 0,
-      padding: 0,
-      width: "fit-content",
-    },
-    logoImage: "block h-full w-auto opacity-0",
-  };
-}
-
 /**
  * Hosted authentication uses Clerk's supported customization stack: a simple
  * base theme, layout options, semantic tokens, and public appearance element
@@ -121,36 +75,24 @@ function authV1LogoElements(
  * instead of specificity overrides.
  */
 export function getAuthV1ComponentAppearance(
-  theme: "light" | "dark",
   authBrand: AuthBrandContext,
-  currentOrigin: string,
   mode: AuthV1ComponentMode,
 ): ClerkAppearance {
-  const logoImageUrl = authV1LogoImageUrl(theme);
-  const usesNativeLogoImage = currentOrigin === "https://app.okou.ai";
-
   return {
     theme: "simple",
     options: {
       elevation: "raised",
-      logoImageUrl: usesNativeLogoImage
-        ? logoImageUrl
-        : transparentClerkLogoImageUrl(),
       logoLinkUrl: authBrand.homeUrl,
-      // Card.Root renders an outside logo on every step; inside headers omit
-      // it during verification. This supported option keeps branding coherent.
-      logoPlacement: "outside",
       socialButtonsPlacement: "top",
       socialButtonsVariant: "blockButton",
     },
     elements: {
       rootBox:
-        "okou-clerk-root mx-auto flex w-full max-w-[var(--okou-auth-card-max-width)] flex-col gap-[var(--okou-auth-card-logo-gap)]",
+        "okou-clerk-root mx-auto flex w-full max-w-[var(--okou-auth-card-max-width)] flex-col",
       button: "okou-clerk-button",
       cardBox: cn(cardClassName, "w-full shadow-none"),
       card: "m-0 w-full rounded-none border-0 bg-card px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)] shadow-none",
       header: "grid w-full grid-cols-1 items-center gap-0 p-0 text-center",
-      ...authV1LogoElements(logoImageUrl, usesNativeLogoImage),
       headerTitle:
         "w-full max-w-none text-lg font-medium leading-7 text-foreground",
       headerSubtitle:

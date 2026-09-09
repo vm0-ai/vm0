@@ -45,11 +45,6 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
     "max-w-[var(--okou-auth-card-max-width)]",
     "shrink-0",
   );
-  expect(signIn).toHaveAttribute("data-clerk-logo-placement", "outside");
-  expect(signIn).toHaveAttribute(
-    "data-clerk-logo-image-url",
-    platformOkouWordmarkDarkImg,
-  );
   expect(signIn).toHaveAttribute(
     "data-clerk-force-redirect-url",
     "https://app.okou.ai",
@@ -102,11 +97,6 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
     "w-[var(--okou-auth-card-page-width)]",
     "max-w-[var(--okou-auth-card-max-width)]",
     "shrink-0",
-  );
-  expect(signUp).toHaveAttribute("data-clerk-logo-placement", "outside");
-  expect(signUp).toHaveAttribute(
-    "data-clerk-logo-image-url",
-    platformOkouWordmarkDarkImg,
   );
   expect(signUp).toHaveAttribute(
     "data-clerk-fallback-redirect-url",
@@ -194,11 +184,6 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
 
   const signIn = screen.getByTestId("clerk-sign-in");
   expect(signIn).toHaveAttribute("data-clerk-force-redirect-url", redirectUrl);
-  expect(signIn).toHaveAttribute("data-clerk-logo-placement", "outside");
-  expect(signIn).toHaveAttribute(
-    "data-clerk-logo-image-url",
-    platformOkouWordmarkDarkImg,
-  );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",
     redirectUrl,

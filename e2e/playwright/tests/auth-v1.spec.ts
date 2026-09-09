@@ -34,23 +34,14 @@ async function openAuth(
 }
 
 async function expectLogo(page: Page): Promise<void> {
-  const logo = page.locator(".cl-logoBox");
+  const logo = page.locator(".cl-logoImage");
   await expect(logo).toBeVisible();
-  await expect(logo).toHaveCSS("height", "20px");
-  // Clerk's root is block on desktop and flex on mobile by default. Outside
-  // branding needs an explicit column so its DS gap applies at both widths.
-  // Google One Tap has a second Clerk root; only the auth form owns this gap.
-  const root = page.locator(".okou-clerk-root");
-  await expect(root).toHaveCSS("display", "flex");
-  await expect(root).toHaveCSS("row-gap", "20px");
+  await expect(logo).toHaveJSProperty("complete", true);
   await expect
     .poll(async () => {
-      const brand = await logo.boundingBox();
-      const card = await page.locator(".cl-cardBox").boundingBox();
-      if (!brand || !card) throw new Error("Expected the brand and auth card");
-      return card.y - (brand.y + brand.height);
+      return logo.evaluate((element: HTMLImageElement) => element.naturalWidth);
     })
-    .toBeCloseTo(20, 1);
+    .toBeGreaterThan(0);
 }
 
 async function expectPrimary(page: Page, button: Locator): Promise<void> {
@@ -298,7 +289,6 @@ for (const device of [
       const error = page.locator(".cl-otpCodeFieldErrorText:visible");
       const resend = page.locator(".cl-formResendCodeLink");
       await expect(inputs).toBeVisible();
-      await expectLogo(page);
       const code = page.getByRole("textbox", {
         name: "Enter verification code",
       });
@@ -364,7 +354,6 @@ for (const device of [
         await expect(
           page.getByLabel("Password", { exact: true }),
         ).toBeVisible();
-        await expectLogo(page);
 
         const otherMethod = page.getByRole("link", {
           name: "Use another method",
@@ -388,7 +377,6 @@ for (const device of [
           page,
           page.getByRole("button", { name: /email support/i }),
         );
-        await expectLogo(page);
         const back = page.getByRole("link", { exact: true, name: "Back" });
         await expect(back).toHaveCSS("text-decoration-line", "none");
         await back.hover();
@@ -406,7 +394,6 @@ for (const device of [
         await expectPrimary(page, reset);
         await expect(reset).toHaveCSS("justify-content", "center");
         await reset.click();
-        await expectLogo(page);
         await enterInvalidCode(page, "000000");
         await expectSeparated(
           page.locator(".cl-otpCodeFieldInputs"),

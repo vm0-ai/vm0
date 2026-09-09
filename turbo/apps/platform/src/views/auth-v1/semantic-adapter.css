@@ -2,12 +2,6 @@
  * appearance.elements; variants select a control's semantics, never DOM depth.
  * Keep the layer above Clerk and below element-specific Tailwind utilities. */
 @layer components {
-  /* Outside logos have a Clerk breakpoint-specific margin. The root column
-   * owns the shared logo/card gap at every width, so it must not be added. */
-  .okou-clerk-root .cl-logoBox {
-    @apply m-0 self-center;
-  }
-
   /* Plain links use the readable text ramp, including legal links that have
    * no dedicated Clerk element. Explicit action variants below retain their
    * hierarchy. This also covers links in newly reachable auth states. */
