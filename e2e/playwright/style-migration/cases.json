@@ -30,7 +30,9 @@
         "width": 390,
         "height": 844
       },
-      "deviceScaleFactor": 2
+      "deviceScaleFactor": 2,
+      "hasTouch": true,
+      "isMobile": true
     }
   ]
 }

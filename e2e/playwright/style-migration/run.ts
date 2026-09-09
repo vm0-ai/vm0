@@ -14,6 +14,8 @@ interface VisualCase {
   theme: "light" | "dark";
   viewport: { width: number; height: number };
   deviceScaleFactor: number;
+  hasTouch?: boolean;
+  isMobile?: boolean;
 }
 
 interface Capture {
@@ -29,6 +31,7 @@ interface Manifest {
   version: 1;
   protocol: "exact-pixels-v1";
   caseSha256: string;
+  runnerSha256: string;
   sourceSha: string;
   appBuildSha: string;
   appOrigin: string;
@@ -170,6 +173,15 @@ async function run() {
     assert(/^[a-f0-9]{40}$/.test(sha));
   const out = path.resolve(required("out"));
   const caseBytes = await readFile(path.join(__dirname, "cases.json"));
+  const runnerSha256 = sha256(
+    Buffer.concat(
+      await Promise.all([
+        readFile(__filename),
+        readFile(path.join(__dirname, "images.ts")),
+        readFile(path.join(__dirname, "../lib/preview-bypass.ts")),
+      ]),
+    ),
+  );
   const caseFile: { version: number; cases: VisualCase[] } = JSON.parse(
     caseBytes.toString(),
   );
@@ -181,6 +193,7 @@ async function run() {
     : undefined;
   if (baseline) {
     assert.equal(baseline.protocol, "exact-pixels-v1");
+    assert.equal(baseline.runnerSha256, runnerSha256, "Frozen runner changed");
     assert.equal(
       baseline.caseSha256,
       sha256(caseBytes),
@@ -197,6 +210,7 @@ async function run() {
     version: 1,
     protocol: "exact-pixels-v1",
     caseSha256: sha256(caseBytes),
+    runnerSha256,
     sourceSha,
     appBuildSha,
     appOrigin,
@@ -219,6 +233,8 @@ async function run() {
         storageState: required("storage-state"),
         viewport: item.viewport,
         deviceScaleFactor: item.deviceScaleFactor,
+        hasTouch: item.hasTouch,
+        isMobile: item.isMobile,
         colorScheme: item.theme,
         locale: "en-US",
         timezoneId: "UTC",
@@ -250,6 +266,14 @@ async function run() {
           );
         }
         const page = await context.newPage();
+        page.on("response", (response) => {
+          const url = new URL(response.url());
+          if (url.origin === apiOrigin && response.status() >= 400) {
+            manifest.failures.push(
+              `${item.id}: API HTTP ${response.status()} ${url.pathname}`,
+            );
+          }
+        });
         page.setDefaultTimeout(30_000);
         const preferences = {
           timezone: "UTC",
@@ -323,6 +347,7 @@ async function run() {
         ).toHaveAttribute("content", appBuildSha);
         const dialog = page.getByRole("dialog");
         await expect(dialog).toBeVisible();
+        await page.waitForLoadState("networkidle");
         const light = dialog.getByRole("button", {
           name: "Light",
           exact: true,
