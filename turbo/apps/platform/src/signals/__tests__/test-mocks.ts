@@ -733,6 +733,8 @@ function mockClerk(
         // The hosted UI handle is a pending promise; `uiRequests` reports
         // whether the UI script itself was requested.
         const loadOptions: MockedClerkLoadOptions = { ...options };
+        delete loadOptions.routerPush;
+        delete loadOptions.routerReplace;
         delete loadOptions.ui;
         return loadOptions;
       });

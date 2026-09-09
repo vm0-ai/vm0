@@ -48,7 +48,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Generate short public activity summaries on visible-thread demand.",
+      "Generate short public activity summaries for active thread subscriptions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -432,7 +432,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the built-in onboarding chat with Artifact examples and team collaboration guidance.",
     enabled: false,
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
+    enabledEmailHashes: ["5a4bda06"], // ming@okou.ai
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",

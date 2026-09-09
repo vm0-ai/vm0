@@ -267,23 +267,6 @@ describe("registry resource download", () => {
     });
   });
 
-  it("still serves the pre-refactor reverse-template digest a drained run context asks for", () => {
-    const id = "skill:presentation-reverse-template";
-    expect(
-      resolvePrivateRegistryResourceArchive(
-        id,
-        "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
-        "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11",
-      ),
-    ).toStrictEqual({
-      storageName: `registry-resource@${id}`,
-      versionId:
-        "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
-      sha256:
-        "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
-    });
-  });
-
   it("rejects a reverse-template digest that was never published", () => {
     expect(
       resolvePrivateRegistryResourceArchive(

@@ -1,5 +1,9 @@
 // shadcn components
 export {
+  ThinkingMessages,
+  type ThinkingMessagesProps,
+} from "./components/ui/thinking-messages";
+export {
   Button,
   buttonVariants,
   type ButtonProps,

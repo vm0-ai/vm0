@@ -14,7 +14,7 @@ import {
   desktopProductFromClientHeader,
 } from "@okouai/api-contracts/contracts/client-headers";
 import { serializeError } from "@okouai/core/log-utils";
-// oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
+// oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance
 import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { matchedRoutes } from "hono/route";

@@ -1,3 +1,4 @@
+import type { ThinkingSummaries } from "../../signals/chat-page/thread-activity-summary.ts";
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type {
   CSSProperties,
@@ -92,6 +93,7 @@ import {
   TooltipTrigger,
   BrandSlack,
   ElapsedTime,
+  ThinkingMessages,
   useMediaQuery,
 } from "@okouai/ui";
 import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
@@ -4206,29 +4208,21 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 interface ServerThinkingLabel {
-  readonly displayedText: string;
-  readonly fadingOut: boolean;
-  readonly fullText: string;
   readonly id: string;
-  readonly setRef: (
-    el: HTMLParagraphElement | null,
-  ) => (() => void) | undefined;
+  readonly messages: ThinkingSummaries["messages"];
 }
 
 function ShimmerText({
   ariaLabel,
   children,
   className,
-  setRef,
 }: {
   readonly ariaLabel?: string;
   readonly children: ReactNode;
   readonly className?: string;
-  readonly setRef?: ServerThinkingLabel["setRef"];
 }) {
   return (
     <p
-      ref={setRef}
       className={cn(
         "okou-shimmer-text h-auto min-w-0 flex-1 truncate text-[0.8125rem] leading-[inherit]",
         className,
@@ -4277,16 +4271,12 @@ function ThinkingLabel({
 
   if (serverThinkingLabel) {
     return (
-      <ShimmerText
-        key={serverThinkingLabel.id}
-        setRef={serverThinkingLabel.setRef}
-        className={cn(
-          "transition-opacity duration-200",
-          serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
-        )}
-        ariaLabel={serverThinkingLabel.fullText}
-      >
-        {serverThinkingLabel.displayedText || "\u00a0"}
+      <ShimmerText>
+        <ThinkingMessages
+          key={serverThinkingLabel.id}
+          messages={serverThinkingLabel.messages}
+          fallback={thinkingLabel}
+        />
       </ShimmerText>
     );
   }
@@ -4577,7 +4567,8 @@ function ThinkingIndicator({
     "--zb-c2": c2,
     "--zb-c3": c3,
   } as CSSProperties;
-  const thinkingText = useLastResolved(thread.thinkingText$);
+  const summaries = useLastResolved(thread.thinkingSummaries$);
+  const thinkingRunId = useLastResolved(thread.thinkingRunId$);
   const recommendedFollowupSource =
     useLastResolved(thread.recommendedFollowupSource$, {
       equalityFn: equalRecommendedFollowupSources,
@@ -4585,23 +4576,9 @@ function ThinkingIndicator({
   const thinkingLabel = useGet(thread.thinkingPhrase$);
   const active = runStatusIndicatorActive(mode);
   const isQueued = thinkingIndicatorQueued(mode);
-  const thinkingEventId = useLastResolved(thread.thinkingEventId$);
-  const displayedThinkingText =
-    useLastResolved(thread.displayedThinkingText$) ?? "";
-  const thinkingTextFadingOut =
-    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
-  const setThinkingIndicatorTextRef = useSet(
-    thread.setThinkingIndicatorTextRef$,
-  );
   const serverThinkingLabel =
-    thinkingText && thinkingEventId && active && !isQueued
-      ? {
-          displayedText: displayedThinkingText,
-          fadingOut: thinkingTextFadingOut,
-          fullText: thinkingText,
-          id: thinkingEventId,
-          setRef: setThinkingIndicatorTextRef,
-        }
+    summaries && summaries.runId === thinkingRunId && active && !isQueued
+      ? { id: summaries.runId, messages: summaries.messages }
       : undefined;
 
   if (mode === null) {

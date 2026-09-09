@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
@@ -28,6 +28,22 @@ function okouBrandLink(): HTMLElement {
 
 function clerkProviderConfig(): HTMLElement {
   return screen.getByTestId("clerk-provider-config");
+}
+
+function registeredClerkRouter(): NonNullable<Window["__okouClerkRouter"]> {
+  const router = window.__okouClerkRouter;
+  if (!router) {
+    throw new Error("Clerk router is not registered");
+  }
+  return router;
+}
+
+function clerkWindowNavigation() {
+  return {
+    windowNavigate(to: URL | string) {
+      window.location.assign(to);
+    },
+  };
 }
 
 test("The hosted sign-in form renders with Google One Tap on the base route", async () => {
@@ -64,6 +80,14 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
     "aria-hidden",
     "true",
   );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-provider-router-push",
+    "function",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-provider-router-replace",
+    "function",
+  );
   expect(
     document.querySelector("[data-auth-v1-legacy-clerk-css]"),
   ).not.toBeInTheDocument();
@@ -75,6 +99,68 @@ test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
   expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/v1/sign-in");
   expect(screen.queryByTestId("clerk-google-one-tap")).not.toBeInTheDocument();
   expect(document.title).toBe("Sign in | Okou");
+});
+
+test("Clerk path steps use app history without leaving the hosted page", async () => {
+  const assigned = context.mocks.browser.locationAssign();
+  await setupSignedOutPage("/v1/sign-in?screen=identifier#start");
+
+  await registeredClerkRouter().push(
+    "/v1/sign-in/factor-one?strategy=password&strategy=passkey#challenge",
+    clerkWindowNavigation(),
+  );
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/v1/sign-in/factor-one");
+  });
+  expect(
+    new URLSearchParams(window.location.search).getAll("strategy"),
+  ).toStrictEqual(["password", "passkey"]);
+  expect(window.location.hash).toBe("#challenge");
+  expect(assigned.calls).toStrictEqual([]);
+  expect(screen.getByTestId("clerk-sign-in")).toBeVisible();
+
+  window.history.back();
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/v1/sign-in");
+  });
+  expect(window.location.search).toBe("?screen=identifier");
+  expect(window.location.hash).toBe("#start");
+});
+
+test("Clerk path replacements keep the current history entry", async () => {
+  await setupSignedOutPage(
+    "/v1/sign-in/factor-one?strategy=password#challenge",
+  );
+
+  await registeredClerkRouter().replace(
+    "/v1/sign-in?screen=identifier#start",
+    clerkWindowNavigation(),
+  );
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/v1/sign-in");
+  });
+  expect(window.location.search).toBe("?screen=identifier");
+  expect(window.location.hash).toBe("#start");
+
+  window.history.back();
+  expect(window.location.pathname).toBe("/v1/sign-in");
+  expect(window.location.search).toBe("?screen=identifier");
+  expect(window.location.hash).toBe("#start");
+});
+
+test("Clerk cross-origin navigation stays browser-owned", async () => {
+  const assigned = context.mocks.browser.locationAssign();
+  await setupSignedOutPage("/v1/sign-in");
+
+  await registeredClerkRouter().push(
+    "https://www.okou.ai/",
+    clerkWindowNavigation(),
+  );
+
+  expect(assigned.calls).toStrictEqual(["https://www.okou.ai/"]);
+  expect(window.location.pathname).toBe("/v1/sign-in");
 });
 
 test("The hosted sign-up form renders with an allowed redirect URL", async () => {
@@ -162,7 +248,6 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
     redirectUrl,
   );
   expect(document.title).toBe("Sign in | Okou");
-  expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
   expect(okouBrandLink()).toHaveAttribute("href", "/");
 });
 
@@ -250,6 +335,7 @@ test("Leaving the hosted page releases the Clerk status subscription", async () 
   await setupSignedOutPage("/v1/sign-in");
   expect(screen.getByTestId("clerk-sign-in")).toBeVisible();
   expect(clerk.statusListenerCount()).toBe(1);
+  expect(window.__okouClerkRouter).toBeDefined();
 
   act(() => {
     window.history.pushState(null, "", "/sign-in");
@@ -260,4 +346,5 @@ test("Leaving the hosted page releases the Clerk status subscription", async () 
     screen.findByRole("region", { name: "Sign in to Okou" }),
   ).resolves.toBeVisible();
   expect(clerk.statusListenerCount()).toBe(0);
+  expect(window.__okouClerkRouter).toBeUndefined();
 });

@@ -2480,7 +2480,7 @@ async function resolveStoredExecutionContextForClaim(
     readonly runId: string;
     readonly orgId: string;
     readonly executionContext: unknown;
-    readonly capabilities: RunnerClaimCapabilities | undefined;
+    readonly capabilities: RunnerClaimCapabilities;
     readonly timing: ClaimRouteTimingCollector;
     readonly scheduleFailedSideEffects: (
       args: ClaimFailedSideEffectArgs,
@@ -2556,7 +2556,7 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly runnerAttribution: RunnerClaimAttribution | undefined;
-      readonly capabilities: RunnerClaimCapabilities | undefined;
+      readonly capabilities: RunnerClaimCapabilities;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;

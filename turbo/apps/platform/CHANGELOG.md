@@ -11,6 +11,65 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.882.2](https://github.com/vm0-ai/vm0/compare/app-v0.882.1...app-v0.882.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **auth:** keep Clerk V1 path navigation in app ([#33046](https://github.com/vm0-ai/vm0/issues/33046)) ([ecf8518](https://github.com/vm0-ai/vm0/commit/ecf8518d8e98964f594174ceab7186c3862a14f4))
+* **platform:** move mobile chat pin into menu ([#33048](https://github.com/vm0-ai/vm0/issues/33048)) ([28c0fcd](https://github.com/vm0-ai/vm0/commit/28c0fcd80102630cad15d7869c92875caf7714dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.1
+    * @okouai/core bumped to 8.648.2
+
+## [0.882.1](https://github.com/vm0-ai/vm0/compare/app-v0.882.0...app-v0.882.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* remove obsolete brand tombstones ([#33049](https://github.com/vm0-ai/vm0/issues/33049)) ([0b757ba](https://github.com/vm0-ai/vm0/commit/0b757ba3de7fc497cbc8c9a02ad461a30314dc01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.648.1
+
+## [0.882.0](https://github.com/vm0-ai/vm0/compare/app-v0.881.1...app-v0.882.0) (2026-09-09)
+
+
+### Features
+
+* **chat:** poll thinking summaries from thread subscriptions ([#33040](https://github.com/vm0-ai/vm0/issues/33040)) ([53d3529](https://github.com/vm0-ai/vm0/commit/53d3529abdb3adf52a464018fb1127f9149c391c))
+
+
+### Bug Fixes
+
+* **auth:** keep signup background pinned while scrolling ([#33037](https://github.com/vm0-ai/vm0/issues/33037)) ([0842cdc](https://github.com/vm0-ai/vm0/commit/0842cdcca59ab3b4a192026ac8679d572d8f6f00))
+* **auth:** restore v1 email code styling ([#33038](https://github.com/vm0-ai/vm0/issues/33038)) ([0836a68](https://github.com/vm0-ai/vm0/commit/0836a68fbdf10e207768acb62bbd8ff0cb29aae0))
+* **platform:** clear shortcut hints on window blur ([#33045](https://github.com/vm0-ai/vm0/issues/33045)) ([25cf060](https://github.com/vm0-ai/vm0/commit/25cf060d3210d30ae83ed827d8dbea87b8cab31b))
+* **platform:** prompt refresh on shared worker failures ([#33043](https://github.com/vm0-ai/vm0/issues/33043)) ([c10e2cd](https://github.com/vm0-ai/vm0/commit/c10e2cda427ce8be0905ad5da6b34c335f11861f))
+
+
+### Refactoring
+
+* **platform:** replace shared worker locks with heartbeats ([#33044](https://github.com/vm0-ai/vm0/issues/33044)) ([5f20f42](https://github.com/vm0-ai/vm0/commit/5f20f424bca96d008ae498a19526d4e50a66a8a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.0
+    * @okouai/core bumped to 8.648.0
+    * @okouai/ui bumped to 1.8.0
+
 ## [0.881.1](https://github.com/vm0-ai/vm0/compare/app-v0.881.0...app-v0.881.1) (2026-09-09)
 
 

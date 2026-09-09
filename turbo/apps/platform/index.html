@@ -247,8 +247,25 @@
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
         var authOrigin = location.origin;
+        function delegateClerkNavigation(method, url, metadata) {
+          var router = window.__okouClerkRouter;
+          var navigate = router && router[method];
+          if (typeof navigate === "function") {
+            return navigate(url, metadata);
+          }
+          // Until an app route owns navigation, keep Clerk's browser fallback.
+          if (metadata && typeof metadata.windowNavigate === "function") {
+            return metadata.windowNavigate(url);
+          }
+        }
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
+          routerPush: function (url, metadata) {
+            return delegateClerkNavigation("push", url, metadata);
+          },
+          routerReplace: function (url, metadata) {
+            return delegateClerkNavigation("replace", url, metadata);
+          },
           signInUrl: new URL("/sign-in", authOrigin).toString(),
           signUpUrl: new URL("/sign-up", authOrigin).toString(),
         };

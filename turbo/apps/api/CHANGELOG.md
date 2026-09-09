@@ -8,6 +8,60 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.579.2](https://github.com/vm0-ai/vm0/compare/api-v1.579.1...api-v1.579.2) (2026-09-09)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33051](https://github.com/vm0-ai/vm0/issues/33051)) ([237549e](https://github.com/vm0-ai/vm0/commit/237549ecd842ab228f7e689af1f547757bed72dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.1
+    * @okouai/core bumped to 8.648.2
+    * @okouai/db bumped to 1.250.3
+    * @okouai/pi-agent-runtime bumped to 1.24.10
+
+## [1.579.1](https://github.com/vm0-ai/vm0/compare/api-v1.579.0...api-v1.579.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* remove obsolete brand tombstones ([#33049](https://github.com/vm0-ai/vm0/issues/33049)) ([0b757ba](https://github.com/vm0-ai/vm0/commit/0b757ba3de7fc497cbc8c9a02ad461a30314dc01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.648.1
+    * @okouai/db bumped to 1.250.2
+
+## [1.579.0](https://github.com/vm0-ai/vm0/compare/api-v1.578.0...api-v1.579.0) (2026-09-09)
+
+
+### Features
+
+* **chat:** poll thinking summaries from thread subscriptions ([#33040](https://github.com/vm0-ai/vm0/issues/33040)) ([53d3529](https://github.com/vm0-ai/vm0/commit/53d3529abdb3adf52a464018fb1127f9149c391c))
+
+
+### Bug Fixes
+
+* **api:** record browser screenshot outcome metrics without warnings ([#33041](https://github.com/vm0-ai/vm0/issues/33041)) ([cd49667](https://github.com/vm0-ai/vm0/commit/cd496676846ef48e60a35426f48bc1404405a95e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.0
+    * @okouai/core bumped to 8.648.0
+    * @okouai/db bumped to 1.250.1
+    * @okouai/pi-agent-runtime bumped to 1.24.9
+
 ## [1.578.0](https://github.com/vm0-ai/vm0/compare/api-v1.577.2...api-v1.578.0) (2026-09-09)
 
 
