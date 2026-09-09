@@ -88,9 +88,13 @@ function mockDefinition(connector: CustomConnectorResponse): void {
           defaultConnection: {
             ...account(connector),
             id: DEFAULT_ACCOUNT_ID,
-            displayName: "Healthy default",
+            displayName: connector.connected
+              ? "Healthy default"
+              : "Outdated default",
             isDefault: true,
-            connectionStatus: "connected",
+            connectionStatus: connector.connected
+              ? "connected"
+              : "reconnect-required",
             reconnectReason: null,
           },
         },
@@ -168,6 +172,91 @@ test.each(["http", "mcp"] as const)(
     });
     await waitFor(() => {
       return expect(dialog).not.toBeInTheDocument();
+    });
+  },
+);
+
+test.each(["http", "mcp"] as const)(
+  "Continue a recovered custom %s account while its default remains outdated",
+  async (kind) => {
+    const overrides = {
+      connected: false,
+      missingRequiredFields: ["secret"],
+      configuredFieldKeys: [],
+    };
+    const connector =
+      kind === "http"
+        ? customConnector({ ...overrides, slug: "_acme-search" })
+        : mcpCustomConnector(overrides);
+    mockDefinition(connector);
+    let selected = account(connector);
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(ACCOUNT_ID);
+        expect(query).toStrictEqual({
+          kind: "custom",
+          customConnectorId: connector.id,
+        });
+        return respond(200, selected);
+      },
+    );
+    context.mocks.api(
+      customConnectorValuesContract.set,
+      ({ body, respond }) => {
+        expect(body.account).toStrictEqual({
+          intent: "reconnect",
+          connectionId: ACCOUNT_ID,
+        });
+        selected = {
+          ...selected,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        };
+        return respond(200, {
+          ...connector,
+          connected: true,
+          connectedAccountId: ACCOUNT_ID,
+          configuredFieldKeys: ["secret"],
+          missingRequiredFields: [],
+        });
+      },
+    );
+    context.mocks.api(
+      agentCustomConnectorsContract.update,
+      ({ body, respond }) => {
+        return respond(200, { grants: body.grants });
+      },
+    );
+    const prompts: string[] = [];
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
+      if ("prompt" in body && body.prompt) {
+        prompts.push(body.prompt);
+      }
+      return respond(201, {
+        threadId: THREAD_ID,
+        runId: "66666666-6666-4666-8666-666666666666",
+      });
+    });
+
+    await setupPage({
+      context,
+      path: `/connectors/${connector.slug}/reconnect/${ACCOUNT_ID}?agentId=${AGENT_ID}&threadId=${THREAD_ID}&callbackPrompt=Continue+the+recovered+account`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+    await screen.findByText("Run-selected account");
+    click(getConnectorAction("button", "Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    await fill(within(dialog).getByLabelText("Secret"), "replacement-secret");
+    click(getConnectorAction("button", "Save", dialog));
+
+    await waitFor(() => {
+      expect(prompts).toStrictEqual(["Continue the recovered account"]);
+    });
+    await waitFor(() => {
+      expect(dialog).not.toBeInTheDocument();
     });
   },
 );

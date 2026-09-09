@@ -1194,6 +1194,153 @@ describe("connector account lifecycle routes", () => {
     },
   );
 
+  it.each(["http", "mcp"] as const)(
+    "reports the recovered custom %s account while its default remains outdated",
+    async (kind) => {
+      const fixture = await seedFixture();
+      mockClerkMembership(
+        context,
+        { ...fixture, orgRole: "org:admin", email: "recovery@example.test" },
+        "org:admin",
+      );
+      await accept(
+        featureClient().update({
+          headers: authHeaders(),
+          body: {
+            switches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+          },
+        }),
+        [200],
+      );
+      const fields = [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret" as const,
+          required: true,
+        },
+      ];
+      const body: CreateCustomConnectorBody = {
+        ...(kind === "http"
+          ? { kind, prefixTemplates: ["https://api.example.com/"] }
+          : {
+              kind,
+              endpoint: "https://mcp.example.com/",
+              transport: "streamable-http",
+            }),
+        displayName: "Recovery account",
+        authMode: "manual",
+        fields,
+        headerInjections: [
+          { name: "Authorization", valueTemplate: "Bearer {{secrets.secret}}" },
+        ],
+        queryInjections: [],
+      };
+      const definition = await accept(
+        customConnectorClient().create({ headers: authHeaders(), body }),
+        [201],
+      );
+      const ids: string[] = [];
+      for (const displayName of ["Default", "Selected"]) {
+        const connected = await accept(
+          customConnectorValuesClient().set({
+            headers: authHeaders(),
+            params: { id: definition.body.id },
+            body: {
+              account: { intent: "add", displayName },
+              values: [{ key: "secret", kind: "secret", value: "test-token" }],
+            },
+          }),
+          [200],
+        );
+        if (!connected.body.connectedAccountId) {
+          throw new Error("Expected the newly connected account ID");
+        }
+        ids.push(connected.body.connectedAccountId);
+      }
+      const [defaultId, selectedId] = ids;
+      if (!defaultId || !selectedId) {
+        throw new Error("Expected both custom accounts");
+      }
+      await accept(
+        customConnectorByIdClient().update({
+          headers: authHeaders(),
+          params: { id: definition.body.id },
+          body: {
+            ...body,
+            fields: [
+              ...fields,
+              {
+                key: "region",
+                label: "Region",
+                kind: "variable",
+                required: true,
+              },
+            ],
+          },
+        }),
+        [200],
+      );
+
+      const recovered = await accept(
+        customConnectorValuesClient().set({
+          headers: authHeaders(),
+          params: { id: definition.body.id },
+          body: {
+            account: { intent: "reconnect", connectionId: selectedId },
+            values: [
+              { key: "secret", kind: "secret", value: "replacement-token" },
+              { key: "region", kind: "variable", value: "eu" },
+            ],
+          },
+        }),
+        [200],
+      );
+      expect(recovered.body).toMatchObject({
+        connected: true,
+        connectedAccountId: selectedId,
+        configuredFieldKeys: ["region", "secret"],
+        missingRequiredFields: [],
+      });
+
+      const current = await accept(
+        customConnectorByIdClient().get({
+          headers: authHeaders(),
+          params: { id: definition.body.id },
+        }),
+        [200],
+      );
+      expect(current.body.connected).toBeFalsy();
+      expect(current.body.configuredFieldKeys).toStrictEqual([]);
+      const accounts = await accept(
+        accountClient().connections({
+          headers: authHeaders(),
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+            limit: 100,
+          },
+        }),
+        [200],
+      );
+      expect(accounts.body.connections).toHaveLength(2);
+      expect(accounts.body.connections).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: defaultId,
+            isDefault: true,
+            connectionStatus: "reconnect-required",
+          }),
+          expect.objectContaining({
+            id: selectedId,
+            isDefault: false,
+            connectionStatus: "connected",
+          }),
+        ]),
+      );
+    },
+  );
+
   it.each([
     {
       label: "HTTP",

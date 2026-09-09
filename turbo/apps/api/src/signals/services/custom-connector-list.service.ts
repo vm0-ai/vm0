@@ -12,7 +12,7 @@ import {
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
   customConnectorDefinitionConnectedAccount,
-  loadCurrentCustomConnectorValueMarkers,
+  loadCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
 
@@ -41,7 +41,10 @@ export function customConnectorList(args: {
         )
         .where(eq(orgCustomConnectors.orgId, args.orgId))
         .orderBy(orgCustomConnectors.displayName),
-      loadCurrentCustomConnectorValueMarkers(db, args),
+      loadCustomConnectorValueMarkers(db, {
+        ...args,
+        selection: { kind: "default" },
+      }),
       loadConnectedCustomConnectorConnections(db, args),
     ]);
     return connectorRows.map((row) => {

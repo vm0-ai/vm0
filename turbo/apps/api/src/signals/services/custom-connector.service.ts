@@ -63,7 +63,7 @@ import { loadCustomConnectorPermissionBundle } from "./custom-connector-permissi
 import {
   customConnectorDefinitionConnectedAccount,
   loadCurrentCustomConnectorStoredValues,
-  loadCurrentCustomConnectorValueMarkers,
+  loadCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
   type CustomConnectorCredentialAccess,
   type CustomConnectorCredentialValueMarker,
@@ -2645,9 +2645,10 @@ export function getCustomConnectorResponse(args: {
       return null;
     }
     const [markers, connectedConnections] = await Promise.all([
-      loadCurrentCustomConnectorValueMarkers(db, {
+      loadCustomConnectorValueMarkers(db, {
         orgId: args.orgId,
         userId: args.userId,
+        selection: { kind: "default" },
       }),
       loadConnectedCustomConnectorConnections(db, {
         orgId: args.orgId,
@@ -3117,9 +3118,11 @@ export const setCustomConnectorValues$ = command(
     );
 
     const db = get(db$);
-    const markers = await loadCurrentCustomConnectorValueMarkers(db, {
+    const markers = await loadCustomConnectorValueMarkers(db, {
       orgId: args.orgId,
       userId: args.userId,
+      connectorIds: [args.connectorId],
+      selection: { kind: "exact", sourceId: writeResult.connectedAccountId },
     });
     signal.throwIfAborted();
     return {

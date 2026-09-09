@@ -20,6 +20,7 @@ import {
   connectorCredentialStatusForAccess,
   connectorRuntimeCredentialStatusForAccess,
 } from "./connector-credential-status.service";
+import type { ConnectorAccountSelectionMode } from "./connector-account-resolution.service";
 
 const OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
 const OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
@@ -518,17 +519,22 @@ function customConnectorRuntimeStorageSnapshot(
   return { accesses, values };
 }
 
-export async function loadCurrentCustomConnectorValueMarkers(
+export async function loadCustomConnectorValueMarkers(
   db: Pick<ReadonlyDb, "select">,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds?: readonly string[];
+    readonly selection: ConnectorAccountSelectionMode;
   },
 ): Promise<readonly CustomConnectorCredentialValueMarker[]> {
   if (args.connectorIds?.length === 0) {
     return [];
   }
+  const accountSelection =
+    args.selection.kind === "exact"
+      ? eq(connectors.id, args.selection.sourceId)
+      : eq(connectors.isDefault, true);
   const secretQuery = db
     .select({
       connectorId: orgCustomConnectors.id,
@@ -563,7 +569,7 @@ export async function loadCurrentCustomConnectorValueMarkers(
         eq(secrets.type, "connector"),
         eq(secrets.orgId, args.orgId),
         eq(secrets.userId, args.userId),
-        eq(connectors.isDefault, true),
+        accountSelection,
         args.connectorIds
           ? inArray(orgCustomConnectors.id, [...args.connectorIds])
           : undefined,
@@ -603,7 +609,7 @@ export async function loadCurrentCustomConnectorValueMarkers(
         eq(variables.type, "connector"),
         eq(variables.orgId, args.orgId),
         eq(variables.userId, args.userId),
-        eq(connectors.isDefault, true),
+        accountSelection,
         args.connectorIds
           ? inArray(orgCustomConnectors.id, [...args.connectorIds])
           : undefined,
