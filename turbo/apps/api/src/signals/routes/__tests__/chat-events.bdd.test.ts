@@ -21890,7 +21890,7 @@ describe("CHAT-02: initial thinking indicator", () => {
             const isInitial = system.includes(
               "Write user-visible progress copy",
             );
-            const isSummary = system.includes("Write one short");
+            const isSummary = system.includes("Write three short");
             if (isInitial || isSummary) {
               indicatorCalls.push(isInitial ? "initial" : "summary");
             } else if (system.includes("Generate a short, descriptive title")) {
@@ -21948,7 +21948,12 @@ describe("CHAT-02: initial thinking indicator", () => {
       if (enabled) {
         expect(requested.status).toBe(200);
         expect(requested.body).toMatchObject({
-          phrase: "Preparing the visible checklist",
+          messages: [
+            {
+              id: "Preparing the visible checklist",
+              text: "Preparing the visible checklist",
+            },
+          ],
           status: "fresh",
           runId: run.runId,
         });
