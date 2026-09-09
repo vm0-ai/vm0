@@ -23,7 +23,6 @@ import type {
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { isImageUrl, isSafeMediaUrl } from "../../lib/media-url.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { locale$ } from "../../signals/locale.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
@@ -345,12 +344,13 @@ function MarkdownTimeRenderer({
   ...rest
 }: MarkdownTimeProps) {
   const features = useLastResolved(featureSwitch$);
-  const locale = useGet(locale$);
+  const browserLocales =
+    navigator.languages.length > 0 ? navigator.languages : [navigator.language];
   const timestamp = features?.[FeatureSwitchKey.MarkdownTime]
     ? markdownDateTimeSchema.safeParse(dateTime)
     : undefined;
   const content = timestamp?.success
-    ? new Intl.DateTimeFormat(locale, {
+    ? new Intl.DateTimeFormat(browserLocales, {
         dateStyle: "medium",
         timeStyle: "long",
       }).format(new Date(timestamp.data))

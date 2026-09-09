@@ -41,6 +41,7 @@ test.each([
 ])(
   "Markdown times use the browser timezone $timezone for each instant",
   async ({ timezone, summer, winter }) => {
+    context.mocks.browser.language("en-US");
     context.mocks.data.userPreferences({ timezone: "Pacific/Auckland" });
     const chat = installMessage(
       'Summer meeting: **<time datetime="2026-09-09T15:00:00+08:00">source summer time</time>**. ' +
@@ -71,7 +72,46 @@ test.each([
   },
 );
 
+test.each([
+  {
+    scenario: "British English uses day-first dates and a 24-hour clock",
+    languages: ["en-GB", "en-US"],
+    expected: "9 Sept 2026, 15:00:00 GMT+8",
+  },
+  {
+    scenario: "Chinese works even when the application UI is in English",
+    languages: ["zh-CN", "en-US"],
+    expected: "2026年9月9日 GMT+8 15:00:00",
+  },
+  {
+    scenario: "the single browser language is used when its list is empty",
+    languages: [],
+    expected: "9 Sept 2026, 15:00:00 GMT+8",
+  },
+])("Markdown times follow browser locale: $scenario", async (scenario) => {
+  context.mocks.browser.language("en-GB");
+  context.mocks.browser.languages(scenario.languages);
+  const chat = installMessage(
+    '<time datetime="2026-09-09T15:00:00+08:00">source time</time>',
+  );
+
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.okou.ai",
+    locale: "en-US",
+    env: { TZ: "Asia/Shanghai" },
+    featureSwitches: { [FeatureSwitchKey.MarkdownTime]: true },
+  });
+
+  const time = await screen.findByText(scenario.expected);
+  expect(time).toBeVisible();
+  expect(time).toHaveAttribute("datetime", "2026-09-09T15:00:00+08:00");
+  expect(document.documentElement).toHaveAttribute("lang", "en-US");
+});
+
 test("A time tag can render from datetime without a text label", async () => {
+  context.mocks.browser.language("en-US");
   const chat = installMessage(
     '<time datetime="2026-09-09T07:00:00.123Z"></time>',
   );
@@ -124,6 +164,7 @@ test("Missing, invalid, and timezone-free datetimes retain their original text",
 });
 
 test("Time tags in inline and fenced code remain literal code", async () => {
+  context.mocks.browser.language("en-US");
   const inline =
     '<time datetime="2026-09-09T15:00:00+08:00">inline example</time>';
   const fenced =
