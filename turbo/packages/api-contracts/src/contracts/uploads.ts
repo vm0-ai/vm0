@@ -15,8 +15,8 @@ const prepareRequestSchema = z.object({
   size: z.number().int().nonnegative(),
   /** Request multipart upload URLs for large files. */
   multipart: z.literal(true).optional(),
-  /** Special storage allocation; ordinary attachments omit this. */
-  purpose: z.enum(["artifact", "image-reference"]).optional(),
+  /** Artifact output; ordinary attachment and processing inputs omit this. */
+  purpose: z.literal("artifact").optional(),
 });
 
 const uploadMetadataSchema = z.object({

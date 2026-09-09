@@ -10,6 +10,7 @@ import {
 import {
   MAX_IMAGE_REFERENCE_SOURCE_BYTES,
   imageReferencesContract,
+  type ImageReferenceContentType,
 } from "@okouai/api-contracts/contracts/image-references";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
@@ -37,6 +38,17 @@ const routes = Object.freeze([
 ]);
 const validPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z0YQAAAAASUVORK5CYII=",
+  "base64",
+);
+const validJpeg = Buffer.from(
+  [
+    "/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsj",
+    "HBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgo",
+    "KCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAAR",
+    "CAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAA",
+    "AAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAA",
+    "AAAAAAAAAAD/2gAMAwEAAhEDEQA/AKpAB//Z",
+  ].join(""),
   "base64",
 );
 const validWebp = Buffer.from(
@@ -206,27 +218,12 @@ async function enableReferenceImages(): Promise<void> {
   await setSwitches({ [FeatureSwitchKey.ReferenceImages]: true });
 }
 
-async function prepareUpload(args: {
-  readonly filename?: string;
-  readonly contentType?: string;
-  readonly size?: number;
-  readonly purpose?: "artifact" | "image-reference";
-}): Promise<{
+function preparedStorageIdentity(id: string): {
   readonly id: string;
   readonly bucket: string;
   readonly key: string;
   readonly metadata: Readonly<Record<string, string>>;
-}> {
-  const filename = args.filename ?? "reference.png";
-  const contentType = args.contentType ?? "image/png";
-  const size = args.size ?? validPng.length;
-  const prepared = await accept(
-    uploadClient().prepare({
-      headers,
-      body: { filename, contentType, size, purpose: args.purpose },
-    }),
-    [200],
-  );
+} {
   const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
   const input = commandInput(signedCommand);
   const bucket = typeof input.Bucket === "string" ? input.Bucket : null;
@@ -243,28 +240,57 @@ async function prepareUpload(args: {
           }),
         )
       : {};
-  return { id: prepared.body.id, bucket, key, metadata };
+  return { id, bucket, key, metadata };
 }
 
-async function completeUpload(
+async function prepareImageReferenceUpload(args: {
+  readonly filename?: string;
+  readonly contentType?: ImageReferenceContentType;
+  readonly size?: number;
+}): Promise<{
+  readonly id: string;
+  readonly bucket: string;
+  readonly key: string;
+  readonly metadata: Readonly<Record<string, string>>;
+}> {
+  const filename = args.filename ?? "reference.png";
+  const contentType = args.contentType ?? "image/png";
+  const size = args.size ?? validPng.length;
+  const prepared = await accept(
+    imageClient().prepareUpload({
+      headers,
+      body: { filename, contentType, size },
+    }),
+    [200],
+  );
+  return preparedStorageIdentity(prepared.body.sourceFileId);
+}
+
+async function prepareGenericUpload(args: {
+  readonly filename: string;
+  readonly contentType: string;
+  readonly size: number;
+  readonly purpose?: "artifact";
+}) {
+  const prepared = await accept(
+    uploadClient().prepare({ headers, body: args }),
+    [200],
+  );
+  return preparedStorageIdentity(prepared.body.id);
+}
+
+async function storeAndCompleteUpload(
   storage: StorageFixture,
+  prepared: ReturnType<typeof preparedStorageIdentity>,
   args: {
-    readonly filename?: string;
-    readonly contentType?: string;
-    readonly size?: number;
-    readonly purpose?: "artifact" | "image-reference";
-    readonly body?: Buffer;
+    readonly contentType: string;
+    readonly size: number;
+    readonly body: Buffer;
   },
 ): Promise<StoredObject> {
-  const contentType = args.contentType ?? "image/png";
-  const body = args.body ?? validPng;
-  const size = args.size ?? body.length;
-  const prepared = await prepareUpload({ ...args, contentType, size });
   const object: StoredObject = {
     ...prepared,
-    contentType,
-    size,
-    body,
+    ...args,
   };
   storage.store(object);
   await accept(
@@ -272,6 +298,57 @@ async function completeUpload(
     [200],
   );
   return object;
+}
+
+async function completeImageReferenceUpload(
+  storage: StorageFixture,
+  args: {
+    readonly filename?: string;
+    readonly contentType?: ImageReferenceContentType;
+    readonly size?: number;
+    readonly body?: Buffer;
+  } = {},
+): Promise<StoredObject> {
+  const contentType = args.contentType ?? "image/png";
+  const body = args.body ?? validPng;
+  const size = args.size ?? body.length;
+  const prepared = await prepareImageReferenceUpload({
+    ...(args.filename === undefined ? {} : { filename: args.filename }),
+    contentType,
+    size,
+  });
+  return await storeAndCompleteUpload(storage, prepared, {
+    contentType,
+    size,
+    body,
+  });
+}
+
+async function completeGenericUpload(
+  storage: StorageFixture,
+  args: {
+    readonly filename?: string;
+    readonly contentType?: string;
+    readonly size?: number;
+    readonly purpose?: "artifact";
+    readonly body?: Buffer;
+  } = {},
+): Promise<StoredObject> {
+  const filename = args.filename ?? "upload.png";
+  const contentType = args.contentType ?? "image/png";
+  const body = args.body ?? validPng;
+  const size = args.size ?? body.length;
+  const prepared = await prepareGenericUpload({
+    filename,
+    contentType,
+    size,
+    ...(args.purpose === undefined ? {} : { purpose: args.purpose }),
+  });
+  return await storeAndCompleteUpload(storage, prepared, {
+    contentType,
+    size,
+    body,
+  });
 }
 
 async function createReference(
@@ -293,7 +370,7 @@ beforeEach(() => {
 });
 
 describe("image reference catalog routes", () => {
-  it("keeps every catalog route and its private upload purpose disabled by default", async () => {
+  it("keeps every catalog route disabled by default", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const referenceId = randomUUID();
@@ -324,15 +401,14 @@ describe("image reference catalog routes", () => {
       imageClient().delete({ headers, params: { referenceId } }),
       imageClient().resolvePreviewUrls({
         headers,
-        body: { previewAssetIds: [`irp:${randomUUID()}:invalid`] },
+        body: { referenceIds: [randomUUID()] },
       }),
-      uploadClient().prepare({
+      imageClient().prepareUpload({
         headers,
         body: {
           filename: "reference.png",
           contentType: "image/png",
           size: validPng.length,
-          purpose: "image-reference",
         },
       }),
     ]);
@@ -364,32 +440,35 @@ describe("image reference catalog routes", () => {
     session(userId, orgId);
     await enableReferenceImages();
 
-    await accept(
-      uploadClient().prepare({
-        headers,
-        body: {
+    const rawRequest = setupRawAppRequest({ context, routes });
+    const requestHeaders = { ...headers, "content-type": "application/json" };
+    const invalidPrepareResponses = await Promise.all([
+      rawRequest("/api/image-references/uploads/prepare", {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
           filename: "animation.gif",
           contentType: "image/gif",
           size: 10,
-          purpose: "image-reference",
-        },
+        }),
       }),
-      [400],
-    );
-    await accept(
-      uploadClient().prepare({
-        headers,
-        body: {
+      rawRequest("/api/image-references/uploads/prepare", {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
           filename: "too-large.png",
           contentType: "image/png",
           size: MAX_IMAGE_REFERENCE_SOURCE_BYTES + 1,
-          purpose: "image-reference",
-        },
+        }),
       }),
-      [400],
-    );
+    ]);
+    expect(
+      invalidPrepareResponses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([400, 400]);
 
-    const pending = await prepareUpload({ purpose: "image-reference" });
+    const pending = await prepareImageReferenceUpload({});
     await accept(
       imageClient().create({
         headers,
@@ -402,7 +481,7 @@ describe("image reference catalog routes", () => {
       [400],
     );
 
-    const publicUpload = await completeUpload(storage, {});
+    const publicUpload = await completeGenericUpload(storage);
     await accept(
       imageClient().create({
         headers,
@@ -415,9 +494,7 @@ describe("image reference catalog routes", () => {
       [400],
     );
 
-    const otherOwned = await completeUpload(storage, {
-      purpose: "image-reference",
-    });
+    const otherOwned = await completeImageReferenceUpload(storage);
     session(otherUserId, orgId, "org:member");
     await accept(
       imageClient().create({
@@ -432,8 +509,7 @@ describe("image reference catalog routes", () => {
     );
 
     session(userId, orgId);
-    const spoofed = await completeUpload(storage, {
-      purpose: "image-reference",
+    const spoofed = await completeImageReferenceUpload(storage, {
       body: validWebp,
     });
     const mismatch = await accept(
@@ -449,9 +525,7 @@ describe("image reference catalog routes", () => {
     );
     expect(mismatch.body.error.message).toContain("content type");
 
-    const invalid = await completeUpload(storage, {
-      purpose: "image-reference",
-    });
+    const invalid = await completeImageReferenceUpload(storage);
     invalid.body = Buffer.alloc(invalid.size);
     const invalidResponse = await accept(
       imageClient().create({
@@ -467,7 +541,7 @@ describe("image reference catalog routes", () => {
     expect(invalidResponse.body.error.message).toContain("not a valid");
 
     await setSwitches({ [FeatureSwitchKey.PrivateArtifacts]: true });
-    const oversized = await completeUpload(storage, {
+    const oversized = await completeGenericUpload(storage, {
       purpose: "artifact",
       size: MAX_IMAGE_REFERENCE_SOURCE_BYTES + 1,
     });
@@ -484,9 +558,7 @@ describe("image reference catalog routes", () => {
     );
     expect(oversizedResponse.body.error.message).toContain("bytes or smaller");
 
-    const valid = await completeUpload(storage, {
-      purpose: "image-reference",
-    });
+    const valid = await completeImageReferenceUpload(storage);
     const created = await createReference(valid.id);
     expect(created.body).toMatchObject({
       title: "Campaign hero",
@@ -498,9 +570,10 @@ describe("image reference catalog routes", () => {
       canManage: true,
       canModerate: false,
     });
-    expect(created.body.previewAsset.previewAssetId).toMatch(
-      new RegExp(`^irp:${created.body.id}:[\\w-]{43}$`, "u"),
+    expect(created.body.previewUrl).toMatch(
+      /^https:\/\/preview\.example\.test/u,
     );
+    expect(created.body.previewUrlExpiresAt).toStrictEqual(expect.any(String));
     const serialized = JSON.stringify(created.body);
     expect(serialized).not.toContain("sourceStorageKey");
     expect(serialized).not.toContain("storageKey");
@@ -520,6 +593,28 @@ describe("image reference catalog routes", () => {
     expect(duplicate.body.error.code).toBe("CONFLICT");
   });
 
+  it("accepts .jpg files with the standard image/jpeg media type", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const storage = installStorageFixture();
+    session(userId, orgId);
+    await enableReferenceImages();
+
+    const source = await completeImageReferenceUpload(storage, {
+      filename: "campaign-photo.jpg",
+      contentType: "image/jpeg",
+      body: validJpeg,
+    });
+    const created = await createReference(source.id);
+
+    expect(created.body).toMatchObject({
+      sourceFilename: "campaign-photo.jpg",
+      contentType: "image/jpeg",
+      width: 1,
+      height: 1,
+    });
+  });
+
   it("enforces organization visibility, owner management, admin unsharing, previews, invalidation, and deletion order", async () => {
     const ownerUserId = `user_${randomUUID()}`;
     const memberUserId = `user_${randomUUID()}`;
@@ -529,15 +624,12 @@ describe("image reference catalog routes", () => {
     const storage = installStorageFixture();
     session(ownerUserId, orgId);
     await enableReferenceImages();
-    const source = await completeUpload(storage, {
-      purpose: "image-reference",
-    });
+    const source = await completeImageReferenceUpload(storage);
 
     context.mocks.ably.channelGet.mockClear();
     context.mocks.ably.publish.mockClear();
     const created = await createReference(source.id);
     const referenceId = created.body.id;
-    const previewAssetId = created.body.previewAsset.previewAssetId;
     expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
       `user:${ownerUserId}`,
     );
@@ -556,11 +648,11 @@ describe("image reference catalog routes", () => {
     const privatePreviews = await accept(
       imageClient().resolvePreviewUrls({
         headers,
-        body: { previewAssetIds: [previewAssetId] },
+        body: { referenceIds: [referenceId] },
       }),
       [200],
     );
-    expect(privatePreviews.body.assets).toStrictEqual([]);
+    expect(privatePreviews.body.previews).toStrictEqual([]);
 
     session(ownerUserId, orgId);
     context.mocks.ably.channelGet.mockClear();
@@ -603,13 +695,13 @@ describe("image reference catalog routes", () => {
       imageClient().resolvePreviewUrls({
         headers,
         body: {
-          previewAssetIds: [previewAssetId, previewAssetId, "invalid"],
+          referenceIds: [referenceId, referenceId],
         },
       }),
       [200],
     );
-    expect(memberPreviews.body.assets).toHaveLength(1);
-    expect(memberPreviews.body.assets[0]?.previewAssetId).toBe(previewAssetId);
+    expect(memberPreviews.body.previews).toHaveLength(1);
+    expect(memberPreviews.body.previews[0]?.referenceId).toBe(referenceId);
 
     session(otherOrgUserId, otherOrgId);
     await enableReferenceImages();
@@ -620,11 +712,11 @@ describe("image reference catalog routes", () => {
     const crossOrgPreviews = await accept(
       imageClient().resolvePreviewUrls({
         headers,
-        body: { previewAssetIds: [previewAssetId] },
+        body: { referenceIds: [referenceId] },
       }),
       [200],
     );
-    expect(crossOrgPreviews.body.assets).toStrictEqual([]);
+    expect(crossOrgPreviews.body.previews).toStrictEqual([]);
 
     session(memberUserId, orgId, "org:admin");
     const adminRead = await accept(
@@ -714,7 +806,7 @@ describe("image reference catalog routes", () => {
         method: "POST",
         headers: requestHeaders,
         body: JSON.stringify({
-          previewAssetIds: [`irp:${randomUUID()}:invalid`],
+          referenceIds: [randomUUID()],
           unknownField: "must fail closed",
         }),
       }),

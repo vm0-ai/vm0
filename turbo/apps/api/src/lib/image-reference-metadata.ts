@@ -12,6 +12,7 @@ function contentTypeForImageFormat(
 ): ImageReferenceContentType | null {
   switch (format) {
     case "jpeg": {
+      // image-dimensions reports both .jpg and .jpeg files as "jpeg".
       return "image/jpeg";
     }
     case "png": {

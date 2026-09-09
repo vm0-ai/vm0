@@ -1,10 +1,11 @@
 import {
   IMAGE_REFERENCE_PREVIEW_URL_TTL_SECONDS,
   imageReferencesContract,
-  type ImageReferencePreviewAsset,
+  type ImageReferencePreviewUrl,
 } from "@okouai/api-contracts/contracts/image-references";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import { command, computed } from "ccstate";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -17,22 +18,30 @@ import {
   publishImageReferencesChangedForOrgSafely,
   publishImageReferencesChangedForUserSafely,
 } from "../external/realtime";
-import { generatePresignedGetUrl } from "../external/s3";
 import {
-  imageReferencePreviewAssetId,
+  generatePresignedGetUrl,
+  generatePresignedPutUrl,
+  s3MetadataHeaders,
+} from "../external/s3";
+import {
   imageReferenceResponse,
   listAccessibleImageReferences,
   loadAccessibleImageReference,
   loadAccessibleImageReferencesById,
-  parseImageReferencePreviewAssetId,
   type ImageReferenceRow,
 } from "../services/image-reference-data.service";
 import { createImageReference$ } from "../services/image-reference-create.service";
 import { deleteImageReference$ } from "../services/image-reference-delete.service";
 import { updateImageReference$ } from "../services/image-reference-update.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { privateArtifactsBucket } from "../services/private-artifact-storage.service";
+import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
+import {
+  allocatePrivateArtifact$,
+  privateArtifactsBucket,
+} from "../services/private-artifact-storage.service";
 import type { RouteEntry } from "../route-entry";
+
+const PUT_URL_TTL_SECONDS = 3600;
 
 const imageReferenceReadAuth = {
   requireOrganization: true,
@@ -70,8 +79,8 @@ function imageReferenceNotFound(referenceId: string) {
   return notFound(`Image reference not found: ${referenceId}`);
 }
 
-function resolveImageReferencePreviewAsset(row: ImageReferenceRow) {
-  return computed(async (get): Promise<ImageReferencePreviewAsset> => {
+function resolveImageReferencePreviewUrl(row: ImageReferenceRow) {
+  return computed(async (get): Promise<ImageReferencePreviewUrl> => {
     const issuedAt = nowDate();
     const url = await get(
       generatePresignedGetUrl(
@@ -83,7 +92,7 @@ function resolveImageReferencePreviewAsset(row: ImageReferenceRow) {
       ),
     );
     return {
-      previewAssetId: imageReferencePreviewAssetId(row),
+      referenceId: row.id,
       url,
       expiresAt: new Date(
         issuedAt.getTime() + IMAGE_REFERENCE_PREVIEW_URL_TTL_SECONDS * 1000,
@@ -91,6 +100,59 @@ function resolveImageReferencePreviewAsset(row: ImageReferenceRow) {
     };
   });
 }
+
+const prepareUploadBody$ = bodyResultOf(imageReferencesContract.prepareUpload);
+const prepareUploadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!(await get(imageReferencesEnabled$))) {
+      return imageReferencesDisabled;
+    }
+    signal.throwIfAborted();
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(prepareUploadBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+    if (suspended) {
+      return suspended;
+    }
+
+    const { filename, contentType, size } = bodyResult.data;
+    const artifact = await set(
+      allocatePrivateArtifact$,
+      {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        filename,
+        contentType,
+        size,
+        publicBrand: PUBLIC_BRAND,
+      },
+      signal,
+    );
+    const uploadUrl = await get(
+      generatePresignedPutUrl(
+        artifact.bucket,
+        artifact.key,
+        contentType,
+        PUT_URL_TTL_SECONDS,
+        { usePublicEndpoint: true, metadata: artifact.metadata },
+      ),
+    );
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        sourceFileId: artifact.id,
+        uploadUrl,
+        uploadHeaders: s3MetadataHeaders(artifact.metadata),
+      },
+    };
+  },
+);
 
 async function publishImageReferenceMutation(args: {
   readonly ownerUserId: string;
@@ -144,7 +206,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!row) {
     throw new Error(`Created image reference not found: ${result.referenceId}`);
   }
-  const previewAsset = await get(resolveImageReferencePreviewAsset(row));
+  const preview = await get(resolveImageReferencePreviewUrl(row));
   signal.throwIfAborted();
   await publishImageReferenceMutation({
     ownerUserId: row.ownerUserId,
@@ -156,7 +218,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     status: 201 as const,
     body: imageReferenceResponse({
       row,
-      previewAsset,
+      preview,
       userId: auth.userId,
       isOrgAdmin: auth.orgRole === "admin",
     }),
@@ -174,24 +236,24 @@ const listInner$ = command(async ({ get }, signal: AbortSignal) => {
     userId: auth.userId,
   });
   signal.throwIfAborted();
-  const previewAssets = await Promise.all(
+  const previews = await Promise.all(
     rows.map((row) => {
-      return get(resolveImageReferencePreviewAsset(row));
+      return get(resolveImageReferencePreviewUrl(row));
     }),
   );
   signal.throwIfAborted();
   return {
     status: 200 as const,
     body: rows.map((row, index) => {
-      const previewAsset = previewAssets[index];
-      if (!previewAsset) {
+      const preview = previews[index];
+      if (!preview) {
         throw new Error(
           `Preview was not resolved for image reference ${row.id}`,
         );
       }
       return imageReferenceResponse({
         row,
-        previewAsset,
+        preview,
         userId: auth.userId,
         isOrgAdmin: auth.orgRole === "admin",
       });
@@ -216,13 +278,13 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
   if (!row) {
     return imageReferenceNotFound(params.referenceId);
   }
-  const previewAsset = await get(resolveImageReferencePreviewAsset(row));
+  const preview = await get(resolveImageReferencePreviewUrl(row));
   signal.throwIfAborted();
   return {
     status: 200 as const,
     body: imageReferenceResponse({
       row,
-      previewAsset,
+      preview,
       userId: auth.userId,
       isOrgAdmin: auth.orgRole === "admin",
     }),
@@ -245,18 +307,11 @@ const resolvePreviewUrlsInner$ = command(
       return bodyResult.response;
     }
 
-    const identities = bodyResult.data.previewAssetIds.flatMap(
-      (previewAssetId) => {
-        const identity = parseImageReferencePreviewAssetId(previewAssetId);
-        return identity ? [{ previewAssetId, identity }] : [];
-      },
-    );
+    const referenceIds = [...new Set(bodyResult.data.referenceIds)];
     const rows = await loadAccessibleImageReferencesById(get(db$), {
       orgId: auth.orgId,
       userId: auth.userId,
-      referenceIds: identities.map(({ identity }) => {
-        return identity.referenceId;
-      }),
+      referenceIds,
     });
     signal.throwIfAborted();
     const rowById = new Map(
@@ -264,23 +319,17 @@ const resolvePreviewUrlsInner$ = command(
         return [row.id, row];
       }),
     );
-    const accessibleRows = [
-      ...new Map(
-        identities.flatMap(({ previewAssetId, identity }) => {
-          const row = rowById.get(identity.referenceId);
-          return row && imageReferencePreviewAssetId(row) === previewAssetId
-            ? [[previewAssetId, row] as const]
-            : [];
-        }),
-      ).values(),
-    ];
-    const assets = await Promise.all(
+    const accessibleRows = referenceIds.flatMap((referenceId) => {
+      const row = rowById.get(referenceId);
+      return row ? [row] : [];
+    });
+    const previews = await Promise.all(
       accessibleRows.map((row) => {
-        return get(resolveImageReferencePreviewAsset(row));
+        return get(resolveImageReferencePreviewUrl(row));
       }),
     );
     signal.throwIfAborted();
-    return { status: 200 as const, body: { assets } };
+    return { status: 200 as const, body: { previews } };
   },
 );
 
@@ -335,13 +384,13 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!row) {
     throw new Error(`Updated image reference not found: ${params.referenceId}`);
   }
-  const previewAsset = await get(resolveImageReferencePreviewAsset(row));
+  const preview = await get(resolveImageReferencePreviewUrl(row));
   signal.throwIfAborted();
   return {
     status: 200 as const,
     body: imageReferenceResponse({
       row,
-      previewAsset,
+      preview,
       userId: auth.userId,
       isOrgAdmin: auth.orgRole === "admin",
     }),
@@ -380,6 +429,17 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 export const imageReferencesRoutes: readonly RouteEntry[] = [
+  {
+    route: imageReferencesContract.prepareUpload,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "file:write",
+      },
+      prepareUploadInner$,
+    ),
+  },
   {
     route: imageReferencesContract.create,
     handler: authRoute(imageReferenceWriteAuth, createInner$),

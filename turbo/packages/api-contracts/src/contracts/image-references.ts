@@ -14,16 +14,31 @@ export const MAX_IMAGE_REFERENCE_SOURCE_BYTES = 20 * 1024 * 1024;
 export const MAX_IMAGE_REFERENCE_DIMENSION = 16_384;
 export const MAX_IMAGE_REFERENCE_PIXELS = 67_108_864;
 export const IMAGE_REFERENCE_PREVIEW_URL_TTL_SECONDS = 15 * 60;
-export const MAX_IMAGE_REFERENCE_PREVIEW_ASSETS = 100;
+export const MAX_IMAGE_REFERENCE_PREVIEW_URLS = 100;
 
 const imageReferenceVisibilitySchema = z.enum(["private", "public"]);
 const imageReferenceContentTypeSchema = z.enum(IMAGE_REFERENCE_CONTENT_TYPES);
-const imageReferencePreviewAssetIdSchema = z.string().min(1).max(128);
-const imageReferencePreviewAssetSchema = z
+const imageReferencePreviewUrlSchema = z
   .object({
-    previewAssetId: imageReferencePreviewAssetIdSchema,
+    referenceId: z.uuid(),
     url: z.url(),
     expiresAt: z.iso.datetime(),
+  })
+  .strict();
+
+const prepareImageReferenceUploadBodySchema = z
+  .object({
+    filename: z.string().min(1).max(255),
+    contentType: imageReferenceContentTypeSchema,
+    size: z.number().int().positive().max(MAX_IMAGE_REFERENCE_SOURCE_BYTES),
+  })
+  .strict();
+
+const prepareImageReferenceUploadResponseSchema = z
+  .object({
+    sourceFileId: z.uuid(),
+    uploadUrl: z.url(),
+    uploadHeaders: z.record(z.string(), z.string()),
   })
   .strict();
 
@@ -44,7 +59,8 @@ const imageReferenceSchema = z
     contentType: imageReferenceContentTypeSchema,
     width: z.number().int().positive().max(MAX_IMAGE_REFERENCE_DIMENSION),
     height: z.number().int().positive().max(MAX_IMAGE_REFERENCE_DIMENSION),
-    previewAsset: imageReferencePreviewAssetSchema,
+    previewUrl: z.url(),
+    previewUrlExpiresAt: z.iso.datetime(),
     canManage: z.boolean(),
     canModerate: z.boolean(),
     createdAt: z.iso.datetime(),
@@ -76,18 +92,33 @@ const updateImageReferenceBodySchema = z
 
 const resolveImageReferencePreviewUrlsBodySchema = z
   .object({
-    previewAssetIds: z
-      .array(imageReferencePreviewAssetIdSchema)
+    referenceIds: z
+      .array(z.uuid())
       .min(1)
-      .max(MAX_IMAGE_REFERENCE_PREVIEW_ASSETS),
+      .max(MAX_IMAGE_REFERENCE_PREVIEW_URLS),
   })
   .strict();
 
 const resolveImageReferencePreviewUrlsResponseSchema = z
-  .object({ assets: z.array(imageReferencePreviewAssetSchema) })
+  .object({ previews: z.array(imageReferencePreviewUrlSchema) })
   .strict();
 
 export const imageReferencesContract = c.router({
+  prepareUpload: {
+    method: "POST",
+    path: "/api/image-references/uploads/prepare",
+    headers: authHeadersSchema,
+    body: prepareImageReferenceUploadBodySchema,
+    responses: {
+      200: prepareImageReferenceUploadResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Prepare a private image-reference source upload",
+  },
   create: {
     method: "POST",
     path: "/api/image-references",
@@ -179,8 +210,8 @@ export const imageReferencesContract = c.router({
 
 export type ImageReferencesContract = typeof imageReferencesContract;
 export type ImageReference = z.infer<typeof imageReferenceSchema>;
-export type ImageReferencePreviewAsset = z.infer<
-  typeof imageReferencePreviewAssetSchema
+export type ImageReferencePreviewUrl = z.infer<
+  typeof imageReferencePreviewUrlSchema
 >;
 export type ImageReferenceVisibility = z.infer<
   typeof imageReferenceVisibilitySchema

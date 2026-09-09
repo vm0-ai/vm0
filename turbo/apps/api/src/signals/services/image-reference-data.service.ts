@@ -1,20 +1,16 @@
-import { createHash } from "node:crypto";
-
 import {
   IMAGE_REFERENCE_CONTENT_TYPES,
   type ImageReference,
   type ImageReferenceContentType,
-  type ImageReferencePreviewAsset,
+  type ImageReferencePreviewUrl,
 } from "@okouai/api-contracts/contracts/image-references";
 import { imageReferences } from "@okouai/db/schema/image-reference";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { and, desc, eq, getTableColumns, inArray, or } from "drizzle-orm";
-import { z } from "zod";
 
 import type { ReadonlyDb } from "../external/db";
 
-const IMAGE_REFERENCE_PREVIEW_ASSET_PREFIX = "irp:";
 const imageReferenceColumns = getTableColumns(imageReferences);
 
 type SelectedImageReferenceRow = typeof imageReferences.$inferSelect & {
@@ -59,45 +55,9 @@ function validateSelectedRow(
   };
 }
 
-export function imageReferencePreviewAssetId(row: ImageReferenceRow): string {
-  const storageVersionId = createHash("sha256")
-    .update(row.sourceStorageKey)
-    .digest("base64url");
-  return `${IMAGE_REFERENCE_PREVIEW_ASSET_PREFIX}${row.id}:${storageVersionId}`;
-}
-
-interface ImageReferencePreviewAssetIdentity {
-  readonly referenceId: string;
-  readonly storageVersionId: string;
-}
-
-export function parseImageReferencePreviewAssetId(
-  previewAssetId: string,
-): ImageReferencePreviewAssetIdentity | null {
-  if (!previewAssetId.startsWith(IMAGE_REFERENCE_PREVIEW_ASSET_PREFIX)) {
-    return null;
-  }
-  const value = previewAssetId.slice(
-    IMAGE_REFERENCE_PREVIEW_ASSET_PREFIX.length,
-  );
-  const separator = value.indexOf(":");
-  if (separator === -1) {
-    return null;
-  }
-  const referenceId = value.slice(0, separator);
-  const storageVersionId = value.slice(separator + 1);
-  if (
-    !z.uuid().safeParse(referenceId).success ||
-    !/^[\w-]{43}$/u.test(storageVersionId)
-  ) {
-    return null;
-  }
-  return { referenceId, storageVersionId };
-}
-
 export function imageReferenceResponse(args: {
   readonly row: ImageReferenceRow;
-  readonly previewAsset: ImageReferencePreviewAsset;
+  readonly preview: ImageReferencePreviewUrl;
   readonly userId: string;
   readonly isOrgAdmin: boolean;
 }): ImageReference {
@@ -115,7 +75,8 @@ export function imageReferenceResponse(args: {
     contentType: args.row.sourceContentType,
     width: args.row.width,
     height: args.row.height,
-    previewAsset: args.previewAsset,
+    previewUrl: args.preview.url,
+    previewUrlExpiresAt: args.preview.expiresAt,
     canManage: args.row.ownerUserId === args.userId,
     canModerate:
       args.isOrgAdmin &&
