@@ -63,6 +63,7 @@ export enum FeatureSwitchKey {
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
   SshAccess = "sshAccess",
+  ChatReasoningEffort = "chatReasoningEffort",
   PiLoop = "piLoop",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",

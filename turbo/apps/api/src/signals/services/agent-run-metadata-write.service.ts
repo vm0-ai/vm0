@@ -18,6 +18,7 @@ type StoredRunMetadataValues = Pick<
   | "modelRuntimeProvider"
   | "modelRuntimeModel"
   | "builtInModelKeyId"
+  | "reasoningEffort"
   | "codexServiceTier"
   | "selectedVideoModel"
   | "selectedImageModel"
@@ -60,14 +61,21 @@ interface RunMetadataRow {
   readonly apiStartedAt: Date | null;
 }
 
-export function normalizeRunMetadata(
+function normalizeRunModelMetadata(
   input: RunMetadataInput,
-): RunMetadataValues {
+): Pick<
+  RunMetadataValues,
+  | "modelProvider"
+  | "modelProviderId"
+  | "modelProviderCredentialScope"
+  | "selectedModel"
+  | "modelRuntimeProvider"
+  | "modelRuntimeModel"
+  | "builtInModelKeyId"
+  | "reasoningEffort"
+  | "codexServiceTier"
+> {
   return {
-    triggerSource: input.triggerSource,
-    autonomyBudget: input.autonomyBudget ?? 10,
-    workflowAutomationId: input.workflowAutomationId ?? null,
-    goalId: input.goalId ?? null,
     modelProvider: isBuiltInModelProviderType(input.modelProvider)
       ? "built-in"
       : (input.modelProvider ?? null),
@@ -77,7 +85,20 @@ export function normalizeRunMetadata(
     modelRuntimeProvider: input.modelRuntimeProvider ?? null,
     modelRuntimeModel: input.modelRuntimeModel ?? null,
     builtInModelKeyId: input.builtInModelKeyId ?? null,
+    reasoningEffort: input.reasoningEffort ?? null,
     codexServiceTier: input.codexServiceTier ?? null,
+  };
+}
+
+export function normalizeRunMetadata(
+  input: RunMetadataInput,
+): RunMetadataValues {
+  return {
+    triggerSource: input.triggerSource,
+    autonomyBudget: input.autonomyBudget ?? 10,
+    workflowAutomationId: input.workflowAutomationId ?? null,
+    goalId: input.goalId ?? null,
+    ...normalizeRunModelMetadata(input),
     selectedVideoModel: input.selectedVideoModel ?? null,
     selectedImageModel: input.selectedImageModel ?? null,
     chatThreadId: input.chatThreadId ?? null,

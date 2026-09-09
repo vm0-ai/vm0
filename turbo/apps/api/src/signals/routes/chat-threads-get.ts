@@ -23,6 +23,7 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
       agentId: chatThreads.agentId,
       title: chatThreads.title,
       selectedModel: chatThreads.selectedModel,
+      reasoningEffort: chatThreads.reasoningEffort,
       codexServiceTier: chatThreads.codexServiceTier,
       pinnedAt: chatThreads.pinnedAt,
       computerUseHostId: chatThreads.computerUseHostId,
@@ -48,6 +49,9 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
       agentId: thread.agentId,
       title: thread.title,
       selectedModel: thread.selectedModel,
+      ...(thread.reasoningEffort !== null
+        ? { reasoningEffort: thread.reasoningEffort }
+        : {}),
       serviceTier: chatThreadServiceTierFromCodex(thread.codexServiceTier),
       pinnedAt: thread.pinnedAt?.toISOString() ?? null,
       computerUseHostId: thread.computerUseHostId,

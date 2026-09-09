@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
 import { createHash, randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
@@ -578,6 +579,7 @@ interface AgentRunMetadata {
   readonly goalId?: string;
   readonly autonomyBudget?: number;
   readonly codexServiceTier?: CodexServiceTier;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }
 
 interface ResolvedAgentExecution {
@@ -6464,6 +6466,7 @@ function agentRunLaunchMetadataInput(metadata: AgentRunMetadata): {
   readonly workflowAutomationId: string | null;
   readonly goalId: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
+  readonly reasoningEffort: ReasoningEffort | null;
   readonly triggerBrief: string | null;
 } {
   return {
@@ -6471,6 +6474,7 @@ function agentRunLaunchMetadataInput(metadata: AgentRunMetadata): {
     workflowAutomationId: metadata.workflowAutomationId ?? null,
     goalId: metadata.goalId ?? null,
     codexServiceTier: metadata.codexServiceTier ?? null,
+    reasoningEffort: metadata.reasoningEffort ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
   };
 }

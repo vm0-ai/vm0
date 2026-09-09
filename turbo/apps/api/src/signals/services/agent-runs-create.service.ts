@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import {
@@ -148,6 +149,7 @@ interface AgentRunMetadata {
   readonly goalId?: string;
   readonly autonomyBudget?: number;
   readonly codexServiceTier?: CodexServiceTier;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }
 
 interface CreateAgentRunCommandArgs {
@@ -182,6 +184,7 @@ interface CreateAgentRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
   readonly codexServiceTier?: CodexServiceTier;
+  readonly reasoningEffort?: ReasoningEffort | null;
   readonly agentRunMetadata?: AgentRunMetadata;
   readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
@@ -648,10 +651,14 @@ function buildAgentRunPlatformEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }): Record<string, string> {
   return {
     OKOU_APP_URL: env("APP_URL"),
     OKOU_AGENT_ID: args.agentId,
+    ...(args.reasoningEffort !== null && args.reasoningEffort !== undefined
+      ? { OKOU_REASONING_EFFORT: args.reasoningEffort }
+      : {}),
     // Chat-mode automation (and web) runs carry their thread id so the
     // in-sandbox CLI can bind a newly created automation to it (the create
     // flow reads $OKOU_CHAT_THREAD_ID when no thread is given).
@@ -1005,6 +1012,7 @@ function buildCreateAgentRunArgs(args: {
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
+      reasoningEffort: command.reasoningEffort,
     }),
     callbacks: command.callbacks,
     includeOkouTokenSecret: true,
@@ -1026,6 +1034,7 @@ function buildCreateAgentRunArgs(args: {
     agentRunMetadata: {
       ...command.agentRunMetadata,
       codexServiceTier: command.codexServiceTier,
+      reasoningEffort: command.reasoningEffort,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     ...(command.agentRunModelPin

@@ -1,3 +1,7 @@
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { resolveChatReasoningEffort } from "../services/chat-reasoning-effort.service";
 import { command } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 import {
@@ -9,7 +13,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
@@ -29,11 +33,28 @@ const modelSelectionBody$ = bodyResultOf(
   chatThreadModelSelectionContract.update,
 );
 
-function modelFirstSelection(selectedModel: string) {
-  return {
-    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-    selectedModel,
-  };
+async function resolveRequestedModelPin(
+  db: Db,
+  auth: { readonly orgId: string; readonly userId: string },
+  model: string | null,
+) {
+  if (model === null) {
+    return {
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: null,
+    };
+  }
+  return await resolveModelSelectionPin({
+    db,
+    orgId: auth.orgId,
+    userId: auth.userId,
+    modelSelection: {
+      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+      selectedModel: model,
+    },
+  });
 }
 
 const updateModelSelectionInner$ = command(
@@ -47,39 +68,65 @@ const updateModelSelectionInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const modelSelection =
-      body.data.model === null ? null : modelFirstSelection(body.data.model);
-    const pin = modelSelection
-      ? await resolveModelSelectionPin({
-          db: writeDb,
-          orgId: auth.orgId,
-          userId: auth.userId,
-          modelSelection,
-        })
-      : {
-          modelProviderId: null,
-          modelProviderType: null,
-          modelProviderCredentialScope: null,
-          selectedModel: null,
-        };
+    const pin = await resolveRequestedModelPin(writeDb, auth, body.data.model);
     signal.throwIfAborted();
 
     if ("status" in pin) {
       return pin;
     }
-    const codexServiceTierError = await validateCodexServiceTier({
-      db: writeDb,
-      orgId: auth.orgId,
-      userId: auth.userId,
-      pin,
-      codexServiceTier: body.data.codexServiceTier ?? null,
-    });
+    const context = await loadUserFeatureSwitchContext(
+      writeDb,
+      auth.orgId,
+      auth.userId,
+    );
     signal.throwIfAborted();
-    if (codexServiceTierError) {
-      return codexServiceTierError;
-    }
-
     const updated = await writeDb.transaction(async (tx) => {
+      const condition = and(
+        eq(chatThreads.id, params.id),
+        eq(chatThreads.userId, auth.userId),
+        chatThreadOrganizationCondition(tx, auth.orgId),
+        isNotNull(chatThreads.agentId),
+      );
+      const [current] = await tx
+        .select({
+          reasoningEffort: chatThreads.reasoningEffort,
+          codexServiceTier: chatThreads.codexServiceTier,
+        })
+        .from(chatThreads)
+        .where(condition)
+        .for("update");
+      if (!current) {
+        return notFound("Chat thread not found");
+      }
+      const effort = resolveChatReasoningEffort({
+        selectedModel: pin.selectedModel,
+        stored: current.reasoningEffort,
+        requested: body.data.reasoningEffort,
+        enabled: isFeatureEnabled(
+          FeatureSwitchKey.ChatReasoningEffort,
+          context,
+        ),
+      });
+      if ("status" in effort) {
+        return effort;
+      }
+      // An effort-only update preserves Fast. Legacy model updates keep their
+      // existing omission semantics until clients send independent fields.
+      const codexServiceTier =
+        body.data.codexServiceTier === undefined &&
+        body.data.reasoningEffort !== undefined
+          ? current.codexServiceTier
+          : (body.data.codexServiceTier ?? null);
+      const tierError = await validateCodexServiceTier({
+        db: tx,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        pin,
+        codexServiceTier,
+      });
+      if (tierError) {
+        return tierError;
+      }
       const updatedAt = nowDate();
       const pinColumns = chatThreadModelPinColumns(pin);
       const [thread] = await tx
@@ -89,17 +136,11 @@ const updateModelSelectionInner$ = command(
           modelProviderType: pinColumns.modelProviderType,
           modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
           selectedModel: pinColumns.selectedModel,
-          codexServiceTier: body.data.codexServiceTier ?? null,
+          codexServiceTier,
+          reasoningEffort: effort.persistedReasoningEffort,
           updatedAt,
         })
-        .where(
-          and(
-            eq(chatThreads.id, params.id),
-            eq(chatThreads.userId, auth.userId),
-            chatThreadOrganizationCondition(tx, auth.orgId),
-            isNotNull(chatThreads.agentId),
-          ),
-        )
+        .where(condition)
         .returning({
           id: chatThreads.id,
           agentId: chatThreads.agentId,
@@ -115,6 +156,7 @@ const updateModelSelectionInner$ = command(
         agentId: thread.agentId,
         eventId: body.data.eventId,
         selectedModel: pin.selectedModel,
+        reasoningEffort: effort.persistedReasoningEffort,
         createdAt: updatedAt,
       });
       await appendChatThreadEvent(tx, {
@@ -124,15 +166,16 @@ const updateModelSelectionInner$ = command(
         chatThreadId: thread.id,
         agentId: thread.agentId,
         eventId: body.data.serviceTierEventId,
-        serviceTier: chatThreadServiceTierFromCodex(
-          body.data.codexServiceTier ?? null,
-        ),
+        serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
         createdAt: updatedAt,
       });
       return true;
     });
     signal.throwIfAborted();
 
+    if (typeof updated === "object") {
+      return updated;
+    }
     if (!updated) {
       return notFound("Chat thread not found");
     }

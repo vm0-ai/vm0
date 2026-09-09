@@ -3743,6 +3743,275 @@ describe("CHAT-02: interrupting active chat runs", () => {
   }, 90_000);
 });
 
+describe("CHAT effort: thread configuration", () => {
+  it("rejects requested and saved effort before queue admission until native consumers ship", async () => {
+    const { actor, agentId, providerId } = await entitledChatActor();
+    await api.updateOrgModelPolicies(
+      actor,
+      (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
+        return {
+          model,
+          isDefault: model === "claude-sonnet-5",
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        };
+      }),
+    );
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Saved effort",
+    });
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      reasoningEffort: "high",
+    });
+    const saved = await chat.requestSendEvent(
+      actor,
+      { agentId, threadId: thread.id, prompt: "Use saved effort" },
+      [400],
+    );
+    expect(saved.body).toMatchObject({
+      error: {
+        message:
+          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
+      },
+    });
+    const explicit = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "New explicit effort",
+        runOptions: { reasoningEffort: "low" },
+      },
+      [400],
+    );
+    expect(explicit.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
+    expect(
+      (await chat.listThreadEvents(actor, thread.id)).events,
+    ).toStrictEqual([]);
+    const reset = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Use the native default",
+      model: "claude-opus-4-8",
+      runOptions: { reasoningEffort: null },
+    });
+    expect(
+      (await chat.readThreadMetadata(actor, thread.id)).reasoningEffort ?? null,
+    ).toBeNull();
+    await expect(
+      chat.readThreadMetadata(actor, thread.id),
+    ).resolves.toMatchObject({ selectedModel: "claude-opus-4-8" });
+    await cancelChatRun(actor, reset.runId);
+  }, 90_000);
+
+  it("uses current thread settings and rollout state when a queued message starts", async () => {
+    const { actor, agentId, providerId, runnerGroup } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    await api.updateOrgModelPolicies(
+      actor,
+      (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
+        return {
+          model,
+          isDefault: model === "claude-sonnet-5",
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        };
+      }),
+    );
+    const active = await sendChatRun(actor, { agentId, prompt: "Active task" });
+    const activeClaim = await claimChatRun(runnerGroup, active.runId);
+    const clientEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "Read the current thread settings at launch",
+        clientEventId,
+        runOptions: { reasoningEffort: null },
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+    await chat.updateThreadModelSelection(
+      actor,
+      active.threadId,
+      "claude-opus-4-8",
+      { reasoningEffort: "high" },
+    );
+    const retry = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "Read the current thread settings at launch",
+        clientEventId,
+        runOptions: { reasoningEffort: "high" },
+      },
+      [201],
+    );
+    expect(retry.body).toStrictEqual(queued.body);
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: false,
+    });
+    await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === clientEventId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === clientEventId;
+    });
+    if (!promoted?.runId || promoted.eventType !== "input.prompt") {
+      throw new Error("Expected queued input to launch");
+    }
+    expect(promoted.userMessage.parts).toContainEqual({
+      type: "model",
+      selectedModel: "claude-opus-4-8",
+    });
+    const claimed = await claimChatRun(runnerGroup, promoted.runId);
+    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
+      "OKOU_REASONING_EFFORT",
+    );
+    await expect(
+      chat.readThreadMetadata(actor, active.threadId),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-opus-4-8",
+      reasoningEffort: "high",
+    });
+    await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
+  it("ignores saved effort while disabled without erasing it on normal or explicit-model sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Dormant effort preference",
+    });
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      reasoningEffort: "high",
+    });
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: false,
+    });
+    for (const model of [undefined, "claude-sonnet-5"] as const) {
+      const sent = await sendChatRun(actor, {
+        agentId,
+        threadId: thread.id,
+        prompt: "Use native defaults while rollout is disabled",
+        model,
+      });
+      const claimed = await claimChatRun(runnerGroup, sent.runId);
+      expect(claimed.claim.platformEnvironment).not.toHaveProperty(
+        "OKOU_REASONING_EFFORT",
+      );
+      await expect(
+        chat.readThreadMetadata(actor, thread.id),
+      ).resolves.toMatchObject({ reasoningEffort: "high" });
+      await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
+    }
+    const disabledReset = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: thread.id,
+        prompt: "Do not accept gated fields",
+        runOptions: { reasoningEffort: null },
+      },
+      [400],
+    );
+    expect(disabledReset.body).toMatchObject({
+      error: { message: "Reasoning effort selection is not enabled" },
+    });
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    const enabled = await chat.requestSendEvent(
+      actor,
+      { agentId, threadId: thread.id, prompt: "Saved effort is active again" },
+      [400],
+    );
+    expect(enabled.body).toMatchObject({
+      error: {
+        message:
+          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
+      },
+    });
+  }, 90_000);
+
+  it("preserves Fast when resetting effort and sending an effort-only override", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "openai-api-key",
+      secret: "test-effort-openai-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-sol",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Independent Fast",
+      model: "gpt-5.6-sol",
+    });
+    await chat.updateThreadModelSelection(actor, thread.id, "gpt-5.6-sol", {
+      reasoningEffort: "low",
+      codexServiceTier: "fast",
+    });
+    await chat.updateThreadModelSelection(actor, thread.id, "gpt-5.6-sol", {
+      reasoningEffort: null,
+    });
+    await expect(
+      chat.readThreadMetadata(actor, thread.id),
+    ).resolves.toMatchObject({
+      serviceTier: "priority",
+    });
+    const sent = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Fast with default effort",
+      runOptions: { reasoningEffort: null },
+    });
+    const claimed = await claimChatRun(runnerGroup, sent.runId);
+    expect(claimed.claim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe(
+      "fast",
+    );
+    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
+      "OKOU_REASONING_EFFORT",
+    );
+    await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
+  }, 90_000);
+});
+
 describe("CHAT-02: queueing and recalling messages", () => {
   it("returns an empty active-input poll without waiting for the thread row", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

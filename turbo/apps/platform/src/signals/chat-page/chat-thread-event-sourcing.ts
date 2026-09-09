@@ -3,6 +3,7 @@ import {
   chatThreadMetadataContract,
   type ChatThreadEvent,
   type ChatThreadMetadata,
+  type ReasoningEffort,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
@@ -59,6 +60,7 @@ export interface ThreadMeta {
   readonly title: string | null;
   readonly pinnedAt: string | null;
   readonly selectedModel: string | null;
+  readonly reasoningEffort?: ReasoningEffort | null;
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
@@ -353,6 +355,7 @@ const canonicalThreadMetaMap$ = computed((get) => {
       title: thread.title,
       pinnedAt: thread.pinnedAt,
       selectedModel: thread.selectedModel,
+      reasoningEffort: thread.reasoningEffort ?? null,
       serviceTier: thread.serviceTier,
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
@@ -387,6 +390,7 @@ function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta {
     title: metadata.title,
     pinnedAt: metadata.pinnedAt,
     selectedModel: metadata.selectedModel,
+    reasoningEffort: metadata.reasoningEffort ?? null,
     serviceTier: metadata.serviceTier,
     computerUseHostId: metadata.computerUseHostId,
     cloudBrowserEnabled: metadata.cloudBrowserEnabled,

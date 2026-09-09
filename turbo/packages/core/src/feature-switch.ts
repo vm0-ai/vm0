@@ -300,6 +300,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatReasoningEffort]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Choose model reasoning effort for Codex and Claude Code chats.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@okou.ai",
     description:
