@@ -5,9 +5,13 @@ import { PermissionAllowPage } from "../../views/permission-allow/permission-all
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { initialFeatureSwitchHydration$ } from "../external/feature-switch.ts";
 
 export const setupPermissionAllowPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
+    await get(initialFeatureSwitchHydration$);
+    signal.throwIfAborted();
+
     set(updatePage$, createElement(PermissionAllowPage), "minimal");
     set(
       updateDocumentTitle$,
