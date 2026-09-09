@@ -1,3 +1,5 @@
+import { isRetiredGoalArchiveText } from "@okouai/api-contracts/contracts/retired-goal-archive";
+import { literalHistoryTree } from "../../lib/markdown/literal-history.ts";
 import { createChatComposerLayoutOnRef } from "./chat-layout.ts";
 import {
   command,
@@ -1909,6 +1911,26 @@ function planEventTreeUpdates(
       content === null ||
       (previous?.content === content && previous.mathEnabled === mathEnabled)
     ) {
+      continue;
+    }
+    // Raw-row projection already checked every 1094 provenance field. Keep
+    // retained run coordinates here so real assistant output stays Markdown.
+    if (
+      event.eventType === "output.message" &&
+      event.runId === undefined &&
+      event.runGroupId === undefined &&
+      event.runEventId === undefined &&
+      event.sequenceNumber === null &&
+      event.revokesEventId === undefined &&
+      isRetiredGoalArchiveText(content)
+    ) {
+      next ??= new Map(current);
+      next.set(event.id, {
+        content,
+        mathEnabled,
+        tree: literalHistoryTree(content),
+        error: false,
+      });
       continue;
     }
     const plan = chatEventTreePlan(event, chatActionContext);

@@ -31,6 +31,10 @@
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"
+    },
+    "./migrations/014-goal-archive-search": {
+      "import": "./scripts/migrations/014-goal-archive-search/recover.ts",
+      "types": "./scripts/migrations/014-goal-archive-search/recover.ts"
     }
   },
   "scripts": {

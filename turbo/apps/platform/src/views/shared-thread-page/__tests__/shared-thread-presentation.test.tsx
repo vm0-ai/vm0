@@ -119,3 +119,21 @@ test("A public conversation hides owner and agent identity", async () => {
   expect(screen.queryByText("Owner")).not.toBeInTheDocument();
   expect(screen.queryByText("Agent")).not.toBeInTheDocument();
 });
+
+test("An intact public Goal archive displays its original literal text", async () => {
+  const content =
+    "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: paused\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\nBefore <oai-mem-citation>literal objective</oai-mem-citation> after\n`<oai-mem-citation>`\nUnclosed <oai-mem-citation>keep the rest 🧭\n\n";
+  context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+    return respond(
+      200,
+      sharedThread({
+        messages: [{ messageIndex: 0, role: "assistant", content }],
+      }),
+    );
+  });
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
+  const message = await screen.findByText(
+    /Before <oai-mem-citation>literal objective/,
+  );
+  expect(message.textContent).toBe(content);
+});

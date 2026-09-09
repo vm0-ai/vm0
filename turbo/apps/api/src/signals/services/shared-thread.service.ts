@@ -1,5 +1,6 @@
 import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
 import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
+import { isRetiredGoalArchiveText } from "@okouai/api-contracts/contracts/retired-goal-archive";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agents } from "@okouai/db/schema/agent";
@@ -27,7 +28,7 @@ import {
   canonicalArchivedChatEventError,
   canonicalArchivedChatEventGoalId,
   canonicalArchivedChatEventUserMessage,
-  canonicalChatEventContent,
+  canonicalChatEventVisibleContent,
   canonicalChatEventGoalId,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
@@ -147,7 +148,7 @@ function loadSharedThreadSourceRows(
       .select({
         id: chatEvents.id,
         eventType: chatEvents.eventType,
-        content: canonicalChatEventContent(),
+        content: canonicalChatEventVisibleContent(),
         userMessage: canonicalChatEventUserMessage(),
         runId: chatEvents.runId,
         runGroupId: canonicalChatEventGoalId(),
@@ -339,7 +340,12 @@ export const readSharedThread$ = command(
             return message.role === "assistant"
               ? {
                   ...message,
-                  content: visiblePiMemoryCitationText(message.content),
+                  content:
+                    message.runIndex === undefined &&
+                    message.runGroupIndex === undefined &&
+                    isRetiredGoalArchiveText(message.content)
+                      ? message.content
+                      : visiblePiMemoryCitationText(message.content),
                 }
               : message;
           }),

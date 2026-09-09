@@ -12,6 +12,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { isRetiredGoalArchiveText } from "@okouai/api-contracts/contracts/retired-goal-archive";
 import { agents } from "@okouai/db/schema/agent";
 import {
   chatEventSearchMessages,
@@ -28,7 +29,7 @@ import {
   requiredUserMessageForEvent,
 } from "./chat-user-message.service";
 import {
-  canonicalChatEventContent,
+  canonicalChatEventVisibleContent,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
 import { visibleChatEventCondition } from "./chat-event-shared.service";
@@ -130,6 +131,7 @@ function searchMessageRole(eventType: string): SearchableRole | null {
 }
 
 function searchMessageText(row: {
+  readonly runId: string | null;
   readonly eventType: (typeof chatEvents.$inferSelect)["eventType"];
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
@@ -141,11 +143,22 @@ function searchMessageText(row: {
   const text = userMessage
     ? projectUserMessage(userMessage).displayText
     : row.content;
+  // The canonical row projection already checked the full raw provenance.
+  // Preserve the historical objective's trailing whitespace as well.
+  if (
+    row.eventType === "output.message" &&
+    row.runId === null &&
+    text !== null &&
+    isRetiredGoalArchiveText(text)
+  ) {
+    return text;
+  }
   const trimmed = text?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
 }
 
 function searchMessageProjection(row: {
+  readonly runId: string | null;
   readonly eventType: (typeof chatEvents.$inferSelect)["eventType"];
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
@@ -171,7 +184,7 @@ async function loadProjectionRows(
       id: chatEvents.id,
       runId: chatEvents.runId,
       eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
+      content: canonicalChatEventVisibleContent(),
       userMessage: canonicalChatEventUserMessage(),
       revokesEventId: chatEvents.revokesEventId,
       seqId: chatEvents.seqId,
