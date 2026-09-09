@@ -1,6 +1,6 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Clock, Ellipsis, Package, Pencil, Pin } from "lucide-react";
+import { Clock, Ellipsis, Package, Pencil, Pin, PinOff } from "lucide-react";
 import {
   Button,
   cn,
@@ -20,10 +20,8 @@ import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 
 export function ChatThreadPinButton({
   thread,
-  mobile = false,
 }: {
   readonly thread: ChatPanelSignals;
-  readonly mobile?: boolean;
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
@@ -39,7 +37,6 @@ export function ChatThreadPinButton({
       iconSize="md"
       className={cn(
         "shrink-0 duration-150",
-        mobile && "size-11",
         pinned ? "text-gray-700" : "text-gray-600",
       )}
       aria-label={
@@ -73,6 +70,8 @@ export function MobileChatThreadMoreMenu({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const pinned = useGet(thread.pin.pinned$);
+  const setPinned = useSet(thread.pin.setPinned$);
   const openRename = useSet(openRenameChatThreadDialogForThreadId$);
   const automations = useLastResolved(thread.headerAutomations.automations$);
   const reloadAutomations = useSet(thread.headerAutomations.reload$);
@@ -98,6 +97,21 @@ export function MobileChatThreadMoreMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
+        <DropdownMenuItem
+          className="min-h-11"
+          onSelect={() => {
+            detach(setPinned(!pinned, pageSignal), Reason.DomCallback);
+          }}
+        >
+          {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+          {pinned
+            ? t(($) => {
+                return $.chat.sidebar.unpin;
+              })
+            : t(($) => {
+                return $.chat.sidebar.pin;
+              })}
+        </DropdownMenuItem>
         <DropdownMenuModalItem
           className="min-h-11"
           onModalSelect={() => {
