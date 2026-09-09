@@ -128,7 +128,7 @@ function WelcomeThreadMessage() {
         <div className="relative flex flex-col gap-2">
           <ChatAssistantMessageBody
             data-testid="welcome-thread-content"
-            className="pt-2.5"
+            className="pt-2.5 [&_p>img]:block [&_p>img]:h-auto [&_p>img]:w-auto [&_p>img]:max-w-[min(100%,32rem)] [&_p>img]:max-h-[22rem] [&_p>img]:object-contain"
           >
             <MarkdownEventBody tree={tree} mediaPreview />
           </ChatAssistantMessageBody>

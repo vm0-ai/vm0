@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
  */
 
 const PANEL_CLASS =
-  "w-full overflow-hidden rounded-xl border border-border/60 bg-muted/25 px-5 py-6 sm:px-8 sm:py-7";
+  "w-full max-w-[45rem] overflow-hidden rounded-xl border border-border/60 bg-muted/25 px-5 py-6 sm:px-8 sm:py-7";
 
 const EYEBROW_CLASS =
   "text-[0.6875rem] font-medium tracking-[0.08em] text-muted-foreground";
@@ -42,7 +42,7 @@ export function WelcomeVideoPreview({
         },
         { filename: "product-launch-film.mp4" },
       )}
-      className="aspect-video w-full max-w-[640px] rounded-xl bg-black object-contain"
+      className="aspect-video w-full max-w-[36rem] rounded-xl bg-black object-contain"
       controls
       playsInline
       poster={posterUrl}
