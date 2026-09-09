@@ -2103,7 +2103,7 @@
       },
       "voice": {
         "auto": "Biarkan Okou memilih",
-        "defaultDescription": "Gunakan suara default avatar yang dipilih",
+        "defaultDescription": "Gunakan suara avatar. Jika tidak tersedia, pilih suara pengganti yang sesuai secara otomatis.",
         "heading": "Pilih suara",
         "label": "Suara",
         "none": "Tanpa narasi",

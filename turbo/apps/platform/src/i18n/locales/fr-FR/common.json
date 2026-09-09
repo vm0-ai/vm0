@@ -2146,7 +2146,7 @@
       },
       "voice": {
         "auto": "Laisser Okou choisir",
-        "defaultDescription": "Utiliser la voix par défaut de l’avatar choisi",
+        "defaultDescription": "Utiliser la voix de l’avatar. Si elle est indisponible, choisir automatiquement une voix adaptée.",
         "heading": "Choisir une voix",
         "label": "Voix",
         "none": "Sans voix off",

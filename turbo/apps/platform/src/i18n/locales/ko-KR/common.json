@@ -2103,7 +2103,7 @@
       },
       "voice": {
         "auto": "Okou에게 맡기기",
-        "defaultDescription": "선택한 아바타의 기본 음성 사용",
+        "defaultDescription": "아바타의 음성을 사용합니다. 사용할 수 없으면 적절한 다른 음성을 자동으로 선택합니다.",
         "heading": "음성 선택",
         "label": "음성",
         "none": "내레이션 없음",

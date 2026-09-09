@@ -2110,7 +2110,7 @@
       },
       "voice": {
         "auto": "Let Okou choose",
-        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultDescription": "Use the avatar's voice. If unavailable, automatically choose a suitable alternative.",
         "heading": "Choose a voice",
         "label": "Voice",
         "none": "No voiceover",

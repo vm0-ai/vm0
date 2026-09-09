@@ -2110,7 +2110,7 @@
       },
       "voice": {
         "auto": "Okou wählen lassen",
-        "defaultDescription": "Die Standardstimme des gewählten Avatars verwenden",
+        "defaultDescription": "Die Stimme des Avatars verwenden. Falls sie nicht verfügbar ist, automatisch eine passende Alternative wählen.",
         "heading": "Stimme auswählen",
         "label": "Stimme",
         "none": "Kein Voiceover",

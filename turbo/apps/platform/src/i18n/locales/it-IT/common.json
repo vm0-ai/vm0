@@ -2146,7 +2146,7 @@
       },
       "voice": {
         "auto": "Lascia scegliere a Okou",
-        "defaultDescription": "Usa la voce predefinita dell’avatar scelto",
+        "defaultDescription": "Usa la voce dell’avatar. Se non è disponibile, scegli automaticamente un’alternativa adatta.",
         "heading": "Scegli una voce",
         "label": "Voce",
         "none": "Nessuna voce fuori campo",

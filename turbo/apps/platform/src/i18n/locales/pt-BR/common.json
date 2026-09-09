@@ -2146,7 +2146,7 @@
       },
       "voice": {
         "auto": "Deixar o Okou escolher",
-        "defaultDescription": "Usar a voz padrão do avatar escolhido",
+        "defaultDescription": "Usar a voz do avatar. Se estiver indisponível, escolher automaticamente uma alternativa adequada.",
         "heading": "Escolha uma voz",
         "label": "Voz",
         "none": "Sem narração",
