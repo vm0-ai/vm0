@@ -33,8 +33,13 @@ import { AgentAvatarImg } from "./sidebar-shared.tsx";
  */
 const TEAM_DIAGRAM_SLOT = "okou://welcome-diagram/team";
 const SLACK_DIAGRAM_SLOT = "okou://welcome-diagram/slack";
+const VIDEO_PREVIEW_SLOT = "okou://welcome-video/preview";
 
-const WELCOME_DIAGRAM_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map([
+const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+const welcomePresentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+const welcomeVideo = VIDEO_TEMPLATE_ITEMS[0]!;
+
+const WELCOME_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map([
   [
     markdownCardKey(TEAM_DIAGRAM_SLOT),
     { kind: "welcome-diagram", diagram: "team" } satisfies MarkdownCardRef,
@@ -43,11 +48,16 @@ const WELCOME_DIAGRAM_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map([
     markdownCardKey(SLACK_DIAGRAM_SLOT),
     { kind: "welcome-diagram", diagram: "slack" } satisfies MarkdownCardRef,
   ],
+  [
+    markdownCardKey(VIDEO_PREVIEW_SLOT),
+    {
+      kind: "welcome-video",
+      posterUrl: welcomeVideo.previewImage,
+      videoUrl: welcomeVideo.previewVideo,
+      webmUrl: welcomeVideo.previewWebm,
+    } satisfies MarkdownCardRef,
+  ],
 ]);
-
-const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-const welcomePresentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-const welcomeVideo = VIDEO_TEMPLATE_ITEMS[0]!;
 
 function WelcomeThreadAvatar() {
   const { t } = useTranslation();
@@ -99,12 +109,12 @@ function WelcomeThreadMessage() {
       slackDiagramUrl: SLACK_DIAGRAM_SLOT,
       slideCount: welcomePresentation.slideCount ?? 15,
       teamDiagramUrl: TEAM_DIAGRAM_SLOT,
-      videoUrl: welcomeVideo.previewVideo,
+      videoUrl: VIDEO_PREVIEW_SLOT,
       worksUrl,
     },
   );
   const tree = parseMarkdownTree(source, {
-    cards: WELCOME_DIAGRAM_CARDS,
+    cards: WELCOME_CARDS,
     mermaid: true,
   });
   embedMermaidSignals(tree, (code) => {
@@ -112,10 +122,7 @@ function WelcomeThreadMessage() {
   });
 
   return (
-    <div
-      data-role="assistant"
-      className="flex flex-col gap-1"
-    >
+    <div data-role="assistant" className="flex flex-col gap-1">
       <div className="flex flex-col gap-2 @[900px]:-ml-[46px] @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:items-start @[900px]:gap-2.5">
         <WelcomeThreadAvatar />
         <div className="relative flex flex-col gap-2">

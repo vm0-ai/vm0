@@ -23,6 +23,38 @@ const NODE_TITLE_CLASS =
 const NODE_BODY_CLASS =
   "mt-0.5 text-[0.75rem] leading-[1.45] text-muted-foreground";
 
+export function WelcomeVideoPreview({
+  posterUrl,
+  videoUrl,
+  webmUrl,
+}: {
+  readonly posterUrl: string;
+  readonly videoUrl: string;
+  readonly webmUrl: string;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <video
+      aria-label={t(
+        ($) => {
+          return $.chat.attachments.previewFile;
+        },
+        { filename: "product-launch-film.mp4" },
+      )}
+      className="aspect-video w-full max-w-[640px] rounded-xl bg-black object-contain"
+      controls
+      playsInline
+      poster={posterUrl}
+      preload="metadata"
+      data-testid="welcome-video-preview"
+    >
+      <source src={webmUrl} type="video/webm; codecs=vp9" />
+      <source src={videoUrl} type="video/mp4" />
+    </video>
+  );
+}
+
 function DiagramNode({
   title,
   body,
