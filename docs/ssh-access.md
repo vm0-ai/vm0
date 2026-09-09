@@ -41,7 +41,7 @@ Use a least-privilege remote SSH user for the Agent's intended work.
 The form clears credentials on submission, close and navigation; unsuccessful
 submissions require entering them again.
 
-`Configured` is not a connectivity test. Configuration does not establish an
+Saving a host is not a connectivity test. Configuration does not establish an
 SSH session. Use **Replace credentials** to rotate a key or passphrase; ordinary
 metadata edits leave credentials unchanged. Host/port changes clear the learned
 host identity. A stale generation is not retried: the list refreshes automatically.

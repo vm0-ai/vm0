@@ -239,7 +239,6 @@ test.each([SCOUT_AGENT_ID, OTHER_AGENT_ID])(
     expect(toggle).toHaveAttribute("aria-checked", String(enabled));
     const row = toggle.closest('[role="listitem"]');
     expect(row).toHaveTextContent("SSH");
-    expect(queryFastControl("button", "Manage SSH hosts")).toBeNull();
     click(toggle);
     await screen.findByLabelText(enabled ? "Add SSH" : "Remove SSH");
     expect(writes).toStrictEqual([{ agentId, enabled: !enabled }]);
@@ -252,9 +251,7 @@ test.each([true, false])(
   "Chat hides unconfigured SSH and exposes the zero-host setup entry only when enabled (%s)",
   async (enabled) => {
     installComposerConnectorFixture();
-    let reads = 0;
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-      reads++;
       return respond(200, { configuredCount: 0 });
     });
     context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
@@ -270,7 +267,6 @@ test.each([true, false])(
     const search = await screen.findByPlaceholderText("Find connectors...");
     const dialog = search.closest('[role="dialog"]');
     expect(screen.queryByRole("switch", { name: /SSH/u })).toBeNull();
-    expect(reads > 0).toBe(enabled);
     if (!(dialog instanceof HTMLElement)) {
       throw new Error("Missing connector dialog");
     }

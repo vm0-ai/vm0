@@ -99,9 +99,9 @@ export const sshConnectionsListResponseSchema = z
   .object({ connections: z.array(sshConnectionResponseSchema) })
   .strict();
 
-export const sshConnectionsSummaryResponseSchema = z.object({
-  configuredCount: z.int().nonnegative(),
-});
+export const sshConnectionsSummaryResponseSchema = z
+  .object({ configuredCount: z.int().nonnegative() })
+  .strict();
 
 export const sshConnectionsContract = c.router({
   list: {

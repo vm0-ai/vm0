@@ -135,7 +135,9 @@ test("The global card manages visible Agent grants with Connector presentation a
   await within(dialog).findByRole("switch", {
     name: "Authorize SSH access for Shared",
   });
-  expect(grants).toStrictEqual(new Set([agentId]));
+  expect(screen.getByTestId("connector-card-access-names")).toHaveTextContent(
+    "Research",
+  );
 });
 
 function mockCatalog() {
@@ -179,17 +181,6 @@ test("The remote-access category is localized independently of the SSH service n
   expect(
     screen.getByTestId("connector-category-remote-access"),
   ).toHaveTextContent("SSH");
-});
-
-test("The SSH card tolerates an older API summary with an extra limit field", async () => {
-  mockCatalog();
-  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-    const legacySummary = { configuredCount: 2, limit: 64 };
-    return respond(200, legacySummary);
-  });
-  await page("/connectors?keywords=ssh");
-  await screen.findByText("2 hosts configured");
-  expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();
 });
 
 test.each([0, 1, 2])(

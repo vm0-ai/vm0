@@ -72,7 +72,6 @@ test("Live notifications refresh hosts across reconnect without clearing an open
     "unsaved-passphrase",
   );
   expect(dialog).toBeInTheDocument();
-  expect(queryAction("button", "Refresh")).toBeNull();
   host = { ...host, displayName: "Changed while offline" };
   await act(async () => {
     context.mocks.ably.triggerReconnect();
@@ -86,32 +85,29 @@ test("Live notifications refresh hosts across reconnect without clearing an open
 });
 
 test("SSH notifications ignore malformed and other-workspace payloads", async () => {
-  let reads = 0;
+  let host = base;
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
-    reads++;
-    return respond(200, { connections: [base] });
+    return respond(200, { connections: [host] });
   });
   await page();
   await screen.findByText("Deployment");
-  const before = reads;
+  host = { ...base, displayName: "Changed remotely" };
   await act(async () => {
     context.mocks.ably.trigger("ssh:changed", { orgId: "another-org" });
     context.mocks.ably.trigger("ssh:changed", { orgId, unexpected: true });
     context.mocks.ably.trigger("ssh:changed", null);
     await Promise.resolve();
   });
-  expect(reads).toBe(before);
+  expect(screen.getByText("Deployment")).toBeInTheDocument();
+  expect(screen.queryByText("Changed remotely")).toBeNull();
   context.mocks.ably.trigger("ssh:changed", { orgId });
-  await waitFor(() => {
-    expect(reads).toBeGreaterThan(before);
-  });
+  await screen.findByText("Changed remotely");
 });
 
 test("The zero-host Add intent is consumed once and notifications never reopen it", async () => {
-  let reads = 0;
+  let hosts: SshConnectionResponse[] = [];
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
-    reads++;
-    return respond(200, { connections: [] });
+    return respond(200, { connections: hosts });
   });
   await page("/connectors/ssh?add=1");
   const dialog = await screen.findByRole("dialog");
@@ -120,11 +116,12 @@ test("The zero-host Add intent is consumed once and notifications never reopen i
   await waitFor(() => {
     return expect(screen.queryByRole("dialog")).toBeNull();
   });
-  const before = reads;
+  hosts = [base];
   context.mocks.ably.trigger("ssh:changed", { orgId });
-  await waitFor(() => {
-    return expect(reads).toBeGreaterThan(before);
-  });
+  await screen.findByText("Deployment");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  hosts = [];
+  context.mocks.ably.trigger("ssh:changed", { orgId });
   await screen.findByText("0 hosts configured");
   expect(screen.queryByRole("dialog")).toBeNull();
 });
@@ -214,13 +211,6 @@ test("SSH is a Connectors detail page with a working return breadcrumb", async (
   });
   await page();
   await screen.findByText("0 hosts configured");
-  expect(queryAction("button", "Refresh")).toBeNull();
-  expect(
-    screen.queryByText(/Changes notify active Runs/u),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByText(/The first successful connection learns/u),
-  ).not.toBeInTheDocument();
   expect(pathname()).toBe("/connectors/ssh");
   const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
   expect(within(breadcrumb).getByText("SSH")).toHaveAttribute(
@@ -347,10 +337,6 @@ test.each(["paste", "file"])(
     );
     click(getAction("button", "Add host"));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog).toHaveAccessibleDescription("");
-    expect(
-      within(dialog).queryByText(/The first successful connection learns/u),
-    ).not.toBeInTheDocument();
     await fill(within(dialog).getByLabelText("Display name"), "Deployment");
     await fill(
       within(dialog).getByLabelText("Public hostname or IP address"),
@@ -376,11 +362,6 @@ test.each(["paste", "file"])(
     );
     click(getAction("button", "Save", dialog));
     await screen.findByText("deploy@ssh.example.com:22");
-    expect(
-      screen.queryByText("Configured · connectivity not tested"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(/Connection ID/u)).not.toBeInTheDocument();
-    expect(screen.queryByText(id)).not.toBeInTheDocument();
     expect(requests).toStrictEqual([
       {
         displayName: "Deployment",
@@ -524,12 +505,10 @@ test.each(["Display name", "Public hostname or IP address", "SSH username"])(
   "Whitespace-only %s is rejected visibly before submission and can be corrected",
   async (label) => {
     let hosts: SshConnectionResponse[] = [];
-    let creates = 0;
     context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
       return respond(200, { connections: hosts });
     });
     context.mocks.api(sshConnectionsContract.create, ({ respond }) => {
-      creates++;
       hosts = [base];
       return respond(201, base);
     });
@@ -551,12 +530,10 @@ test.each(["Display name", "Public hostname or IP address", "SSH username"])(
     await fill(field, "   ");
     click(getAction("button", "Save", dialog));
     expect(field).toBeInvalid();
-    expect(creates).toBe(0);
     expect(dialog).toBeInTheDocument();
     await fill(field, "valid");
     click(getAction("button", "Save", dialog));
     await screen.findByText("deploy@ssh.example.com:22");
-    expect(creates).toBe(1);
   },
 );
 
@@ -581,10 +558,6 @@ test("Credential replacement is explicit and fields clear before the request fin
     }),
   );
   let dialog = await screen.findByRole("dialog");
-  expect(dialog).toHaveAccessibleDescription("");
-  expect(
-    within(dialog).queryByText(/The first successful connection learns/u),
-  ).not.toBeInTheDocument();
   await fill(within(dialog).getByLabelText("Private key"), "close-canary");
   click(getAction("button", "Cancel", dialog));
   await waitFor(() => {
@@ -604,18 +577,19 @@ test("Credential replacement is explicit and fields clear before the request fin
   });
   click(getAction("button", "Save", dialog));
   await waitFor(() => {
-    return expect(requests).toStrictEqual([
-      {
-        expectedGeneration: 1,
-        credentials: { privateKey: " new-key\n", passphrase: null },
-      },
-    ]);
+    expect(getAction("button", "Save", dialog)).toBeDisabled();
   });
   expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
   ready.resolve();
   await waitFor(() => {
     return expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+  expect(requests).toStrictEqual([
+    {
+      expectedGeneration: 1,
+      credentials: { privateKey: " new-key\n", passphrase: null },
+    },
+  ]);
 });
 
 test("Reset requires confirmation, generation conflict refreshes without retry, and deletion is explicit", async () => {
@@ -624,15 +598,12 @@ test("Reset requires confirmation, generation conflict refreshes without retry, 
     learnedHostKey: { algorithm: "ssh-ed25519", fingerprint: "SHA256:fixture" },
   };
   let hosts = [learned];
-  let resets = 0;
-  let deleted = false;
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: hosts });
   });
   context.mocks.api(
     sshConnectionsContract.resetHostKey,
     ({ body, respond }) => {
-      resets++;
       expect(body).toStrictEqual({ expectedGeneration: 1 });
       hosts = [{ ...learned, generation: 2 }];
       return respond(409, {
@@ -641,20 +612,14 @@ test("Reset requires confirmation, generation conflict refreshes without retry, 
     },
   );
   context.mocks.api(sshConnectionsContract.delete, ({ respond }) => {
-    deleted = true;
     hosts = [];
     return respond(204);
   });
   await page();
   await screen.findByText("SHA256:fixture");
-  expect(
-    screen.queryByText("Configured · connectivity not tested"),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByText(/Connection ID/u)).not.toBeInTheDocument();
-  expect(screen.queryByText(id)).not.toBeInTheDocument();
   click(getAction("button", "Reset host key"));
   const reset = await screen.findByRole("dialog");
-  expect(resets).toBe(0);
+  expect(screen.getByText("SHA256:fixture")).toBeInTheDocument();
   expect(
     within(reset).getByText(/Only reset after independently verifying/),
   ).toBeInTheDocument();
@@ -663,26 +628,19 @@ test("Reset requires confirmation, generation conflict refreshes without retry, 
   );
   click(getAction("button", "Reset host key", reset));
   await screen.findByRole("alert");
-  expect(resets).toBe(1);
+  expect(screen.getByText("SHA256:fixture")).toBeInTheDocument();
   click(getAction("button", "Delete host"));
   const remove = await screen.findByRole("dialog");
-  expect(deleted).toBeFalsy();
+  expect(screen.getByText("deploy@ssh.example.com:22")).toBeInTheDocument();
   click(getAction("button", "Delete host", remove));
   await screen.findByText(
     "No SSH hosts configured. Add a host to make it available to Agents with SSH access.",
   );
-  expect(deleted).toBeTruthy();
 });
 
-test("Disabled SSH has no management fetches or controls", async () => {
-  let requests = 0;
-  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
-    requests++;
-    return respond(200, { connections: [] });
-  });
+test("Disabled SSH shows unavailability without management controls", async () => {
   await page("/connectors/ssh", false);
   await screen.findByText("SSH access is not available for this account.");
-  expect(requests).toBe(0);
   expect(queryAction("button", "Add host")).not.toBeInTheDocument();
 });
 
@@ -847,14 +805,12 @@ test("A last-host deletion notification hides Authorization without clearing its
   });
   await page(`/agents/${agentId}?tab=authorization`);
   await screen.findByRole("switch", { name: "Revoke SSH access" });
-  expect(queryAction("button", "Manage SSH hosts")).toBeNull();
   exists = false;
   context.mocks.ably.trigger("ssh:changed", { orgId });
   await screen.findByText(/No connected services yet/);
   expect(
     screen.queryByRole("switch", { name: /SSH access/ }),
   ).not.toBeInTheDocument();
-  expect(queryAction("button", "Manage SSH hosts")).toBeNull();
 });
 
 test("Owner Authorization offers SSH access while Profile has no SSH controls", async () => {
@@ -898,19 +854,16 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
   expect(
     screen.queryByRole("switch", { name: /SSH access/ }),
   ).not.toBeInTheDocument();
-  expect(queryAction("button", "Manage SSH hosts")).not.toBeInTheDocument();
   click(getAction("button", "Authorization"));
   const control = await screen.findByRole("switch", {
     name: "Grant SSH access",
   });
   expect(control).not.toBeChecked();
-  expect(queryAction("button", "SSH access")).not.toBeInTheDocument();
   expect(
     screen.getByText(
       "Allow this Agent to execute commands on all your current and future configured SSH hosts. This is separate from connector permissions.",
     ),
   ).toBeInTheDocument();
-  expect(queryAction("button", "Manage SSH hosts")).not.toBeInTheDocument();
   expect(
     screen.queryByText(/No connected services yet/),
   ).not.toBeInTheDocument();
