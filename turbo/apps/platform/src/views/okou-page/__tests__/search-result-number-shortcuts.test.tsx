@@ -44,6 +44,10 @@ const SEARCH_LABEL = "Search workspace...";
 
 async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
   fireEvent.keyDown(document.body, {
+    key: modifiers.metaKey ? "Meta" : "Control",
+    ...modifiers,
+  });
+  fireEvent.keyDown(document.body, {
     key: "f",
     code: "KeyF",
     shiftKey: true,
