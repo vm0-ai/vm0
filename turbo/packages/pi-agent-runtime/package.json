@@ -29,13 +29,13 @@
     "@earendil-works/pi-ai": "0.85.1",
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@okouai/api-contracts": "workspace:*",
+    "@okouai/connectors": "workspace:*",
     "@smithy/node-http-handler": "4.7.3",
     "gpt-tokenizer": "^3.4.0",
     "http-proxy-agent": "7.0.2",
     "https-proxy-agent": "7.0.6",
-    "yaml": "^2.9.0",
-    "undici": "7.28.0",
-    "@okouai/connectors": "workspace:*"
+    "undici": "7.29.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@okouai/eslint-config": "workspace:*",

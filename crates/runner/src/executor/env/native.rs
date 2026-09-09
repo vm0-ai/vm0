@@ -88,14 +88,16 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
         url::Host::Ipv4(ip) => Some(std::net::IpAddr::V4(ip)),
         url::Host::Ipv6(ip) => Some(std::net::IpAddr::V6(ip)),
         url::Host::Domain(_) => None,
-    }) {
-        if !crate::firewall_hostname_policy::is_public_ip_address(ip) {
-            return Err("Pi native inference requires a public destination".into());
-        }
+    }) && !crate::firewall_hostname_policy::is_public_ip_address(ip)
+    {
+        return Err("Pi native inference requires a public destination".into());
     }
+    let policy = value
+        .get("requestPolicy")
+        .ok_or("Pi native request policy is missing")?;
     if value.get("thinkingLevel").is_some_and(Value::is_null)
-        || value["requestPolicy"]["maxAttempts"] != 1
-        || value["requestPolicy"]["cacheRetention"] != "short"
+        || policy.get("maxAttempts").and_then(Value::as_u64) != Some(1)
+        || policy.get("cacheRetention").and_then(Value::as_str) != Some("short")
         || (value["credentialOwner"] == "builtin") != (value["billingOwner"] == "builtin")
     {
         return Err("Pi native request or ownership policy is invalid".into());
@@ -106,14 +108,16 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
     if value["dialect"] == "bedrock-converse-stream" {
         let region = field(value, "region")?;
         let parts: Vec<&str> = region.split('-').collect();
+        let (number, prefix) = parts
+            .split_last()
+            .ok_or("Pi native Bedrock region is missing")?;
         if parts.len() < 3
-            || parts[0].len() != 2
-            || !parts[..parts.len() - 1]
+            || !parts.first().is_some_and(|part| part.len() == 2)
+            || !prefix
                 .iter()
                 .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_lowercase()))
-            || !parts
-                .last()
-                .is_some_and(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+            || number.is_empty()
+            || !number.bytes().all(|b| b.is_ascii_digit())
             || base != format!("https://bedrock-runtime.{region}.amazonaws.com")
             || (model.starts_with("arn:")
                 && (!model.starts_with(&format!("arn:aws:bedrock:{region}:"))))
@@ -165,7 +169,9 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
     if bindings.len() != 1 {
         return Err("Pi native Messages requires one credential".into());
     }
-    let binding = &bindings[0];
+    let binding = bindings
+        .first()
+        .ok_or("Pi native Messages binding is missing")?;
     if !binding.as_object().is_some_and(|object| {
         has_exact_object_fields(
             object,
