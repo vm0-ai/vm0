@@ -22,10 +22,6 @@ import {
   connectorManualGrantContract,
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
-import {
-  agentsMainContract,
-  type AgentResponse,
-} from "@okouai/api-contracts/contracts/agents";
 import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 
 import {
@@ -42,22 +38,6 @@ import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.t
 import { mockOAuthCompletions } from "../../okou-page/__tests__/connector-page-test-helpers.ts";
 
 const context = testContext();
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-
-function onboardingAgent(agentId: string): AgentResponse {
-  return {
-    agentId,
-    ownerId: "user_mock",
-    displayName: "Default agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
-    visibility: "private",
-  };
-}
 
 const MARKETING_PRESENTATION_PROMPT = [
   "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge.",
@@ -361,6 +341,7 @@ test("Presentation creation opens its template gallery", async () => {
     tab: "Presentation",
   });
   expect(selectedTab).toHaveAttribute("aria-selected", "true");
+  expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001/chat");
 });
 
 test("Image creation opens its template gallery", async () => {
@@ -388,28 +369,6 @@ test("Website creation opens its template gallery", async () => {
     tab: "Website",
   });
   expect(selectedTab).toHaveAttribute("aria-selected", "true");
-});
-
-test("Creative onboarding uses the current workspace's default agent", async () => {
-  context.mocks.api(agentsMainContract.list, ({ respond }) => {
-    return respond(200, [onboardingAgent(DEFAULT_AGENT_ID)]);
-  });
-
-  await openMakePage();
-  chooseMakeOption("Generate a presentation");
-
-  await waitFor(() => {
-    expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
-  });
-  await waitFor(() => {
-    const presentationTab = queryAllByRoleFast("tab").find((candidate) => {
-      return (
-        candidate.textContent === "Presentation" &&
-        candidate.getAttribute("aria-selected") === "true"
-      );
-    });
-    expect(presentationTab).toBeInTheDocument();
-  });
 });
 
 test("A user can identify and switch workspace during onboarding", async () => {
