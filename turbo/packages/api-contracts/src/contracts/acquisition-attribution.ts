@@ -18,8 +18,8 @@ export const SOURCE_TYPES = [
 
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
-// First-party, root-domain (.vm0.ai) cookie carrying first-touch acquisition
-// attribution across the www.vm0.ai -> app.vm0.ai subdomain hop. Written by the
+// First-party, root-domain (.okou.ai) cookie carrying first-touch acquisition
+// attribution across the www.okou.ai -> app.okou.ai subdomain hop. Written by the
 // marketing site (consent-gated), read by the app on first load.
 export const ACQUISITION_ATTRIBUTION_COOKIE = "vm0_attribution";
 

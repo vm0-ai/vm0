@@ -643,7 +643,7 @@ function foldRunWorkGroup(
       runGroupId: unit.runGroupId,
       runIds: unit.runIds,
       anchorEventId: anchorEvent.id,
-      collapsible: stepCount > 3,
+      collapsible: stepCount > 0,
       stepCount,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),

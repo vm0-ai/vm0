@@ -4,12 +4,16 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { nowDate } from "../../lib/time";
 import { apiBackendUrl } from "../../lib/api-backend-url";
 import { db$, writeDb$ } from "../external/db";
+import { userFeatureSwitchContext } from "./feature-switches.service";
+import { safeUrlParse } from "../utils";
 
 const PRIVATE_STORAGE = "private-artifact-v1";
 const privateMetadataSchema = z.object({
@@ -17,6 +21,33 @@ const privateMetadataSchema = z.object({
   bucket: z.string().min(1),
   publicBrand: z.enum(["vm0", "okou"]),
 });
+
+export function privateArtifactCreationEnabled(orgId: string, userId: string) {
+  return computed(async (get) => {
+    const context = await get(userFeatureSwitchContext(orgId, userId));
+    return isFeatureEnabled(FeatureSwitchKey.PrivateArtifacts, context);
+  });
+}
+
+export function artifactFileReference(
+  value: string,
+): { readonly id: string } | null {
+  const origin = apiBackendUrl();
+  const url = safeUrlParse(value);
+  if (
+    !origin ||
+    !url ||
+    url.origin !== new URL(origin).origin ||
+    url.pathname !== "/api/web/download-file" ||
+    url.username ||
+    url.password
+  ) {
+    return null;
+  }
+  // Preserve recognition of malformed references so they fail authorization
+  // instead of being forwarded to a provider as an arbitrary public URL.
+  return { id: url.searchParams.get("file_id") ?? "" };
+}
 
 export function privateArtifactUrl(id: string, filename: string): string {
   const origin = apiBackendUrl();
@@ -49,36 +80,62 @@ export const allocatePrivateArtifact$ = command(
       readonly contentType: string;
       readonly size: number;
       readonly publicBrand: PublicBrand;
+      readonly id?: string;
     },
     signal: AbortSignal,
   ) => {
     const bucket = privateArtifactsBucket();
-    const id = randomUUID();
+    const id = args.id ?? randomUUID();
     const key = `private-artifacts/${id}/${sanitizeArtifactFilename(args.filename)}`;
     const url = privateArtifactUrl(id, args.filename);
     const db = set(writeDb$);
     // This independent ownership record also covers uploads outside a run.
     // Historical accessLevel="private" rows still use public storage; only
     // this versioned storage marker identifies the new private policy.
-    await db.insert(runUploadedFiles).values({
-      id,
-      source: "web",
-      externalId: id,
-      userId: args.userId,
-      orgId: args.orgId,
-      filename: args.filename,
-      contentType: args.contentType,
-      sizeBytes: args.size,
-      storageKey: key,
-      accessLevel: "private",
-      materializationStatus: "pending",
-      metadata: {
-        storage: PRIVATE_STORAGE,
-        bucket,
-        publicBrand: args.publicBrand,
-      },
-    });
+    const [created] = await db
+      .insert(runUploadedFiles)
+      .values({
+        id,
+        source: "web",
+        externalId: id,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: args.filename,
+        contentType: args.contentType,
+        sizeBytes: args.size,
+        storageKey: key,
+        accessLevel: "private",
+        materializationStatus: "pending",
+        metadata: {
+          storage: PRIVATE_STORAGE,
+          bucket,
+          publicBrand: args.publicBrand,
+        },
+      })
+      .onConflictDoNothing({ target: runUploadedFiles.id })
+      .returning({ id: runUploadedFiles.id });
     signal.throwIfAborted();
+    if (!created) {
+      const [existing] = await db
+        .select()
+        .from(runUploadedFiles)
+        .where(eq(runUploadedFiles.id, id))
+        .limit(1);
+      signal.throwIfAborted();
+      if (
+        !existing ||
+        existing.userId !== args.userId ||
+        existing.orgId !== args.orgId ||
+        existing.metadata.storage !== PRIVATE_STORAGE ||
+        existing.metadata.bucket !== bucket ||
+        existing.metadata.publicBrand !== args.publicBrand ||
+        existing.storageKey !== key ||
+        existing.filename !== args.filename ||
+        existing.contentType !== args.contentType
+      ) {
+        throw new Error("Private artifact identity belongs to another object");
+      }
+    }
     return {
       id,
       key,

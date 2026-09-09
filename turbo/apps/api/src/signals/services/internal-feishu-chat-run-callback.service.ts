@@ -6,7 +6,6 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
@@ -206,13 +205,9 @@ async function loadFeishuAdmissionFailureContext(
     readonly orgId: string;
     readonly target: FeishuDeliveryTarget;
     readonly chatEventId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
-): Promise<{
-  readonly messageContent: string;
-  readonly publicBrand: PublicBrand;
-}> {
+): Promise<string> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
       .select({ content: canonicalChatEventContent() })
@@ -257,10 +252,7 @@ async function loadFeishuAdmissionFailureContext(
   if (!event?.content || !bindingRows[0]) {
     throw new Error("Feishu admission failure delivery context is unavailable");
   }
-  return {
-    messageContent: event.content,
-    publicBrand: args.publicBrand,
-  };
+  return event.content;
 }
 
 export async function deliverFeishuChatAdmissionFailure(
@@ -271,14 +263,12 @@ export async function deliverFeishuChatAdmissionFailure(
     readonly orgId: string;
     readonly target: FeishuDeliveryTarget;
     readonly chatEventId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const context = await loadFeishuAdmissionFailureContext(args, signal);
+  const messageContent = await loadFeishuAdmissionFailureContext(args, signal);
   const message = buildFeishuAgentResponseMessage({
-    text: context.messageContent,
-    publicBrand: context.publicBrand,
+    text: messageContent,
   });
   if (args.target.replyInThread) {
     await replyWithFeishuMessage(
@@ -318,7 +308,6 @@ async function deliverClaimedFeishuChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
-  const publicBrand = payload.publicBrand;
 
   const [mentionerCount, featureContext] = await Promise.all([
     countFeishuMentioners({
@@ -337,7 +326,6 @@ async function deliverClaimedFeishuChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand,
       defaultAgentId: binding.defaultAgentId ?? undefined,
       replyToMention:
         payload.replyInThread && mentionerCount > 1
@@ -352,7 +340,6 @@ async function deliverClaimedFeishuChatCallback(
   signal.throwIfAborted();
   const message = buildFeishuAgentResponseMessage({
     text: messageContent,
-    publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });

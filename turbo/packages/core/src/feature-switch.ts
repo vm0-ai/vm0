@@ -295,12 +295,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationTemplates]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Enable owner-scoped presentation template imports and catalog APIs.",
-    enabled: true,
-  },
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
@@ -313,6 +307,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
     enabled: true,
+  },
+  [FeatureSwitchKey.AvatarFraming]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Center every avatar's visible artwork in its box and move it halfway to a shared fill, so hair volume stops changing how large an avatar looks.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@okou.ai",
@@ -353,18 +354,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatRunWorkFolding]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   // Every artifact privacy slice in #32492 uses this same rollout switch.
   [FeatureSwitchKey.PrivateArtifacts]: {
     maintainer: "yuma@okou.ai",
     description:
-      "Use private storage and authenticated previews for CLI artifact uploads.",
+      "Use private storage and authenticated previews for CLI artifact uploads and managed generation.",
     enabled: false,
   },
   [FeatureSwitchKey.AgentMessageMath]: {
@@ -458,6 +452,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@okou.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
+  },
+  [FeatureSwitchKey.ConnectorDirectory]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Connector directory in the chat composer: connected connectors separated from discovery, category browsing, per-connector detail, and keyboard navigation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

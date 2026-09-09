@@ -212,7 +212,6 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("overwrites the same files");
     expect(helpOutput).toContain("shift+semicolon");
     expect(helpOutput).toContain("Control_L+J");
-    expect(helpOutput).not.toContain("Zero Desktop");
   });
 
   it("should use Okou Desktop branding in plugin help", () => {
@@ -252,9 +251,6 @@ describe("computer-use command visibility", () => {
     );
     expect(mcpHelpOutput).toContain(
       "Use custom MCP servers configured in the Okou Desktop app",
-    );
-    expect(`${filesystemHelpOutput}\n${mcpHelpOutput}`).not.toContain(
-      "Zero Desktop",
     );
   });
 
@@ -314,7 +310,6 @@ describe("computer-use command visibility", () => {
     expect(errorOutput).not.toContain(
       "403: Missing required capability: computer-use:write",
     );
-    expect(errorOutput).not.toContain("Zero Desktop");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -1063,7 +1058,6 @@ describe("computer-use command visibility", () => {
     expect(output).toContain(
       "Configure and enable them in the Okou Desktop app's Developer Tools section",
     );
-    expect(output).not.toContain("Zero Desktop");
   });
 
   it("should download pointer-backed screenshots through the API proxy", async () => {

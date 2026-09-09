@@ -5,7 +5,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const historyCommand = new Command()
   .name("history")
-  .description("Read one page of channel or bot direct-message history")
+  .description("Read shared channel or bot direct-message history")
   .requiredOption(
     "-c, --channel <id>",
     "Channel ID or bot DM conversation ID (D...)",
@@ -36,13 +36,14 @@ Examples:
   okou slack message history --channel C012345 --cursor <next-cursor>
 
 Notes:
-  - Requires slack:read and uses the organization's Slack bot. The bot must belong to the conversation.
-  - IM history is limited to single-user conversations with the bot, identified by a D-prefixed ID, not a user ID.
+  - Requires slack:read and uses the organization's Slack bot.
+  - Both your connected Slack account and Okou must belong to the conversation.
+  - IM history is limited to your single-user conversation with the bot, identified by a D-prefixed ID, not a user ID.
   - To find a bot DM's ID, open its details in Slack and copy the conversation ID or link.
   - Channel history contains conversation messages; thread replies are not expanded. Use --json to retain blocks, files and thread metadata.
   - Results are newest first. Each call reads one page. Keep the channel and time filters when continuing with --cursor.
   - If Slack rate limits a request, wait for the returned Retry-After duration before retrying.
-  - If the bot has not joined a channel, open the returned channel link, add Okou via Agents & apps, and retry.`,
+  - To make a channel readable, join it in Slack and add Okou via the channel name > Agents & apps.`,
   )
   .action(
     withErrorHandler(

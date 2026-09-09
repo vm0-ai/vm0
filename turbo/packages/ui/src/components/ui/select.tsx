@@ -4,6 +4,7 @@ import * as React from "react";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
+import { anchoredPopupTransitionClassName } from "./popup-motion";
 import { cn } from "../../lib/utils";
 
 interface InferredSelectItem<Value> {
@@ -274,7 +275,8 @@ const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps>(
             ref={ref}
             data-slot="select-content"
             className={cn(
-              "relative max-h-[min(24rem,var(--available-height))] min-w-[max(8rem,var(--anchor-width))] origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card text-foreground outline-none transition-[transform,opacity] duration-100 ease-out data-starting-style:opacity-0 data-starting-style:[transform:scale(0.98)] data-ending-style:opacity-0 data-ending-style:[transform:scale(0.98)] data-[side=none]:data-starting-style:opacity-100 data-[side=none]:data-starting-style:[transform:scale(1)] data-[side=none]:transition-none motion-reduce:transition-none",
+              anchoredPopupTransitionClassName,
+              "relative max-h-[min(24rem,var(--available-height))] min-w-[max(8rem,var(--anchor-width))] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card text-foreground outline-none data-[side=none]:data-starting-style:opacity-100 data-[side=none]:data-starting-style:[transform:scale(1)] data-[side=none]:transition-none",
               className,
             )}
             style={

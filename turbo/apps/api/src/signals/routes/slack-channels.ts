@@ -1,9 +1,10 @@
 import { computed } from "ccstate";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 
+import { listSharedSlackChannels } from "../../lib/slack-client";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { slackChannels } from "../services/slack-data.service";
+import { slackUserInstallation } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
 
 const slackInstallationNotFound = Object.freeze({
@@ -16,17 +17,34 @@ const slackInstallationNotFound = Object.freeze({
   }),
 });
 
+const slackConnectionNotFound = Object.freeze({
+  status: 404 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "No Slack account connected for this user",
+      code: "NOT_FOUND",
+    }),
+  }),
+});
+
 const getSlackChannelsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const channels = await get(
-    slackChannels({ orgId: auth.orgId, userId: auth.userId }),
+  const installation = await get(
+    slackUserInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
-  if (channels === null) {
+  if (installation.kind === "not-installed") {
     return slackInstallationNotFound;
   }
+  if (installation.kind === "not-connected") {
+    return slackConnectionNotFound;
+  }
+  const channels = await listSharedSlackChannels(
+    installation.botToken,
+    installation.slackUserId,
+  );
   return {
     status: 200 as const,
-    body: { channels: [...channels] },
+    body: { channels },
   };
 });
 

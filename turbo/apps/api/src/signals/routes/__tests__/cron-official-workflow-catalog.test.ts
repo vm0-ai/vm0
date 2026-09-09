@@ -550,7 +550,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(exactMorningBriefRevision.definition.workflow).toMatchObject({
       displayName: "Morning Brief",
       description:
-        "Summarize today's email, GitHub, calendar, and unread Chat priorities.",
+        "Summarize today's email, GitHub, calendar, connected Slack activity from the past 24 hours, and unread Chat priorities.",
       files: [],
     });
     expect(morningBriefInstruction).toContain("Gmail connector skill");

@@ -1,8 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import {
+  click,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -183,17 +183,15 @@ test("Project all workflow run outputs through one run-group history", async () 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
-  expect(screen.getByText("Earlier workflow evidence 1")).toBeVisible();
-  expect(screen.getByText("Earlier workflow result 1")).toBeVisible();
-  expect(screen.getByText("Earlier workflow evidence 2")).toBeVisible();
+  expect(screen.queryByText("Earlier workflow evidence 1")).toBeNull();
+  expect(screen.queryByText("Earlier workflow result 1")).toBeNull();
+  expect(screen.queryByText("Earlier workflow evidence 2")).toBeNull();
   const main = screen.getByText("Earlier workflow result 2");
   expect(main).toBeVisible();
-  expect(queryButton("Expand grouped run history")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
   const currentProgress = await screen.findByLabelText(
     "Checking the latest workflow run",
   );
@@ -211,6 +209,7 @@ test("Project all workflow run outputs through one run-group history", async () 
     }),
   ).toHaveLength(1);
 
+  click(await findWorkHistoryToggle("collapsed"));
   const firstEarlierEvidence = await screen.findByText(
     "Earlier workflow evidence 1",
   );
@@ -222,6 +221,9 @@ test("Project all workflow run outputs through one run-group history", async () 
     assistantGroup,
   );
   expect(screen.queryByText("Nightly launch review")).toBeNull();
+
+  click(await findWorkHistoryToggle("expanded"));
+  await expect(findWorkHistoryToggle("collapsed")).resolves.toBeVisible();
 
   events.push(
     assistantOutput({
@@ -240,7 +242,6 @@ test("Project all workflow run outputs through one run-group history", async () 
   expect(currentMain).toBeVisible();
   expect(screen.queryByText("Earlier workflow result 2")).toBeNull();
   expect(currentMain.closest('[data-role="assistant"]')).toBe(assistantGroup);
-  expect(queryButton("Expand grouped run history")).toBeNull();
   await expect(findWorkHistoryToggle("collapsed")).resolves.toBeVisible();
 });
 
@@ -300,7 +301,6 @@ test("Keep different run groups as separate assistant responses", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 
@@ -382,7 +382,6 @@ test("Keep the prior goal result as main while the next run has no output", asyn
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -390,7 +389,6 @@ test("Keep the prior goal result as main while the next run has no output", asyn
     "The earlier launch evidence is complete.",
   );
   expect(priorMain).toBeVisible();
-  expect(queryButton("Expand grouped run history")).toBeNull();
   expect(queryWorkHistoryToggle("collapsed")).toBeNull();
   const thinking = await waitFor(() => {
     const indicator = document.querySelector<HTMLElement>(
@@ -431,26 +429,26 @@ test("Keep the prior goal result as main while the next run has no output", asyn
   const answer = await screen.findByText(
     "The current launch evidence is ready.",
   );
-  const historyMessage = screen.getByText(
-    "The earlier launch evidence is complete.",
-  );
-  expect(historyMessage).toBeVisible();
   expect(
-    historyMessage.closest("[data-chat-run-work-history-list]"),
-  ).toBeVisible();
+    screen.queryByText("The earlier launch evidence is complete."),
+  ).toBeNull();
   expect(queryButton("The earlier launch evidence is complete.")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
   const answeringAssistant = answer.closest<HTMLElement>(
     '[data-role="assistant"]',
   );
   if (!answeringAssistant) {
     throw new Error("Expected the answer in an assistant response");
   }
+  click(await findWorkHistoryToggle("collapsed"));
+  const historyMessage = await screen.findByText(
+    "The earlier launch evidence is complete.",
+  );
+  expect(historyMessage).toBeVisible();
   expect(historyMessage.closest('[data-role="assistant"]')).toBe(
     answeringAssistant,
   );
   expect(answeringAssistant).toBe(pendingAssistant);
-  expect(queryButton("Expand grouped run history")).toBeNull();
   expect(
     queryAllByRoleFast("link", answeringAssistant).filter((link) => {
       return link.getAttribute("aria-label") === "View agent profile";
@@ -531,7 +529,6 @@ test("Open an archived goal run from a linked event", async () => {
   await setupPage({
     context,
     path: `${RUN_PATH}#event-${LINKED_ARCHIVED_EVENT_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -539,5 +536,4 @@ test("Open an archived goal run from a linked event", async () => {
   expect(linkedResult).toBeVisible();
   expect(screen.getByText("Latest launch result")).toBeVisible();
   expect(queryWorkHistoryToggle("collapsed")).toBeNull();
-  expect(queryButton("Collapse grouped run history")).toBeNull();
 });

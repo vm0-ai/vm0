@@ -1,5 +1,69 @@
 # Changelog
 
+## [8.640.0](https://github.com/vm0-ai/vm0/compare/core-v8.639.0...core-v8.640.0) (2026-09-09)
+
+
+### Features
+
+* **platform:** frame every avatar to one size in its box ([#32766](https://github.com/vm0-ai/vm0/issues/32766)) ([90c14bb](https://github.com/vm0-ai/vm0/commit/90c14bb0f0374714cf14ecb1b41762eabb940708))
+
+## [8.639.0](https://github.com/vm0-ai/vm0/compare/core-v8.638.1...core-v8.639.0) (2026-09-09)
+
+
+### Features
+
+* **app:** add the connector directory behind a feature switch ([#32703](https://github.com/vm0-ai/vm0/issues/32703)) ([b671bb4](https://github.com/vm0-ai/vm0/commit/b671bb4ad7e3fba6e154a66b2cce71323a4c4d82))
+
+## [8.638.1](https://github.com/vm0-ai/vm0/compare/core-v8.638.0...core-v8.638.1) (2026-09-09)
+
+
+### Refactoring
+
+* **platform:** remove chat run work folding switch ([#32727](https://github.com/vm0-ai/vm0/issues/32727)) ([1357f20](https://github.com/vm0-ai/vm0/commit/1357f20a71a4ddfad029682d776826593492f0cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.1
+
+## [8.638.0](https://github.com/vm0-ai/vm0/compare/core-v8.637.2...core-v8.638.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+* **artifacts:** keep managed generation private behind shared rollout switch ([#32687](https://github.com/vm0-ai/vm0/issues/32687)) ([71f6608](https://github.com/vm0-ai/vm0/commit/71f66085b5c5d01fafb47e7ab3379fac0ccfd113))
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.0
+
+## [8.637.2](https://github.com/vm0-ai/vm0/compare/core-v8.637.1...core-v8.637.2) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.1
+
+## [8.637.1](https://github.com/vm0-ai/vm0/compare/core-v8.637.0...core-v8.637.1) (2026-09-08)
+
+
+### Refactoring
+
+* remove presentation templates feature switch ([#32664](https://github.com/vm0-ai/vm0/issues/32664)) ([136add4](https://github.com/vm0-ai/vm0/commit/136add49f199cc0df10e826ed15885fb4767dc87))
+
 ## [8.637.0](https://github.com/vm0-ai/vm0/compare/core-v8.636.0...core-v8.637.0) (2026-09-08)
 
 

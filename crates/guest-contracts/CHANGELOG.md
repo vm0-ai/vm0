@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.5...guest-contracts-v0.13.6) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** reduce workspace mount helper process fanout ([#32704](https://github.com/vm0-ai/vm0/issues/32704)) ([6948274](https://github.com/vm0-ai/vm0/commit/69482746ed271dfbce548e7a32ec86869d144172))
+
 ## [0.13.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.4...guest-contracts-v0.13.5) (2026-09-08)
 
 ## [0.13.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.3...guest-contracts-v0.13.4) (2026-09-08)

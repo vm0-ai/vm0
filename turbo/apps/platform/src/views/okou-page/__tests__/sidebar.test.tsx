@@ -2524,7 +2524,6 @@ test("Search workspace chats and messages", async () => {
               },
             ]
           : [],
-      hasMore: false,
     });
   });
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
@@ -2680,7 +2679,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
     }),
   ]);
   context.mocks.api(chatSearchContract.search, ({ respond }) => {
-    return respond(200, { results: [], hasMore: false });
+    return respond(200, { results: [] });
   });
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
     return respond(200, { artifacts: [], nextCursor: null });

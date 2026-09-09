@@ -157,7 +157,7 @@ test.describe("English startup in a non-English browser", () => {
 
     const heading = authV2Root(page).locator("h1");
     await expect(heading).toBeVisible();
-    await expect(heading).toContainText(/Okou|VM0/);
+    await expect(heading).toContainText("Okou");
     await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(heading).toBeFocused();

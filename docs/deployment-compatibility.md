@@ -429,6 +429,24 @@ Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
 
+### Okou Goal retirement rollback floor
+
+The production rollback resolver requires the release/API target to contain
+Goal retirement commit `6d391117e4fead19e2105136fb2792a6e77801d8`. The first
+compatible release is `1f68f182a2457ec3aea52d8063be2bd2d2263abd` (API 1.571.1).
+This permanent floor prevents canonical rollback from restoring Goal creation,
+reactivation, or continuation. It rejects pre-boundary targets before API or
+Runner artifact resolution and output publication, even if the rollback
+dashboard still lists those historical releases.
+
+Apply this floor only to the release/API target: the first compatible release
+retained an older Runner tag. All independent Runner ancestry, reader, host
+architecture, and release-asset checks still apply. The rollback workflow loads
+the resolver from current `main`, so merging the guard constrains future
+canonical executions without a release or test rollback. This does not prove
+that old fixed API deployments are non-writable or authorize Goal archival;
+those remain separate gates in [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
+
 ### Workflow automation connector-account projections
 
 Connector-backed workflow event automations persist account authority in an

@@ -64,6 +64,9 @@ const IMAGE_IO_MODEL = "gpt-image-1";
 const FAL_GPT_IMAGE_1_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
 const FAL_GPT_IMAGE_2_URL = "https://queue.fal.run/openai/gpt-image-2";
+const OPENAI_IMAGE_GENERATIONS_URL =
+  "https://api.openai.com/v1/images/generations";
+const OPENAI_IMAGE_EDITS_URL = "https://api.openai.com/v1/images/edits";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL =
@@ -159,6 +162,19 @@ const IMAGE_PRICING_CATEGORIES = [
   "output_image.high.standard",
   "output_image.high.large",
 ] as const;
+const GPT_IMAGE_2_5_MODELS = [
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
+] as const;
+const GPT_IMAGE_2_5_PRICING = GPT_IMAGE_2_5_MODELS.flatMap((provider) => {
+  return [
+    { category: "tokens.input.text", unitPrice: 6000 },
+    { category: "tokens.input.image", unitPrice: 9600 },
+    { category: "tokens.output.image", unitPrice: 36_000 },
+  ].map((row) => {
+    return { ...row, kind: "image", provider, unitSize: 1_000_000 };
+  });
+}) satisfies readonly UsagePricingRow[];
 
 const tokenRequest = Object.freeze({
   keyName: "test-key",
@@ -758,6 +774,240 @@ describe("POST /api/image-io/generate", () => {
       },
     });
     expect(calledFal).toBeFalsy();
+  });
+
+  it.each([
+    { model: "gpt-image-2.5-flare", quality: "xhigh", editing: false },
+    { model: "gpt-image-2.5-sunburst", quality: "max", editing: true },
+  ])(
+    "generates $model images through OpenAI and bills actual tokens",
+    async ({ model, quality, editing }) => {
+      const fixture = await seedImageFixture({ credits: 1000 });
+      const pricingFixture = await createScopedImagePricing({
+        configured: GPT_IMAGE_2_5_PRICING,
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      let observedBody: unknown;
+      let observedAuthorization: string | null = null;
+      server.use(
+        http.post(
+          editing ? OPENAI_IMAGE_EDITS_URL : OPENAI_IMAGE_GENERATIONS_URL,
+          async ({ request }) => {
+            observedBody = await request.json();
+            observedAuthorization = request.headers.get("authorization");
+            return HttpResponse.json({
+              created: currentSecond(),
+              data: [{ b64_json: IMAGE_BYTES.toString("base64") }],
+              size: "1536x1024",
+              quality,
+              background: "transparent",
+              output_format: "webp",
+              usage: {
+                input_tokens: editing ? 1700 : 200,
+                input_tokens_details: {
+                  text_tokens: 200,
+                  image_tokens: editing ? 1500 : 0,
+                },
+                output_tokens: editing ? 2501 : 2500,
+                ...(editing
+                  ? {
+                      output_tokens_details: {
+                        image_tokens: 2500,
+                        text_tokens: 1,
+                      },
+                    }
+                  : {}),
+                total_tokens: editing ? 4201 : 2700,
+              },
+            });
+          },
+        ),
+      );
+      const app = createImageIoTestApp(pricingFixture.resolution);
+      const response = await app.request("/api/image-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          model,
+          prompt: "a product illustration",
+          size: "1536x1024",
+          quality,
+          background: "transparent",
+          outputFormat: "webp",
+          outputCompression: 80,
+          ...(editing
+            ? {
+                imageUrls: [MOCKUP_IMAGE_URL, SECOND_MOCKUP_IMAGE_URL],
+                maskImageUrl: THIRD_MOCKUP_IMAGE_URL,
+              }
+            : {}),
+        }),
+      });
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "image",
+        fixture.userId,
+      );
+      await flushWaitUntilForTest();
+
+      const status = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: authHeaders() },
+      );
+      expect(status.status).toBe(200);
+      const creditsCharged = editing ? 107 : 92;
+      await expect(status.json()).resolves.toMatchObject({
+        status: "completed",
+        result: {
+          model,
+          provider: "openai",
+          imageSize: "1536x1024",
+          quality,
+          background: "transparent",
+          outputFormat: "webp",
+          outputCompression: 80,
+          contentType: "image/webp",
+          size: IMAGE_BYTES.byteLength,
+          creditsCharged,
+          url: expect.any(String),
+        },
+      });
+      expect(observedAuthorization).toBe("Bearer test-openai-key");
+      expect(observedBody).toStrictEqual({
+        model,
+        prompt: "a product illustration",
+        n: 1,
+        size: "1536x1024",
+        quality,
+        background: "transparent",
+        output_format: "webp",
+        output_compression: 80,
+        moderation: "auto",
+        ...(editing
+          ? {
+              images: [
+                { image_url: MOCKUP_IMAGE_URL },
+                { image_url: SECOND_MOCKUP_IMAGE_URL },
+              ],
+              mask: { image_url: THIRD_MOCKUP_IMAGE_URL },
+            }
+          : {}),
+      });
+      await expect(orgCredits(fixture)).resolves.toBe(1000 - creditsCharged);
+    },
+  );
+
+  it.each(GPT_IMAGE_2_5_MODELS)(
+    "rejects %s before generation when pricing is missing",
+    async (model) => {
+      const fixture = await seedImageFixture({ credits: 1000 });
+      const pricingFixture = await createScopedImagePricing({
+        missing: GPT_IMAGE_2_5_PRICING.filter((row) => {
+          return row.provider === model;
+        }),
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      let providerCalls = 0;
+      server.use(
+        http.post(OPENAI_IMAGE_GENERATIONS_URL, () => {
+          providerCalls += 1;
+          return HttpResponse.json({});
+        }),
+      );
+      const app = createImageIoTestApp(pricingFixture.resolution);
+      const response = await app.request("/api/image-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ model, prompt: "a product illustration" }),
+      });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: "NOT_CONFIGURED",
+          message: "Image generation pricing is not configured",
+        },
+      });
+      expect(providerCalls).toBe(0);
+      await expect(orgCredits(fixture)).resolves.toBe(1000);
+    },
+  );
+
+  it.each([
+    {
+      upstreamStatus: 200,
+      responseBody: { data: [{ b64_json: IMAGE_BYTES.toString("base64") }] },
+      code: "OPENAI_IMAGE_BAD_RESPONSE",
+    },
+    {
+      upstreamStatus: 429,
+      responseBody: { error: { message: "Rate limit exceeded" } },
+      code: "OPENAI_IMAGE_REQUEST_FAILED",
+    },
+  ])(
+    "fails OpenAI jobs without charging for $code",
+    async ({ upstreamStatus, responseBody, code }) => {
+      const fixture = await seedImageFixture({ credits: 1000 });
+      const pricingFixture = await createScopedImagePricing({
+        configured: GPT_IMAGE_2_5_PRICING,
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      server.use(
+        http.post(OPENAI_IMAGE_GENERATIONS_URL, () => {
+          return HttpResponse.json(responseBody, { status: upstreamStatus });
+        }),
+      );
+      const app = createImageIoTestApp(pricingFixture.resolution);
+      const response = await app.request("/api/image-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          model: "gpt-image-2.5-flare",
+          prompt: "a product illustration",
+        }),
+      });
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "image",
+        fixture.userId,
+      );
+      await flushWaitUntilForTest();
+      const status = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: authHeaders() },
+      );
+      expect(status.status).toBe(200);
+      await expect(status.json()).resolves.toMatchObject({
+        status: "failed",
+        error: { code },
+      });
+      await expect(orgCredits(fixture)).resolves.toBe(1000);
+    },
+  );
+
+  it("keeps GPT Image 2 limited to its supported quality levels", async () => {
+    const fixture = await seedImageFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const response = await createImageIoTestApp().request(
+      "/api/image-io/generate",
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          model: "gpt-image-2",
+          prompt: "a product illustration",
+          quality: "xhigh",
+        }),
+      },
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+        message: "Unsupported image quality: xhigh",
+      },
+    });
   });
 
   it("uses the stable run snapshot for omitted and blank models", async () => {

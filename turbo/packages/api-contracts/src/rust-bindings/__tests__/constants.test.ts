@@ -68,12 +68,12 @@ const canonicalGuestHomeDirDoc = [
 ] as const;
 
 const canonicalClaudeConfigDirDoc = [
-  "Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+  "Canonical directory for Okou-managed Claude Code configuration and session state inside runner guests.",
   "Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.",
 ] as const;
 
 const canonicalCodexHomeDirDoc = [
-  "Canonical directory for VM0-managed Codex state inside runner guests.",
+  "Canonical directory for Okou-managed Codex state inside runner guests.",
   "Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.",
 ] as const;
 
@@ -601,13 +601,13 @@ describe("Rust constant bindings", () => {
       `pub const CANONICAL_GUEST_HOME_DIR: &str = "${CANONICAL_GUEST_HOME_DIR}";`,
     );
     expect(firstRender).toContain(
-      "/// Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+      "/// Canonical directory for Okou-managed Claude Code configuration and session state inside runner guests.",
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_CLAUDE_CONFIG_DIR: &str = "${CANONICAL_CLAUDE_CONFIG_DIR}";`,
     );
     expect(firstRender).toContain(
-      "/// Canonical directory for VM0-managed Codex state inside runner guests.",
+      "/// Canonical directory for Okou-managed Codex state inside runner guests.",
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_CODEX_HOME_DIR: &str = "${CANONICAL_CODEX_HOME_DIR}";`,

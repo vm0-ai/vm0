@@ -228,7 +228,7 @@ export const apiAgentsHandlers = [
 
   // GET /api/chat/search
   mockApi(chatSearchContract.search, ({ respond }) => {
-    return respond(200, { results: [], hasMore: false });
+    return respond(200, { results: [] });
   }),
 
   // GET /api/indicators

@@ -64,134 +64,158 @@ describe("okou host publish command", () => {
     }
   });
 
-  it("uploads a default robots.txt and prints artifact presentation context", async () => {
-    const index = "<!doctype html><main>Hosted site</main>";
-    let uploadedRobots = false;
+  it.each([
+    { label: "public", privateArtifact: false },
+    { label: "private", privateArtifact: true },
+  ])(
+    "uploads a $label bundle and returns the exact API-selected URL in text and JSON",
+    async ({ privateArtifact }) => {
+      const artifactUrl = privateArtifact
+        ? "http://localhost:3000/api/host/private-deployments/00000000-0000-4000-8000-000000000002/view"
+        : ARTIFACT_URL;
+      const url = privateArtifact ? artifactUrl : ALIAS_URL;
+      const alias = privateArtifact ? {} : { aliasUrl: ALIAS_URL };
+      const index = "<!doctype html><main>Hosted site</main>";
+      let uploadedRobots = false;
 
-    writeFileSync(join(tempDir, "index.html"), index);
+      writeFileSync(join(tempDir, "index.html"), index);
 
-    server.use(
-      http.post(PREPARE_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toBe("Bearer test-token");
-        const body = hostedSitePrepareRequestSchema.parse(await request.json());
-        expect(body).toMatchObject({
-          site: "demo-site",
-          artifactKind: "hosted-site",
-          spaFallback: true,
-        });
-        expect(body.slugSuffix).toBeUndefined();
+      server.use(
+        http.post(PREPARE_URL, async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-token",
+          );
+          const body = hostedSitePrepareRequestSchema.parse(
+            await request.json(),
+          );
+          expect(body).toMatchObject({
+            site: "demo-site",
+            artifactKind: "hosted-site",
+            spaFallback: true,
+          });
+          expect(body.slugSuffix).toBeUndefined();
 
-        const filesByPath = new Map(
-          body.files.map((file) => {
-            return [file.path, file];
-          }),
-        );
+          const filesByPath = new Map(
+            body.files.map((file) => {
+              return [file.path, file];
+            }),
+          );
 
-        expect(filesByPath.get("/index.html")).toMatchObject({
-          size: Buffer.byteLength(index),
-          sha256: sha256(index),
-          contentType: "text/html; charset=utf-8",
-        });
-        expect(filesByPath.get("/robots.txt")).toMatchObject({
-          size: Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
-          sha256: sha256(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
-          contentType: "text/plain; charset=utf-8",
-        });
+          expect(filesByPath.get("/index.html")).toMatchObject({
+            size: Buffer.byteLength(index),
+            sha256: sha256(index),
+            contentType: "text/html; charset=utf-8",
+          });
+          expect(filesByPath.get("/robots.txt")).toMatchObject({
+            size: Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
+            sha256: sha256(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
+            contentType: "text/plain; charset=utf-8",
+          });
 
-        return HttpResponse.json({
-          siteId: "00000000-0000-4000-8000-000000000001",
-          deploymentId: "00000000-0000-4000-8000-000000000002",
-          publicSlug: "demo-site",
-          url: ALIAS_URL,
-          deploymentVersion: 1,
-          artifactUrl: ARTIFACT_URL,
-          aliasUrl: ALIAS_URL,
-          uploads: [
-            { path: "/index.html", uploadUrl: INDEX_UPLOAD_URL },
-            { path: "/robots.txt", uploadUrl: ROBOTS_UPLOAD_URL },
-          ],
-        });
-      }),
-      http.put(INDEX_UPLOAD_URL, async ({ request }) => {
-        expect(await request.text()).toBe(index);
-        return new HttpResponse(null, { status: 200 });
-      }),
-      http.put(ROBOTS_UPLOAD_URL, async ({ request }) => {
-        uploadedRobots = true;
-        expect(await request.text()).toBe(DEFAULT_HOSTED_SITE_ROBOTS_TXT);
-        return new HttpResponse(null, { status: 200 });
-      }),
-      http.post(COMPLETE_URL, ({ params }) => {
-        expect(params.deploymentId).toBe(
-          "00000000-0000-4000-8000-000000000002",
-        );
-        return HttpResponse.json({
-          siteId: "00000000-0000-4000-8000-000000000001",
-          deploymentId: "00000000-0000-4000-8000-000000000002",
-          publicSlug: "demo-site",
-          url: ALIAS_URL,
-          deploymentVersion: 1,
-          artifactUrl: ARTIFACT_URL,
-          aliasUrl: ALIAS_URL,
-          isActive: true,
-          activeDeploymentVersion: 1,
-          status: "ready",
-        });
-      }),
-    );
+          return HttpResponse.json({
+            siteId: "00000000-0000-4000-8000-000000000001",
+            deploymentId: "00000000-0000-4000-8000-000000000002",
+            publicSlug: "demo-site",
+            url,
+            deploymentVersion: 1,
+            artifactUrl,
+            ...alias,
+            uploads: [
+              { path: "/index.html", uploadUrl: INDEX_UPLOAD_URL },
+              { path: "/robots.txt", uploadUrl: ROBOTS_UPLOAD_URL },
+            ],
+          });
+        }),
+        http.put(INDEX_UPLOAD_URL, async ({ request }) => {
+          expect(await request.text()).toBe(index);
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.put(ROBOTS_UPLOAD_URL, async ({ request }) => {
+          uploadedRobots = true;
+          expect(await request.text()).toBe(DEFAULT_HOSTED_SITE_ROBOTS_TXT);
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, ({ params }) => {
+          expect(params.deploymentId).toBe(
+            "00000000-0000-4000-8000-000000000002",
+          );
+          return HttpResponse.json({
+            siteId: "00000000-0000-4000-8000-000000000001",
+            deploymentId: "00000000-0000-4000-8000-000000000002",
+            publicSlug: "demo-site",
+            url,
+            deploymentVersion: 1,
+            artifactUrl,
+            ...alias,
+            isActive: !privateArtifact,
+            activeDeploymentVersion: 1,
+            status: "ready",
+          });
+        }),
+      );
 
-    await hostCommand.parseAsync([
-      "node",
-      "cli",
-      tempDir,
-      "--site",
-      "demo-site",
-      "--spa",
-    ]);
+      await hostCommand.parseAsync([
+        "node",
+        "cli",
+        tempDir,
+        "--site",
+        "demo-site",
+        "--spa",
+      ]);
 
-    expect(uploadedRobots).toBe(true);
+      expect(uploadedRobots).toBe(true);
 
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("✓ Hosted site deployed");
-    expect(stdout).toContain(`Artifact: ${ARTIFACT_URL}`);
-    expect(stdout).toContain(`Alias: ${ALIAS_URL} → v1`);
-    expect(stdout).toContain("Artifact presentation context:");
-    expect(stdout).toContain(`[demo-site](<${ALIAS_URL}>)`);
-    expect(stdout).toContain(`\n\n![demo-site](<${ALIAS_URL}>)\n\n`);
-    expect(stdout).toContain(
-      "occupies its own Markdown paragraph, with a blank line before and after it, and is outside a code fence",
-    );
-    expect(stdout).toContain(
-      "Both forms reference the same artifact. Including both in one response creates two user-facing references.",
-    );
+      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(stdout).toContain("✓ Hosted site deployed");
+      expect(stdout).toContain(`Artifact: ${artifactUrl}`);
+      if (privateArtifact) {
+        expect(stdout).not.toContain(ALIAS_URL);
+        expect(stdout).not.toContain("Alias:");
+      } else {
+        expect(stdout).toContain(`Alias: ${ALIAS_URL} → v1`);
+      }
+      expect(stdout).toContain("Artifact presentation context:");
+      expect(stdout).toContain(`[demo-site](<${url}>)`);
+      expect(stdout).toContain(`\n\n![demo-site](<${url}>)\n\n`);
+      expect(stdout).toContain(
+        "occupies its own Markdown paragraph, with a blank line before and after it, and is outside a code fence",
+      );
+      expect(stdout).toContain(
+        "Both forms reference the same artifact. Including both in one response creates two user-facing references.",
+      );
 
-    mockConsoleLog.mockClear();
-    await hostCommand.parseAsync([
-      "node",
-      "cli",
-      tempDir,
-      "--site",
-      "demo-site",
-      "--spa",
-      "--json",
-    ]);
+      mockConsoleLog.mockClear();
+      await hostCommand.parseAsync([
+        "node",
+        "cli",
+        tempDir,
+        "--site",
+        "demo-site",
+        "--spa",
+        "--json",
+      ]);
 
-    const jsonOutput = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(jsonOutput) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      publicSlug: "demo-site",
-      deploymentVersion: 1,
-      artifactUrl: ARTIFACT_URL,
-      aliasUrl: ALIAS_URL,
-      isActive: true,
-      fileCount: 2,
-      size:
-        Buffer.byteLength(index) +
-        Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
-      inlineMarkdownLink: `[demo-site](<${ALIAS_URL}>)`,
-      previewMarkdownBlock: `![demo-site](<${ALIAS_URL}>)`,
-    });
-  });
+      const jsonOutput = mockConsoleLog.mock.calls.flat().join("\n");
+      const parsed = JSON.parse(jsonOutput) as Record<string, unknown>;
+      expect(parsed).toMatchObject({
+        publicSlug: "demo-site",
+        deploymentVersion: 1,
+        artifactUrl,
+        ...alias,
+        isActive: !privateArtifact,
+        fileCount: 2,
+        size:
+          Buffer.byteLength(index) +
+          Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
+        inlineMarkdownLink: `[demo-site](<${url}>)`,
+        previewMarkdownBlock: `![demo-site](<${url}>)`,
+      });
+      if (privateArtifact) {
+        expect(parsed.aliasUrl).toBeUndefined();
+        expect(jsonOutput).not.toContain(ALIAS_URL);
+      }
+    },
+  );
 
   it("preserves the legacy suffix and response shape during rollout", async () => {
     const index = "<!doctype html><main>Legacy hosted site</main>";

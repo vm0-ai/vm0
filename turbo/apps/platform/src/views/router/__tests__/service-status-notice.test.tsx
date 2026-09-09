@@ -71,7 +71,7 @@ test("An Okou production user can view and dismiss an active incident", async ()
   expect(statusRegion).not.toBeInTheDocument();
 });
 
-test("A VM0 production user sees an active maintenance notice", async () => {
+test("An Okou production user sees an active maintenance notice", async () => {
   mockDesktopLayout();
   context.mocks.http.get(STATUS_ISSUES_URL, () => {
     return HttpResponse.json({

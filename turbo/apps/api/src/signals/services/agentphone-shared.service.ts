@@ -20,7 +20,7 @@ const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
 /**
  * Handles that address the assistant in a group conversation. Every public
  * brand answers to all of them, because group members do not know which brand
- * the deployment presents and the VM0 brand still calls the assistant "Zero".
+ * the deployment presents. Retired names remain accepted for inbound compatibility.
  */
 const AGENTPHONE_MENTION_PATTERN = /(^|\s)@(zero|vm0|okou)\b/iu;
 
@@ -270,7 +270,6 @@ export async function resolveAgentPhoneAuditLogsUrl(
     readonly orgId: string;
     readonly userId: string;
     readonly runId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string | undefined> {

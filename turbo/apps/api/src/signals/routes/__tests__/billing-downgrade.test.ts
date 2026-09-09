@@ -835,7 +835,6 @@ describe("POST /api/billing/downgrade", () => {
     const periodEnd = 1_785_401_751;
     const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
     const okouFallbackReturnUrl = "https://app.okou.ai";
-    const vm0FallbackReturnUrl = "https://app.okou.ai";
     const explicitReturnUrl = "https://app.okou.ai/settings?settings=billing";
     const fixture = await track(
       store.set(
@@ -920,22 +919,6 @@ describe("POST /api/billing/downgrade", () => {
         },
       },
     });
-    context.mocks.stripe.checkout.sessions.create.mockClear();
-    const vm0Response = await accept(
-      client.create({
-        body: { targetTier: "pro" },
-        headers: { authorization: "Bearer clerk-session" },
-        extraHeaders: { origin: "https://app.okou.ai" },
-      }),
-      [200],
-    );
-    expect(vm0Response.body).toStrictEqual(response.body);
-    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success_url: vm0FallbackReturnUrl,
-        cancel_url: vm0FallbackReturnUrl,
-      }),
-    );
     context.mocks.stripe.checkout.sessions.create.mockClear();
     const explicitResponse = await accept(
       client.create({

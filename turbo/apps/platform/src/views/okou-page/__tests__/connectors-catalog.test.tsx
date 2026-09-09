@@ -253,12 +253,12 @@ test("Navigate the connector catalog with a keyboard", async () => {
   });
   ai.focus();
   await user.keyboard("{Enter}");
-  const models = getConnectorAction("button", "General Models and Reasoning");
+  const models = getConnectorAction("button", "General models and reasoning");
   models.focus();
   await user.keyboard("{Enter}");
   const engineering = getConnectorAction(
     "button",
-    "Engineering and Team Execution",
+    "Engineering and team execution",
   );
   engineering.focus();
   await user.keyboard("{Enter}");
@@ -427,8 +427,10 @@ test("Present a connector with no accounts", async () => {
   });
 
   click(connect);
-  await waitFor(() => {
-    expect(getConnectorAction("button", "Connect GitHub")).toBeDisabled();
-  });
+  await expect(
+    screen.findByRole("status", { name: "Connecting..." }),
+  ).resolves.toBeVisible();
+  expect(connect).toBeDisabled();
+  expect(screen.queryByRole("dialog")).toBeNull();
   oauthStarted.resolve();
 });

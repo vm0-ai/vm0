@@ -23,12 +23,12 @@ def install_runtime_compatibility() -> None:
     """Install all exact-version mitmproxy compatibility adaptations."""
     if version.VERSION != _SUPPORTED_MITMPROXY_VERSION:
         raise RuntimeError(
-            "VM0's runtime compatibility layer requires mitmproxy "
+            "Okou's runtime compatibility layer requires mitmproxy "
             f"{_SUPPORTED_MITMPROXY_VERSION}; found {version.VERSION}"
         )
     if wsproto.__version__ != _SUPPORTED_WSPROTO_VERSION:
         raise RuntimeError(
-            "VM0's runtime compatibility layer requires wsproto "
+            "Okou's runtime compatibility layer requires wsproto "
             f"{_SUPPORTED_WSPROTO_VERSION}; found {wsproto.__version__}"
         )
 

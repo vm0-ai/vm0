@@ -28,14 +28,14 @@ pub const HTTP_UPLOAD_TIMEOUT_SECS: u64 = 60;
 /// HTTP request timeout for one active-input receipt attempt, including API cold starts.
 pub const ACTIVE_INPUT_RECEIPT_TIMEOUT_SECS: u64 = 10;
 
-/// Maximum collected successful VM0 API response body size.
+/// Maximum collected successful Okou API response body size.
 ///
 /// This provides headroom above Vercel's 4.5 MB non-streaming function
 /// response limit. Model output and presigned object transfers do not use this
 /// control-plane response path.
 pub const API_SUCCESS_RESPONSE_BODY_MAX_BYTES: usize = 5 * 1024 * 1024;
 
-/// Maximum collected non-retryable VM0 API error response body size.
+/// Maximum collected non-retryable Okou API error response body size.
 pub const API_ERROR_RESPONSE_BODY_MAX_BYTES: usize = 64 * 1024;
 
 /// Global active-input receipt finalization budget, allowing one full HTTP attempt.

@@ -1,6 +1,6 @@
-# Build VM0 Runner (Rust)
+# Build Okou Runner (Rust)
 #
-# This playbook prepares a new version of the Rust-based VM0 runner on
+# This playbook prepares a new version of the Rust-based Okou runner on
 # production metal instances **without starting the service**. It copies the
 # binary, downloads dependencies, builds the default rootfs/snapshot, and
 # writes the per-version config file. The systemd service is installed by
@@ -14,7 +14,7 @@
 #   ansible-playbook -i "host1,host2," playbooks/build-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
-#     -e "api_url=https://www.vm0.ai" \
+#     -e "api_url=https://api.okou.ai" \
 #     -e "runner_version=0.3.0" \
 #     -e "r2_account_id=xxx" \
 #     -e "r2_access_key_id=xxx" \
@@ -31,7 +31,7 @@
 #       warm step can fail visibly instead of allowing every host to rebuild
 #       the same template locally.
 
-- name: Build VM0 Runner
+- name: Build Okou Runner
   hosts: all
   become: true
 

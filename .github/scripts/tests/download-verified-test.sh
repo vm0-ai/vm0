@@ -142,20 +142,4 @@ if find "$tmp_dir" -maxdepth 1 -name 'existing.tar.gz.partial.*' -print -quit | 
   exit 1
 fi
 
-legacy_state="${tmp_dir}/legacy.state"
-legacy_destination="${tmp_dir}/legacy.tar.gz"
-retired_prefix="VM0_"
-printf '0\n' > "$legacy_state"
-env \
-  "${retired_prefix}DOWNLOAD_VERIFIED_MAX_ATTEMPTS=invalid" \
-  "${retired_prefix}DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS=invalid" \
-  MOCK_CURL_MODE=success \
-  MOCK_CURL_SOURCE="$source_file" \
-  MOCK_CURL_STATE="$legacy_state" \
-  PATH="${tmp_dir}/bin:${PATH}" \
-  bash "$script" "$url" "$expected_sha256" "$legacy_destination" \
-    > /dev/null
-cmp "$source_file" "$legacy_destination"
-[[ "$(<"$legacy_state")" == "1" ]]
-
 echo "download-verified tests passed"

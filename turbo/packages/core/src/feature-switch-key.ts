@@ -51,7 +51,6 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
-  ChatRunWorkFolding = "chatRunWorkFolding",
   PrivateArtifacts = "privateArtifacts",
   AgentMessageMath = "agentMessageMath",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
@@ -64,7 +63,6 @@ export enum FeatureSwitchKey {
   CustomConnectorMcp = "customConnectorMcp",
   SshAccess = "sshAccess",
   PiLoop = "piLoop",
-  PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
   ChatDesktopSelection = "chatDesktopSelection",
@@ -73,4 +71,6 @@ export enum FeatureSwitchKey {
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
   AvatarNeckSweater = "avatarNeckSweater",
+  AvatarFraming = "avatarFraming",
+  ConnectorDirectory = "connectorDirectory",
 }

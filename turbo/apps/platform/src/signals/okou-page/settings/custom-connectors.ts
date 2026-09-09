@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { withConnectorConnectionProgress } from "../../connector-connection-progress.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   customConnectorByIdContract,
@@ -637,7 +638,7 @@ const authorizeCompletedCustomConnectorTarget$ = command(
   },
 );
 
-const connectCustomConnectorAuthorizationForTarget$ = command(
+const connectCustomConnectorAuthorizationForTargetCommand$ = command(
   async (
     { get, set },
     args: CustomConnectorAuthorizationTargetArgs,
@@ -767,6 +768,11 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
   },
 );
 
+const connectCustomConnectorAuthorizationForTarget$ =
+  withConnectorConnectionProgress(
+    connectCustomConnectorAuthorizationForTargetCommand$,
+  );
+
 export const connectCustomConnectorAuthorization$ = command(
   async (
     { set },
@@ -787,6 +793,33 @@ export const connectCustomConnectorAuthorization$ = command(
     );
   },
 );
+
+/** Custom connector cards have no inline connection indicator. */
+export const connectCustomConnectorAuthorizationWithDialog$ =
+  withConnectorConnectionProgress(
+    command(
+      async (
+        { set },
+        args: {
+          readonly id: string;
+          readonly account: PlatformConnectorAccountMutationIntent;
+          readonly onSuccess: (connectionId: string | null) => Promise<void>;
+        },
+        signal: AbortSignal,
+      ) => {
+        const result = await set(
+          connectCustomConnectorAuthorization$,
+          { id: args.id, account: args.account },
+          signal,
+        );
+        if (result.connected) {
+          signal.throwIfAborted();
+          await args.onSuccess(result.connectionId);
+        }
+      },
+    ),
+    { showDialog: true },
+  );
 
 export const connectCustomConnectorAuthorizationForAgent$ = command(
   async (

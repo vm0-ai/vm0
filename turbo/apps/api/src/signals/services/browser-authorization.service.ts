@@ -4,7 +4,6 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { browserAuthorizationRequests } from "@okouai/db/schema/browser-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -133,7 +132,6 @@ export const createBrowserAuthorizationRequest$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<CreateBrowserAuthorizationRequestResult> => {

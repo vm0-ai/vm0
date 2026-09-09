@@ -17,20 +17,26 @@ const c = initContract();
 const orientationSchema = z.enum(["landscape", "portrait"]);
 
 // The API additionally resolves every URL against the current user's managed
-// files and validates its actual MIME type before passing it to HeyGen.
-const fileUrlSchema = z
-  .url({ protocol: /^https$/, hostname: z.regexes.domain })
-  .pipe(
-    z.string().refine((value) => {
-      const url = new URL(value);
-      return (
-        !url.username &&
-        !url.password &&
-        !url.port &&
-        !/\.(?:localhost|local|internal)$/.test(url.hostname)
-      );
-    }, "Use a managed HTTPS file URL without credentials or custom ports"),
-  );
+// files and validates its actual MIME type before passing it to HeyGen. Stable
+// API references may use a local HTTP origin; the API verifies that origin and
+// ownership before converting them to signed R2 URLs.
+const fileUrlSchema = z.url({ protocol: /^https?$/ }).pipe(
+  z.string().refine((value) => {
+    const url = new URL(value);
+    if (url.username || url.password) {
+      return false;
+    }
+    if (url.pathname === "/api/web/download-file") {
+      return z.uuid().safeParse(url.searchParams.get("file_id")).success;
+    }
+    return (
+      url.protocol === "https:" &&
+      z.regexes.domain.test(url.hostname) &&
+      !url.port &&
+      !/\.(?:localhost|local|internal)$/.test(url.hostname)
+    );
+  }, "Use a managed HTTPS file URL or an authenticated artifact reference without credentials"),
+);
 
 export const introVideoAgentGenerateRequestSchema = z.object({
   requestId: z.uuid(),

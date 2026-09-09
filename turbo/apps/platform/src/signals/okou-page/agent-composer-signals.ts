@@ -166,7 +166,6 @@ const noOpEventAction$ = command(
     return Promise.resolve();
   },
 );
-const noOp$ = command((): void => {});
 
 interface AgentComposerOptions {
   readonly forward?: ChatForwardContext;
@@ -325,8 +324,6 @@ function createAgentComposerSignalsWithDraft(
     cancellationRecoveryPending$: idle$,
     removeQueuedMessage$: noOpEventAction$,
     removeAutomationEvent$: noOpEventAction$,
-    cancelActiveGoal$: noOpAction$,
-    openActiveGoal$: noOp$,
   });
 }
 

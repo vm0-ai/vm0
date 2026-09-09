@@ -530,7 +530,8 @@ test("Leave an agent unauthorized when OAuth is cancelled", async () => {
       "https://oauth.test/github/authorize",
     );
   });
-  await screen.findByText("Connecting...");
+  await expect(screen.findByText("Connecting...")).resolves.toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
 
   authWindow.close();
 

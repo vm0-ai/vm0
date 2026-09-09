@@ -4,7 +4,6 @@ import {
   type MorningBriefPreferenceErrorCode,
   type MorningBriefPreferenceResponse,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isValidTimeZone } from "@okouai/core/timezone";
@@ -53,12 +52,9 @@ interface MorningBriefPreferenceArgs {
 
 interface MorningBriefPreferenceMutationArgs extends MorningBriefPreferenceArgs {
   readonly enabled: boolean;
-  readonly publicBrand: PublicBrand;
 }
 
-interface EnsureMorningBriefDefaultEnabledArgs extends MorningBriefPreferenceArgs {
-  readonly publicBrand: PublicBrand;
-}
+type EnsureMorningBriefDefaultEnabledArgs = MorningBriefPreferenceArgs;
 
 export type EnsureMorningBriefDefaultEnabledResult =
   | {
@@ -423,7 +419,6 @@ export const ensureMorningBriefDefaultEnabled$ = command(
             },
           ],
         },
-        args.publicBrand,
         signal,
       );
       signal.throwIfAborted();
@@ -516,7 +511,6 @@ export const updateMorningBriefPreference$ = command(
               },
             ],
           },
-          args.publicBrand,
           signal,
         );
         signal.throwIfAborted();
@@ -547,7 +541,6 @@ export const updateMorningBriefPreference$ = command(
             orgId: args.orgId,
             member: args.member,
             workflowId: installation.id,
-            publicBrand: args.publicBrand,
           },
           signal,
         );

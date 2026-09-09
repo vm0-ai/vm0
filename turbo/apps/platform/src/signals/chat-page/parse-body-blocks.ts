@@ -1,4 +1,5 @@
 import { resolveApiBase } from "../api-base.ts";
+import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import {
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
@@ -494,6 +495,13 @@ function hostedSiteAttachment(
   url: string,
   title?: string,
 ): ChatAttachmentDescriptor | null {
+  if (privateHostedDeploymentId(url, resolveApiBase())) {
+    return {
+      filename: title?.trim() || "Artifact.html",
+      url,
+      contentType: "text/html",
+    };
+  }
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
   const parsed = tryParseUrl(url, baseUrl);
@@ -514,7 +522,11 @@ function hostedSiteAttachment(
 }
 
 export function isPreviewableChatUrl(url: string): boolean {
-  return isPlatformFileUrl(url) || isHostedSiteUrl(url);
+  return (
+    Boolean(privateHostedDeploymentId(url, resolveApiBase())) ||
+    isPlatformFileUrl(url) ||
+    isHostedSiteUrl(url)
+  );
 }
 
 export function previewAttachmentFromUrl(

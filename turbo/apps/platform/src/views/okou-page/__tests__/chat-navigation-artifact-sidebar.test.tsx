@@ -4,7 +4,7 @@ import type {
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
@@ -387,7 +387,9 @@ test("Refresh a private document on tab return while preserving an existing publ
     visibility.changeTo("visible");
   });
   await waitFor(() => {
-    expectOfficeViewerUrl(frame, refreshedUrl);
+    const refreshedFrame = within(dialog).getByTitle(`${filename} preview`);
+    expect(refreshedFrame).toBeVisible();
+    expectOfficeViewerUrl(refreshedFrame, refreshedUrl);
   });
   expect(screen.getByAltText(publicFilename)).toHaveAttribute(
     "src",
@@ -497,6 +499,12 @@ test("Explain empty and unavailable CSV previews", async () => {
 });
 
 test("Expand a diagram from a Markdown artifact", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    1600,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    900,
+  );
   useWideScreen();
   const summary = artifactSummary(MARKDOWN_ID, "file", "Architecture notes.md");
   context.mocks.http.get(MARKDOWN_URL, () => {
@@ -604,6 +612,12 @@ test("Preview a hosted site artifact in the thread sidebar", async () => {
 });
 
 test("Zoom and reset an image artifact preview", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    1600,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    900,
+  );
   useWideScreen();
   const summary = artifactSummary(IMAGE_ID, "image", "Launch graphic");
   mockArtifactConversation(context, {

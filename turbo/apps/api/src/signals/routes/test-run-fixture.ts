@@ -13,7 +13,6 @@ import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import { createTestFixtureAgentRun$ } from "../services/agent-runs-create.service";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const c = initContract();
 
@@ -63,7 +62,6 @@ const createAgentRunFixture$ = command(
           auth,
           body: body.data,
           apiStartTime,
-          publicBrand: PUBLIC_BRAND,
           piExecution: false,
           timing,
         };

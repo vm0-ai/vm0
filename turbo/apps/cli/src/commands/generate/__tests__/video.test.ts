@@ -290,6 +290,54 @@ describe("okou generate video command", () => {
     expect(mockConsoleLog).not.toHaveBeenCalled();
   });
 
+  it.each([true, false])(
+    "validates frame dimensions without sending credentials to a foreign origin (owned API=%s)",
+    async (ownedApi) => {
+      const origin = ownedApi
+        ? "http://localhost:3000"
+        : "https://foreign.example";
+      const frame = `${origin}/api/web/download-file?file_id=private-frame&filename=frame.png`;
+      let authorization: string | null = null;
+      let videoInput: unknown;
+      server.use(
+        http.get(`${origin}/api/web/download-file`, ({ request }) => {
+          authorization = request.headers.get("authorization");
+          return imageResponse(1080, 1920);
+        }),
+        http.post(VIDEO_URL, async ({ request }) => {
+          videoInput = await request.json();
+          const { sourceUrl: _sourceUrl, ...result } = VIDEO_RESULT;
+          return HttpResponse.json({
+            ...result,
+            url: "http://localhost:3000/api/web/download-file?file_id=private-video&filename=video.mp4",
+          });
+        }),
+      );
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "video",
+        "--prompt",
+        "Animate this private frame",
+        "--aspect-ratio",
+        "9:16",
+        "--first-frame-image-url",
+        frame,
+        "--json",
+      ]);
+      expect(authorization).toBe(ownedApi ? "Bearer test-token" : null);
+      expect(videoInput).toMatchObject({ firstFrameImageUrl: frame });
+      const output = mockConsoleLog.mock.calls
+        .map(([value]) => {
+          return String(value);
+        })
+        .join("\n");
+      expect(output).toContain("/api/web/download-file?file_id=private-video");
+      expect(output).not.toContain(VIDEO_RESULT.sourceUrl);
+      expect(output).not.toContain("test-token");
+    },
+  );
+
   it("should reject frame images that do not match --aspect-ratio before generating", async () => {
     const postVideo = vi.fn();
     server.use(

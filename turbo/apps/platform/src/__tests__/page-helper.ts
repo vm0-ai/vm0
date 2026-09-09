@@ -544,9 +544,9 @@ export function click(element: Element): void {
 }
 
 /**
- * Keep a rendered element's CSS animation pending until the returned callback
- * runs. happy-dom does not implement Web Animations, so Base UI otherwise
- * completes exit transitions immediately instead of retaining visible content.
+ * Keep a rendered element's CSS transition or animation pending until the
+ * returned callback runs. happy-dom does not implement Web Animations, so Base
+ * UI otherwise completes exits immediately instead of retaining visible content.
  */
 export function holdElementAnimations(element: Element): () => void {
   let finish = () => {};

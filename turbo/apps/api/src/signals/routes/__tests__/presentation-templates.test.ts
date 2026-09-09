@@ -1,14 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { createBddApi } from "./helpers/api-bdd";
 import { createRouteMocks } from "./helpers/route-test";
 import { presentationTemplatesRoutes } from "../presentation-templates";
 
@@ -18,20 +16,6 @@ const mocks = createRouteMocks(context);
 
 function webHeaders() {
   return { authorization: "Bearer clerk-session" };
-}
-
-async function setPresentationTemplatesEnabled(
-  actor: ApiTestUser,
-  enabled: boolean,
-): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Presentation template tests require an organization");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId: actor.orgId },
-    { [FeatureSwitchKey.PresentationTemplates]: enabled },
-  );
 }
 
 function templateClient() {
@@ -45,21 +29,11 @@ beforeEach(() => {
 });
 
 describe("presentation template owner routes", () => {
-  it("enables the owner collection by default and respects explicit overrides", async () => {
+  it("lists the owner collection", async () => {
     const actor = bdd.user();
     mocks.clerk.session(actor.userId, actor.orgId);
     const client = templateClient();
 
-    const defaultResponse = await accept(
-      client.list({ headers: webHeaders() }),
-      [200],
-    );
-    expect(defaultResponse.body).toStrictEqual([]);
-
-    await setPresentationTemplatesEnabled(actor, false);
-    await accept(client.list({ headers: webHeaders() }), [403]);
-
-    await setPresentationTemplatesEnabled(actor, true);
     const response = await accept(
       client.list({ headers: webHeaders() }),
       [200],

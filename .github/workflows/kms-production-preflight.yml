@@ -35,9 +35,10 @@ jobs:
         with:
           node-version: 22
       - name: Install migration dependencies
+        working-directory: turbo
         run: |
           corepack enable pnpm
-          pnpm --dir turbo install --frozen-lockfile --ignore-scripts --filter @okouai/db...
+          pnpm install --frozen-lockfile --ignore-scripts --filter @okouai/db...
           command -v aws
       - name: Resolve the production database
         env:

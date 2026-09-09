@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.3...guest-control-client-v0.19.4) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** attribute guest connection startup phases ([#32705](https://github.com/vm0-ai/vm0/issues/32705)) ([176ca98](https://github.com/vm0-ai/vm0/commit/176ca98235eee2d021f23448aef8158d51ecb43f))
+
 ## [0.19.3](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.2...guest-control-client-v0.19.3) (2026-09-08)
 
 ## [0.19.2](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.1...guest-control-client-v0.19.2) (2026-09-08)

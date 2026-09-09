@@ -77,6 +77,50 @@ test("Markdown links load as editable instruction text", async () => {
   expect(pathname()).toBe(`/agents/${AGENT_ID}`);
 });
 
+test.each([
+  { name: "saved instructions", initialContent: "Review release notes" },
+  { name: "empty instructions", initialContent: "" },
+])("Discard restores $name and exits editing", async ({ initialContent }) => {
+  await setupInstructionsPage(initialContent);
+  const user = userEvent.setup({ delay: null });
+  const editor = await instructionsEditor();
+
+  await fill(editor, "Unsaved instructions");
+  await user.click(editor);
+  expect(editor).toHaveFocus();
+  const unsavedBar = await screen.findByTestId("unsaved-bar");
+
+  click(within(unsavedBar).getByTestId("discard-button"));
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Instructions editor").textContent).toBe(
+      initialContent,
+    );
+  });
+  const restoredEditor = await instructionsEditor();
+  expect(restoredEditor).not.toHaveFocus();
+  expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
+
+  await user.click(restoredEditor);
+  await user.keyboard("{Control>}z{/Control}");
+
+  expect(restoredEditor.textContent).toBe(initialContent);
+  expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
+
+  await fill(restoredEditor, "A fresh edit");
+  const nextUnsavedBar = await screen.findByTestId("unsaved-bar");
+
+  click(within(nextUnsavedBar).getByTestId("discard-button"));
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Instructions editor").textContent).toBe(
+      initialContent,
+    );
+  });
+  expect(screen.getByLabelText("Instructions editor")).not.toHaveFocus();
+  expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
+});
+
 test("A user can format and save agent instructions", async () => {
   const updates: string[] = [];
   await setupInstructionsPage("Review release notes", (content) => {
@@ -122,4 +166,17 @@ test("A user can format and save agent instructions", async () => {
   expect((await instructionsEditor()).querySelector("h2")).toHaveTextContent(
     "Launch risks",
   );
+
+  await fill(await instructionsEditor(), "An unsaved replacement");
+  const nextUnsavedBar = await screen.findByTestId("unsaved-bar");
+
+  click(within(nextUnsavedBar).getByTestId("discard-button"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByLabelText("Instructions editor").querySelector("h2"),
+    ).toHaveTextContent("Launch risks");
+  });
+  expect(screen.getByLabelText("Instructions editor")).not.toHaveFocus();
+  expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
 });

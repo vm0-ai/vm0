@@ -124,7 +124,6 @@ function generationTemplateTypeLabel(
  */
 interface GenerationTemplatePromptOptions {
   readonly introVideoEnabled?: boolean;
-  readonly presentationTemplatesEnabled?: boolean;
   readonly mountedUserPresentationTemplateIds?: readonly string[];
 }
 
@@ -154,7 +153,6 @@ export function buildGenerationTemplatePrompt(
 
   return buildPresentationGenerationTemplatePrompt(
     generationTemplate,
-    options.presentationTemplatesEnabled === true,
     options.mountedUserPresentationTemplateIds ?? [],
   );
 }
@@ -233,17 +231,10 @@ function buildWorkflowGenerationTemplatePrompt(
 
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
-  presentationTemplatesEnabled: boolean,
   mountedUserPresentationTemplateIds: readonly string[],
 ): GenerationTemplatePromptResult {
   const { templateId } = generationTemplate.selection;
   if (isUserPresentationTemplateId(templateId)) {
-    // Gated here rather than at the composer alone: an API version that still
-    // accepts the field must not honour a private id once the switch is off,
-    // and a run cannot mount a package the caller was never authorised for.
-    if (!presentationTemplatesEnabled) {
-      return { status: "invalid", message: "Unknown generation template" };
-    }
     const rowId = parseUserPresentationTemplateId(templateId);
     if (rowId === undefined) {
       return { status: "invalid", message: "Malformed presentation template" };

@@ -11,7 +11,7 @@ function browserResponse(overrides: Record<string, unknown> = {}) {
       threadId,
       name: "browser",
       status: "active",
-      viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
+      viewerUrl: `https://app.okou.ai/browsers/${threadId}`,
       liveUrl: "https://live.browser.example",
       screenshotUrl: null,
       proxyCountryCode: null,

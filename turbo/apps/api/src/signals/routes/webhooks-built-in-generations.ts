@@ -25,6 +25,7 @@ import {
 } from "../services/image-generation.service";
 import {
   builtInGenerationPublicBrand,
+  builtInGenerationIsPrivate,
   completeBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   getBuiltInGenerationWebhookJobByProviderJobId$,
@@ -919,6 +920,7 @@ const handleFalImageCompletion$ = command(
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -1009,6 +1011,7 @@ const handleBytePlusVideoCompletion$ = command(
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -1102,6 +1105,7 @@ const handleMiniMaxVideoCompletion$ = command(
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -1191,6 +1195,7 @@ const handleFalVideoCompletion$ = command(
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -1275,6 +1280,7 @@ const handleJoggAiAvatarVideoCompletion$ = command(
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -1357,6 +1363,7 @@ const handleHeyGenIntroVideoPresenterCompletion$ = command(
         userId: args.job.userId,
         runId: args.job.runId,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         pricing,
         generation: parsedIntroVideoPresenterGeneration({
           ...downloaded,

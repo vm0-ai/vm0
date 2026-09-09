@@ -130,6 +130,7 @@
         "diskPressure": "Workspace reuse was skipped because the runner was under disk pressure.",
         "environment": "Environment",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
+        "framework": "Framework",
         "generation": "Generation",
         "hostname": "Hostname",
         "invalidMetadata": "Cached workspace metadata was invalid.",
@@ -1954,6 +1955,44 @@
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
       "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
+      "directory": {
+        "allCategories": "All",
+        "askAdmin": "Ask an admin to enable",
+        "browse": "Browse connectors",
+        "configure": "Configure",
+        "connected": "Connected",
+        "createCustom": "Create custom",
+        "customBadge": "Custom",
+        "detailAccounts": "Accounts",
+        "detailCategory": "Category",
+        "detailConnection": "Connection",
+        "detailMethod": "Method",
+        "detailPermissions": "Permissions",
+        "emptyCustomBody": "Build one from any HTTP API or MCP server, and Okou can use it like any other connector.",
+        "emptyCustomTitle": "No custom connectors yet",
+        "emptyYoursBody": "Connect an app and Okou can read and act in it for you.",
+        "emptyYoursTitle": "You haven't connected anything yet",
+        "keyMove": "move",
+        "keyOpen": "open",
+        "matchCount_one": "{{count}} match",
+        "matchCount_other": "{{count}} matches",
+        "matchedOn": "Matched on name, description, and tags",
+        "moreAccounts_one": "+{{count}}",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "Needs attention",
+        "noResultsBody": "Try a product name, or build your own from an API or MCP server.",
+        "noResultsTitle": "No connector matches “{{query}}”",
+        "openDetailAria": "Open {{connector}} details",
+        "otherCategory": "Other",
+        "permissionCount_one": "{{count}} permission",
+        "permissionCount_other": "{{count}} permissions",
+        "searchYours": "Search your connectors",
+        "showAll_one": "Show all {{count}}",
+        "showAll_other": "Show all {{count}}",
+        "tabCustom": "Custom",
+        "tabDiscover": "Discover",
+        "tabYours": "Your connectors"
+      },
       "fallsBackTo": "Falls back to {{account}}",
       "find": "Find connectors...",
       "noUsableAccount": "No usable account",
@@ -2149,26 +2188,17 @@
     "promptDocumentTitle": "Prompt",
     "queue": {
       "aboutAutomationEvent": "About this automation event",
-      "aboutGoal": "About this goal",
       "aboutQueuedMessage": "About this queued message",
-      "activeGoal": "Active goal",
       "automationEvent": "Automation event",
       "automationEventDescription": "Waits behind queued messages and runs once the current run finishes.",
-      "cancelGoal": "Cancel goal",
       "cancellationRecoveryPending": "Finalizing the cancelled run before queued work continues.",
       "event_one": "{{count}} event",
       "event_other": "{{count}} events",
       "goal": "Goal",
-      "goalDescription": "Runs after the queue drains and keeps running until you cancel it.",
-      "goalLoadFailed": "Couldn't load this goal",
-      "goalRetry": "Close the dialog and open it again to retry.",
-      "goalUnavailable": "This goal is no longer available.",
       "itemsWaiting": "{{items}} waiting",
       "itemsWaitingTogether": "{{messages}} and {{events}} waiting",
-      "loadingGoal": "Loading goal...",
       "message_one": "{{count}} message",
       "message_other": "{{count}} messages",
-      "openGoalDetails": "Open goal details",
       "pendingAutomationEvent": "Pending automation event",
       "queuedMessage": "Queued message",
       "queuedMessageDescription": "Waits in line and sends once the current run finishes.",
@@ -2180,8 +2210,6 @@
       "title": "Replace composer draft?"
     },
     "run": {
-      "automatedRun": "Automated run",
-      "collapseGroupedHistory": "Collapse grouped run history",
       "collapseWorkHistory": "Collapse work history",
       "creditUsage": "Credit usage",
       "done": {
@@ -2196,28 +2224,19 @@
         "wrappedUp": "Wrapped up at {{time}}"
       },
       "duration": {
-        "hour_one": "{{count}} hour",
-        "hour_other": "{{count}} hours",
         "hoursShort_one": "{{count}}h",
         "hoursShort_other": "{{count}}h",
-        "minute_one": "{{count}} min",
-        "minute_other": "{{count}} mins",
         "minutesShort_one": "{{count}}m",
         "minutesShort_other": "{{count}}m",
         "secondsShort_one": "{{count}}s",
         "secondsShort_other": "{{count}}s"
       },
-      "durationFor": "{{duration}} for {{label}}",
-      "expandGroupedHistory": "Expand grouped run history",
       "expandWorkHistory": "Expand work history",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "Fast mode off",
       "fastModeOn": "Fast mode on",
       "fastModeWillBeOff": "Fast mode will be off",
       "fastModeWillBeOn": "Fast mode will be on",
-      "goalFor": "Goal for {{label}}",
-      "groupedRunsFor_one": "{{count}} run for {{source}}",
-      "groupedRunsFor_other": "{{count}} runs for {{source}}",
       "justNow": "just now",
       "keepGoing": "Keep going",
       "keepGoingAt": "Keep going · {{timestamp}}",
@@ -2242,7 +2261,6 @@
       "viewActivityLogs": "View activity logs",
       "viewLogs": "View run logs",
       "waitingIn": "Waiting in",
-      "worked": "Worked",
       "workedFor": "Worked for {{duration}}",
       "workingFor": "Working for {{duration}}"
     },
@@ -2282,13 +2300,9 @@
       "openChatMenu": "Open chat menu",
       "openListMenu": "Open chat list menu",
       "pin": "Pin chat",
-      "pinDropAfter": "Drop after {{title}}",
-      "pinDropBefore": "Drop before {{title}}",
       "pinned": "Pinned",
       "rename": "Rename chat",
       "renameDescription": "Enter a new name for this chat thread.",
-      "reorderInstructions": "Drag to reorder. Press Space to pick up, arrow keys to move, Space to drop, or Escape to cancel.",
-      "reorderThread": "Reorder {{title}}",
       "titlePlaceholder": "Chat title",
       "unpin": "Unpin chat",
       "unread": "Unread",
@@ -2516,8 +2530,8 @@
     },
     "callback": {
       "connected": "{{connector}} connected",
-      "connectedAs": "Connected as {{username}}. You can close this window.",
-      "connectedDescription": "Your account has been connected. You can close this window.",
+      "connectedAs": "Connected as {{username}}. Close this window and return to the original page to continue.",
+      "connectedDescription": "Your account has been connected. Close this window and return to the original page to continue.",
       "connecting": "Connecting {{connector}}…",
       "connectingDescription": "Please wait while we finish connecting your account.",
       "customConnectorLabel": "Custom connector",
@@ -2560,52 +2574,52 @@
           "menu": "AI"
         },
         "aiAgentApps": {
-          "label": "Agent Platforms and AI Apps",
-          "menu": "Agent Platforms"
+          "label": "Agent platforms and AI apps",
+          "menu": "Agent platforms"
         },
         "aiGeneralModels": {
-          "label": "General Models and Reasoning",
-          "menu": "General Models"
+          "label": "General models and reasoning",
+          "menu": "General models"
         },
         "aiImageVideo": {
-          "label": "Image / Video Generation",
-          "menu": "Image / Video"
+          "label": "Image / video generation",
+          "menu": "Image / video"
         },
         "aiMemoryTracingEval": {
-          "label": "Memory / Tracing / Evaluation",
-          "menu": "Memory / Tracing"
+          "label": "Memory / tracing / evaluation",
+          "menu": "Memory / tracing"
         },
         "aiVoiceAudio": {
-          "label": "Voice / Audio",
-          "menu": "Voice / Audio"
+          "label": "Voice / audio",
+          "menu": "Voice / audio"
         },
         "communicationCollaboration": {
-          "label": "Communication and Collaboration",
+          "label": "Communication and collaboration",
           "menu": "Communication"
         },
         "dataAutomationInfrastructure": {
-          "label": "Data, Automation, and Infrastructure",
-          "menu": "Data and Automation"
+          "label": "Data, automation, and infrastructure",
+          "menu": "Data and automation"
         },
         "docsFilesKnowledge": {
-          "label": "Docs, Files, and Knowledge",
+          "label": "Docs, files, and knowledge",
           "menu": "Documents"
         },
         "engineeringTeamExecution": {
-          "label": "Engineering and Team Execution",
+          "label": "Engineering and team execution",
           "menu": "Engineering"
         },
         "marketingContentGrowth": {
-          "label": "Marketing, Content, and Growth",
+          "label": "Marketing, content, and growth",
           "menu": "Marketing"
         },
         "meetingsScheduling": {
-          "label": "Meetings and Scheduling",
+          "label": "Meetings and scheduling",
           "menu": "Meetings"
         },
         "salesCrmBusinessOperations": {
-          "label": "Sales, CRM, and Business Operations",
-          "menu": "Sales and Business"
+          "label": "Sales, CRM, and business operations",
+          "menu": "Sales and business"
         }
       },
       "categoriesAria": "Connector categories",
@@ -2683,6 +2697,10 @@
         "title": "Connection methods unavailable"
       }
     },
+    "connectionProgress": {
+      "description": "Complete authorization if prompted. Please wait while we finish setting up your connection.",
+      "title": "Connecting your account"
+    },
     "custom": {
       "connect": {
         "configured": "Configured",
@@ -2751,7 +2769,7 @@
         "prefixesHint": "(one per line, https only)",
         "recommended": "(Recommended)",
         "redirectCopy": "Copy Redirect URL",
-        "redirectHint": "(Register this URL in the provider's OAuth application. Keep any existing VM0 or Okou redirect URL registered too.)",
+        "redirectHint": "(Register this URL in the provider's OAuth application.)",
         "redirectUrl": "Redirect URL",
         "removeApiAuthentication": "Remove API authentication",
         "removeAutomatic": "Remove Automatic authentication",
@@ -5641,7 +5659,7 @@
         "branches": "Branches",
         "branchesPlaceholder": "main, release",
         "commentPrefixes": "Comment prefixes",
-        "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "Conclusions",
         "conclusionsSummary": "Conclusions {{values}}",
         "creators": "Creators",

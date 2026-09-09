@@ -10,7 +10,7 @@ import {
  * Cooldown state for AgentPhone verification text sends.
  *
  * Rows are keyed by a logical scope so the send route can serialize concurrent
- * requests for both the VM0 user/org and the target phone number.
+ * requests for both the Okou user/org and the target phone number.
  */
 export const agentphoneVerificationSendCooldowns = pgTable(
   "agentphone_verification_send_cooldowns",

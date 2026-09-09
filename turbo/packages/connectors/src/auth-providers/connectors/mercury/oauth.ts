@@ -16,6 +16,15 @@ const MERCURY_ENDPOINTS = {
   },
 } as const;
 
+/**
+ * Mercury expects the granted scope on every refresh request as well as on
+ * the authorization request; a refresh without it fails once the first access
+ * token expires. Refresh calls carry no grant config, so the scope is pinned
+ * here and must stay equal to the Mercury connector catalog grant scopes.
+ * Mercury grants read-only access, so there is no write scope.
+ */
+const MERCURY_OAUTH_SCOPES = ["read", "offline_access"] as const;
+
 interface MercuryEndpoints {
   oauthBaseUrl: string;
   apiBaseUrl: string;
@@ -58,6 +67,40 @@ function mercuryClientAuthHeader(
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
 }
 
+/**
+ * Derive a PKCE code_verifier deterministically from the OAuth state so the
+ * callback can replay it without storing the verifier.
+ */
+async function deriveCodeVerifier(state: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(state + ":mercury-pkce-verifier");
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Compute the PKCE code_challenge from a code_verifier using S256.
+ */
+async function computeCodeChallenge(codeVerifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Base64url encode a byte array (RFC 7636).
+ */
+function base64UrlEncode(bytes: Uint8Array): string {
+  const binString = Array.from(bytes, (b) => {
+    return String.fromCharCode(b);
+  }).join("");
+  return btoa(binString)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 interface MercuryUserInfo {
   id: string;
   username: string | null;
@@ -80,24 +123,29 @@ interface MercuryRefreshResult {
 }
 
 /**
- * Build Mercury OAuth authorization URL.
- * Requests every scope Mercury registered for our client: openid for the
- * authenticated user's identity, read for accounts and transactions, and
- * offline_access for a refresh token. Mercury grants read-only access only,
- * so there is no write scope to request.
+ * Build Mercury OAuth authorization URL with a PKCE code_challenge.
+ * Requests every scope the connector catalog declares for the client: read
+ * for accounts and transactions, and offline_access for a refresh token.
+ * Mercury supports the authorization code grant with PKCE.
+ * Ref: https://docs.mercury.com/docs/integrations-with-oauth2
  */
-export function buildMercuryAuthorizationUrl(
+export async function buildMercuryAuthorizationUrl(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
-): string {
+): Promise<string> {
+  const codeVerifier = await deriveCodeVerifier(state);
+  const codeChallenge = await computeCodeChallenge(codeVerifier);
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     scope: authCodeGrant.scopes.join(" "),
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   return `${mercuryEndpoints().oauthBaseUrl}/oauth2/auth?${params.toString()}`;
@@ -105,6 +153,7 @@ export function buildMercuryAuthorizationUrl(
 
 /**
  * Exchange authorization code for access token and user info.
+ * Replays the PKCE code_verifier derived from the same OAuth state.
  */
 export async function exchangeMercuryCode(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
@@ -112,7 +161,9 @@ export async function exchangeMercuryCode(
   clientSecret: string,
   code: string,
   redirectUri: string,
+  state: string,
 ): Promise<MercuryTokenResult> {
+  const codeVerifier = await deriveCodeVerifier(state);
   const response = await fetch(
     `${mercuryEndpoints().oauthBaseUrl}/oauth2/token`,
     {
@@ -123,6 +174,7 @@ export async function exchangeMercuryCode(
       },
       body: new URLSearchParams({
         code,
+        code_verifier: codeVerifier,
         redirect_uri: redirectUri,
         grant_type: "authorization_code",
       }),
@@ -166,6 +218,7 @@ export async function exchangeMercuryCode(
 /**
  * Refresh a Mercury access token using the refresh token.
  * Returns new access token and new refresh token (both must be stored).
+ * Mercury requires the granted scope on the refresh request.
  * Access token expires_in: 3600s (1 hour). Ref: https://docs.mercury.com/reference/obtain-the-tokens
  */
 export async function refreshMercuryToken(
@@ -186,6 +239,7 @@ export async function refreshMercuryToken(
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: refreshToken,
+        scope: MERCURY_OAUTH_SCOPES.join(" "),
       }),
     },
   );

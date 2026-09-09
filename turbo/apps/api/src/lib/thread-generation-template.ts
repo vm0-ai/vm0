@@ -35,7 +35,6 @@ function noGenerationTemplates(): ResolvedThreadGenerationTemplates {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
-  readonly presentationTemplatesEnabled: boolean;
   readonly introVideoEnabled: boolean;
   /**
    * Private template row ids whose packages the run being built will mount.
@@ -45,7 +44,6 @@ export function resolveThreadGenerationTemplatePrompt(args: {
 }): ResolvedThreadGenerationTemplates {
   const options = {
     introVideoEnabled: args.introVideoEnabled,
-    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds: args.mountedUserPresentationTemplateIds,
   };
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {

@@ -859,9 +859,11 @@ export class ComputerUseRuntimeController {
     const runtime = this.runtime;
     this.runtime = null;
     if (runtime) this.setHostRuntimeOnline(false);
-    const stop = runtime?.stop() ?? Promise.resolve();
+    const stop = Promise.resolve().then(() => runtime?.stop());
     // Native disposal has its own process shutdown bound. Do not gate it on HTTP stop.
-    const retirement = this.driver?.retire(reason) ?? Promise.resolve();
+    const retirement = Promise.resolve().then(() =>
+      this.driver?.retire(reason),
+    );
     this.quitPromise = Promise.all([
       withComputerUseDeadline(
         stop,

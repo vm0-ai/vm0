@@ -11,6 +11,122 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.869.0](https://github.com/vm0-ai/vm0/compare/app-v0.868.1...app-v0.869.0) (2026-09-09)
+
+
+### Features
+
+* **platform:** frame every avatar to one size in its box ([#32766](https://github.com/vm0-ai/vm0/issues/32766)) ([90c14bb](https://github.com/vm0-ai/vm0/commit/90c14bb0f0374714cf14ecb1b41762eabb940708))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.640.0
+
+## [0.868.1](https://github.com/vm0-ai/vm0/compare/app-v0.868.0...app-v0.868.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **platform:** drop the dashed outline on a selected freehand stroke ([#32735](https://github.com/vm0-ai/vm0/issues/32735)) ([79896cd](https://github.com/vm0-ai/vm0/commit/79896cde1145c44abdba9ae62b13e94f791f7c51))
+
+## [0.868.0](https://github.com/vm0-ai/vm0/compare/app-v0.867.1...app-v0.868.0) (2026-09-09)
+
+
+### Features
+
+* **app:** add the connector directory behind a feature switch ([#32703](https://github.com/vm0-ai/vm0/issues/32703)) ([b671bb4](https://github.com/vm0-ai/vm0/commit/b671bb4ad7e3fba6e154a66b2cce71323a4c4d82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.639.0
+
+## [0.867.1](https://github.com/vm0-ai/vm0/compare/app-v0.867.0...app-v0.867.1) (2026-09-09)
+
+
+### Refactoring
+
+* **platform:** remove chat run work folding switch ([#32727](https://github.com/vm0-ai/vm0/issues/32727)) ([1357f20](https://github.com/vm0-ai/vm0/commit/1357f20a71a4ddfad029682d776826593492f0cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.1
+    * @okouai/connectors bumped to 3.8.5
+    * @okouai/core bumped to 8.638.1
+
+## [0.867.0](https://github.com/vm0-ai/vm0/compare/app-v0.866.1...app-v0.867.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+
+
+### Bug Fixes
+
+* **app:** reset agent instructions editor on discard ([#32674](https://github.com/vm0-ai/vm0/issues/32674)) ([7f52d90](https://github.com/vm0-ai/vm0/commit/7f52d90aee56e895c55bb79d176a6e296ad04409))
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+* **platform:** show connector progress only when feedback is missing ([#32602](https://github.com/vm0-ai/vm0/issues/32602)) ([9f6cc7c](https://github.com/vm0-ai/vm0/commit/9f6cc7cff0a3837627da0a1839454e8108a99460))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.0
+    * @okouai/core bumped to 8.638.0
+
+## [0.866.1](https://github.com/vm0-ai/vm0/compare/app-v0.866.0...app-v0.866.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** collapse nonempty chat work history by default ([#32690](https://github.com/vm0-ai/vm0/issues/32690)) ([c6894cb](https://github.com/vm0-ai/vm0/commit/c6894cba3b4678d6f6523ec19c243e6dd4611ff3))
+* **platform:** keep sidebar scrolling stable and reorder pins through menus ([#32688](https://github.com/vm0-ai/vm0/issues/32688)) ([232704f](https://github.com/vm0-ai/vm0/commit/232704f8fa63267630e296810a3b31e0d9b6b37c))
+* **ui:** unify base ui popup transitions ([#32669](https://github.com/vm0-ai/vm0/issues/32669)) ([c46e160](https://github.com/vm0-ai/vm0/commit/c46e160427dbf8bdd29d81a08cf7177843542f2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.1
+    * @okouai/core bumped to 8.637.2
+    * @okouai/ui bumped to 1.6.5
+
+## [0.866.0](https://github.com/vm0-ai/vm0/compare/app-v0.865.0...app-v0.866.0) (2026-09-08)
+
+
+### Features
+
+* **platform:** show the run framework in runner diagnostics ([#32671](https://github.com/vm0-ai/vm0/issues/32671)) ([8fe8e5b](https://github.com/vm0-ai/vm0/commit/8fe8e5bbabecc843edfb6d69d65da53e8ec720d9))
+
+
+### Bug Fixes
+
+* **ui:** use native base ui focus and image preview lifecycle ([#32574](https://github.com/vm0-ai/vm0/issues/32574)) ([712ce89](https://github.com/vm0-ai/vm0/commit/712ce890d2a8ff515b01b044f3ee489e9e5d5b9e))
+
+
+### Refactoring
+
+* remove presentation templates feature switch ([#32664](https://github.com/vm0-ai/vm0/issues/32664)) ([136add4](https://github.com/vm0-ai/vm0/commit/136add49f199cc0df10e826ed15885fb4767dc87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.637.1
+    * @okouai/ui bumped to 1.6.4
+
 ## [0.865.0](https://github.com/vm0-ai/vm0/compare/app-v0.864.0...app-v0.865.0) (2026-09-08)
 
 

@@ -13,7 +13,6 @@ import {
   isNotNull,
   lte,
   ne,
-  not,
   notExists,
   or,
   sql,
@@ -163,16 +162,6 @@ function chatThreadOpenDeliveryExists(
           eq(activeInputDeliveries.status, "open"),
         ),
       ),
-  );
-}
-
-export function chatThreadAdmissionAllowedCondition(
-  db: Pick<Db, "select">,
-  args: ChatThreadAdmissionConditionArgs,
-): SQL | undefined {
-  return and(
-    not(chatThreadRunAdmissionBlockerExists(db, args)),
-    not(chatThreadOpenDeliveryExists(db, args.threadId)),
   );
 }
 

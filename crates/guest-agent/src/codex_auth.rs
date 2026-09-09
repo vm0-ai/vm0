@@ -1,4 +1,4 @@
-//! Reconcile Codex `auth.json` in VM0's canonical Codex home before launching the CLI.
+//! Reconcile Codex `auth.json` in Okou's canonical Codex home before launching the CLI.
 //!
 //! The guest-agent owns the complete local Codex auth state because sandboxes
 //! can be reused across runs. Each run must therefore write the desired auth

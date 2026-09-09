@@ -16,6 +16,7 @@ members = [
     "codex-mock",
     "guest-state-restore",
     "guest-write-file",
+    "guest-workspace-mount",
     "nbd-cow",
     "runner",
     "sandbox",
@@ -51,6 +52,7 @@ claude-mock = { path = "claude-mock" }
 codex-mock = { path = "codex-mock" }
 guest-state-restore = { path = "guest-state-restore" }
 guest-write-file = { path = "guest-write-file" }
+guest-workspace-mount = { path = "guest-workspace-mount" }
 nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }
 sandbox-firecracker = { path = "sandbox-firecracker" }

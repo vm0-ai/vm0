@@ -7,9 +7,10 @@ import {
   resolveAvatarUrl,
 } from "../../views/okou-page/avatar-utils.ts";
 import {
+  AVATAR_ARTWORK_SLOT,
   AVATAR_HEAD_TRANSFORM_ORIGIN,
   avatarSvgComposition,
-  isLegacyAvatarSvgConfig,
+  avatarSvgContentTransform,
 } from "../../views/okou-page/avatar-svg-utils.ts";
 import { serializeAgentMention } from "./composer-agent-suggestion-domain.ts";
 import { AGENT_MENTION_NODE_NAME } from "./user-message-document-codec.ts";
@@ -25,23 +26,36 @@ interface AgentMentionAvatarSource {
   readonly avatarUrl: string | null;
 }
 
+/** The avatar composition switches, as seen by a mention chip. */
+export interface AgentMentionAvatarSwitches {
+  readonly neckSweater: boolean;
+  readonly framing: boolean;
+}
+
 export interface AgentMentionAvatarRuntime {
   readonly resolve: (agentId: string, fallback: string | null) => string | null;
   readonly replaceAgents: (agents: readonly AgentMentionAvatarSource[]) => void;
   /**
-   * The `avatarNeckSweater` switch. Mention chips are ProseMirror node views
-   * built outside React and outside command scope, so the switch is pushed in
-   * from the sync command that already feeds this runtime rather than read
-   * from `featureSwitch$` here.
+   * The `avatarNeckSweater` and `avatarFraming` switches. Mention chips are
+   * ProseMirror node views built outside React and outside command scope, so
+   * the switches are pushed in from the sync command that already feeds this
+   * runtime rather than read from `featureSwitch$` here.
    */
-  readonly setNeckSweaterEnabled: (enabled: boolean) => void;
-  readonly neckSweaterEnabled: () => boolean;
+  readonly setSwitches: (next: AgentMentionAvatarSwitches) => void;
+  /**
+   * Stable by reference until a field actually changes, which is what lets a
+   * node view detect a switch flip by identity.
+   */
+  readonly switches: () => AgentMentionAvatarSwitches;
   readonly subscribe: (listener: () => void) => () => void;
 }
 
 export function createAgentMentionAvatarRuntime(): AgentMentionAvatarRuntime {
   let agents: readonly AgentMentionAvatarSource[] = [];
-  let neckSweater = false;
+  let switches: AgentMentionAvatarSwitches = {
+    neckSweater: false,
+    framing: false,
+  };
   const listeners = new Set<() => void>();
   const notify = () => {
     for (const listener of listeners) {
@@ -59,15 +73,18 @@ export function createAgentMentionAvatarRuntime(): AgentMentionAvatarRuntime {
       agents = nextAgents;
       notify();
     },
-    setNeckSweaterEnabled(enabled) {
-      if (neckSweater === enabled) {
+    setSwitches(next) {
+      if (
+        switches.neckSweater === next.neckSweater &&
+        switches.framing === next.framing
+      ) {
         return;
       }
-      neckSweater = enabled;
+      switches = next;
       notify();
     },
-    neckSweaterEnabled() {
-      return neckSweater;
+    switches() {
+      return switches;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -100,18 +117,25 @@ export function agentMentionText(node: ProseMirrorNode): string {
 function renderAgentMentionAvatar(
   container: HTMLElement,
   avatarUrl: string | null,
-  neckSweater: boolean,
+  switches: AgentMentionAvatarSwitches,
 ): void {
   container.replaceChildren();
   const svgConfig = resolveAvatarSvgConfig(avatarUrl);
   if (svgConfig) {
-    const { behind, head, front, headScale } = avatarSvgComposition(svgConfig, {
-      neckSweater,
-    });
+    const { behind, head, front, headScale, contentOffsetY, contentScale } =
+      avatarSvgComposition(svgConfig, switches);
     const layers = document.createElement("span");
-    layers.className = isLegacyAvatarSvgConfig(svgConfig)
-      ? "absolute inset-0 scale-[1.25]"
-      : "absolute inset-0";
+    layers.className = "absolute inset-0";
+    for (const [name, value] of Object.entries(AVATAR_ARTWORK_SLOT)) {
+      layers.setAttribute(name, value);
+    }
+    const transform = avatarSvgContentTransform({
+      contentOffsetY: switches.framing ? contentOffsetY : 0,
+      contentScale,
+    });
+    if (transform) {
+      layers.style.transform = transform;
+    }
     const appendLayers = (parent: HTMLElement, urls: readonly string[]) => {
       for (const src of urls) {
         const image = document.createElement("img");
@@ -165,16 +189,16 @@ function createAgentMentionNodeView(
   let currentNode = node;
   let currentAvatarUrl: string | null | undefined;
   // The chip is redrawn only when its picture would actually change. The
-  // switch is part of that picture, not just the URL: flipping it swaps the
-  // layer set for the same avatar.
-  let currentNeckSweater: boolean | undefined;
+  // switches are part of that picture, not just the URL: flipping one swaps the
+  // layer set or the framing for the same avatar.
+  let currentSwitches: AgentMentionAvatarSwitches | undefined;
   function render(nextNode: ProseMirrorNode): void {
     const attributes = agentMentionAttributes(nextNode);
     const avatarUrl = avatarRuntime.resolve(
       attributes.agentId,
       attributes.avatarUrl,
     );
-    const neckSweater = avatarRuntime.neckSweaterEnabled();
+    const switches = avatarRuntime.switches();
     dom.dataset.agentMention = attributes.agentId;
     dom.dataset.agentName = attributes.name;
     if (avatarUrl === null) {
@@ -183,10 +207,10 @@ function createAgentMentionNodeView(
       dom.dataset.agentAvatarUrl = avatarUrl;
     }
     name.textContent = attributes.name;
-    if (avatarUrl !== currentAvatarUrl || neckSweater !== currentNeckSweater) {
+    if (avatarUrl !== currentAvatarUrl || switches !== currentSwitches) {
       currentAvatarUrl = avatarUrl;
-      currentNeckSweater = neckSweater;
-      renderAgentMentionAvatar(avatar, avatarUrl, neckSweater);
+      currentSwitches = switches;
+      renderAgentMentionAvatar(avatar, avatarUrl, switches);
     }
   }
   render(node);

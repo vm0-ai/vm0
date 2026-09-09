@@ -81,6 +81,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function signedSlackOAuthStateText(location: string | null): string {
+  return new URL(location ?? "").searchParams.get("state") ?? "";
+}
+
 function decodeSignedSlackOAuthState(state: string): unknown {
   const [encodedPayload, signature, extra] = state.split(".");
   if (!encodedPayload || !signature || extra) {
@@ -1994,6 +1998,10 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       isAdmin: true,
     });
 
+    const installStart = await integrations.requestSlackOauthInstall(
+      { orgId, userId: admin.userId, prompt: "install prompt" },
+      [307],
+    );
     context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
       slackBotOauthResponse({
         accessToken: "xoxb-bdd-slack",
@@ -2007,12 +2015,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const installed = await integrations.requestSlackOauthCallback(
       {
         code: "install-code",
-        state: JSON.stringify({
-          orgId,
-          userId: admin.userId,
-          prompt: "install prompt",
-          publicBrand: "okou",
-        }),
+        state: signedSlackOAuthStateText(installStart.headers.get("location")),
       },
       [307],
     );
@@ -2120,6 +2123,10 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       isConnected: false,
       isAdmin: false,
     });
+    const wrongTeamStart = await integrations.requestSlackOauthConnect(
+      { orgId, userId: disconnectedMember.userId },
+      [307],
+    );
     context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
       slackUserOauthResponse({
         workspaceId: "T_OTHER_BDD_SLACK",
@@ -2129,12 +2136,9 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const wrongTeam = await integrations.requestSlackOauthCallback(
       {
         code: "wrong-team-code",
-        state: JSON.stringify({
-          orgId,
-          userId: disconnectedMember.userId,
-          flow: "connect",
-          publicBrand: "okou",
-        }),
+        state: signedSlackOAuthStateText(
+          wrongTeamStart.headers.get("location"),
+        ),
       },
       [307],
     );
@@ -5316,7 +5320,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const slackUser1 = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUser1,
-      publicBrand: "okou",
     });
     integrations.clearSlackCallHistory();
 

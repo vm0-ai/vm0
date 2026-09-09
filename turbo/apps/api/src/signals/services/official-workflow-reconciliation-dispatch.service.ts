@@ -1,5 +1,4 @@
 import type { OfficialWorkflowBlueprintBindings } from "@okouai/api-contracts/contracts/official-workflow-catalog";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { command, createStore, state, type Command } from "ccstate";
 
 import type { WorkflowMember } from "./workflow-data.service";
@@ -28,7 +27,6 @@ export interface OfficialWorkflowReconciliationArgs {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly publicBrand: PublicBrand;
   readonly targetAutomationId?: string;
   readonly overrides?: readonly OfficialWorkflowBlueprintBindings[];
   /** Proactive workers must stop if the Definition retires mid-reconcile. */

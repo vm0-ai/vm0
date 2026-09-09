@@ -225,7 +225,6 @@ export async function replyToUnconnectedFeishuMessage(
         db: args.db,
         message: args.message,
         outbound: buildFeishuHelpMessage({
-          publicBrand: args.publicBrand,
           botName: args.botName,
         }),
       },
@@ -260,7 +259,6 @@ export async function replyToUnconnectedFeishuMessage(
       message: args.message,
       outbound: buildFeishuLoginMessage({
         connectUrl,
-        publicBrand: args.publicBrand,
       }),
     },
     signal,
@@ -1084,7 +1082,6 @@ const handleConnectedCommand$ = command(
             db: args.db,
             message: args.message,
             outbound: buildFeishuHelpMessage({
-              publicBrand: args.installation.publicBrand,
               botName: args.installation.botName,
             }),
           },
@@ -1123,7 +1120,6 @@ const handleConnectedCommand$ = command(
             db: args.db,
             message: args.message,
             outbound: buildFeishuHelpMessage({
-              publicBrand: args.installation.publicBrand,
               botName: args.installation.botName,
             }),
           },

@@ -186,7 +186,7 @@ import {
 import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
-} from "./run-group-folding.ts";
+} from "./run-group-visual-window.ts";
 import { selectedComputerUseHostId } from "../okou-page/computer-use-hosts.ts";
 import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import { isCodexFastModeAvailableForSelection } from "../okou-page/model-default-selection.ts";
@@ -221,10 +221,6 @@ import {
   type ComposerSignals,
   type ComposerSubmission,
 } from "../okou-page/composer-signals.ts";
-import {
-  openChatThreadGoalDialog$,
-  pauseChatThreadGoal$,
-} from "./chat-goal.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
@@ -4127,7 +4123,6 @@ function createThreadPendingActionSignals(
   options: CreateChatThreadComposerSignalsOptions,
 ) {
   const { messageActions } = options;
-  const threadId = options.chatEvents.threadId;
   const removeQueuedMessage$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(messageActions.recallMessage$, eventId, signal);
@@ -4138,19 +4133,9 @@ function createThreadPendingActionSignals(
       await set(messageActions.skipAutomationEvent$, eventId, signal);
     },
   );
-  const cancelActiveGoal$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(pauseChatThreadGoal$, threadId, signal);
-    },
-  );
-  const openActiveGoal$ = command(({ set }): void => {
-    set(openChatThreadGoalDialog$, threadId);
-  });
   return {
     removeQueuedMessage$,
     removeAutomationEvent$,
-    cancelActiveGoal$,
-    openActiveGoal$,
   };
 }
 

@@ -8,7 +8,6 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -244,12 +243,6 @@ interface ComposerQueueSignals {
   >;
 }
 
-interface ComposerGoalSignals {
-  readonly activeGoalObjective$: Computed<Promise<string | null>>;
-  readonly cancelActiveGoal$: Command<Promise<void>, [AbortSignal]>;
-  readonly openActiveGoal$: Command<void, []>;
-}
-
 interface ComposerTemplateSignals
   extends ComposerTemplateEditorSignals, ComposerTemplateUiSignals {
   readonly generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
@@ -276,7 +269,6 @@ export interface ComposerSignals {
   readonly computer: ComposerComputerSignals;
   readonly submission: ComposerSubmissionSignals;
   readonly queue: ComposerQueueSignals;
-  readonly goal: ComposerGoalSignals;
   readonly template: ComposerTemplateSignals;
   readonly imageAnnotation: ImageAnnotationSignals;
   readonly setImageAnnotationLifecycleRef$: Command<
@@ -315,8 +307,6 @@ interface CreateComposerSignalsOptions {
   readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
   readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
   readonly removeAutomationEvent$: ComposerQueueSignals["removeAutomationEvent$"];
-  readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
-  readonly openActiveGoal$: ComposerGoalSignals["openActiveGoal$"];
 }
 
 function createComposerFileInputSignals() {
@@ -650,11 +640,6 @@ export function createComposerSignals(
       ),
       removeAutomationEvent$: options.removeAutomationEvent$,
     },
-    goal: {
-      activeGoalObjective$: eventSignals.activeGoalObjective$,
-      cancelActiveGoal$: options.cancelActiveGoal$,
-      openActiveGoal$: options.openActiveGoal$,
-    },
     template: {
       ...composerTemplateSignals(workflowComposer),
       ...ui.template,
@@ -755,16 +740,12 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
       );
     },
   );
-  const activeGoalObjective$ = computed((get): Promise<string | null> => {
-    return Promise.resolve(foldActiveChatGoalObjective(get(chatEvents$)));
-  });
   return {
     lastAssistantMessage$,
     actionsLoading$,
     sending$,
     runningModelSelection$,
     pendingEvents$,
-    activeGoalObjective$,
     hasEvents$,
   };
 }

@@ -374,7 +374,6 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
               },
             ]
           : [],
-      hasMore: false,
     });
   });
   await setupPage({

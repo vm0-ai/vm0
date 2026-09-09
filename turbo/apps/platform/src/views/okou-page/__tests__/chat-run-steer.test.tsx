@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -82,7 +81,6 @@ async function openChat(second: number): Promise<void> {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 }
@@ -294,12 +292,11 @@ test("Keep separate histories, artifacts and actions on both sides of a steer in
   for (const text of oldHistory) {
     expect(screen.queryByText(text)).toBeNull();
   }
-  const nextHistory = screen.getByText("Checked the token validation path");
-  expect(nextHistory).toBeVisible();
+  expect(screen.queryByText("Checked the token validation path")).toBeNull();
   expect(
-    nextHistory.closest("[data-chat-run-work-history-list]"),
-  ).toBeVisible();
-  expect(queryButton("Expand work history", nextGroup)).toBeNull();
+    nextGroup.querySelector("[data-chat-run-work-history-list]"),
+  ).toBeNull();
+  expect(queryButton("Expand work history", nextGroup)).toBeVisible();
   expect(queryButton("Copy message", mainResult(NEXT_RESULT))).toBeVisible();
   expect(screen.getAllByTestId("chat-event-actions")).toHaveLength(2);
   expect(nextGroup).not.toContainElement(relatedArtifacts);

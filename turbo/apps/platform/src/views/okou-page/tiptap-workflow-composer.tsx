@@ -7,7 +7,7 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { useEditorState } from "@tiptap/react";
-import { Popover, PopoverAnchor, type KeyboardEventLike } from "@okouai/ui";
+import { Popover, type KeyboardEventLike } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/okou-page/composer-agent-suggestion-domain.ts";
@@ -90,49 +90,29 @@ interface ComposerSuggestionRange {
   readonly end: number;
 }
 
-interface ComposerSuggestionCaretVirtualRef {
-  current: {
-    readonly contextElement: HTMLElement;
-    getBoundingClientRect(): DOMRect;
-  };
-}
-
-function composerSuggestionCaretVirtualRef(
+function composerSuggestionCaretAnchor(
   editor: Editor,
   range: ComposerSuggestionRange | null,
-): ComposerSuggestionCaretVirtualRef | null {
+) {
   if (!range || !editor.isInitialized) {
-    return null;
+    return undefined;
   }
   return {
-    current: {
-      contextElement: editor.view.dom,
-      getBoundingClientRect() {
-        const suggestionStart = Math.max(
-          editor.state.selection.head - (range.end - range.start),
-          0,
-        );
-        const coords = editor.view.coordsAtPos(suggestionStart);
-        return new DOMRect(
-          coords.left,
-          coords.top,
-          0,
-          coords.bottom - coords.top,
-        );
-      },
+    contextElement: editor.view.dom,
+    getBoundingClientRect() {
+      const suggestionStart = Math.max(
+        editor.state.selection.head - (range.end - range.start),
+        0,
+      );
+      const coords = editor.view.coordsAtPos(suggestionStart);
+      return new DOMRect(
+        coords.left,
+        coords.top,
+        0,
+        coords.bottom - coords.top,
+      );
     },
   };
-}
-
-function ComposerSuggestionCaretAnchor({
-  editor,
-  range,
-}: {
-  readonly editor: Editor;
-  readonly range: ComposerSuggestionRange | null;
-}) {
-  const virtualRef = composerSuggestionCaretVirtualRef(editor, range);
-  return virtualRef ? <PopoverAnchor virtualRef={virtualRef} /> : null;
 }
 
 function workflowComposerPlaceholder(sending: boolean | undefined): string {
@@ -533,10 +513,6 @@ export function TiptapWorkflowComposer({
         }
       }}
     >
-      <ComposerSuggestionCaretAnchor
-        editor={composer.editor.editor}
-        range={suggestionMenu.range}
-      />
       <div className="relative">
         <WorkflowComposerPlaceholder composer={composer} sending={sending} />
         <div
@@ -579,6 +555,10 @@ export function TiptapWorkflowComposer({
       </div>
       {suggestionMenu.showWorkflows && (
         <SlashWorkflowMenu
+          anchor={composerSuggestionCaretAnchor(
+            composer.editor.editor,
+            suggestionMenu.range,
+          )}
           workflows={suggestionMenu.workflows}
           createModes={suggestionMenu.createModes}
           onSelectCreate={suggestionMenu.selectCreate}
@@ -591,6 +571,10 @@ export function TiptapWorkflowComposer({
       )}
       {suggestionMenu.showMentions && (
         <ComposerMentionSuggestionMenu
+          anchor={composerSuggestionCaretAnchor(
+            composer.editor.editor,
+            suggestionMenu.range,
+          )}
           agents={suggestionMenu.agents}
           chatThreads={suggestionMenu.chatThreads}
           selectedIndex={suggestionMenu.selectedIndex}

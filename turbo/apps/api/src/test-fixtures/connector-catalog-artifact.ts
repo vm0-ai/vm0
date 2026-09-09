@@ -1345,6 +1345,7 @@ const connectors = [
         connectorSlug: "mercury",
         prefix: "MERCURY",
         tokenEnvironmentNames: ["MERCURY_TOKEN"],
+        scopes: ["read", "offline_access"],
       }),
     ],
   }),

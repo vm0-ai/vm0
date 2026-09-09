@@ -1647,30 +1647,6 @@ describe("GET/PUT /api/model-policies", () => {
     });
   });
 
-  it("rejects the exact vm0 provider discriminator", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-
-    const response = await putRawModelPolicies(
-      JSON.stringify({
-        policies: [
-          {
-            model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-            isDefault: true,
-            defaultProviderType: "vm0",
-            credentialScope: "org",
-            modelProviderId: null,
-          },
-        ],
-      }),
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-  });
-
   it("rejects removed model policy updates", async () => {
     const fixture = await seedFixture();
     useSession(fixture);

@@ -48,6 +48,7 @@ import {
   agentInstructions$,
   agentEditedContent$,
   agentInstructionsDirty$,
+  agentInstructionsEditorRevision$,
   setAgentEditedContent$,
   discardAgentEdit$,
   buildAgentInstructions$,
@@ -778,6 +779,7 @@ function JobInstructionsTab() {
   const instructionsLoadable = useLoadable(agentInstructions$);
   const editedLoadable = useLoadable(agentEditedContent$);
   const dirtyLoadable = useLoadable(agentInstructionsDirty$);
+  const editorRevision = useGet(agentInstructionsEditorRevision$);
   const [buildLoadable, build] = useLoadableSet(buildAgentInstructions$);
 
   const instructions =
@@ -806,6 +808,7 @@ function JobInstructionsTab() {
       loading={loading}
       fetchError={fetchError}
       editedContent={edited}
+      editorRevision={editorRevision}
       isDirty={isDirty}
       isBuilding={isBuilding}
       buildError={buildError}
