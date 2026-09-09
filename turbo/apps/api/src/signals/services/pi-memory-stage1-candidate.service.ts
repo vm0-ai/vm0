@@ -2,7 +2,11 @@ import { and, eq, gt, sql } from "drizzle-orm";
 
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
+import { agents } from "@okouai/db/schema/agent";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { conversations } from "@okouai/db/schema/conversation";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages } from "@okouai/db/schema/storage";
@@ -11,7 +15,6 @@ import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { advancePiMemoryPhase2InputRevision } from "./pi-memory-phase2-job.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
-import { isPiMemoryInteractiveChatTriggerSource } from "./chat-trigger-source.service";
 
 export type PiMemoryStage1AdmissionSkipReason =
   | "generation_disabled"
@@ -19,7 +22,9 @@ export type PiMemoryStage1AdmissionSkipReason =
   | "missing_chat_thread"
   | "not_completed"
   | "not_pi"
-  | "source_not_interactive_chat"
+  | "not_owned_chat_thread"
+  | "invalid_source"
+  | "synthetic_source"
   | "stale_source";
 
 export type PiMemoryStage1Admission =
@@ -63,16 +68,53 @@ export function getPiMemoryStage1AdmissionPrerequisiteSkipReason(
     return "generation_disabled";
   }
   const triggerSource = triggerSourceSchema.safeParse(args.triggerSource);
-  if (
-    !triggerSource.success ||
-    !isPiMemoryInteractiveChatTriggerSource(triggerSource.data)
-  ) {
-    return "source_not_interactive_chat";
+  if (!triggerSource.success) {
+    return "invalid_source";
+  }
+  if (triggerSource.data === "test") {
+    return "synthetic_source";
   }
   if (args.chatThreadId === null) {
     return "missing_chat_thread";
   }
   return null;
+}
+
+async function ownsProductChatThread(
+  tx: Tx,
+  args: AdmitPiMemoryStage1CandidateArgs,
+): Promise<boolean> {
+  if (args.chatThreadId === null) {
+    return false;
+  }
+  const [thread] = await tx
+    .select({ id: chatThreads.id })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(
+      chatThreads,
+      and(
+        eq(chatThreads.id, agentRuns.chatThreadId),
+        eq(chatThreads.agentId, agentSessions.agentId),
+      ),
+    )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
+    .where(
+      and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+        eq(agentRuns.orgId, args.orgId),
+        eq(chatThreads.id, args.chatThreadId),
+        eq(chatThreads.userId, args.userId),
+        eq(agentSessions.userId, args.userId),
+        eq(agentSessions.orgId, args.orgId),
+        eq(agents.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  // Private maintenance has no product Agent/session/thread binding, even
+  // though its run uses the same owner and the ordinary "agent" source.
+  return thread !== undefined;
 }
 
 async function resolveMemoryStorageId(
@@ -135,6 +177,9 @@ export async function admitPiMemoryStage1Candidate(
     getPiMemoryStage1AdmissionPrerequisiteSkipReason(args);
   if (prerequisiteSkipReason !== null) {
     return { outcome: "skipped", reason: prerequisiteSkipReason };
+  }
+  if (!(await ownsProductChatThread(tx, args))) {
+    return { outcome: "skipped", reason: "not_owned_chat_thread" };
   }
 
   const [source] = await tx

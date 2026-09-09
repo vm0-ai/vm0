@@ -25,6 +25,7 @@ pub struct SecretMasker {
     diagnostic_matcher: Option<AhoCorasick>,
     url_encoded_matcher: Option<AhoCorasick>,
     diagnostic_url_encoded_matcher: Option<AhoCorasick>,
+    collision_alphabet: [char; 3],
 }
 
 impl SecretMasker {
@@ -92,6 +93,7 @@ impl SecretMasker {
             diagnostic_matcher: None,
             url_encoded_matcher: None,
             diagnostic_url_encoded_matcher: None,
+            collision_alphabet: Self::collision_alphabet(&[]),
         }
     }
 
@@ -111,7 +113,42 @@ impl SecretMasker {
             diagnostic_matcher: Self::build_matcher(&diagnostic_patterns),
             url_encoded_matcher: Self::build_matcher(&url_encoded_patterns),
             diagnostic_url_encoded_matcher: Self::build_matcher(&diagnostic_url_encoded_patterns),
+            collision_alphabet: Self::collision_alphabet(&patterns),
         }
+    }
+
+    fn collision_alphabet(patterns: &[String]) -> [char; 3] {
+        // A production pattern is at least five bytes, so it cannot fit in one
+        // four-byte scalar or start inside one. Excluding its first two scalars
+        // from our separator/digit transitions prevents it from matching at all.
+        let forbidden_pairs: HashSet<_> = patterns
+            .iter()
+            .filter_map(|pattern| {
+                let mut chars = pattern.chars();
+                let first = chars.next()?;
+                let second = chars.next()?;
+                (first.len_utf8() == 4 && second.len_utf8() == 4)
+                    .then_some((first.min(second), first.max(second)))
+            })
+            .collect();
+        let mut alphabet = ['\u{10000}'; 3];
+        let found = ('\u{10000}'..=char::MAX).any(|separator| {
+            let mut digits = ('\u{10000}'..=char::MAX).filter(|&digit| {
+                digit != separator
+                    && !forbidden_pairs.contains(&(separator.min(digit), separator.max(digit)))
+            });
+            if let (Some(zero), Some(one)) = (digits.next(), digits.next()) {
+                alphabet = [separator, zero, one];
+                true
+            } else {
+                false
+            }
+        });
+        // There are 2^20 four-byte scalars. Denying every separator two distinct
+        // neighbors needs over 2^38 pairs, beyond a successfully built matcher's
+        // 32-bit pattern-ID limit. Blocked neighbors are bounded by those pairs.
+        assert!(found, "secret patterns exhausted the collision alphabet");
+        alphabet
     }
 
     /// # Panics
@@ -347,13 +384,38 @@ impl SecretMasker {
             return masked_key;
         }
 
-        let mut suffix = 2;
-        loop {
+        // Secrets can exclude the entire decimal suffix family. Bound these
+        // probes even when rejection is unrelated to occupied keys.
+        for suffix in 2..=map.len().saturating_add(2) {
             let candidate = format!("{masked_key}#{suffix}");
             if !map.contains_key(&candidate) && self.masked_string(&candidate).is_none() {
                 return candidate;
             }
+        }
+
+        // These identifiers are distinct and intrinsically secret-free. Every
+        // rejection consumes an occupied key, so n entries need at most n + 1
+        // probes; the counter cannot overflow before finding a free key.
+        let mut suffix = 0;
+        loop {
+            let candidate = self.collision_key(suffix);
+            if !map.contains_key(&candidate) {
+                return candidate;
+            }
             suffix += 1;
+        }
+    }
+
+    fn collision_key(&self, mut suffix: usize) -> String {
+        let [separator, zero, one] = self.collision_alphabet;
+        let mut key = String::new();
+        loop {
+            key.push(separator);
+            key.push(if suffix & 1 == 0 { zero } else { one });
+            suffix >>= 1;
+            if suffix == 0 {
+                return key;
+            }
         }
     }
 }

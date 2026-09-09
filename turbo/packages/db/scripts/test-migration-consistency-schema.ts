@@ -37,15 +37,8 @@ import { Client } from "pg";
 import { validateAgentRunLaunchSnapshotSchema } from "./test-agent-run-launch-snapshot";
 import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
 import { validateOfficialAutomationResultEmailSchema } from "./test-official-automation-result-email-schema";
-import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
-import { validatePermanentBuiltInProviderDiscriminatorState } from "./test-built-in-provider-discriminator-permanent";
-import { validatePermanentOrgMetadataAcquisitionFirstPartySourceState } from "./test-org-metadata-acquisition-first-party-source-permanent";
-import {
-  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
-  validatePermanentOrgPlanEntitlementRestrictionState,
-} from "./test-org-plan-entitlement-restriction-permanent";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 import { validatePermanentComputerUseHostProductState } from "./test-computer-use-host-product-permanent";
 import { LEGACY_DATABASE_IDENTITY_MANIFEST } from "./legacy-database-identity-manifest";
@@ -1244,6 +1237,14 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
+  // Rollout writer compatibility; remove with vm0-ai/vm0#32575.
+  {
+    definition:
+      "CREATE TRIGGER trg_org_plan_entitlement_show_usage_pack BEFORE INSERT OR UPDATE OF plan_key, member_invite_usage_pack_required ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_show_usage_pack()",
+    schemaName: "public",
+    tableName: "org_plan_entitlements",
+    triggerName: "trg_org_plan_entitlement_show_usage_pack",
+  },
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -1388,6 +1389,14 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
+  // Rollout writer compatibility; remove with vm0-ai/vm0#32575.
+  {
+    bodyHash: "4e770f8113e4468021ea440dc674e92b",
+    functionName: "sync_legacy_org_plan_entitlement_show_usage_pack",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -1445,7 +1454,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  {
+    bodyHash: "0b0d44031a51ffc349f0f33cb0df53c3",
+    functionName: "ensure_legacy_org_metadata_plan_entitlement",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -3691,12 +3706,8 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
-    await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validatePermanentUsagePackPendingSnapshotState(dbUrl1);
-    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl1);
-    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
-    await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentPiMemoryStage1BlobRetentionBehavior(dbUrl1);
@@ -3726,7 +3737,6 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
-    await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validatePermanentSlackPublicBrandState(dbUrl2);

@@ -1,3 +1,4 @@
+import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
 import { createHash, randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
@@ -24,7 +25,6 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
@@ -94,6 +94,7 @@ import {
   isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
+import { isStaffOrg } from "@okouai/core/staff-org";
 import {
   DEFAULT_IMAGE_MODEL_ENV,
   IMAGE_MODEL_CONFIGS,
@@ -107,11 +108,7 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import {
-  GOAL_SKILL_NAME,
-  INTRO_VIDEO_SKILL_NAME,
-  SEED_SKILLS,
-} from "@okouai/core/seed-skills";
+import { INTRO_VIDEO_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -149,7 +146,6 @@ import {
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@okouai/db/schema/secret";
-import { userCache } from "@okouai/db/schema/user-cache";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { variables } from "@okouai/db/schema/variable";
 import type { PersistedStorageMount } from "@okouai/db/types";
@@ -192,6 +188,7 @@ import { writeDb$, type Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
+import { piModelConfigObservation } from "../../lib/pi-model-config-observation";
 import { generateOkouToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
@@ -1014,7 +1011,6 @@ export interface CreateAgentRunArgs {
    * preserves historical runner coverage without restoring a runtime dual-read.
    */
   readonly testOnlyResolveDirectRun?: TestOnlyDirectRunResolver;
-  readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
   /** Immutable Intro Video eligibility captured with the caller's switch context. */
@@ -1394,14 +1390,6 @@ function buildInjectedSkillVolumes(
       ).map((volume) => {
         return { ...volume, baselineCandidate: true };
       }),
-      "system_skill",
-    ) ?? []),
-    ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(
-        [GOAL_SKILL_NAME],
-        skillsRoot,
-        args.systemSkillStorageResolution,
-      ),
       "system_skill",
     ) ?? []),
     ...(args.introVideoEnabled
@@ -6203,22 +6191,15 @@ function resolveAgentExecution(
   );
 }
 
-async function enforceCaptureNetworkBodiesGate(
-  db: Db,
-  userId: string,
+function enforceCaptureNetworkBodiesGate(
+  orgId: string,
   captureNetworkBodies: boolean | undefined,
-): Promise<CreateRunErrorResult | null> {
+): CreateRunErrorResult | null {
   if (!captureNetworkBodies || env("ENV") !== "production") {
     return null;
   }
 
-  const [cachedUser] = await db
-    .select({ email: userCache.email })
-    .from(userCache)
-    .where(eq(userCache.userId, userId))
-    .limit(1);
-
-  if (!cachedUser?.email.endsWith("@vm0.ai")) {
+  if (!isStaffOrg(orgId)) {
     return forbidden("captureNetworkBodies is restricted to internal accounts");
   }
   return null;
@@ -6546,7 +6527,6 @@ function storedConnectorRuntimeTargets(args: {
 
 function buildStoredPlatformEnvironment(args: {
   readonly platformEnvironment: Record<string, string> | undefined;
-  readonly okouTokenPublicBrand: PublicBrand | undefined;
   readonly canonicalOkouRuntime: boolean;
 }): Record<string, string> {
   const platformEnvironment = {
@@ -6592,7 +6572,6 @@ async function buildStoredExecutionContextDraft(args: {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly includeOkouTokenSecret: boolean | undefined;
-  readonly okouTokenPublicBrand: PublicBrand | undefined;
 }): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
@@ -6626,7 +6605,6 @@ async function buildStoredExecutionContextDraft(args: {
   );
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: args.platformEnvironment,
-    okouTokenPublicBrand: args.okouTokenPublicBrand,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
   const environment = buildStoredUntrustedEnvironment({
@@ -6748,6 +6726,10 @@ function buildRunContextSnapshot(args: {
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     sessionId: cliAgentSessionId,
     cliAgentType: storedContext.cliAgentType,
+    ...piModelConfigObservation(
+      storedContext.cliAgentType,
+      storedContext.piModelConfig,
+    ),
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: executionFirewallsToAxiomEntries(storedContext.firewalls),
@@ -7065,7 +7047,6 @@ interface BuildRunnerJobPayloadInput {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly includeOkouTokenSecret: boolean | undefined;
-  readonly okouTokenPublicBrand: PublicBrand | undefined;
   readonly okouTokenComputerUseHostId: string | undefined;
   readonly okouTokenCloudBrowserEnabled: boolean | undefined;
   readonly imageRecognitionAvailable: boolean;
@@ -8627,7 +8608,6 @@ function buildAtomicLaunchPayload(
       additionalVolumes: args.context.additionalVolumes,
       additionalVolumeSources: args.context.additionalVolumeSources,
       includeOkouTokenSecret: args.createArgs.includeOkouTokenSecret,
-      okouTokenPublicBrand: args.createArgs.okouTokenPublicBrand,
       okouTokenComputerUseHostId: args.createArgs.okouTokenComputerUseHostId,
       okouTokenCloudBrowserEnabled:
         args.createArgs.okouTokenCloudBrowserEnabled,
@@ -9498,13 +9478,19 @@ async function prepareRunRuntimeContext(
       ...args,
       orgId: args.createArgs.orgId,
     }),
-    resolvePreparedThreadConnectorSelections(
-      {
-        db: args.db,
-        createArgs: args.createArgs,
-        connectorScope: args.connectorScope,
+    args.timing.measure(
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "nested",
+      () => {
+        return resolvePreparedThreadConnectorSelections(
+          {
+            db: args.db,
+            createArgs: args.createArgs,
+            connectorScope: args.connectorScope,
+          },
+          signal,
+        );
       },
-      signal,
     ),
     resolvePreparedRunModelProvider(args, signal),
   ]);
@@ -9671,26 +9657,32 @@ async function connectorCatalogSelectionForRun(args: {
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<RunConnectorCatalogSelection> {
-  if (isEmptyRunConnectorScope(args.connectorScope)) {
-    return { kind: "empty" };
-  }
-  if (args.preloadedConnectorCatalogSnapshot !== undefined) {
-    return {
-      kind: "scoped",
-      selection: args.preloadedConnectorCatalogSnapshot,
-    };
-  }
-  const metadataConnectorSlugs =
-    await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
-      orgId: args.orgId,
-      customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
-    });
-  const selection = await loadConnectorRuntimeSelection(args.db, {
-    timing: args.timing,
-    requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-    metadataConnectorSlugs,
-  });
-  return { kind: "scoped", selection };
+  return await args.timing.measure(
+    "api_dispatch_prepare_context_select_connector_catalog",
+    "nested",
+    async () => {
+      if (isEmptyRunConnectorScope(args.connectorScope)) {
+        return { kind: "empty" };
+      }
+      if (args.preloadedConnectorCatalogSnapshot !== undefined) {
+        return {
+          kind: "scoped",
+          selection: args.preloadedConnectorCatalogSnapshot,
+        };
+      }
+      const metadataConnectorSlugs =
+        await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
+          orgId: args.orgId,
+          customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+        });
+      const selection = await loadConnectorRuntimeSelection(args.db, {
+        timing: args.timing,
+        requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+        metadataConnectorSlugs,
+      });
+      return { kind: "scoped", selection };
+    },
+  );
 }
 
 function prepareRunOutputMetadata(args: {
@@ -9882,12 +9874,10 @@ function prepareRunContext(
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
       const initialBody = initialRunBody(args);
-      const captureGate = await enforceCaptureNetworkBodiesGate(
-        db,
-        args.userId,
+      const captureGate = enforceCaptureNetworkBodiesGate(
+        args.orgId,
         initialBody.captureNetworkBodies,
       );
-      signal.throwIfAborted();
       if (captureGate) {
         return captureGate;
       }
@@ -10440,6 +10430,12 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    if (
+      input.args.body.triggerSource === "goal" ||
+      input.args.queueFirstAssociation?.kind === "goal_input"
+    ) {
+      return conflict(GOAL_RETIRED_MESSAGE);
+    }
     assertThreadBoundRunHasQueueAssociation(input.args);
     // A preview request that passed the protection guard carries the bypass as
     // API-authored environment while the runner preserves its existing filter.
@@ -10506,6 +10502,12 @@ export const completeAgentRun$ = command(
     input: CompleteAgentRunArgs,
     signal: AbortSignal,
   ): Promise<QueueFirstAgentRunResult> => {
+    if (
+      input.prepared.args.body.triggerSource === "goal" ||
+      input.prepared.args.queueFirstAssociation?.kind === "goal_input"
+    ) {
+      return conflict(GOAL_RETIRED_MESSAGE);
+    }
     assertThreadBoundRunHasQueueAssociation(input.prepared.args);
     const db = set(writeDb$);
     const { args, timing } = input.prepared;

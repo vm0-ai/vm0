@@ -132,6 +132,7 @@
         "diskPressure": "La réutilisation de l'espace de travail a été ignorée en raison de la pression disque du runner.",
         "environment": "Environnement",
         "featureDisabled": "La réutilisation du bac à sable est désactivée pour cette exécution.",
+        "framework": "Framework",
         "generation": "Génération",
         "hostname": "Nom d’hôte",
         "invalidMetadata": "Les métadonnées de l'espace de travail en cache n'étaient pas valides.",
@@ -610,6 +611,9 @@
       "categories": "Catégories de modèles",
       "category": "Catégorie de modèle",
       "chooseVoice": "Choisir une voix pour {{title}}",
+      "creativeVideo": "Vidéo créative",
+      "explainerUnavailable": "Ce modèle vidéo n’est plus disponible. Retirez-le pour envoyer votre message.",
+      "explainerVideo": "Vidéo explicative",
       "filters": {
         "age": "Âge",
         "all": "Tous",
@@ -1903,11 +1907,14 @@
       "create": {
         "addStyle": "Ajouter un style",
         "addTemplate": "Ajouter un modèle",
+        "chooseType": "Choisissez un type",
+        "description": "Présentations, vidéos et images",
         "exit": "Quitter le mode création",
         "image": "Créer une image",
         "imagePlaceholder": "Décrivez l’image à créer…",
         "presentation": "Créer une présentation",
         "presentationPlaceholder": "Quel est le sujet de votre présentation ?",
+        "question": "Que souhaitez-vous réaliser ?",
         "settingsAdjusted": "Certains paramètres vidéo ont été adaptés à ce modèle",
         "title": "Créer",
         "video": "Créer une vidéo",
@@ -1978,6 +1985,48 @@
       "configurePermissions": "Configurer les autorisations de {{connectorName}}",
       "customAuthorizeDescription": "Examiner, connecter et autoriser ce connecteur personnalisé pour l'agent.",
       "defaultAccountFor": "{{connector}} · Compte par défaut utilisé : {{account}}",
+      "directory": {
+        "allCategories": "Tous",
+        "askAdmin": "Demandez à un administrateur de l'activer",
+        "browse": "Parcourir les connecteurs",
+        "configure": "Configurer",
+        "connected": "Connecté",
+        "createCustom": "Créer un connecteur",
+        "customBadge": "Personnalisé",
+        "detailAccounts": "Comptes",
+        "detailCategory": "Catégorie",
+        "detailConnection": "Connexion",
+        "detailMethod": "Méthode",
+        "detailPermissions": "Autorisations",
+        "emptyCustomBody": "Créez-en un à partir de n'importe quelle API HTTP ou serveur MCP, et Okou l'utilisera comme les autres.",
+        "emptyCustomTitle": "Aucun connecteur personnalisé",
+        "emptyYoursBody": "Connectez une application et Okou pourra y lire et y agir pour vous.",
+        "emptyYoursTitle": "Vous n'avez encore rien connecté",
+        "keyMove": "naviguer",
+        "keyOpen": "ouvrir",
+        "matchCount_one": "{{count}} résultat",
+        "matchCount_many": "{{count}} résultats",
+        "matchCount_other": "{{count}} résultats",
+        "matchedOn": "Recherche sur le nom, la description et les tags",
+        "moreAccounts_one": "+{{count}}",
+        "moreAccounts_many": "+{{count}}",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "À vérifier",
+        "noResultsBody": "Essayez un nom de produit, ou créez le vôtre à partir d'une API ou d'un serveur MCP.",
+        "noResultsTitle": "Aucun connecteur ne correspond à « {{query}} »",
+        "openDetailAria": "Ouvrir les détails de {{connector}}",
+        "otherCategory": "Autres",
+        "permissionCount_one": "{{count}} autorisation",
+        "permissionCount_many": "{{count}} autorisations",
+        "permissionCount_other": "{{count}} autorisations",
+        "searchYours": "Rechercher vos connecteurs",
+        "showAll_one": "Afficher les {{count}}",
+        "showAll_many": "Afficher les {{count}}",
+        "showAll_other": "Afficher les {{count}}",
+        "tabCustom": "Personnalisés",
+        "tabDiscover": "Découvrir",
+        "tabYours": "Vos connecteurs"
+      },
       "fallsBackTo": "Utilise {{account}} en repli",
       "find": "Rechercher des connecteurs...",
       "noUsableAccount": "Aucun compte utilisable",
@@ -2016,6 +2065,20 @@
       },
       "runCancelled": "En pause au milieu d'une pensée — reprenez-la quand vous voulez."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Trouvez une voix adaptée à votre contenu.",
+      "avatarVoice": "Voix de l’avatar",
+      "changeAvatar": "Changer d’avatar",
+      "chooseStyle": "Choisir un style",
+      "chooseStyleAndVoice": "Choisissez un style et une voix.",
+      "noMatches": "Aucun résultat. Essayez une autre recherche ou catégorie.",
+      "ready": "Prêt à utiliser. Ajoutez votre contenu dans le chat.",
+      "searchAvatars": "Rechercher des avatars",
+      "searchStyles": "Rechercher des styles",
+      "settings": "Paramètres de la vidéo explicative",
+      "style": "Style",
+      "useSelection": "Utiliser la sélection"
+    },
     "feedback": {
       "emailDraftDescription": "un brouillon d'email (ID du brouillon : {{id}})",
       "partHeading": "Retour sur cette partie de votre réponse :",
@@ -2046,50 +2109,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou décide",
-        "autoDescription": "Choisir un présentateur public HeyGen adapté à votre demande",
         "heading": "Choisir un avatar",
         "label": "Avatar",
         "none": "Aucun avatar",
-        "noneDescription": "Créer la vidéo sans présentateur",
         "previewLook": "Aperçu de l’apparence {{name}}"
       },
-      "cardDescription": "Transformez une idée ou vos contenus en vidéo finalisée",
       "catalog": {
-        "empty": "Aucune option publique HeyGen n’est disponible.",
-        "error": "Le catalogue HeyGen n’a pas pu être chargé.",
+        "error": "Le catalogue n’a pas pu être chargé.",
         "loading": "Chargement d’autres options",
         "reload": "Recharger le catalogue",
         "retry": "Réessayer"
       },
-      "description": "Ajoutez des contenus, décrivez votre objectif et choisissez éventuellement un style, un avatar et une voix HeyGen.",
-      "errors": {
-        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre demande est toujours ici, vous pouvez réessayer.",
-        "uploadFailed": "Un ou plusieurs fichiers n'ont pas pu être importés. Supprimez-les ou réessayez."
-      },
       "footer": {
-        "cancel": "Annuler",
-        "create": "Créer la vidéo",
-        "hint": "Ajoutez des consignes, des fichiers ou les deux"
-      },
-      "format": {
-        "auto": "Automatique",
-        "output": "Format de sortie"
-      },
-      "heading": "Créez votre vidéo d’introduction",
-      "help": "Ajoutez des contenus, décrivez votre objectif ou faites les deux. Okou s’occupe du reste.",
-      "prompt": {
-        "label": "Que doit transmettre la vidéo ?",
-        "placeholder": "Décrivez l’objectif, le public, la langue, le ton ou tout autre détail important"
-      },
-      "source": {
-        "drop": "Déposez vos fichiers ici ou cliquez pour les importer",
-        "remove": "Retirer {{filename}}"
+        "cancel": "Annuler"
       },
       "style": {
         "auto": "Laisser Okou choisir",
         "browseGroups": "Parcourir par style",
-        "description": "Le style définit les scènes, les transitions, les textes superposés et le rythme.",
         "groups": {
           "cinematic": "Cinéma et photographie",
           "handmade": "Artisanat et matières",
@@ -2099,25 +2135,16 @@
           "print": "Impression et édition",
           "retro-tech": "Technologie rétro et interfaces"
         },
-        "heading": "Choisir une référence de style",
-        "label": "Référence de style",
         "preview": "Aperçu de {{title}}",
         "previewUnavailable": "Aucun aperçu vidéo n’est disponible pour ce style."
       },
-      "title": "Créer une vidéo d'introduction",
       "voice": {
         "auto": "Laisser Okou choisir",
-        "autoDescription": "Okou choisit une voix publique HeyGen adaptée",
-        "default": "Par défaut · Suit l’avatar",
         "defaultDescription": "Utiliser la voix par défaut de l’avatar choisi",
-        "defaultForAvatar": "Par défaut · {{avatar}}",
-        "defaultForAvatarDescription": "Utiliser la voix HeyGen par défaut de {{avatar}}",
         "heading": "Choisir une voix",
         "label": "Voix",
         "none": "Sans voix off",
-        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine.",
-        "original": "Audio d'origine",
-        "originalDescription": "Conserver le son d’origine sélectionné sans ajouter de voix générée"
+        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine."
       }
     },
     "mail": {
@@ -2199,28 +2226,19 @@
     "promptDocumentTitle": "Prompt",
     "queue": {
       "aboutAutomationEvent": "À propos de cet événement d'automatisation",
-      "aboutGoal": "À propos de cet objectif",
       "aboutQueuedMessage": "À propos de ce message en file d'attente",
-      "activeGoal": "Objectif actif",
       "automationEvent": "Événement d'automatisation",
       "automationEventDescription": "Attend derrière les messages en file d'attente et s'exécute une fois que l'exécution en cours est terminée.",
-      "cancelGoal": "Annuler l'objectif",
       "cancellationRecoveryPending": "Finalisation de l'exécution annulée avant la reprise du travail en file d'attente.",
       "event_one": "{{count}} événement",
       "event_many": "{{count}} événements",
       "event_other": "{{count}} événements",
       "goal": "Objectif",
-      "goalDescription": "S'exécute après que la file d'attente est vidée et continue à s'exécuter jusqu'à ce que vous l'annuliez.",
-      "goalLoadFailed": "Impossible de charger cet objectif",
-      "goalRetry": "Fermez la boîte de dialogue et rouvrez-la pour réessayer.",
-      "goalUnavailable": "Cet objectif n'est plus disponible.",
       "itemsWaiting": "{{items}} en attente",
       "itemsWaitingTogether": "{{messages}} et {{events}} en attente",
-      "loadingGoal": "Chargement de l'objectif...",
       "message_one": "{{count}} message",
       "message_many": "{{count}} messages",
       "message_other": "{{count}} messages",
-      "openGoalDetails": "Ouvrir les détails de l'objectif",
       "pendingAutomationEvent": "Événement d'automatisation en attente",
       "queuedMessage": "Message en file d'attente",
       "queuedMessageDescription": "Attend en ligne et envoie une fois l'exécution actuelle terminée.",
@@ -2232,9 +2250,6 @@
       "title": "Remplacer le brouillon du compositeur ?"
     },
     "run": {
-      "automatedRun": "Exécution automatisée",
-      "collapseGroupedHistory": "Réduire l'historique des exécutions groupées",
-      "collapseHistoryMessage": "Réduire le message de l'historique : {{message}}",
       "collapseWorkHistory": "Réduire l'historique du travail",
       "creditUsage": "Utilisation du crédit",
       "done": {
@@ -2249,15 +2264,9 @@
         "wrappedUp": "Terminé à {{time}}"
       },
       "duration": {
-        "hour_one": "{{count}} heure",
-        "hour_many": "{{count}} heures",
-        "hour_other": "{{count}} heures",
         "hoursShort_one": "{{count}}h",
         "hoursShort_many": "{{count}}h",
         "hoursShort_other": "{{count}}h",
-        "minute_one": "{{count}} min",
-        "minute_many": "{{count}} min",
-        "minute_other": "{{count}} min",
         "minutesShort_one": "{{count}}m",
         "minutesShort_many": "{{count}}m",
         "minutesShort_other": "{{count}}m",
@@ -2265,18 +2274,12 @@
         "secondsShort_many": "{{count}}s",
         "secondsShort_other": "{{count}}s"
       },
-      "durationFor": "{{duration}} pour {{label}}",
-      "expandGroupedHistory": "Développer l’historique des exécutions groupées",
       "expandWorkHistory": "Développer l'historique du travail",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "Mode rapide désactivé",
       "fastModeOn": "Mode rapide activé",
       "fastModeWillBeOff": "Le mode rapide sera désactivé",
       "fastModeWillBeOn": "Le mode rapide sera activé",
-      "goalFor": "Objectif pour {{label}}",
-      "groupedRunsFor_one": "{{count}} exécution pour {{source}}",
-      "groupedRunsFor_many": "{{count}} exécutions pour {{source}}",
-      "groupedRunsFor_other": "{{count}} exécutions pour {{source}}",
       "justNow": "à l'instant",
       "keepGoing": "Continuez",
       "keepGoingAt": "Continuez · {{timestamp}}",
@@ -2302,7 +2305,6 @@
       "viewActivityLogs": "Voir les journaux d'activité",
       "viewLogs": "Voir les journaux d'exécution",
       "waitingIn": "En attente",
-      "worked": "Fonctionné",
       "workedFor": "Fonctionné pendant {{duration}}",
       "workingFor": "En cours depuis {{duration}}"
     },
@@ -2343,13 +2345,9 @@
       "openChatMenu": "Ouvrir le menu de discussion",
       "openListMenu": "Ouvrir le menu de la liste de discussion",
       "pin": "Épingler la discussion",
-      "pinDropAfter": "Déposer après {{title}}",
-      "pinDropBefore": "Déposer avant {{title}}",
       "pinned": "Épinglé",
       "rename": "Renommer la discussion",
       "renameDescription": "Entrez un nouveau nom pour ce fil de discussion.",
-      "reorderInstructions": "Faites glisser pour réorganiser. Appuyez sur Espace pour sélectionner, sur les flèches pour déplacer, sur Espace pour déposer ou sur Échap pour annuler.",
-      "reorderThread": "Réorganiser {{title}}",
       "titlePlaceholder": "Titre de la discussion",
       "unpin": "Détacher la discussion",
       "unread": "Non lu",
@@ -2589,8 +2587,8 @@
     },
     "callback": {
       "connected": "{{connector}} connecté",
-      "connectedAs": "Connecté en tant que {{username}}. Vous pouvez fermer cette fenêtre.",
-      "connectedDescription": "Votre compte a été connecté. Vous pouvez fermer cette fenêtre.",
+      "connectedAs": "Connecté en tant que {{username}}. Fermez cette fenêtre et revenez à la page d’origine pour continuer.",
+      "connectedDescription": "Votre compte est connecté. Fermez cette fenêtre et revenez à la page d’origine pour continuer.",
       "connecting": "Connexion de {{connector}}…",
       "connectingDescription": "Veuillez patienter pendant que nous terminons la connexion de votre compte.",
       "customConnectorLabel": "Connecteur personnalisé",
@@ -2757,6 +2755,10 @@
         "title": "Méthodes de connexion indisponibles"
       }
     },
+    "connectionProgress": {
+      "description": "Terminez l’autorisation si nécessaire. Veuillez patienter pendant la configuration de la connexion.",
+      "title": "Connexion de votre compte"
+    },
     "custom": {
       "connect": {
         "configured": "Configuré",
@@ -2825,7 +2827,7 @@
         "prefixesHint": "(un par ligne, uniquement https)",
         "recommended": "(Recommandé)",
         "redirectCopy": "Copier l'URL de redirection",
-        "redirectHint": "(Enregistrez cette URL dans l'application OAuth du fournisseur. Conservez également toute URL de redirection VM0 ou Okou existante.)",
+        "redirectHint": "(Enregistrez cette URL dans l'application OAuth du fournisseur.)",
         "redirectUrl": "URL de redirection",
         "removeApiAuthentication": "Supprimer l'authentification API",
         "removeAutomatic": "Supprimer l’authentification automatique",
@@ -5730,7 +5732,7 @@
         "branches": "Branches",
         "branchesPlaceholder": "main, release",
         "commentPrefixes": "Préfixes de commentaire",
-        "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "Conclusions",
         "conclusionsSummary": "Conclusions {{values}}",
         "creators": "Créateurs",

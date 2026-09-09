@@ -80,40 +80,16 @@ const internalSettingsDialogOpen$ = state(false);
 const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
 const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
-const pendingAccountMenuSettingsSection$ = state<{
-  readonly ownerId: string;
-  readonly section: SettingsSection;
-} | null>(null);
 
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
 
+export const settingsDialogSessionActive$ = computed((get) => {
+  return get(internalSettingsDialogSessionActive$);
+});
+
 export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
-
-export const setPendingAccountMenuSettingsSection$ = command(
-  ({ get, set }, ownerId: string, section: SettingsSection | null) => {
-    if (section === null) {
-      const pending = get(pendingAccountMenuSettingsSection$);
-      if (pending?.ownerId === ownerId) {
-        set(pendingAccountMenuSettingsSection$, null);
-      }
-      return;
-    }
-    set(pendingAccountMenuSettingsSection$, { ownerId, section });
-  },
-);
-
-export const consumePendingAccountMenuSettingsSection$ = command(
-  ({ get, set }, ownerId: string) => {
-    const pending = get(pendingAccountMenuSettingsSection$);
-    const section = pending?.ownerId === ownerId ? pending.section : null;
-    if (section !== null) {
-      set(pendingAccountMenuSettingsSection$, null);
-    }
-    return section;
-  },
-);
 
 const internalActiveSection$ = state<SettingsSection>("preference");
 
@@ -177,7 +153,7 @@ const openSettingsUsagePackPlan$ = command(
   },
 );
 
-export const openSettingsMemberUsagePacks$ = command(
+const openSettingsMemberUsagePacks$ = command(
   ({ set }, management: UsagePackManagementResponse) => {
     set(openSettingsUsagePackPlan$, management, management.tier);
   },
@@ -219,9 +195,7 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
 });
 
 export const closeSettingsModal$ = command(({ get, set }) => {
-  set(resetSettingsDialogSignal$);
-  set(releaseSettingsDialogSession$);
-  set(clearBillingScrollTarget$);
+  set(internalSettingsDialogOpen$, false);
 
   const params = new URLSearchParams(get(searchParams$));
   if (params.has("settings") || params.has("billingView")) {
@@ -229,6 +203,15 @@ export const closeSettingsModal$ = command(({ get, set }) => {
     params.delete("billingView");
     set(updateSearchParams$, params);
   }
+});
+
+export const completeSettingsModalClose$ = command(({ get, set }) => {
+  if (get(internalSettingsDialogOpen$)) {
+    return;
+  }
+  set(resetSettingsDialogSignal$);
+  set(releaseSettingsDialogSession$);
+  set(clearBillingScrollTarget$);
 });
 
 /**
@@ -242,6 +225,7 @@ export const dismissBillingPlans$ = command(({ get, set }) => {
     set(closeSettingsModal$);
     return;
   }
+  set(resetUsagePackPricing$);
   set(setBillingSubPage$, false);
 });
 
@@ -253,6 +237,7 @@ export const setSettingsDialogOpen$ = command(
     }
 
     if (get(internalSettingsDialogSessionActive$)) {
+      set(internalSettingsDialogOpen$, true);
       set(setSettingsActiveSection$, get(internalActiveSection$));
       return;
     }

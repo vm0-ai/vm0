@@ -36,7 +36,6 @@ import type {
   OptimisticChatThreadEvent,
   OptimisticChatThreadEventInput,
 } from "./chat-thread-event-types.ts";
-import { reconcilePinnedThreadDragSessions$ } from "./chat-thread-pin-drag-lifecycle.ts";
 
 interface ChatThreadEventData {
   readonly snapshot: readonly ChatThreadSnapshotProjection[];
@@ -243,7 +242,6 @@ const applySharedChatThreadEventResult$ = command(
       snapshot: state.snapshot?.chatThreads ?? [],
       events: state.events,
     });
-    set(reconcilePinnedThreadDragSessions$);
     set(syncCurrentChatThreadDocumentTitle$, signal);
     if (phase === "local") {
       const loaded = get(initialLocalChatThreadEventsLoadedDeferred$);
@@ -642,7 +640,6 @@ export const registerOptimisticChatThreadEvent$ = command(
       }
       return [...events, event];
     });
-    set(reconcilePinnedThreadDragSessions$);
   },
 );
 

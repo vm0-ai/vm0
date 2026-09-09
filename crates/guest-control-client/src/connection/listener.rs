@@ -14,6 +14,7 @@ use crate::operation_tracker::NormalOperationTracker;
 use crate::{GuestControlClient, exec_operation, file};
 
 use super::request::deadline_after;
+use super::timing::GuestConnectionTiming;
 use super::{ConnectionState, READ_BUF_SIZE, Shared, reader_loop};
 
 struct ListenerSocketGuard {
@@ -43,6 +44,28 @@ impl GuestControlClient {
     /// Returns [`io::ErrorKind::InvalidInput`] if `timeout` cannot be
     /// represented as a Tokio deadline.
     pub async fn wait_for_connection(vsock_path: &str, timeout: Duration) -> io::Result<Self> {
+        Self::wait_for_connection_inner(vsock_path, timeout, None).await
+    }
+
+    /// Observe one connection attempt without changing its deadline or handshake.
+    ///
+    /// Timing accompanies ordinary errors as well as successful connections.
+    /// Cancellation drops the attempt and its timing; it still unlinks the listener.
+    pub async fn wait_for_connection_with_timing(
+        vsock_path: &str,
+        timeout: Duration,
+    ) -> (io::Result<Self>, GuestConnectionTiming) {
+        let mut timing = GuestConnectionTiming::new();
+        let result = Self::wait_for_connection_inner(vsock_path, timeout, Some(&mut timing)).await;
+        timing.completed = std::time::Instant::now();
+        (result, timing)
+    }
+
+    async fn wait_for_connection_inner(
+        vsock_path: &str,
+        timeout: Duration,
+        mut timing: Option<&mut GuestConnectionTiming>,
+    ) -> io::Result<Self> {
         let deadline = deadline_after(timeout, "guest connection timeout overflowed")?;
         let listener_path = format!("{vsock_path}_{}", guest_control_proto::VSOCK_PORT);
 
@@ -50,11 +73,19 @@ impl GuestControlClient {
         let _ = std::fs::remove_file(&listener_path);
 
         let listener = UnixListener::bind(&listener_path)?;
+        if let Some(timing) = timing.as_deref_mut() {
+            timing.listener_bound = Some(std::time::Instant::now());
+        }
         let mut listener_socket = ListenerSocketGuard {
             path: Some(listener_path.clone()),
         };
 
         let accept_result = time::timeout_at(deadline, listener.accept()).await;
+        if matches!(&accept_result, Ok(Ok(_)))
+            && let Some(timing) = timing.as_deref_mut()
+        {
+            timing.accepted = Some(std::time::Instant::now());
+        }
 
         // Stop accepting and unlink the listener socket before the accepted
         // stream is handed off. The guard still covers cancellation before
@@ -69,7 +100,10 @@ impl GuestControlClient {
             )
         })??;
 
-        Self::from_stream(stream, deadline).await
+        match timing {
+            Some(timing) => Self::from_stream_with_timing(stream, deadline, Some(timing)).await,
+            None => Self::from_stream(stream, deadline).await,
+        }
     }
 
     /// Build a `GuestControlClient` from an already-connected stream.
@@ -77,8 +111,16 @@ impl GuestControlClient {
     /// Performs the handshake on the unsplit stream, then splits it and
     /// spawns the background reader task.
     pub(crate) async fn from_stream(stream: UnixStream, deadline: Instant) -> io::Result<Self> {
+        Self::from_stream_with_timing(stream, deadline, None).await
+    }
+
+    async fn from_stream_with_timing(
+        stream: UnixStream,
+        deadline: Instant,
+        timing: Option<&mut GuestConnectionTiming>,
+    ) -> io::Result<Self> {
         // Handshake on the unsplit stream (reader task not running yet).
-        let (stream, handshake_decoder) = Self::handshake(stream, deadline).await?;
+        let (stream, handshake_decoder) = Self::handshake(stream, deadline, timing).await?;
 
         // Grab the raw fd BEFORE splitting — used by Drop to shutdown the
         // socket and unblock any pending reads (both our reader_loop and the
@@ -126,6 +168,7 @@ impl GuestControlClient {
     async fn handshake(
         mut stream: UnixStream,
         deadline: Instant,
+        mut timing: Option<&mut GuestConnectionTiming>,
     ) -> io::Result<(UnixStream, Decoder)> {
         let mut decoder = Decoder::new();
         let mut buf = Box::new([0u8; READ_BUF_SIZE]);
@@ -136,17 +179,28 @@ impl GuestControlClient {
         })
         .await?;
 
+        if let Some(timing) = timing.as_deref_mut() {
+            timing.ready = Some(std::time::Instant::now());
+        }
+
         // Send ping with a fixed seq. Shared.seq starts at 2 to avoid collision.
         let ping_seq: u32 = 1;
         let ping = guest_control_proto::encode(MSG_PING, ping_seq, &[])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         stream.write_all(&ping).await?;
+        if let Some(timing) = timing.as_deref_mut() {
+            timing.ping_written = Some(std::time::Instant::now());
+        }
 
         // Wait for pong with matching seq
         Self::read_until_handshake(&mut stream, &mut decoder, &mut buf, deadline, |m| {
             m.msg_type == MSG_PONG && m.seq == ping_seq
         })
         .await?;
+
+        if let Some(timing) = timing {
+            timing.pong_received = Some(std::time::Instant::now());
+        }
 
         Ok((stream, decoder))
     }

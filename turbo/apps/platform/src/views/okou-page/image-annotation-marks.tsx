@@ -28,17 +28,55 @@ export function markInk(mark: ImageAnnotationMark): string {
 /** Head length as a fraction of the shorter edge. */
 const ARROW_HEAD_UNITS = 0.045;
 
+/**
+ * How wide the invisible grab band around a stroke is, in on-screen pixels.
+ *
+ * A 3px line is not a target anyone can hit, so every stroke carries a second
+ * copy of its own path drawn in `transparent` at this width. It has to be the
+ * *stroke* that is hittable and not the SVG box: the box spans the whole image,
+ * and a hittable box would swallow every press meant for the canvas underneath,
+ * leaving no way to draw a second mark anywhere near the first.
+ */
+const STROKE_HIT_WIDTH = 14;
+
 function percent(value: number): string {
   return `${value * 100}%`;
+}
+
+/**
+ * The pointer surface for a stroke, or nothing when the layer is read-only.
+ *
+ * `pointerEvents: "stroke"` overrides the `pointer-events-none` on the parent
+ * `<svg>` for this one path, which is what confines hit-testing to the band
+ * around the line.
+ */
+function strokeHitProps(interaction: MarkInteraction | null) {
+  if (!interaction) {
+    return null;
+  }
+  return {
+    fill: "none",
+    stroke: "transparent",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    vectorEffect: "non-scaling-stroke" as const,
+    className: "cursor-move",
+    style: { pointerEvents: "stroke" as const, strokeWidth: STROKE_HIT_WIDTH },
+    ...interaction,
+  };
 }
 
 function StrokeMark({
   mark,
   aspect,
+  interaction,
 }: {
   mark: ImageAnnotationMark;
   aspect: number;
+  interaction: MarkInteraction | null;
 }) {
+  const hit = strokeHitProps(interaction);
+
   if (mark.shape === "pen") {
     const points = mark.points
       .map((point) => {
@@ -67,6 +105,7 @@ function StrokeMark({
           vectorEffect="non-scaling-stroke"
           style={{ strokeWidth: 3 }}
         />
+        {hit && <polyline points={points} {...hit} />}
       </svg>
     );
   }
@@ -120,6 +159,9 @@ function StrokeMark({
         vectorEffect="non-scaling-stroke"
         style={{ strokeWidth: 3 }}
       />
+      {/* The shaft alone. Grabbing the head would put the band the arrow is
+          dragged by right on top of the two endpoint grips that re-aim it. */}
+      {hit && <path d={shaft} {...hit} />}
     </svg>
   );
 }
@@ -140,6 +182,13 @@ function boxedFill(
   };
 }
 
+/** What a mark needs in order to be picked up, shared by every shape. */
+interface MarkInteraction {
+  onClick: () => void;
+  onPointerDown?: (event: ReactPointerEvent<Element>) => void;
+  "data-testid": string;
+}
+
 /**
  * Selection is carried entirely by the resize handles. An outline on top of the
  * mark's own border reads as two strokes around one shape, which looks like a
@@ -157,27 +206,32 @@ export function MarkShape({
   ordinal: number;
   aspect?: number;
   onSelect?: () => void;
-  onGrab?: (event: ReactPointerEvent<HTMLElement>) => void;
+  onGrab?: (event: ReactPointerEvent<Element>) => void;
 }) {
   // Without a handler the mark is decoration, so it must not eat pointer events
   // from the surface underneath — that surface is where new marks get drawn.
-  const interaction = onSelect
+  const interaction: MarkInteraction | null = onSelect
     ? {
         onClick: onSelect,
         ...(onGrab ? { onPointerDown: onGrab } : {}),
-        className: "absolute cursor-move",
         "data-testid": `annotation-mark-${ordinal}`,
       }
+    : null;
+  const boxedProps = interaction
+    ? { ...interaction, className: "absolute cursor-move" }
     : { className: "pointer-events-none absolute" };
 
+  // A stroke used to drop `interaction` here and render as decoration in the
+  // editor too, so an arrow or a freehand line could be drawn and then never
+  // clicked, moved, recoloured, or given a note.
   if (mark.shape === "pen" || mark.shape === "arrow") {
-    return <StrokeMark mark={mark} aspect={aspect} />;
+    return <StrokeMark mark={mark} aspect={aspect} interaction={interaction} />;
   }
 
   if (mark.shape === "text") {
     return (
       <span
-        {...interaction}
+        {...boxedProps}
         style={{
           left: percent(mark.at.x),
           top: percent(mark.at.y),
@@ -192,7 +246,7 @@ export function MarkShape({
 
   return (
     <span
-      {...interaction}
+      {...boxedProps}
       style={{
         left: percent(mark.rect.x),
         top: percent(mark.rect.y),

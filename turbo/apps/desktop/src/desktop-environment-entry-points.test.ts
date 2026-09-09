@@ -323,6 +323,14 @@ function probeEvidence(bundleId = "ai.okou.desktop") {
       exitCode: 0,
       hostStopped: true,
       directoryRemoved: true,
+      process: {
+        guardianPid: 24,
+        guardianExitObserved: true,
+        descendantsExited: true,
+        forced: false,
+        elapsedMs: 75,
+        heartbeatCount: 1,
+      },
     },
   };
 }

@@ -1,3 +1,4 @@
+import { privateArtifactCreationEnabled } from "../services/private-artifact-storage.service";
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
@@ -125,7 +126,7 @@ const submitIntroVideoPresenterJob$ = command(
       return response;
     }
 
-    const [audioUrl] = await set(
+    const references = await set(
       resolveProviderReferenceUrls$,
       {
         orgId: args.orgId,
@@ -134,6 +135,15 @@ const submitIntroVideoPresenterJob$ = command(
       },
       signal,
     );
+    if ("status" in references) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: references.body.error },
+        signal,
+      );
+      return references;
+    }
+    const [audioUrl] = references;
     if (!audioUrl) {
       throw new Error("Expected one resolved Intro Video presenter audio URL");
     }
@@ -324,6 +334,11 @@ const postVoiceGenerateInner$ = command(
       return admission;
     }
 
+    const privateArtifacts = await get(
+      privateArtifactCreationEnabled(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+
     const response = await onRejection(
       (async () => {
         const speech = await generateHeyGenSpeech(options, apiKey, signal);
@@ -343,6 +358,7 @@ const postVoiceGenerateInner$ = command(
             userId: auth.userId,
             runId: auth.runId,
             publicBrand: PUBLIC_BRAND,
+            privateArtifacts,
             pricing,
             options,
             speech,

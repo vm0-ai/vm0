@@ -11,7 +11,6 @@ import {
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { eq } from "drizzle-orm";
@@ -37,7 +36,6 @@ interface FormatRunErrorLikeWebMessageParams {
   readonly chatThreadId?: string | null;
   readonly runId: string;
   readonly errorMessage: string;
-  readonly publicBrand: PublicBrand;
   readonly failureReason?: RunFailureReasonToken;
   readonly framework?: ModelProviderFramework | null;
   readonly modelProviderType?: ModelProviderType | null;
@@ -57,7 +55,6 @@ function buildPersonalModelProvidersUrl(): string {
 }
 
 function buildClaudeCodeCredentialRecoveryUrl(params: {
-  readonly publicBrand: PublicBrand;
   readonly modelProviderType: ModelProviderType | null | undefined;
   readonly modelProviderCredentialScope:
     | ModelProviderCredentialScope
@@ -197,7 +194,6 @@ function formatRunErrorLikeWebMessage(
         modelProviderCredentialScope,
         canManageOrgModelProviders: params.canManageOrgModelProviders ?? false,
         modelProvidersUrl: buildClaudeCodeCredentialRecoveryUrl({
-          publicBrand: params.publicBrand,
           modelProviderType,
           modelProviderCredentialScope,
         }),

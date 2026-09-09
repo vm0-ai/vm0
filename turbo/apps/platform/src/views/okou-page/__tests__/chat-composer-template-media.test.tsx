@@ -7,16 +7,14 @@ import type {
 import { expect, test } from "vitest";
 
 import {
+  holdElementAnimations,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import {
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-} from "../../../lib/platform-template-items.ts";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
 import {
   AGENT_ID,
-  TEMPLATE_FEATURES,
   context,
   expectInlineTemplate,
   mockAvatarCatalog,
@@ -114,7 +112,6 @@ test("Find and choose an avatar template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const dialog = await openTemplatePicker(user, "Avatar");
@@ -192,7 +189,6 @@ test("Preview and choose a video template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const dialog = await openTemplatePicker(user, "Video");
@@ -227,7 +223,6 @@ test("Open plans from a gated video template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await openTemplatePicker(user, "Video");
@@ -255,7 +250,6 @@ test("Preview and send a website template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const picker = await openTemplatePicker(user, "Website");
@@ -270,7 +264,10 @@ test("Preview and send a website template", async () => {
   if (!previewDialog) {
     throw new Error("Website preview dialog not found");
   }
+  const finishCloseTransition = holdElementAnimations(previewDialog);
   await user.click(buttonNamed("Website", previewDialog));
+  expect(previewDialog).toBeVisible();
+  finishCloseTransition();
   const returnedPicker = await waitFor(() => {
     const currentPicker = screen.getByRole("dialog");
     expect(

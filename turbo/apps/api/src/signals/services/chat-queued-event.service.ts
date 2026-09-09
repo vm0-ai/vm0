@@ -1,6 +1,6 @@
-import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
@@ -24,7 +24,19 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgNullDecoder } from "../../lib/db-structured-result";
+import type { Tx } from "../../lib/db-types";
 import type { Db } from "../external/db";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
+import {
+  childAutonomyBudget,
+  type ChildAutonomyBudget,
+} from "./autonomy-budget.service";
+import {
+  canonicalChatEventUserMessage,
+  parseCanonicalChatEventRequiredOfficialWorkflowIds,
+} from "./canonical-chat-event-read.service";
+import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   chatQueueEventPriority,
   listPendingChatQueueEvents,
@@ -32,33 +44,20 @@ import {
   lockChatQueueThread,
   pendingChatQueueEventCondition,
 } from "./chat-event-queue.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import {
   insertChatEvent,
   type LoadedChatEventReplacementTarget,
   type NewChatEvent,
-  revokeChatEvent,
-  replaceLoadedChatEvent,
   replaceChatEvent,
+  replaceLoadedChatEvent,
+  revokeChatEvent,
 } from "./chat-event.service";
-import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
-import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
-import { chatEventTypeIn } from "./chat-event-type.service";
-import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import {
-  childAutonomyBudget,
-  type ChildAutonomyBudget,
-} from "./autonomy-budget.service";
-import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
-import type { Tx } from "../../lib/db-types";
 import {
   agentRunSourceAnnotation,
-  createUserMessageDocument,
   withRunModelAnnotation,
 } from "./chat-user-message.service";
-import {
-  canonicalChatEventUserMessage,
-  parseCanonicalChatEventRequiredOfficialWorkflowIds,
-} from "./canonical-chat-event-read.service";
 import { webChatQueueContextFromContextId } from "./web-chat-public-brand-context.service";
 
 type DbTransaction = Tx;
@@ -569,79 +568,6 @@ async function resolveAutomationEventQueueFirstClaimSnapshot(
   };
 }
 
-async function resolveGoalQueueFirstClaimSnapshot(
-  db: DbTransaction,
-  args: Extract<QueueFirstClaimArgs, { readonly kind: "goal_input" }>,
-): Promise<QueueFirstClaimSnapshot | null> {
-  const [head] = await db
-    .select({
-      ...queueFirstReplacementTargetFields,
-      goalId: threadGoals.id,
-      goalStatus: threadGoals.status,
-    })
-    .from(chatEvents)
-    .leftJoin(
-      threadGoals,
-      and(
-        eq(threadGoals.id, args.goalId),
-        eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
-        eq(threadGoals.orgId, args.orgId),
-        eq(threadGoals.ownerUserId, args.userId),
-        eq(chatEvents.contextType, "goal"),
-        eq(chatEvents.contextId, threadGoals.id),
-        // Match the lossless revision captured before run preparation.
-        eq(sql`${threadGoals.updatedAt}::text`, args.goalStateRevision),
-      ),
-    )
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, args.threadId),
-        pendingChatQueueEventCondition(db),
-      ),
-    )
-    .orderBy(
-      chatQueueEventPriority(),
-      asc(chatEvents.createdAt),
-      asc(chatEvents.id),
-    )
-    .for("update", { of: chatEvents })
-    .limit(1);
-  if (
-    !head ||
-    head.eventType !== "input.goal" ||
-    head.id !== args.eventId ||
-    head.goalId !== args.goalId ||
-    head.goalStatus !== "active"
-  ) {
-    return null;
-  }
-  const userMessage = createUserMessageDocument({
-    text: null,
-    nonContentPart: {
-      type: "goal",
-      goalBrief: args.goalObjectiveBrief,
-    },
-  });
-  return {
-    target: replacementTargetFromQueueHead(head),
-    routingContextType: "goal",
-    replacement: {
-      chatThreadId: args.threadId,
-      eventType: "input.prompt",
-      userMessage:
-        args.selectedModel === null
-          ? userMessage
-          : withRunModelAnnotation(
-              userMessage,
-              args.selectedModel,
-              args.serviceTier,
-            ),
-      runId: args.runId,
-      runGroupId: args.goalId,
-    },
-  };
-}
-
 async function resolveQueueFirstClaimSnapshot(
   db: DbTransaction,
   args: QueueFirstClaimArgs,
@@ -652,7 +578,8 @@ async function resolveQueueFirstClaimSnapshot(
   if (args.kind === "automation_event") {
     return await resolveAutomationEventQueueFirstClaimSnapshot(db, args);
   }
-  return await resolveGoalQueueFirstClaimSnapshot(db, args);
+  // Retained association shape cannot grant launch authority after retirement.
+  return null;
 }
 
 function queueFirstRunAdmissionBlocked(

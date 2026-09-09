@@ -13,7 +13,6 @@
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-use guest_contracts::workspace_mount::WORKSPACE_MOUNT_SCRIPT;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 
@@ -23,7 +22,6 @@ use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 pub(crate) const WORKSPACE_MOUNT_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_FREEZE_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_DEVICE: &str = "/dev/vdb";
-const WORKSPACE_MOUNTINFO_PATH: &str = "/proc/self/mountinfo";
 const WORKSPACE_FSFREEZE_PATH: &str = "/usr/sbin/fsfreeze";
 const WORKSPACE_FREEZE_SCRIPT: &str = include_str!("../scripts/freeze-workspace-drive.sh");
 
@@ -118,32 +116,11 @@ async fn run_workspace_drive_command(
     })
 }
 
-pub(crate) fn workspace_mount_command() -> String {
-    workspace_mount_command_for(
-        CANONICAL_WORKING_DIR,
-        WORKSPACE_DEVICE,
-        WORKSPACE_MOUNTINFO_PATH,
-    )
-}
-
 fn workspace_freeze_command() -> String {
     workspace_freeze_command_for(
         CANONICAL_WORKING_DIR,
         WORKSPACE_DEVICE,
         WORKSPACE_FSFREEZE_PATH,
-    )
-}
-
-fn workspace_mount_command_for(
-    workspace_dir: &str,
-    workspace_device: &str,
-    workspace_mountinfo_path: &str,
-) -> String {
-    let workspace_dir = quote_shell_arg(workspace_dir);
-    let workspace_device = quote_shell_arg(workspace_device);
-    let workspace_mountinfo_path = quote_shell_arg(workspace_mountinfo_path);
-    format!(
-        "workspace_dir={workspace_dir}\nworkspace_device={workspace_device}\nworkspace_mountinfo_path={workspace_mountinfo_path}\n{WORKSPACE_MOUNT_SCRIPT}"
     )
 }
 
@@ -188,32 +165,10 @@ mod tests {
         assert_eq!(calls[0].output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
     }
 
-    #[test]
-    fn workspace_commands_use_canonical_paths() {
-        let mount_cmd = workspace_mount_command();
-        let freeze_cmd = workspace_freeze_command();
-
-        for cmd in [&mount_cmd, &freeze_cmd] {
-            assert!(cmd.contains("workspace_dir='/home/user/workspace'"));
-            assert!(cmd.contains("workspace_device='/dev/vdb'"));
-        }
-        assert!(mount_cmd.contains("workspace_mountinfo_path='/proc/self/mountinfo'"));
-        assert!(freeze_cmd.contains("workspace_fsfreeze_path='/usr/sbin/fsfreeze'"));
-    }
-
-    #[test]
-    fn mount_command_does_not_unmount_freeze_or_sync() {
-        let cmd = workspace_mount_command();
-
-        assert!(!cmd.contains("fsfreeze"));
-        assert!(!cmd.contains("umount"));
-        assert!(!cmd.contains("\nsync"));
-    }
-
     #[cfg(target_os = "linux")]
     mod behavior {
         use std::fs;
-        use std::os::unix::fs::{PermissionsExt, symlink};
+        use std::os::unix::fs::PermissionsExt;
         use std::path::{Path, PathBuf};
         use std::process::{Command, Output};
 
@@ -227,9 +182,7 @@ mod tests {
             workspace_device: PathBuf,
             fake_bin: PathBuf,
             calls_path: PathBuf,
-            mountinfo_path: PathBuf,
             fsfreeze_path: PathBuf,
-            outside_dir: PathBuf,
         }
 
         impl WorkspaceScriptFixture {
@@ -239,15 +192,11 @@ mod tests {
                 let workspace_device = temp.path().join("vdb");
                 let fake_bin = temp.path().join("bin");
                 let calls_path = temp.path().join("calls.log");
-                let mountinfo_path = temp.path().join("mountinfo");
                 let fsfreeze_path = fake_bin.join("fsfreeze");
-                let outside_dir = temp.path().join("outside");
 
                 fs::create_dir(&fake_bin).unwrap();
-                fs::create_dir(&outside_dir).unwrap();
                 fs::write(&workspace_device, b"").unwrap();
                 fs::write(&calls_path, b"").unwrap();
-                fs::write(&mountinfo_path, b"").unwrap();
 
                 let fixture = Self {
                     temp,
@@ -255,28 +204,15 @@ mod tests {
                     workspace_device,
                     fake_bin,
                     calls_path,
-                    mountinfo_path,
                     fsfreeze_path,
-                    outside_dir,
                 };
                 fixture.write_mountpoint(false, None, None);
-                fixture.write_mkdir(false);
-                fixture.write_mount();
-                fixture.write_chown();
                 fixture.write_fsfreeze(0, "");
                 fixture
             }
 
             fn create_workspace(&self) {
                 fs::create_dir(&self.workspace_dir).unwrap();
-            }
-
-            fn write_mountinfo_device(&self, device: &str) {
-                fs::write(
-                    &self.mountinfo_path,
-                    format!("1 2 {device} / /elsewhere rw,relatime - ext4 /dev/vdb rw\n"),
-                )
-                .unwrap();
             }
 
             fn write_mountpoint(
@@ -330,55 +266,6 @@ esac
                 self.write_fake("mountpoint", &body);
             }
 
-            fn write_mkdir(&self, replace_with_symlink: bool) {
-                let workspace_dir = quoted_path(&self.workspace_dir);
-                let outside_dir = quoted_path(&self.outside_dir);
-                let replace_with_symlink = if replace_with_symlink { "1" } else { "0" };
-                let body = format!(
-                    r#"workspace_dir={workspace_dir}
-outside_dir={outside_dir}
-log_call mkdir "$@"
-if [ "$#" -ne 3 ] || [ "$1" != "-p" ] || [ "$2" != "--" ] || [ "$3" != "$workspace_dir" ]; then
-  exit 97
-fi
-if [ {replace_with_symlink} = 1 ]; then
-  /bin/ln -s -- "$outside_dir" "$workspace_dir"
-else
-  /bin/mkdir -p -- "$workspace_dir"
-fi
-"#
-                );
-                self.write_fake("mkdir", &body);
-            }
-
-            fn write_mount(&self) {
-                let workspace_dir = quoted_path(&self.workspace_dir);
-                let workspace_device = quoted_path(&self.workspace_device);
-                let body = format!(
-                    r#"workspace_dir={workspace_dir}
-workspace_device={workspace_device}
-log_call mount "$@"
-if [ "$#" -ne 5 ] || [ "$1" != "-t" ] || [ "$2" != "ext4" ] || [ "$3" != "--" ] || [ "$4" != "$workspace_device" ] || [ "$5" != "$workspace_dir" ]; then
-  exit 97
-fi
-"#
-                );
-                self.write_fake("mount", &body);
-            }
-
-            fn write_chown(&self) {
-                let workspace_dir = quoted_path(&self.workspace_dir);
-                let body = format!(
-                    r#"workspace_dir={workspace_dir}
-log_call chown "$@"
-if [ "$#" -ne 4 ] || [ "$1" != "-h" ] || [ "$2" != "user:user" ] || [ "$3" != "--" ] || [ "$4" != "$workspace_dir" ]; then
-  exit 97
-fi
-"#
-                );
-                self.write_fake("chown", &body);
-            }
-
             fn write_fsfreeze(&self, exit_code: i32, stderr: &str) {
                 let workspace_dir = quoted_path(&self.workspace_dir);
                 let stderr = quote_shell_arg(stderr);
@@ -401,15 +288,6 @@ exit {exit_code}
 "#
                 );
                 self.write_fake_path(&self.fsfreeze_path, &body);
-            }
-
-            fn run_mount(&self) -> Output {
-                let command = workspace_mount_command_for(
-                    self.workspace_dir.to_str().unwrap(),
-                    self.workspace_device.to_str().unwrap(),
-                    self.mountinfo_path.to_str().unwrap(),
-                );
-                self.run(command)
             }
 
             fn run_freeze(&self) -> Output {
@@ -493,161 +371,6 @@ log_call() {{
                 .expect("descriptor path should be /proc/<pid>/fd/3");
             assert!(!pid.is_empty());
             assert!(pid.chars().all(|character| character.is_ascii_digit()));
-        }
-
-        #[test]
-        fn mount_script_accepts_matching_existing_mount() {
-            let fixture = WorkspaceScriptFixture::new();
-            fixture.create_workspace();
-            fixture.write_mountpoint(true, Some(WORKSPACE_DEV), Some(WORKSPACE_DEV));
-
-            let output = fixture.run_mount();
-
-            assert_eq!(assert_exit(&output, 0), "");
-            assert_eq!(
-                fixture.calls(),
-                format!(
-                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\nmountpoint\t-d\t--\t{}\nchown\t-h\tuser:user\t--\t{}\n",
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_dir.display()
-                )
-            );
-        }
-
-        #[test]
-        fn mount_script_rejects_mismatched_existing_mount() {
-            let fixture = WorkspaceScriptFixture::new();
-            fixture.create_workspace();
-            fixture.write_mountpoint(true, Some(WORKSPACE_DEV), Some("8:32"));
-
-            let output = fixture.run_mount();
-
-            let stderr = assert_exit(&output, 64);
-            assert!(stderr.contains("refusing to mount workspace drive over existing mountpoint"));
-            assert_eq!(
-                fixture.calls(),
-                format!(
-                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\nmountpoint\t-d\t--\t{}\n",
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_dir.display()
-                )
-            );
-        }
-
-        #[test]
-        fn mount_script_rejects_workspace_device_mounted_elsewhere() {
-            let fixture = WorkspaceScriptFixture::new();
-            fixture.write_mountpoint(false, Some(WORKSPACE_DEV), None);
-            fixture.write_mountinfo_device(WORKSPACE_DEV);
-
-            let output = fixture.run_mount();
-
-            let stderr = assert_exit(&output, 64);
-            assert!(stderr.contains("already mounted outside"));
-            assert_eq!(
-                fixture.calls(),
-                format!(
-                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\n",
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display()
-                )
-            );
-            assert!(!fixture.workspace_dir.exists());
-        }
-
-        #[test]
-        fn mount_script_rejects_unavailable_mountinfo() {
-            let fixture = WorkspaceScriptFixture::new();
-            fixture.write_mountpoint(false, Some(WORKSPACE_DEV), None);
-            fs::remove_file(&fixture.mountinfo_path).unwrap();
-
-            let output = fixture.run_mount();
-
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            assert!(
-                !output.status.success(),
-                "mount should fail: stdout={stdout} stderr={stderr}"
-            );
-            assert!(stdout.is_empty(), "unexpected stdout: {stdout}");
-            assert!(
-                stderr.contains("mountinfo is unavailable"),
-                "unexpected stderr: {stderr}"
-            );
-            assert_eq!(
-                fixture.calls(),
-                format!(
-                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\n",
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display()
-                )
-            );
-            assert!(!fixture.workspace_dir.exists());
-        }
-
-        #[test]
-        fn mount_script_rejects_existing_symlink_before_state_checks() {
-            let fixture = WorkspaceScriptFixture::new();
-            symlink(&fixture.outside_dir, &fixture.workspace_dir).unwrap();
-
-            let output = fixture.run_mount();
-
-            let stderr = assert_exit(&output, 64);
-            assert!(stderr.contains("refusing to use symlink workspace path component"));
-            assert_eq!(fixture.calls(), "");
-        }
-
-        #[test]
-        fn mount_script_rejects_symlink_created_by_mkdir() {
-            let fixture = WorkspaceScriptFixture::new();
-            fixture.write_mountpoint(false, Some(WORKSPACE_DEV), None);
-            fixture.write_mkdir(true);
-
-            let output = fixture.run_mount();
-
-            let stderr = assert_exit(&output, 64);
-            assert!(stderr.contains("refusing to use symlink workspace path component"));
-            assert!(
-                fs::symlink_metadata(&fixture.workspace_dir)
-                    .unwrap()
-                    .file_type()
-                    .is_symlink()
-            );
-            assert_eq!(
-                fixture.calls(),
-                format!(
-                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\nmkdir\t-p\t--\t{}\n",
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_dir.display()
-                )
-            );
-        }
-
-        #[test]
-        fn mount_script_mounts_new_workspace_and_sets_owner() {
-            let fixture = WorkspaceScriptFixture::new();
-            fixture.write_mountpoint(false, Some(WORKSPACE_DEV), None);
-
-            let output = fixture.run_mount();
-
-            assert_eq!(assert_exit(&output, 0), "");
-            assert!(fixture.workspace_dir.is_dir());
-            assert_eq!(
-                fixture.calls(),
-                format!(
-                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\nmkdir\t-p\t--\t{}\nmount\t-t\text4\t--\t{}\t{}\nchown\t-h\tuser:user\t--\t{}\n",
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_device.display(),
-                    fixture.workspace_dir.display(),
-                    fixture.workspace_dir.display()
-                )
-            );
         }
 
         #[test]

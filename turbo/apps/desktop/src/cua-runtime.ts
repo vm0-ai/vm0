@@ -7,7 +7,11 @@ import type {
   EmbeddedDriverExit,
 } from "@trycua/cua-driver";
 import artifacts from "../cua/artifacts.json";
-import { loadPackagedCuaSdk, type CuaSdk } from "./cua-runtime-files";
+import type { CuaSdk } from "./cua-runtime-files";
+import { createRemoteCuaSdk } from "./cua-remote-sdk";
+import { cuaMonotonicMs } from "./cua-process-protocol";
+import type { ComputerUseCommandBudget } from "./computer-use-command-budget";
+import type { CuaProcessProof } from "./cua-process-owner";
 import { withComputerUseDeadline } from "./computer-use-lifecycle-deadline";
 
 interface CuaReadiness {
@@ -56,10 +60,13 @@ interface RuntimeOptions {
   /** External SDK boundary for deterministic fault injection. */
   readonly loadSdk?: () => Promise<CuaSdk>;
   readonly deadlineMs?: number;
+  /** Only the dedicated packaged lifecycle probe enables this fixed fault. */
+  readonly probeBlockCleanup?: boolean;
 }
 
 /** Owns the real embedded daemon, without registering a partial command driver. */
 export class CuaEmbeddedRuntime {
+  private budget: ComputerUseCommandBudget | null = null;
   private context: Generation | null = null;
   private nextGeneration = 0;
   private closed = false;
@@ -73,9 +80,14 @@ export class CuaEmbeddedRuntime {
     readonly exitCode: number | null;
     readonly hostStopped: boolean;
     readonly directoryRemoved: boolean;
+    readonly process?: CuaProcessProof;
   } | null = null;
 
   constructor(private readonly options: RuntimeOptions) {}
+
+  setCommandBudget(budget: ComputerUseCommandBudget | null): void {
+    this.budget = budget;
+  }
 
   /** Metadata only, for the fixed packaged lifecycle probe. No native labels. */
   getCleanupEvidence() {
@@ -150,7 +162,16 @@ export class CuaEmbeddedRuntime {
 
   private async initialize(context: Generation): Promise<CuaReadiness> {
     const sdk = await (this.options.loadSdk?.() ??
-      loadPackagedCuaSdk(this.options.runtimeRoot));
+      createRemoteCuaSdk(
+        this.options.runtimeRoot,
+        this.options.hostBundleId,
+        context.id,
+        () => {
+          if (!context.retired) this.fail(context, "cua_unexpected_exit");
+        },
+        () => this.budget?.remaining() ?? 15_000,
+        this.options.probeBlockCleanup,
+      ));
     this.assertCurrent(context);
     context.sdk = sdk;
     // A short, mode-0700 directory avoids macOS's Unix socket path limit and
@@ -189,9 +210,11 @@ export class CuaEmbeddedRuntime {
         if (!context.retired) this.fail(context, "cua_unexpected_exit");
         return exit;
       });
-    void context.exit.catch(() =>
-      this.fail(context, "cua_exit_observer_failed"),
-    );
+    void context.exit.catch(() => {
+      // Forced retirement closes the remote observer; independent OS exit
+      // evidence owns completion after this generation has stopped admission.
+      if (!context.retired) this.fail(context, "cua_exit_observer_failed");
+    });
     this.assertCurrent(context);
     context.client = sdk.connect(connection.socketPath);
     const metadata = await context.client.metadata({
@@ -245,12 +268,21 @@ export class CuaEmbeddedRuntime {
 
   private retire(context: Generation): Promise<void> {
     context.retired = true;
-    context.abort.abort();
-    context.retirement ??= this.cleanup(context);
+    if (!context.retirement) {
+      const milliseconds = this.options.deadlineMs ?? 5_000;
+      const until = cuaMonotonicMs() + milliseconds;
+      // Publish the single flight and arm its only total budget before abort,
+      // RPC, or any external cleanup can execute.
+      context.retirement = withComputerUseDeadline(
+        Promise.resolve().then(() => this.cleanup(context, until)),
+        milliseconds,
+      );
+    }
     return context.retirement;
   }
 
-  private async cleanup(context: Generation): Promise<void> {
+  private async cleanupNative(context: Generation) {
+    context.abort.abort();
     // Embedded host stop has its own liveness/kill/reap channel. Start it before
     // awaiting SDK callbacks: an aborted FFI promise is not termination proof.
     const end = Promise.resolve().then(() =>
@@ -280,16 +312,28 @@ export class CuaEmbeddedRuntime {
       hostStopped = true;
       context.host.uniffiDestroy();
     }
+    return { exit, hostStopped };
+  }
+
+  private async cleanup(context: Generation, until: number): Promise<void> {
+    const owner = context.sdk?.processOwner;
+    const result = owner
+      ? await owner.retire(() => this.cleanupNative(context), until)
+      : { native: await this.cleanupNative(context), process: undefined };
     if (context.directory)
       await rm(context.directory, { recursive: true, force: true });
     if (this.context === context) {
       this.cleanupEvidence = {
         generation: context.id,
-        exitObserved: exit !== null,
-        exitSuccess: exit?.success === true,
-        exitCode: exit?.code ?? null,
-        hostStopped,
+        exitObserved:
+          result.process?.descendantsExited ?? result.native?.exit != null,
+        exitSuccess:
+          result.native?.exit?.success === true &&
+          result.process?.forced !== true,
+        exitCode: result.native?.exit?.code ?? null,
+        hostStopped: result.native?.hostStopped ?? false,
         directoryRemoved: context.directory !== null,
+        ...(result.process ? { process: result.process } : {}),
       };
       this.context = null;
       this.phase = this.error ? "error" : "stopped";
@@ -301,10 +345,7 @@ export class CuaEmbeddedRuntime {
     if (!context) return;
     this.phase = "retiring";
     try {
-      await withComputerUseDeadline(
-        this.retire(context),
-        this.options.deadlineMs ?? 5_000,
-      );
+      await this.retire(context);
     } catch {
       if (this.context === context) {
         this.phase = "error";
@@ -367,7 +408,7 @@ export class CuaEmbeddedRuntime {
       context.probe,
       this.options.deadlineMs ?? 15_000,
     ).catch(() => {
-      this.fail(context, "cua_probe_failed");
+      if (!context.retired) this.fail(context, "cua_probe_failed");
       throw new Error("CUA host probe failed");
     });
   }

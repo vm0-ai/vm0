@@ -34,7 +34,6 @@ function normalizedBaseUrl(url: string): string {
 }
 
 interface PiRuntimeContract {
-  readonly api: "openai-responses";
   readonly thinkingLevel?: PiModelConfigLegacy["thinkingLevel"];
   readonly serviceTier?: PiModelConfigLegacy["serviceTier"];
 }
@@ -113,7 +112,6 @@ function piRuntimeContract(args: {
 }): PiRuntimeContract {
   if (isPiGptModel(args.selectedModel)) {
     return {
-      api: "openai-responses",
       thinkingLevel: "max",
       ...((isBuiltInModelProviderType(args.providerType) ||
         args.providerType === "custom-openai-responses") &&
@@ -122,7 +120,7 @@ function piRuntimeContract(args: {
         : {}),
     };
   }
-  return { api: "openai-responses" };
+  return {};
 }
 
 function piProvider(
@@ -160,7 +158,7 @@ function isFastGptPiProvider(
 
 /**
  * Route canonical chat threads by model and provider policy. Trigger source is
- * intentionally absent so every queued connector shares the same admission.
+ * intentionally absent so every thread-bound launch shares the same admission.
  */
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;

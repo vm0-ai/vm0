@@ -1,6 +1,4 @@
-import { queryMessageBody } from "./chat-event-test-helpers.ts";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { click } from "../../../__tests__/page-helper.ts";
@@ -114,14 +112,11 @@ describe("chat engagement telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: true,
-      },
     });
 
     const expandWork = await findWorkHistoryToggle("collapsed");
     expect(screen.getByText(/^Working for /)).toBeVisible();
-    expect(queryMessageBody("Checking the launch brief.")).toBeNull();
+    expect(screen.queryByText("Checking the launch brief.")).toBeNull();
 
     click(expandWork);
 
@@ -135,7 +130,7 @@ describe("chat engagement telemetry", () => {
     click(getWorkHistoryToggle("expanded"));
 
     await waitFor(() => {
-      expect(queryMessageBody("Checking the launch brief.")).toBeNull();
+      expect(screen.queryByText("Checking the launch brief.")).toBeNull();
     });
     expect(capturedEvents("chat_work_history_expanded")).toHaveLength(1);
   });
@@ -194,9 +189,6 @@ describe("chat engagement telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: true,
-      },
     });
 
     const expandWork = await findWorkHistoryToggle("collapsed");

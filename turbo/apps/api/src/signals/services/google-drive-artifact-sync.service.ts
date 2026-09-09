@@ -6,14 +6,16 @@ import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { hostedDeployments } from "@okouai/db/schema/hosted-site";
+import {
+  hostedDeployments,
+  privateHostedDeployments,
+} from "@okouai/db/schema/hosted-site";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
@@ -853,7 +855,7 @@ function resolveArtifactS3Object(
 function resolveHostedArtifactContent(
   db: ReadonlyDb,
   artifact: ArtifactFileRow,
-  userId: string,
+  owner: { readonly userId: string; readonly orgId: string },
   signal: AbortSignal,
 ): Computed<Promise<ResolvedArtifactContent | null>> {
   return computed(async (get): Promise<ResolvedArtifactContent | null> => {
@@ -867,27 +869,37 @@ function resolveHostedArtifactContent(
       return null;
     }
 
+    const isPrivate = artifact.metadata.access === "owner-private-v1";
+    const deploymentTable = isPrivate
+      ? privateHostedDeployments
+      : hostedDeployments;
     const [deployment] = await db
       .select({
-        entrypoint: hostedDeployments.entrypoint,
-        manifest: hostedDeployments.manifest,
-        r2Prefix: hostedDeployments.r2Prefix,
+        entrypoint: deploymentTable.entrypoint,
+        manifest: deploymentTable.manifest,
+        r2Prefix: deploymentTable.r2Prefix,
       })
-      .from(hostedDeployments)
+      .from(deploymentTable)
       .where(
         and(
-          eq(hostedDeployments.id, metadata.deploymentId),
-          eq(hostedDeployments.userId, userId),
-          eq(hostedDeployments.status, "ready"),
+          eq(deploymentTable.id, metadata.deploymentId),
+          eq(deploymentTable.userId, owner.userId),
+          eq(deploymentTable.orgId, owner.orgId),
+          eq(deploymentTable.status, "ready"),
         ),
       )
       .limit(1);
 
+    signal.throwIfAborted();
     if (!deployment) {
       return null;
     }
 
-    if (metadata.artifactKind === "hosted-site") {
+    if (isPrivate && deployment.manifest.access !== "owner-private-v1") {
+      throw new Error("Private hosted deployment has an invalid access policy");
+    }
+    // Private presentations bundle their images and fonts next to index.html.
+    if (isPrivate || metadata.artifactKind === "hosted-site") {
       const entries: ZipEntry[] = [];
       const files = Object.values(deployment.manifest.files).sort((a, b) => {
         return a.path.localeCompare(b.path);
@@ -899,6 +911,7 @@ function resolveHostedArtifactContent(
             hostedSiteFileKey(deployment.r2Prefix, file.path),
           ),
         );
+        signal.throwIfAborted();
         entries.push({ path: zipEntryPath(file.path), content });
       }
       return {
@@ -1032,13 +1045,10 @@ async function ensureDriveFolder(args: {
 
 async function ensureArtifactFolder(args: {
   readonly accessToken: string;
-  readonly publicBrand: PublicBrand;
   readonly threadId: string;
 }): Promise<DriveTokenResult<string>> {
   let parentFolderId: string | null = null;
-  const rootFolderName =
-    args.publicBrand === "okou" ? "Okou Artifacts" : "vm0-artifact";
-  for (const name of [rootFolderName, `chat-${args.threadId}`]) {
+  for (const name of ["Okou Artifacts", `chat-${args.threadId}`]) {
     const folder = await ensureDriveFolder({
       accessToken: args.accessToken,
       parentFolderId,
@@ -1113,7 +1123,6 @@ async function uploadDriveFile(args: {
 
 async function uploadArtifactWithToken(args: {
   readonly accessToken: string;
-  readonly publicBrand: PublicBrand;
   readonly threadId: string;
   readonly runId: string;
   readonly fileId: string;
@@ -1123,7 +1132,6 @@ async function uploadArtifactWithToken(args: {
 }): Promise<DriveTokenResult<Response>> {
   const folder = await ensureArtifactFolder({
     accessToken: args.accessToken,
-    publicBrand: args.publicBrand,
     threadId: args.threadId,
   });
   if (folder.type === "unauthorized") {
@@ -1186,7 +1194,6 @@ export const syncArtifactToGoogleDrive$ = command(
       readonly threadId: string;
       readonly runId: string;
       readonly fileId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<
@@ -1243,12 +1250,13 @@ export const syncArtifactToGoogleDrive$ = command(
     }
 
     const hostedContent = await get(
-      resolveHostedArtifactContent(db, artifact, args.userId, signal),
+      resolveHostedArtifactContent(db, artifact, args, signal),
     );
     signal.throwIfAborted();
-    const s3Object = hostedContent
-      ? null
-      : await get(resolveArtifactS3Object(artifact, args.userId));
+    const s3Object =
+      hostedContent || artifact.metadata.access === "owner-private-v1"
+        ? null
+        : await get(resolveArtifactS3Object(artifact, args.userId));
     signal.throwIfAborted();
     let content: ResolvedArtifactContent;
     if (hostedContent) {
@@ -1264,7 +1272,6 @@ export const syncArtifactToGoogleDrive$ = command(
 
     let result = await uploadArtifactWithToken({
       accessToken: tokens.accessToken,
-      publicBrand: args.publicBrand,
       threadId: args.threadId,
       runId: args.runId,
       fileId: args.fileId,
@@ -1289,7 +1296,6 @@ export const syncArtifactToGoogleDrive$ = command(
       if (refreshed.type === "ok") {
         result = await uploadArtifactWithToken({
           accessToken: refreshed.accessToken,
-          publicBrand: args.publicBrand,
           threadId: args.threadId,
           runId: args.runId,
           fileId: args.fileId,

@@ -33,9 +33,9 @@ export const webFilesContract = c.router({
         url: z.string(),
         /**
          * Stable public artifacts URL for the same object, suitable for a link
-         * handed to someone else.
+         * handed to someone else. Null for private artifacts.
          */
-        publicUrl: z.string(),
+        publicUrl: z.string().nullable(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

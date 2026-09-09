@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.55](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.54...guest-tool-exec-v0.1.55) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
+## [0.1.54](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.53...guest-tool-exec-v0.1.54) (2026-09-08)
+
+## [0.1.53](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.52...guest-tool-exec-v0.1.53) (2026-09-08)
+
+## [0.1.52](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.51...guest-tool-exec-v0.1.52) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runtime:** use okou and neutral runtime copy ([#32588](https://github.com/vm0-ai/vm0/issues/32588)) ([61d758c](https://github.com/vm0-ai/vm0/commit/61d758c9dd50358a8f787867637ca3edef1ea1cc))
+
 ## [0.1.51](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.50...guest-tool-exec-v0.1.51) (2026-09-08)
 
 ## [0.1.50](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.49...guest-tool-exec-v0.1.50) (2026-09-08)

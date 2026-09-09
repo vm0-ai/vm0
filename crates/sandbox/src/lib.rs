@@ -19,6 +19,7 @@
 
 mod config;
 mod control;
+mod dns_readiness;
 mod error;
 mod factory;
 mod guest_rpc;
@@ -35,6 +36,7 @@ pub use config::{
 pub use control::{
     RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError, SandboxControlTarget,
 };
+pub use dns_readiness::{SandboxDnsReadinessAttempt, SandboxDnsReadinessOutcome};
 pub use error::{
     Result, SandboxError, SandboxGuestDnsReadinessReason, SandboxIdleTransition,
     SandboxInitializationPhase, SandboxInvalidStateContext, SandboxOperation,
@@ -50,8 +52,8 @@ pub use sandbox::{
     GuestMemorySnapshot, Sandbox, SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
     SandboxFinalExecParkHandoffPoint, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
     SandboxFinalExecParkStage, SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome,
-    SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
-    SevereMemoryRetentionDiagnostics,
+    SandboxGuestConnectionPhase, SandboxParkNonReusableReason, SandboxParkOutcome,
+    SandboxStartObserver, SandboxStartStage, SevereMemoryRetentionDiagnostics,
 };
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,

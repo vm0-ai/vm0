@@ -111,6 +111,9 @@
         "crates/guest-write-file": {
             "release-type": "rust"
         },
+        "crates/guest-workspace-mount": {
+            "release-type": "rust"
+        },
         "crates/runner": {
             "release-type": "rust",
             "component": "runner-rs"

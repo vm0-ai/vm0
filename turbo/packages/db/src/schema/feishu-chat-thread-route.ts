@@ -12,7 +12,7 @@ import { feishuOrgConnections } from "./feishu-org-connection";
 
 /**
  * Stable mapping from one Feishu user's view of a Feishu reply thread to the
- * canonical VM0 chat thread that owns its queue and session chain.
+ * canonical Okou chat thread that owns its queue and session chain.
  */
 export const feishuChatThreadRoutes = pgTable(
   "feishu_chat_thread_routes",

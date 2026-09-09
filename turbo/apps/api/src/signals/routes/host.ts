@@ -1,9 +1,11 @@
 import { command } from "ccstate";
+import { hostPrivatePreviewRoutes } from "./host-private-preview";
 import { hostContract } from "@okouai/api-contracts/contracts/host";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { setResHeader$ } from "../context/hono";
 import {
   completeHostedSiteDeployment$,
   getHostedSiteDeployments$,
@@ -83,6 +85,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     completeHostedSiteDeployment$,
     {
       orgId: auth.orgId,
+      userId: auth.userId,
       runId: "runId" in auth ? auth.runId : undefined,
       deploymentId: params.deploymentId,
     },
@@ -107,6 +110,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  set(setResHeader$, "Cache-Control", "private, no-store");
   const auth = get(organizationAuthContext$);
   const params = get(filesParams$);
   const query = get(filesQuery$);
@@ -115,6 +119,7 @@ const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     getHostedSiteFiles$,
     {
       orgId: auth.orgId,
+      userId: auth.userId,
       publicSlug: params.publicSlug,
       version: query.version,
     },
@@ -142,6 +147,7 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     getHostedSiteDeployments$,
     {
       orgId: auth.orgId,
+      userId: auth.userId,
       runId: "runId" in auth ? auth.runId : undefined,
       site: params.site,
     },
@@ -156,6 +162,7 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 export const hostRoutes: readonly RouteEntry[] = [
+  ...hostPrivatePreviewRoutes,
   {
     route: hostContract.prepare,
     handler: authRoute(

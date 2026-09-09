@@ -6,7 +6,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   isSlackApiClientError,
-  listSlackChannelsPage,
+  isSlackConversationShared,
+  listSharedSlackChannelsPage,
   readSlackHistoryPage,
 } from "../../lib/slack-client";
 import { OFFICIAL_SLACK_APP_NAME } from "../../lib/slack-official-app";
@@ -14,7 +15,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { slackOrgInstallation } from "../services/slack-data.service";
+import { slackUserInstallation } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 
@@ -30,15 +31,21 @@ const readInstallation$ = computed(async (get) => {
     );
   }
   const installation = await get(
-    slackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
+    slackUserInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
-  return (
-    installation ??
-    createErrorResponse(
+  if (installation.kind === "not-installed") {
+    return createErrorResponse(
       "NOT_FOUND",
       "No Slack installation found for this organization. Install Okou from Settings > Slack first.",
-    )
-  );
+    );
+  }
+  if (installation.kind === "not-connected") {
+    return createErrorResponse(
+      "NOT_FOUND",
+      "Your Slack account is not connected to this organization. Connect it from Settings > Slack before reading conversations.",
+    );
+  }
+  return installation;
 });
 
 function channelLink(workspaceId: string, channel: string): string {
@@ -143,7 +150,12 @@ const listChannels$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const result = await settle(
-    listSlackChannelsPage(installation.botToken, query, signal),
+    listSharedSlackChannelsPage(
+      installation.botToken,
+      installation.slackUserId,
+      query,
+      signal,
+    ),
   );
   signal.throwIfAborted();
   if (!result.ok) {
@@ -157,7 +169,7 @@ const listChannels$ = command(async ({ get }, signal: AbortSignal) => {
           id: channel.id,
           name: channel.name,
           isPrivate: channel.is_private,
-          isMember: channel.is_member,
+          isMember: true,
           channelUrl: channelLink(installation.workspaceId, channel.id),
         };
       }),
@@ -172,6 +184,25 @@ const history$ = command(async ({ get }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if ("status" in installation) {
     return installation;
+  }
+
+  const shared = await settle(
+    isSlackConversationShared(
+      installation.botToken,
+      installation.slackUserId,
+      query.channel,
+      signal,
+    ),
+  );
+  signal.throwIfAborted();
+  if (!shared.ok) {
+    return slackReadError(shared.error);
+  }
+  if (!shared.value) {
+    return createErrorResponse(
+      "NOT_FOUND",
+      "This Slack conversation does not exist or is not shared by your connected Slack account and Okou.",
+    );
   }
 
   const channelUrl = channelLink(installation.workspaceId, query.channel);

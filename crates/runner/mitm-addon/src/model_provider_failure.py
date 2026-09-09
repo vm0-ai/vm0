@@ -179,10 +179,7 @@ _report_condition = threading.Condition(_report_lock)
 _report_api_url = ""
 _report_bearer_credential = ""
 _report_slots = threading.BoundedSemaphore(_MAX_PENDING_REPORTS)
-_report_executor = ThreadPoolExecutor(
-    max_workers=_REPORT_WORKERS,
-    thread_name_prefix="model-provider-failure",
-)
+_report_executor: ThreadPoolExecutor | None = None
 _reporter_shut_down = False
 _report_futures: set[Future[int]] = set()
 
@@ -210,10 +207,7 @@ def reset_for_tests() -> None:
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:
         if _reporter_shut_down:
-            _report_executor = ThreadPoolExecutor(
-                max_workers=_REPORT_WORKERS,
-                thread_name_prefix="model-provider-failure",
-            )
+            _report_executor = None
             _reporter_shut_down = False
 
 
@@ -617,8 +611,10 @@ def shutdown() -> None:
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:
         pending = tuple(_report_futures)
+        executor = _report_executor
         _reporter_shut_down = True
-    _report_executor.shutdown(wait=False, cancel_futures=True)
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
     running = tuple(future for future in pending if not future.cancelled())
     if running:
         wait(running, timeout=_REPORT_TIMEOUT_SECONDS)
@@ -885,7 +881,27 @@ def _mark_websocket_ambiguous(
     _log_suppressed(flow, reason)
 
 
+def _start_report_executor() -> ThreadPoolExecutor:
+    executor = ThreadPoolExecutor(
+        max_workers=_REPORT_WORKERS,
+        thread_name_prefix="model-provider-failure",
+    )
+    release_workers = threading.Event()
+    try:
+        # submit() queues before starting a worker and can then raise without returning
+        # its future. Start every worker with report-free tasks before enqueueing HTTP.
+        for _ in range(_REPORT_WORKERS):
+            executor.submit(release_workers.wait)
+    except BaseException:
+        release_workers.set()
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    release_workers.set()
+    return executor
+
+
 def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
+    global _report_executor
     with _report_lock:
         api_url = _report_api_url
         bearer_credential = _report_bearer_credential
@@ -913,9 +929,14 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
         f"{api_url}/api/runners/runs/{urllib.parse.quote(run_id, safe='')}/model-provider-failures"
     )
     future: Future[int] | None = None
+    omission_reason = "reporter_shut_down"
     with _report_lock:
         if not _reporter_shut_down:
             try:
+                if _report_executor is None:
+                    omission_reason = "worker_start_failed"
+                    _report_executor = _start_report_executor()
+                omission_reason = "reporter_shut_down"
                 future = _report_executor.submit(
                     _post_report,
                     report_url,
@@ -928,7 +949,7 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
                 _report_futures.add(future)
     if future is None:
         _report_slots.release()
-        _log_report_omitted(report_context, "reporter_shut_down")
+        _log_report_omitted(report_context, omission_reason)
         return
     future.add_done_callback(lambda completed: _finish_report(completed, report_context))
 

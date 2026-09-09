@@ -119,6 +119,16 @@ def inspect(app, archive):
         raise InspectionError("cua_payload_verification_failed")
     native = {name: {"sha256": sha256(runtime / name), "signature": signing(runtime / name)}
               for name in lock["nativeCode"]}
+    supervisor = resources / "native"
+    owned_native = {}
+    for name in ["cua-owner.node", "cua-guardian"]:
+        file = supervisor / name
+        if not file.is_file() or file.is_symlink():
+            raise InspectionError("missing_owned_cua_native")
+        owned_native[name] = {"sha256": sha256(file), "signature": signing(file)}
+    entry = supervisor / "cua-sdk-process.js"
+    if not entry.is_file() or entry.is_symlink():
+        raise InspectionError("missing_owned_cua_entry")
     architecture = command(["lipo", "-archs", str(app / "Contents/MacOS" / info["CFBundleExecutable"])])
     if architecture.returncode or architecture.stdout.strip() != "arm64":
         raise InspectionError("app_architecture_mismatch")
@@ -152,6 +162,8 @@ def inspect(app, archive):
         "gatekeeperAssessment": "accepted" if assessment.returncode == 0 else "not-accepted",
         "stapling": "valid" if stapling.returncode == 0 else "not-validated",
         "nativePostSign": native,
+        "ownedNativePostSign": owned_native,
+        "ownedSdkEntrySha256": sha256(entry),
         "stagedPayloadManifestSha256": sha256(runtime / "payload.json"),
         "upstreamArchives": {item["id"]: item["sha256"] for item in lock["artifacts"]},
         "bundles": {name: sha256(resources / "app/dist" / name) for name in ["bootstrap.js", "main.js", "preload.js"]},

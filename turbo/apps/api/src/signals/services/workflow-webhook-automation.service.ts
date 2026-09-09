@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/workflows";
 import {
   workflowUserAutomationThreads,
@@ -121,12 +120,10 @@ export async function buildWorkflowWebhookSummaryFields(
     | {
         readonly webhookToken: string;
         readonly webhookSecret: string;
-        readonly publicBrand: PublicBrand;
       }
     | {
         readonly webhookToken?: undefined;
         readonly webhookSecret?: undefined;
-        readonly publicBrand?: undefined;
       }
   ),
 ): Promise<{
@@ -166,7 +163,6 @@ export async function revealWorkflowWebhookSecretFields(
   db: ReadonlyDb,
   args: {
     readonly automation: AutomationRow;
-    readonly publicBrand: PublicBrand;
   },
 ): Promise<{ readonly webhookUrl: string; readonly webhookSecret: string }> {
   const [webhook] = await db

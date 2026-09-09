@@ -34,6 +34,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_HOSTNAME_MAX_LENGTH,
+  OFFICIAL_RUNNER_TOKEN_PREFIX,
   RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -223,6 +224,14 @@ function rustU64(value: number): RustConstantValue {
 }
 
 export const rustConstantBindings = [
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "OFFICIAL_RUNNER_TOKEN_PREFIX",
+    value: { kind: "string", value: OFFICIAL_RUNNER_TOKEN_PREFIX },
+    rustDoc: [
+      "Official token kind; the API still authenticates the secret and winning claim.",
+    ],
+  },
   {
     rustModulePath: clientHeadersModule,
     rustConstName: "CLIENT_VERSION_HEADER",
@@ -481,7 +490,7 @@ export const rustConstantBindings = [
     rustConstName: "CANONICAL_CLAUDE_CONFIG_DIR",
     value: rustString(CANONICAL_CLAUDE_CONFIG_DIR),
     rustDoc: [
-      "Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+      "Canonical directory for Okou-managed Claude Code configuration and session state inside runner guests.",
       "Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.",
     ],
   },
@@ -490,7 +499,7 @@ export const rustConstantBindings = [
     rustConstName: "CANONICAL_CODEX_HOME_DIR",
     value: rustString(CANONICAL_CODEX_HOME_DIR),
     rustDoc: [
-      "Canonical directory for VM0-managed Codex state inside runner guests.",
+      "Canonical directory for Okou-managed Codex state inside runner guests.",
       "Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.",
     ],
   },

@@ -46,6 +46,11 @@ import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { checkOrgCreditsForRunAdmissionInTransaction } from "./run-admission.service";
 import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
+import {
+  retirePendingGoalRunInTransaction,
+  type GoalRunRetirement,
+} from "./goal-retirement.service";
+
 const L = logger("RunQueue");
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
@@ -126,11 +131,18 @@ interface FailedQueuedCandidateTransactionResult {
 }
 
 type PromotionResult =
+  | {
+      readonly status: "retired";
+      readonly run: NonNullable<
+        Awaited<ReturnType<typeof retirePendingGoalRunInTransaction>>
+      >;
+    }
   | PromotedQueuedCandidateTransactionResult
   | FailedQueuedCandidateTransactionResult
   | PromoteQueuedCandidateNonPromotedResult;
 
 type PromoteQueuedCandidateResult =
+  | Extract<PromotionResult, { readonly status: "retired" }>
   | {
       readonly status: "promoted";
       readonly pendingActivation: PreparedPendingRunActivation;
@@ -141,6 +153,7 @@ type PromoteQueuedCandidateResult =
   | PromoteQueuedCandidateNonPromotedResult;
 
 type PromoteQueuedCandidateSideEffectResult =
+  | Extract<PromotionResult, { readonly status: "retired" }>
   | {
       readonly status: "drained";
       readonly pendingActivation: PendingRunActivation;
@@ -161,6 +174,7 @@ interface QueuedRunPromotionFailure {
 }
 
 type QueuedRunPromotionResult =
+  | GoalRunRetirement
   | {
       readonly kind: "activation";
       readonly activation: PendingRunActivation;
@@ -467,6 +481,10 @@ async function promoteQueuedCandidateInTransaction(
     return complete({ status: "full" });
   }
 
+  const retired = await retirePendingGoalRunInTransaction(tx, args.row.runId);
+  if (retired) {
+    return complete({ status: "retired", run: retired });
+  }
   const [lockedRun] = await tx
     .select({
       status: agentRuns.status,
@@ -567,6 +585,9 @@ async function promoteQueuedCandidateWithSideEffects(
   },
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
+  if (result.status === "retired") {
+    return result;
+  }
   if (result.status === "removed-stale") {
     return { status: "skipped" };
   }
@@ -654,6 +675,9 @@ export const promoteNextQueuedRun$ = command(
       }
       if (result.status === "skipped") {
         continue;
+      }
+      if (result.status === "retired") {
+        return { kind: "goal-retired", run: result.run };
       }
       if (result.status === "failed") {
         return result.terminalTransition;

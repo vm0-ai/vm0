@@ -14,6 +14,12 @@ export type ComputerUsePermissionProvider = Pick<
   | "probeAutomationPermission"
 >;
 
+export interface ComputerUsePermissionQuery {
+  readonly signal?: AbortSignal;
+  /** Absolute local monotonic deadline; never renewed by native recovery. */
+  readonly deadline?: number;
+}
+
 const DEFAULT_COMPUTER_USE_PERMISSION_STATE: ComputerUsePermissionState =
   Object.freeze({
     accessibility: false,
@@ -25,6 +31,10 @@ export function createComputerUsePermissions(
   withProvider: <T>(
     read: (provider: ComputerUsePermissionProvider) => Promise<T>,
   ) => Promise<T | null>,
+  readPermissions: (
+    query?: ComputerUsePermissionQuery,
+  ) => Promise<ComputerUsePermissionState | null> = () =>
+    withProvider((provider) => provider.getPermissions()),
 ) {
   let currentPermissionState = DEFAULT_COMPUTER_USE_PERMISSION_STATE;
   let revision = 0;
@@ -38,11 +48,11 @@ export function createComputerUsePermissions(
     return currentPermissionState;
   }
 
-  async function refreshComputerUsePermissionState(): Promise<ComputerUsePermissionState> {
+  async function refreshComputerUsePermissionState(
+    query?: ComputerUsePermissionQuery,
+  ): Promise<ComputerUsePermissionState> {
     const current = revision;
-    const permissions = await withProvider((provider) =>
-      provider.getPermissions(),
-    );
+    const permissions = await readPermissions(query);
     if (!permissions || current !== revision) return currentPermissionState;
     currentPermissionState = normalizeComputerUsePermissionState({
       ...permissions,

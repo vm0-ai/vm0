@@ -48,6 +48,107 @@ sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 wait_for_unit_inactive
 sudo rm -rf "$GROUP_DIR"
 
+# Exercise the fixed helper against real guest mounts, before starting the
+# multi-turn service. These checks are confined to one disposable benchmark VM.
+echo "--- Workspace mount helper boundaries ---"
+MOUNT_CHECKS=$(cat <<'GUEST_CHECKS'
+set -eu
+cd /tmp
+helper=/sbin/guest-workspace-mount
+workspace=/home/user/workspace
+expect_rejection() {
+  if "$helper"; then
+    echo "unsafe workspace accepted: $1" >&2
+    exit 1
+  fi
+}
+
+# Matching existing mount repairs only the root, not its children.
+touch "$workspace/owner-marker"
+chown root:root "$workspace" "$workspace/owner-marker"
+"$helper"
+test "$(stat -c %u:%g "$workspace")" = "$(id -u user):$(id -g user)"
+test "$(stat -c %u:%g "$workspace/owner-marker")" = 0:0
+
+# Unrelated mount targets may contain all four mountinfo path escapes.
+escaped=$(mktemp -d "$(printf '/tmp/workspace space\tline\nbackslash\\.XXXXXX')")
+mount -t tmpfs -o size=1m tmpfs "$escaped"
+"$helper"
+umount "$escaped"
+rmdir "$escaped"
+
+# Fresh mount recreates a missing directory and preserves populated ext4 data.
+umount "$workspace"
+rmdir "$workspace"
+"$helper"
+test -f "$workspace/owner-marker"
+test "$(mountpoint -d "$workspace")" = "$(mountpoint -x /dev/vdb)"
+
+# The visible mount matters, including a same-device bind and a stacked tmpfs.
+mkdir "$workspace/bind-source"
+mount --bind "$workspace/bind-source" "$workspace"
+"$helper"
+mount -t tmpfs -o size=1m tmpfs "$workspace"
+expect_rejection stacked-tmpfs
+umount "$workspace"
+"$helper"
+umount "$workspace"
+
+outside=$(mktemp -d /tmp/workspace-mount-test.XXXXXX)
+mount --move "$workspace" "$outside"
+expect_rejection device-mounted-elsewhere
+mount --move "$outside" "$workspace"
+rmdir "$outside"
+
+umount "$workspace"
+rmdir "$workspace"
+outside=$(mktemp -d /tmp/workspace-mount-symlink.XXXXXX)
+ln -s "$outside" "$workspace"
+expect_rejection symlink-target
+test -z "$(ls -A "$outside")"
+unlink "$workspace"
+rmdir "$outside"
+
+# An ancestor symlink is rejected too, without changing its target.
+mv /home/user /home/mount-test-user
+ln -s /home/mount-test-user /home/user
+expect_rejection symlink-parent
+unlink /home/user
+mv /home/mount-test-user /home/user
+"$helper"
+
+# Mountinfo must be available and parseable; no filesystem change on failure.
+unshare --mount --propagation private sh -eu -c '
+  mount -t tmpfs -o size=1m tmpfs /dev
+  touch /dev/vdb
+  if /sbin/guest-workspace-mount; then exit 1; fi
+  test -f /dev/vdb
+'
+unshare --mount --propagation private sh -eu -c '
+  mount -t tmpfs -o size=1m tmpfs /proc
+  mkdir /proc/self
+  if /sbin/guest-workspace-mount; then exit 1; fi
+  printf "invalid mount record\n" > /proc/self/mountinfo
+  if /sbin/guest-workspace-mount; then exit 1; fi
+  : > /proc/self/mountinfo
+  if /sbin/guest-workspace-mount; then exit 1; fi
+'
+"$helper"
+test -f "$workspace/owner-marker"
+# A real mount-tool error is propagated without changing the target owner.
+# This is the disposable VM's attached workspace, never the metal host disk.
+umount "$workspace"
+chown root:root "$workspace"
+dd if=/dev/zero of=/dev/vdb bs=1M count=4 conv=notrunc status=none
+expect_rejection invalid-ext4
+test "$(stat -c %u:%g "$workspace")" = 0:0
+echo "PASS: native workspace mount boundaries"
+GUEST_CHECKS
+)
+sudo "$BIN_DIR/runner" benchmark --config "$RUNNER_DIR/runner.yaml" \
+  --profile vm0/default --sudo "$MOUNT_CHECKS" \
+  || fail "Workspace mount helper boundaries failed"
+
 # Start transient runner service
 echo "--- Starting runner ---"
 sudo "$BIN_DIR/runner" service start --name "$SVC" \

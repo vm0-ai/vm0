@@ -31,6 +31,7 @@ export {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   RUNNER_HOSTNAME_MAX_LENGTH,
+  OFFICIAL_RUNNER_TOKEN_PREFIX,
   RUNNER_VERSION_MAX_LENGTH,
   runnerGroupSchema,
   runnerHeartbeatGenerationSchema,
@@ -976,11 +977,10 @@ export const piModelConfigLegacySchema = z
     // organization-configured model provider gateway.
     model: z.string().min(1),
     catalogModel: z.string().min(1).optional(),
-    // Current writers emit openai-responses; readers normalize absent or legacy
-    // values while the previous API can be rolled back, old runner/Sandbox
-    // instances complete their two-hour drain plus finalization, and executable
-    // pre-cutover contexts remain. Remove this field with #31085 after all three
-    // gates pass.
+    // Current Gen1 writers omit api. Retained API/Runner/CLI payloads and stored
+    // contexts may still carry any historical value; readers normalize them to
+    // public Responses. Remove only after the release, rollback, complete-cohort
+    // census and drain gates in #31085 pass.
     api: z.enum(MODEL_PROVIDER_PI_APIS).optional(),
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])

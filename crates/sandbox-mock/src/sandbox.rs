@@ -851,11 +851,21 @@ impl Sandbox for MockSandbox {
                 .storage_manifest_calls
                 .lock_ignoring_poison()
                 .push(call);
+            wait_lifecycle_gate(&overrides.exec.storage_manifest_gate).await;
         }
         let result = self
             .exec_results
             .lock_ignoring_poison()
             .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .exec
+                        .storage_manifest_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
+            })
             .unwrap_or_else(|| Ok(default_exec_result()))?;
         Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
     }

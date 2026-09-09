@@ -21,6 +21,7 @@ import { expect, test, vi, type Mock } from "vitest";
 
 import {
   click,
+  holdElementAnimations,
   setupPage,
   fill,
   queryAllByRoleFast,
@@ -597,6 +598,59 @@ test("Configure member packages for a new workspace plan", async () => {
   expect(alexUsage).not.toBeDisabled();
   expect(samUsage).not.toBeDisabled();
   expect(pendingUsage).not.toBeDisabled();
+});
+
+test("Keep standalone package choices visible until closing finishes", async () => {
+  mockInitialUsagePackPurchase();
+  await setupPage({
+    context,
+    path: "/?settings=billing&billingView=plans",
+    auth: {
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+    },
+  });
+  const teamPlan = await screen.findByRole("article", { name: "Team plan" });
+  const { memberUsage } = await openTeamMemberPackages(teamPlan);
+  await selectMemberUsagePack(
+    memberUsage,
+    "Alex Chen",
+    "$50 · 54,321 credits · 8% off",
+  );
+
+  const packagesDialog = screen.getByRole("dialog", {
+    name: "Configure member packages",
+  });
+  const finishCloseTransition = holdElementAnimations(packagesDialog);
+  click(within(packagesDialog).getByLabelText("Close"));
+  expect(
+    new URL(window.location.href).searchParams.has("settings"),
+  ).toBeFalsy();
+  expect(
+    screen.getByRole("dialog", { name: "Configure member packages" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("combobox", { name: "Usage for Alex Chen" }),
+  ).toHaveTextContent("54,321 credits · 8% off");
+  finishCloseTransition();
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  const settingsDialog = await openSettingsFromAccountMenu("Alex Chen");
+  click(buttonByText("Billing", settingsDialog));
+  await screen.findByText("No active plan");
+  click(buttonByText("Upgrade"));
+  const reopenedTeamPlan = await screen.findByRole("article", {
+    name: "Team plan",
+  });
+  await openTeamMemberPackages(reopenedTeamPlan);
+  expect(
+    screen.getByRole("combobox", { name: "Usage for Alex Chen" }),
+  ).toHaveTextContent("21,234 credits · 6% off");
 });
 
 test("Leave a member-package flow without keeping unfinished choices", async () => {

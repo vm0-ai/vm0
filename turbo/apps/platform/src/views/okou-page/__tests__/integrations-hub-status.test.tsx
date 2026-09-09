@@ -35,7 +35,7 @@ test("Integrations show current status and refresh after GitHub connects", async
     isAdmin: true,
     scopeMismatch: true,
     reinstallUrl: "https://slack.com/oauth/reinstall?state=xyz",
-    workspaceName: "VM0 HQ",
+    workspaceName: "Okou HQ",
   });
   context.mocks.data.githubIntegration(
     context.mocks.data.defaultGithubIntegration({
@@ -61,7 +61,7 @@ test("Integrations show current status and refresh after GitHub connects", async
   await setupIntegrationsPage(context);
 
   await expect(screen.findByText("Slack")).resolves.toBeInTheDocument();
-  expect(screen.getByText("Connected (VM0 HQ)")).toBeInTheDocument();
+  expect(screen.getByText("Connected (Okou HQ)")).toBeInTheDocument();
   expect(screen.getByText(/update permissions/iu)).toBeInTheDocument();
   expect(getIntegrationCard("Phone")).toHaveTextContent("+15555551212");
   const githubCard = getIntegrationCard("GitHub");
@@ -234,7 +234,7 @@ test("Microsoft Teams shows its connected team name", async () => {
     isConnected: true,
     isInstalled: true,
     isAdmin: true,
-    tenantName: "VM0 Tenant",
+    tenantName: "Okou Tenant",
     teamName: "Core Team",
   });
 

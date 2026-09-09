@@ -50,7 +50,6 @@ import {
 } from "../services/user-connectors.service";
 import { onRejection } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUBLIC_AGENT_LIMIT = 7;
 
@@ -208,13 +207,6 @@ function visibilityOwnerError(
   requestedVisibility: AgentVisibility | undefined,
 ) {
   if (requestedVisibility === undefined || existing.owner === member.userId) {
-    return null;
-  }
-
-  // Old web/app -> new API: already-open clients can keep sending unchanged
-  // visibility for about two days. Remove after the client-version floor
-  // excludes builds before #31731; tracked by #31732.
-  if (requestedVisibility === existing.visibility) {
     return null;
   }
 
@@ -439,7 +431,6 @@ const getAgentInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      publicBrand: PUBLIC_BRAND,
     }),
   );
   if (!agent) {

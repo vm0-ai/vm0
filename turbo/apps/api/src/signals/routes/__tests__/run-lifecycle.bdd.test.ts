@@ -1705,41 +1705,18 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
+  it("names the deck guide in the agent tools prompt", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationTemplates]: false,
-    });
-
-    // The guide is not a mounted skill, so the prompt is the only thing that
-    // tells a run where to pull it. Off, it must stay out of every run.
-    const gatedOff = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "turn this deck into a template",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
-      "skill:presentation-reverse-template",
-    );
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationTemplates]: true,
-    });
-
-    const gatedOn = await api.createRun(actor, {
-      agentId,
-      prompt: "turn this deck into a template",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    const claim = await api.claimRunnerJob(run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
       "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
     );
@@ -1752,6 +1729,64 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "do not pull or compare the registry copy",
     );
+  });
+
+  it("mounts shared skills without granting Goal authority to a fresh manual run", async () => {
+    const names = ["goal", "workflow-setup"];
+    const versions = names.map((name) => {
+      const fullPath = `vm0-ai/vm0-skills/tree/fixture-${randomUUID()}/${name}`;
+      return {
+        name,
+        url: `https://github.com/${fullPath}`,
+        full_path: fullPath,
+        storage_name: `agent-skills@${fullPath}`,
+        version_hash: createHash("sha256").update(randomUUID()).digest("hex"),
+        size: 1024,
+        archive_size: 1024,
+        file_count: 1,
+        frontmatter: { name, description: `Historical ${name} skill fixture` },
+      };
+    });
+    onTestFinished(async () => {
+      await cleanupOwnedSkillsState(context, {
+        skillUrls: versions.map((version) => {
+          return version.url;
+        }),
+        storageNames: versions.map((version) => {
+          return version.storage_name;
+        }),
+      });
+    });
+    await seedCurrentSkillVersionsState(context, {
+      staleCommitSha: "goal-retirement-fixture",
+      versions,
+    });
+    const api = createRunsApi(
+      context,
+      Object.fromEntries(
+        versions.map((version) => {
+          return [version.name, version.storage_name];
+        }),
+      ),
+    );
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "ordinary manual request",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const mounts = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.map((mount) => {
+      return mount.mountPath;
+    });
+    expect(mounts).toContain("/home/user/.claude/skills/workflow-setup");
+    expect(mounts).not.toContain("/home/user/.claude/skills/goal");
+    expect(claim.appendSystemPrompt).toContain("# Agent Tools");
+    expect(claim.appendSystemPrompt).not.toContain("# Thread Goal");
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("advertises the intro-video skill and camera tooling only while its rollout switch is on", async () => {
@@ -1943,6 +1978,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const processOrdinalBucket = expectApiProcessSnapshot(timingEvents);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        "api_dispatch_prepare_context_select_connector_catalog",
+        "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       API_DISPATCH_PHASE_ACTION_TYPES,
@@ -5048,6 +5094,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(created.status).toBe("pending");
     const claim = await api.claimRunnerJob(created.runId);
     expect(claim.prompt).toBe(prompt);
+    const snapshot = runContextSnapshotForRun(created.runId);
+    expect(snapshot).not.toHaveProperty("piModelConfigGeneration");
+    expect(snapshot).not.toHaveProperty("piModelConfigLegacyApi");
     expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
       expect.objectContaining({
         runId: created.runId,
@@ -15872,6 +15921,30 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("explains supported connector discovery for service connections", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "connect a third-party service",
+      modelProvider: "anthropic-api-key",
+    });
+    const appendSystemPrompt =
+      (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+    for (const connectorContext of [
+      "okou connector search <service-name>",
+      "searches every supported service",
+      "reports which matching connectors are available to the current run",
+      "provider credentials stay outside the sandbox",
+      "When a user wants to connect a third-party service, search for it first",
+    ]) {
+      expect(appendSystemPrompt).toContain(connectorContext);
+    }
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("advertises managed research tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -15899,7 +15972,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain(
       "execute through the built-in platform provider",
     );
-    expect(claim.appendSystemPrompt ?? "").not.toContain("execute via vm0");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });

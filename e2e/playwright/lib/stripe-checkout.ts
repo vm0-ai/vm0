@@ -565,7 +565,7 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
     page
       .getByLabel(/cardholder name|name on card/i)
       .or(page.locator('input[name="billingName"]')),
-    "VM0 Billing E2E",
+    "Okou Billing E2E",
   );
   await fillFirst(
     page

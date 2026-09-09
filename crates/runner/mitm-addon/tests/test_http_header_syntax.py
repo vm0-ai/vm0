@@ -5,7 +5,11 @@ the header-value control-character rule using an independent reference, so a
 regression in the shared predicates fails the suite.
 """
 
+from collections.abc import Sequence
+from typing import SupportsIndex, overload
+
 import pytest
+from mitmproxy import http
 
 import http_header_syntax
 
@@ -16,29 +20,60 @@ _ASCII_CODE_POINTS = range(128)
 _TEST_HEADER_WORK_LIMIT = 256
 
 
-class _FullValueOperationGuard(str):
-    def split(self, sep: str | None = None, maxsplit: int = -1) -> list[str]:
-        raise AssertionError(f"guarded header was split with sep={sep!r}, maxsplit={maxsplit}")
+class _FullValueOperationGuard(bytes):
+    def __bytes__(self) -> bytes:
+        raise AssertionError("guarded header was copied")
 
-    def lower(self) -> str:
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("guarded header was decoded")
+
+    def split(self, sep: bytes | None = None, maxsplit: int = -1) -> list[bytes]:
+        raise AssertionError("guarded header was split")
+
+    def lower(self) -> bytes:
         raise AssertionError("guarded header was lowercased")
 
-    def strip(self, chars: str | None = None) -> str:
+    def strip(self, chars: bytes | None = None) -> bytes:
         raise AssertionError(f"guarded header was stripped with chars={chars!r}")
 
 
-class _EarlyMatchSuffixGuard(_FullValueOperationGuard):
-    def __getitem__(self, key: int | slice) -> str:
-        if isinstance(key, int) and key >= len("websocket,"):
-            raise IndexError("token matcher inspected the irrelevant suffix")
+class _ByteReadGuard(_FullValueOperationGuard):
+    read_limit = 8
+
+    @overload
+    def __getitem__(self, key: SupportsIndex) -> int: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> bytes: ...
+
+    def __getitem__(self, key: SupportsIndex | slice) -> int | bytes:
+        if isinstance(key, slice) or key.__index__() >= self.read_limit:
+            raise AssertionError("token matcher accessed bytes beyond its inspection limit")
         return super().__getitem__(key)
 
 
-class _WorkLimitGuard(_FullValueOperationGuard):
-    def __getitem__(self, key: int | slice) -> str:
-        if isinstance(key, int) and key >= 8:
-            raise IndexError("token matcher read beyond its work budget")
-        return super().__getitem__(key)
+class _EarlyMatchSuffixGuard(_ByteReadGuard):
+    read_limit = len(b"websocket,")
+
+
+class _FieldReadGuard(Sequence[tuple[bytes, bytes]]):
+    def __init__(self, fields: tuple[tuple[bytes, bytes], ...], read_limit: int) -> None:
+        self.fields = fields
+        self.read_limit = read_limit
+
+    def __len__(self) -> int:
+        return len(self.fields)
+
+    @overload
+    def __getitem__(self, key: int) -> tuple[bytes, bytes]: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> Sequence[tuple[bytes, bytes]]: ...
+
+    def __getitem__(self, key: int | slice) -> tuple[bytes, bytes] | Sequence[tuple[bytes, bytes]]:
+        if isinstance(key, slice) or key >= self.read_limit:
+            raise AssertionError("header lookup accessed fields beyond its inspection limit")
+        return self.fields[key]
 
 
 def _is_forbidden_value_control(char: str) -> bool:
@@ -148,39 +183,93 @@ def test_has_forbidden_header_value_control_accepts_non_ascii_value() -> None:
         pytest.param(("upgraded",), "upgrade", False, id="nonmatching-token"),
     ],
 )
-def test_header_values_contain_token(
+def test_header_fields_contain_token(
     values: tuple[str, ...],
     expected_token: str,
     *,
     contains_token: bool,
 ) -> None:
+    headers = http.Headers([(b"UpGrAdE", value.encode()) for value in values])
     assert (
-        http_header_syntax.header_values_contain_token(
-            values,
-            expected_token,
+        http_header_syntax.header_fields_contain_token(
+            headers.fields,
+            b"upgrade",
+            expected_token.encode(),
             max_work_units=_TEST_HEADER_WORK_LIMIT,
         )
         is contains_token
     )
 
 
-def test_header_values_contain_token_stops_before_matched_suffix() -> None:
-    value = _EarlyMatchSuffixGuard("websocket," + "x" * 10_000)
+def test_header_fields_contain_token_stops_before_matched_suffix_and_later_fields() -> None:
+    value = _EarlyMatchSuffixGuard(b"websocket," + b"\xff" * 10_000)
+    headers = http.Headers([(b"Upgrade", value), (b"Upgrade", b"unvisited")])
+    fields = _FieldReadGuard(headers.fields, read_limit=1)
 
-    assert http_header_syntax.header_values_contain_token(
-        (value,),
-        "websocket",
+    assert http_header_syntax.header_fields_contain_token(
+        fields,
+        b"upgrade",
+        b"websocket",
         max_work_units=_TEST_HEADER_WORK_LIMIT,
     )
 
 
-def test_header_values_contain_token_stops_at_work_limit() -> None:
-    value = _WorkLimitGuard("x" * 10_000)
+def test_header_fields_contain_token_stops_at_byte_work_limit() -> None:
+    value = _ByteReadGuard(b"\xff" * 10_000)
+    headers = http.Headers([(b"Upgrade", value)])
 
-    assert not http_header_syntax.header_values_contain_token(
-        (value,),
-        "websocket",
+    assert not http_header_syntax.header_fields_contain_token(
+        headers.fields,
+        b"upgrade",
+        b"websocket",
         max_work_units=9,
+    )
+
+
+@pytest.mark.parametrize("name", [b"upgrade", b"unrelated"])
+def test_header_fields_contain_token_bounds_empty_and_unrelated_fields(name: bytes) -> None:
+    fields = _FieldReadGuard(((name, b""),) * 10_000, read_limit=8)
+
+    assert not http_header_syntax.header_fields_contain_token(
+        fields, b"upgrade", b"websocket", max_work_units=8
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "work_limit", "contains_token"),
+    [
+        (b"websocket", 9, False),
+        (b"websocket", 10, True),
+        (b"websocketx", 10, False),
+        (b"websocket,ignored", 10, False),
+        (b"websocket,ignored", 11, True),
+        (b"\tWebSoCkEt \t", 13, True),
+    ],
+)
+def test_header_fields_contain_token_requires_complete_token_within_budget(
+    value: bytes, work_limit: int, *, contains_token: bool
+) -> None:
+    assert (
+        http_header_syntax.header_fields_contain_token(
+            ((b"upgrade", value),), b"upgrade", b"websocket", max_work_units=work_limit
+        )
+        is contains_token
+    )
+
+
+def test_raw_header_lookup_does_not_lowercase_oversized_unrelated_names() -> None:
+    headers = http.Headers(
+        [(_FullValueOperationGuard(b"x" * 10_000), b"ignored"), (b"Upgrade", b"websocket")]
+    )
+
+    assert http_header_syntax.header_fields_contain_token(
+        headers.fields, b"upgrade", b"websocket", max_work_units=_TEST_HEADER_WORK_LIMIT
+    )
+    assert (
+        http_header_syntax.single_header_value(
+            headers.fields, b"upgrade", max_fields=2, max_value_bytes=9
+        )
+        == b"websocket"
     )
 
 
@@ -206,16 +295,60 @@ def test_single_header_value(
     values: tuple[str, ...],
     expected_value: str | None,
 ) -> None:
-    assert (
-        http_header_syntax.single_header_value(
-            values,
-            max_value_chars=_TEST_HEADER_WORK_LIMIT,
-        )
-        == expected_value
-    )
+    headers = http.Headers([(b"SeC-WebSocket-Key", value.encode()) for value in values])
+    assert http_header_syntax.single_header_value(
+        headers.fields,
+        b"sec-websocket-key",
+        max_fields=_TEST_HEADER_WORK_LIMIT,
+        max_value_bytes=_TEST_HEADER_WORK_LIMIT,
+    ) == (None if expected_value is None else expected_value.encode())
 
 
 def test_single_header_value_rejects_oversized_value_before_strip() -> None:
-    value = _FullValueOperationGuard("  value  ")
+    value = _FullValueOperationGuard(b"\xff" * 10_000)
+    headers = http.Headers([(b"Sec-WebSocket-Key", value)])
 
-    assert http_header_syntax.single_header_value((value,), max_value_chars=8) is None
+    assert (
+        http_header_syntax.single_header_value(
+            headers.fields, b"sec-websocket-key", max_fields=1, max_value_bytes=8
+        )
+        is None
+    )
+
+
+def test_single_header_value_rejects_duplicates_before_strip() -> None:
+    headers = http.Headers(
+        [
+            (b"Sec-WebSocket-Key", _FullValueOperationGuard(b"  value  ")),
+            (b"Unrelated", b"ignored"),
+            (b"sec-websocket-key", _FullValueOperationGuard(b"")),
+        ]
+    )
+
+    assert (
+        http_header_syntax.single_header_value(
+            headers.fields, b"sec-websocket-key", max_fields=3, max_value_bytes=9
+        )
+        is None
+    )
+
+
+def test_single_header_value_rejects_unverified_cardinality_before_traversal() -> None:
+    fields = _FieldReadGuard(((b"key", b"value"),) * 10_000, read_limit=0)
+
+    assert (
+        http_header_syntax.single_header_value(fields, b"key", max_fields=8, max_value_bytes=8)
+        is None
+    )
+
+
+def test_single_header_value_accepts_inclusive_field_and_value_limits() -> None:
+    assert (
+        http_header_syntax.single_header_value(
+            ((b"unrelated", b""), (b"key", b" value \t")),
+            b"key",
+            max_fields=2,
+            max_value_bytes=8,
+        )
+        == b"value"
+    )

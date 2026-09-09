@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createStore } from "ccstate";
 
 import { HttpResponse, http } from "msw";
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
@@ -19,6 +20,7 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
+import { seedRun$ } from "./helpers/usage-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -456,14 +458,32 @@ describe("artifact upload provenance", () => {
       const owner = await artifactActor(
         `Artifacts API ${triggerSource} source agent`,
       );
-      const run = await api.createDirectRun(owner.actor, {
-        agentId: owner.agentId,
-        prompt: `create ${triggerSource} artifact`,
-        modelProviderType: "anthropic-api-key",
-        triggerSource,
-        vars: { OKOU_AGENT_ID: owner.agentId },
-        secrets: { OKOU_TOKEN: "bdd-artifact-okou-token" },
-      });
+      if (!owner.actor.orgId) {
+        throw new Error("Artifact provenance requires an org-scoped actor");
+      }
+      // An in-flight legacy Goal may still upload its result after retirement.
+      const run =
+        triggerSource === "goal"
+          ? await createStore().set(
+              seedRun$,
+              {
+                orgId: owner.actor.orgId,
+                userId: owner.actor.userId,
+                composeId: owner.agentId,
+                triggerSource,
+                status: "running",
+                startedAt: new Date(now()),
+              },
+              context.signal,
+            )
+          : await api.createDirectRun(owner.actor, {
+              agentId: owner.agentId,
+              prompt: `create ${triggerSource} artifact`,
+              modelProviderType: "anthropic-api-key",
+              triggerSource,
+              vars: { OKOU_AGENT_ID: owner.agentId },
+              secrets: { OKOU_TOKEN: "bdd-artifact-okou-token" },
+            });
       const fileId = randomUUID();
       owner.objectStore.addObject({
         bucket: "test-user-artifacts",

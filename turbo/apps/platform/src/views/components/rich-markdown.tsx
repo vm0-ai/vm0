@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "./chat-scroll-layout.tsx";
 import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
 import { CopyButton } from "@okouai/ui";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
@@ -22,6 +23,7 @@ import { isImageUrl, isSafeMediaUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
+import { MathFormulaView } from "./math-formula.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
 
 type MarkdownNodeProp = { node?: Element };
@@ -66,11 +68,15 @@ function MediaImage({
   url,
   alt,
   load,
+  asLink = false,
+  insideLink = false,
 }: {
   src: string | undefined;
   url: string;
   alt: string;
   load: ImageLoadSignals;
+  asLink?: boolean;
+  insideLink?: boolean;
 }) {
   const imageStatus = useGet(load.status$);
   const markLoaded = useSet(load.loaded$);
@@ -84,17 +90,10 @@ function MediaImage({
   const openImageLightbox = useSet(openImageLightbox$);
   const showPlaceholder = imageStatus !== "loaded";
 
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        const threadId = event.currentTarget.closest<HTMLElement>(
-          "[data-chat-thread-container-id]",
-        )?.dataset.chatThreadContainerId;
-        openImageLightbox(threadId ? { threadId, url } : url);
-      }}
-      className="my-1 inline-grid aspect-[10/9] w-[200px] max-w-full cursor-pointer grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
-    >
+  const className =
+    "my-1 inline-grid aspect-[10/9] w-[200px] max-w-full cursor-pointer grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden rounded-lg border border-foreground/10 bg-muted/30";
+  const preview = (
+    <>
       {showPlaceholder && (
         <span
           data-testid="markdown-image-preview-loading"
@@ -120,6 +119,38 @@ function MediaImage({
           }`}
         />
       )}
+    </>
+  );
+
+  if (asLink) {
+    // A linked Markdown thumbnail already has its own destination.
+    if (insideLink) {
+      return <span className={className}>{preview}</span>;
+    }
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+      >
+        {preview}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        const threadId = event.currentTarget.closest<HTMLElement>(
+          "[data-chat-thread-container-id]",
+        )?.dataset.chatThreadContainerId;
+        openImageLightbox(threadId ? { threadId, url } : url);
+      }}
+      className={className}
+    >
+      {preview}
     </button>
   );
 }
@@ -239,6 +270,24 @@ function MediaImageRenderer(props: MarkdownImageProps) {
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }
 
+function LinkedMediaImageRenderer(props: MarkdownImageProps) {
+  const { src, alt } = props;
+  const load = props.node?.data?.imageLoadSignals;
+  if (typeof src === "string" && isSafeMediaUrl(src) && load) {
+    return (
+      <MediaImage
+        src={src}
+        url={src}
+        alt={alt ?? ""}
+        load={load}
+        asLink
+        insideLink={props.node?.data?.imageInsideLink}
+      />
+    );
+  }
+  return <PlainImageRenderer {...props} />;
+}
+
 function containsBlockArtifact(node: Element): boolean {
   return node.children.some((child) => {
     if (child.type !== "element") {
@@ -271,6 +320,10 @@ function MediaParagraphRenderer({
 }
 
 function MarkdownSpanRenderer(props: MarkdownSpanProps) {
+  const math = props.node?.data?.math;
+  if (math) {
+    return <MathFormulaView formula={math} />;
+  }
   const color = props.node?.data?.colorPreview;
   if (typeof color === "string") {
     return <MarkdownColorPreview color={color} />;
@@ -311,6 +364,9 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   if (data?.mermaidSignals) {
     return <MermaidDiagramView signals={data.mermaidSignals} />;
   }
+  if (data?.math) {
+    return <MathFormulaView formula={data.math} />;
+  }
   return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
 }
 
@@ -331,6 +387,11 @@ const MEDIA_MARKDOWN_COMPONENTS = {
   div: MarkdownDivRenderer,
 } as const;
 
+const LINKED_MEDIA_MARKDOWN_COMPONENTS = {
+  ...PLAIN_MARKDOWN_COMPONENTS,
+  img: LinkedMediaImageRenderer,
+} as const;
+
 // Neutralize raw HTML by escaping only `<`: a tag cannot start without it, so
 // escaping `<` alone stops tag injection. Leaving `>` intact preserves Markdown
 // block syntax that relies on a leading `>` — most importantly blockquotes,
@@ -338,7 +399,7 @@ const MEDIA_MARKDOWN_COMPONENTS = {
 interface MarkdownTreeFrameProps {
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly mediaPreview?: boolean;
+  readonly mediaPreview?: boolean | "link";
   readonly tree: Root;
 }
 
@@ -348,20 +409,23 @@ function MarkdownTreeFrame({
   mediaPreview = false,
   tree,
 }: MarkdownTreeFrameProps) {
-  return (
+  return withChatScrollLayout(
     <MarkdownFrame className={className} style={style}>
       {toJsxRuntime(tree, {
         Fragment,
-        components: mediaPreview
-          ? MEDIA_MARKDOWN_COMPONENTS
-          : PLAIN_MARKDOWN_COMPONENTS,
+        components:
+          mediaPreview === "link"
+            ? LINKED_MEDIA_MARKDOWN_COMPONENTS
+            : mediaPreview
+              ? MEDIA_MARKDOWN_COMPONENTS
+              : PLAIN_MARKDOWN_COMPONENTS,
         ignoreInvalidStyle: true,
         jsx,
         jsxs,
         passKeys: true,
         passNode: true,
       })}
-    </MarkdownFrame>
+    </MarkdownFrame>,
   );
 }
 
@@ -374,7 +438,7 @@ export function MarkdownEventBody({
   mediaPreview,
 }: {
   readonly tree: Root;
-  readonly mediaPreview: boolean;
+  readonly mediaPreview: boolean | "link";
 }) {
   return (
     <MarkdownTreeFrame

@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import {
   useComposerConnectorActions,
   type ComposerConnectorActions,
@@ -7,7 +8,7 @@ import {
   type ComposerActions,
 } from "./composer-actions.ts";
 import {
-  ComposerCreateHeader,
+  ComposerCreateControls,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
 } from "./composer-create.tsx";
@@ -34,9 +35,16 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import { explainerVideoTemplateOptions } from "@okouai/core/explainer-video-template";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { ExplainerVideoPicker } from "./explainer-video-picker.tsx";
+import {
+  avatarSelectionLabel,
+  styleSelectionLabel,
+  voiceSelectionLabel,
+} from "./explainer-video-selection-labels.ts";
 import {
   importPresentationTemplateDeck$,
-  presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/okou-page/presentation-template-import.ts";
 import type {
@@ -78,7 +86,6 @@ import {
   SlidersHorizontal,
   Square,
   SwatchBook,
-  Target,
   Trash2,
   User,
   UserCheck,
@@ -160,11 +167,25 @@ import {
   safePreviewGround,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
-import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
-import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import {
+  type IllustrationTemplateItem,
+  ILLUSTRATION_TEMPLATE_ITEMS,
+} from "@okouai/core/illustration-template-items";
+import {
+  type PresentationTemplateItem,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+} from "@okouai/core/presentation-template-items";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
-import type { VideoTemplateItem } from "@okouai/core/video-template-items";
-import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
+import {
+  type VideoTemplateItem,
+  VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+} from "@okouai/core/video-template-items";
+import {
+  type WebsiteTemplateItem,
+  WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+} from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
@@ -207,7 +228,12 @@ import {
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import { ConnectorDirectoryDialog } from "./connector-directory-dialog.tsx";
 import { resetCustomConnectorConnectInput$ } from "../../signals/okou-page/settings/custom-connectors.ts";
+import {
+  dismissConnectorConnectionProgress$,
+  registerConnectorConnectionDialog$,
+} from "../../signals/connector-connection-progress.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -224,11 +250,11 @@ import {
   userModelPreference$,
 } from "../../signals/external/user-model-preference.ts";
 import {
-  chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
   modelPickerMenuEnabled$,
   customConnectorMcpEnabled$,
   voiceInputV2Enabled$,
+  featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -297,15 +323,6 @@ import {
   toAvatarGenerationTemplate,
 } from "../../signals/okou-page/avatar-template-selection.ts";
 import { resolveModelFirstUserDefaultSelection } from "../../signals/okou-page/model-default-selection.ts";
-import { platformPublicStaticUrl } from "../../lib/static-assets.ts";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-  findVideoTemplateItem,
-  findWebsiteTemplateItem,
-} from "../../lib/platform-template-items.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 
@@ -365,9 +382,8 @@ const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
   width: 224,
   height: 126,
 } as const;
-const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
-  "https://static.okou.io/web/assets/presentation-gallery/2026-07-04",
-);
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
+  "https://static.okou.io/web/assets/presentation-gallery/2026-07-04";
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT = 16;
@@ -425,139 +441,89 @@ function ComposerQueueGlyph() {
   );
 }
 
-// A single strip row — a queued message, automation event, or active goal. All
-// share one layout so they read as the same kind of pending item; only the
-// leading icon distinguishes them. Goals open a modal because their full
-// objective is fetched lazily by thread.
+// Queued messages and automation events share a pending-item layout.
 function ComposerStripRow({
   kind,
   text,
   onRemove,
-  onOpenDetail,
   removeAriaLabel,
   cancellationRecoveryPending,
 }: {
-  kind: "queued" | "automation-event" | "goal";
+  kind: "queued" | "automation-event";
   text: string;
   onRemove?: () => void;
-  onOpenDetail?: () => void;
   removeAriaLabel: string;
   cancellationRecoveryPending?: boolean;
 }) {
   const { t } = useTranslation();
-  const isGoal = kind === "goal";
   const isAutomationEvent = kind === "automation-event";
-  const itemAriaLabel = isGoal
+  const itemAriaLabel = isAutomationEvent
     ? t(($) => {
-        return $.chat.queue.activeGoal;
+        return $.chat.queue.pendingAutomationEvent;
+      })
+    : t(($) => {
+        return $.chat.queue.queuedMessage;
+      });
+  const aboutAriaLabel = isAutomationEvent
+    ? t(($) => {
+        return $.chat.queue.aboutAutomationEvent;
+      })
+    : t(($) => {
+        return $.chat.queue.aboutQueuedMessage;
+      });
+  const itemTitle = isAutomationEvent
+    ? t(($) => {
+        return $.chat.queue.automationEvent;
+      })
+    : t(($) => {
+        return $.chat.queue.queuedMessage;
+      });
+  const itemDescription = cancellationRecoveryPending
+    ? t(($) => {
+        return $.chat.queue.cancellationRecoveryPending;
       })
     : isAutomationEvent
       ? t(($) => {
-          return $.chat.queue.pendingAutomationEvent;
+          return $.chat.queue.automationEventDescription;
         })
       : t(($) => {
-          return $.chat.queue.queuedMessage;
+          return $.chat.queue.queuedMessageDescription;
         });
-  const aboutAriaLabel = isGoal
-    ? t(($) => {
-        return $.chat.queue.aboutGoal;
-      })
-    : isAutomationEvent
-      ? t(($) => {
-          return $.chat.queue.aboutAutomationEvent;
-        })
-      : t(($) => {
-          return $.chat.queue.aboutQueuedMessage;
-        });
-  const itemTitle = isGoal
-    ? t(($) => {
-        return $.chat.queue.goal;
-      })
-    : isAutomationEvent
-      ? t(($) => {
-          return $.chat.queue.automationEvent;
-        })
-      : t(($) => {
-          return $.chat.queue.queuedMessage;
-        });
-  const itemDescription =
-    cancellationRecoveryPending && !isGoal
-      ? t(($) => {
-          return $.chat.queue.cancellationRecoveryPending;
-        })
-      : isGoal
-        ? t(($) => {
-            return $.chat.queue.goalDescription;
-          })
-        : isAutomationEvent
-          ? t(($) => {
-              return $.chat.queue.automationEventDescription;
-            })
-          : t(($) => {
-              return $.chat.queue.queuedMessageDescription;
-            });
   return (
     <div
       role="listitem"
       aria-label={itemAriaLabel}
       className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-state-hover"
     >
-      {isGoal && onOpenDetail ? (
-        // This target spans almost the whole row, so it deliberately paints no
-        // background of its own — the row's hover carries the highlight and a
-        // second, near-coextensive surface would read as a box inside a box.
-        // Its icon sits in the same p-1 slot the other rows' leading button
-        // uses, keeping every row's glyph and text on one column.
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onOpenDetail}
-          aria-label={t(($) => {
-            return $.chat.queue.openGoalDetails;
-          })}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-state-selected-hover focus-visible:bg-state-selected-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={aboutAriaLabel}
+          >
+            {isAutomationEvent ? (
+              <Bolt size={16} aria-hidden="true" />
+            ) : (
+              <ComposerQueueGlyph />
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="start"
+          className="w-80 rounded-lg p-3"
         >
-          <span className="flex shrink-0 p-1 text-emerald-800">
-            <Target size={16} aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1 truncate py-1">{text}</span>
-        </button>
-      ) : (
-        <>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-state-selected-hover focus-visible:bg-state-selected-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={aboutAriaLabel}
-              >
-                {isGoal ? (
-                  <Target size={16} aria-hidden="true" />
-                ) : isAutomationEvent ? (
-                  <Bolt size={16} aria-hidden="true" />
-                ) : (
-                  <ComposerQueueGlyph />
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-80 rounded-lg p-3"
-            >
-              <p className="text-xs font-semibold text-foreground">
-                {itemTitle}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {itemDescription}
-              </p>
-              <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
-                {text}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <span className="min-w-0 flex-1 truncate">{text}</span>
-        </>
-      )}
+          <p className="text-xs font-semibold text-foreground">{itemTitle}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {itemDescription}
+          </p>
+          <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
+            {text}
+          </div>
+        </PopoverContent>
+      </Popover>
+      <span className="min-w-0 flex-1 truncate">{text}</span>
       <IconTooltipButton
         type="button"
         className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -600,19 +566,13 @@ function PendingItemsStripHeader({
 
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled = useGet(chatRunWorkFoldingEnabled$);
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
   const cancellationRecoveryPending =
     useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
-  const activeGoalObjective = useLastResolved(
-    signals.goal.activeGoalObjective$,
-  );
   const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
   const removeAutomationEvent = useSet(signals.queue.removeAutomationEvent$);
-  const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
-  const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
   const queued = pendingEvents.filter((event) => {
     return event.kind === "message";
@@ -620,10 +580,6 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const events = pendingEvents.filter((event) => {
     return event.kind === "automation";
   });
-  const activeGoal =
-    !runWorkFoldingEnabled && activeGoalObjective
-      ? { objective: activeGoalObjective }
-      : undefined;
   const count = queued.length + events.length;
   const messageLabel = t(
     ($) => {
@@ -660,21 +616,16 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             items: queued.length > 0 ? messageLabel : eventLabel,
           },
         );
-  if (count === 0 && !activeGoal) {
-    return null;
+  if (count === 0) {
+    return withChatScrollLayout(null);
   }
-  return (
+  return withChatScrollLayout(
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 ? (
-        <PendingItemsStripHeader
-          label={label}
-          cancellationRecoveryPending={cancellationRecoveryPending}
-        />
-      ) : null}
-      <div
-        className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1"
-        role={count > 0 || activeGoal ? "list" : undefined}
-      >
+      <PendingItemsStripHeader
+        label={label}
+        cancellationRecoveryPending={cancellationRecoveryPending}
+      />
+      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
         {queued.map((item) => {
           return (
             <ComposerStripRow
@@ -718,24 +669,8 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             />
           );
         })}
-        {/* The active goal sits last — below queued messages and automation events
-            — because it only runs once the queue drains. Like other pending
-            items it can be cancelled from the strip. */}
-        {activeGoal ? (
-          <ComposerStripRow
-            kind="goal"
-            text={activeGoal.objective}
-            onOpenDetail={openActiveGoal}
-            onRemove={() => {
-              detach(cancelActiveGoal(pageSignal), Reason.DomCallback);
-            }}
-            removeAriaLabel={t(($) => {
-              return $.chat.queue.cancelGoal;
-            })}
-          />
-        ) : null}
       </div>
-    </div>
+    </div>,
   );
 }
 
@@ -4396,8 +4331,14 @@ function IllustrationTemplateCard({
   );
 }
 
-function resolveTemplatePickerCategory(category: string): string {
+function resolveTemplatePickerCategory(
+  category: string,
+  explainerEnabled: boolean,
+): string {
   switch (category) {
+    case "explainer": {
+      return explainerEnabled ? category : "video";
+    }
     case "slides":
     case "website":
     case "illustration":
@@ -4414,9 +4355,11 @@ function resolveTemplatePickerCategory(category: string): string {
 
 function TemplatePickerCategoryNav({
   selectedCategory,
+  explainerEnabled,
   onChange,
 }: {
   selectedCategory: string;
+  explainerEnabled: boolean;
   onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
@@ -4449,10 +4392,23 @@ function TemplatePickerCategoryNav({
     {
       value: "video",
       label: t(($) => {
-        return $.artifacts.kinds.video;
+        return explainerEnabled
+          ? $.artifacts.templates.creativeVideo
+          : $.artifacts.kinds.video;
       }),
       Icon: Video,
     },
+    ...(explainerEnabled
+      ? [
+          {
+            value: "explainer",
+            label: t(($) => {
+              return $.artifacts.templates.explainerVideo;
+            }),
+            Icon: Presentation,
+          },
+        ]
+      : []),
     {
       value: "avatar",
       label: t(($) => {
@@ -5860,16 +5816,13 @@ function PptTemplateGrid({
   onImported: () => void;
   signals: ComposerSignals;
 }) {
-  const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
   const importedTemplateItems =
     useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {importEnabled ? (
-        <PptImportCard signals={signals} onImported={onImported} />
-      ) : null}
+      <PptImportCard signals={signals} onImported={onImported} />
       {importedTemplateItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard
@@ -5908,7 +5861,8 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
-  skipEnterAnimation,
+  onCloseComplete,
+  open,
   presentationItems,
   runtime,
   signals,
@@ -5916,7 +5870,8 @@ function TemplatePickerDialog({
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
-  skipEnterAnimation: boolean;
+  onCloseComplete: () => void;
+  open: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
@@ -6007,7 +5962,6 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? importedPreviewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    skipEnterAnimation && "data-open:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
   // A persona pill filters the grid, ideation-gallery style.
@@ -6024,7 +5978,12 @@ function TemplatePickerDialog({
     search,
   });
 
-  const selectedCategory = resolveTemplatePickerCategory(category);
+  const features = useGet(featureSwitch$);
+  const explainerEnabled = features[FeatureSwitchKey.IntroVideo] === true;
+  const selectedCategory = resolveTemplatePickerCategory(
+    category,
+    explainerEnabled,
+  );
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar";
 
@@ -6059,11 +6018,15 @@ function TemplatePickerDialog({
   };
 
   const closeTemplatePicker = () => {
+    onClose();
+  };
+
+  const completeTemplatePickerClose = () => {
     releasePreviewResources(runtime);
     resetImportedTemplatePicker();
     clearAvatarVoiceSelection();
     setPresentationGridScrollTop(0);
-    onClose();
+    onCloseComplete();
   };
 
   const handleSelectPresentation = (
@@ -6255,9 +6218,9 @@ function TemplatePickerDialog({
 
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) {
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           if (importedPreviewItem !== null) {
             closeImportedPreview();
             return;
@@ -6269,27 +6232,28 @@ function TemplatePickerDialog({
           closeTemplatePicker();
         }
       }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeTemplatePickerClose();
+          return;
+        }
+        ownPreviewResources(runtime, pageSignal);
+        if (!isPreviewing) {
+          prewarmTemplatePreviewsForCategory(selectedCategory);
+        }
+      }}
     >
       <DialogContent
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
         className={dialogContentClassName}
-        overlayClassName={
-          skipEnterAnimation ? "okou-dialog-overlay-instant" : undefined
-        }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
           isPreviewing ? handleTemplateDetailTabKeyDown : undefined
         }
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          ownPreviewResources(runtime, pageSignal);
-          if (!isPreviewing) {
-            prewarmTemplatePreviewsForCategory(selectedCategory);
-          }
-        }}
+        initialFocus={false}
       >
         <div
           inert={isPreviewing}
@@ -6309,55 +6273,73 @@ function TemplatePickerDialog({
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
             <TemplatePickerCategoryNav
               selectedCategory={selectedCategory}
+              explainerEnabled={explainerEnabled}
               onChange={handleCategoryChange}
             />
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              <div
-                className={cn(
-                  "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                  showTemplatePickerSearch || showAvatarPickerToolbar
-                    ? "flex"
-                    : "hidden sm:flex",
-                )}
-              >
-                {showTemplatePickerSearch ? (
-                  <TemplatePickerWorkflowSearch
-                    search={search}
-                    onSearchChange={handleSearchChange}
+              {selectedCategory === "explainer" ? (
+                <ExplainerVideoPicker
+                  signals={signals.template.explainer}
+                  onCancel={closeTemplatePicker}
+                  onSelect={(template) => {
+                    onChange(template);
+                    closeTemplatePicker();
+                  }}
+                />
+              ) : (
+                <>
+                  <div
+                    className={cn(
+                      "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                      showTemplatePickerSearch || showAvatarPickerToolbar
+                        ? "flex"
+                        : "hidden sm:flex",
+                    )}
+                  >
+                    {showTemplatePickerSearch ? (
+                      <TemplatePickerWorkflowSearch
+                        search={search}
+                        onSearchChange={handleSearchChange}
+                      />
+                    ) : null}
+                    {showAvatarPickerToolbar ? (
+                      <AvatarTemplatePickerToolbar signals={signals} />
+                    ) : null}
+                  </div>
+                  <TemplatePickerCategoryContent
+                    signals={signals}
+                    selectedCategory={selectedCategory}
+                    pptItems={presentationItems}
+                    websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                    illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                    videoItems={VIDEO_TEMPLATE_ITEMS}
+                    videoGenerationAllowed={videoGenerationAllowed}
+                    workflowCatalog={workflowCatalog}
+                    value={value}
+                    illustrationVariantIndex={illustrationVariantIndex}
+                    onPresentationScroll={setPresentationGridScrollTop}
+                    onRestorePresentationScroll={
+                      restorePresentationGridScrollNode
+                    }
+                    onSelectPresentation={handleSelectPresentation}
+                    onSelectImportedPresentation={
+                      handleSelectImportedPresentation
+                    }
+                    onPreviewPresentation={handlePreview}
+                    onPreviewImportedPresentation={handlePreviewImported}
+                    onImportedPresentation={closeTemplatePicker}
+                    onSelectWebsite={handleSelectWebsite}
+                    onPreviewWebsite={handlePreviewWebsite}
+                    onSelectIllustration={handleSelectIllustration}
+                    onIllustrationVariantChange={setIllustrationVariantIndex}
+                    onSelectVideo={handleSelectVideo}
+                    onSelectAvatar={handleSelectAvatar}
+                    onWorkflowCategoryChange={setWorkflowCategoryFilter}
+                    onSelectWorkflow={handleSelectWorkflow}
+                    runtime={runtime}
                   />
-                ) : null}
-                {showAvatarPickerToolbar ? (
-                  <AvatarTemplatePickerToolbar signals={signals} />
-                ) : null}
-              </div>
-              <TemplatePickerCategoryContent
-                signals={signals}
-                selectedCategory={selectedCategory}
-                pptItems={presentationItems}
-                websiteItems={WEBSITE_TEMPLATE_ITEMS}
-                illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
-                videoItems={VIDEO_TEMPLATE_ITEMS}
-                videoGenerationAllowed={videoGenerationAllowed}
-                workflowCatalog={workflowCatalog}
-                value={value}
-                illustrationVariantIndex={illustrationVariantIndex}
-                onPresentationScroll={setPresentationGridScrollTop}
-                onRestorePresentationScroll={restorePresentationGridScrollNode}
-                onSelectPresentation={handleSelectPresentation}
-                onSelectImportedPresentation={handleSelectImportedPresentation}
-                onPreviewPresentation={handlePreview}
-                onPreviewImportedPresentation={handlePreviewImported}
-                onImportedPresentation={closeTemplatePicker}
-                onSelectWebsite={handleSelectWebsite}
-                onPreviewWebsite={handlePreviewWebsite}
-                onSelectIllustration={handleSelectIllustration}
-                onIllustrationVariantChange={setIllustrationVariantIndex}
-                onSelectVideo={handleSelectVideo}
-                onSelectAvatar={handleSelectAvatar}
-                onWorkflowCategoryChange={setWorkflowCategoryFilter}
-                onSelectWorkflow={handleSelectWorkflow}
-                runtime={runtime}
-              />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -6380,6 +6362,7 @@ function TemplatePickerDialog({
             signals={signals}
           />
         ) : null}
+        <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </DialogContent>
     </Dialog>
   );
@@ -6588,6 +6571,25 @@ function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
 ): ComposerTemplateAttachment | undefined {
+  const explainer = explainerVideoTemplateOptions(value);
+  if (explainer) {
+    return {
+      type: "video",
+      category: "explainer",
+      title: [
+        i18n.t(($) => {
+          return $.artifacts.templates.explainerVideo;
+        }),
+        styleSelectionLabel(i18n.t, explainer.style),
+        avatarSelectionLabel(i18n.t, explainer.avatar),
+        voiceSelectionLabel(i18n.t, explainer.voice, explainer.avatar),
+      ].join(" · "),
+      previewImageUrl:
+        explainer.style.kind === "catalog"
+          ? explainer.style.style.thumbnailUrl
+          : undefined,
+    };
+  }
   const avatar = avatarTemplateSelection(value);
   if (avatar) {
     return {
@@ -6688,11 +6690,11 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const mounted = useGet(signals.template.templatePickerMounted$);
   const open = useGet(signals.template.templatePickerOpen$);
-  const skipEnterAnimation = useGet(
-    signals.template.templatePickerSkipEnterAnimation$,
-  );
   const category = useGet(signals.template.templatePickerCategory$);
+  const explainerEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
   const createMode = useGet(signals.create.mode$);
   const templateMode = createMode === "image" ? "illustration" : createMode;
@@ -6709,6 +6711,7 @@ function TemplatePickerButton({
             return $.artifacts.templates.template;
           });
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const completeClose = useSet(signals.template.completeTemplatePickerClose$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
   );
@@ -6717,7 +6720,8 @@ function TemplatePickerButton({
   const selectedCategory =
     templateMode === "presentation"
       ? "slides"
-      : (templateMode ?? resolveTemplatePickerCategory(category));
+      : (templateMode ??
+        resolveTemplatePickerCategory(category, explainerEnabled));
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -6772,15 +6776,18 @@ function TemplatePickerButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {open && (
+      {mounted && (
         <TemplatePickerDialog
           value={referenceValue ?? undefined}
           onChange={picker.onChange}
+          open={open}
           onClose={() => {
-            setReferenceValue(null);
             setOpen(false);
           }}
-          skipEnterAnimation={skipEnterAnimation}
+          onCloseComplete={() => {
+            setReferenceValue(null);
+            completeClose();
+          }}
           presentationItems={presentationItems}
           runtime={runtime}
           signals={signals}
@@ -7031,6 +7038,8 @@ function AddConnectorsDialog({
   const resetCustomConnectorConnectInput = useSet(
     resetCustomConnectorConnectInput$,
   );
+  const registerConnectionDialog = useSet(registerConnectorConnectionDialog$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -7044,10 +7053,14 @@ function AddConnectorsDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        return !open && onClose();
+        if (!open) {
+          dismissProgress();
+          onClose();
+        }
       }}
     >
       <DialogContent
+        ref={registerConnectionDialog}
         className="okou-app max-w-2xl flex max-h-[80vh] flex-col"
         aria-describedby={undefined}
       >
@@ -7057,11 +7070,20 @@ function AddConnectorsDialog({
               ($) => {
                 return $.chat.connectors.available;
               },
-              {
-                count: visibleConnectorCount,
-              },
+              { count: visibleConnectorCount },
             )}
           </DialogTitle>
+          {connecting && (
+            <p
+              role="status"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              {t(($) => {
+                return $.connectors.actions.connecting;
+              })}
+            </p>
+          )}
         </DialogHeader>
         <div className="shrink-0">
           <Input
@@ -8306,20 +8328,22 @@ function ConnectorsPopoverButton({
           {(connectorItems.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-            onClick={() => {
-              return onOpenAddDialog();
-            }}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-              <Plus size={13} />
-            </span>
-            {t(($) => {
-              return $.chat.connectors.addConnectors;
-            })}
-          </button>
+          <PopoverClose asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+              onClick={() => {
+                return onOpenAddDialog();
+              }}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                <Plus size={13} />
+              </span>
+              {t(($) => {
+                return $.chat.connectors.addConnectors;
+              })}
+            </button>
+          </PopoverClose>
         </div>
         {computerUse && (
           <ComputerUseConnectorMenuSection
@@ -9768,7 +9792,7 @@ function ComposerTemporaryModelNotice({
     !defaultSelection ||
     (!modelChanged && !serviceTierChanged)
   ) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const updating = updateLoadable.state === "loading";
   const modelName = getModelDisplayName(selection.selectedModel);
@@ -9795,7 +9819,7 @@ function ComposerTemporaryModelNotice({
       Reason.DomCallback,
     );
   };
-  return (
+  return withChatScrollLayout(
     <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.modelForThisChat;
@@ -9803,7 +9827,7 @@ function ComposerTemporaryModelNotice({
       model={scopedModelLabel}
       updating={updating}
       onUseForFutureChats={useForFutureChats}
-    />
+    />,
   );
 }
 
@@ -9822,12 +9846,12 @@ function ComposerTemporaryVideoModelNotice({
   );
   const pageSignal = useGet(pageSignal$);
   if (!userPreference) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const defaultVideoModel =
     userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
   if (!selection || selection === defaultVideoModel) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const updating = updateLoadable.state === "loading";
   const useForFutureChats = () => {
@@ -9836,7 +9860,7 @@ function ComposerTemporaryVideoModelNotice({
     }
     detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
   };
-  return (
+  return withChatScrollLayout(
     <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.videoModelForThisChat;
@@ -9844,7 +9868,7 @@ function ComposerTemporaryVideoModelNotice({
       model={getModelDisplayName(selection)}
       updating={updating}
       onUseForFutureChats={useForFutureChats}
-    />
+    />,
   );
 }
 
@@ -9861,12 +9885,12 @@ function ComposerTemporaryImageModelNotice({
   );
   const pageSignal = useGet(pageSignal$);
   if (!userPreference) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const defaultImageModel =
     userPreference.selectedImageModel ?? DEFAULT_IMAGE_MODEL;
   if (!selection || selection === defaultImageModel) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const updating = updateLoadable.state === "loading";
   const useForFutureChats = () => {
@@ -9875,7 +9899,7 @@ function ComposerTemporaryImageModelNotice({
     }
     detach(updateDefaultImageModel(selection, pageSignal), Reason.DomCallback);
   };
-  return (
+  return withChatScrollLayout(
     <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.imageModelForThisChat;
@@ -9883,7 +9907,7 @@ function ComposerTemporaryImageModelNotice({
       model={IMAGE_MODEL_CONFIGS[selection].label}
       updating={updating}
       onUseForFutureChats={useForFutureChats}
-    />
+    />,
   );
 }
 
@@ -9897,25 +9921,27 @@ function ComposerTemporaryModelNoticeSlot({
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
   if (!enabled) {
-    return null;
+    return withChatScrollLayout(null);
   }
   // One card at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
   if (imageModelSignals && mediaModelCategory === "image") {
-    return (
+    return withChatScrollLayout(
       <ComposerTemporaryImageModelNotice
         imageModelSignals={imageModelSignals}
-      />
+      />,
     );
   }
   if (videoModelSignals && mediaModelCategory === "video") {
-    return (
+    return withChatScrollLayout(
       <ComposerTemporaryVideoModelNotice
         videoModelSignals={videoModelSignals}
-      />
+      />,
     );
   }
-  return <ComposerTemporaryModelNotice signals={signals} />;
+  return withChatScrollLayout(
+    <ComposerTemporaryModelNotice signals={signals} />,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -10058,9 +10084,9 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   const notifyDraftChanged = useComposerDraftChange(signals);
 
   if (attachments.length === 0) {
-    return null;
+    return withChatScrollLayout(null);
   }
-  return (
+  return withChatScrollLayout(
     <AttachmentChips
       attachments={attachments}
       annotationSignals={signals.imageAnnotation}
@@ -10069,7 +10095,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
         removeAttachment(attachment);
         notifyDraftChanged();
       }}
-    />
+    />,
   );
 }
 
@@ -10179,6 +10205,8 @@ function ComposerConnectorsSlot({
   const computerUse = useComposerComputerUse(signals);
   const { t } = useTranslation();
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const connectorDirectoryEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorDirectory] === true;
   const connectorData = useLastResolved(signals.connector.data$);
   const addDialogCatalogItems =
     useLastResolved(signals.connector.addDialogCatalogItems$) ?? [];
@@ -10268,6 +10296,7 @@ function ComposerConnectorsSlot({
     return {
       openModal: () => {
         updateConnectorUi({
+          showAddDialog: false,
           selectedConnectorSlug: connectorSlug,
         });
       },
@@ -10382,26 +10411,55 @@ function ComposerConnectorsSlot({
           updateConnectorUi({ selectedCustomConnectorId: null });
         }}
       />
-      {connectorUi.showAddDialog && (
-        <AddConnectorsDialog
-          signals={signals}
-          unconnected={unconnectedConnectors}
-          unconnectedCustom={unconnectedCustomConnectors}
-          connecting={actions.connecting}
-          connectHandlers={connectorConnectHandlers}
-          onConnectCustom={(connector) => {
-            updateConnectorUi({
-              showAddDialog: false,
-              selectedCustomConnectorId: connector.id,
-            });
-          }}
-          onClose={() => {
-            return updateConnectorUi({
-              showAddDialog: false,
-            });
-          }}
-        />
-      )}
+      {connectorUi.showAddDialog &&
+        (connectorDirectoryEnabled ? (
+          <ConnectorDirectoryDialog
+            state={connectorUi}
+            onUpdateState={updateConnectorUi}
+            connected={agentConnectors}
+            unconnected={unconnectedConnectors}
+            connectedCustom={agentCustomConnectors}
+            unconnectedCustom={unconnectedCustomConnectors}
+            connecting={actions.connecting}
+            connectHandlers={connectorConnectHandlers}
+            onConnectCustom={(connector) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                selectedCustomConnectorId: connector.id,
+              });
+            }}
+            onConfigurePermissions={(connectorSlug) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                permissionConnectorSlug: connectorSlug,
+              });
+            }}
+            onClose={() => {
+              return updateConnectorUi({
+                showAddDialog: false,
+              });
+            }}
+          />
+        ) : (
+          <AddConnectorsDialog
+            signals={signals}
+            unconnected={unconnectedConnectors}
+            unconnectedCustom={unconnectedCustomConnectors}
+            connecting={actions.connecting}
+            connectHandlers={connectorConnectHandlers}
+            onConnectCustom={(connector) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                selectedCustomConnectorId: connector.id,
+              });
+            }}
+            onClose={() => {
+              return updateConnectorUi({
+                showAddDialog: false,
+              });
+            }}
+          />
+        ))}
     </>
   );
 }
@@ -10431,7 +10489,7 @@ function ComposerFooter({
           : capture
             ? "recording"
             : voiceDraft?.status;
-  return (
+  return withChatScrollLayout(
     <div
       className={cn(
         "flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2",
@@ -10482,7 +10540,7 @@ function ComposerFooter({
           </div>
         </>
       )}
-    </div>
+    </div>,
   );
 }
 
@@ -10524,7 +10582,6 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       <CardContent className="p-0">
         <div ref={actions.bind} className="flex flex-col">
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
-          <ComposerCreateHeader signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
@@ -10556,10 +10613,10 @@ export function ChatComposer({
         className="relative flex w-full min-w-0 flex-col"
       >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
+        <ComposerCreateControls signals={signals} />
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
-        <WebsiteTemplatePreviewDialogSlot signals={signals} />
         <ImageAnnotationEditor signals={signals.imageAnnotation} />
       </div>
     </>

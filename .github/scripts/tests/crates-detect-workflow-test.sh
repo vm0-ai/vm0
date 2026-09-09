@@ -21,6 +21,7 @@ jq -e '
       select(startswith(".github/scripts/runner-behavior-"))];
   .jobs.detect as $detect |
   .jobs.check as $check |
+  .jobs["api-contracts-rust-bindings"] as $bindings |
   .jobs["runner-behavior-lane-a"] as $lane_a |
   .jobs["runner-behavior-lane-b"] as $lane_b |
   .jobs["runner-behavior-lane-c"] as $lane_c |
@@ -70,6 +71,13 @@ jq -e '
   any($check.steps[]?;
     .name == "Configure Git safe directory" and
     .run == "git config --global --add safe.directory \"$GITHUB_WORKSPACE\""
+  ) and
+  $bindings.container.image == $check.container.image and
+  any($bindings.steps[]?;
+    .name == "Check API Contracts Bindings" and
+    (.run | contains("pnpm -F @okouai/api-contracts generate:rust")) and
+    (.run | contains("pnpm -F @okouai/api-contracts generate:python")) and
+    (.run | contains("git diff --exit-code"))
   ) and
   ($host_cpu.needs | sort) == ([
     "detect",

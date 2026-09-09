@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
@@ -11,9 +10,9 @@ import {
   completedEvent,
   context,
   findButton,
+  findWorkHistoryToggle,
   installRunChat,
   promptEvent,
-  queryButton,
   queryWorkHistoryToggle,
   readyChat,
   RUN_PATH,
@@ -110,7 +109,6 @@ async function setupArtifactRun(
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 }
@@ -125,9 +123,27 @@ test("Expose an artifact referenced only by history from the main result actions
       text: `Generated supporting evidence.\n\n![Report](${reportUrl})`,
     }),
     assistantEvent({
-      id: "history-only-main",
+      id: "history-only-review",
       runId: RUN_ID,
       seqId: 3,
+      text: "Reviewed the release notes.",
+    }),
+    assistantEvent({
+      id: "history-only-validation",
+      runId: RUN_ID,
+      seqId: 4,
+      text: "Validated the release artifacts.",
+    }),
+    assistantEvent({
+      id: "history-only-readiness",
+      runId: RUN_ID,
+      seqId: 5,
+      text: "Confirmed the release readiness.",
+    }),
+    assistantEvent({
+      id: "history-only-main",
+      runId: RUN_ID,
+      seqId: 6,
       text: "Final release summary",
     }),
   ]);
@@ -159,7 +175,20 @@ test("Expose an artifact referenced only by history from the main result actions
   expect(viewAgentProfileLinks()).toHaveLength(1);
   const dialog = await openRelatedArtifacts();
   expect(relatedArtifactRow(dialog, reportUrl)).toHaveTextContent("Report");
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
+
+  click(within(dialog).getByLabelText("Close"));
+  await waitFor(() => {
+    expect(
+      screen.queryByTestId("chat-run-related-artifacts-dialog"),
+    ).toBeNull();
+  });
+  click(await findWorkHistoryToggle("collapsed"));
+  expect(screen.getByText("Generated supporting evidence.")).toBeVisible();
+  await expect(
+    findNamedLink("Open pdf preview for supporting-report.pdf"),
+  ).resolves.toBeVisible();
+  expect(queryWorkHistoryToggle("expanded")).toBeVisible();
 });
 
 test("A carried image keeps its label and opens a lightbox over the dialog", async () => {
@@ -384,7 +413,6 @@ test("Keep completed result actions before recommended followups", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 
@@ -446,14 +474,23 @@ test("Subtract final artifacts after ordered URL deduplication", async () => {
     }),
   ]);
 
+  expect(screen.getByText("Final artifact summary")).toBeVisible();
+  expect(screen.queryByText("First historical output")).toBeNull();
+  click(await findWorkHistoryToggle("collapsed"));
+  const firstHistory = await screen.findByText("First historical output");
+  const secondHistory = screen.getByText("Second historical output");
   const main = screen.getByText("Final artifact summary");
   await findNamedLink("Open pdf preview for repeated.pdf");
   const repeatedArtifacts = namedLinks("Open pdf preview for repeated.pdf");
-  expect(repeatedArtifacts).toHaveLength(1);
-  const repeated = repeatedArtifacts[0]!;
-  expect(screen.queryByText("First historical output")).toBeNull();
-  expect(screen.queryByText("Second historical output")).toBeNull();
-  expectDocumentOrder(main, repeated);
+  expect(repeatedArtifacts).toHaveLength(3);
+  expectDocumentOrder(
+    firstHistory,
+    repeatedArtifacts[0]!,
+    secondHistory,
+    repeatedArtifacts[1]!,
+    main,
+    repeatedArtifacts[2]!,
+  );
   expect(
     screen.getByTestId("chat-run-related-artifacts-trigger"),
   ).toHaveAccessibleName("2 artifacts");
@@ -498,7 +535,7 @@ test("Keep artifacts with the same filename distinct when their URLs differ", as
   expect(screen.queryByText("Second report version")).toBeNull();
 });
 
-test("Do not carry inline media or action cards out of historical messages", async () => {
+test("Render inline media and action cards after expanding short history", async () => {
   await setupArtifactRun([
     assistantEvent({
       id: "non-artifact-history",
@@ -523,7 +560,14 @@ test("Do not carry inline media or action cards out of historical messages", asy
   expect(screen.queryByAltText("Inline chart")).toBeNull();
   expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
   expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  click(await findWorkHistoryToggle("collapsed"));
+  await expect(
+    screen.findByText("Historical rich output"),
+  ).resolves.toBeVisible();
+  expect(screen.getByAltText("Inline chart")).toBeVisible();
+  expect(screen.getByTestId("plan-upgrade-card")).toBeVisible();
+  expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
+  expect(queryWorkHistoryToggle("expanded")).toBeVisible();
 });
 
 test("Carry artifacts across every run in the same run group", async () => {
@@ -599,7 +643,6 @@ test("Carry artifacts across every run in the same run group", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 
@@ -607,8 +650,7 @@ test("Carry artifacts across every run in the same run group", async () => {
   expect(screen.queryByText("Earlier run output")).toBeNull();
   const dialog = await openRelatedArtifacts();
   expect(relatedArtifactRow(dialog, earlierUrl)).toHaveTextContent("Report");
-  expect(queryButton("Expand grouped run history")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
 });
 
 test("Ignore artifacts from revoked output messages", async () => {
@@ -648,7 +690,6 @@ test("Ignore artifacts from revoked output messages", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 
@@ -656,50 +697,4 @@ test("Ignore artifacts from revoked output messages", async () => {
   expect(queryNamedLink("Open pdf preview for obsolete.pdf")).toBeNull();
   expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
   expect(queryWorkHistoryToggle("collapsed")).toBeNull();
-});
-
-test("Keep historical artifact links inline when run work folding is off", async () => {
-  const reportUrl = artifactUrl("legacy-report", "legacy-report.pdf");
-  installRunChat({
-    chatEvents: [
-      promptEvent({
-        id: "legacy-artifact-user",
-        runId: RUN_ID,
-        seqId: 1,
-        text: "Prepare the legacy artifact",
-      }),
-      assistantEvent({
-        id: "legacy-artifact-output",
-        runId: RUN_ID,
-        seqId: 2,
-        text: `Generated legacy evidence.\n\n![Report](${reportUrl})`,
-      }),
-      assistantEvent({
-        id: "legacy-artifact-main",
-        runId: RUN_ID,
-        seqId: 3,
-        text: "Final legacy summary",
-      }),
-      completedEvent({
-        id: "legacy-artifact-complete",
-        runId: RUN_ID,
-        seqId: 4,
-      }),
-    ],
-  });
-
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
-  });
-  await readyChat();
-
-  expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
-  click(await findButton("Expand work history"));
-  expect(screen.getByText("Generated legacy evidence.")).toBeVisible();
-  await expect(
-    findNamedLink("Open pdf preview for legacy-report.pdf"),
-  ).resolves.toBeVisible();
-  expect(screen.getByText("Final legacy summary")).toBeVisible();
 });

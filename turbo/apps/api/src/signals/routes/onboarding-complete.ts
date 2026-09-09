@@ -6,7 +6,6 @@ import { authRoute } from "../auth/auth-route";
 import { completeOnboarding$ } from "../services/onboarding.service";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const completeBody$ = bodyResultOf(onboardingCompleteContract.complete);
 
@@ -38,7 +37,6 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       member: { userId: auth.userId, role: auth.orgRole },
-      publicBrand: PUBLIC_BRAND,
       timezone: body.data.timezone,
     },
     signal,

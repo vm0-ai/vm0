@@ -32,15 +32,15 @@ function completedInstallation(
   overrides: Partial<FeishuInstallationStatus> = {},
 ): FeishuInstallationStatus {
   return {
-    publicBrand: "vm0",
+    publicBrand: "okou",
     id: INSTALLATION_ID,
     isConnected: true,
     appId: "cli_feishu",
-    callbackUrl: `https://api.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+    callbackUrl: `https://api.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
     callbackVerified: true,
     messageReceived: true,
     tenantKey: "tenant-feishu",
-    tenantName: "VM0 Feishu",
+    tenantName: "Okou Feishu",
     defaultAgentId: AGENT_ID,
     defaultAgentName: "Okou",
     setupCompleted: true,
@@ -122,11 +122,11 @@ test("Feishu appears when enabled and shows a connected bot", async () => {
     isInstalled: true,
     appId: "cli_feishu",
     installationId: INSTALLATION_ID,
-    callbackUrl: `https://api.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+    callbackUrl: `https://api.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
     callbackVerified: true,
     messageReceived: true,
     tenantKey: "tenant-feishu",
-    tenantName: "VM0 Feishu",
+    tenantName: "Okou Feishu",
     defaultAgentId: AGENT_ID,
     defaultAgentName: "Okou",
     installations: [
@@ -167,7 +167,7 @@ test("An admin can review the setup guide for a completed Feishu bot", async () 
     isAdmin: true,
     installationId: INSTALLATION_ID,
     appId: "cli_completed_admin",
-    callbackUrl: `https://api.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+    callbackUrl: `https://api.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
     callbackVerified: true,
     messageReceived: true,
     tenantKey: "tenant-admin",
@@ -241,7 +241,7 @@ test("A connected Feishu user can disconnect only their own account", async () =
     isAdmin: false,
     installationId: INSTALLATION_ID,
     appId: "cli_member",
-    callbackUrl: `https://api.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+    callbackUrl: `https://api.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
     callbackVerified: true,
     messageReceived: true,
     tenantKey: "tenant-member",
@@ -295,7 +295,7 @@ test("A member cannot manage an incomplete Feishu bot", async () => {
     isAdmin: false,
     installationId: INSTALLATION_ID,
     appId: "cli_member",
-    callbackUrl: `https://api.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+    callbackUrl: `https://api.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
     callbackVerified: true,
     messageReceived: true,
     tenantKey: "tenant-member",
@@ -307,7 +307,7 @@ test("A member cannot manage an incomplete Feishu bot", async () => {
         isConnected: false,
         appId: "cli_member",
         connectUrl:
-          "https://www.vm0.test/api/feishu/oauth/connect?state=incomplete",
+          "https://www.okou.test/api/feishu/oauth/connect?state=incomplete",
         tenantKey: "tenant-member",
         tenantName: "Member bot",
         setupCompleted: false,
@@ -335,7 +335,7 @@ test("Feishu setup advances when callback verification arrives", async () => {
     const installation = completedInstallation({
       isConnected,
       appId: "cli_feishu",
-      oauthRedirectUrl: "https://app.vm0.test/connectors/feishu/callback",
+      oauthRedirectUrl: "https://app.okou.test/connectors/feishu/callback",
       callbackVerified,
       messageReceived: false,
       tenantKey: null,
@@ -343,13 +343,13 @@ test("Feishu setup advances when callback verification arrives", async () => {
       setupCompleted: false,
     });
     return respond(200, {
-      publicBrand: "vm0",
+      publicBrand: "okou",
       isConnected,
       isInstalled: true,
       isAdmin: true,
       installationId: INSTALLATION_ID,
       appId: "cli_feishu",
-      callbackUrl: `https://api.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+      callbackUrl: `https://api.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
       callbackVerified,
       messageReceived: false,
       tenantKey: null,
@@ -372,7 +372,9 @@ test("Feishu setup advances when callback verification arrives", async () => {
     screen.getByText("Configure the OAuth redirect URL"),
   ).toBeInTheDocument();
   expect(
-    screen.getByDisplayValue("https://app.vm0.test/connectors/feishu/callback"),
+    screen.getByDisplayValue(
+      "https://app.okou.test/connectors/feishu/callback",
+    ),
   ).toBeInTheDocument();
   click(getAction("button", "Next"));
   expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
@@ -395,7 +397,7 @@ test("Feishu setup advances when callback verification arrives", async () => {
 
 test("A workspace member can connect to a completed Feishu bot", async () => {
   const connectUrl =
-    "https://www.vm0.test/api/feishu/oauth/connect?state=member";
+    "https://www.okou.test/api/feishu/oauth/connect?state=member";
   const browserOpen = context.mocks.browser.open();
   mockFeishu(context, {
     isConnected: false,
@@ -403,7 +405,7 @@ test("A workspace member can connect to a completed Feishu bot", async () => {
     isAdmin: false,
     installationId: INSTALLATION_ID,
     appId: "cli_member_connect",
-    callbackUrl: `https://www.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+    callbackUrl: `https://www.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
     callbackVerified: true,
     messageReceived: false,
     tenantKey: "tenant-member",
@@ -414,7 +416,7 @@ test("A workspace member can connect to a completed Feishu bot", async () => {
       completedInstallation({
         isConnected: false,
         appId: "cli_member_connect",
-        callbackUrl: `https://www.vm0.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
+        callbackUrl: `https://www.okou.test/api/webhooks/feishu/events/${INSTALLATION_ID}`,
         connectUrl,
         messageReceived: false,
         tenantKey: "tenant-member",
@@ -446,14 +448,14 @@ test("A workspace member can connect to a completed Feishu bot", async () => {
   expect(queryAction("button", "More options for Member bot")).toBeNull();
 });
 
-test("A Feishu App ID already registered in VM0 cannot be reused", async () => {
+test("A Feishu App ID already registered in Okou cannot be reused", async () => {
   mockFeishu(context, { isAdmin: true });
   context.mocks.api(feishuConnectContract.checkAppId, ({ query, respond }) => {
     expect(query.appId).toBe("cli_registered");
     return respond(409, {
       error: {
         code: "CONFLICT",
-        message: "This Feishu App ID is already registered in VM0",
+        message: "This Feishu App ID is already registered in Okou",
       },
     });
   });
@@ -471,7 +473,7 @@ test("A Feishu App ID already registered in VM0 cannot be reused", async () => {
   click(getAction("button", "Next"));
 
   await expect(
-    screen.findByText("This Feishu App ID is already registered in VM0"),
+    screen.findByText("This Feishu App ID is already registered in Okou"),
   ).resolves.toBeInTheDocument();
   expect(screen.getByLabelText("App ID")).toBeInTheDocument();
   expect(screen.queryByLabelText("Verification Token")).not.toBeInTheDocument();

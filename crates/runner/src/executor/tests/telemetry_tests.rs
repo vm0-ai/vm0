@@ -6,11 +6,11 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
-    SandboxCreateObserver, SandboxCreateStage, SandboxError, SandboxFactory, SandboxId,
-    SandboxInitializationPhase, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
-    SandboxNbdNetlinkConnectStage, SandboxOperation, SandboxOperationReason,
-    SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage, StartProcessRequest,
-    WriteFileEntry,
+    SandboxCreateObserver, SandboxCreateStage, SandboxError, SandboxFactory,
+    SandboxGuestConnectionPhase, SandboxId, SandboxInitializationPhase, SandboxNbdCowCreateOutcome,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxOperation,
+    SandboxOperationReason, SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage,
+    StartProcessRequest, WriteFileEntry,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
@@ -382,7 +382,44 @@ impl Sandbox for ObservedStartSandbox {
                 continue;
             }
             let success = self.failed_stage != Some(stage);
+            if stage == SandboxStartStage::GuestDnsReadiness {
+                for (attempt, duration, guest_duration_ms, outcome) in [
+                    (1, 4, 0, sandbox::SandboxDnsReadinessOutcome::ProcessTimeout),
+                    (
+                        2,
+                        9,
+                        6,
+                        if success {
+                            sandbox::SandboxDnsReadinessOutcome::Success
+                        } else {
+                            sandbox::SandboxDnsReadinessOutcome::WaitFailed
+                        },
+                    ),
+                ] {
+                    observer.record_dns_readiness_attempt(sandbox::SandboxDnsReadinessAttempt {
+                        attempt,
+                        final_attempt: attempt == 2,
+                        duration: Duration::from_millis(duration),
+                        guest_duration_ms: Some(guest_duration_ms),
+                        outcome,
+                        completed_at: std::time::SystemTime::now(),
+                    });
+                }
+            }
             observer.record_stage(stage, Duration::from_millis(index as u64 + 30), success);
+            if stage == SandboxStartStage::GuestConnectionWait && !self.omit_optional_stages {
+                for (index, phase) in SandboxGuestConnectionPhase::ALL.into_iter().enumerate() {
+                    if !success && phase == SandboxGuestConnectionPhase::ClientSetup {
+                        continue;
+                    }
+                    observer.record_guest_connection_phase(
+                        phase,
+                        Duration::from_millis(index as u64 + 1),
+                        Duration::from_millis(u64::from(index >= 5)),
+                        success || phase != SandboxGuestConnectionPhase::Pong,
+                    );
+                }
+            }
             if !success {
                 return Err(SandboxError::Start {
                     message: "observed mock start failure".to_string(),
@@ -705,6 +742,17 @@ const FRESH_SANDBOX_START_STAGE_ACTIONS: &[&str] = &[
     "runner_fresh_sandbox_start_guest_connection_wait",
     "runner_fresh_sandbox_start_guest_dns_readiness",
     "runner_fresh_sandbox_start_runtime_finalize",
+];
+
+const GUEST_CONNECTION_PHASE_NAMES: [&str; 8] = [
+    "task_schedule",
+    "listener_setup",
+    "accept",
+    "ready",
+    "ping",
+    "pong",
+    "client_setup",
+    "task_handoff",
 ];
 
 const RUNNER_PRE_SPAWN_PHASE_CASES: &[(RunnerPreSpawnPhase, &str, u64)] = &[
@@ -1389,6 +1437,16 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         assert_action_success(&telemetry, action, true);
         assert_action_duration(&telemetry, action, index as u64 + 30);
     }
+    for (index, phase) in GUEST_CONNECTION_PHASE_NAMES.into_iter().enumerate() {
+        for (kind, duration) in [
+            ("full", index as u64 + 1),
+            ("remaining", u64::from(index >= 5)),
+        ] {
+            let action = format!("runner_fresh_sandbox_start_guest_connection_{phase}_{kind}");
+            assert_action_once_with_duration(&telemetry, &action, duration);
+            assert_action_success(&telemetry, &action, true);
+        }
+    }
     let operations = telemetry.pending_ops_with_duration_snapshot();
     for action in FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS {
         let matching: Vec<_> = operations
@@ -1594,6 +1652,48 @@ async fn execute_job_records_exact_reuse_speculation_timing() {
 }
 
 #[tokio::test]
+async fn execute_job_keeps_dns_attempt_failures_inside_the_successful_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+    let attempts: Vec<_> = telemetry
+        .pending_ops_with_duration_snapshot()
+        .into_iter()
+        .filter(|(action, _, _, _)| {
+            action == "runner_fresh_sandbox_start_guest_dns_readiness_attempt"
+        })
+        .map(|(_, duration, success, error)| (duration, success, error))
+        .collect();
+    assert_eq!(
+        attempts,
+        vec![(4, false, Some("process_timeout".into())), (9, true, None)]
+    );
+    assert_action_duration(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness",
+        33,
+    );
+    assert_action_success(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness",
+        true,
+    );
+    assert_action_success(&telemetry, "runner_agent_start_process", true);
+}
+
+#[tokio::test]
 async fn execute_job_omits_inapplicable_sandbox_start_stages() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -1625,7 +1725,19 @@ async fn execute_job_omits_inapplicable_sandbox_start_stages() {
         "runner_fresh_sandbox_start_snapshot_load_resume",
     );
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
+    assert_lacks_action(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+    );
     assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
+    for phase in GUEST_CONNECTION_PHASE_NAMES {
+        for kind in ["full", "remaining"] {
+            assert_lacks_action(
+                &telemetry,
+                &format!("runner_fresh_sandbox_start_guest_connection_{phase}_{kind}"),
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -1672,6 +1784,23 @@ async fn execute_job_records_failed_sandbox_start_stage_timing() {
         "runner_fresh_sandbox_start_guest_connection_wait",
         32,
     );
+    for kind in ["full", "remaining"] {
+        assert_action_outcome(
+            &telemetry,
+            &format!("runner_fresh_sandbox_start_guest_connection_pong_{kind}"),
+            false,
+            Some("sandbox_start_stage_failed"),
+        );
+        assert_lacks_action(
+            &telemetry,
+            &format!("runner_fresh_sandbox_start_guest_connection_client_setup_{kind}"),
+        );
+        assert_action_success(
+            &telemetry,
+            &format!("runner_fresh_sandbox_start_guest_connection_task_handoff_{kind}"),
+            true,
+        );
+    }
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_runtime_finalize");
     assert_action_outcome(

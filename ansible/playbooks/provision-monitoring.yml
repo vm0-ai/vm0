@@ -67,7 +67,7 @@
         lock_timeout: 300
       become: true
 
-    - name: Ensure VM0 monitoring directory exists
+    - name: Ensure Okou monitoring directory exists
       file:
         path: /var/lib/vm0-monitoring
         state: directory
@@ -76,7 +76,7 @@
         mode: "0755"
       become: true
 
-    - name: Ensure VM0 monitoring textfile collector directory exists
+    - name: Ensure Okou monitoring textfile collector directory exists
       file:
         path: /var/lib/vm0-monitoring/textfile-collector
         state: directory
@@ -85,7 +85,7 @@
         mode: "0755"
       become: true
 
-    - name: Install VM0 monitoring workspace image cache collector script
+    - name: Install Okou monitoring workspace image cache collector script
       copy:
         src: ../files/vm0-monitoring-workspace-image-cache-collect.sh
         dest: /usr/local/bin/vm0-monitoring-workspace-image-cache-collect
@@ -94,7 +94,7 @@
         mode: "0755"
       become: true
 
-    - name: Install VM0 monitoring runner status collector script
+    - name: Install Okou monitoring runner status collector script
       copy:
         src: ../files/vm0-monitoring-runner-status-collect.py
         dest: /usr/local/bin/vm0-monitoring-runner-status-collect
@@ -103,11 +103,11 @@
         mode: "0755"
       become: true
 
-    - name: Install VM0 monitoring workspace image cache collector service
+    - name: Install Okou monitoring workspace image cache collector service
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 workspace image cache metrics
+          Description=Collect Okou workspace image cache metrics
 
           [Service]
           Type=oneshot
@@ -118,11 +118,11 @@
         mode: "0644"
       become: true
 
-    - name: Install VM0 monitoring runner status collector service
+    - name: Install Okou monitoring runner status collector service
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 runner lifecycle metrics
+          Description=Collect Okou runner lifecycle metrics
 
           [Service]
           Type=oneshot
@@ -133,11 +133,11 @@
         mode: "0644"
       become: true
 
-    - name: Install VM0 monitoring workspace image cache collector timer
+    - name: Install Okou monitoring workspace image cache collector timer
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 workspace image cache metrics every minute
+          Description=Collect Okou workspace image cache metrics every minute
 
           [Timer]
           OnBootSec=1min
@@ -153,11 +153,11 @@
         mode: "0644"
       become: true
 
-    - name: Install VM0 monitoring runner status collector timer
+    - name: Install Okou monitoring runner status collector timer
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 runner lifecycle metrics every 15 seconds
+          Description=Collect Okou runner lifecycle metrics every 15 seconds
 
           [Timer]
           OnBootSec=15s
@@ -173,7 +173,7 @@
         mode: "0644"
       become: true
 
-    - name: Generate initial VM0 workspace image cache metrics
+    - name: Generate initial Okou workspace image cache metrics
       systemd:
         name: vm0-monitoring-workspace-image-cache-collect.service
         state: started
@@ -181,7 +181,7 @@
       become: true
       changed_when: false
 
-    - name: Generate initial VM0 runner lifecycle monitoring metrics
+    - name: Generate initial Okou runner lifecycle monitoring metrics
       systemd:
         name: vm0-monitoring-runner-status-collect.service
         state: started
@@ -189,7 +189,7 @@
       become: true
       changed_when: false
 
-    - name: Enable VM0 monitoring workspace image cache collector timer
+    - name: Enable Okou monitoring workspace image cache collector timer
       systemd:
         name: vm0-monitoring-workspace-image-cache-collect.timer
         state: started
@@ -197,7 +197,7 @@
         daemon_reload: true
       become: true
 
-    - name: Enable VM0 monitoring runner status collector timer
+    - name: Enable Okou monitoring runner status collector timer
       systemd:
         name: vm0-monitoring-runner-status-collect.timer
         state: started

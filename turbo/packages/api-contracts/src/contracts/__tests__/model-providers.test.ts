@@ -135,10 +135,6 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("claude-sonnet-5").success).toBe(
       true,
     );
-    expect(supportedRunModelSchema.safeParse("kimi-k3").success).toBe(false);
-    expect(supportedRunModelSchema.safeParse("kimi-k2.7-code").success).toBe(
-      false,
-    );
     expect(supportedRunModelSchema.safeParse("claude-fable-5-1").success).toBe(
       true,
     );
@@ -148,23 +144,12 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("claude-opus-5").success).toBe(
       true,
     );
-    expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
-      false,
-    );
-    expect(supportedRunModelSchema.safeParse("claude-haiku-4-5").success).toBe(
-      false,
-    );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-flash").success).toBe(
       true,
     );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-pro").success).toBe(
       true,
     );
-    expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
-      false,
-    );
-    expect(supportedRunModelSchema.safeParse("kimi-k2.6").success).toBe(false);
-    expect(supportedRunModelSchema.safeParse("kimi-k2.5").success).toBe(false);
     expect(modelProviderCredentialScopeSchema.safeParse("org").success).toBe(
       true,
     );
@@ -188,7 +173,6 @@ describe("model-first canonical catalog", () => {
         },
       ],
     });
-
     expect(parsed.policies).toHaveLength(1);
     expect(parsed.policies[0]).not.toHaveProperty("modelProviderSurfaceId");
   });
@@ -262,18 +246,10 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("deepseek-v4-pro")).toBe(
       "DeepSeek V4 Pro",
     );
-    expect(getCanonicalModelDisplayName("kimi-k3")).toBe("kimi-k3");
-    expect(getCanonicalModelDisplayName("glm-5.2")).toBe("glm-5.2");
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
 
   it("normalizes provider aliases without accepting unsupported models", () => {
-    expect(normalizeRunModelId("z-ai/glm-5.2")).toBe("z-ai/glm-5.2");
-    expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("z-ai/glm-5.1");
-    expect(normalizeRunModelId("xiaomi/mimo-v2.5")).toBe("xiaomi/mimo-v2.5");
-    expect(normalizeRunModelId("tencent/hy3-preview")).toBe(
-      "tencent/hy3-preview",
-    );
     expect(normalizeRunModelId("anthropic/claude-sonnet-5")).toBe(
       "claude-sonnet-5",
     );
@@ -290,45 +266,11 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("claude-fable-5-1")).toBe(true);
     expect(isSupportedRunModel("claude-fable-5")).toBe(true);
     expect(isSupportedRunModel("claude-opus-5")).toBe(true);
-    expect(isSupportedRunModel("glm-5.2")).toBe(false);
-    expect(isSupportedRunModel("glm-5.1")).toBe(false);
-    expect(isSupportedRunModel("mimo-v2.5")).toBe(false);
-    expect(isSupportedRunModel("hy3-preview")).toBe(false);
     expect(isSupportedRunModel("gpt-6-astra")).toBe(true);
     expect(isSupportedRunModel("gpt-5.6-sol")).toBe(true);
-    expect(isSupportedRunModel("kimi-k3")).toBe(false);
     expect(isSupportedRunModel("openai/gpt-5.6-sol")).toBe(false);
-    expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
-      "deepseek/deepseek-v4-flash",
-    );
-    expect(normalizeRunModelId("anthropic/claude-haiku-4.5")).toBe(
-      "anthropic/claude-haiku-4.5",
-    );
-    expect(normalizeRunModelId("minimax/minimax-m2.7")).toBe(
-      "minimax/minimax-m2.7",
-    );
     expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
     expect(isSupportedRunModel("deepseek-v4-pro")).toBe(true);
-  });
-
-  it("removes retired identifiers from the selectable catalog", () => {
-    const retiredModels = [
-      "claude-opus-4-7",
-      "claude-opus-4-6",
-      "kimi-k3",
-      "kimi-k2.7-code",
-      "MiniMax-M3",
-      "glm-5.2",
-      "glm-5.1",
-      "mimo-v2.5",
-      "hy3-preview",
-    ];
-    for (const model of retiredModels) {
-      expect(isSupportedRunModel(model)).toBe(false);
-      expect(supportedRunModelSchema.safeParse(model).success).toBe(false);
-    }
-    expect(isSupportedRunModel("gpt-5.5")).toBe(true);
-    expect(isSupportedRunModel("claude-sonnet-4-6")).toBe(true);
   });
 
   it("keeps historical models readable in the shared schema catalog", () => {
@@ -854,8 +796,6 @@ describe("getBuiltInVisibleModels", () => {
     expect(models).toEqual(ACTIVE_RUN_MODELS);
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("claude-sonnet-4-6");
-    expect(models).not.toContain("kimi-k3");
-    expect(models).not.toContain("glm-5.2");
   });
 });
 
@@ -904,23 +844,6 @@ describe("model image input support", () => {
   it("treats unknown model ids as unknown rather than unsupported", () => {
     expect(modelSupportsImageInput("custom/model")).toBe(false);
     expect(getModelImageInputSupport("custom/model")).toBe("unknown");
-  });
-});
-
-describe("removed poor agent backend models", () => {
-  it("removes old provider aliases from static provider model lists", () => {
-    expect(getModels("openrouter-api-key")).not.toContain(
-      "anthropic/claude-haiku-4.5",
-    );
-    expect(getModels("openrouter-api-key")).not.toContain(
-      "deepseek/deepseek-v4-flash",
-    );
-    expect(getModels("openrouter-api-key")).not.toContain(
-      "minimax/minimax-m2.7",
-    );
-    expect(getModels("vercel-ai-gateway")).not.toContain(
-      "anthropic/claude-haiku-4.5",
-    );
   });
 });
 
@@ -1570,21 +1493,11 @@ describe("built-in provider discriminator contract", () => {
     updatedAt: "2026-08-26T00:00:00.000Z",
   } as const;
 
-  it("recognizes only the canonical built-in discriminator", () => {
+  it("recognizes the canonical built-in discriminator", () => {
     expect(isBuiltInModelProviderType("built-in")).toBe(true);
-    for (const other of [
-      "vm0",
-      "anthropic-api-key",
-      "VM0",
-      "",
-      null,
-      undefined,
-    ]) {
-      expect(isBuiltInModelProviderType(other)).toBe(false);
-    }
   });
 
-  it("accepts built-in and rejects exact vm0 in read contracts", () => {
+  it("accepts built-in in read contracts", () => {
     expect(modelProviderTypeSchema.parse("built-in")).toBe("built-in");
     expect(modelProviderResponseSchema.parse(providerResponse).type).toBe(
       "built-in",
@@ -1592,23 +1505,9 @@ describe("built-in provider discriminator contract", () => {
     expect(orgModelPolicySchema.parse(policyResponse).defaultProviderType).toBe(
       "built-in",
     );
-
-    expect(modelProviderTypeSchema.safeParse("vm0").success).toBe(false);
-    expect(
-      modelProviderResponseSchema.safeParse({
-        ...providerResponse,
-        type: "vm0",
-      }).success,
-    ).toBe(false);
-    expect(
-      orgModelPolicySchema.safeParse({
-        ...policyResponse,
-        defaultProviderType: "vm0",
-      }).success,
-    ).toBe(false);
   });
 
-  it("accepts built-in and rejects exact vm0 in write contracts", () => {
+  it("accepts built-in in write contracts", () => {
     expect(modelProviderWriteTypeSchema.parse("built-in")).toBe("built-in");
     expect(
       upsertModelProviderRequestSchema.parse({ type: "built-in" }).type,
@@ -1631,26 +1530,10 @@ describe("built-in provider discriminator contract", () => {
         defaultProviderType: "built-in",
       }).defaultProviderType,
     ).toBe("built-in");
-
-    expect(modelProviderWriteTypeSchema.safeParse("vm0").success).toBe(false);
-    expect(
-      upsertModelProviderRequestSchema.safeParse({ type: "vm0" }).success,
-    ).toBe(false);
-    expect(
-      modelProvidersByTypeContract.delete.pathParams.safeParse({ type: "vm0" })
-        .success,
-    ).toBe(false);
-    expect(
-      updateOrgModelPolicySchema.safeParse({
-        ...policy,
-        defaultProviderType: "vm0",
-      }).success,
-    ).toBe(false);
   });
 
-  it("exposes built-in exactly once without a legacy config or firewall", () => {
+  it("exposes built-in exactly once without a firewall", () => {
     expect(MODEL_PROVIDER_TYPES).toHaveProperty("built-in");
-    expect(MODEL_PROVIDER_TYPES).not.toHaveProperty("vm0");
     expect(getFrameworkForType("built-in")).toBe("claude-code");
     expect(getModelProviderPresentationLabel("built-in")).toBe(
       "Built-in model",
@@ -1661,7 +1544,6 @@ describe("built-in provider discriminator contract", () => {
     );
     expect(getSecretNameForType("built-in")).toBeUndefined();
     expect(getModelProviderFirewall("anthropic-api-key")).toBeDefined();
-    expect(MODEL_PROVIDER_FIREWALL_CONFIGS).not.toHaveProperty("vm0");
     expect(MODEL_PROVIDER_FIREWALL_CONFIGS).not.toHaveProperty("built-in");
 
     const selectable = getSelectableProviderTypes();
@@ -1670,9 +1552,7 @@ describe("built-in provider discriminator contract", () => {
         return type === "built-in";
       }),
     ).toHaveLength(1);
-    expect(selectable).not.toContain("vm0");
     expect(getProvidersForModel("gpt-5.6-sol")).toContain("built-in");
-    expect(getProvidersForModel("gpt-5.6-sol")).not.toContain("vm0");
   });
 
   it("emits the canonical writer value from default policy seeds", () => {

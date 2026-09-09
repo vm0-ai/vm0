@@ -6,11 +6,11 @@
  */
 
 import { command, state } from "ccstate";
-import { fetch$ } from "../signals/fetch.ts";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
+import { apiClient$, type ApiClientFactory } from "../signals/api-client.ts";
+import { accept } from "./accept.ts";
 import { bestEffort } from "../signals/utils.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
-
-type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 const swRegistration$ = state<ServiceWorkerRegistration | null>(null);
 const subscribing$ = state(false);
@@ -62,8 +62,8 @@ export const ensurePushSubscription$ = command(
     // TODO: The try-catch block here needs to be cleaned up. confirmed by ethan@vm0.ai
     // eslint-disable-next-line no-restricted-syntax
     try {
-      const fetchFn = get(fetch$);
-      await doSubscribe(registration, fetchFn, signal);
+      const createClient = get(apiClient$);
+      await doSubscribe(registration, createClient, signal);
       signal.throwIfAborted();
     } finally {
       set(subscribing$, false);
@@ -73,7 +73,7 @@ export const ensurePushSubscription$ = command(
 
 async function doSubscribe(
   registration: ServiceWorkerRegistration,
-  fetchFn: FetchFn,
+  createClient: ApiClientFactory,
   signal: AbortSignal,
 ): Promise<void> {
   const vapidPublicKey = resolvePlatformRuntimeConfig().vapidPublicKey;
@@ -106,22 +106,22 @@ async function doSubscribe(
     }));
   signal.throwIfAborted();
 
-  // Send subscription to the backend. fetch$ injects the auth token and
-  // applies the api-target routing policy.
-  await fetchFn("/api/push-subscriptions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      endpoint: subscription.endpoint,
-      keys: {
-        p256dh: arrayBufferToBase64(subscription.getKey("p256dh")),
-        auth: arrayBufferToBase64(subscription.getKey("auth")),
+  const client = createClient(pushSubscriptionsContract);
+  await accept(
+    client.register({
+      body: {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: arrayBufferToBase64(subscription.getKey("p256dh")),
+          auth: arrayBufferToBase64(subscription.getKey("auth")),
+        },
       },
+      fetchOptions: { signal },
     }),
+    [201],
     signal,
-  });
+    { showErrorToast: false },
+  );
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

@@ -1,10 +1,8 @@
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import {
   presentationTemplatesContract,
   type PresentationTemplatePreviewAsset,
 } from "@okouai/api-contracts/contracts/presentation-templates";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, eq } from "drizzle-orm";
 
@@ -19,7 +17,6 @@ import {
   publishPresentationTemplatesChangedForOrgSafely,
   publishPresentationTemplatesChangedForUserSafely,
 } from "../external/realtime";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   listAccessiblePresentationTemplates,
   loadAccessiblePresentationTemplate,
@@ -55,28 +52,6 @@ const templatePublishAuth = {
   missingOrganizationStatus: 401,
   requiredCapability: "presentation-template:write",
 } as const;
-
-const presentationTemplatesDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Presentation templates are not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const presentationTemplatesEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
 
 function templateNotFound(templateId: string) {
   return notFound(`Presentation template not found: ${templateId}`);
@@ -180,9 +155,6 @@ function accessiblePresentationTemplatePreviewAssets(args: {
 const publishBody$ = bodyResultOf(presentationTemplatesContract.publish);
 const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(presentationTemplatesEnabled$))) {
-    return presentationTemplatesDisabled;
-  }
   const bodyResult = await get(publishBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -235,9 +207,6 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(presentationTemplatesEnabled$))) {
-    return presentationTemplatesDisabled;
-  }
   const rows = await listAccessiblePresentationTemplates(get(db$), {
     orgId: auth.orgId,
     userId: auth.userId,
@@ -287,9 +256,6 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const getParams$ = pathParamsOf(presentationTemplatesContract.get);
 const getInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(presentationTemplatesEnabled$))) {
-    return presentationTemplatesDisabled;
-  }
   const params = get(getParams$);
   const row = await loadAccessiblePresentationTemplate(get(db$), {
     orgId: auth.orgId,
@@ -338,9 +304,6 @@ const resolvePreviewUrlsBody$ = bodyResultOf(
 const resolvePreviewUrlsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(presentationTemplatesEnabled$))) {
-      return presentationTemplatesDisabled;
-    }
     const bodyResult = await get(resolvePreviewUrlsBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -382,9 +345,6 @@ const updateParams$ = pathParamsOf(presentationTemplatesContract.update);
 const updateBody$ = bodyResultOf(presentationTemplatesContract.update);
 const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(presentationTemplatesEnabled$))) {
-    return presentationTemplatesDisabled;
-  }
   const params = get(updateParams$);
   const bodyResult = await get(updateBody$);
   signal.throwIfAborted();
@@ -466,9 +426,6 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const deleteParams$ = pathParamsOf(presentationTemplatesContract.delete);
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(presentationTemplatesEnabled$))) {
-    return presentationTemplatesDisabled;
-  }
   const params = get(deleteParams$);
   const deleted = await set(
     deletePresentationTemplate$,

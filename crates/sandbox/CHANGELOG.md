@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.22.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.0...sandbox-v0.22.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** attribute guest dns readiness attempts ([#32697](https://github.com/vm0-ai/vm0/issues/32697)) ([7558632](https://github.com/vm0-ai/vm0/commit/7558632c0eea9bded6c831fdba33a76c369677aa)), closes [#32445](https://github.com/vm0-ai/vm0/issues/32445)
+
+
+### Performance Improvements
+
+* **runner:** attribute guest connection startup phases ([#32705](https://github.com/vm0-ai/vm0/issues/32705)) ([176ca98](https://github.com/vm0-ai/vm0/commit/176ca98235eee2d021f23448aef8158d51ecb43f))
+
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.2...sandbox-v0.22.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [0.21.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.1...sandbox-v0.21.2) (2026-09-07)
 
 

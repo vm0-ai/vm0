@@ -47,10 +47,12 @@
 //! only after a successful spawn. Setup failures clean that containment before
 //! returning the original spawn error.
 
+use crate::contained_command::{
+    CommandStdio, ContainedChild as Child, ContainedCommand as Command,
+};
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use std::os::fd::{AsRawFd, RawFd};
@@ -589,11 +591,13 @@ pub(crate) fn spawn_shell_command_with_pipes(
             mut command,
             env_script,
         } = build_shell_command_with_env(command, env, sudo)?;
-        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+            .stdout(CommandStdio::Piped)
+            .stderr(CommandStdio::Piped);
         if pipe_stdin {
-            command.stdin(Stdio::piped());
+            command.stdin(CommandStdio::Piped);
         }
-        let child = spawn_command_in_containment(&mut command, sudo, &process_containment)?;
+        let child = command.spawn(sudo, &process_containment)?;
         Ok((child, env_script))
     })();
 
@@ -608,25 +612,6 @@ pub(crate) fn spawn_shell_command_with_pipes(
             Err(error)
         }
     }
-}
-
-/// Apply the common identity and containment boundary, then spawn a command as
-/// the leader of its own process group.
-pub(crate) fn spawn_command_in_containment(
-    command: &mut Command,
-    sudo: bool,
-    process_containment: &ExecProcessContainment,
-) -> io::Result<Child> {
-    let mut prepared_containment = process_containment
-        .prepare_command()
-        .map_err(|error| io::Error::other(format!("process containment setup failed: {error}")))?;
-    // Placement requires the root-opened cgroup descriptor. Drop to the
-    // target identity only after placement, then restore non-dumpable state
-    // because setuid may reset it.
-    prepared_containment.configure_placement(command);
-    crate::user::apply_command_identity(command, sudo)?;
-    prepared_containment.configure_process_inspection(command);
-    crate::process::spawn_in_own_process_group(command)
 }
 
 #[cfg(test)]
@@ -776,10 +761,11 @@ mod tests {
             create_env_script_in_dir(&dir, "echo \"$FOO\"", &[("FOO", secret)], true).unwrap();
         let invocation = script_invocation(script.path().unwrap()).unwrap();
         let command = build_shell_command_program(&invocation, true).unwrap();
-        let argv = std::iter::once(command.get_program().to_string_lossy().to_string())
+        let argv = std::iter::once(command.program.to_string_lossy().to_string())
             .chain(
                 command
-                    .get_args()
+                    .args
+                    .iter()
                     .map(|arg| arg.to_string_lossy().into_owned()),
             )
             .collect::<Vec<_>>()
@@ -842,7 +828,7 @@ mod tests {
         let script_dir = path.parent().unwrap().to_path_buf();
         let invocation = script_invocation(&path).unwrap();
 
-        let status = Command::new("sh")
+        let status = std::process::Command::new("sh")
             .arg("-c")
             .arg(invocation)
             .status()
@@ -1062,12 +1048,13 @@ mod tests {
     }
 
     fn assert_command(command: Command, expected_program: &str, expected_args: &[&str]) {
+        assert_eq!(command.program, std::ffi::OsStr::new(expected_program));
         assert_eq!(
-            command.get_program(),
-            std::ffi::OsStr::new(expected_program)
-        );
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
+            command
+                .args
+                .iter()
+                .map(|arg| arg.as_os_str())
+                .collect::<Vec<_>>(),
             expected_args
                 .iter()
                 .map(std::ffi::OsStr::new)
@@ -1097,7 +1084,10 @@ mod tests {
     fn build_shell_command_for_sandbox_user() {
         let command =
             build_shell_command_for_user("echo hello", false, Some(Path::new("/home/sandbox")));
-        assert_eq!(command.get_current_dir(), Some(Path::new("/home/sandbox")));
+        assert_eq!(
+            command.directory.as_deref(),
+            Some(Path::new("/home/sandbox"))
+        );
         assert_command(command, "/bin/sh", &["-c", ". /etc/profile\necho hello"]);
     }
 

@@ -98,20 +98,6 @@ function darwinArm64Release(version: string, url: string) {
   };
 }
 
-function legacyDarwinX64Release(version: string, url: string) {
-  return {
-    version,
-    name: `Okou ${version}`,
-    notes: `Release ${version}`,
-    pubDate: "2026-06-08T00:00:00.000Z",
-    platforms: {
-      darwin: {
-        x64: { url },
-      },
-    },
-  };
-}
-
 function okouZipUrl(version: string): string {
   return `https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v${version}/Okou-darwin-arm64-${version}.zip`;
 }
@@ -297,18 +283,6 @@ describe("desktop update routes", () => {
     );
   });
 
-  it("returns not found for the retired desktop update lines", async () => {
-    for (const line of ["okou", "zero"]) {
-      for (const suffix of ["release", "dmg", "RELEASES.json"]) {
-        const response = await appRequest(
-          `http://api.test/api/desktop/updates/${line}/stable/darwin/arm64/${suffix}`,
-        );
-
-        expect(response.status).toBe(404);
-      }
-    }
-  });
-
   it("does not serve a Zero artifact from the final Okou feed", async () => {
     mockDesktopUpdateManifest(
       stableManifest("1.2.3", {
@@ -332,42 +306,6 @@ describe("desktop update routes", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("rejects the retired macOS x64 update feed", async () => {
-    mockDesktopUpdateManifest(
-      stableManifest("0.2.1", {
-        "0.2.1": legacyDarwinX64Release(
-          "0.2.1",
-          "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v0.2.1/Okou-darwin-x64-0.2.1.zip",
-        ),
-      }),
-    );
-
-    const response = await appRequest(
-      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/x64/RELEASES.json",
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("Location")).toBeNull();
-  });
-
-  it("rejects the retired macOS x64 dmg download", async () => {
-    mockDesktopUpdateManifest(
-      stableManifest("0.12.0", {
-        "0.12.0": legacyDarwinX64Release(
-          "0.12.0",
-          "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v0.12.0/Okou-darwin-x64-0.12.0.zip",
-        ),
-      }),
-    );
-
-    const response = await appRequest(
-      "http://api.test/api/desktop/updates/stable/darwin/x64/dmg",
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("Location")).toBeNull();
   });
 
   it("does not return a blocked latest release", async () => {

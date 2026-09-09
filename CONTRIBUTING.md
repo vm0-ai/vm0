@@ -4,107 +4,80 @@
 
 ## Development Setup
 
-This project uses [Dev Containers](https://containers.dev/) for development. The dev container includes all required dependencies (Node.js, pnpm, PostgreSQL, etc.).
+Use the repository's [Dev Container](https://containers.dev/) for Node.js, pnpm,
+PostgreSQL, and the other development tools. Install Docker (or OrbStack on
+macOS) and VS Code's Dev Containers extension, clone the repository, and open
+`okou.code-workspace` with **Dev Containers: Open Workspace in Container**.
 
-### Prerequisites
+The supported Node and pnpm versions are declared in
+[turbo/package.json](turbo/package.json). Install Git hooks with
+`lefthook install` when configuring a new development checkout.
 
-- [Docker](https://www.docker.com/) (or [OrbStack](https://orbstack.dev/) for macOS, recommended)
-- [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+## Environment
 
-### External Services
-
-You need to register the following services and obtain API keys:
-
-**Required** (dev server won't start without these):
-
-| Service                                                  | Purpose                                     | Keys needed                                                                                 |
-| -------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [Clerk](https://clerk.com)                               | User authentication and session management  | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`                                                 |
-| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` |
-
-Hosted static sites are optional locally. When enabling them, configure a
-separate R2 token with `R2_HOSTED_SITES_BUCKET_NAME`,
-`R2_HOSTED_SITES_ACCESS_KEY_ID`, `R2_HOSTED_SITES_SECRET_ACCESS_KEY`,
-`ZERO_HOST_DOMAIN`, and `ZERO_HOST_SCHEME`.
-
-All other environment variables (OAuth connectors, Slack, Axiom, etc.) can be
-left empty.
-
-### Getting Started
-
-1. Fork and clone the repository
-2. Open VS Code and run `Dev Containers: Open Workspace in Container` from the command palette
-3. Select the `okou.code-workspace` file in the project root
-4. The container will build and set up the development environment automatically
-5. Initialize git hooks: `lefthook install`
-
-### Environment Variables
-
-Create `.env.local` files manually from the `.env.local.tpl` templates:
+Team members with the required 1Password access can use `scripts/sync-env.sh`.
+For manual setup, copy the current templates from the repository root:
 
 ```bash
-# Copy templates
-cp turbo/apps/web/.env.local.tpl turbo/apps/web/.env.local
+cp turbo/apps/api/.env.local.tpl turbo/apps/api/.env.local
 cp turbo/apps/platform/.env.local.tpl turbo/apps/platform/.env.local
 ```
 
-Then edit the `.env.local` files:
+Replace the required `op://...` placeholders with your development credentials.
+The templates describe the service-specific variables; Clerk supplies identity
+and R2 supplies object storage. Generate a local `SECRETS_ENCRYPTION_KEY` with
+`openssl rand -hex 32`. Do not commit local environment files or credentials.
 
-1. Replace `op://...` values for required services (Clerk, Cloudflare R2) with your actual keys
-2. For `SECRETS_ENCRYPTION_KEY`, generate one:
-   ```bash
-   openssl rand -hex 32
-   ```
-3. For `APP_URL`, use `https://vm7.ai:8443`
-4. Leave optional `op://...` values empty if you don't need those integrations
+Use `APP_URL=https://app.vm7.ai:8443` for the local Platform origin. Refer to
+[the proxy guide](turbo/packages/proxy/README.md) for HTTPS, certificate tokens,
+and public callback tunnel setup. Optional hosted sites use separate R2 hosted
+site credentials and the `ZERO_HOST_DOMAIN` / `ZERO_HOST_SCHEME` settings from
+the API template.
 
-### Running Tests
+## Local Development
 
-Inside the dev container:
+`scripts/prepare.sh` checks the local environment, syncs credentials, installs
+dependencies, applies database migrations, and seeds development data. Use it
+when setting up local development or repairing that environment; it is not a
+prerequisite for documentation work.
 
-```bash
-cd turbo && pnpm install && pnpm -F web db:migrate && pnpm build && pnpm test
-```
-
-- `db:migrate` sets up the local database schema
-- `pnpm build` builds shared packages (e.g. `@okouai/core`)
-
-See [Database Migrations](turbo/packages/db/MIGRATIONS.md) for migration rollout,
-validation, and online SQL patterns.
-
-### Running the Dev Server
-
-1. Run the preparation script (installs deps, migrates DB):
-
-   ```bash
-   bash scripts/prepare.sh
-   ```
-
-2. Start the dev server:
-
-   ```bash
-   cd turbo && pnpm dev
-   ```
-
-3. Access the application at https://vm7.ai:8443/
-
-### Accessing the Local Database
-
-The dev container includes a PostgreSQL instance:
+To install dependencies and apply pending migrations separately:
 
 ```bash
-psql $DATABASE_URL
+cd turbo
+pnpm install
+pnpm -F @okouai/db db:migrate
 ```
 
-Useful commands: `\dt` (list tables), `\d tablename` (table schema), `\q` (quit).
+Start the workspace development services from `turbo` with `pnpm dev`. For API
+work requiring public callbacks, use `pnpm -F api dev`, which starts the API and
+its development tunnel. The proxy routes the local surfaces as follows:
 
-## Pull Request Process
+| Surface                       | Local HTTPS URL         | Direct HTTP port |
+| ----------------------------- | ----------------------- | ---------------- |
+| Platform                      | https://app.vm7.ai:8443 | 3002             |
+| API                           | https://api.vm7.ai:8443 | 3001             |
+| Marketing (separate checkout) | https://www.vm7.ai:8443 | 3042             |
 
-1. Create a new branch from `main`
-2. Make your changes
-3. Commit following [Conventional Commits](https://www.conventionalcommits.org/) format
-4. Run quality checks before pushing:
-   ```bash
-   cd turbo && pnpm turbo run lint && pnpm check-types && pnpm format && pnpm vitest
-   ```
-5. Push your branch and create a pull request
+The bare `vm7.ai:8443` host redirects to Marketing. See the
+[Caddy configuration](turbo/packages/proxy/Caddyfile) for routing and the
+[Desktop guide](turbo/apps/desktop/README.md) for packaged macOS development.
+
+## Verification and Pull Requests
+
+1. Branch from current `main`, implement a focused change, and inspect its diff.
+2. Select checks for the changed files and consumers using
+   [project verification](CLAUDE.md#development-and-verification).
+3. For tests, use the matching [testing guide](docs/testing.md). Prefer package
+   scope, such as `pnpm -F @okouai/app exec vitest run <test-file>` from `turbo`.
+   Run only one Vitest process at a time. Do not make full-repository build or
+   test runs the default for an isolated change.
+4. Documentation changes need formatting, valid references, and any specialized
+   consumers. Run broader checks only when the changed scope requires them.
+5. Commit using [commitlint.config.mjs](commitlint.config.mjs), push the branch,
+   and open a PR. Report local checks separately from CI and deployment state.
+   Required protected checks must pass before merge.
+
+For schema changes, use [database migrations](turbo/packages/db/MIGRATIONS.md)
+and [database development](.claude/skills/database-development/SKILL.md). Do not
+run production migrations as part of local setup.

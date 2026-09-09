@@ -11,7 +11,6 @@ import {
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
@@ -36,8 +35,7 @@ import {
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
 import { usageUnderbillingFields } from "../usage-underbilling";
-import { piMemoryPhase2MaintenanceCallbackPayloadSchema } from "../services/pi-memory-phase2-maintenance.service";
-import { recordPiMemoryPhase2Usage } from "../services/pi-memory-phase2-usage.service";
+import { loadPiMemoryPhase2UsageBinding } from "../services/pi-memory-phase2-usage.service";
 
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
@@ -51,6 +49,11 @@ interface SandboxOperationDimensionInput {
   readonly error?: string;
   readonly outcome?: string;
   readonly reason?: string;
+  readonly dns_readiness_attempt?: number;
+  readonly dns_readiness_final_attempt?: boolean;
+  readonly dns_readiness_guest_duration_ms?: number;
+  readonly dns_readiness_host_residual_ms?: number;
+  readonly dns_readiness_timing?: string;
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly runner_pre_spawn_concurrency_bucket?: RunnerPreSpawnConcurrencyBucket;
@@ -99,10 +102,32 @@ function runnerResourceBudgetDimensions(
   };
 }
 
+function dnsReadinessDimensions(
+  op: SandboxOperationDimensionInput,
+): Record<string, string | number | boolean> {
+  return {
+    ...(op.dns_readiness_attempt !== undefined
+      ? { dns_readiness_attempt: op.dns_readiness_attempt }
+      : {}),
+    ...(op.dns_readiness_final_attempt !== undefined
+      ? { dns_readiness_final_attempt: op.dns_readiness_final_attempt }
+      : {}),
+    ...(op.dns_readiness_guest_duration_ms !== undefined
+      ? { dns_readiness_guest_duration_ms: op.dns_readiness_guest_duration_ms }
+      : {}),
+    ...(op.dns_readiness_host_residual_ms !== undefined
+      ? { dns_readiness_host_residual_ms: op.dns_readiness_host_residual_ms }
+      : {}),
+    ...(op.dns_readiness_timing
+      ? { dns_readiness_timing: op.dns_readiness_timing }
+      : {}),
+  };
+}
+
 function sandboxOperationDimensions(
   op: SandboxOperationDimensionInput,
   runner: SandboxRunnerDimensionInput,
-): Record<string, string> {
+): Record<string, string | number | boolean> {
   return {
     source: "sandbox",
     ...(runner.runnerHostname
@@ -112,6 +137,7 @@ function sandboxOperationDimensions(
     ...(op.error ? { error: op.error } : {}),
     ...(op.outcome ? { outcome: op.outcome } : {}),
     ...(op.reason ? { reason: op.reason } : {}),
+    ...dnsReadinessDimensions(op),
     ...(op.runner_startup_path
       ? { runner_startup_path: op.runner_startup_path }
       : {}),
@@ -235,36 +261,24 @@ const maintenanceUsage$ = command(async ({ get, set }, signal: AbortSignal) => {
     return unauthorizedRunMismatch;
   }
   const db = set(writeDb$);
-  const [callback] = await db
-    .select({ payload: agentRunCallbacks.payload })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, auth.runId),
-        eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
-      ),
-    )
-    .limit(1);
+  const binding = await loadPiMemoryPhase2UsageBinding(db, auth);
   signal.throwIfAborted();
-  const binding = piMemoryPhase2MaintenanceCallbackPayloadSchema.safeParse(
-    callback?.payload,
-  );
   if (
-    !binding.success ||
-    binding.data.orgId !== auth.orgId ||
-    binding.data.userId !== auth.userId ||
-    binding.data.memoryStorageId !== body.memoryStorageId ||
-    binding.data.leaseToken !== body.leaseToken ||
-    binding.data.claimedRevision !== body.claimedRevision ||
-    binding.data.claimedBaseVersionId !== body.claimedBaseVersionId ||
-    binding.data.selectionDigest !== body.selectionDigest
+    !binding ||
+    binding.memoryStorageId !== body.memoryStorageId ||
+    binding.leaseToken !== body.leaseToken ||
+    binding.claimedRevision !== body.claimedRevision ||
+    binding.claimedBaseVersionId !== body.claimedBaseVersionId ||
+    binding.selectionDigest !== body.selectionDigest
   ) {
     return notFound("Pi memory maintenance usage binding not found");
   }
-  for (const attempt of body.attempts) {
-    await recordPiMemoryPhase2Usage(db, { ...binding.data, ...attempt });
-    signal.throwIfAborted();
-  }
+  // Existing Guest/commit-pinned CLI contexts still submit this journal. ACK
+  // their validated private binding, but only usageEvent$ charges the provider
+  // work. The proxy survives a killed child and also covers missing journals.
+  // Retire the journal reporters/endpoint under #32168 only after the last old
+  // producer's contexts drain: up to two hours queued, two hours executing,
+  // and bounded finalization. New API + old Guest/CLI keeps the same response.
   return { status: 200 as const, body: { success: true } };
 });
 const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {

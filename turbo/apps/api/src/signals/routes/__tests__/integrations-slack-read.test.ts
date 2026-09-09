@@ -14,17 +14,24 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { integrationsSlackReadRoutes } from "../integrations-slack-read";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
-import { seedSlackOrgInstallation$ } from "./helpers/integrations-slack";
+import {
+  seedSlackOrgConnection$,
+  seedSlackOrgInstallation$,
+} from "./helpers/integrations-slack";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 
 const context = testContext();
 const store = createStore();
 const connectors = createConnectorBddApi(context);
+const SLACK_USER_CONVERSATIONS_URL =
+  "https://slack.com/api/users.conversations";
+const SLACK_HISTORY_URL = "https://slack.com/api/conversations.history";
 
 async function fixture(
   options: {
     enabled?: boolean;
     installed?: boolean;
+    connected?: boolean;
     capabilities?: readonly Capability[];
   } = {},
 ) {
@@ -53,6 +60,17 @@ async function fixture(
           { orgId, botToken },
           context.signal,
         );
+  const connection =
+    installation && options.connected !== false
+      ? await store.set(
+          seedSlackOrgConnection$,
+          {
+            slackWorkspaceId: installation.slackWorkspaceId,
+            userId,
+          },
+          context.signal,
+        )
+      : null;
   const seconds = Math.floor(now() / 1000);
   const token = signSandboxJwtForTests({
     scope: "okou",
@@ -70,29 +88,38 @@ async function fixture(
     actor,
     botToken,
     installation,
+    slackUserId: connection?.slackUserId ?? null,
     headers: { authorization: `Bearer ${token}` },
   };
 }
 
+function allowSharedConversation(conversationId: string): void {
+  server.use(
+    http.get(SLACK_USER_CONVERSATIONS_URL, () => {
+      return HttpResponse.json({
+        ok: true,
+        channels: [{ id: conversationId }],
+        response_metadata: { next_cursor: "" },
+      });
+    }),
+  );
+}
+
 describe("Slack bot channel discovery and history", () => {
-  it("lists unjoined public channels and joined private channels using the current org's bot", async () => {
-    const { client, headers, botToken, installation } = await fixture();
+  it("lists only channels shared by the connected Slack user and bot", async () => {
+    const { client, headers, botToken, installation, slackUserId } =
+      await fixture();
     let requestedToken: string | null = null;
     let query: URLSearchParams | undefined;
     server.use(
-      http.get("https://slack.com/api/conversations.list", ({ request }) => {
+      http.get(SLACK_USER_CONVERSATIONS_URL, ({ request }) => {
         requestedToken = request.headers.get("authorization");
         query = new URL(request.url).searchParams;
         return HttpResponse.json({
           ok: true,
           channels: [
-            {
-              id: "C123",
-              name: "general",
-              is_private: false,
-              is_member: false,
-            },
-            { id: "C456", name: "private", is_private: true, is_member: true },
+            { id: "C123", name: "general", is_private: false },
+            { id: "C456", name: "private", is_private: true },
           ],
           response_metadata: { next_cursor: "next-page" },
         });
@@ -109,6 +136,7 @@ describe("Slack bot channel discovery and history", () => {
     expect(Object.fromEntries(query ?? [])).toStrictEqual({
       limit: "20",
       cursor: "previous-page",
+      user: slackUserId,
       types: "public_channel,private_channel",
       exclude_archived: "true",
     });
@@ -118,7 +146,7 @@ describe("Slack bot channel discovery and history", () => {
           id: "C123",
           name: "general",
           isPrivate: false,
-          isMember: false,
+          isMember: true,
           channelUrl: `https://slack.com/app_redirect?team=${installation?.slackWorkspaceId}&channel=C123`,
         },
         {
@@ -136,7 +164,7 @@ describe("Slack bot channel discovery and history", () => {
   it("preserves continuation for an empty channel page", async () => {
     const { client, headers } = await fixture();
     server.use(
-      http.get("https://slack.com/api/conversations.list", () => {
+      http.get(SLACK_USER_CONVERSATIONS_URL, () => {
         return HttpResponse.json({
           ok: true,
           channels: [],
@@ -154,10 +182,28 @@ describe("Slack bot channel discovery and history", () => {
     });
   });
 
-  it.each(["C123", "G123", "D123"])(
-    "reads one page from %s and preserves time bounds and metadata",
-    async (channel) => {
-      const { client, headers, botToken } = await fixture();
+  it("requires the current Okou user to connect a Slack identity", async () => {
+    const { client, headers } = await fixture({ connected: false });
+
+    const response = await accept(
+      client.listChannels({ headers, query: { limit: 10 } }),
+      [404],
+    );
+
+    expect(response.body.error.message).toContain(
+      "Slack account is not connected",
+    );
+  });
+
+  it.each([
+    ["C123", "public_channel,private_channel"],
+    ["G123", "public_channel,private_channel"],
+    ["D123", "im"],
+  ])(
+    "authorizes shared conversation %s before reading one history page",
+    async (channel, expectedTypes) => {
+      const { client, headers, botToken, slackUserId } = await fixture();
+      let membershipQuery: URLSearchParams | undefined;
       let received: URLSearchParams | undefined;
       let requestedToken: string | null = null;
       const messages = [
@@ -172,19 +218,24 @@ describe("Slack bot channel discovery and history", () => {
         },
       ];
       server.use(
-        http.get(
-          "https://slack.com/api/conversations.history",
-          ({ request }) => {
-            received = new URL(request.url).searchParams;
-            requestedToken = request.headers.get("authorization");
-            return HttpResponse.json({
-              ok: true,
-              messages,
-              has_more: true,
-              response_metadata: { next_cursor: "next+page=" },
-            });
-          },
-        ),
+        http.get(SLACK_USER_CONVERSATIONS_URL, ({ request }) => {
+          membershipQuery = new URL(request.url).searchParams;
+          return HttpResponse.json({
+            ok: true,
+            channels: [{ id: channel }],
+            response_metadata: { next_cursor: "" },
+          });
+        }),
+        http.get(SLACK_HISTORY_URL, ({ request }) => {
+          received = new URL(request.url).searchParams;
+          requestedToken = request.headers.get("authorization");
+          return HttpResponse.json({
+            ok: true,
+            messages,
+            has_more: true,
+            response_metadata: { next_cursor: "next+page=" },
+          });
+        }),
       );
       const response = await accept(
         client.history({
@@ -199,6 +250,11 @@ describe("Slack bot channel discovery and history", () => {
         }),
         [200],
       );
+      expect(Object.fromEntries(membershipQuery ?? [])).toStrictEqual({
+        user: slackUserId,
+        types: expectedTypes,
+        limit: "200",
+      });
       expect(Object.fromEntries(received ?? [])).toStrictEqual({
         channel,
         limit: "15",
@@ -216,8 +272,72 @@ describe("Slack bot channel discovery and history", () => {
     },
   );
 
-  it("returns an actionable channel URL when the bot has not joined", async () => {
+  it("continues shared-membership pagination before reading history", async () => {
+    const { client, headers } = await fixture();
+    const membershipCursors: (string | null)[] = [];
+    server.use(
+      http.get(SLACK_USER_CONVERSATIONS_URL, ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        membershipCursors.push(cursor);
+        return cursor
+          ? HttpResponse.json({
+              ok: true,
+              channels: [{ id: "CTARGET" }],
+              response_metadata: { next_cursor: "" },
+            })
+          : HttpResponse.json({
+              ok: true,
+              channels: [{ id: "COTHER" }],
+              response_metadata: { next_cursor: "membership-page-2" },
+            });
+      }),
+      http.get(SLACK_HISTORY_URL, () => {
+        return HttpResponse.json({ ok: true, messages: [] });
+      }),
+    );
+
+    const response = await accept(
+      client.history({ headers, query: { channel: "CTARGET", limit: 15 } }),
+      [200],
+    );
+
+    expect(response.body.messages).toStrictEqual([]);
+    expect(membershipCursors).toStrictEqual([null, "membership-page-2"]);
+  });
+
+  it("does not read a bot DM that is not shared with the connected user", async () => {
+    const { client, headers } = await fixture();
+    let historyRequested = false;
+    server.use(
+      http.get(SLACK_USER_CONVERSATIONS_URL, () => {
+        return HttpResponse.json({
+          ok: true,
+          channels: [],
+          response_metadata: { next_cursor: "" },
+        });
+      }),
+      http.get(SLACK_HISTORY_URL, () => {
+        historyRequested = true;
+        return HttpResponse.json({ ok: true, messages: [] });
+      }),
+    );
+
+    const response = await accept(
+      client.history({ headers, query: { channel: "DOTHER", limit: 15 } }),
+      [404],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "NOT_FOUND",
+      message:
+        "This Slack conversation does not exist or is not shared by your connected Slack account and Okou.",
+    });
+    expect(historyRequested).toBeFalsy();
+  });
+
+  it("returns an actionable channel URL if the bot leaves after authorization", async () => {
     const { client, headers, installation } = await fixture();
+    allowSharedConversation("C123");
     server.use(
       http.get("https://slack.com/api/conversations.history", () => {
         return HttpResponse.json({ ok: false, error: "not_in_channel" });
@@ -237,6 +357,7 @@ describe("Slack bot channel discovery and history", () => {
 
   it("does not claim an inaccessible channel is known to exist", async () => {
     const { client, headers } = await fixture();
+    allowSharedConversation("C123");
     server.use(
       http.get("https://slack.com/api/conversations.history", () => {
         return HttpResponse.json({ ok: false, error: "channel_not_found" });
@@ -256,6 +377,7 @@ describe("Slack bot channel discovery and history", () => {
     "does not suggest channel invitations for inaccessible DMs (%s)",
     async (error) => {
       const { client, headers } = await fixture();
+      allowSharedConversation("D123");
       server.use(
         http.get("https://slack.com/api/conversations.history", () => {
           return HttpResponse.json({ ok: false, error });
@@ -273,14 +395,14 @@ describe("Slack bot channel discovery and history", () => {
     },
   );
 
-  it("distinguishes missing bot scopes from bot membership", async () => {
+  it("reports a missing scope while checking shared DM membership", async () => {
     const { client, headers } = await fixture();
     server.use(
-      http.get("https://slack.com/api/conversations.history", () => {
+      http.get(SLACK_USER_CONVERSATIONS_URL, () => {
         return HttpResponse.json({
           ok: false,
           error: "missing_scope",
-          needed: "im:history",
+          needed: "im:read",
         });
       }),
     );
@@ -296,6 +418,7 @@ describe("Slack bot channel discovery and history", () => {
 
   it("propagates Slack's retry duration instead of retrying in the request", async () => {
     const { client, headers } = await fixture();
+    allowSharedConversation("C123");
     server.use(
       http.get("https://slack.com/api/conversations.history", () => {
         return new HttpResponse(null, {

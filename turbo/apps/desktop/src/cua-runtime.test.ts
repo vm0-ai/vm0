@@ -256,6 +256,54 @@ describe("embedded CUA host lifecycle", () => {
     expect(await owner.start()).toMatchObject({ generation: 2 });
   });
 
+  it("accepts independently proven forced exit when the remote native observer disconnects", async () => {
+    const external = externalSdk();
+    const sdk: CuaSdk = {
+      ...external.sdk,
+      processOwner: {
+        async retire(graceful) {
+          const work = graceful();
+          // The external process boundary reports connection loss when force
+          // kills the SDK process, followed by independent kernel exit proof.
+          external.hosts[0]!.exit.reject(new Error("process disconnected"));
+          await work.catch(() => {});
+          return {
+            native: null,
+            process: {
+              guardianPid: 42,
+              guardianExitObserved: true,
+              descendantsExited: true,
+              forced: true,
+              elapsedMs: 3010,
+              heartbeatCount: 60,
+            },
+          };
+        },
+      },
+    };
+    const owner = new CuaEmbeddedRuntime({
+      runtimeRoot: "/packaged/cua",
+      hostBundleId: "ai.okou.desktop",
+      loadSdk: async () => sdk,
+    });
+    runtimes.push(owner);
+    await owner.start();
+    await Promise.all([owner.stop(), owner.stop()]);
+    expect(owner.getState()).toMatchObject({
+      phase: "stopped",
+      cleanupPending: false,
+      generation: null,
+      error: null,
+    });
+    expect(owner.getCleanupEvidence()).toMatchObject({
+      exitObserved: true,
+      exitSuccess: false,
+      exitCode: null,
+      process: { forced: true, descendantsExited: true },
+    });
+    expect(external.active.size).toBe(0);
+  });
+
   it("retires a start before an asynchronously loaded SDK can allocate a child", async () => {
     const external = externalSdk();
     const load = deferred<CuaSdk>();
@@ -343,6 +391,7 @@ describe("embedded CUA host lifecycle", () => {
     await expect(owner.start()).rejects.toThrow("retirement is unproven");
     expect(external.active.size).toBe(1);
     stop.resolve();
+    await expect.poll(() => owner.getState().cleanupPending).toBe(false);
     await owner.stop();
     expect(external.active.size).toBe(0);
     await owner.start();
@@ -519,6 +568,7 @@ describe("embedded CUA host lifecycle", () => {
     expect(external.clientDestroyed()).toBe(false);
     gate.resolve();
     await probe;
+    await expect.poll(() => owner.getState().cleanupPending).toBe(false);
     await owner.stop();
     expect(external.sessions.size).toBe(0);
     expect(external.active.size).toBe(0);

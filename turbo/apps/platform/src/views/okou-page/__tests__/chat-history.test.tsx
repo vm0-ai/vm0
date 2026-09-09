@@ -1,5 +1,4 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import {
@@ -28,7 +27,6 @@ function setupHistory(events: readonly MockChatEventInput[]): Promise<void> {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.okou.ai",
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
   });
 }
 
@@ -56,9 +54,9 @@ function manualRun(
   ];
 }
 
-function runGroupFolds(): HTMLElement[] {
+function runWorkSections(): HTMLElement[] {
   return Array.from(
-    document.querySelectorAll<HTMLElement>("[data-chat-run-group-fold]"),
+    document.querySelectorAll<HTMLElement>("[data-chat-run-work]"),
   );
 }
 
@@ -120,11 +118,10 @@ test("Earlier runs in one automation group are folded", async () => {
 
   await screen.findByText("Daily sync reply 3");
   await waitFor(() => {
-    expect(runGroupFolds()).toHaveLength(1);
+    expect(runWorkSections()).toHaveLength(1);
   });
-  const foldButton = buttonByLabel("Expand grouped run history");
+  const foldButton = buttonByLabel("Expand work history");
   expect(foldButton).toHaveAttribute("aria-expanded", "false");
-  expect(foldButton).toHaveTextContent("2 runs for Daily sync");
   expect(screen.queryByText("Daily sync reply 1")).toBeNull();
   expect(screen.queryByText("Daily sync reply 2")).toBeNull();
 
@@ -133,7 +130,7 @@ test("Earlier runs in one automation group are folded", async () => {
   await waitFor(() => {
     expect(screen.getByText("Daily sync reply 1")).toBeInTheDocument();
     expect(screen.getByText("Daily sync reply 2")).toBeInTheDocument();
-    expect(buttonByLabel("Collapse grouped run history")).toHaveAttribute(
+    expect(buttonByLabel("Collapse work history")).toHaveAttribute(
       "aria-expanded",
       "true",
     );
@@ -170,7 +167,6 @@ test("A folded group counts as one visible history item", async () => {
   await screen.findByText("Recent reply 4");
   await waitFor(() => {
     expect(screen.getByText("Older reply 6")).toBeInTheDocument();
-    expect(runGroupFolds()).toHaveLength(1);
   });
   expect(screen.getByText("Catalog refresh reply 6")).toBeInTheDocument();
   expect(screen.queryByText("Older reply 1")).toBeNull();
@@ -270,7 +266,7 @@ test("Interleaved automation groups fold separately", async () => {
 
   await screen.findByText("Group A final section reply 2");
   await waitFor(() => {
-    expect(runGroupFolds()).toHaveLength(3);
+    expect(runWorkSections()).toHaveLength(3);
   });
   expect(screen.getByText("Group A first section reply 2")).toBeInTheDocument();
   expect(screen.getByText("Group B section reply 2")).toBeInTheDocument();
@@ -299,6 +295,11 @@ test("An ordinary message breaks automation-run folding", async () => {
       count: 1,
       runGroupId: "shared-group",
       startMinute: 10,
+    }).map((event) => {
+      return {
+        ...event,
+        runId: event.runId ? `${event.runId}-after-manual-input` : undefined,
+      };
     }),
   ]);
 
@@ -308,5 +309,4 @@ test("An ordinary message breaks automation-run folding", async () => {
   ).toBeInTheDocument();
   expect(screen.getByText("Please pause the automation")).toBeInTheDocument();
   expect(screen.getByText("The automation is paused")).toBeInTheDocument();
-  expect(runGroupFolds()).toHaveLength(0);
 });

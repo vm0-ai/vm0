@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
@@ -95,7 +94,6 @@ export async function resolveIntegrationAgentResponsePresentation(
     readonly userId: string;
     readonly runId: string;
     readonly agentId: string;
-    readonly publicBrand: PublicBrand;
     readonly defaultAgentId?: string;
     readonly replyToMention?: string;
     readonly getFeatureOverrides: (

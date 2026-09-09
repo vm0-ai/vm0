@@ -38,9 +38,14 @@ export const agentInstructions$ = computed(
 // ---------------------------------------------------------------------------
 
 const editedContent$ = state<string | null>(null);
+const editorRevision$ = state(0);
 
 export const agentEditedContent$ = computed((get) => {
   return get(editedContent$);
+});
+
+export const agentInstructionsEditorRevision$ = computed((get) => {
+  return get(editorRevision$);
 });
 
 export const agentInstructionsDirty$ = computed(async (get) => {
@@ -56,6 +61,9 @@ export const setAgentEditedContent$ = command(({ set }, value: string) => {
 
 export const discardAgentEdit$ = command(({ set }) => {
   set(editedContent$, null);
+  set(editorRevision$, (previous) => {
+    return previous + 1;
+  });
 });
 
 export const buildAgentInstructions$ = command(

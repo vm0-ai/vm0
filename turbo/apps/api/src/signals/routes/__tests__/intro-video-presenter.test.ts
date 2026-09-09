@@ -638,142 +638,164 @@ describe("Intro Video HeyGen presenter route", () => {
     });
   });
 
-  it("generates the selected HeyGen voice once for presenter and mix", async () => {
-    const fixture = await seedFixture();
-    await enableIntroVideo(fixture);
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
-    const voiceId = "330290724a1b470fb63153f34d4c0183";
-    let speechRequests = 0;
-    let audioDownloads = 0;
-    server.use(
-      http.get(HEYGEN_VOICES_URL, ({ request }) => {
-        expect(
-          Object.fromEntries(new URL(request.url).searchParams),
-        ).toStrictEqual({
-          type: "public",
-          engine: "starfish",
-          limit: "100",
-        });
-        return HttpResponse.json({
-          data: [
-            {
-              voice_id: voiceId,
-              name: "Annie - Lifelike",
-              type: "public",
-            },
-          ],
-          has_more: false,
-          next_token: null,
-        });
-      }),
-      http.post(HEYGEN_SPEECH_URL, async ({ request }) => {
-        speechRequests += 1;
-        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
-        await expect(request.json()).resolves.toStrictEqual({
-          text: "Welcome to the launch.",
-          voice_id: voiceId,
-          input_type: "text",
-          speed: 1,
-        });
-        return HttpResponse.json({
-          data: {
-            audio_url: HEYGEN_AUDIO_URL,
-            duration: 61,
-            request_id: "speech-request-123",
-          },
-        });
-      }),
-      http.get(HEYGEN_AUDIO_URL, () => {
-        audioDownloads += 1;
-        return new HttpResponse(AUDIO_BYTES, {
-          headers: { "content-type": "audio/mpeg" },
-        });
-      }),
-    );
-    const response = await createIntroVideoPresenterTestApp(
-      fixture.usagePricingResolution,
-    ).request("/api/intro-video/voice/generate", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${okouToken({
-          ...fixture,
-          runId,
-          publicBrand: "okou",
-        })}`,
-      },
-      body: JSON.stringify({
-        voiceId,
-        text: "Welcome to the launch.",
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      id: expect.any(String),
-      filename: expect.stringMatching(/^intro-video-voice-.*\.mp3$/u),
-      contentType: "audio/mpeg",
-      size: AUDIO_BYTES.byteLength,
-      url: expect.any(String),
-      durationSeconds: 61,
-      creditsCharged: 41,
-      voiceId,
-    });
-    expect(speechRequests).toBe(1);
-    expect(audioDownloads).toBe(1);
-    expect(
-      context.mocks.s3.send.mock.calls.some(([command]) => {
-        return (
-          command instanceof PutObjectCommand &&
-          command.input.ContentType === "audio/mpeg" &&
-          command.input.Metadata?.["public-brand"] === "okou"
-        );
-      }),
-    ).toBeTruthy();
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    for (const query of ["", "?kind=file"]) {
-      const catalogResponse = await createIntroVideoPresenterTestApp(
-        fixture.usagePricingResolution,
-      ).request(`/api/artifacts/catalog${query}`, {
-        headers: authHeaders(),
+  it.each([false, true])(
+    "generates HeyGen voice with the shared artifact policy (private=%s)",
+    async (privateArtifacts) => {
+      const fixture = await seedFixture();
+      await enableIntroVideo(fixture);
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
       });
-      expect(catalogResponse.status).toBe(200);
-      expect(asRecord(await catalogResponse.json()).artifacts).toStrictEqual(
-        [],
+      const { composeId } = await store.set(
+        seedCompose$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
       );
-    }
-    await expect(orgCredits(fixture)).resolves.toBe(9959);
-  });
+      const { runId } = await store.set(
+        seedRun$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          composeId,
+          triggerSource: "web",
+        },
+        context.signal,
+      );
+      const voiceId = "330290724a1b470fb63153f34d4c0183";
+      let speechRequests = 0;
+      let audioDownloads = 0;
+      server.use(
+        http.get(HEYGEN_VOICES_URL, ({ request }) => {
+          expect(
+            Object.fromEntries(new URL(request.url).searchParams),
+          ).toStrictEqual({
+            type: "public",
+            engine: "starfish",
+            limit: "100",
+          });
+          return HttpResponse.json({
+            data: [
+              {
+                voice_id: voiceId,
+                name: "Annie - Lifelike",
+                type: "public",
+              },
+            ],
+            has_more: false,
+            next_token: null,
+          });
+        }),
+        http.post(HEYGEN_SPEECH_URL, async ({ request }) => {
+          speechRequests += 1;
+          expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+          await expect(request.json()).resolves.toStrictEqual({
+            text: "Welcome to the launch.",
+            voice_id: voiceId,
+            input_type: "text",
+            speed: 1,
+          });
+          return HttpResponse.json({
+            data: {
+              audio_url: HEYGEN_AUDIO_URL,
+              duration: 61,
+              request_id: "speech-request-123",
+            },
+          });
+        }),
+        http.get(HEYGEN_AUDIO_URL, () => {
+          audioDownloads += 1;
+          return new HttpResponse(AUDIO_BYTES, {
+            headers: { "content-type": "audio/mpeg" },
+          });
+        }),
+      );
+      const response = await createIntroVideoPresenterTestApp(
+        fixture.usagePricingResolution,
+      ).request("/api/intro-video/voice/generate", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${okouToken({
+            ...fixture,
+            runId,
+            publicBrand: "okou",
+          })}`,
+        },
+        body: JSON.stringify({
+          voiceId,
+          text: "Welcome to the launch.",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        id: expect.any(String),
+        filename: expect.stringMatching(/^intro-video-voice-.*\.mp3$/u),
+        contentType: "audio/mpeg",
+        size: AUDIO_BYTES.byteLength,
+        url: privateArtifacts
+          ? expect.stringContaining("/api/web/download-file?file_id=")
+          : expect.stringContaining("https://a.okou.io/"),
+        durationSeconds: 61,
+        creditsCharged: 41,
+        voiceId,
+      });
+      expect(speechRequests).toBe(1);
+      expect(audioDownloads).toBe(1);
+      expect(
+        context.mocks.s3.send.mock.calls.some(([command]) => {
+          return (
+            command instanceof PutObjectCommand &&
+            command.input.ContentType === "audio/mpeg" &&
+            command.input.Bucket ===
+              (privateArtifacts
+                ? "test-private-artifacts"
+                : "test-user-artifacts")
+          );
+        }),
+      ).toBeTruthy();
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      for (const query of ["", "?kind=file"]) {
+        const catalogResponse = await createIntroVideoPresenterTestApp(
+          fixture.usagePricingResolution,
+        ).request(`/api/artifacts/catalog${query}`, {
+          headers: authHeaders(),
+        });
+        expect(catalogResponse.status).toBe(200);
+        expect(asRecord(await catalogResponse.json()).artifacts).toStrictEqual(
+          [],
+        );
+      }
+      await expect(orgCredits(fixture)).resolves.toBe(9959);
+    },
+  );
 
   it.each([
     {
+      kind: "private curated",
+      avatarId: "Abigail_standing_office_front",
+      avatarGroupId: undefined,
+      privateArtifacts: true,
+    },
+    {
       kind: "curated",
+      privateArtifacts: false,
       avatarId: "Abigail_standing_office_front",
       avatarGroupId: undefined,
     },
     {
       kind: "public catalog",
+      privateArtifacts: false,
       avatarId: "Public_presenter_office",
       avatarGroupId: "public-presenter-group",
     },
   ])(
     "renders a $kind presenter through HeyGen v3 idempotently",
-    async ({ avatarId, avatarGroupId }) => {
+    async ({ avatarId, avatarGroupId, privateArtifacts }) => {
       const fixture = await seedFixture();
       await enableIntroVideo(fixture);
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
+      });
       const { composeId } = await store.set(
         seedCompose$,
         { orgId: fixture.orgId, userId: fixture.userId },
@@ -1002,7 +1024,9 @@ describe("Intro Video HeyGen presenter route", () => {
         filename: expect.stringMatching(/^intro-video-presenter-.*\.webm$/u),
         contentType: "video/webm",
         size: VIDEO_BYTES.byteLength,
-        url: expect.any(String),
+        url: privateArtifacts
+          ? expect.stringContaining("/api/web/download-file?file_id=")
+          : expect.stringContaining("https://a.okou.io/"),
         durationSeconds: 61,
         creditsCharged: 1271,
         avatarId,
@@ -1013,7 +1037,10 @@ describe("Intro Video HeyGen presenter route", () => {
           return (
             command instanceof PutObjectCommand &&
             command.input.ContentType === "video/webm" &&
-            command.input.Metadata?.["public-brand"] === "okou"
+            command.input.Bucket ===
+              (privateArtifacts
+                ? "test-private-artifacts"
+                : "test-user-artifacts")
           );
         }),
       ).toBeTruthy();

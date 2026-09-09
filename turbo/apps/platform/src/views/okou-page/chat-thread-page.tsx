@@ -1,4 +1,4 @@
-import { RunWorkMessage } from "./run-work-message.tsx";
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -157,16 +157,9 @@ import {
   closeChatConnectorActionConnectDialog$,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
-  buildCompletedWorkFolding,
   chatEventDisplayError,
-  completedWorkExpandedKeys$,
-  completedWorkExpandedKeysForScrollTarget,
-  completedWorkFoldForGroup,
   isRenderableAssistantEvent,
-  toggleCompletedWorkExpanded$,
-  type CompletedWorkFold,
-  type CompletedWorkFolding,
-} from "../../signals/chat-page/completed-work-folding.ts";
+} from "../../signals/chat-page/chat-event-display.ts";
 import {
   buildRunWorkFolding,
   runWorkExpandedKeys$,
@@ -176,18 +169,6 @@ import {
   type RunWorkFolding,
   type RunWorkSection,
 } from "../../signals/chat-page/run-work-folding.ts";
-import {
-  buildRunGroupFolding,
-  runGroupExpansionOverrides$,
-  toggleRunGroupExpanded$,
-  type RunGroupFold,
-  type RunGroupFolding,
-} from "../../signals/chat-page/run-group-folding.ts";
-import {
-  activeGoalDialogGoal$,
-  activeGoalDialogThreadId$,
-  closeChatThreadGoalDialog$,
-} from "../../signals/chat-page/chat-goal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import {
@@ -311,7 +292,7 @@ import {
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import type { ChatThreadPaneState } from "../../signals/chat-page/chat-thread-pane-state.ts";
 import {
-  focusChatThreadContainer$,
+  chatThreadContainerElement$,
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
@@ -695,9 +676,6 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const selectedCount = useGet(thread.sharing.selectedCount$);
   const startSharing = useSet(thread.sharing.start$);
   const closeSharing = useSet(thread.sharing.close$);
-  const sharingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-
   if (sharingPhase !== "idle") {
     return (
       <header className={CHAT_THREAD_HEADER_CLASS}>
@@ -732,38 +710,36 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     <header className={CHAT_THREAD_HEADER_CLASS}>
       <ChatThreadHeaderTitle thread={thread} />
       <div className="flex items-center gap-0.5">
-        {sharingEnabled ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    detach(
-                      startSharing(pageSignal),
-                      Reason.DomCallback,
-                      "start shared thread selection",
-                    );
-                  }}
-                  variant="quiet"
-                  size="icon-sm"
-                  iconSize="md"
-                  className="shrink-0 duration-150"
-                  aria-label={t(($) => {
-                    return $.chat.sharing.start;
-                  })}
-                >
-                  <Share2 size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t(($) => {
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={() => {
+                  detach(
+                    startSharing(pageSignal),
+                    Reason.DomCallback,
+                    "start shared thread selection",
+                  );
+                }}
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0 duration-150"
+                aria-label={t(($) => {
                   return $.chat.sharing.start;
                 })}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : null}
+              >
+                <Share2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t(($) => {
+                return $.chat.sharing.start;
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
@@ -784,18 +760,11 @@ function useChatThreadEmojiMenuActions({
   const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
-  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
   function closeMenu() {
-    const openThreadId = emojiMenuThreadId;
     closeChatThreadEmojiMenu();
-    if (openThreadId) {
-      queueMicrotask(() => {
-        focusChatThreadContainer(openThreadId);
-      });
-    }
   }
 
   function selectEmoji(nextEmoji: string) {
@@ -853,6 +822,7 @@ function ChatThreadEmojiMenuButton({
   title: string | null | undefined;
 }) {
   const { t } = useTranslation();
+  const chatThreadContainerElement = useSet(chatThreadContainerElement$);
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
@@ -911,8 +881,17 @@ function ChatThreadEmojiMenuButton({
         <PopoverContent
           align="start"
           className="w-80 p-0"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
+          finalFocus={() => {
+            // An open header replaced at a breakpoint keeps the new picker's focus.
+            if (!open) {
+              // Restore the keyboard root after the portal has detached.
+              queueMicrotask(() => {
+                chatThreadContainerElement(threadId)?.focus({
+                  preventScroll: true,
+                });
+              });
+            }
+            return false;
           }}
         >
           <ChatThreadEmojiPicker
@@ -2912,7 +2891,7 @@ export function ChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftPane = useGet(currentLeftPane$);
   const rightPane = useGet(currentRightPane$);
-  return (
+  return withChatScrollLayout(
     <>
       <ChatThreadSidebarShell
         animateEntry={activeThreadSidebar?.animateEntry ?? true}
@@ -2935,7 +2914,7 @@ export function ChatThreadPage() {
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       <ChatConnectorActionConnectModal />
-    </>
+    </>,
   );
 }
 
@@ -3039,14 +3018,6 @@ function ChatThreadScrollCommitMarker({
   );
 }
 
-type WaitingThinkingIndicatorMode = "waiting" | "waiting-queued";
-
-function isWaitingThinkingIndicatorMode(
-  mode: ThinkingIndicatorMode,
-): mode is WaitingThinkingIndicatorMode {
-  return mode === "waiting" || mode === "waiting-queued";
-}
-
 function assistantGroupIdForRunWorkIndicator(
   groups: readonly ChatEventGroup[],
   runWorkFolding: RunWorkFolding | null,
@@ -3079,32 +3050,10 @@ function ChatThreadRenderedEventGroups({
   const modelChanges = modelChangesByEventId(renderedActiveGroups);
   const scrollTargetEventId =
     useGet(thread.threadScrollPosition$)?.targetEventId ?? null;
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
-  const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
-  const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
-  const runGroupFolding = buildRunGroupFolding(
+  const runWorkFolding = buildRunWorkFolding(
     renderedActiveGroups,
-    runGroupExpansionOverrides,
-    scrollTargetEventId,
-    { preserveRunGroupsForWorkFolding: runWorkFoldingEnabled },
+    new Set(modelChanges.keys()),
   );
-  const runGroupVisibleGroups =
-    runGroupFolding?.visibleGroups ?? renderedActiveGroups;
-  const completedWorkFolding = runWorkFoldingEnabled
-    ? null
-    : buildCompletedWorkFolding(runGroupVisibleGroups);
-  const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
-  const effectiveCompletedWorkExpandedKeys =
-    completedWorkExpandedKeysForScrollTarget(
-      completedWorkFolding,
-      completedWorkExpandedKeys,
-      scrollTargetEventId,
-    );
-  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
-  const runWorkFolding = runWorkFoldingEnabled
-    ? buildRunWorkFolding(runGroupVisibleGroups, new Set(modelChanges.keys()))
-    : null;
   const runWorkExpandedKeys = useGet(runWorkExpandedKeys$);
   const effectiveRunWorkExpandedKeys = runWorkExpandedKeysForScrollTarget(
     runWorkFolding,
@@ -3112,9 +3061,7 @@ function ChatThreadRenderedEventGroups({
     scrollTargetEventId,
   );
   const toggleRunWorkExpanded = useSet(toggleRunWorkExpanded$);
-  const visibleGroups = runWorkFoldingEnabled
-    ? (runWorkFolding?.visibleGroups ?? runGroupVisibleGroups)
-    : (completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups);
+  const visibleGroups = runWorkFolding?.visibleGroups ?? renderedActiveGroups;
   const resolvedThinkingIndicatorMode =
     useLastResolved(thread.thinkingIndicatorMode$) ?? null;
   const thinkingIndicatorMode = runWorkFolding?.statusTail?.events.length
@@ -3124,26 +3071,13 @@ function ChatThreadRenderedEventGroups({
     visibleGroups,
     runWorkFolding,
   );
-  const runGroupFoldPlacements = resolveRunGroupFoldPlacements({
-    groups: visibleGroups,
-    runGroupFolding,
-    onToggleRunGroup: toggleRunGroupExpanded,
-    thinkingIndicatorCanHostFold: isWaitingThinkingIndicatorMode(
-      thinkingIndicatorMode,
-    ),
-  });
 
-  return (
+  return withChatScrollLayout(
     <>
       <ChatThreadEventGroups
         thread={thread}
         groups={visibleGroups}
         modelChanges={modelChanges}
-        runGroupFoldPlacements={runGroupFoldPlacements}
-        runWorkFoldingEnabled={runWorkFoldingEnabled}
-        completedWorkFolding={completedWorkFolding}
-        completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
-        onToggleCompletedWork={toggleCompletedWorkExpanded}
         runWorkFolding={runWorkFolding}
         runWorkExpandedKeys={effectiveRunWorkExpandedKeys}
         onToggleRunWork={toggleRunWorkExpanded}
@@ -3159,9 +3093,8 @@ function ChatThreadRenderedEventGroups({
         mode={
           runIndicatorAssistantGroupId === null ? thinkingIndicatorMode : null
         }
-        runGroupFolds={runGroupFoldPlacements.thinkingIndicatorRunGroupFolds}
       />
-    </>
+    </>,
   );
 }
 
@@ -3209,18 +3142,13 @@ function ChatThreadEmptyState({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
   const sharingPhase = useGet(thread.sharing.phase$);
 
-  return (
-    <main
-      data-run-work-folding={runWorkFoldingEnabled || undefined}
-      className={cn(CHAT_THREAD_CONTENT_MAIN_CLASS, "group/chat")}
-    >
+  return withChatScrollLayout(
+    <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
       <div
         ref={scrollContentOnRef}
         data-message-container
@@ -3235,26 +3163,18 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadNextRunModelNotice thread={thread} />
       </div>
-    </main>
+    </main>,
   );
 }
 
 function ChatThreadThinkingIndicator({
   thread,
   mode,
-  runGroupFolds,
 }: {
   thread: ChatPanelSignals;
   mode: ThinkingIndicatorMode;
-  runGroupFolds: readonly RunGroupFoldControl[];
 }) {
-  return (
-    <ThinkingIndicator
-      thread={thread}
-      mode={mode}
-      runGroupFolds={runGroupFolds}
-    />
-  );
+  return <ThinkingIndicator thread={thread} mode={mode} />;
 }
 
 function ChatThreadNextRunModelNotice({
@@ -3275,7 +3195,7 @@ function ChatThreadNextRunModelNotice({
     runningSelection === undefined ||
     runningSelection === null
   ) {
-    return null;
+    return withChatScrollLayout(null);
   }
 
   const selectedRunSelection: ChatRunModelSelection = {
@@ -3303,9 +3223,9 @@ function ChatThreadNextRunModelNotice({
           return $.chat.run.fastModeWillBeOff;
         });
   } else {
-    return null;
+    return withChatScrollLayout(null);
   }
-  return <RunSectionDividerRow label={label} announce />;
+  return withChatScrollLayout(<RunSectionDividerRow label={label} announce />);
 }
 
 // An assistant group whose events are all bookkeeping — a run's terminal event,
@@ -3313,15 +3233,9 @@ function ChatThreadNextRunModelNotice({
 // messages that visually sit right on top of each other.
 function groupRendersContent(
   group: ChatEventGroup,
-  embeddedFolds: readonly RunGroupFoldControl[],
-  completedWorkFold: CompletedWorkFold | null,
   runWorkSection: RunWorkSection | null,
 ): boolean {
-  if (
-    embeddedFolds.length > 0 ||
-    completedWorkFold !== null ||
-    runWorkSection !== null
-  ) {
+  if (runWorkSection !== null) {
     return true;
   }
   if (group.role === "user") {
@@ -3364,11 +3278,6 @@ function ChatThreadEventGroups({
   thread,
   groups,
   modelChanges,
-  runGroupFoldPlacements,
-  runWorkFoldingEnabled,
-  completedWorkFolding,
-  completedWorkExpandedKeys,
-  onToggleCompletedWork,
   runWorkFolding,
   runWorkExpandedKeys,
   onToggleRunWork,
@@ -3378,19 +3287,12 @@ function ChatThreadEventGroups({
   thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
   modelChanges: ReadonlyMap<string, RunModelChange>;
-  runGroupFoldPlacements: RunGroupFoldPlacements;
-  runWorkFoldingEnabled: boolean;
-  completedWorkFolding: CompletedWorkFolding | null;
-  completedWorkExpandedKeys: ReadonlySet<string>;
-  onToggleCompletedWork: (key: string) => void;
   runWorkFolding: RunWorkFolding | null;
   runWorkExpandedKeys: ReadonlySet<string>;
   onToggleRunWork: (key: string) => void;
   thinkingIndicatorMode: ThinkingIndicatorMode;
   runIndicatorAssistantGroupId: string | null;
 }) {
-  const { embeddedRunGroupFolds, externalRunGroupFolds } =
-    runGroupFoldPlacements;
   // A run that ends re-forms the groups around it, so the messages the user
   // sent back to back can land in separate groups with nothing rendered in
   // between. Tracking the last group that actually put something on screen
@@ -3400,34 +3302,14 @@ function ChatThreadEventGroups({
   return (
     <>
       {groups.map((group) => {
-        const runGroupFolds =
-          externalRunGroupFolds.get(group.beginEventId) ?? [];
-        const embeddedFolds =
-          embeddedRunGroupFolds.get(group.beginEventId) ?? [];
-        const completedWorkFold = runWorkFoldingEnabled
-          ? null
-          : completedWorkFoldForGroup(completedWorkFolding, group);
-        const runWorkSection = runWorkFoldingEnabled
-          ? runWorkSectionForGroup(runWorkFolding, group)
-          : null;
+        const runWorkSection = runWorkSectionForGroup(runWorkFolding, group);
         const stackFirstOnPrevious =
-          runGroupFolds.length === 0 &&
           previousVisibleGroup !== undefined &&
           previousVisibleGroup.role === "user" &&
           groupHasUserBubble(previousVisibleGroup);
-        if (
-          groupRendersContent(
-            group,
-            embeddedFolds,
-            completedWorkFold,
-            runWorkSection,
-          )
-        ) {
+        if (groupRendersContent(group, runWorkSection)) {
           previousVisibleGroup = group;
         }
-        const completedWorkExpanded =
-          completedWorkFold !== null &&
-          completedWorkExpandedKeys.has(completedWorkFold.key);
         const runIndicatorMode =
           group.beginEventId === runIndicatorAssistantGroupId &&
           thinkingIndicatorMode !== null
@@ -3438,37 +3320,11 @@ function ChatThreadEventGroups({
             key={runWorkSection?.key ?? group.beginEventId}
             className="contents"
           >
-            {runGroupFolds.map((runGroupFold) => {
-              return (
-                <RunGroupFoldRow
-                  key={runGroupFold.fold.key}
-                  control={runGroupFold}
-                />
-              );
-            })}
             <SelectablePagedGroupRow
               group={group}
               thread={thread}
               modelChanges={modelChanges}
               stackFirstOnPrevious={stackFirstOnPrevious}
-              runGroupFolds={embeddedFolds}
-              completedWorkFold={
-                completedWorkFold !== null
-                  ? {
-                      groups: completedWorkFold.labelGroups,
-                      hiddenGroups: completedWorkFold.hiddenGroups,
-                      expanded: completedWorkExpanded,
-                      onToggle: () => {
-                        if (!completedWorkExpanded) {
-                          captureChatWorkHistoryExpanded({
-                            workStatus: "completed",
-                          });
-                        }
-                        onToggleCompletedWork(completedWorkFold.key);
-                      },
-                    }
-                  : undefined
-              }
               runWorkSection={createRunWorkSectionControl(
                 runWorkSection,
                 runWorkExpandedKeys,
@@ -3488,170 +3344,12 @@ function ChatThreadEventGroups({
   );
 }
 
-interface RunGroupFoldControl {
-  fold: RunGroupFold;
-  expanded: boolean;
-  onToggle: () => void;
-}
-
-interface RunGroupFoldPlacements {
-  embeddedRunGroupFolds: Map<string, RunGroupFoldControl[]>;
-  externalRunGroupFolds: Map<string, RunGroupFoldControl[]>;
-  thinkingIndicatorRunGroupFolds: RunGroupFoldControl[];
-}
-
-function resolveRunGroupFoldPlacements({
-  groups,
-  runGroupFolding,
-  onToggleRunGroup,
-  thinkingIndicatorCanHostFold,
-}: {
-  groups: readonly ChatEventGroup[];
-  runGroupFolding: RunGroupFolding | null;
-  onToggleRunGroup: (key: string, expanded: boolean) => void;
-  thinkingIndicatorCanHostFold: boolean;
-}): RunGroupFoldPlacements {
-  const embeddedRunGroupFolds = new Map<string, RunGroupFoldControl[]>();
-  const externalRunGroupFolds = new Map<string, RunGroupFoldControl[]>();
-  const thinkingIndicatorRunGroupFolds: RunGroupFoldControl[] = [];
-
-  if (runGroupFolding === null) {
-    return {
-      embeddedRunGroupFolds,
-      externalRunGroupFolds,
-      thinkingIndicatorRunGroupFolds,
-    };
-  }
-
-  for (const [index, group] of groups.entries()) {
-    const folds = runGroupFolding.foldsByNextGroupId.get(group.beginEventId);
-    if (!folds || folds.length === 0) {
-      continue;
-    }
-
-    for (const fold of folds) {
-      const control: RunGroupFoldControl = {
-        fold,
-        expanded: fold.expanded,
-        onToggle: () => {
-          onToggleRunGroup(fold.key, fold.expanded);
-        },
-      };
-      if (
-        !control.expanded &&
-        isGoalGroupFold(fold) &&
-        thinkingIndicatorCanHostFold &&
-        waitingIndicatorCanHostCollapsedRunGroupFold(groups, index)
-      ) {
-        thinkingIndicatorRunGroupFolds.push(control);
-        continue;
-      }
-      const embeddedGroupId = control.expanded
-        ? undefined
-        : inlineGroupIdForCollapsedRunGroupFold(groups, index);
-      const target = embeddedGroupId
-        ? embeddedRunGroupFolds
-        : externalRunGroupFolds;
-      const targetGroupId = embeddedGroupId ?? group.beginEventId;
-      const existing = target.get(targetGroupId);
-      if (existing) {
-        existing.push(control);
-      } else {
-        target.set(targetGroupId, [control]);
-      }
-    }
-  }
-
-  return {
-    embeddedRunGroupFolds,
-    externalRunGroupFolds,
-    thinkingIndicatorRunGroupFolds,
-  };
-}
-
-function waitingIndicatorCanHostCollapsedRunGroupFold(
-  groups: readonly ChatEventGroup[],
-  index: number,
-): boolean {
-  const group = groups[index];
-  if (!group || group.role !== "user") {
-    return false;
-  }
-  const runId = firstRunIdForEvents(group.events);
-  if (runId === undefined) {
-    return false;
-  }
-  for (const candidate of groups.slice(index + 1)) {
-    const candidateRunId = firstRunIdForEvents(candidate.events);
-    if (candidateRunId !== undefined && candidateRunId !== runId) {
-      return false;
-    }
-    if (
-      candidateRunId === runId &&
-      candidate.role === "assistant" &&
-      candidate.events.some(isRenderableAssistantEvent)
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function inlineGroupIdForCollapsedRunGroupFold(
-  groups: readonly ChatEventGroup[],
-  index: number,
-): string | undefined {
-  const group = groups[index];
-  if (!group || group.role !== "user") {
-    return undefined;
-  }
-  if (firstRunIdForEvents(group.events) === undefined) {
-    return undefined;
-  }
-  return (
-    assistantGroupIdForCollapsedRunGroupFold(groups, index) ??
-    group.beginEventId
-  );
-}
-
-function assistantGroupIdForCollapsedRunGroupFold(
-  groups: readonly ChatEventGroup[],
-  index: number,
-): string | undefined {
-  const group = groups[index];
-  if (!group || group.role !== "user") {
-    return undefined;
-  }
-  const runId = firstRunIdForEvents(group.events);
-  if (runId === undefined) {
-    return undefined;
-  }
-
-  for (let nextIndex = index + 1; nextIndex < groups.length; nextIndex++) {
-    const candidate = groups[nextIndex]!;
-    const candidateRunId = firstRunIdForEvents(candidate.events);
-    if (candidateRunId !== runId) {
-      return undefined;
-    }
-    if (candidate.role === "assistant") {
-      return candidate.beginEventId;
-    }
-  }
-
-  return undefined;
-}
-
 function firstRunIdForEvents(
   events: readonly EnrichedChatEvent[],
 ): string | undefined {
   return events.find((event) => {
     return event.runId !== undefined;
   })?.runId;
-}
-
-function parseEventTime(value: string): number | null {
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 function formatCompactDuration(totalSeconds: number): string {
@@ -3683,39 +3381,6 @@ function formatCompactDuration(totalSeconds: number): string {
     },
     { count: totalHours },
   );
-}
-
-function durationLabelForGroups(
-  groups: readonly ChatEventGroup[],
-): string | null {
-  const timestamps = groups.flatMap((group) => {
-    return group.events.flatMap((event) => {
-      const timestamp = parseEventTime(event.createdAt);
-      return timestamp === null ? [] : [timestamp];
-    });
-  });
-  if (timestamps.length < 2) {
-    return null;
-  }
-  const elapsedSeconds = Math.max(
-    1,
-    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
-  );
-  return formatCompactDuration(elapsedSeconds);
-}
-
-function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
-  const duration = durationLabelForGroups(groups);
-  return duration
-    ? i18n.t(
-        ($) => {
-          return $.chat.run.workedFor;
-        },
-        { duration },
-      )
-    : i18n.t(($) => {
-        return $.chat.run.worked;
-      });
 }
 
 const RUN_SECTION_LABEL_CLASS =
@@ -3804,51 +3469,6 @@ function FoldedModelChangeDivider({ change }: { change: RunModelChange }) {
       label={modelChangeLabel(t, change)}
       labelPosition="right"
     />
-  );
-}
-
-function CompletedWorkFoldRow({
-  groups,
-  expanded,
-  onToggle,
-}: {
-  groups: readonly ChatEventGroup[];
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const { t } = useTranslation();
-  const label = completedWorkLabel(groups);
-  return (
-    <div data-chat-completed-work-fold className="-mx-2">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={
-          expanded
-            ? t(($) => {
-                return $.chat.run.collapseWorkHistory;
-              })
-            : t(($) => {
-                return $.chat.run.expandWorkHistory;
-              })
-        }
-        onClick={onToggle}
-        className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover group-data-[run-work-folding]/chat:gap-0"
-      >
-        <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
-          <Hourglass aria-hidden size={14} />
-        </span>
-        <span className="text-[13px]">{label}</span>
-        <ChevronRight
-          aria-hidden
-          size={14}
-          className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform group-data-[run-work-folding]/chat:ml-2",
-            expanded && "rotate-90",
-          )}
-        />
-      </button>
-    </div>
   );
 }
 
@@ -3956,63 +3576,6 @@ function RunWorkSectionRow({
   );
 }
 
-function normalizedInlineLabel(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function runGroupFoldEvents(fold: RunGroupFold): EnrichedChatEvent[] {
-  return fold.labelGroups.flatMap((group) => {
-    return group.events;
-  });
-}
-
-function runGroupFoldSourceLabel(fold: RunGroupFold): string {
-  const events = runGroupFoldEvents(fold);
-  const workflowLabel = runGroupFoldWorkflowLabel(fold);
-  if (workflowLabel) {
-    return workflowLabel;
-  }
-  for (const event of events) {
-    if (!isInputChatEvent(event)) {
-      continue;
-    }
-    const content = messageDocumentToDisplayText(event.userMessage);
-    if (content?.trim()) {
-      return normalizedInlineLabel(content);
-    }
-  }
-  return i18n.t(($) => {
-    return $.chat.run.automatedRun;
-  });
-}
-
-function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
-  for (const event of runGroupFoldEvents(fold)) {
-    const part = eventNonContentPart(event);
-    const label =
-      part?.type === "automation"
-        ? part.automationBrief?.trim() || part.workflowName.trim()
-        : null;
-    if (label) {
-      return normalizedInlineLabel(label);
-    }
-  }
-  return null;
-}
-
-function runGroupFoldGoalLabel(fold: RunGroupFold): string {
-  const goalInputEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
-  const part = goalInputEvent ? eventNonContentPart(goalInputEvent) : undefined;
-  const content = part?.type === "goal" ? part.goalBrief.trim() : null;
-  return content
-    ? normalizedInlineLabel(content)
-    : i18n
-        .t(($) => {
-          return $.chat.queue.goal;
-        })
-        .toLocaleLowerCase(i18n.resolvedLanguage);
-}
-
 function isRejectedGoalUserMessage(event: EnrichedChatEvent): boolean {
   return (
     event.eventType === "input.rejected" &&
@@ -4027,133 +3590,6 @@ function isGoalUserMessage(
     isInputChatEvent(event) &&
     !isRejectedGoalUserMessage(event) &&
     eventNonContentPart(event)?.type === "goal"
-  );
-}
-
-function isGoalGroupFold(fold: RunGroupFold): boolean {
-  return fold.labelGroups.some((group) => {
-    return group.events.some(isGoalUserMessage);
-  });
-}
-
-function verboseDurationLabelForRunGroupFold(
-  fold: RunGroupFold,
-): string | null {
-  const timestamps = fold.labelGroups.flatMap((group) => {
-    return group.events.flatMap((event) => {
-      if (event.runGroupId !== fold.runGroupId) {
-        return [];
-      }
-      const timestamp = parseEventTime(event.createdAt);
-      return timestamp === null ? [] : [timestamp];
-    });
-  });
-  if (timestamps.length < 2) {
-    return null;
-  }
-  const elapsedMinutes = Math.max(
-    1,
-    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 60_000),
-  );
-  const hours = Math.floor(elapsedMinutes / 60);
-  const minutes = elapsedMinutes % 60;
-  const parts: string[] = [];
-  if (hours > 0) {
-    parts.push(
-      i18n.t(
-        ($) => {
-          return $.chat.run.duration.hour;
-        },
-        {
-          count: hours,
-        },
-      ),
-    );
-  }
-  if (minutes > 0 || parts.length === 0) {
-    parts.push(
-      i18n.t(
-        ($) => {
-          return $.chat.run.duration.minute;
-        },
-        {
-          count: minutes,
-        },
-      ),
-    );
-  }
-  return parts.join(" ");
-}
-
-function runGroupFoldLabel(fold: RunGroupFold): string {
-  if (isGoalGroupFold(fold)) {
-    const duration = verboseDurationLabelForRunGroupFold(fold);
-    const label = runGroupFoldGoalLabel(fold);
-    return duration
-      ? i18n.t(
-          ($) => {
-            return $.chat.run.durationFor;
-          },
-          { duration, label },
-        )
-      : i18n.t(
-          ($) => {
-            return $.chat.run.goalFor;
-          },
-          { label },
-        );
-  }
-  const sourceLabel = runGroupFoldSourceLabel(fold);
-  return i18n.t(
-    ($) => {
-      return $.chat.run.groupedRunsFor;
-    },
-    {
-      count: fold.hiddenRunCount,
-      source: sourceLabel,
-    },
-  );
-}
-
-function RunGroupFoldRow({ control }: { control: RunGroupFoldControl }) {
-  const { t } = useTranslation();
-  const { fold, expanded, onToggle } = control;
-  const label = runGroupFoldLabel(fold);
-  const isGoal = isGoalGroupFold(fold);
-  const Icon = isGoal ? Target : Package;
-  return (
-    <div data-chat-run-group-fold className="-mx-2">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={
-          expanded
-            ? t(($) => {
-                return $.chat.run.collapseGroupedHistory;
-              })
-            : t(($) => {
-                return $.chat.run.expandGroupedHistory;
-              })
-        }
-        onClick={onToggle}
-        className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover group-data-[run-work-folding]/chat:gap-0"
-      >
-        <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
-          <Icon aria-hidden size={14} />
-        </span>
-        <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
-          {label}
-        </span>
-        <ChevronRight
-          aria-hidden
-          size={14}
-          className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform group-data-[run-work-folding]/chat:ml-2",
-            expanded && "rotate-90",
-          )}
-        />
-      </button>
-    </div>
   );
 }
 
@@ -4277,14 +3713,14 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
     thread.sharing.create$,
   );
   if (phase === "idle") {
-    return <ChatThreadComposer thread={thread} />;
+    return withChatScrollLayout(<ChatThreadComposer thread={thread} />);
   }
 
   const creating = createLoadable.state === "loading";
   const shareUrl = sharedThreadId
     ? `${window.location.origin}/share/threads/${sharedThreadId}`
     : null;
-  return (
+  return withChatScrollLayout(
     <footer className="relative shrink-0 border-t border-border/60 bg-background px-4 py-3 sm:px-6">
       <div className="mx-auto flex w-full max-w-[900px] flex-col gap-2">
         {shareUrl ? (
@@ -4384,7 +3820,7 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
           </div>
         )}
       </div>
-    </footer>
+    </footer>,
   );
 }
 
@@ -4537,7 +3973,7 @@ function RecommendedFollowupList({
               "group flex text-left transition-colors",
               showFollowupCards
                 ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--okou-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover group-data-[run-work-folding]/chat:min-h-8 group-data-[run-work-folding]/chat:gap-0 group-data-[run-work-folding]/chat:py-1",
+                : "min-h-8 w-full items-center gap-0 rounded-lg px-2 py-1 hover:bg-state-hover",
             )}
             onClick={() => {
               handleSelect(followup, followupIndex);
@@ -4563,7 +3999,7 @@ function RecommendedFollowupList({
             <ArrowUpRight
               size={14}
               className={cn(
-                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100 group-data-[run-work-folding]/chat:ml-2",
+                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100 ml-2",
                 showFollowupCards && "hidden",
               )}
             />
@@ -4620,91 +4056,14 @@ function splitQueuedEventsForThinkingIndicator(groups: ChatEventGroup[]): {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Composer wrapper — reads chat signals from thread prop
-// ---------------------------------------------------------------------------
-
-function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
-  const { t } = useTranslation();
-  const dialogThreadId = useGet(activeGoalDialogThreadId$);
-  const goalLoadable = useLoadable(activeGoalDialogGoal$);
-  const closeDialog = useSet(closeChatThreadGoalDialog$);
-  const open = dialogThreadId === threadId;
-  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          closeDialog();
-        }
-      }}
-    >
-      <DialogContent
-        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
-        aria-describedby={undefined}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-base">
-            {t(($) => {
-              return $.chat.queue.goal;
-            })}
-          </DialogTitle>
-          <DialogDescription className="leading-6">
-            {t(($) => {
-              return $.chat.queue.goalDescription;
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
-          {goalLoadable.state === "loading" ? (
-            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
-              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-              <span>
-                {t(($) => {
-                  return $.chat.queue.loadingGoal;
-                })}
-              </span>
-            </div>
-          ) : goalLoadable.state === "hasError" ? (
-            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
-              <p className="font-medium text-foreground">
-                {t(($) => {
-                  return $.chat.queue.goalLoadFailed;
-                })}
-              </p>
-              <p className="text-xs">
-                {t(($) => {
-                  return $.chat.queue.goalRetry;
-                })}
-              </p>
-            </div>
-          ) : goal ? (
-            <Markdown
-              source={goal.objective}
-              escapeHtml
-              style={{ fontSize: "inherit", lineHeight: "inherit" }}
-            />
-          ) : (
-            <div className="flex min-h-28 items-center text-muted-foreground">
-              {t(($) => {
-                return $.chat.queue.goalUnavailable;
-              })}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
+  const composerLayoutRef = useSet(thread.composerLayoutOnRef$);
   const standalonePwa = isStandalonePwa();
 
   return (
     <footer
       data-chat-composer
+      ref={composerLayoutRef}
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
         paddingBottom: "max(0.5rem, var(--okou-composer-safe-bottom))",
@@ -4719,7 +4078,6 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       >
         <div className="mx-auto max-w-[900px]">
           <ChatComposer signals={thread.composer} />
-          <ActiveGoalObjectiveDialog threadId={thread.threadId} />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </div>
@@ -4804,8 +4162,7 @@ function ShimmerText({
     <p
       ref={setRef}
       className={cn(
-        "okou-shimmer-text h-5 min-w-0 flex-1 truncate text-[0.8125rem] leading-5",
-        "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:leading-[inherit]",
+        "okou-shimmer-text h-auto min-w-0 flex-1 truncate text-[0.8125rem] leading-[inherit]",
         className,
       )}
       aria-label={ariaLabel}
@@ -4921,7 +4278,7 @@ function InlineThinkingRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 h-5 group-data-[run-work-folding]/chat:gap-0",
+        "flex items-center gap-0 h-5",
         CHAT_THREAD_RESPONSE_LINE_CLASS,
       )}
     >
@@ -4948,17 +4305,12 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const donePhrase =
     useLastResolved(thread.donePhrase$) ??
     t(($) => {
       return $.chat.run.done.default;
     });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
-  if (runWorkFoldingEnabled && source === null) {
-    return null;
-  }
   const label =
     source && runFinishedAt
       ? t(
@@ -4992,7 +4344,6 @@ function WaitingForAssistantResponse({
   spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
-  runGroupFolds,
   inAssistantGroup,
 }: {
   thread: ChatPanelSignals;
@@ -5001,7 +4352,6 @@ function WaitingForAssistantResponse({
   spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
-  runGroupFolds: readonly RunGroupFoldControl[];
   inAssistantGroup: boolean;
 }) {
   const thinkingIndicatorProps = isQueued
@@ -5035,9 +4385,6 @@ function WaitingForAssistantResponse({
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex min-w-0 flex-col gap-2">
-          {runGroupFolds.map((fold) => {
-            return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
-          })}
           <ChatAssistantMessageBody>
             <InlineThinkingRow
               blockStyle={blockStyle}
@@ -5139,17 +4486,13 @@ function equalRecommendedFollowupSources(
 function ThinkingIndicator({
   thread,
   mode,
-  runGroupFolds,
   inAssistantGroup = false,
 }: {
   thread: ChatPanelSignals;
   mode: ThinkingIndicatorMode;
-  runGroupFolds: readonly RunGroupFoldControl[];
   inAssistantGroup?: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
-  const runWorkFoldingEnabled =
-    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const spinnerEnabled =
     featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
@@ -5185,12 +4528,7 @@ function ThinkingIndicator({
         }
       : undefined;
 
-  if (
-    mode === null ||
-    (runWorkFoldingEnabled &&
-      mode === "finished" &&
-      recommendedFollowupSource === null)
-  ) {
+  if (mode === null) {
     return null;
   }
 
@@ -5220,7 +4558,6 @@ function ThinkingIndicator({
       spinnerEnabled={spinnerEnabled}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
-      runGroupFolds={runGroupFolds}
       inAssistantGroup={inAssistantGroup}
     />
   );
@@ -5858,7 +5195,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (isNoModelProvider) {
     return (
-      <div className="flex items-start gap-2 text-foreground group-data-[run-work-folding]/chat:gap-0">
+      <div className="flex items-start gap-0 text-foreground">
         <AssistantErrorLeadingIcon warning />
         <span>
           {t(($) => {
@@ -5892,7 +5229,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (isProviderIncompatible) {
     return (
-      <div className="flex items-start gap-2 text-foreground group-data-[run-work-folding]/chat:gap-0">
+      <div className="flex items-start gap-0 text-foreground">
         <AssistantErrorLeadingIcon warning />
         <span>
           {t(($) => {
@@ -5919,7 +5256,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (isProviderDeleted) {
     return (
-      <div className="flex items-start gap-2 text-foreground group-data-[run-work-folding]/chat:gap-0">
+      <div className="flex items-start gap-0 text-foreground">
         <AssistantErrorLeadingIcon warning />
         <span>
           {t(($) => {
@@ -5942,7 +5279,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   }
 
   return (
-    <div className="flex items-start gap-2 text-destructive group-data-[run-work-folding]/chat:gap-0">
+    <div className="flex items-start gap-0 text-destructive">
       <AssistantErrorLeadingIcon />
       <Markdown
         source={error}
@@ -6000,8 +5337,6 @@ function PagedGroupRow({
   thread,
   modelChanges,
   stackFirstOnPrevious = false,
-  runGroupFolds,
-  completedWorkFold,
   runWorkSection,
   runIndicatorMode,
   statusTailEvents,
@@ -6010,8 +5345,6 @@ function PagedGroupRow({
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
   stackFirstOnPrevious?: boolean;
-  runGroupFolds?: readonly RunGroupFoldControl[];
-  completedWorkFold?: CompletedWorkFoldControl;
   runWorkSection?: RunWorkSectionControl;
   runIndicatorMode?: Exclude<ThinkingIndicatorMode, null>;
   statusTailEvents?: readonly EnrichedChatEvent[];
@@ -6023,7 +5356,6 @@ function PagedGroupRow({
         thread={thread}
         modelChanges={modelChanges}
         stackFirstOnPrevious={stackFirstOnPrevious}
-        runGroupFolds={runGroupFolds}
       />
     );
   }
@@ -6032,8 +5364,6 @@ function PagedGroupRow({
       group={group}
       thread={thread}
       modelChanges={modelChanges}
-      runGroupFolds={runGroupFolds}
-      completedWorkFold={completedWorkFold}
       runWorkSection={runWorkSection}
       runIndicatorMode={runIndicatorMode}
       statusTailEvents={statusTailEvents}
@@ -6087,8 +5417,6 @@ function SelectablePagedGroupRow({
   thread,
   modelChanges,
   stackFirstOnPrevious,
-  runGroupFolds,
-  completedWorkFold,
   runWorkSection,
   runIndicatorMode,
   statusTailEvents,
@@ -6114,8 +5442,6 @@ function SelectablePagedGroupRow({
         thread={thread}
         modelChanges={modelChanges}
         stackFirstOnPrevious={stackFirstOnPrevious}
-        runGroupFolds={runGroupFolds}
-        completedWorkFold={completedWorkFold}
         runWorkSection={runWorkSection}
         runIndicatorMode={runIndicatorMode}
         statusTailEvents={statusTailEvents}
@@ -6161,8 +5487,6 @@ function SelectablePagedGroupRow({
         thread={thread}
         modelChanges={modelChanges}
         stackFirstOnPrevious={stackFirstOnPrevious}
-        runGroupFolds={runGroupFolds}
-        completedWorkFold={completedWorkFold}
         runWorkSection={runWorkSection}
         runIndicatorMode={runIndicatorMode}
         statusTailEvents={statusTailEvents}
@@ -6190,13 +5514,11 @@ function PagedUserGroup({
   thread,
   modelChanges,
   stackFirstOnPrevious = false,
-  runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
   stackFirstOnPrevious?: boolean;
-  runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
@@ -6227,9 +5549,6 @@ function PagedUserGroup({
             />
           </div>
         );
-      })}
-      {runGroupFolds?.map((fold) => {
-        return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
   );
@@ -7509,13 +6828,6 @@ function PagedUserMessage({
   );
 }
 
-type CompletedWorkFoldControl = {
-  readonly groups: readonly ChatEventGroup[];
-  readonly hiddenGroups: readonly ChatEventGroup[];
-  readonly expanded: boolean;
-  readonly onToggle: () => void;
-};
-
 type RunWorkSectionControl = Omit<RunWorkSection, "key"> & {
   readonly expanded: boolean;
   readonly onToggle: () => void;
@@ -7525,25 +6837,10 @@ type PagedAssistantGroupProps = {
   readonly group: ChatEventGroup;
   readonly thread: ChatPanelSignals;
   readonly modelChanges: ReadonlyMap<string, RunModelChange>;
-  readonly runGroupFolds?: readonly RunGroupFoldControl[];
-  readonly completedWorkFold?: CompletedWorkFoldControl;
   readonly runWorkSection?: RunWorkSectionControl;
   readonly runIndicatorMode?: Exclude<ThinkingIndicatorMode, null>;
   readonly statusTailEvents?: readonly EnrichedChatEvent[];
 };
-
-function visibleRunIndicatorMode(
-  mode: Exclude<ThinkingIndicatorMode, null> | undefined,
-  recommendedFollowupSource: RecommendedFollowupSource | null,
-): Exclude<ThinkingIndicatorMode, null> | undefined {
-  if (mode === undefined) {
-    return undefined;
-  }
-  if (mode === "finished" && recommendedFollowupSource === null) {
-    return undefined;
-  }
-  return mode;
-}
 
 type PagedAssistantHistoryItem =
   | {
@@ -7554,18 +6851,10 @@ type PagedAssistantHistoryItem =
       readonly kind: "model-change";
       readonly eventId: string;
       readonly change: RunModelChange;
-    }
-  | {
-      readonly kind: "run-work-message";
-      readonly event: EnrichedChatEvent;
     };
 
 type PagedAssistantTimelineItem =
   | PagedAssistantHistoryItem
-  | {
-      readonly kind: "completed-work";
-      readonly control: CompletedWorkFoldControl;
-    }
   | {
       readonly kind: "run-work";
       readonly control: RunWorkSectionControl;
@@ -7595,7 +6884,7 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "run-work-message", event }]
+        ? [{ kind: "assistant", event }]
         : [];
     });
   });
@@ -7604,23 +6893,12 @@ function foldedRunWorkTimelineItems(
 function buildPagedAssistantTimeline({
   group,
   modelChanges,
-  completedWorkFold,
   runWorkSection,
 }: Pick<
   PagedAssistantGroupProps,
-  "group" | "modelChanges" | "completedWorkFold" | "runWorkSection"
+  "group" | "modelChanges" | "runWorkSection"
 >): PagedAssistantTimelineItem[] {
   const items: PagedAssistantTimelineItem[] = [];
-  if (completedWorkFold !== undefined) {
-    items.push({ kind: "completed-work", control: completedWorkFold });
-    if (completedWorkFold.expanded) {
-      items.push(
-        ...completedWorkFold.hiddenGroups.flatMap((hiddenGroup) => {
-          return assistantTimelineItems(hiddenGroup.events);
-        }),
-      );
-    }
-  }
   if (runWorkSection === undefined) {
     items.push(...assistantTimelineItems(group.events));
     return items;
@@ -7639,14 +6917,6 @@ function buildPagedAssistantTimeline({
   if (showAllHistory) {
     historyItems.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
-    );
-  } else {
-    historyItems.push(
-      ...runWorkSection.previewMessages.map(
-        (event): PagedAssistantHistoryItem => {
-          return { kind: "run-work-message", event };
-        },
-      ),
     );
   }
   historyItems.push(
@@ -7686,16 +6956,6 @@ function PagedAssistantTimeline({
         <FoldedModelChangeDivider key={item.eventId} change={item.change} />
       );
     }
-    if (item.kind === "completed-work") {
-      return (
-        <CompletedWorkFoldRow
-          key="completed-work:control"
-          groups={item.control.groups}
-          expanded={item.control.expanded}
-          onToggle={item.control.onToggle}
-        />
-      );
-    }
     if (item.kind === "run-work") {
       return (
         <div
@@ -7728,15 +6988,6 @@ function PagedAssistantTimeline({
         </div>
       );
     }
-    if (item.kind === "run-work-message") {
-      return (
-        <PagedRunWorkMessage
-          key={item.event.id}
-          event={item.event}
-          thread={thread}
-        />
-      );
-    }
     if (item.kind === "run-work-main") {
       return (
         <div
@@ -7759,34 +7010,10 @@ function PagedAssistantTimeline({
   });
 }
 
-function PagedRunWorkMessage({
-  event,
-  thread,
-}: {
-  event: EnrichedChatEvent;
-  thread: ChatPanelSignals;
-}) {
-  const expandedIds = useGet(thread.timelineExpandedIds$);
-  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const expanded = expandedIds.has(event.id);
-  return (
-    <RunWorkMessage
-      event={event}
-      expanded={expanded}
-      onToggle={() => {
-        toggleExpanded(event.id);
-      }}
-    >
-      <PagedAssistantEventItem event={event} thread={thread} compact />
-    </RunWorkMessage>
-  );
-}
-
 function PagedRunWorkAssistantContent({
   group,
   thread,
   modelChanges,
-  completedWorkFold,
   runWorkSection,
   runIndicatorMode,
   statusTailEvents,
@@ -7795,15 +7022,10 @@ function PagedRunWorkAssistantContent({
   | "group"
   | "thread"
   | "modelChanges"
-  | "completedWorkFold"
   | "runWorkSection"
   | "runIndicatorMode"
   | "statusTailEvents"
 >) {
-  const recommendedFollowupSource =
-    useLastResolved(thread.recommendedFollowupSource$, {
-      equalityFn: equalRecommendedFollowupSources,
-    }) ?? null;
   const timelineItems = buildPagedAssistantTimeline({
     group: {
       ...group,
@@ -7812,7 +7034,6 @@ function PagedRunWorkAssistantContent({
       }),
     },
     modelChanges,
-    completedWorkFold,
     runWorkSection,
   });
   const mainEvent = runWorkSection
@@ -7820,10 +7041,6 @@ function PagedRunWorkAssistantContent({
         return event.id === runWorkSection.anchorEventId;
       })
     : undefined;
-  const visibleIndicatorMode = visibleRunIndicatorMode(
-    runIndicatorMode,
-    recommendedFollowupSource,
-  );
   const mainActions =
     mainEvent !== undefined ? (
       <PagedGroupActions
@@ -7835,15 +7052,14 @@ function PagedRunWorkAssistantContent({
       />
     ) : undefined;
 
-  return (
+  return withChatScrollLayout(
     <>
       <PagedAssistantTimeline
         items={timelineItems}
         thread={thread}
         mainActions={mainActions}
       />
-      {(statusTailEvents?.length ?? 0) > 0 ||
-      visibleIndicatorMode !== undefined ? (
+      {(statusTailEvents?.length ?? 0) > 0 || runIndicatorMode !== undefined ? (
         <div
           data-chat-run-status-tail
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
@@ -7858,17 +7074,16 @@ function PagedRunWorkAssistantContent({
                 />
               );
             })
-          ) : visibleIndicatorMode !== undefined ? (
+          ) : runIndicatorMode !== undefined ? (
             <ThinkingIndicator
               thread={thread}
-              mode={visibleIndicatorMode}
-              runGroupFolds={[]}
+              mode={runIndicatorMode}
               inAssistantGroup
             />
           ) : null}
         </div>
       ) : null}
-    </>
+    </>,
   );
 }
 
@@ -7876,8 +7091,6 @@ function PagedAssistantGroup({
   group,
   thread,
   modelChanges,
-  runGroupFolds,
-  completedWorkFold,
   runWorkSection,
   runIndicatorMode,
   statusTailEvents,
@@ -7885,17 +7098,7 @@ function PagedAssistantGroup({
   const hasRenderableEvent = group.events.some((event) => {
     return isRenderableAssistantEvent(event);
   });
-  const hasRunGroupFolds = (runGroupFolds?.length ?? 0) > 0;
-  const visibleCompletedWorkFold = hasRunGroupFolds
-    ? undefined
-    : completedWorkFold;
-  const visibleRunWorkSection = hasRunGroupFolds ? undefined : runWorkSection;
-  if (
-    !hasRenderableEvent &&
-    !completedWorkFold &&
-    !runWorkSection &&
-    !hasRunGroupFolds
-  ) {
+  if (!hasRenderableEvent && !runWorkSection) {
     return null;
   }
 
@@ -7908,7 +7111,7 @@ function PagedAssistantGroup({
     .filter(Boolean)
     .join("\n\n");
   const usesRunWorkPresentation =
-    visibleRunWorkSection !== undefined ||
+    runWorkSection !== undefined ||
     runIndicatorMode !== undefined ||
     (statusTailEvents?.length ?? 0) > 0;
 
@@ -7923,16 +7126,12 @@ function PagedAssistantGroup({
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
         <div className={cn("relative", CHAT_THREAD_RESPONSE_STACK_CLASS)}>
-          {runGroupFolds?.map((fold) => {
-            return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
-          })}
           {usesRunWorkPresentation ? (
             <PagedRunWorkAssistantContent
               group={group}
               thread={thread}
               modelChanges={modelChanges}
-              completedWorkFold={visibleCompletedWorkFold}
-              runWorkSection={visibleRunWorkSection}
+              runWorkSection={runWorkSection}
               runIndicatorMode={runIndicatorMode}
               statusTailEvents={statusTailEvents}
             />
@@ -7941,7 +7140,6 @@ function PagedAssistantGroup({
               items={buildPagedAssistantTimeline({
                 group,
                 modelChanges,
-                completedWorkFold: visibleCompletedWorkFold,
                 runWorkSection: undefined,
               })}
               thread={thread}
@@ -7963,11 +7161,9 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
-  compact = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
-  compact?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7975,7 +7171,6 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
-        className={compact ? "py-1 text-[13px] leading-5" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7994,11 +7189,7 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={
-          compact
-            ? "py-1 text-[13px] leading-5"
-            : CHAT_THREAD_RESPONSE_LINE_CLASS
-        }
+        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >

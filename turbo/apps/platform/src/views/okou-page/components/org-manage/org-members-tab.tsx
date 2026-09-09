@@ -70,6 +70,7 @@ import {
   inviteRole$,
   setInviteRole$,
   memberUsagePackManagement$,
+  showMemberUsagePack$,
   invitationUsagePackCatalog$,
   inviteUsagePackUsd$,
   setInviteUsagePackUsd$,
@@ -92,7 +93,7 @@ import {
 } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
   openSettingsBillingPlans$,
-  openSettingsMemberUsagePacks$,
+  openSettingsUsagePackConfiguration$,
 } from "../../../../signals/okou-page/settings/settings-dialog.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { UserAvatar } from "../../../components/avatar.tsx";
@@ -191,7 +192,7 @@ export function OrgMembersTab() {
     usagePackManagementLoadable.state === "hasData"
       ? usagePackManagementLoadable.data
       : null;
-  const showUsagePack = usagePackManagement !== null;
+  const showUsagePack = useLastResolved(showMemberUsagePack$) === true;
   const usagePackAllocationByMemberId = new Map(
     usagePackManagement?.allocations.map((allocation) => {
       return [allocation.memberId, allocation] as const;
@@ -1077,36 +1078,35 @@ function MemberRow({
         {canManage && (
           <MemberActions
             member={member}
+            showUsagePack={showUsagePack}
             usagePackManagement={usagePackManagement}
           />
         )}
-        {isAdmin &&
-          isCurrentUser &&
-          (canSelfDemote || usagePackManagement !== null) && (
-            <SelfDemoteAction
-              canSelfDemote={canSelfDemote}
-              email={member.email}
-              usagePackManagement={usagePackManagement}
-            />
-          )}
+        {isAdmin && isCurrentUser && (canSelfDemote || showUsagePack) && (
+          <SelfDemoteAction
+            canSelfDemote={canSelfDemote}
+            email={member.email}
+            showUsagePack={showUsagePack}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function AdjustUsagePackMenuItem({
-  management,
-}: {
-  management: UsagePackManagementResponse;
-}) {
+function AdjustUsagePackMenuItem() {
   const { t } = useTranslation();
-  const openMemberUsagePacks = useSet(openSettingsMemberUsagePacks$);
+  const pageSignal = useGet(pageSignal$);
+  const [loadable, openConfiguration] = useLoadableSet(
+    openSettingsUsagePackConfiguration$,
+  );
   return (
     <DropdownMenuItem
       className="whitespace-nowrap"
+      disabled={loadable.state === "loading"}
       onSelect={(event) => {
         event.preventDefault();
-        return openMemberUsagePacks(management);
+        detach(openConfiguration(pageSignal), Reason.DomCallback);
       }}
     >
       {t(($) => {
@@ -1119,11 +1119,11 @@ function AdjustUsagePackMenuItem({
 function SelfDemoteAction({
   canSelfDemote,
   email,
-  usagePackManagement,
+  showUsagePack,
 }: {
   canSelfDemote: boolean;
   email: string;
-  usagePackManagement: UsagePackManagementResponse | null;
+  showUsagePack: boolean;
 }) {
   const { t } = useTranslation();
   const open = useGet(selfDemoteDialogOpen$);
@@ -1166,13 +1166,9 @@ function SelfDemoteAction({
         <DropdownMenuContent
           align="end"
           className="w-max min-w-48 max-w-[calc(100vw-2rem)]"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-          }}
+          finalFocus={false}
         >
-          {usagePackManagement && (
-            <AdjustUsagePackMenuItem management={usagePackManagement} />
-          )}
+          {showUsagePack && <AdjustUsagePackMenuItem />}
           {canSelfDemote && (
             <DropdownMenuItem
               onSelect={() => {
@@ -1239,9 +1235,11 @@ function SelfDemoteAction({
 
 function MemberActions({
   member,
+  showUsagePack,
   usagePackManagement,
 }: {
   member: OrgMember;
+  showUsagePack: boolean;
   usagePackManagement: UsagePackManagementResponse | null;
 }) {
   const { t } = useTranslation();
@@ -1295,13 +1293,9 @@ function MemberActions({
         <DropdownMenuContent
           align="end"
           className="w-max min-w-48 max-w-[calc(100vw-2rem)]"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-          }}
+          finalFocus={false}
         >
-          {usagePackManagement && (
-            <AdjustUsagePackMenuItem management={usagePackManagement} />
-          )}
+          {showUsagePack && <AdjustUsagePackMenuItem />}
           <DropdownMenuItem
             onClick={() => {
               return detach(
@@ -1498,9 +1492,7 @@ function PendingInvitationRow({
               <DropdownMenuContent
                 align="end"
                 className="w-48"
-                onCloseAutoFocus={(event) => {
-                  event.preventDefault();
-                }}
+                finalFocus={false}
               >
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"

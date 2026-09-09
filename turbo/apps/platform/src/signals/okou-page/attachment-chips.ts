@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import {
   createMarkdownPreviewTree,
@@ -28,8 +27,6 @@ import { createZoomableImageCanvasSignals } from "../zoomable-image-canvas.ts";
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
 // ---------------------------------------------------------------------------
-
-const LIGHTBOX_DIALOG_EXIT_DURATION_MS = 180;
 
 export type AttachmentArtifactMetadata = {
   readonly googleDriveAccountReady: boolean;
@@ -136,9 +133,12 @@ export type AttachmentLightboxState =
 const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
-const internalLightboxDialogCloseToken$ = state(0);
 const internalLightboxDialogMountToken$ = state(0);
-const resetLightboxDialogCloseSignal$ = resetSignal();
+const internalLightboxDialogElement$ = state<HTMLDivElement | null>(null);
+
+export const lightboxDialogElement$ = command(({ get }) => {
+  return get(internalLightboxDialogElement$);
+});
 const resetLightboxPreviewSignal$ = resetSignal();
 export const attachmentLightboxImageCanvasSignals =
   createZoomableImageCanvasSignals();
@@ -154,9 +154,6 @@ const releaseLightboxObjectUrlResources$ = command(({ get, set }) => {
 });
 
 const disposeLightboxSession$ = command(({ set }) => {
-  set(internalLightboxDialogCloseToken$, (value) => {
-    return value + 1;
-  });
   set(internalLightboxDialogVisible$, false);
   set(internalLightboxDialogFullscreen$, false);
   set(internalLightboxState$, null);
@@ -203,33 +200,18 @@ export const toggleLightboxDialogFullscreen$ = command(({ get, set }) => {
   );
 });
 
-const closeLightboxForDialogExitToken$ = command(
-  ({ get, set }, token: number) => {
-    if (get(internalLightboxDialogCloseToken$) !== token) {
-      return;
+export const completeLightboxDialogExit$ = command(
+  ({ get, set }, open: boolean) => {
+    if (!open && !get(internalLightboxDialogVisible$)) {
+      set(disposeLightboxSession$);
     }
-    set(internalLightboxDialogVisible$, false);
-    set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, null);
-    set(attachmentLightboxImageCanvasSignals.reset$);
-    set(resetLightboxPreviewSignal$);
-    set(releaseLightboxObjectUrlResources$);
   },
 );
 
 export const closeLightboxWithDialogExit$ = command(
-  ({ get, set }, signal: AbortSignal) => {
-    const closeSignal = set(resetLightboxDialogCloseSignal$, signal);
-    const token = get(internalLightboxDialogCloseToken$) + 1;
-    set(internalLightboxDialogCloseToken$, token);
+  ({ set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
     set(internalLightboxDialogVisible$, false);
-    timeout(
-      () => {
-        set(closeLightboxForDialogExitToken$, token);
-      },
-      LIGHTBOX_DIALOG_EXIT_DURATION_MS,
-      { signal: closeSignal },
-    );
   },
 );
 
@@ -329,9 +311,6 @@ export const openImageLightbox$ = command(
         return [...current, resource];
       });
     }
-    set(internalLightboxDialogCloseToken$, (value) => {
-      return value + 1;
-    });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     set(
@@ -343,9 +322,8 @@ export const openImageLightbox$ = command(
 
 /**
  * Swap the previewed image without re-opening the dialog. Unlike
- * `openImageLightbox$`, this preserves the current fullscreen state and exit
- * animation token so keyboard/arrow navigation between images in the same
- * message does not collapse fullscreen.
+ * `openImageLightbox$`, this preserves the current fullscreen state so
+ * keyboard/arrow navigation between images does not collapse fullscreen.
  */
 export const navigateImageLightbox$ = command(
   (
@@ -376,9 +354,6 @@ export const openDocumentLightbox$ = command(
       return;
     }
     const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
-    set(internalLightboxDialogCloseToken$, (value) => {
-      return value + 1;
-    });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     if (isAttachmentTextDocumentLightboxInput(value)) {
@@ -406,9 +381,6 @@ function createSimpleLightboxOpener(kind: "audio" | "file" | "video") {
         return;
       }
       set(resetLightboxPreviewSignal$, get(rootSignal$));
-      set(internalLightboxDialogCloseToken$, (value) => {
-        return value + 1;
-      });
       set(internalLightboxDialogVisible$, true);
       set(internalLightboxDialogFullscreen$, false);
       set(internalLightboxState$, { kind, ...value });
@@ -425,12 +397,14 @@ export const openAudioLightbox$ = createSimpleLightboxOpener("audio");
 // ---------------------------------------------------------------------------
 
 const ownLightboxDialogMount$ = command(
-  ({ get, set }, _element: HTMLDivElement, signal: AbortSignal) => {
+  ({ get, set }, element: HTMLDivElement, signal: AbortSignal) => {
+    set(internalLightboxDialogElement$, element);
     const mountToken = get(internalLightboxDialogMountToken$) + 1;
     set(internalLightboxDialogMountToken$, mountToken);
     signal.addEventListener(
       "abort",
       () => {
+        set(internalLightboxDialogElement$, null);
         // React can detach and immediately reattach a callback ref during a
         // render or StrictMode check. Defer disposal so that replacement mount
         // can supersede this token; a real route unmount has no replacement.

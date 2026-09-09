@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.48.14](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.13...desktop-v0.48.14) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.1
+
+## [0.48.13](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.12...desktop-v0.48.13) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.0
+
+## [0.48.12](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.11...desktop-v0.48.12) (2026-09-08)
+
+
+### Bug Fixes
+
+* **desktop:** isolate cua shutdown with supervised process ownership ([#32673](https://github.com/vm0-ai/vm0/issues/32673)) ([de7f18a](https://github.com/vm0-ai/vm0/commit/de7f18ad39be4633319dbcd8045834c65b47a72b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.1
+
+## [0.48.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.10...desktop-v0.48.11) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.0
+
+## [0.48.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.9...desktop-v0.48.10) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.416.0
+
+## [0.48.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.8...desktop-v0.48.9) (2026-09-08)
+
+
+### Refactoring
+
+* **naming:** neutralize private constants and refresh developer branding ([#32619](https://github.com/vm0-ai/vm0/issues/32619)) ([9eb06e3](https://github.com/vm0-ai/vm0/commit/9eb06e348ade35a05771dff4209e0cb75ac6d6b8)), closes [#32601](https://github.com/vm0-ai/vm0/issues/32601)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.2
+
 ## [0.48.8](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.7...desktop-v0.48.8) (2026-09-08)
 
 

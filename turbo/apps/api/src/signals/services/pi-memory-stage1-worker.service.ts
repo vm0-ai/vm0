@@ -705,7 +705,6 @@ function providerConfig(args: {
     baseUrl: endpoint.baseUrl,
     apiKey: args.apiKey,
     model: args.route.upstreamModel,
-    api: "openai-responses" as const,
     dialect: "openai-responses" as const,
     thinkingLevel: "max" as const,
   };

@@ -234,7 +234,7 @@ describe("AUTH-03", () => {
 });
 
 describe("ORG-01 and ORG-02", () => {
-  it("projects direct invitation redirects by request brand", async () => {
+  it("projects direct invitation redirects to Okou", async () => {
     mockEnv("APP_URL", "https://app.okou.ai");
     const admin = api.user();
     await upsertOrgPlanEntitlementFixture({
@@ -243,31 +243,16 @@ describe("ORG-01 and ORG-02", () => {
       memberInviteUsagePackRequired: false,
     });
 
-    const vm0Email = `vm0-invite-${shortId()}@example.test`;
+    const inviteEmail = `okou-invite-${shortId()}@example.test`;
     context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
       { id: `inv_${shortId()}` },
     );
-    await api.inviteMember(admin, { email: vm0Email, role: "member" });
+    await api.inviteMember(admin, { email: inviteEmail, role: "member" });
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).toHaveBeenLastCalledWith({
       organizationId: admin.orgId,
-      emailAddress: vm0Email,
-      inviterUserId: admin.userId,
-      role: "org:member",
-      redirectUrl: "https://app.okou.ai",
-    });
-
-    const okouEmail = `okou-invite-${shortId()}@example.test`;
-    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
-      { id: `inv_${shortId()}` },
-    );
-    await api.inviteMember(admin, { email: okouEmail, role: "member" }, "okou");
-    expect(
-      context.mocks.clerk.organizations.createOrganizationInvitation,
-    ).toHaveBeenLastCalledWith({
-      organizationId: admin.orgId,
-      emailAddress: okouEmail,
+      emailAddress: inviteEmail,
       inviterUserId: admin.userId,
       role: "org:member",
       redirectUrl: "https://app.okou.ai",
@@ -501,25 +486,20 @@ describe("ORG-03 onboarding status mapping", () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
 
-    const okouOnboarding = await api.readOnboardingStatus(admin, "okou");
-    expect(okouOnboarding.defaultAgentMetadata?.displayName).toBe("Okou");
-    const defaultAgentId = okouOnboarding.defaultAgentId;
+    const onboarding = await api.readOnboardingStatus(admin, "okou");
+    expect(onboarding.defaultAgentMetadata?.displayName).toBe("Okou");
+    const defaultAgentId = onboarding.defaultAgentId;
     if (!defaultAgentId) {
       throw new Error("Expected lazy onboarding to create the default agent");
     }
 
-    const vm0Onboarding = await api.readOnboardingStatus(admin, "vm0");
-    expect(vm0Onboarding.defaultAgentMetadata?.displayName).toBe("Okou");
     await expect(
       api.readAgent(admin, defaultAgentId, "okou"),
     ).resolves.toMatchObject({ displayName: "Okou" });
-    await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({ displayName: "Okou" });
 
-    const okouAgents = await api.listAgents(admin, "okou");
+    const agents = await api.listAgents(admin, "okou");
     expect(
-      okouAgents.find((agent) => {
+      agents.find((agent) => {
         return agent.agentId === defaultAgentId;
       })?.displayName,
     ).toBe("Okou");
@@ -549,7 +529,7 @@ describe("ORG-03 onboarding status mapping", () => {
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
     await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
+      api.readAgent(admin, defaultAgentId, "okou"),
     ).resolves.toMatchObject({
       displayName: "Okou",
       description: "Patched from Okou",
@@ -571,7 +551,7 @@ describe("ORG-03 onboarding status mapping", () => {
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
     await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
+      api.readAgent(admin, defaultAgentId, "okou"),
     ).resolves.toMatchObject({
       displayName: "Okou",
       description: "Replaced from Okou",
@@ -585,9 +565,6 @@ describe("ORG-03 onboarding status mapping", () => {
     );
     await expect(
       api.readAgent(admin, defaultAgentId, "okou"),
-    ).resolves.toMatchObject({ displayName: "Okou" });
-    await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
     ).resolves.toMatchObject({ displayName: "Okou" });
   });
 

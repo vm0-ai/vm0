@@ -6,6 +6,10 @@ import {
 } from "@okouai/api-contracts/contracts/host";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { publishStaticSite } from "../../lib/host/publish-static-site";
+import {
+  createArtifactMarkdownOutput,
+  formatArtifactPresentationContext,
+} from "../shared/artifact-return";
 import { cloneHostedSiteCommand } from "./clone";
 import { versionsHostedSiteCommand } from "./versions";
 
@@ -29,9 +33,9 @@ function formatBytes(bytes: number): string {
 
 export const hostCommand = new Command()
   .name("host")
-  .description("Publish and inspect owned static hosted sites")
+  .description("Deploy and inspect owned static hosted sites")
   .argument("<dir>", "Static build directory, for example ./dist")
-  .option("--site <slug>", "Public site slug, e.g. my-product-demo")
+  .option("--site <slug>", "Logical site slug, e.g. my-product-demo")
   .option("--slug-suffix <suffix>", "Reuse a legacy generated site URL suffix")
   .option(
     "--artifact-kind <kind>",
@@ -39,7 +43,7 @@ export const hostCommand = new Command()
     parseArtifactKind,
   )
   .option("--spa", "Serve unknown HTML navigation paths from index.html")
-  .option("--json", "Output only the final result as JSON")
+  .option("--json", "Output the result and Markdown return forms as JSON")
   .addCommand(cloneHostedSiteCommand)
   .addCommand(versionsHostedSiteCommand)
   .addHelpText(
@@ -55,7 +59,9 @@ Examples:
 
 Notes:
   - Authenticates via OKOU_TOKEN (publish requires host:write; clone requires host:read)
-  - With hosted artifact versions enabled, reusing --site publishes behind the same alias
+  - With private artifacts enabled, the result is an authenticated preview URL
+  - Private deployments never update an existing public alias
+  - For public versioned deployments, reusing --site updates the same alias
   - Otherwise, reuse both --site and --slug-suffix to keep a legacy URL
   - The directory must include index.html
   - Local HTML/CSS asset references must point at files inside the directory`,
@@ -84,8 +90,12 @@ Notes:
             },
       });
 
+      const markdown = createArtifactMarkdownOutput(
+        options.site,
+        result.aliasUrl ?? result.url,
+      );
       if (options.json) {
-        console.log(JSON.stringify(result));
+        console.log(JSON.stringify({ ...result, ...markdown }));
         return;
       }
 
@@ -111,5 +121,7 @@ Notes:
       if (!result.aliasUrl) {
         console.log(`  URL: ${result.url}`);
       }
+      console.log("");
+      console.log(formatArtifactPresentationContext(markdown));
     }),
   );

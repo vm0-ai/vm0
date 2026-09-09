@@ -4,11 +4,11 @@ import * as React from "react";
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
+import { asChildRender } from "../../lib/base-ui-compat";
 import {
-  asChildRender,
-  type LegacyAutoFocusHandler,
-  withLegacyAutoFocus,
-} from "../../lib/base-ui-compat";
+  modalBackdropTransitionClassName,
+  sheetPopupTransitionClassName,
+} from "./popup-motion";
 import { cn } from "../../lib/utils";
 
 function Sheet(props: SheetPrimitive.Root.Props) {
@@ -74,7 +74,11 @@ const SheetOverlay = React.forwardRef<
     <SheetPrimitive.Backdrop
       ref={ref}
       data-slot="sheet-overlay"
-      className={cn("fixed inset-0", className)}
+      className={cn(
+        modalBackdropTransitionClassName,
+        "fixed inset-0 bg-overlay/45 dark:bg-overlay/55",
+        className,
+      )}
       {...props}
     />
   );
@@ -82,25 +86,13 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = "SheetOverlay";
 
 interface SheetContentProps extends SheetPrimitive.Popup.Props {
-  onCloseAutoFocus?: LegacyAutoFocusHandler;
-  onOpenAutoFocus?: LegacyAutoFocusHandler;
   overlayClassName?: string;
   side?: "top" | "bottom" | "left" | "right";
 }
 
 const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
   (
-    {
-      children,
-      className,
-      finalFocus,
-      initialFocus,
-      onCloseAutoFocus,
-      onOpenAutoFocus,
-      overlayClassName,
-      side = "right",
-      ...props
-    },
+    { children, className, overlayClassName, side = "right", ...props },
     ref,
   ) => {
     return (
@@ -111,24 +103,17 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
           data-slot="sheet-content"
           data-side={side}
           className={cn(
-            "sheet-content fixed flex flex-col gap-4 overflow-x-hidden bg-card p-6 outline-none",
+            sheetPopupTransitionClassName,
+            "fixed flex flex-col gap-4 overflow-x-hidden bg-card p-6 outline-none",
             side === "right" &&
-              "inset-y-0 right-0 h-full w-3/4 shadow-[-8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-lg dark:shadow-[-16px_0_48px_-8px_rgba(0,0,0,0.5)]",
+              "inset-y-0 right-0 h-full w-3/4 data-starting-style:translate-x-full data-ending-style:translate-x-full shadow-[-8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-lg dark:shadow-[-16px_0_48px_-8px_rgba(0,0,0,0.5)]",
             side === "left" &&
-              "inset-y-0 left-0 h-full w-3/4 shadow-[8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-md dark:shadow-[16px_0_48px_-8px_rgba(0,0,0,0.5)]",
-            side === "top" && "inset-x-0 top-0",
-            side === "bottom" && "inset-x-0 bottom-0",
+              "inset-y-0 left-0 h-full w-3/4 data-starting-style:-translate-x-full data-ending-style:-translate-x-full shadow-[8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-md dark:shadow-[16px_0_48px_-8px_rgba(0,0,0,0.5)]",
+            side === "top" &&
+              "inset-x-0 top-0 data-starting-style:-translate-y-full data-ending-style:-translate-y-full",
+            side === "bottom" &&
+              "inset-x-0 bottom-0 data-starting-style:translate-y-full data-ending-style:translate-y-full",
             className,
-          )}
-          finalFocus={withLegacyAutoFocus(
-            finalFocus,
-            onCloseAutoFocus,
-            "closeAutoFocus",
-          )}
-          initialFocus={withLegacyAutoFocus(
-            initialFocus,
-            onOpenAutoFocus,
-            "openAutoFocus",
           )}
           {...props}
         >

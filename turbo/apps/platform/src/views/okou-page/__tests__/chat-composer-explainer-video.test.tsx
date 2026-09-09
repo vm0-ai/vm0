@@ -1,0 +1,444 @@
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import {
+  introVideoPresenterContract,
+  type IntroVideoStyle,
+  type IntroVideoAvatar,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import {
+  AGENT_ID,
+  context,
+  expectInlineTemplate,
+  mockTemplateChat,
+  openTemplatePicker,
+  sendComposerMessage,
+} from "./chat-composer-template-gallery-test-helpers.ts";
+
+const STYLES: readonly IntroVideoStyle[] = [
+  {
+    id: "minimalism",
+    name: "Minimalism",
+    tags: ["iconic-artist"],
+    aspectRatio: "16:9",
+    thumbnailUrl: "https://files.example.test/minimalism.png",
+    previewVideoUrl: "https://files.example.test/minimalism.mp4",
+  },
+  {
+    id: "watercolor",
+    name: "Watercolor",
+    tags: ["handmade"],
+    aspectRatio: "16:9",
+  },
+  { id: "cinema", name: "Cinema", tags: ["cinematic"], aspectRatio: "16:9" },
+];
+const AVATAR: Readonly<IntroVideoAvatar> = {
+  id: "daphne-grey",
+  groupId: "daphne",
+  name: "Daphne in Grey blazer",
+  defaultVoiceId: "daphne-voice",
+  previewImageUrl: "https://files.example.test/daphne.png",
+};
+const VOICE = Object.freeze({
+  id: "annie",
+  name: "Annie",
+  language: "English",
+  gender: "female" as const,
+  sampleUrl: "https://files.example.test/annie.mp3",
+});
+
+function installCatalogs() {
+  const capture = mockTemplateChat();
+  context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
+    return respond(200, {
+      styles: [...STYLES],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+  context.mocks.api(introVideoPresenterContract.avatars, ({ respond }) => {
+    return respond(200, {
+      avatars: [
+        AVATAR,
+        { ...AVATAR, id: "daphne-blue", name: "Daphne in Blue shirt" },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+  context.mocks.api(introVideoPresenterContract.voices, ({ respond }) => {
+    return respond(200, { voices: [VOICE], hasMore: false, nextToken: null });
+  });
+  return capture;
+}
+
+function control(
+  name: string,
+  root: ParentNode = document.body,
+  role: "button" | "tab" = "button",
+) {
+  const items = queryAllByRoleFast(role, root);
+  const found =
+    items.find((item) => {
+      return item.getAttribute("aria-label") === name;
+    }) ??
+    items.find((item) => {
+      return item.textContent?.trim() === name;
+    });
+  if (!found) {
+    throw new Error(`Missing ${role}: ${name}`);
+  }
+  return found;
+}
+
+async function openExplainer() {
+  const user = userEvent.setup({ delay: null });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+  });
+  const dialog = await openTemplatePicker(user);
+  expect(control("Creative video", dialog, "tab")).toBeVisible();
+  click(control("Explainer video", dialog, "tab"));
+  await within(dialog).findByText("Minimalism");
+  return { user, dialog };
+}
+
+test.each([
+  `/agents/${AGENT_ID}/chat`,
+  `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
+  "/?templatePicker=explainer",
+])(
+  "Disabled explainer entry keeps ordinary Video available at %s",
+  async (path) => {
+    mockTemplateChat();
+    await setupPage({
+      context,
+      path,
+      featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const dialog = await openTemplatePicker(userEvent.setup({ delay: null }));
+    expect(control("Video", dialog, "tab")).toBeVisible();
+    expect(
+      queryAllByRoleFast("tab", dialog).some((tab) => {
+        return tab.textContent === "Explainer video";
+      }),
+    ).toBeFalsy();
+  },
+);
+
+test("Expanded style tags combine with search and preserve the selected style", async () => {
+  installCatalogs();
+  const { dialog } = await openExplainer();
+  expect(control("Use selection", dialog)).toBeDisabled();
+  const tags = within(dialog).getByRole("group", { name: "Browse by style" });
+  expect(queryAllByRoleFast("button", tags)).toHaveLength(6);
+  click(control("Select style Minimalism", dialog));
+  click(control("Handmade and materials", tags));
+  expect(control("Handmade and materials", tags)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(within(dialog).getByText("Watercolor")).toBeVisible();
+  expect(within(dialog).queryByLabelText("Select style Minimalism")).toBeNull();
+  expect(control("Style", dialog, "tab")).toHaveTextContent("Minimalism");
+  await fill(within(dialog).getByLabelText("Search styles"), "no match");
+  expect(within(dialog).getByRole("status")).toHaveTextContent(
+    "No matches found",
+  );
+  await fill(within(dialog).getByLabelText("Search styles"), "");
+  click(control("Handmade and materials", tags));
+  expect(control("Handmade and materials", tags)).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  expect(control("Select style Minimalism", dialog)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+test("Avatar looks require Use, and explicit voice choices survive removing the avatar", async () => {
+  const capture = installCatalogs();
+  const { dialog, user } = await openExplainer();
+  click(control("Select style Minimalism", dialog));
+  click(control("Avatar", dialog, "tab"));
+  await within(dialog).findByText("Daphne");
+  expect(control("Avatar", dialog, "tab")).toHaveTextContent("No avatar");
+  click(control("Preview look Daphne in Blue shirt", dialog));
+  expect(control("Avatar", dialog, "tab")).toHaveTextContent("No avatar");
+  click(control("Choose an avatar: Daphne in Blue shirt", dialog));
+  expect(control("Avatar", dialog, "tab")).toHaveTextContent(
+    "Daphne in Blue shirt",
+  );
+  expect(control("Use selection", dialog)).toBeEnabled();
+  click(control("Voice", dialog, "tab"));
+  click(await within(dialog).findByLabelText("Select voice Annie"));
+  click(control("Avatar", dialog, "tab"));
+  click(within(dialog).getByText("No avatar"));
+  expect(control("Voice", dialog, "tab")).toHaveTextContent("Annie");
+  click(control("Use selection", dialog));
+  await expectInlineTemplate("Explainer video");
+  await sendComposerMessage(user, "Explain our product");
+  await waitFor(() => {
+    return expect(capture.selectedTemplates).toHaveLength(1);
+  });
+  expect(capture.selectedTemplates[0]).toStrictEqual({
+    type: "video",
+    selection: {
+      stylePresetId: "explainer-video",
+      explainerOptions: {
+        style: { kind: "catalog", style: STYLES[0] },
+        avatar: { kind: "none" },
+        voice: { kind: "catalog", voice: VOICE },
+      },
+    },
+  });
+});
+
+test("Applying and reopening a template restores all settings without creating another chip", async () => {
+  installCatalogs();
+  const { dialog, user } = await openExplainer();
+  click(control("Select style Watercolor", dialog));
+  click(control("Voice", dialog, "tab"));
+  click(within(dialog).getByText("No voiceover"));
+  click(control("Use selection", dialog));
+  const chip = await expectInlineTemplate("Explainer video");
+  const edit = chip.querySelector("button");
+  if (!edit) {
+    throw new Error("Missing template edit button");
+  }
+  await user.click(edit);
+  const reopened = await screen.findByRole("dialog");
+  expect(control("Style", reopened, "tab")).toHaveTextContent("Watercolor");
+  expect(control("Voice", reopened, "tab")).toHaveTextContent("No voiceover");
+  click(control("Select style Minimalism", reopened));
+  click(control("Use selection", reopened));
+  await expectInlineTemplate("Minimalism");
+  expect(
+    document.querySelectorAll("[data-composer-inline-template]"),
+  ).toHaveLength(1);
+});
+
+test("Cancelling does not apply the selection", async () => {
+  installCatalogs();
+  const { dialog } = await openExplainer();
+  click(control("Select style Minimalism", dialog));
+  click(control("Cancel", dialog));
+  const message = await screen.findByRole("textbox", { name: "Message" });
+  expect(message).toBeVisible();
+  expect(
+    document.querySelectorAll("[data-composer-inline-template]"),
+  ).toHaveLength(0);
+});
+
+test("Style loading retries a failed later page and excludes portrait-only references", async () => {
+  installCatalogs();
+  let failLaterPage = true;
+  context.mocks.api(
+    introVideoPresenterContract.styles,
+    ({ query, respond }) => {
+      if (!query.token) {
+        return respond(200, {
+          styles: [STYLES[0]!],
+          hasMore: true,
+          nextToken: "next",
+        });
+      }
+      return failLaterPage
+        ? respond(502, {
+            error: { code: "BAD_GATEWAY", message: "Temporarily unavailable" },
+          })
+        : respond(200, {
+            styles: [
+              STYLES[1]!,
+              {
+                id: "portrait",
+                name: "Portrait only",
+                aspectRatio: "9:16",
+                tags: ["handmade"],
+              },
+            ],
+            hasMore: false,
+            nextToken: null,
+          });
+    },
+  );
+  const user = userEvent.setup({ delay: null });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+  });
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByText("The catalog could not be loaded.");
+  failLaterPage = false;
+  click(control("Try again", dialog));
+  await within(dialog).findByText("Watercolor");
+  expect(within(dialog).queryByText("Portrait only")).toBeNull();
+  await user.click(control("Handmade and materials", dialog));
+  expect(within(dialog).queryByLabelText("Select style Minimalism")).toBeNull();
+});
+
+test("Style preview playback and failure do not select a style or resume after leaving the gallery", async () => {
+  installCatalogs();
+  const { dialog } = await openExplainer();
+  click(control("Preview Minimalism", dialog));
+  const preview = within(dialog).getByLabelText("Minimalism");
+  expect(preview.tagName).toBe("VIDEO");
+  expect(control("Select style Minimalism", dialog)).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  fireEvent.error(preview);
+  expect(within(dialog).getByRole("status")).toHaveTextContent(
+    "A video preview is not available",
+  );
+  click(control("Select style Minimalism", dialog));
+  expect(control("Style", dialog, "tab")).toHaveTextContent("Minimalism");
+  click(control("Voice", dialog, "tab"));
+  await within(dialog).findByLabelText("Select voice Annie");
+  click(control("Style", dialog, "tab"));
+  await expect(
+    within(dialog).findByLabelText("Preview Minimalism"),
+  ).resolves.toBeVisible();
+});
+
+test("Switching settings with the keyboard preserves the selection", async () => {
+  installCatalogs();
+  const { dialog, user } = await openExplainer();
+  click(control("Select style Minimalism", dialog));
+  const tab = control("Style", dialog, "tab");
+  tab.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(control("Avatar", dialog, "tab")).toHaveFocus();
+  expect(control("Avatar", dialog, "tab")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await user.keyboard("{Home}");
+  expect(control("Style", dialog, "tab")).toHaveFocus();
+  expect(control("Select style Minimalism", dialog)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+test("Desktop recording handoff keeps both uploaded files with the explainer selection", async () => {
+  const capture = installCatalogs();
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    return respond(200, {
+      url: `https://resolved.example.test/${query.file_id}`,
+      publicUrl: `https://cdn.example.test/${query.file_id}`,
+    });
+  });
+  const params = new URLSearchParams({
+    "intro-video-recording": "video-upload-id",
+    "intro-video-recording-name": "demo.mp4",
+    "intro-video-recording-size": "1024",
+    "intro-video-clicks": "clicks-upload-id",
+    "intro-video-clicks-name": "demo.clicks.json",
+    "intro-video-clicks-size": "512",
+    "intro-video-user": "test-user-123",
+  });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat?${params.toString()}`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+  });
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByText("Minimalism");
+  click(control("Select style Minimalism", dialog));
+  click(control("Voice", dialog, "tab"));
+  click(within(dialog).getByText("No voiceover"));
+  click(control("Use selection", dialog));
+  await expectInlineTemplate("Explainer video");
+  const message = screen.getByRole("textbox", { name: "Message" });
+  expect(message).toHaveTextContent("desktop screen recording");
+  const user = userEvent.setup({ delay: null });
+  await user.click(message);
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    return expect(capture.sentMessages).toHaveLength(1);
+  });
+  expect(
+    capture.sentMessages[0]?.parts
+      .filter((part) => {
+        return part.type === "file";
+      })
+      .map((part) => {
+        return part.fileId;
+      }),
+  ).toStrictEqual(
+    expect.arrayContaining(["video-upload-id", "clicks-upload-id"]),
+  );
+  expect(
+    capture.sentMessages[0]?.parts.filter((part) => {
+      return part.type === "file";
+    }),
+  ).toHaveLength(2);
+});
+
+test("A saved explainer draft cannot send outside the rollout and remains editable", async () => {
+  const capture = mockTemplateChat();
+  context.mocks.api(agentDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftUserMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Explain this product " },
+          {
+            type: "template",
+            titleSnapshot: "Explainer video",
+            template: {
+              type: "video",
+              selection: {
+                stylePresetId: "explainer-video",
+                explainerOptions: {
+                  style: { kind: "catalog", style: STYLES[0]! },
+                  avatar: { kind: "none" },
+                  voice: { kind: "none" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      draftAttachments: null,
+    });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
+  });
+  await expectInlineTemplate("Explainer video");
+  const message = await screen.findByRole("textbox", { name: "Message" });
+  const user = userEvent.setup({ delay: null });
+  await user.click(message);
+  await user.keyboard("{Enter}");
+  await screen.findByText(
+    "This video template is no longer available. Remove it to send your message.",
+  );
+  expect(capture.sentMessages).toHaveLength(0);
+  expect(message).toHaveTextContent("Explain this product");
+  await expectInlineTemplate("Explainer video");
+  await user.keyboard(
+    "{Control>}a{/Control}{Backspace}A regular message{Enter}",
+  );
+  await waitFor(() => {
+    expect(capture.sentMessages).toHaveLength(1);
+  });
+  expect(capture.selectedTemplates).toHaveLength(0);
+});

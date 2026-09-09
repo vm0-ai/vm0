@@ -23,6 +23,7 @@ pub(crate) use session_history::{
     SessionHistoryTransferEncodingState, session_history_prefix_extension_action_type,
 };
 
+mod dns_readiness;
 mod session_history;
 
 /// How long before we auto-flush pending ops (matching TS: 30s).
@@ -219,6 +220,8 @@ struct SandboxOp {
     runner_resource_budget_lease_count_bucket: Option<RunnerResourceBudgetLeaseCountBucket>,
     #[serde(flatten)]
     session_history: Option<SessionHistoryTelemetryFields>,
+    #[serde(flatten)]
+    dns_readiness: Option<dns_readiness::DnsReadinessTelemetryFields>,
 }
 
 #[derive(Serialize)]
@@ -702,6 +705,7 @@ fn sandbox_op_at(
         runner_resource_budget_memory_utilization_bucket: None,
         runner_resource_budget_lease_count_bucket: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
+        dns_readiness: None,
     }
 }
 
@@ -780,7 +784,7 @@ mod tests {
         http_client_for_api_url("http://localhost")
     }
 
-    fn http_client_for_api_url(api_url: &str) -> HttpClient {
+    pub(super) fn http_client_for_api_url(api_url: &str) -> HttpClient {
         HttpClient::new(HttpClientConfig {
             api_url: api_url.to_string(),
             vercel_bypass: None,
@@ -818,6 +822,7 @@ mod tests {
             runner_resource_budget_memory_utilization_bucket: None,
             runner_resource_budget_lease_count_bucket: None,
             session_history: None,
+            dns_readiness: None,
         };
         let json = serde_json::to_value(&op).unwrap();
         assert_eq!(
@@ -1043,6 +1048,7 @@ mod tests {
                 runner_resource_budget_memory_utilization_bucket: None,
                 runner_resource_budget_lease_count_bucket: None,
                 session_history: Some(metadata.into()),
+                dns_readiness: None,
             }],
         };
         let json = serde_json::to_value(&payload).unwrap();

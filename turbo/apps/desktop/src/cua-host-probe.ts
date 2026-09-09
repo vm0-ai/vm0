@@ -7,6 +7,7 @@ export async function runCuaHostProbe(
   runtime: CuaEmbeddedRuntime,
   capture: boolean,
   userData: string,
+  forced = false,
 ) {
   try {
     const ready = await runtime.start();
@@ -28,9 +29,15 @@ export async function runCuaHostProbe(
       !cleanup ||
       cleanup.generation !== ready.generation ||
       !cleanup.exitObserved ||
-      !cleanup.exitSuccess ||
-      cleanup.exitCode !== 0 ||
-      !cleanup.hostStopped ||
+      (forced
+        ? !cleanup.process?.forced ||
+          !cleanup.process.guardianExitObserved ||
+          !cleanup.process.descendantsExited ||
+          cleanup.process.heartbeatCount < 20 ||
+          cleanup.process.elapsedMs > 5000
+        : !cleanup.exitSuccess ||
+          cleanup.exitCode !== 0 ||
+          !cleanup.hostStopped) ||
       !cleanup.directoryRemoved ||
       stoppedState.phase !== "stopped" ||
       stoppedState.cleanupPending ||

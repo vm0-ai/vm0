@@ -1902,7 +1902,7 @@ describe("okou browser route", () => {
         const input = commandInput(command);
         return (JSON.stringify(input.Delete) ?? "").includes(screenshotKey);
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
 
     const cleaned = await reconcileBrowsers(current.threadId);
     expect(cleaned.body).toMatchObject({ errors: 0 });
@@ -2109,7 +2109,93 @@ describe("okou browser route", () => {
     await flushWaitUntilForTest();
   }, 120_000);
 
-  it("captures the foreground tab during browser reconciliation and keeps the latest screenshot", async () => {
+  it("keeps the browser usable without retrying a failed screenshot capture", async () => {
+    const { routeMocks, runs, chat, actor, agent } =
+      await setupBrowserScenario();
+    const current = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Open a browser without a screenshot",
+    );
+    const providerId = randomUUID();
+    acceptBrowserUseCdpSessions([providerId]);
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
+      }),
+      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(providerBrowser(String(params.id)));
+      }),
+    );
+    context.mocks.browserUseCdp.command.mockImplementation((command) => {
+      if (command.method === "Target.attachToTarget") {
+        return { sessionId: "foreground-session" };
+      }
+      if (command.method === "Runtime.evaluate") {
+        return { result: { type: "boolean", value: true } };
+      }
+      if (command.method === "Page.getLayoutMetrics") {
+        return {
+          cssVisualViewport: {
+            pageX: 0,
+            pageY: 0,
+            clientWidth: 1280,
+            clientHeight: 720,
+          },
+        };
+      }
+      if (command.method === "Page.captureScreenshot") {
+        return new Error("Screenshot capture unavailable");
+      }
+      return undefined;
+    });
+
+    await accept(
+      client().use({ headers: current.claim.browserHeaders, body: {} }),
+      [200],
+    );
+    const reconciled = await reconcileBrowsers(current.threadId);
+    expect(reconciled.body).toMatchObject({ healthy: 1, errors: 0 });
+    await flushWaitUntilForTest();
+
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const lease = await accept(
+      client().leaseByThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(lease.body.browser).toMatchObject({
+      status: "active",
+      screenshotUrl: null,
+    });
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls.filter(([command]) => {
+        return command.method === "Page.captureScreenshot";
+      }),
+    ).toHaveLength(1);
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        const input = commandInput(command);
+        return input.ContentType === "image/webp" || "Delete" in input;
+      }),
+    ).toHaveLength(0);
+  }, 120_000);
+
+  it("captures the foreground tab and keeps previous screenshot objects when updating or deleting a thread", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const current = await createClaimedChatRun(
@@ -2152,7 +2238,6 @@ describe("okou browser route", () => {
       context.signal,
     );
     let screenshotUploadCount = 0;
-    let failNextScreenshotDelete = true;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       const input = commandInput(command);
       if (input.ContentType === "image/webp") {
@@ -2163,10 +2248,6 @@ describe("okou browser route", () => {
         if (screenshotUploadCount === 3) {
           return releaseThirdScreenshotUpload.promise;
         }
-      }
-      if ("Delete" in input && failNextScreenshotDelete) {
-        failNextScreenshotDelete = false;
-        return Promise.reject(new Error("transient screenshot delete failure"));
       }
       return Promise.resolve({});
     });
@@ -2369,9 +2450,9 @@ describe("okou browser route", () => {
           firstScreenshotKey,
         );
       }),
-    ).toHaveLength(1);
-    const retriedCleanup = await reconcileBrowsers(current.threadId);
-    expect(retriedCleanup.body).toMatchObject({
+    ).toHaveLength(0);
+    const thirdReconcile = await reconcileBrowsers(current.threadId);
+    expect(thirdReconcile.body).toMatchObject({
       errors: 0,
     });
     expect(
@@ -2381,7 +2462,7 @@ describe("okou browser route", () => {
           firstScreenshotKey,
         );
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(0);
     releaseThirdScreenshotUpload.resolve(undefined);
     await flushWaitUntilForTest();
 
@@ -2406,7 +2487,7 @@ describe("okou browser route", () => {
           secondScreenshotKey,
         );
       }),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
 
     await chat.deleteThread(actor, current.threadId);
     await flushWaitUntilForTest();
@@ -2422,7 +2503,7 @@ describe("okou browser route", () => {
     expect(reconciled.body).toMatchObject({
       errors: 0,
     });
-    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           Delete: { Objects: [{ Key: finalScreenshotKey }] },

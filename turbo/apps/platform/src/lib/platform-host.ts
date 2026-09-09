@@ -4,7 +4,7 @@ import {
 } from "@okouai/core/platform-service-origin";
 
 type PlatformEnvironment = "development" | "preview" | "production";
-type PlatformPublicBrand = "vm0" | "okou";
+type PlatformPublicBrand = "okou";
 
 interface PlatformServiceStatusConfig {
   readonly issuesUrl: string;

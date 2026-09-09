@@ -1,3 +1,5 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
@@ -1309,177 +1311,198 @@ describe("POST /api/video-io/generate", () => {
     expect(calledBytePlus).toBeFalsy();
   });
 
-  it("generates video files with BytePlus and charges actual callback token usage", async () => {
-    const fixture = await seedVideoFixture();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
+  it.each([false, true])(
+    "generates BytePlus video using the submission policy (private=%s)",
+    async (privateArtifacts) => {
+      const fixture = await seedVideoFixture();
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
+      });
+      const { composeId } = await store.set(
+        seedCompose$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      );
+      const { runId } = await store.set(
+        seedRun$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          composeId,
+          triggerSource: "web",
+        },
+        context.signal,
+      );
+
+      let observedAuthorization: string | null = null;
+      let observedBody: unknown = null;
+      server.use(
+        http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+          observedAuthorization = request.headers.get("authorization");
+          observedBody = await request.json();
+          return HttpResponse.json({
+            id: "byteplus-video-task",
+            status: "queued",
+          });
+        }),
+        http.get(BYTEPLUS_VIDEO_URL, () => {
+          return new HttpResponse(VIDEO_BYTES, {
+            headers: { "content-type": "video/mp4" },
+          });
+        }),
+      );
+
+      const token = okouToken({
         userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
+        orgId: fixture.orgId,
+        runId,
+        publicBrand: "okou",
+      });
+      const app = createVideoIoTestApp(fixture.pricingResolution);
+      const response = await app.request("/api/video-io/generate", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          prompt: "a cinematic tracking shot through a neon market",
+          duration: "8s",
+          resolution: "720p",
+          aspectRatio: "16:9",
+          generateAudio: true,
+        }),
+      });
 
-    let observedAuthorization: string | null = null;
-    let observedBody: unknown = null;
-    server.use(
-      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
-        observedAuthorization = request.headers.get("authorization");
-        observedBody = await request.json();
-        return HttpResponse.json({
-          id: "byteplus-video-task",
-          status: "queued",
-        });
-      }),
-      http.get(BYTEPLUS_VIDEO_URL, () => {
-        return new HttpResponse(VIDEO_BYTES, {
-          headers: { "content-type": "video/mp4" },
-        });
-      }),
-    );
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "video",
+        fixture.userId,
+      );
 
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId,
-      publicBrand: "okou",
-    });
-    const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/video-io/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        prompt: "a cinematic tracking shot through a neon market",
-        duration: "8s",
-        resolution: "720p",
-        aspectRatio: "16:9",
-        generateAudio: true,
-      }),
-    });
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.PrivateArtifacts]: !privateArtifacts,
+      });
+      const callbackUrl = readCallbackUrl(observedBody);
+      await postBytePlusWebhook(app, callbackUrl, {
+        id: "byteplus-video-task",
+        model: VIDEO_IO_MODEL,
+        status: "succeeded",
+        content: {
+          video_url: BYTEPLUS_VIDEO_URL,
+        },
+        usage: {
+          completion_tokens: 123_456,
+        },
+      });
+      await flushWaitUntilForTest();
+      const webhookUrl = new URL(callbackUrl);
+      expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+      expect(webhookUrl.pathname).toBe(
+        `/api/webhooks/built-in-generations/byteplus/${generationId}`,
+      );
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `built-in-generation:${generationId}`,
+        expect.objectContaining({
+          generationId,
+          type: "video",
+          status: "completed",
+        }),
+      );
 
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "video",
-      fixture.userId,
-    );
-
-    const callbackUrl = readCallbackUrl(observedBody);
-    await postBytePlusWebhook(app, callbackUrl, {
-      id: "byteplus-video-task",
-      model: VIDEO_IO_MODEL,
-      status: "succeeded",
-      content: {
-        video_url: BYTEPLUS_VIDEO_URL,
-      },
-      usage: {
-        completion_tokens: 123_456,
-      },
-    });
-    await flushWaitUntilForTest();
-    const webhookUrl = new URL(callbackUrl);
-    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
-    expect(webhookUrl.pathname).toBe(
-      `/api/webhooks/built-in-generations/byteplus/${generationId}`,
-    );
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `built-in-generation:${generationId}`,
-      expect.objectContaining({
+      const statusResponse = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      expect(statusResponse.status).toBe(200);
+      const statusBody: unknown = await statusResponse.json();
+      expect(statusBody).toMatchObject({
         generationId,
         type: "video",
         status: "completed",
-      }),
-    );
+      });
+      const body = readGenerationResult(statusBody);
+      expect(body).toMatchObject({
+        contentType: "video/mp4",
+        size: VIDEO_BYTES.byteLength,
+        creditsCharged: 1081,
+        model: VIDEO_IO_MODEL,
+        aspectRatio: "16:9",
+        duration: "8s",
+        durationSeconds: 8,
+        resolution: "720p",
+        generateAudio: true,
+        ...(privateArtifacts ? {} : { sourceUrl: BYTEPLUS_VIDEO_URL }),
+        requestId: "byteplus-video-task",
+      });
+      expect(observedAuthorization).toBe("Bearer test-byteplus-key");
+      expect(observedBody).toMatchObject({
+        model: VIDEO_IO_MODEL,
+        content: [
+          {
+            type: "text",
+            text: "a cinematic tracking shot through a neon market",
+          },
+        ],
+        callback_url: callbackUrl,
+        resolution: "720p",
+        ratio: "16:9",
+        duration: 8,
+        generate_audio: true,
+      });
 
-    const statusResponse = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: { authorization: `Bearer ${token}` } },
-    );
-    expect(statusResponse.status).toBe(200);
-    const statusBody: unknown = await statusResponse.json();
-    expect(statusBody).toMatchObject({
-      generationId,
-      type: "video",
-      status: "completed",
-    });
-    const body = readGenerationResult(statusBody);
-    expect(body).toMatchObject({
-      contentType: "video/mp4",
-      size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1081,
-      model: VIDEO_IO_MODEL,
-      aspectRatio: "16:9",
-      duration: "8s",
-      durationSeconds: 8,
-      resolution: "720p",
-      generateAudio: true,
-      sourceUrl: BYTEPLUS_VIDEO_URL,
-      requestId: "byteplus-video-task",
-    });
-    expect(observedAuthorization).toBe("Bearer test-byteplus-key");
-    expect(observedBody).toMatchObject({
-      model: VIDEO_IO_MODEL,
-      content: [
-        {
-          type: "text",
-          text: "a cinematic tracking shot through a neon market",
-        },
-      ],
-      callback_url: callbackUrl,
-      resolution: "720p",
-      ratio: "16:9",
-      duration: 8,
-      generate_audio: true,
-    });
+      if (
+        !(
+          typeof body === "object" &&
+          body !== null &&
+          "id" in body &&
+          "filename" in body &&
+          "url" in body
+        )
+      ) {
+        throw new Error("Expected video response id, filename, and url");
+      }
+      const fileId = String(body.id);
+      const filename = String(body.filename);
+      const url = String(body.url);
+      expect(filename).toBe(`video-${fileId.slice(0, 8)}.mp4`);
 
-    if (
-      !(
-        typeof body === "object" &&
-        body !== null &&
-        "id" in body &&
-        "filename" in body &&
-        "url" in body
-      )
-    ) {
-      throw new Error("Expected video response id, filename, and url");
-    }
-    const fileId = String(body.id);
-    const filename = String(body.filename);
-    const url = String(body.url);
-    expect(filename).toBe(`video-${fileId.slice(0, 8)}.mp4`);
+      const putInput = putObjectInput();
+      if (privateArtifacts) {
+        expect(body).not.toHaveProperty("sourceUrl");
+        expect(putInput.Bucket).toBe("test-private-artifacts");
+        expect(putInput.Key).toBe(`private-artifacts/${fileId}/${filename}`);
+        expect(url).toBe(
+          `${WEB_ORIGIN}/api/web/download-file?file_id=${fileId}&filename=${filename}`,
+        );
+        expect(
+          JSON.stringify(context.mocks.ably.publish.mock.calls),
+        ).not.toContain(BYTEPLUS_VIDEO_URL);
+      } else {
+        expect(putInput.Bucket).toBe(TEST_BUCKET);
+        expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.mp4$/u);
+        expect(url).toBe(
+          `https://a.okou.io/${String(putInput.Key).replace(/^artifacts\//u, "")}`,
+        );
+        expect(putInput.Metadata).toStrictEqual({
+          "artifact-id": fileId,
+          filename: encodeURIComponent(filename),
+          "public-brand": "okou",
+          "user-id": encodeURIComponent(fixture.userId),
+        });
+      }
+      expect(putInput.ContentType).toBe("video/mp4");
+      const putBody = putInput.Body;
+      expect(Buffer.isBuffer(putBody)).toBeTruthy();
+      if (!Buffer.isBuffer(putBody)) {
+        throw new Error("Expected S3 put body to be a Buffer");
+      }
+      expect(putBody).toStrictEqual(VIDEO_BYTES);
 
-    const putInput = putObjectInput();
-    expect(putInput.Bucket).toBe(TEST_BUCKET);
-    expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.mp4$/u);
-    expect(url).toBe(
-      `https://a.okou.io/${String(putInput.Key).replace(/^artifacts\//u, "")}`,
-    );
-    expect(putInput.Metadata).toStrictEqual({
-      "artifact-id": fileId,
-      filename: encodeURIComponent(filename),
-      "public-brand": "okou",
-      "user-id": encodeURIComponent(fixture.userId),
-    });
-    expect(putInput.ContentType).toBe("video/mp4");
-    const putBody = putInput.Body;
-    expect(Buffer.isBuffer(putBody)).toBeTruthy();
-    if (!Buffer.isBuffer(putBody)) {
-      throw new Error("Expected S3 put body to be a Buffer");
-    }
-    expect(putBody).toStrictEqual(VIDEO_BYTES);
-
-    // The callback-token charge (123,456 tokens at the no-video 720p rate) is
-    // asserted through the result body above and the exact org balance drop,
-    // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
-  });
+      // The callback-token charge (123,456 tokens at the no-video 720p rate) is
+      // asserted through the result body above and the exact org balance drop,
+      // observed on the product billing surface.
+      await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
+    },
+  );
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
     const fixture = await seedVideoFixture();

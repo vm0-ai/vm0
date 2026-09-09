@@ -23,7 +23,6 @@ import {
 } from "../services/official-workflow-installation.service";
 import { reconcileOfficialWorkflowInstallation$ } from "../services/official-workflow-reconciliation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const officialWorkflowReadAuth = {
   requireOrganization: true,
@@ -130,7 +129,6 @@ const installOfficialWorkflowInner$ = command(
         definitionName: params.definitionName,
         blueprints: body.data.blueprints,
       },
-      PUBLIC_BRAND,
       signal,
     );
     signal.throwIfAborted();
@@ -201,7 +199,6 @@ const reconfigureInstallationInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const publicBrand = PUBLIC_BRAND;
     const reconciliation = await set(
       reconcileOfficialWorkflowInstallation$,
       {
@@ -209,7 +206,6 @@ const reconfigureInstallationInner$ = command(
         member: memberFromAuth(auth),
         workflowId: params.workflowId,
         overrides: body.data.blueprints,
-        publicBrand,
       },
       signal,
     );

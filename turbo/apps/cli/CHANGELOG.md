@@ -1,5 +1,118 @@
 # Changelog
 
+## [9.318.2](https://github.com/vm0-ai/vm0/compare/cli-v9.318.1...cli-v9.318.2) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.639.0
+
+## [9.318.1](https://github.com/vm0-ai/vm0/compare/cli-v9.318.0...cli-v9.318.1) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.418.1
+    * @okouai/connectors bumped to 3.8.5
+    * @okouai/core bumped to 8.638.1
+    * @okouai/pi-agent-runtime bumped to 1.23.6
+
+## [9.318.0](https://github.com/vm0-ai/vm0/compare/cli-v9.317.6...cli-v9.318.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+* **artifacts:** keep managed generation private behind shared rollout switch ([#32687](https://github.com/vm0-ai/vm0/issues/32687)) ([71f6608](https://github.com/vm0-ai/vm0/commit/71f66085b5c5d01fafb47e7ab3379fac0ccfd113))
+
+
+### Bug Fixes
+
+* **cli:** guide connector search through connection setup ([#32707](https://github.com/vm0-ai/vm0/issues/32707)) ([a6d147e](https://github.com/vm0-ai/vm0/commit/a6d147ebc33183ae6d38c65f45c85fee4f8aa52e))
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.418.0
+    * @okouai/core bumped to 8.638.0
+    * @okouai/pi-agent-runtime bumped to 1.23.5
+
+## [9.317.6](https://github.com/vm0-ai/vm0/compare/cli-v9.317.5...cli-v9.317.6) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** restrict slack reads to shared conversations ([#32692](https://github.com/vm0-ai/vm0/issues/32692)) ([0e57607](https://github.com/vm0-ai/vm0/commit/0e57607c9d8c0ca163c9a4df015479c5f6014879))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.417.1
+    * @okouai/core bumped to 8.637.2
+    * @okouai/pi-agent-runtime bumped to 1.23.4
+
+## [9.317.5](https://github.com/vm0-ai/vm0/compare/cli-v9.317.4...cli-v9.317.5) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.637.1
+
+## [9.317.4](https://github.com/vm0-ai/vm0/compare/cli-v9.317.3...cli-v9.317.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* **pi:** upgrade the pinned runtime to 0.85.1 ([#32658](https://github.com/vm0-ai/vm0/issues/32658)) ([f035934](https://github.com/vm0-ai/vm0/commit/f0359345f201238d0339da86a23e88e177e4e3ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.417.0
+    * @okouai/core bumped to 8.637.0
+    * @okouai/pi-agent-runtime bumped to 1.23.3
+
+## [9.317.3](https://github.com/vm0-ai/vm0/compare/cli-v9.317.2...cli-v9.317.3) (2026-09-08)
+
+
+### Refactoring
+
+* **pi:** stop legacy api writes while preserving wire readers ([#32632](https://github.com/vm0-ai/vm0/issues/32632)) ([c08d055](https://github.com/vm0-ai/vm0/commit/c08d0550f18aced7654548ac54f43d1c49f5355b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.416.0
+    * @okouai/core bumped to 8.636.0
+    * @okouai/pi-agent-runtime bumped to 1.23.2
+
+## [9.317.2](https://github.com/vm0-ai/vm0/compare/cli-v9.317.1...cli-v9.317.2) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.415.2
+    * @okouai/connectors bumped to 3.8.4
+    * @okouai/core bumped to 8.635.2
+    * @okouai/pi-agent-runtime bumped to 1.23.1
+
 ## [9.317.1](https://github.com/vm0-ai/vm0/compare/cli-v9.317.0...cli-v9.317.1) (2026-09-08)
 
 
