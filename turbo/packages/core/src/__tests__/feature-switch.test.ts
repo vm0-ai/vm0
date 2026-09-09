@@ -191,6 +191,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BuiltInWelcomeThread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatPreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
@@ -217,6 +218,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BuiltInWelcomeThread]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatPreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
