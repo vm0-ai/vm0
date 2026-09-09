@@ -450,6 +450,7 @@ async fn blank_reclamation_starts_only_after_successful_agent_readiness() {
         let workload = StartProcessRequest {
             cmd: "true",
             timeout: Duration::from_secs(5),
+            timeout_is_expected: false,
             start_timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
