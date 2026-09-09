@@ -539,9 +539,9 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           upstream_model: primary.upstream_model,
         });
 
-        await seedBuiltInModelCandidateKeys(context, "deepseek-v4-pro");
+        await seedBuiltInModelCandidateKeys(context, "deepseek-v4-flash");
         await expect(
-          resolveBuiltInModelRouteFixture(context, "deepseek-v4-pro"),
+          resolveBuiltInModelRouteFixture(context, "deepseek-v4-flash"),
         ).resolves.toMatchObject({ provider_type: "deepseek" });
 
         await withMockNowForTest(

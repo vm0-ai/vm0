@@ -152,7 +152,7 @@ test("A prompt route starts a chat with its selected model", async () => {
   const capture = capturePromptLaunch();
   await setupPage({
     context,
-    path: "/prompt?prompt=Compare%20the%20launch%20options&model=deepseek-v4-flash&connector=github",
+    path: "/prompt?prompt=Compare%20the%20launch%20options&model=gpt-5.6-luna&connector=github",
   });
 
   const send = await waitForPromptLaunch("Compare the launch options", capture);
@@ -160,7 +160,7 @@ test("A prompt route starts a chat with its selected model", async () => {
 
   expect(capture.createdThreads[0]).toStrictEqual({
     connectorSelections: undefined,
-    model: "deepseek-v4-flash",
+    model: "gpt-5.6-luna",
   });
   expect(send.prompt).toBe("Compare the launch options");
   expect(parts).toContainEqual({
@@ -169,7 +169,7 @@ test("A prompt route starts a chat with its selected model", async () => {
   });
   expect(parts).toContainEqual({
     type: "model",
-    selectedModel: "deepseek-v4-flash",
+    selectedModel: "gpt-5.6-luna",
   });
   expect(JSON.stringify(parts)).not.toContain("github");
   expect(search()).toBe("");
@@ -220,10 +220,10 @@ test("A prompt link starts a presentation chat with its selected template", asyn
       },
     },
   });
-  expect(capture.createdThreads[0]?.model).toBe("deepseek-v4-flash");
+  expect(capture.createdThreads[0]?.model).toBe("deepseek-v4-pro");
   expect(userMessageParts(send)).toContainEqual({
     type: "model",
-    selectedModel: "deepseek-v4-flash",
+    selectedModel: "deepseek-v4-pro",
   });
 });
 
