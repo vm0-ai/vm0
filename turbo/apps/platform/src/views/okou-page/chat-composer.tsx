@@ -10700,7 +10700,7 @@ function ComposerFooter({
       className={cn(
         "flex items-center justify-between gap-1 sm:gap-2",
         activeVoiceDraftStatus === "recording"
-          ? "px-1 pb-3 pt-3"
+          ? "px-1 py-2"
           : activeVoiceDraftStatus
             ? "px-3 pb-3 pt-3"
             : "px-4 pb-4 pt-1",
@@ -10798,8 +10798,8 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
-          {/* Recording gives the taller neutral tray a 4px outer inset plus
-              12px inner padding, keeping both controls aligned to the
+          {/* Recording gives the taller neutral tray 4px/8px outer insets and
+              12px/8px inner padding, keeping both controls aligned to the
               standard 16px content inset. Other voice states retain their
               12px tray inset. */}
           <ComposerFooter
