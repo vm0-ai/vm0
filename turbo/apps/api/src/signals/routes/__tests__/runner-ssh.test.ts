@@ -27,7 +27,6 @@ import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const staffOrg = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const sessionHeaders = Object.freeze({ authorization: "Bearer clerk-session" });
 const runnerSecret = "a".repeat(64);
 const runnerHeaders = Object.freeze({
@@ -106,7 +105,10 @@ async function createRuntime(
 }
 
 async function fixture(runtimeOverrides: Partial<RuntimeBody> = {}) {
-  const owner = { orgId: staffOrg, userId: `user_ssh_jit_${randomUUID()}` };
+  const owner = {
+    orgId: `org_ssh_jit_${randomUUID()}`,
+    userId: `user_ssh_jit_${randomUUID()}`,
+  };
   await updateFeatureSwitchesForUser(context, owner, {
     [FeatureSwitchKey.SshAccess]: true,
   });
@@ -360,30 +362,19 @@ beforeEach(() => {
 });
 
 describe("official Runner SSH authority", () => {
-  it("keeps the hard staff gate even with an enabled override and matching ownership", async () => {
+  it("allows an enabled ordinary owner and rechecks the switch on resolve and pin", async () => {
     const f = await fixture();
-    const owner = { ...f, orgId: `org_external_${randomUUID()}` };
-    await updateFeatureSwitchesForUser(context, owner, {
-      [FeatureSwitchKey.SshAccess]: true,
+    await expect(resolve(f)).resolves.toMatchObject({ outcome: "resolved" });
+    await expect(pin(f)).resolves.toMatchObject({ outcome: "pinned" });
+    expect((await list(f))[0]?.learnedHostKey).toStrictEqual(hostKey);
+    await updateFeatureSwitchesForUser(context, f, {
+      [FeatureSwitchKey.SshAccess]: false,
     });
-    await accept(
-      stateClient().action({
-        body: {
-          action: "move-connection-org",
-          orgId: f.orgId,
-          userId: f.userId,
-          connectionId: f.connectionId,
-          targetOrgId: owner.orgId,
-        },
-      }),
-      [200],
-    );
-    const runtime = await createRuntime(owner);
     const kms = useSecretKmsProbe();
-    await expect(resolve({ ...owner, ...runtime })).resolves.toStrictEqual({
+    await expect(resolve(f)).resolves.toStrictEqual({
       outcome: "unavailable",
     });
-    await expect(pin({ ...owner, ...runtime })).resolves.toStrictEqual({
+    await expect(pin(f)).resolves.toStrictEqual({
       outcome: "unavailable",
     });
     expect(kms.decryptCalls).toBe(0);
@@ -525,7 +516,7 @@ describe("official Runner SSH authority", () => {
       expect(r.status).toBe(401);
     }
     const authApi = createAuthOrgAgentsBddApi(context);
-    const actor = authApi.user({ orgId: staffOrg });
+    const actor = authApi.user();
     authApi.mockClerkOrg(actor);
     const pat = await authApi.createCliToken(actor);
     const rejected = await client().pin({

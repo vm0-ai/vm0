@@ -7,7 +7,6 @@ import {
 } from "@okouai/api-contracts/contracts/runner-ssh";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -105,7 +104,7 @@ async function currentConnection(
       })
     : await query;
   signal.throwIfAborted();
-  if (!row || !isStaffOrg(row.orgId)) {
+  if (!row) {
     return null;
   }
   const featureContext = await loadUserFeatureSwitchContext(

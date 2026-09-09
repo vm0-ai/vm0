@@ -26,7 +26,6 @@ import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const staffOrg = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const headers = Object.freeze({ authorization: "Bearer clerk-session" });
 const grant = () => {
   return setupApp({ context, routes: sshAccessRoutes })(agentSshAccessContract);
@@ -47,7 +46,7 @@ type RuntimeBody = Extract<
 async function fixture(overrides: Partial<RuntimeBody> = {}) {
   const owner = {
     userId: `user_ssh_consumers_${randomUUID()}`,
-    orgId: staffOrg,
+    orgId: `org_ssh_consumers_${randomUUID()}`,
     ...overrides,
   };
   await updateFeatureSwitchesForUser(context, owner, {
@@ -284,7 +283,7 @@ describe("owner SSH grants and live Run inventory", () => {
 
   it("hides another owner's Agent identically to an absent Agent and isolates invalidations", async () => {
     const f = await fixture();
-    const other = await fixture();
+    const other = await fixture({ orgId: f.orgId });
     for (const params of [f.params, { agentId: randomUUID() }]) {
       await accept(grant().get({ headers, params }), [404]);
       await accept(
@@ -323,7 +322,7 @@ describe("owner SSH grants and live Run inventory", () => {
     await accept(inventory().list({ headers: f.token() }), [200]);
   });
 
-  it("requires both staff identity and the feature flag, even with an existing grant", async () => {
+  it("requires the feature flag even with an existing grant in an ordinary organization", async () => {
     const f = await fixture();
     await accept(
       grant().update({ headers, params: f.params, body: { enabled: true } }),
@@ -338,17 +337,25 @@ describe("owner SSH grants and live Run inventory", () => {
       [404],
     );
     await accept(inventory().list({ headers: f.token() }), [404]);
-    const nonStaff = await fixture({ orgId: `org_non_staff_${randomUUID()}` });
+    await updateFeatureSwitchesForUser(context, f, {
+      [FeatureSwitchKey.SshAccess]: true,
+    });
+    expect(
+      (await accept(grant().get({ headers, params: f.params }), [200])).body,
+    ).toStrictEqual({ enabled: true });
+    expect(
+      (await accept(inventory().list({ headers: f.token() }), [200])).body,
+    ).toStrictEqual({ hosts: [] });
     await accept(
       grant().update({
         headers,
-        params: nonStaff.params,
-        body: { enabled: true },
+        params: f.params,
+        body: { enabled: false },
       }),
-      [404],
+      [200],
     );
     const denied = await accept(
-      inventory().list({ headers: nonStaff.token() }),
+      inventory().list({ headers: f.token() }),
       [404],
     );
     expect(denied.body.error.message).toBe("SSH access is not available");

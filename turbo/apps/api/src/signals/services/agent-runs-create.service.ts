@@ -22,7 +22,6 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
 import { agentDisplayName } from "@okouai/core/public-brand";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -980,9 +979,10 @@ function buildCreateAgentRunArgs(args: {
     userId: command.auth.userId,
     orgId: command.auth.orgId,
     body: createRunBody({
-      sshEnabled:
-        isStaffOrg(command.auth.orgId) &&
-        isFeatureEnabled(FeatureSwitchKey.SshAccess, args.featureSwitchContext),
+      sshEnabled: isFeatureEnabled(
+        FeatureSwitchKey.SshAccess,
+        args.featureSwitchContext,
+      ),
       body: command.body,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },

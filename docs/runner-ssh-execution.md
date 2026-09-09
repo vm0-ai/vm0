@@ -2,7 +2,7 @@
 
 #32387 implements the Runner-owned execution slice of #32013 (under #31932).
 It does not activate SSH, expose a CLI/UI, or support local/PAT Runners.
-Current [API authority](runner-ssh-authority.md), including the staff/feature
+Current [API authority](runner-ssh-authority.md), including the feature
 gate and current Agent grant, is required on a cache miss and for first-use pinning.
 Successful authority snapshots follow the Run-scoped lifetime below. Run source,
 chat channel, workflows, goals and trigger metadata add no eligibility gate.

@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { agentSshAccessContract } from "@okouai/api-contracts/contracts/ssh-access";
 import {
   sshConnectionsContract,
@@ -24,7 +23,7 @@ const sshIdentity$ = computed(async (get) => {
     get(currentOrgInfo$),
     get(currentUserInfo$),
   ]);
-  return org && user && isStaffOrg(org.id) ? `${org.id}:${user.id}` : null;
+  return org && user ? `${org.id}:${user.id}` : null;
 });
 const reload$ = state(0);
 const sshClients$ = computed(async (get) => {

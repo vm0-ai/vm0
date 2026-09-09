@@ -18,7 +18,6 @@ import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { sshConnectionsRoutes } from "../ssh-connections";
 import { testSshConnectionStateRoutes } from "../test-ssh-connection-state";
 
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const authApi = createAuthOrgAgentsBddApi(context);
@@ -28,7 +27,7 @@ interface Actor {
   readonly userId: string;
 }
 
-function actor(prefix: string, orgId = STAFF_ORG_ID): Actor {
+function actor(prefix: string, orgId = `org_ssh_${randomUUID()}`): Actor {
   return { orgId, userId: `user_ssh_${prefix}_${randomUUID()}` };
 }
 
@@ -81,7 +80,7 @@ function createBody(
 }
 
 describe("SSH connection routes", () => {
-  it("requires an organization session and both rollout gates before parsing input", async () => {
+  it("requires an organization session and the feature flag before parsing input", async () => {
     const kms = useSecretKmsProbe();
     const unauthenticated = await accept(client().list({ headers: {} }), [401]);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
@@ -93,7 +92,7 @@ describe("SSH connection routes", () => {
     );
     expect(withoutOrg.body.error.code).toBe("UNAUTHORIZED");
 
-    const patActor = authApi.user({ orgId: STAFF_ORG_ID });
+    const patActor = authApi.user();
     authApi.mockClerkOrg(patActor);
     const pat = await authApi.createCliToken(patActor);
     const patResponse = await accept(
@@ -104,21 +103,8 @@ describe("SSH connection routes", () => {
     );
     expect(patResponse.body.error.code).toBe("FORBIDDEN");
 
-    const nonStaff = actor("nonstaff", `org_ssh_${randomUUID()}`);
-    await enableSsh(nonStaff);
-    const nonStaffResponse = await accept(
-      client().create({
-        headers: authHeaders(),
-        body: createBody("nonstaff.example.com"),
-      }),
-      [404],
-    );
-    expect(nonStaffResponse.body.error.message).toBe(
-      "SSH configuration is not available",
-    );
-
-    const staffWithoutSwitch = actor("disabled");
-    authenticate(staffWithoutSwitch);
+    const withoutSwitch = actor("disabled");
+    authenticate(withoutSwitch);
     const disabledResponse = await accept(
       client().create({
         headers: authHeaders(),
@@ -126,7 +112,9 @@ describe("SSH connection routes", () => {
       }),
       [404],
     );
-    expect(disabledResponse.body).toStrictEqual(nonStaffResponse.body);
+    expect(disabledResponse.body.error.message).toBe(
+      "SSH configuration is not available",
+    );
 
     const rawResponse = await setupRawAppRequest({
       context,
@@ -512,7 +500,7 @@ describe("SSH connection routes", () => {
     );
     expect(kms.generateDataKeyCalls).toBe(1);
 
-    const other = actor("other");
+    const other = actor("other", owner.orgId);
     await enableSsh(other);
     const crossOwner = await accept(
       client().update({

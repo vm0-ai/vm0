@@ -16162,18 +16162,12 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
   });
 
-  it.each([
-    { staff: true, enabled: true },
-    { staff: true, enabled: false },
-    { staff: false, enabled: true },
-  ])(
-    "gates SSH guidance on staff=$staff enabled=$enabled and withholds non-staff scopes",
-    async ({ staff, enabled }) => {
+  it.each([true, false])(
+    "gates SSH guidance and Run scopes only on enabled=%s for an ordinary organization",
+    async (enabled) => {
       const api = createRunsApi(context);
       const connectors = createConnectorBddApi(context);
-      const { actor, agentId, runnerGroup } = await entitledRunActor(
-        staff ? { orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe" } : {},
-      );
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
       await connectors.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.SshAccess]: enabled,
       });
@@ -16184,22 +16178,23 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       });
       const prompt =
         (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
-      if (staff && enabled) {
+      if (enabled) {
         expect(prompt).toContain("okou ssh host list --json");
         expect(prompt).toContain("failure_reason and effects, not error text");
       } else {
         expect(prompt).not.toContain("okou ssh");
       }
-      // The shared hard-coded staff org can have active SSH fixtures from
-      // parallel files. Do not alter its quota or claim another fixture's Run.
-      if (!staff) {
-        await api.heartbeatRunner(runnerGroup);
-        const claim = await api.claimRunnerJob(run.runId);
-        const token = claim.platformEnvironment.OKOU_TOKEN;
-        if (!token) {
-          throw new Error("Expected a minted Run token");
-        }
-        const capabilities = verifyOkouToken(token)?.capabilities;
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      const token = claim.platformEnvironment.OKOU_TOKEN;
+      if (!token) {
+        throw new Error("Expected a minted Run token");
+      }
+      const capabilities = verifyOkouToken(token)?.capabilities;
+      if (enabled) {
+        expect(capabilities).toContain("ssh:read");
+        expect(capabilities).toContain("ssh:write");
+      } else {
         expect(capabilities).not.toContain("ssh:read");
         expect(capabilities).not.toContain("ssh:write");
       }

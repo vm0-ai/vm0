@@ -17,14 +17,15 @@ winning claim. Protecting the fleet secret remains a trust assumption.
 
 Each call joins the current running Run, session, Agent owner,
 Agent SSH grant, exact owner connection and its credential. Ownership and org
-must agree. The hard staff-org gate and current `SshAccess` override both apply.
+must agree. The current `SshAccess` (`sshAccess`) feature switch must be enabled;
+there is no additional staff-org gate.
 SSH access depends on the user's current configuration and the Agent's current
 grant, not how the Run started. All chat channels, workflow schedule/event
 automations, goals, delegated Agents, webhooks, SDK/non-chat and test Runs use
 the same authority path. A chat thread or trigger metadata is not required;
 workflow automation and goal associations do not restrict access. The session
 identifies the Agent without using chat-thread state as an authorization gate.
-The existing staff/feature rollout and official-Runner credential boundary are
+The default-off feature rollout and official-Runner credential boundary are
 unchanged; this does not activate SSH or expose credentials to local Runners.
 
 `POST /api/runners/runs/:runId/ssh/resolve` takes:

@@ -1,7 +1,6 @@
 import { sshHostSchema } from "@okouai/api-contracts/contracts/ssh-access";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -26,9 +25,6 @@ export async function isSshAccessAvailable(
   owner: Owner,
   signal: AbortSignal,
 ): Promise<boolean> {
-  if (!isStaffOrg(owner.orgId)) {
-    return false;
-  }
   const context = await loadUserFeatureSwitchContext(
     db,
     owner.orgId,

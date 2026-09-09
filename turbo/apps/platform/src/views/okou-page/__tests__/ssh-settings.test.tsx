@@ -18,11 +18,11 @@ import {
 } from "./connector-integrations-test-helpers.ts";
 
 const context = testContext();
-const orgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const orgId = "org_ssh_settings";
 const auth = Object.freeze({
   user: { id: "test-user-123", fullName: "Test User" },
   organization: {
-    activeOrg: { id: orgId, name: "Staff" },
+    activeOrg: { id: orgId, name: "SSH test organization" },
     memberships: [{ id: orgId }],
   },
 });
@@ -253,19 +253,17 @@ test("Disabled SSH has no management fetches or controls", async () => {
   expect(queryAction("button", "Add host")).not.toBeInTheDocument();
 });
 
-test("A non-staff owner remains gated even with the feature flag", async () => {
-  let requests = 0;
+test("An ordinary owner can manage SSH when the feature flag is enabled", async () => {
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
-    requests++;
-    return respond(200, { connections: [] });
+    return respond(200, { connections: [base] });
   });
   await setupPage({
     context,
     path: "/settings/ssh",
     featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
   });
-  await screen.findByText("SSH access is not available for this account.");
-  expect(requests).toBe(0);
+  await screen.findByText("Configured · connectivity not tested");
+  expect(getAction("button", "Add host")).toBeEnabled();
 });
 
 test("Changing owner closes the credential form and clears its fields", async () => {

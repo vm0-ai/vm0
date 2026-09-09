@@ -4,7 +4,6 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { command, computed } from "ccstate";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -36,10 +35,6 @@ const sshAuth = {
 const sshFeatureContext$ = computed(
   async (get): Promise<FeatureSwitchContext | null> => {
     const auth = get(organizationAuthContext$);
-    if (!isStaffOrg(auth.orgId)) {
-      return null;
-    }
-
     const context = await get(
       userFeatureSwitchContext(auth.orgId, auth.userId),
     );

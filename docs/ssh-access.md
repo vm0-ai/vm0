@@ -1,6 +1,9 @@
 # SSH access for owners and Agents
 
-SSH is a standalone, staff-only capability behind `SshAccess`. This delivery
+SSH is a standalone capability behind the default-off `SshAccess` (`sshAccess`)
+feature switch. The switch is the only feature-eligibility gate; enabled
+organizations do not need staff membership. Owner, Agent grant and Run
+authorization checks remain mandatory. This delivery
 does not activate it or add a public Connectors card. It uses neither connector
 accounts nor connector permissions.
 
@@ -38,7 +41,7 @@ replay a command whose effects are unknown.
 The inventory requires a current running Run, its owned Agent, a current grant,
 and `ssh:read`. An authorized empty inventory is distinct from unavailable
 authority. Execution requires `ssh:write`. Both capabilities are minted only
-for eligible staff Runs; newly eligible Runs must start with a fresh token.
+for feature-enabled Runs; newly eligible Runs must start with a fresh token.
 These commands are Run-only, not PAT commands. Agents cannot grant themselves
 access or send target addresses, credentials or host keys to the helper.
 
