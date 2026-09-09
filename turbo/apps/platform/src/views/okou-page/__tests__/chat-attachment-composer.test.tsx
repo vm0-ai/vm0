@@ -34,7 +34,9 @@ function composerFileInput(): HTMLInputElement {
 }
 
 function composerRoot(): HTMLElement {
-  const composer = document.querySelector<HTMLElement>(".okou-composer");
+  const composer = document.querySelector<HTMLElement>(
+    "[data-slot='chat-composer-card']",
+  );
   if (!composer) {
     throw new Error("Expected the chat composer");
   }

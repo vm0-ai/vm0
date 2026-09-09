@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
+  click,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -368,4 +369,54 @@ test("Mermaid content remains readable code on surfaces without diagrams", async
       return button.getAttribute("aria-label") === "Expand diagram";
     }),
   ).toBeFalsy();
+});
+
+test("Retired Goal history displays and copies the complete literal objective", async () => {
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  const chat = createMarkdownChatFixture(context);
+  const content =
+    "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: complete\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\nBefore <oai-mem-citation>literal objective</oai-mem-citation> after\n`<oai-mem-citation>`\n```xml\n<oai-mem-citation>fenced\n```\nUnclosed <oai-mem-citation>keep the rest 🧭\n\n";
+  const row = {
+    ...chat.outputMessage(content, { seqId: 1 }),
+    runId: null,
+    runEventId: null,
+    runEventSequenceNumber: null,
+  };
+  chat.install({
+    rows: () => {
+      return [row];
+    },
+  });
+  await setupPage({ context, path: chat.path, host: "app.okou.ai" });
+  const message = await screen.findByText(
+    /Before <oai-mem-citation>literal objective/,
+  );
+  expect(message.textContent).toBe(content);
+  const copy = queryAllByRoleFast("button").find((button) => {
+    return button.getAttribute("aria-label") === "Copy message";
+  });
+  if (!copy) {
+    throw new Error("Expected message copy action");
+  }
+  click(copy);
+  await waitFor(() => {
+    expect(clipboard.writes).toStrictEqual([content]);
+  });
+});
+
+test("An actual assistant copying the Goal notice retains citation filtering and Markdown", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const content =
+    "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: complete\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\n**Formatted actual answer** <oai-mem-citation>hidden transport</oai-mem-citation>";
+  const rows = completedMessageRows(chat, content);
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+  await setupPage({ context, path: chat.path, host: "app.okou.ai" });
+  await expect(
+    screen.findByText("Formatted actual answer"),
+  ).resolves.toHaveProperty("tagName", "STRONG");
+  expect(screen.queryByText(/hidden transport/)).not.toBeInTheDocument();
 });

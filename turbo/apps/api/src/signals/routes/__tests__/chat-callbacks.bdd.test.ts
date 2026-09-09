@@ -13,7 +13,6 @@ import {
 import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
@@ -242,7 +241,6 @@ async function startChatRun(
   },
   options?: {
     readonly onMessageAccepted?: () => void;
-    readonly publicBrand?: PublicBrand;
   },
 ): Promise<{
   readonly runId: string;
@@ -266,7 +264,7 @@ async function startChatRun(
       : { revokesEventId: body.revokesEventId }),
     ...(selectedModel === undefined ? {} : { model: selectedModel }),
   };
-  const sent = await chat.requestSendEvent(actor, requestBody, [201], options);
+  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -4412,7 +4410,6 @@ describe("CHAT-02: failed chat callbacks", () => {
       readonly failureReason?: RunFailureReasonToken;
       readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
-      readonly publicBrand?: PublicBrand;
       readonly removeCallbackPublicBrand?: boolean;
       readonly configureProvider?: (
         fixture: EntitledChatActor,
@@ -4423,17 +4420,13 @@ describe("CHAT-02: failed chat callbacks", () => {
           ? await entitledChatMemberActor()
           : await entitledChatActor();
       await params.configureProvider?.(fixture);
-      const run = await startChatRun(
-        fixture.actor,
-        {
-          agentId: fixture.agentId,
-          prompt: params.prompt,
-          ...(params.selectedModel === undefined
-            ? {}
-            : { selectedModel: params.selectedModel }),
-        },
-        { publicBrand: params.publicBrand },
-      );
+      const run = await startChatRun(fixture.actor, {
+        agentId: fixture.agentId,
+        prompt: params.prompt,
+        ...(params.selectedModel === undefined
+          ? {}
+          : { selectedModel: params.selectedModel }),
+      });
       const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
       if (params.removeCallbackPublicBrand) {
         await removeChatCallbackPublicBrandFixture(run.runId);
@@ -4476,7 +4469,6 @@ describe("CHAT-02: failed chat callbacks", () => {
       failAndReadError({
         prompt: "subscription credential failed",
         selectedModel: "claude-opus-4-8",
-        publicBrand: "okou",
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
@@ -4514,7 +4506,6 @@ describe("CHAT-02: failed chat callbacks", () => {
       failAndReadError({
         prompt: "legacy callback without public brand failed for admin",
         orgRole: "admin",
-        publicBrand: "okou",
         removeCallbackPublicBrand: true,
       }),
     ).resolves.toBe(

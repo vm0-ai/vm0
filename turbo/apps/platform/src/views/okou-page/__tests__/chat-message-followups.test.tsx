@@ -1,4 +1,5 @@
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
@@ -330,4 +331,62 @@ test("A recommended follow-up edits the draft without sending it", async () => {
   );
   expect(composer).toHaveFocus();
   expect(onSendRequest).not.toHaveBeenCalled();
+});
+
+test("A touch device renders the recommended follow-ups as quick replies", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(pointer: coarse)";
+  });
+  installMessageExperienceChat({
+    threadId: context.resourceId,
+    chatEvents: completedReply(),
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${context.resourceId}`,
+    featureSwitches: { [FeatureSwitchKey.ResponsiveFollowupCards]: true },
+  });
+
+  const group = await keepGoingGroup();
+  expect(group).toHaveAttribute("data-followup-layout", "quick-replies");
+  expect(followupButtons(group)).toHaveLength(variedFollowups().length);
+});
+
+test("A fine-pointer device keeps the recommended follow-up rows at any width", async () => {
+  // The layout follows the pointer, never the viewport. Width is deliberately
+  // left unset: a desktop window dragged narrow must keep these rows, and
+  // pinning that in jsdom is not possible because it evaluates neither layout
+  // nor container queries.
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(any-pointer: fine)";
+  });
+  installMessageExperienceChat({
+    threadId: context.resourceId,
+    chatEvents: completedReply(),
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${context.resourceId}`,
+    featureSwitches: { [FeatureSwitchKey.ResponsiveFollowupCards]: true },
+  });
+
+  const group = await keepGoingGroup();
+  expect(group).toHaveAttribute("data-followup-layout", "rows");
+});
+
+test("A disabled switch keeps the follow-up rows on a touch device", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(pointer: coarse)";
+  });
+  installMessageExperienceChat({
+    threadId: context.resourceId,
+    chatEvents: completedReply(),
+  });
+
+  await setupPage({ context, path: `/chats/${context.resourceId}` });
+
+  const group = await keepGoingGroup();
+  expect(group).toHaveAttribute("data-followup-layout", "rows");
 });

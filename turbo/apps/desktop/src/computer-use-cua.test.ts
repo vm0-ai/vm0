@@ -261,13 +261,40 @@ describe("host-owned CUA adapter and shared executor", () => {
     },
   );
 
-  it.each(["pid", "window", "moved", "scaled", "display-scale"])(
+  it("observes the sole on-screen window despite hidden auxiliary windows", async () => {
+    const d = await desktop();
+    d.external.extraWindows = [{ windowId: 43, visible: false }];
+    const state = result(await d.observe());
+    expect(state.appState).toContain("Read-only invoice total: 123 元");
+    expect(
+      d.external.calls.find((call) => call.name === "get_window_state")?.args,
+    ).toMatchObject({ pid: 123, window_id: 42 });
+  });
+
+  it.each(["missing", "ambiguous"])(
+    "refuses a %s on-screen window before capturing",
+    async (condition) => {
+      const d = await desktop();
+      if (condition === "missing") d.external.windowVisible = false;
+      else d.external.extraWindows = [{ windowId: 43, visible: true }];
+      expect(await d.observe()).toMatchObject({
+        status: "failed",
+        error: { code: "window_unavailable" },
+      });
+      expect(
+        d.external.calls.some((call) => call.name === "get_window_state"),
+      ).toBe(false);
+    },
+  );
+
+  it.each(["pid", "window", "hidden", "moved", "scaled", "display-scale"])(
     "refuses changed %s ownership/frame",
     async (change) => {
       const d = await desktop();
       const state = result(await d.observe());
       if (change === "pid") d.external.pid = 124;
       if (change === "window") d.external.windowId = 43;
+      if (change === "hidden") d.external.windowVisible = false;
       if (change === "moved")
         d.external.bounds = { x: 30, y: 20, width: 800, height: 600 };
       if (change === "scaled")

@@ -6,11 +6,6 @@ import { Check } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-// Visual treatment only; native inputs and Base UI roots have different
-// checked/disabled attributes and own their respective state and indicators.
-const checkboxVisualClassName =
-  "relative h-4 w-4 shrink-0 rounded-md border border-border bg-input transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
 type CheckedState = boolean | "indeterminate";
 
 interface CheckboxProps extends Omit<
@@ -52,8 +47,7 @@ const Checkbox = React.forwardRef<HTMLElement, CheckboxProps>(
         }
         data-slot="checkbox"
         className={cn(
-          checkboxVisualClassName,
-          "peer data-checked:border-primary data-checked:bg-primary data-indeterminate:border-primary data-indeterminate:bg-primary data-disabled:cursor-not-allowed data-disabled:opacity-50",
+          "peer relative h-4 w-4 shrink-0 rounded-md border border-border bg-input transition-colors outline-none data-checked:border-primary data-checked:bg-primary data-indeterminate:border-primary data-indeterminate:bg-primary focus-visible:ring-2 focus-visible:ring-ring data-disabled:cursor-not-allowed data-disabled:opacity-50",
           className,
         )}
         indeterminate={resolvedIndeterminate}
@@ -75,4 +69,4 @@ const Checkbox = React.forwardRef<HTMLElement, CheckboxProps>(
 );
 Checkbox.displayName = "Checkbox";
 
-export { Checkbox, checkboxVisualClassName };
+export { Checkbox };

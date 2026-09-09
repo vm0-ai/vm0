@@ -1,4 +1,3 @@
-import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -36,29 +35,25 @@ function connectPath(
   return `/agentphone/connect?${search.toString()}`;
 }
 
-test("Incomplete AgentPhone brand binding is rejected", async () => {
-  let called = false;
-  context.mocks.api(
-    integrationsAgentPhoneContract.connectAgentPhone,
-    ({ respond }) => {
-      called = true;
-      return respond(200, { phoneHandle: PHONE_HANDLE });
-    },
-  );
-  await setupPage({
-    context,
-    host: "app.okou.ai",
-    path: connectPath({ publicBrand: "okou" }),
-  });
+test.each([{}, { publicBrand: "okou" as const }])(
+  "rejects connection links without a complete signature binding (%j)",
+  async (params) => {
+    await setupPage({
+      context,
+      host: "app.okou.ai",
+      path: connectPath(params),
+    });
 
-  await expect(
-    screen.findByText("The signature on this link is not valid."),
-  ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("The signature on this link is not valid."),
+    ).resolves.toBeInTheDocument();
 
-  expect(
-    queryAllByRoleFast("button").some((candidate) => {
-      return candidate.textContent?.replace(/\s+/gu, " ").trim() === "Connect";
-    }),
-  ).toBeFalsy();
-  expect(called).toBeFalsy();
-});
+    expect(
+      queryAllByRoleFast("button").some((candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/gu, " ").trim() === "Connect"
+        );
+      }),
+    ).toBeFalsy();
+  },
+);

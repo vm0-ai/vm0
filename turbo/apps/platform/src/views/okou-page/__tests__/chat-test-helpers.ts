@@ -63,7 +63,7 @@ function modelSelectionFromBody(body: {
 
 function mountedComposerEditor(): HTMLElement {
   const editor = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(editor instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");

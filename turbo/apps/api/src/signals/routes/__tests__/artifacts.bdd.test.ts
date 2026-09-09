@@ -3,7 +3,6 @@ import { createStore } from "ccstate";
 
 import { HttpResponse, http } from "msw";
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -168,9 +167,8 @@ async function sendChatRun(
     readonly prompt: string;
     readonly threadId?: string;
   },
-  publicBrand: PublicBrand = "vm0",
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendEvent(actor, body, [201], { publicBrand });
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected chat send to create a run");
   }
@@ -246,7 +244,6 @@ async function createHostedArtifact(args: {
   readonly runnerGroup: string;
   readonly site: string;
   readonly artifactKind?: "hosted-site" | "presentation-html";
-  readonly publicBrand?: PublicBrand;
 }): Promise<{
   readonly threadId: string;
   readonly url: string;
@@ -254,14 +251,10 @@ async function createHostedArtifact(args: {
   readonly deploymentId: string;
   readonly bearer: string;
 }> {
-  const run = await sendChatRun(
-    args.actor,
-    {
-      agentId: args.agentId,
-      prompt: `create ${args.site}`,
-    },
-    args.publicBrand,
-  );
+  const run = await sendChatRun(args.actor, {
+    agentId: args.agentId,
+    prompt: `create ${args.site}`,
+  });
   const { claim, sandboxHeaders } = await claimChatRun(
     args.runnerGroup,
     run.runId,
@@ -576,7 +569,6 @@ describe("hosted Artifact previews", () => {
       agentId: owner.agentId,
       runnerGroup: owner.runnerGroup,
       site,
-      publicBrand: "okou",
     });
     await flushWaitUntilForTest();
 

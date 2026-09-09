@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ComposerTaskChips]: {
+    maintainer: "bingjie@okou.ai",
+    description: "Lightweight chat task chips and contextual starting ideas",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerCreateCommands]: {
     maintainer: "bingjie@okou.ai",
     description: "Create commands and mode-specific composer controls",
@@ -308,6 +314,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
     enabled: true,
   },
+  [FeatureSwitchKey.AvatarFraming]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Center every avatar's visible artwork in its box and move it halfway to a shared fill, so hair volume stops changing how large an avatar looks.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@okou.ai",
     description:
@@ -336,7 +349,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
+      "Enable Okou Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -387,7 +400,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+      "Render recommended follow-ups as a stack of tappable quick replies on touch devices.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

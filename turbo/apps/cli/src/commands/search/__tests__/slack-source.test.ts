@@ -108,7 +108,6 @@ describe("okou search --source slack", () => {
       ]);
 
       const output = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(output).toContain("--limit");
       expect(output).toContain("--since");
       expect(output).toContain("ignored");
     });
@@ -177,8 +176,6 @@ describe("okou search --source slack", () => {
         "hello",
         "--source",
         "slack",
-        "--limit",
-        "100",
         "--since",
         "30d",
       ]);

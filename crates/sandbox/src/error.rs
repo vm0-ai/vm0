@@ -171,6 +171,9 @@ impl fmt::Display for SandboxOperation {
 pub enum SandboxOperationReason {
     /// The guest-side operation or IPC call returned an error.
     Guest,
+    /// Normal-operation admission rejected a permanently unusable guest connection.
+    /// This does not classify transport errors or temporary operation fences.
+    GuestConnectionUnavailable,
     /// The backend process crashed while the operation was in flight.
     BackendCrashed,
     /// The operation timed out.
@@ -222,6 +225,7 @@ impl fmt::Display for SandboxOperationReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Guest => f.write_str("guest"),
+            Self::GuestConnectionUnavailable => f.write_str("guest connection unavailable"),
             Self::BackendCrashed => f.write_str("backend crashed"),
             Self::Timeout => f.write_str("timeout"),
             Self::Other => f.write_str("other"),

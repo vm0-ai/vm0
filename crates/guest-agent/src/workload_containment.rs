@@ -14,9 +14,10 @@ use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
@@ -39,6 +40,7 @@ pub struct WorkloadContainment {
     placement: Arc<OwnedFd>,
     workload_path: Arc<PathBuf>,
     tool_placement_endpoint: Arc<str>,
+    evidence_stream: Arc<Mutex<Option<UnixStream>>>,
 }
 
 /// Read-only paths used to sample control and workload CPU accounting.
@@ -73,6 +75,34 @@ pub struct WorkloadResourceDiagnostics {
 }
 
 impl WorkloadContainment {
+    /// Read root-owned evidence over the existing authenticated bootstrap.
+    /// IO failures permanently close this exchange; cleanup retains its own
+    /// root-owned capture path and execution outcomes are unaffected.
+    pub fn oom_evidence(
+        &self,
+        reason: guest_contracts::oom_evidence::CaptureReason,
+    ) -> Option<guest_contracts::oom_evidence::OomEvidence> {
+        use guest_contracts::oom_evidence::{CaptureReason, EVIDENCE_IO_TIMEOUT, read_evidence};
+        use std::io::Write;
+        let mut owner = self.evidence_stream.try_lock().ok()?;
+        let mut stream = owner.take()?;
+        let request = match reason {
+            CaptureReason::CliError => 2,
+            _ => 1,
+        };
+        let result = (|| {
+            stream.set_write_timeout(Some(EVIDENCE_IO_TIMEOUT))?;
+            stream.write_all(&[request])?;
+            read_evidence(&stream)
+        })();
+        match result {
+            Ok(evidence) => {
+                *owner = Some(stream);
+                Some(evidence)
+            }
+            Err(_) => None,
+        }
+    }
     /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
@@ -193,8 +223,9 @@ impl WorkloadContainment {
         stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
         stream.set_write_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
         let placement = process_control_ipc::receive_workload_placement(&stream)?;
-        let containment = Self::adopt(placement, tool_endpoint)?;
+        let mut containment = Self::adopt(placement, tool_endpoint)?;
         process_control_ipc::write_workload_placement_confirmation(&stream)?;
+        containment.evidence_stream = Arc::new(Mutex::new(Some(stream)));
         Ok(containment)
     }
 
@@ -216,6 +247,7 @@ impl WorkloadContainment {
             placement: Arc::new(placement),
             workload_path: Arc::new(workload_path),
             tool_placement_endpoint: Arc::from(tool_endpoint),
+            evidence_stream: Arc::new(Mutex::new(None)),
         })
     }
 }
@@ -425,6 +457,7 @@ mod tests {
             placement: Arc::new(placement.as_file().try_clone().unwrap().into()),
             workload_path: Arc::new(PathBuf::from("/unused")),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
+            evidence_stream: Arc::new(Mutex::new(None)),
         };
         let mut command = tokio::process::Command::new("/bin/sh");
         command
@@ -466,6 +499,7 @@ done"#,
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(PathBuf::from("/unused")),
             tool_placement_endpoint: Arc::from("runner-tool-endpoint"),
+            evidence_stream: Arc::new(Mutex::new(None)),
         };
 
         assert_eq!(
@@ -544,6 +578,7 @@ done"#,
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(directory.path().to_path_buf()),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
+            evidence_stream: Arc::new(Mutex::new(None)),
         };
 
         let diagnostics = containment.resource_diagnostics().unwrap();
@@ -593,6 +628,7 @@ done"#,
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(directory.path().to_path_buf()),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
+            evidence_stream: Arc::new(Mutex::new(None)),
         };
 
         let diagnostics = containment.resource_diagnostics().unwrap();

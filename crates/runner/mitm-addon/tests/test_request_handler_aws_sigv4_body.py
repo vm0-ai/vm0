@@ -38,6 +38,7 @@ from tests.buffered_auth_body_framing_cases import (
     buffered_auth_body_framing_case_id,
     buffered_auth_body_framing_rejection_cases,
 )
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.firewall_helpers import cancel_pending_task
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
@@ -90,15 +91,10 @@ async def _wait_for_hash_start(
 
 
 def _resolved_token_meta() -> dict[str, object]:
-    return {
-        "headers": {},
-        "aws_sigv4": resolved_aws_sigv4_credentials(),
-        "resolved_secrets": [],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    return firewall_auth_response(
+        headers={},
+        aws_sigv4=resolved_aws_sigv4_credentials(),
+    )
 
 
 def _write_aws_registry(

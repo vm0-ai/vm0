@@ -19,6 +19,7 @@ from tests.buffered_auth_body_framing_cases import (
     buffered_auth_body_framing_case_id,
     buffered_auth_body_framing_rejection_cases,
 )
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
@@ -475,15 +476,11 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
         ),
         request_body=b"ok",
     )
-    token_meta = {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers={},
+        base="https://real.example.com/webhook",
+        resolved_secrets=["WEBHOOK_URL"],
+    )
     mock_forward = AsyncMock(return_value=(200, b"ok", {}))
 
     with (
@@ -524,15 +521,11 @@ async def test_auth_base_requestheaders_admission_released_after_success(
         ),
         request_body=request_body,
     )
-    token_meta = {
-        "headers": {"Authorization": "Bearer resolved"},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers={"Authorization": "Bearer resolved"},
+        base="https://real.example.com/webhook",
+        resolved_secrets=["WEBHOOK_URL"],
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -658,14 +651,10 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
         ),
         request_body=b"ok",
     )
-    token_meta = {
-        "headers": {"Authorization": "Bearer resolved"},
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers={"Authorization": "Bearer resolved"},
+        resolved_secrets=["WEBHOOK_URL"],
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),

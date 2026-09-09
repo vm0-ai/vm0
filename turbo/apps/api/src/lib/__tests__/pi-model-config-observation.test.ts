@@ -29,10 +29,15 @@ describe("Pi captured-config observation boundary", () => {
     });
   });
 
-  it.each([2, 3] as const)(
+  it.each([2, 3, 4] as const)(
     "distinguishes active generation %s dialects from legacy api",
     (schemaVersion) => {
-      for (const dialect of ["openai-responses", "openai-codex-responses"]) {
+      for (const dialect of [
+        "openai-responses",
+        "openai-codex-responses",
+        "anthropic-messages",
+        "bedrock-converse-stream",
+      ]) {
         expect(
           piModelConfigObservation("pi", {
             schemaVersion,
@@ -60,7 +65,7 @@ describe("Pi captured-config observation boundary", () => {
   it("preserves unknown generations and unexpected versioned legacy fields", () => {
     expect(
       piModelConfigObservation("pi", {
-        schemaVersion: 4,
+        schemaVersion: 5,
         api: "openai-responses",
       }),
     ).toStrictEqual({

@@ -683,6 +683,13 @@ impl Sandbox for MockSandbox {
         result
     }
 
+    async fn park_for_blank_pool(&mut self) -> Result<SandboxParkOutcome> {
+        if let Some(o) = &self.overrides {
+            *o.lifecycle.blank_park_calls.lock_ignoring_poison() += 1;
+        }
+        self.park().await
+    }
+
     async fn final_exec_and_park(
         &mut self,
         request: &ExecRequest<'_>,
@@ -1344,6 +1351,7 @@ impl Sandbox for MockSandbox {
                 .start_process_calls
                 .lock_ignoring_poison()
                 .push(StartProcessCall {
+                    timeout_is_expected: request.timeout_is_expected,
                     cmd: request.cmd.to_string(),
                     timeout: request.timeout,
                     start_timeout: request.start_timeout,
@@ -1386,6 +1394,7 @@ impl Sandbox for MockSandbox {
                 });
         }
         let process_request = StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "",
             timeout: request.timeout,
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,

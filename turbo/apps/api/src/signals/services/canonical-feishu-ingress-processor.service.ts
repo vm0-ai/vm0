@@ -435,7 +435,6 @@ async function notifyQueuedFeishuRun(
     readonly db: Db;
     readonly ingressId: string;
     readonly message: FeishuInboundMessage;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -761,7 +760,6 @@ export const processCanonicalFeishuIngress$ = command(
         db,
         ingressId: args.ingressId,
         message: result.value.message,
-        publicBrand: result.value.publicBrand,
       },
       signal,
     );

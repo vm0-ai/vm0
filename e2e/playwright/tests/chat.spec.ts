@@ -170,7 +170,7 @@ test.describe("dark theme", () => {
     await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-    const composer = page.locator(".okou-composer");
+    const composer = page.locator('[data-slot="chat-composer-card"]');
     const editor = composer.getByRole("textbox", { name: "Message" });
     await editor.focus();
     await expect(editor).toBeFocused();
@@ -191,7 +191,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
-  const composer = page.locator(".okou-composer");
+  const composer = page.locator('[data-slot="chat-composer-card"]');
   const editor = composer.getByRole("textbox", { name: "Message" });
   await expect(editor).toBeVisible();
   await editor.fill(`printf ${marker}`);

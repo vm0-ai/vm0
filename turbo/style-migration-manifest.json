@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "issue": "https://github.com/vm0-ai/vm0/issues/32402",
+  "owner": "bingjiez666",
+  "caseFile": "../e2e/playwright/style-migration/cases.json",
+  "families": [
+    {
+      "id": "local-controls",
+      "owner": "bingjiez666",
+      "phase": 1,
+      "replacement": "Shared semantic control tokens and typed variants; preserve each host element and effective cascade.",
+      "tokens": [
+        "okou-badge",
+        "okou-border",
+        "okou-border-r",
+        "okou-border-t",
+        "okou-btn-morandi",
+        "okou-bubble-cool",
+        "okou-chip",
+        "okou-color-theme-swatch",
+        "okou-emoji",
+        "okou-icon-mono",
+        "okou-pill"
+      ]
+    },
+    {
+      "id": "page-surfaces",
+      "owner": "bingjiez666",
+      "phase": 2,
+      "replacement": "Shared surface tokens and typed variants, migrated by consumer before deleting the legacy definitions.",
+      "tokens": ["dialog-scrollable", "okou-card"]
+    },
+    {
+      "id": "navigation",
+      "owner": "bingjiez666",
+      "phase": 3,
+      "replacement": "Typed navigation variants and semantic interaction hooks.",
+      "tokens": [
+        "icon-button",
+        "icon-tooltip-trigger",
+        "okou-nav",
+        "okou-nav-copy",
+        "okou-nav-copy-muted",
+        "okou-nav-copy-muted-hover",
+        "okou-nav-recent-label",
+        "okou-nav-title",
+        "okou-nav-title-row"
+      ]
+    },
+    {
+      "id": "chat-and-content",
+      "owner": "bingjiez666",
+      "phase": 4,
+      "replacement": "Tailwind on owned content; exact contracts for genuinely third-party DOM. Preserve scrolling and async states.",
+      "tokens": [
+        "mermaid-block",
+        "mermaid-diagram-expand",
+        "mermaid-diagram-image",
+        "mermaid-diagram-pending",
+        "mermaid-diagram-source",
+        "okou-chat-bubble-assistant",
+        "okou-chat-bubble-user",
+        "okou-chat-card",
+        "okou-chat-frame",
+        "okou-composer",
+        "okou-markdown-card"
+      ]
+    },
+    {
+      "id": "motion-and-injection",
+      "owner": "bingjiez666",
+      "phase": 5,
+      "replacement": "Canonical motion utilities and typed primitives; remove first-party stylesheet injection.",
+      "tokens": [
+        "animate-in",
+        "ease",
+        "fade-in",
+        "mic-starting-spinner",
+        "mic-volume-icon-meter",
+        "motion-safe:animate-in",
+        "motion-safe:fade-in",
+        "okou-blocks",
+        "okou-chat-skeleton-reveal",
+        "okou-realtime-cloud-flow",
+        "okou-realtime-status-reconnecting",
+        "okou-shimmer-text",
+        "okou-thinking-enter",
+        "okou-thinking-spinner",
+        "okou-thinking-spinner-frame",
+        "owf-diagram",
+        "owf-diagram-action",
+        "owf-diagram-action-copy",
+        "owf-diagram-action-one",
+        "owf-diagram-action-two",
+        "owf-diagram-beam",
+        "owf-diagram-dot-action-bottom",
+        "owf-diagram-dot-action-middle",
+        "owf-diagram-dot-action-top",
+        "owf-diagram-dot-destination-down",
+        "owf-diagram-dot-destination-in",
+        "owf-diagram-dot-source",
+        "owf-diagram-grid",
+        "owf-diagram-icon-box",
+        "owf-diagram-icon-stack",
+        "owf-diagram-icon-stack-item",
+        "owf-diagram-icon-stack-more",
+        "owf-diagram-lines",
+        "owf-diagram-node",
+        "owf-diagram-node-okou",
+        "owf-diagram-node-output",
+        "owf-diagram-node-source",
+        "owf-diagram-okou-icon",
+        "owf-diagram-vertical-control",
+        "owf-diagram-wrap",
+        "running-indicator",
+        "running-indicator-center",
+        "running-indicator-ripple",
+        "slide-in-from-bottom-2",
+        "table-wrapper",
+        "zoom-in-95"
+      ]
+    },
+    {
+      "id": "platform-shell",
+      "owner": "bingjiez666",
+      "phase": 6,
+      "replacement": "Component utilities plus exact global environment rules; validate native PWA/Desktop behavior.",
+      "tokens": [
+        "okou-app",
+        "okou-desktop-no-drag",
+        "okou-desktop-titlebar-drag-region",
+        "okou-fixed-viewport-shell",
+        "okou-managed-bottom-safe-area",
+        "okou-mobile-fixed-safe-area",
+        "okou-mobile-sidebar",
+        "okou-pwa-fixed-cover",
+        "okou-sidebar-header",
+        "okou-viewport-shell",
+        "okou-workspace-bg"
+      ]
+    },
+    {
+      "id": "external-contract-audit",
+      "owner": "bingjiez666",
+      "phase": 7,
+      "replacement": "Prove upstream ownership and exact consumer boundary before separating a legitimate adapter from legacy debt.",
+      "tokens": [
+        "copied",
+        "language-mermaid",
+        "lucide",
+        "toaster",
+        "wmde-markdown",
+        "wmde-markdown-color"
+      ]
+    }
+  ],
+  "batches": [
+    {
+      "id": "settings-choice-controls",
+      "family": "local-controls",
+      "tokens": ["okou-chip"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/sections/preference-section.tsx",
+        "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx"
+      ],
+      "cases": ["preferences-light", "preferences-dark", "preferences-mobile"],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay",
+          "url": "https://a.okou.io/e9ie0v6p2c.zip",
+          "sha256": "338b88df3d7de430118f2a30069d4d6b6fe31741a622839ab12986fa7dc6a4ef",
+          "commit": "f8d34d5f68b6c40223b64b0124ce85826c5aada2"
+        },
+        {
+          "kind": "after-and-raw-diffs-with-failed-attempt",
+          "url": "https://a.okou.io/rp0lazp7gc.zip",
+          "sha256": "1b059f559c0c1b5bab01d7413149a330a087002b5ffa4bdfbb681a5d19379115",
+          "commit": "beee41651324fb0563ecdfa635cbffdf68a07a5e"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843"
+    }
+  ]
+}

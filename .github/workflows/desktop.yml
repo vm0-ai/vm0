@@ -95,6 +95,21 @@ jobs:
           sdk="$native/node_modules/@trycua/cua-driver/dist/index.js"
           python3 cua/guardian-proof/run-macos.py "$electron" \
             "$RUNNER_TEMP/cua-guardian-build" "$sdk" "$RUNNER_TEMP/cua-guardian-evidence" "$native"
+      - name: Prove live application discovery across launch and quit
+        working-directory: turbo/apps/desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          # LaunchServices refuses app bundles under macOS's system temp path.
+          proof="$PWD/.cache/cua-discovery-proof"
+          mkdir -p "$(dirname "$proof")"
+          node cua/discovery-proof/build.mjs "$proof" \
+            "$RUNNER_TEMP/cua-guardian-build" "$RUNNER_TEMP/cua-guardian-runtime"
+          electron="$(node -p 'require("electron")')"
+          proof_status=0
+          "$electron" "$proof/discovery.js" "$proof" || proof_status=$?
+          cp "$proof/discovery.json" "$RUNNER_TEMP/cua-guardian-evidence/discovery.json"
+          exit "$proof_status"
       - name: Prove nine commands and Quit across the production process channel
         working-directory: turbo/apps/desktop
         shell: bash

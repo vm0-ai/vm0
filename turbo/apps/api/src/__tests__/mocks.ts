@@ -1,5 +1,12 @@
 import { Buffer } from "node:buffer";
 import type StripeSDK from "stripe";
+import type {
+  BatchPublishSpec,
+  BatchResult,
+  BatchPublishSuccessResult,
+  BatchPublishFailureResult,
+  ClientOptions,
+} from "ably";
 import type { LookupFunction } from "node:net";
 import { computed } from "ccstate";
 import { ws } from "msw";
@@ -9,6 +16,11 @@ import { z } from "zod";
 import { mockStripeClient } from "../signals/external/stripe-client";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
+type AblyBatchPublish = (
+  spec: BatchPublishSpec,
+) => Promise<
+  BatchResult<BatchPublishSuccessResult | BatchPublishFailureResult>
+>;
 type BooleanMock = Mock<(...args: unknown[]) => boolean>;
 type SignalTimerDelayOptions = { readonly signal?: AbortSignal };
 type SignalTimerDelayMock = Mock<
@@ -109,6 +121,8 @@ export interface ApiTestMocks {
   };
   readonly ably: {
     readonly channelGet: Mock<(channelName: string) => void>;
+    readonly batchPublish: Mock<AblyBatchPublish>;
+    readonly useRealBatchPublish: Mock<() => boolean>;
     readonly publish: AsyncMock;
     readonly createTokenRequest: AsyncMock;
     readonly requestToken: AsyncMock;
@@ -524,6 +538,8 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     ably: {
       channelGet: vi.fn<(channelName: string) => void>(),
+      batchPublish: vi.fn<AblyBatchPublish>(),
+      useRealBatchPublish: vi.fn<() => boolean>(),
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createTokenRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       requestToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -965,8 +981,33 @@ vi.mock("signal-timers", async (importOriginal) => {
   };
 });
 
-vi.mock("ably", () => {
+vi.mock("ably", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ably")>();
   class MockRest {
+    constructor(private readonly options: ClientOptions) {}
+
+    readonly batchPublish: AblyBatchPublish = async (spec) => {
+      const mocked = apiTestMocks.ably.batchPublish(spec);
+      if (apiTestMocks.ably.useRealBatchPublish()) {
+        return await new actual.Rest(this.options).batchPublish(spec);
+      }
+      if (mocked !== undefined) {
+        return await mocked;
+      }
+      return {
+        successCount: spec.channels.length,
+        failureCount: 0,
+        results: spec.channels.map((channel) => {
+          return {
+            channel,
+            messageId: "test-batch",
+            serials: spec.messages.map(() => {
+              return null;
+            }),
+          };
+        }),
+      };
+    };
     readonly channels = {
       get: (channelName: string) => {
         apiTestMocks.ably.channelGet(channelName);
@@ -1290,6 +1331,8 @@ export function apiTestS3PresignedUrl(command: unknown): string {
 export function resetApiTestMocks(): void {
   apiTestMocks.abortSignal.timeout.mockReset();
   apiTestMocks.ably.channelGet.mockReset();
+  apiTestMocks.ably.batchPublish.mockReset();
+  apiTestMocks.ably.useRealBatchPublish.mockReset();
   apiTestMocks.ably.publish.mockReset();
   apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.ably.createTokenRequest.mockReset();

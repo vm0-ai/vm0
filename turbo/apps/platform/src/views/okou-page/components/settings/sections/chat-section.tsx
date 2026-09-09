@@ -2,7 +2,7 @@ import { useGet, useLastResolved, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Cpu, Globe, Keyboard, Loader2 } from "lucide-react";
-import { cn } from "@okouai/ui";
+import { ChoiceButton } from "@okouai/ui";
 import { Switch } from "@okouai/ui/components/ui/switch";
 import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
 
@@ -163,27 +163,20 @@ export function SendModePreference() {
                   return $.settings.preferences.send.cmdEnter;
                 });
           return (
-            <button
+            <ChoiceButton
               key={value}
               type="button"
-              aria-pressed={isActive}
+              selected={isActive}
               disabled={saving !== null}
               onClick={() => {
                 handleChange(value);
               }}
-              className={cn(
-                "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                isActive
-                  ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
-                  : "okou-chip text-muted-foreground hover:text-foreground",
-                saving !== null && "opacity-60 cursor-not-allowed",
-              )}
             >
               {saving === value && (
                 <Loader2 size={14} className="animate-spin" />
               )}
               {label}
-            </button>
+            </ChoiceButton>
           );
         })}
       </div>

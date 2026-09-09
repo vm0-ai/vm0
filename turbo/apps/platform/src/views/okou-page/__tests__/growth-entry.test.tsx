@@ -90,6 +90,7 @@ function slackStatus(options: {
 
 function billingStatus(): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier: "pro",
     credits: 0,
     onboardingPaymentPending: false,

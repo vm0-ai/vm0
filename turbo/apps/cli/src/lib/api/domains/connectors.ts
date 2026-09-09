@@ -36,8 +36,10 @@ import {
   customConnectorByIdContract,
   customConnectorsContract,
   customConnectorListResponseSchema,
+  customConnectorPermissionBundleSchema,
   customConnectorResponseSchema,
   type CreateCustomConnectorBody,
+  type CustomConnectorPermissionBundleResponse,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/custom-connectors";
@@ -400,4 +402,19 @@ export async function updateCustomConnector(
   }
 
   handleError(result, `Failed to update custom connector "${id}"`);
+}
+
+export async function getCustomConnectorPermissionBundle(
+  id: string,
+): Promise<CustomConnectorPermissionBundleResponse | null> {
+  const config = await getClientConfig();
+  const client = initClient(customConnectorByIdContract, config);
+  const result = await client.permissions({ params: { id }, headers: {} });
+  if (result.status === 200) {
+    return customConnectorPermissionBundleSchema.parse(result.body);
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  handleError(result, `Failed to get custom connector permissions for "${id}"`);
 }

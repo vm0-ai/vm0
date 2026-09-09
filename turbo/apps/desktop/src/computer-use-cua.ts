@@ -305,7 +305,7 @@ class CuaComputerUseBackend implements ComputerUseNativeBackend {
 
   private async resolveWindow(app: App, retained?: Window): Promise<Window> {
     const data = readResult(
-      await this.tool("list_windows", { pid: app.pid, on_screen_only: false }),
+      await this.tool("list_windows", { pid: app.pid, on_screen_only: true }),
     );
     const windows = arrayField(data.windows, 1000)
       .map((item) => {
@@ -325,7 +325,7 @@ class CuaComputerUseBackend implements ComputerUseNativeBackend {
       this.observation = null;
       throw new ComputerUseNativeHelperError(
         "window_unavailable",
-        "CUA window target is missing or ambiguous; close extra windows and re-observe",
+        "CUA requires one on-screen window; show the intended window or resolve multiple visible windows and re-observe",
       );
     }
     return matches[0]!;

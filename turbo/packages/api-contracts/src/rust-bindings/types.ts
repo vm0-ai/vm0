@@ -1,3 +1,4 @@
+import { piNativeTypeBindings } from "./pi-native-types";
 import type { z } from "zod";
 import { sshTypeBindings } from "./ssh-types";
 import { knownRunFailureReasonSchema } from "../contracts/run-failure-reasons";
@@ -137,6 +138,7 @@ export const rustTypeModuleDocs = [
 
 export const rustTypeBindings = [
   ...sshTypeBindings,
+  ...piNativeTypeBindings,
   {
     schema: webhookPiMemoryPhase2UsageContract.send.body,
     rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],

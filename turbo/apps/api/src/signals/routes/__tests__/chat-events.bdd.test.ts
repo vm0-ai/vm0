@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { zstdDecompressSync } from "node:zlib";
+import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
   readGoalThreadFixture,
@@ -40,13 +40,14 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
+  PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
@@ -960,7 +961,6 @@ async function configureBuiltInPiModelOnOpenRouter(
 async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
-  publicBrand: PublicBrand = "vm0",
   usagePricingResolution?: UsagePricingFixture["resolution"],
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const { template, ...canonicalBody } = body;
@@ -972,7 +972,6 @@ async function sendChatRun(
     clientEventId: body.clientEventId ?? randomUUID(),
   };
   const sent = await chat.requestSendEvent(actor, requestBody, [201], {
-    publicBrand,
     usagePricingResolution,
   });
   if (sent.status !== 201) {
@@ -3149,7 +3148,6 @@ describe("thread-bound Pi Automation and Goal execution", () => {
       const user = await sendChatRun(
         actor,
         { agentId, threadId, prompt: "continue this Automation conversation" },
-        "vm0",
         usagePricingResolution,
       );
       await expectThreadPiTerminal(actor, threadId, user.runId);
@@ -5469,9 +5467,7 @@ describe("CHAT-02: admission without spendable credits", () => {
       model: "claude-sonnet-5",
       clientEventId,
     };
-    const sent = await chat.requestSendEvent(actor, sendBody, [201], {
-      publicBrand: "okou",
-    });
+    const sent = await chat.requestSendEvent(actor, sendBody, [201]);
     if (sent.status !== 201) {
       throw new Error("Expected the blocked send to return 201 without a run");
     }
@@ -5543,7 +5539,6 @@ describe("CHAT-02: admission without spendable credits", () => {
       actor,
       { ...sendBody, threadId: sent.body.threadId },
       [201],
-      { publicBrand: "okou" },
     );
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
@@ -6578,7 +6573,6 @@ async function queueCapabilityProvenPiRun(args: {
           ? {}
           : { runOptions: { codexServiceTier: args.codexServiceTier } }),
       },
-      "vm0",
       usagePricingResolution,
     );
   });
@@ -7457,7 +7451,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "complete through the Pi API-first slot",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, first.runId, "completed", 10_000);
@@ -7496,7 +7489,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "handoff with the pinned Pi memory mount",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
@@ -7659,7 +7651,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "freeze the projection miss",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     const frozenMissManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${frozenMiss.runId}/manifest.json`;
@@ -7687,7 +7678,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "capture the now-ready projection in a new session",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     const newSessionManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${newSession.runId}/manifest.json`;
@@ -7743,7 +7733,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "establish the captured Pi session family",
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, baseline.runId, "completed", 10_000);
@@ -8220,7 +8209,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "capture memory generation at launch",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await firstProviderEntered.promise;
@@ -8313,7 +8301,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "replace the leased candidate with a newer exact history",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, second.runId, "completed", 10_000);
@@ -8446,7 +8433,6 @@ describe("CHAT-02: model-first provider policies", () => {
         prompt: "replace the synthetic Phase 2 selection watermark",
         model: "gpt-5.6-terra",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, third.runId, "completed", 10_000);
@@ -8616,7 +8602,6 @@ describe("CHAT-02: model-first provider policies", () => {
                 model: selectedModel,
                 runOptions: { codexServiceTier: tier },
               },
-              "vm0",
               usagePricingResolution,
             );
           });
@@ -8731,7 +8716,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: firstPrompt,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, first.runId, "completed");
@@ -8804,7 +8788,6 @@ describe("CHAT-02: model-first provider policies", () => {
           threadId: first.threadId,
           prompt: secondPrompt,
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, second.runId, "completed");
@@ -8920,7 +8903,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: `route ${selectedModel} through the custom Pi gateway`,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await flushWaitUntilForTest();
@@ -8969,7 +8951,6 @@ describe("CHAT-02: model-first provider policies", () => {
               prompt: `continue the custom session with ${tier ?? "standard"}`,
               runOptions: { codexServiceTier: tier },
             },
-            "vm0",
             usagePricingResolution,
           );
           await flushWaitUntilForTest();
@@ -9068,7 +9049,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "hand off custom gateway tools exactly once",
           runOptions: { codexServiceTier: tier },
         },
-        "vm0",
         usagePricingResolution,
       );
       const prefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}`;
@@ -9902,7 +9882,6 @@ describe("CHAT-02: model-first provider policies", () => {
             prompt: `run ${selectedModel} on its managed fallback`,
             model: selectedModel,
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -9997,7 +9976,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: `reuse matching ${selectedModel} billing identities`,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await providerEntered.promise;
@@ -10100,7 +10078,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: `reject a conflicting ${selectedModel} billing identity`,
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       await providerEntered.promise;
@@ -10195,7 +10172,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "seed the canonical Pi binding",
           model: "gpt-5.6-terra",
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -10282,7 +10258,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt,
           model: "gpt-5.6-terra",
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -10409,7 +10384,6 @@ describe("CHAT-02: model-first provider policies", () => {
             prompt: prompts[0],
             model: selectedModel,
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -10435,7 +10409,6 @@ describe("CHAT-02: model-first provider policies", () => {
             model: selectedModel,
             runOptions: { codexServiceTier: "fast" },
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -10462,7 +10435,6 @@ describe("CHAT-02: model-first provider policies", () => {
             prompt: prompts[2],
             model: selectedModel,
           },
-          "vm0",
           usagePricingResolution,
         );
       });
@@ -10677,7 +10649,6 @@ describe("CHAT-02: model-first provider policies", () => {
               model: selectedModel,
               runOptions: { codexServiceTier: "fast" },
             },
-            "vm0",
             usagePricingResolution,
           );
         });
@@ -10871,7 +10842,6 @@ describe("CHAT-02: model-first provider policies", () => {
       const run = await sendChatRun(
         actor,
         { agentId, threadId, model, prompt: `continue with ${model}` },
-        "vm0",
         usagePricingResolution,
       );
       threadId = run.threadId;
@@ -11364,6 +11334,10 @@ describe("CHAT-02: model-first provider policies", () => {
       { [FeatureSwitchKey.PiLoop]: true },
     );
     mockPiResourceArchiveDownloads();
+    // A real assistant can copy the entire immutable archive notice. Its run
+    // provenance must still keep citation transport private.
+    const copiedArchiveNotice =
+      "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: complete\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\nalpha";
     const consumedAgentEvents: Record<string, unknown>[] = [];
     server.use(
       http.post(
@@ -11395,7 +11369,10 @@ describe("CHAT-02: model-first provider policies", () => {
         return new HttpResponse(
           piResponsesContentSse({
             blocks: [
-              { type: "text", text: `alpha${hidden.slice(0, 17)}` },
+              {
+                type: "text",
+                text: `${copiedArchiveNotice}${hidden.slice(0, 17)}`,
+              },
               { type: "text", text: `${hidden.slice(17)}beta` },
               { type: "text", text: "gamma" },
               { type: "text", text: "delta" },
@@ -11471,7 +11448,11 @@ describe("CHAT-02: model-first provider policies", () => {
         };
       }),
     ).toStrictEqual([
-      { content: "alpha", sequenceNumber: 0, runEventId: "event:0" },
+      {
+        content: copiedArchiveNotice,
+        sequenceNumber: 0,
+        runEventId: "event:0",
+      },
       { content: "beta", sequenceNumber: 1, runEventId: "event:1" },
       { content: "gamma", sequenceNumber: 2, runEventId: "event:2" },
       { content: "delta", sequenceNumber: 3, runEventId: "event:3" },
@@ -13365,7 +13346,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           prompt: "finish one API-first answer",
         },
-        "vm0",
         usagePricingResolution,
       );
       await waitForRunStatus(actor, run.runId, "failed");
@@ -13706,7 +13686,6 @@ describe("CHAT-02: model-first provider policies", () => {
         model: "gpt-5.6-terra",
         prompt: "create the last complete checkpoint",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, first.runId, "completed");
@@ -13743,7 +13722,6 @@ describe("CHAT-02: model-first provider policies", () => {
         threadId: first.threadId,
         prompt: "produce incomplete output on the existing session",
       },
-      "vm0",
       usagePricingResolution,
     );
     await waitForRunStatus(actor, failed.runId, "failed");
@@ -13766,7 +13744,6 @@ describe("CHAT-02: model-first provider policies", () => {
         threadId: first.threadId,
         prompt: "continue the preserved canonical session with tools",
       },
-      "vm0",
       usagePricingResolution,
     );
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${next.runId}/manifest.json`;
@@ -13872,6 +13849,247 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
+  it.each(["identity", "gzip", "zstd"] as const)(
+    "saves large Pi %s history and transfers the next turn without API history or resource IO",
+    async (encoding) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      let modelCalls = 0;
+      let resourceDownloads = 0;
+      server.use(
+        http.post("https://api.openai.com/v1/responses", () => {
+          modelCalls += 1;
+          return nativeCodexSseResponse(
+            piResponsesTextSse("unexpected API answer", modelCalls),
+          );
+        }),
+        http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, () => {
+          resourceDownloads += 1;
+          return HttpResponse.json(
+            { error: "API resources unavailable" },
+            { status: 503 },
+          );
+        }),
+      );
+      const queued = await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "/skill:long-session finish in sandbox",
+      });
+      await completeChatRunOk(
+        queued.anchor.runId,
+        queued.anchorClaim.sandboxHeaders,
+        { usagePricingResolution: queued.usagePricingResolution },
+      );
+      await flushWaitUntilForTest();
+      const { run } = queued;
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      const session = MemoryPiSession.create({
+        cwd: "/home/user/workspace",
+        id: run.threadId,
+      });
+      session.appendMessage({
+        role: "user",
+        content: "preserve the complete native history",
+        timestamp: 1,
+      });
+      session.appendMessage({
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "x".repeat(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+          },
+        ],
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      });
+      const raw = Buffer.from(session.toJsonl());
+      const encoded =
+        encoding === "gzip"
+          ? gzipSync(raw)
+          : encoding === "zstd"
+            ? zstdCompressSync(raw)
+            : raw;
+      const hash = createHash("sha256").update(raw).digest("hex");
+      expect(raw.length).toBeGreaterThan(PI_API_FIRST_TURN_SESSION_MAX_BYTES);
+      const invalidHash = createHash("sha256")
+        .update(randomUUID())
+        .digest("hex");
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: invalidHash,
+          rawSize: encoding === "identity" ? raw.length : 1,
+          encodedSize: encoded.length,
+          encoding,
+        },
+        claimed.sandboxHeaders,
+        [200],
+      );
+      const invalidSuffix =
+        encoding === "identity"
+          ? "blob"
+          : encoding === "gzip"
+            ? "blob.gz"
+            : "blob.zst";
+      checkpointObjects.set(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${invalidHash}.${invalidSuffix}`,
+        encoded,
+      );
+      const invalidCheckpoint = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: run.threadId,
+            cliAgentSessionHistoryHash: invalidHash,
+          },
+        },
+        claimed.sandboxHeaders,
+        [400],
+        undefined,
+        queued.usagePricingResolution,
+      );
+      expect(JSON.stringify(invalidCheckpoint.body)).toContain(
+        encoding === "identity"
+          ? "[PI_H2_HASH_MISMATCH]"
+          : "[PI_H2_DECOMPRESSION_FAILED]",
+      );
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "running",
+      });
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash,
+          rawSize: raw.length,
+          encodedSize: encoded.length,
+          encoding,
+        },
+        claimed.sandboxHeaders,
+        [200],
+      );
+      const suffix =
+        encoding === "identity"
+          ? "blob"
+          : encoding === "gzip"
+            ? "blob.gz"
+            : "blob.zst";
+      const blobKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${hash}.${suffix}`;
+      checkpointObjects.set(blobKey, encoded);
+      const completed = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: run.threadId,
+            cliAgentSessionHistoryHash: hash,
+          },
+        },
+        claimed.sandboxHeaders,
+        [200],
+        undefined,
+        queued.usagePricingResolution,
+      );
+      expect(completed.body).toStrictEqual({
+        success: true,
+        status: "completed",
+      });
+      await flushWaitUntilForTest();
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "completed",
+      });
+      const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
+      const resumed = await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: run.threadId,
+          prompt: "continue the long session",
+          model: "gpt-5.6-terra",
+        },
+        queued.usagePricingResolution,
+      );
+      await flushWaitUntilForTest();
+      const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      const manifest = piApiFirstTurnManifestSchema.parse(
+        JSON.parse(
+          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
+        ),
+      );
+      expect(manifest).toMatchObject({
+        schemaVersion: 4,
+        mode: "sandbox-first",
+        outcome: "ownership-transfer",
+        baseSession: { sessionId: run.threadId, sha256: hash },
+        session: { sessionId: run.threadId, sha256: hash, rawSize: raw.length },
+        history: {
+          encoding,
+          encodedSize: encoded.length,
+          url: expect.any(String),
+        },
+        sandboxEventSequenceStart: 1,
+      });
+      if (manifest.schemaVersion !== 4) {
+        throw new Error("Expected a referenced sandbox checkpoint");
+      }
+      expect(new URL(manifest.history.url).searchParams.get("object")).toBe(
+        blobKey,
+      );
+      expect(modelCalls).toBe(0);
+      expect(resourceDownloads).toBe(0);
+      expect(
+        context.mocks.s3.send.mock.calls
+          .slice(callsBeforeResume)
+          .some(([command]) => {
+            const candidate = command as PiCheckpointS3Command;
+            return (
+              candidate.constructor?.name === "GetObjectCommand" &&
+              piS3ObjectKey(candidate) === blobKey
+            );
+          }),
+      ).toBeFalsy();
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
+        ),
+      ).toBeFalsy();
+      const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
+      expect(resumedClaim.claim.resumeSession).toMatchObject({
+        sessionId: run.threadId,
+        historyRef: { hash, encoding, rawSize: raw.length },
+      });
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: resumed.runId,
+          hash: "f".repeat(64),
+          rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+          encodedSize: 1,
+          encoding,
+        },
+        resumedClaim.sandboxHeaders,
+        [400],
+      );
+      await cancelChatRun(actor, resumed.runId, resumedClaim.sandboxHeaders);
+    },
+    30_000,
+  );
+
   it.each([
     "/skill:handoff-skill first  argument\nsecond line",
     " \n\t/skill:handoff-skill first  argument\nsecond line",
@@ -13926,7 +14144,6 @@ describe("CHAT-02: model-first provider policies", () => {
               prompt: originalPrompt,
               model: "gpt-5.6-terra",
             },
-            "vm0",
             queued.usagePricingResolution,
           );
         }
@@ -14096,7 +14313,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "ordinary prose with /skill:handoff-skill later in the text",
           model: "gpt-5.6-terra",
         },
-        "vm0",
         queued.usagePricingResolution,
       );
       await flushWaitUntilForTest();
@@ -14611,7 +14827,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           runOptions: { codexServiceTier: "fast" },
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -14662,7 +14877,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           runOptions: { codexServiceTier: "fast" },
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -14993,7 +15207,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "hand a built-in DeepSeek tool response to Sandbox",
           model: selectedModel,
         },
-        "vm0",
         usagePricingResolution,
       );
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
@@ -15161,7 +15374,6 @@ describe("CHAT-02: model-first provider policies", () => {
           model: "gpt-5.6-terra",
           runOptions: { codexServiceTier: "fast" },
         },
-        "vm0",
         usagePricingResolution,
       );
     });
@@ -17692,7 +17904,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: "run with the selected built-in DeepSeek provider",
           model: "deepseek-v4-flash",
         },
-        "vm0",
         usagePricingResolution,
       );
       runId = run.runId;
@@ -18331,10 +18542,36 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it.each(
     [
+      ...[
+        "refresh_token_reused",
+        "refresh_token_expired",
+        "refresh_token_invalidated",
+      ].map((refreshErrorCode) => {
+        return {
+          name: refreshErrorCode,
+          failureReason: "reconnect_required" as const,
+          errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+          refreshErrorCode,
+          expectedReconnect: true,
+          expired: true,
+          providerCalls: 0,
+        };
+      }),
       {
-        name: "reconnect-required refresh",
+        name: "unknown refresh failure",
         failureReason: "reconnect_required" as const,
         errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+        refreshErrorCode: "new_provider_error",
+        expectedReconnect: false,
+        expired: true,
+        providerCalls: 0,
+      },
+      {
+        name: "transient refresh failure",
+        failureReason: undefined,
+        errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+        refreshErrorCode: null,
+        expectedReconnect: false,
         expired: true,
         providerCalls: 0,
       },
@@ -18342,6 +18579,8 @@ describe("CHAT-02: run-level model overrides", () => {
         name: "subscription usage limit",
         failureReason: "usage_limit" as const,
         errorCode: "PI_API_MODEL_FAILED",
+        refreshErrorCode: null,
+        expectedReconnect: false,
         expired: false,
         providerCalls: 1,
       },
@@ -18353,6 +18592,7 @@ describe("CHAT-02: run-level model overrides", () => {
   )(
     "classifies a $name with tier $tier without replay, billing, or private diagnostics",
     async (scenario) => {
+      mockOptionalEnv("OKOU_DEBUG", "webhook:firewall-auth,pi-api-first-turn");
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const privateMarker = `private-${scenario.failureReason}-diagnostic`;
       const externalAccountId = `chat-${scenario.failureReason}-account`;
@@ -18392,18 +18632,18 @@ describe("CHAT-02: run-level model overrides", () => {
         throw new Error("Expected subscription auth to complete");
       }
       let refreshAttempts = 0;
-      if (scenario.failureReason === "reconnect_required") {
+      if (scenario.expired) {
         server.use(
           http.post("https://auth.openai.com/oauth/token", () => {
             refreshAttempts += 1;
             return HttpResponse.json(
               {
                 error: {
-                  code: "refresh_token_invalidated",
+                  code: scenario.refreshErrorCode ?? "server_error",
                   message: privateMarker,
                 },
               },
-              { status: 401 },
+              { status: scenario.refreshErrorCode === null ? 503 : 401 },
             );
           }),
         );
@@ -18453,14 +18693,44 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(modelCalls).toBe(scenario.providerCalls);
       expect(refreshAttempts).toBe(scenario.expired ? 1 : 0);
       expect(oauth.oauthToken).toHaveLength(1);
+      if (scenario.expectedReconnect) {
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        for (const log of [
+          context.mocks.axiomLogging.debug,
+          context.mocks.axiomLogging.info,
+        ]) {
+          expect(log).not.toHaveBeenCalledWith(
+            "codex-oauth-token token refresh failed",
+            expect.anything(),
+          );
+          expect(log).not.toHaveBeenCalledWith(
+            "Pi API first-turn outcome",
+            expect.objectContaining({
+              runId: run.runId,
+              outcome: "terminal_failure",
+            }),
+          );
+        }
+      } else {
+        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+          "Pi API first-turn outcome",
+          expect.objectContaining({
+            runId: run.runId,
+            outcome: "terminal_failure",
+            reason: scenario.errorCode,
+          }),
+        );
+      }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          eventType: "run.failed",
-          runId: run.runId,
-          failureReason: scenario.failureReason,
-        }),
-      );
+      const failureEvent = events.find((event) => {
+        return event.eventType === "run.failed" && event.runId === run.runId;
+      });
+      if (failureEvent?.eventType !== "run.failed") {
+        throw new Error("Expected the subscription run failure event");
+      }
+      expect(failureEvent.failureReason).toBe(scenario.failureReason);
       const publicState = JSON.stringify({
         failed,
         events,
@@ -18484,6 +18754,30 @@ describe("CHAT-02: run-level model overrides", () => {
         capabilities: { piModelConfigGenerations: [1, 2, 3] },
       });
       expectApiError(claim.body);
+      if (scenario.expectedReconnect) {
+        const repeated = await sendChatRun(actor, {
+          agentId,
+          prompt: "retry the terminal subscription account",
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: scenario.tier },
+        });
+        await waitForRunStatus(actor, repeated.runId, "failed", 10_000);
+        await flushWaitUntilForTest();
+        expect(refreshAttempts).toBe(1);
+        expect(modelCalls).toBe(0);
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        expect(
+          (await chat.listThreadEvents(actor, repeated.threadId)).events,
+        ).toContainEqual(
+          expect.objectContaining({
+            eventType: "run.failed",
+            runId: repeated.runId,
+            failureReason: "reconnect_required",
+          }),
+        );
+      }
     },
     90_000,
   );
@@ -23339,26 +23633,22 @@ describe("CHAT-02: generation templates and attachments", () => {
     const filename = "legacy-brand.txt";
     chat.mockCompletedUploadObject(actor, fileId, filename, 24);
 
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "read the legacy attachment",
-        userMessage: {
-          version: 1,
-          parts: [
-            {
-              type: "file",
-              fileId,
-              filenameSnapshot: filename,
-              contentType: "text/plain",
-            },
-            { type: "text", text: "read the legacy attachment" },
-          ],
-        },
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read the legacy attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: filename,
+            contentType: "text/plain",
+          },
+          { type: "text", text: "read the legacy attachment" },
+        ],
       },
-      "okou",
-    );
+    });
     await flushWaitUntilForTest();
 
     const catalog = await chat.listArtifactCatalog(actor, {
@@ -23607,14 +23897,10 @@ describe("CHAT-02: default assistant identity", () => {
       throw new Error("Expected the system default agent to exist");
     }
 
-    const anchor = await sendChatRun(
-      actor,
-      {
-        agentId: defaultAgentId,
-        prompt: "start an Okou run",
-      },
-      "okou",
-    );
+    const anchor = await sendChatRun(actor, {
+      agentId: defaultAgentId,
+      prompt: "start an Okou run",
+    });
     const anchorRun = await api.readRun(actor, anchor.runId);
     expect(anchorRun.appendSystemPrompt).toContain("Your name is Okou.");
 
@@ -23635,7 +23921,6 @@ describe("CHAT-02: default assistant identity", () => {
         clientEventId: queuedEventId,
       },
       [201],
-      { publicBrand: "okou" },
     );
     if (queued.status !== 201) {
       throw new Error("Expected the Okou follow-up to enter the chat queue");
@@ -23654,9 +23939,6 @@ describe("CHAT-02: default assistant identity", () => {
       contextType: "web",
       contextId: "0bdfae9e-63be-43dd-8193-a96e07787c20",
     });
-    // The previous strict raw-row reader accepts this event because the new
-    // context uses existing outer fields and does not widen payload JSONB.
-    expect(rawQueuedEvent.payload).not.toHaveProperty("publicBrand");
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -23695,11 +23977,10 @@ describe("CHAT-02: default assistant identity", () => {
       displayName: "Zero",
       visibility: "private",
     });
-    const customRun = await sendChatRun(
-      actor,
-      { agentId: customZero.agentId, prompt: "keep my custom name" },
-      "okou",
-    );
+    const customRun = await sendChatRun(actor, {
+      agentId: customZero.agentId,
+      prompt: "keep my custom name",
+    });
     const customPrompt = (await api.readRun(actor, customRun.runId))
       .appendSystemPrompt;
     expect(customPrompt).toContain("Your name is Zero.");
@@ -23751,14 +24032,10 @@ describe("CHAT-02: default assistant identity", () => {
       ),
     );
 
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "deliver an Okou GitHub response",
-      },
-      "okou",
-    );
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "deliver an Okou GitHub response",
+    });
     const claim = await claimChatRun(runnerGroup, run.runId);
     await setChatCallbackGitHubDeliveryFixture({
       runId: run.runId,

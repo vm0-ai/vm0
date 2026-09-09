@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.28.4"
+version = "0.29.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -302,9 +302,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "1.145.0"
+version = "1.146.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0e6320417a37c8a62f78b443d0b4cf628b57cd340a09b0eb56173d47cc94e93"
+checksum = "37b5ffaae346b9bd486ebdc3eb7053ec8ab8a1ad0f19a332eefeff036ed559e6"
 dependencies = [
  "arc-swap",
  "aws-credential-types",
@@ -955,7 +955,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-mock"
-version = "0.21.139"
+version = "0.21.140"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -982,7 +982,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "codex-mock"
-version = "0.10.29"
+version = "0.10.30"
 dependencies = [
  "chrono",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.86.20"
+version = "0.86.22"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.13.6"
+version = "0.13.7"
 dependencies = [
  "api-contracts",
  "base64 0.23.1",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "guest-control-client"
-version = "0.19.4"
+version = "0.19.6"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -1747,15 +1747,16 @@ dependencies = [
 
 [[package]]
 name = "guest-control-proto"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "guest-control-server"
-version = "0.20.4"
+version = "0.20.5"
 dependencies = [
+ "chrono",
  "guest-contracts",
  "guest-control-proto",
  "libc",
@@ -1763,11 +1764,12 @@ dependencies = [
  "serde_json",
  "shell-quote",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]
 name = "guest-control-tests"
-version = "0.10.4"
+version = "0.10.6"
 dependencies = [
  "guest-control-client",
  "guest-control-proto",
@@ -1782,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.245"
+version = "0.16.246"
 dependencies = [
  "guest-contracts",
  "guest-control-server",
@@ -1801,7 +1803,7 @@ dependencies = [
 
 [[package]]
 name = "guest-storage-apply"
-version = "0.23.71"
+version = "0.23.73"
 dependencies = [
  "flate2",
  "guest-contracts",
@@ -1817,7 +1819,7 @@ dependencies = [
 
 [[package]]
 name = "guest-telemetry"
-version = "0.3.67"
+version = "0.3.68"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1829,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "guest-tool-exec"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1850,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.145"
+version = "0.1.146"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -2081,9 +2083,9 @@ dependencies = [
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "707114b52a152fa7bdb290cd7cd5912d9467273b6d74e21b8d81aca1f8533f6b"
+checksum = "27f864f10dfb56725ce5ce5472bc52252c8f93a4ab86327122cebf62c5f59a17"
 dependencies = [
  "ctutils",
  "subtle",
@@ -3246,11 +3248,11 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reqwest"
-version = "0.13.4"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
+checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "futures-core",
  "http 1.5.0",
@@ -3363,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.188.17"
+version = "0.189.0"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3436,7 +3438,7 @@ dependencies = [
 
 [[package]]
 name = "runner-rpc-client"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "libc",
  "runner-rpc-proto",
@@ -3447,7 +3449,7 @@ dependencies = [
 
 [[package]]
 name = "runner-rpc-proto"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3692,7 +3694,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.22.1"
+version = "0.22.3"
 dependencies = [
  "async-trait",
  "serde",
@@ -3706,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-firecracker"
-version = "0.40.4"
+version = "0.40.6"
 dependencies = [
  "async-trait",
  "clap",
@@ -3739,7 +3741,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.10.26"
+version = "0.10.28"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3987,7 +3989,7 @@ dependencies = [
 
 [[package]]
 name = "session-history-selector"
-version = "0.3.81"
+version = "0.3.82"
 dependencies = [
  "guest-contracts",
  "proptest",
@@ -5312,18 +5314,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.56"
+version = "0.8.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb"
+checksum = "d35102a9f36d089ccae9e4c6802bc118be4487b80aaffc0ab4e0cf5ce92d2873"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.56"
+version = "0.8.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2ab42fc20575779bd240faa45f94a74256f755c0fa9e89f0ede20d91d0cdfc1"
+checksum = "146c01f5ab44258da43cf276c74a2763db2ff3969c9c652c3f2de07041d0b2bc"
 dependencies = [
  "proc-macro2",
  "quote",

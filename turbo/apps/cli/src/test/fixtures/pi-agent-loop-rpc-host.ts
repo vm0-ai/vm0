@@ -17,3 +17,11 @@ await runPiSandboxAgentLoop({
   sessionDir,
   memoryRoot: process.argv[4],
 });
+
+const completionBarrierUrl = process.argv[5];
+if (completionBarrierUrl) {
+  const response = await fetch(completionBarrierUrl, { method: "POST" });
+  if (!response.ok) {
+    throw new Error("The maintenance completion barrier failed");
+  }
+}

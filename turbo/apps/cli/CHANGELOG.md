@@ -1,5 +1,73 @@
 # Changelog
 
+## [9.319.0](https://github.com/vm0-ai/vm0/compare/cli-v9.318.5...cli-v9.319.0) (2026-09-09)
+
+
+### Features
+
+* **pi:** prepare native claude consumers and accounting ([#32835](https://github.com/vm0-ai/vm0/issues/32835)) ([31133fc](https://github.com/vm0-ai/vm0/commit/31133fc7ba5eeecbc1c8a0cda32f16f1ff2b4602))
+
+
+### Bug Fixes
+
+* **cli:** reject conflicting run-bound connector agent selectors ([#32844](https://github.com/vm0-ai/vm0/issues/32844)) ([1c5fe7b](https://github.com/vm0-ai/vm0/commit/1c5fe7bcf02ff884413a36475ada06c40533db1e))
+
+
+### Refactoring
+
+* **pi-memory:** stop maintenance journal production and forwarding ([#32805](https://github.com/vm0-ai/vm0/issues/32805)) ([46576db](https://github.com/vm0-ai/vm0/commit/46576dbbca793e345e9b20e56618b998c3a8b629))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.420.0
+    * @okouai/core bumped to 8.641.1
+    * @okouai/pi-agent-runtime bumped to 1.24.0
+
+## [9.318.5](https://github.com/vm0-ai/vm0/compare/cli-v9.318.4...cli-v9.318.5) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.419.0
+    * @okouai/connectors bumped to 3.8.6
+    * @okouai/core bumped to 8.641.0
+    * @okouai/pi-agent-runtime bumped to 1.23.8
+
+## [9.318.4](https://github.com/vm0-ai/vm0/compare/cli-v9.318.3...cli-v9.318.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** cap chat search at 25 and bound sparse keyword scans ([#32767](https://github.com/vm0-ai/vm0/issues/32767)) ([0e7fdb7](https://github.com/vm0-ai/vm0/commit/0e7fdb77c421152675528b82feeb698fd95b29d6))
+
+
+### Refactoring
+
+* finish brand retirement cleanup ([#32728](https://github.com/vm0-ai/vm0/issues/32728)) ([6254182](https://github.com/vm0-ai/vm0/commit/62541820a08410060d6cfde83887e17fa7a86429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.418.2
+    * @okouai/core bumped to 8.640.1
+    * @okouai/pi-agent-runtime bumped to 1.23.7
+
+## [9.318.3](https://github.com/vm0-ai/vm0/compare/cli-v9.318.2...cli-v9.318.3) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.640.0
+
 ## [9.318.2](https://github.com/vm0-ai/vm0/compare/cli-v9.318.1...cli-v9.318.2) (2026-09-09)
 
 

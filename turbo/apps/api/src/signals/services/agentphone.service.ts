@@ -22,7 +22,7 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
 import { now } from "../../lib/time";
 import {
@@ -70,7 +70,6 @@ import {
 } from "./user-data.service";
 
 const MAX_CONNECT_AGE_SECONDS = 600;
-const LEGACY_CONNECT_CUTOFF_ENV = "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS";
 const MAX_WEBHOOK_AGE_SECONDS = 300;
 const SIGNATURE_PREFIX = "sha256=";
 const MAX_CONTEXT_MESSAGES = 10;
@@ -128,7 +127,7 @@ type LinkAgentPhoneUserResult =
   | { readonly ok: true; readonly userLink: AgentPhoneUserLink }
   | {
       readonly ok: false;
-      readonly reason: "phone-handle-linked" | "vm0-org-linked" | "conflict";
+      readonly reason: "phone-handle-linked" | "org-linked" | "conflict";
       readonly userLink?: AgentPhoneUserLink;
     };
 
@@ -236,32 +235,14 @@ function safeHexSignatureEqual(expected: string, actual: string): boolean {
   return timingSafeEqual(expectedBuffer, signatureBuffer);
 }
 
-function isLegacyBrandlessAgentPhoneConnectAllowed(timestamp: number): boolean {
-  const configured = optionalEnv(LEGACY_CONNECT_CUTOFF_ENV);
-  if (configured === undefined) {
-    return false;
-  }
-  const cutoff = Number(configured);
-  if (!Number.isSafeInteger(cutoff) || cutoff <= 0) {
-    return false;
-  }
-
-  // Old Platform -> new API rollout compatibility: old web/app clients can stay
-  // active for about two days and can omit both brand fields. Accept only links
-  // issued at or before the operator cutoff; newer stripped links fail closed.
-  // Remove with #27750 after the client floor excludes the old Platform and the
-  // final cutoff-eligible link's ten-minute TTL has elapsed.
-  return timestamp <= cutoff;
-}
-
 export function verifyAgentPhoneConnectSignature(params: {
   readonly phoneHandle: string;
   readonly agentphoneAgentId: string;
   readonly timestamp: number;
   readonly channel: AgentPhoneChannel;
   readonly signature: string;
-  readonly publicBrand?: PublicBrand;
-  readonly publicBrandSignature?: string;
+  readonly publicBrand: PublicBrand;
+  readonly publicBrandSignature: string;
   readonly secret: string;
 }): boolean {
   const nowSeconds = Math.floor(now() / 1000);
@@ -277,19 +258,6 @@ export function verifyAgentPhoneConnectSignature(params: {
     secret: params.secret,
   });
   if (!safeHexSignatureEqual(expected, params.signature)) {
-    return false;
-  }
-
-  if (
-    params.publicBrand === undefined &&
-    params.publicBrandSignature === undefined
-  ) {
-    return isLegacyBrandlessAgentPhoneConnectAllowed(params.timestamp);
-  }
-  if (
-    params.publicBrand === undefined ||
-    params.publicBrandSignature === undefined
-  ) {
     return false;
   }
 
@@ -451,7 +419,7 @@ export async function linkAgentPhoneUser(
 
     return {
       ok: false,
-      reason: "vm0-org-linked",
+      reason: "org-linked",
       userLink: existingUserOrgLink,
     };
   }
@@ -1160,7 +1128,6 @@ async function handleConnectCommand(
   args: {
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1181,7 +1148,6 @@ async function handleDisconnectCommand(
     readonly db: Db;
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1211,7 +1177,6 @@ async function handleNewSessionCommand(
     readonly db: Db;
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1425,7 +1390,6 @@ const dispatchAgentPhoneCommand$ = command(
       readonly command: string | undefined;
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -1435,7 +1399,6 @@ const dispatchAgentPhoneCommand$ = command(
           {
             event: args.event,
             userLink: args.userLink,
-            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1447,7 +1410,6 @@ const dispatchAgentPhoneCommand$ = command(
             db: args.db,
             event: args.event,
             userLink: args.userLink,
-            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1459,7 +1421,6 @@ const dispatchAgentPhoneCommand$ = command(
             db: args.db,
             event: args.event,
             userLink: args.userLink,
-            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1503,7 +1464,6 @@ const handleAgentPhoneCommandIfPresent$ = command(
       readonly db: Db;
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -1533,7 +1493,6 @@ const handleAgentPhoneCommandIfPresent$ = command(
         command: commandText,
         event: args.event,
         userLink: args.userLink,
-        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -1787,7 +1746,6 @@ export const handleAgentPhoneMessage$ = command(
           db,
           event: params.event,
           userLink: params.userLink,
-          publicBrand: params.publicBrand,
         },
         signal,
       )

@@ -30,6 +30,7 @@ from tests.aws_sigv4_helpers import (
     aws_sigv4_authorization,
     resolved_aws_sigv4_credentials,
 )
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.mitmproxy_http_framing_helpers import (
@@ -157,15 +158,10 @@ async def test_http2_headers_only_sigv4_request_uses_zero_byte_admission(
     tmp_path: Path,
 ) -> None:
     registry_path = _write_aws_sigv4_firewall_registry(tmp_path)
-    token_meta = {
-        "headers": {},
-        "aws_sigv4": resolved_aws_sigv4_credentials(),
-        "resolved_secrets": [],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers={},
+        aws_sigv4=resolved_aws_sigv4_credentials(),
+    )
     get_headers = AsyncMock(return_value=token_meta)
 
     with (
@@ -264,15 +260,11 @@ async def test_headers_only_auth_base_request_without_length_is_forwarded(
     method: Literal["GET", "HEAD"],
 ) -> None:
     registry_path = _write_auth_base_firewall_registry(tmp_path)
-    token_meta = {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers={},
+        base="https://real.example.com/webhook",
+        resolved_secrets=["WEBHOOK_URL"],
+    )
 
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),

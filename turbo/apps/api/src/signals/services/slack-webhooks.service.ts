@@ -376,10 +376,7 @@ function buildOrgConnectUrl(
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
-function buildNotInstalledMessage(
-  publicBrand: PublicBrand,
-  detail?: string,
-): unknown[] {
+function buildNotInstalledMessage(detail?: string): unknown[] {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
@@ -1375,7 +1372,6 @@ export const handleSlackCommands$ = command(
       if (!installation) {
         return ephemeral(
           buildNotInstalledMessage(
-            publicBrand,
             `The ${OFFICIAL_SLACK_APP_NAME} Slack app hasn't been set up for this workspace yet. An org admin can complete the setup from the platform.`,
           ),
         );
@@ -1401,7 +1397,7 @@ export const handleSlackCommands$ = command(
     }
 
     if (!installation) {
-      return ephemeral(buildNotInstalledMessage(publicBrand));
+      return ephemeral(buildNotInstalledMessage());
     }
 
     if (subCommand === "disconnect") {

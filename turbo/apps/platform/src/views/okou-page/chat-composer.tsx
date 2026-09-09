@@ -298,6 +298,7 @@ import {
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
+import { ComposerPresentationOptions } from "./composer-presentation-options.tsx";
 import {
   localizedWorkflowTemplate,
   localizedWorkflowTemplateCategory,
@@ -4619,9 +4620,11 @@ function IllustrationTemplateGrid({
 function PptImportCard({
   signals,
   onImported,
+  compact = false,
 }: {
   signals: ComposerSignals;
   onImported: () => void;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
@@ -4639,6 +4642,7 @@ function PptImportCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "block aspect-video bg-muted/40 transition-colors duration-150 group-hover/tile:bg-muted/60 group-active/tile:bg-muted/80 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+          compact && "bg-gray-50 group-hover/tile:bg-state-hover",
         )}
       >
         <Plus
@@ -4666,7 +4670,12 @@ function PptImportCard({
           }}
         />
       </span>
-      <span className={TEMPLATE_TILE_CAPTION}>
+      <span
+        className={cn(
+          TEMPLATE_TILE_CAPTION,
+          compact && "flex-col items-stretch gap-0.5",
+        )}
+      >
         <span className={TEMPLATE_TILE_NAME}>{label}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {t(($) => {
@@ -5795,6 +5804,134 @@ function useImportedPresentationTemplates(
   });
 }
 
+function ComposerPresentationSuggestion({
+  title,
+  children,
+  onSelect,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="quiet"
+      className="group/tile block h-auto min-w-0 rounded-xl p-0 text-left font-normal hover:bg-gray-50"
+      onClick={onSelect}
+    >
+      <span
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "block aspect-video group-hover/tile:opacity-90",
+        )}
+      >
+        {children}
+      </span>
+      <span className={cn(TEMPLATE_TILE_CAPTION, "block")}>
+        <span className={cn(TEMPLATE_TILE_NAME, "block")} title={title}>
+          {title}
+        </span>
+      </span>
+    </Button>
+  );
+}
+
+export function ComposerPresentationRecommendations({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const picker = useComposerTemplatePicker(signals);
+  const imported = useImportedPresentationTemplatePickerItems(signals).slice(
+    0,
+    3,
+  );
+  const builtIn = PRESENTATION_TEMPLATE_PICKER_ITEMS.slice(
+    0,
+    3 - imported.length,
+  );
+  const openTemplates = useSet(signals.template.openTemplatePicker$);
+  const setMode = useSet(signals.create.setMode$);
+  return (
+    <div
+      className="flex flex-col gap-2"
+      role="group"
+      aria-label={t(($) => {
+        return $.chat.taskChips.presentationTemplates;
+      })}
+    >
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="quiet"
+          size="xs"
+          className="font-normal hover:bg-gray-50"
+          onClick={() => {
+            openTemplates({ kind: "insert", category: "slides" });
+          }}
+        >
+          {t(($) => {
+            return $.chat.taskChips.moreTemplates;
+          })}
+        </Button>
+      </div>
+      <div className="grid min-w-0 grid-cols-2 items-start gap-4 sm:grid-cols-4">
+        <PptImportCard
+          signals={signals}
+          compact
+          onImported={() => {
+            setMode(null);
+          }}
+        />
+        {imported.map(({ imageBuffers, template }) => {
+          return (
+            <ComposerPresentationSuggestion
+              key={template.id}
+              title={template.title}
+              onSelect={() => {
+                picker.onChange(
+                  toImportedPresentationGenerationTemplate(template),
+                );
+              }}
+            >
+              <ImportedPptImage
+                imageSignals={imageBuffers.card}
+                label=""
+                loading="eager"
+                fetchPriority="high"
+                size={TEMPLATE_CARD_PREVIEW_SIZE}
+                placeholder={<ImageIcon size={24} aria-hidden />}
+                className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover"
+              />
+            </ComposerPresentationSuggestion>
+          );
+        })}
+        {builtIn.map((item) => {
+          return (
+            <ComposerPresentationSuggestion
+              key={item.slug}
+              title={item.title}
+              onSelect={() => {
+                picker.onChange(toPresentationGenerationTemplate(item));
+              }}
+            >
+              <img
+                src={presentationTemplateCardSlideImage(item, 0)}
+                alt=""
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            </ComposerPresentationSuggestion>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PptTemplateGrid({
   items,
   runtime,
@@ -6899,7 +7036,7 @@ function ConnectorTriggerIcons({
               (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background okou-border sm:h-7 sm:w-7">
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
               ) : (
@@ -6915,14 +7052,14 @@ function ConnectorTriggerIcons({
       })}
       {hasComputerUse && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background text-brand-text sm:h-7 sm:w-7">
             <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background text-brand-text sm:h-7 sm:w-7">
             <Globe size={16} />
           </span>
         </span>
@@ -10527,6 +10664,7 @@ function ComposerFooter({
                 the model picker: it configures the message being written,
                 not which model the composer points at. */}
             <ComposerVideoOptionsChip signals={signals} />
+            <ComposerPresentationOptions signals={signals} />
           </div>
           <div
             className={cn(
@@ -10554,8 +10692,13 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
 
   return (
     <Card
+      data-slot="chat-composer-card"
       className={cn(
-        "okou-composer @container/composer relative z-10 overflow-visible",
+        // Paint focus on the existing border. A separately promoted border
+        // with a negative inset can snap differently from the card and SVGs.
+        "@container/composer relative z-10 overflow-visible rounded-3xl border-gray-400 bg-card shadow-[var(--okou-card-shadow)] transition-[border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] focus-within:border-surface-focus motion-reduce:transition-none",
+        "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:opacity-0 after:shadow-[var(--okou-composer-focus-veil)] after:transition-opacity after:duration-[220ms] after:ease-[cubic-bezier(0.4,0,0.2,1)] after:content-[''] focus-within:after:opacity-100 motion-reduce:after:transition-none",
+        "[@media(display-mode:standalone)]:[[data-chat-composer]_&]:scroll-mb-4",
         dragOver && "outline outline-2 outline-blue-400/60",
       )}
       onDrop={(event) => {

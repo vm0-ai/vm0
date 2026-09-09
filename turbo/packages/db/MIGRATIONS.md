@@ -32,6 +32,13 @@ expired transition validator must be deleted.
 
 ### Active transition validators
 
+- `scripts/test-goal-retirement-migration.ts` protects
+  `1093_goal_retirement_receipt` / `1094_archive_retired_goals` (#32797): real
+  PostgreSQL archival, settlement, ownership, transaction/retry and retention
+  behavior at the measured scale. Keep it through the deployed S5 contract in
+  #32653; retain surviving history invariants in permanent reader coverage.
+  See [the delivery and count-only acceptance guide](../../../docs/goal-retirement-archival.md).
+
 - `scripts/test-pi-memory-checkpoint-settlement.ts` protects migration
   `1079_pi_memory_checkpoint_settlement` (#31937): real PostgreSQL checks exact
   live legacy grandfathering, valid sandbox leases, unsafe-shape rollback and

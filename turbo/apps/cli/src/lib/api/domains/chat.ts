@@ -104,7 +104,6 @@ export async function searchChat(options: {
   keyword: string;
   agentId?: string;
   since?: number;
-  limit?: number;
 }): Promise<ChatSearchResponse> {
   const config = await getClientConfig();
   const client = initClient(chatSearchContract, config);
@@ -113,7 +112,6 @@ export async function searchChat(options: {
       keyword: options.keyword,
       agentId: options.agentId,
       since: options.since,
-      limit: options.limit,
     },
   });
   if (result.status === 200) return result.body;

@@ -577,6 +577,11 @@
       "unavailable": "Pratinjau {{kind}} tidak tersedia.",
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Bagikan ke organisasi",
+      "sharePublic": "Bagikan ke publik",
+      "unavailable": "Artefak ini tidak tersedia atau Anda tidak memiliki akses."
+    },
     "sidebar": {
       "openSharedConversation": "Buka percakapan yang dibagikan",
       "panelTitle": "Artefak",
@@ -1884,6 +1889,9 @@
         "presentationPlaceholder": "Apa topik presentasi Anda?",
         "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "slideCount": "Jumlah slide",
+        "slideCountAuto": "Otomatis",
+        "slideCountRange": "{{range}} slide",
         "title": "Buat",
         "video": "Buat video",
         "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
@@ -1969,10 +1977,7 @@
         "emptyCustomTitle": "Belum ada konektor kustom",
         "emptyYoursBody": "Hubungkan aplikasi dan Okou dapat membaca serta bertindak di dalamnya untuk Anda.",
         "emptyYoursTitle": "Anda belum menghubungkan apa pun",
-        "keyMove": "pindah",
-        "keyOpen": "buka",
         "matchCount_other": "{{count}} hasil",
-        "matchedOn": "Dicocokkan dengan nama, deskripsi, dan tag",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "Perlu perhatian",
         "noResultsBody": "Coba nama produk, atau buat sendiri dari API atau server MCP.",
@@ -2331,6 +2336,199 @@
       "openTemplatesAria": "Jelajahi templat",
       "startWithPrompt": "Buat",
       "templates": "Templat"
+    },
+    "taskChips": {
+      "chooseTask": "Pilih tugas",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Desain undangan ulang tahun",
+            "prompt": "Desain undangan ulang tahun"
+          },
+          "brandCharacter": {
+            "label": "Buat karakter untuk merek saya",
+            "prompt": "Buat karakter untuk merek saya"
+          },
+          "businessLogo": {
+            "label": "Buat logo untuk bisnis saya",
+            "prompt": "Buat logo untuk bisnis saya"
+          },
+          "cafeMenu": {
+            "label": "Desain menu untuk kafe saya",
+            "prompt": "Desain menu untuk kafe saya"
+          },
+          "eventPoster": {
+            "label": "Desain poster untuk acara saya",
+            "prompt": "Desain poster untuk acara saya"
+          },
+          "finishedSketch": {
+            "label": "Ubah sketsa saya menjadi visual jadi",
+            "prompt": "Ubah sketsa saya menjadi visual jadi"
+          },
+          "greetingCard": {
+            "label": "Buat kartu ucapan pribadi",
+            "prompt": "Buat kartu ucapan pribadi"
+          },
+          "headshot": {
+            "label": "Buat foto profil profesional",
+            "prompt": "Buat foto profil profesional"
+          },
+          "infographic": {
+            "label": "Ubah ide menjadi infografik",
+            "prompt": "Ubah ide menjadi infografik"
+          },
+          "newsletterCover": {
+            "label": "Buat sampul untuk buletin saya",
+            "prompt": "Buat sampul untuk buletin saya"
+          },
+          "packaging": {
+            "label": "Jelajahi kemasan untuk produk saya",
+            "prompt": "Jelajahi kemasan untuk produk saya"
+          },
+          "photoLighting": {
+            "label": "Perbaiki pencahayaan foto saya",
+            "prompt": "Perbaiki pencahayaan foto saya"
+          },
+          "presentationVisual": {
+            "label": "Buat visual untuk presentasi saya",
+            "prompt": "Buat visual untuk presentasi saya"
+          },
+          "productScene": {
+            "label": "Tempatkan produk saya dalam suasana baru",
+            "prompt": "Tempatkan produk saya dalam suasana baru"
+          },
+          "profileBanner": {
+            "label": "Perbarui banner profil saya",
+            "prompt": "Perbarui banner profil saya"
+          },
+          "roomDesign": {
+            "label": "Coba tampilan baru untuk kamar saya",
+            "prompt": "Coba tampilan baru untuk kamar saya"
+          },
+          "storePhoto": {
+            "label": "Siapkan foto untuk toko saya",
+            "prompt": "Siapkan foto untuk toko saya"
+          },
+          "websiteImage": {
+            "label": "Buat gambar untuk situs saya",
+            "prompt": "Buat gambar untuk situs saya"
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "Ubah foto menjadi video",
+            "prompt": "Animasikan foto yang saya berikan dengan gerakan alami. Pertahankan ciri subjek dan tanyakan bagian yang perlu bergerak."
+          },
+          "brandIntro": {
+            "label": "Buat pembuka untuk merek saya",
+            "prompt": "Buat video pembuka singkat untuk merek saya dengan logo dan detail yang saya berikan. Bantu memilih suasananya."
+          },
+          "eventPromo": {
+            "label": "Promosikan acara saya",
+            "prompt": "Buat video promosi singkat untuk acara saya. Tanyakan acara, audiens, dan detail yang perlu disertakan."
+          },
+          "loopingBackground": {
+            "label": "Buat latar belakang berulang",
+            "prompt": "Buat video latar dengan gerakan lembut yang berulang tanpa jeda. Tanyakan adegan dan suasana yang saya inginkan."
+          },
+          "productDemo": {
+            "label": "Tampilkan produk saya dalam gerakan",
+            "prompt": "Buat video singkat dari foto produk saya. Pertahankan tampilannya dan tonjolkan fitur yang saya pilih."
+          },
+          "socialClip": {
+            "label": "Buat klip untuk media sosial",
+            "prompt": "Buat video singkat untuk media sosial. Bantu pilih pesan yang jelas dan gaya visual yang sesuai dengan audiens saya."
+          },
+          "videoGreeting": {
+            "label": "Buat video ucapan",
+            "prompt": "Buat video ucapan singkat untuk ulang tahun, hari raya, atau perayaan. Tanyakan acara, penerima, dan pesannya."
+          },
+          "visualExplainer": {
+            "label": "Jelaskan ide secara visual",
+            "prompt": "Buat video singkat yang memudahkan pemahaman satu ide. Tanyakan ide yang akan dijelaskan dan target audiensnya."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Buat halaman pemesanan layanan saya",
+            "prompt": "Buat halaman yang menjelaskan layanan saya dan cara memesan. Gunakan tautan pemesanan yang sudah ada dan tanyakan detail layanan."
+          },
+          "businessSite": {
+            "label": "Buat situs untuk bisnis saya",
+            "prompt": "Buat situs yang menjelaskan bisnis, layanan, dan cara menghubungi saya. Mulai dengan detail bisnis dan audiens."
+          },
+          "cafeMenu": {
+            "label": "Tampilkan menu kafe saya secara online",
+            "prompt": "Buat situs kafe dengan menu, harga, jam buka, dan lokasi. Gunakan detail dan foto yang saya berikan."
+          },
+          "coursePage": {
+            "label": "Buat halaman untuk kursus saya",
+            "prompt": "Buat halaman yang mengenalkan kursus, target peserta, hasil belajar, dan cara mendaftar melalui tautan yang saya berikan."
+          },
+          "eventPage": {
+            "label": "Buat halaman untuk acara saya",
+            "prompt": "Buat halaman acara dengan tanggal, lokasi, agenda, dan tautan pendaftaran yang saya berikan. Tanyakan detail yang belum tersedia."
+          },
+          "linkPage": {
+            "label": "Satukan tautan saya dalam satu halaman",
+            "prompt": "Buat halaman tautan sederhana dengan perkenalan, karya, dan akun sosial saya. Tanyakan tautan yang perlu disertakan."
+          },
+          "portfolio": {
+            "label": "Tampilkan karya saya dalam portofolio",
+            "prompt": "Buat situs portofolio untuk karya saya. Bantu susun proyek, perkenalan diri, dan informasi kontak."
+          },
+          "productLaunch": {
+            "label": "Luncurkan halaman untuk produk saya",
+            "prompt": "Buat halaman produk dengan manfaat, visual, dan langkah selanjutnya yang jelas. Tanyakan produk yang diluncurkan dan targetnya."
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "Dapatkan ringkasan email setiap pagi",
+            "prompt": "Ringkas email penting, balasan yang perlu dibuat, dan tugas setiap pagi. Konfirmasi kotak masuk dan waktu penerimaan terlebih dahulu."
+          },
+          "fileOrganization": {
+            "label": "Atur file yang baru masuk",
+            "prompt": "Atur file baru dengan aturan penamaan dan pengarsipan yang disepakati. Konfirmasi sumber, folder tujuan, dan kategori."
+          },
+          "meetingActions": {
+            "label": "Ubah catatan rapat menjadi tugas",
+            "prompt": "Saat catatan rapat baru tersedia, ambil tugas, penanggung jawab, dan tenggat. Tandai informasi yang belum ada dan konfirmasi lokasi catatan."
+          },
+          "meetingPrep": {
+            "label": "Bantu persiapkan rapat saya",
+            "prompt": "Sebelum rapat, siapkan informasi peserta, latar belakang, dan topik diskusi. Konfirmasi kalender, sumber materi, dan waktu pengingat."
+          },
+          "numbersBrief": {
+            "label": "Dapatkan ringkasan angka harian",
+            "prompt": "Rangkum angka yang saya pantau beserta perubahan sejak pembaruan terakhir setiap hari. Konfirmasi sumber data, metrik, dan waktu pengiriman."
+          },
+          "progressRecap": {
+            "label": "Rangkum progres dan langkah berikutnya",
+            "prompt": "Rangkum pekerjaan selesai, tugas tertunda, dan prioritas berikutnya secara rutin. Konfirmasi sumber catatan serta jadwal harian atau mingguan."
+          },
+          "replyWatch": {
+            "label": "Beri tahu saat email mendapat balasan",
+            "prompt": "Pantau balasan untuk satu email, lalu beri tahu saya dan rangkum isinya. Konfirmasi email yang perlu diikuti terlebih dahulu."
+          },
+          "topicUpdates": {
+            "label": "Ikuti kabar terbaru tentang suatu topik",
+            "prompt": "Ikuti topik yang saya minati dan rangkum informasi baru yang penting beserta sumbernya. Tanyakan topik dan frekuensi pembaruan."
+          }
+        }
+      },
+      "ideasLabel": "Ide untuk memulai",
+      "label": "Mulai tugas",
+      "moreIdeas": "Ide lainnya",
+      "moreTemplates": "Template lainnya",
+      "presentationTemplates": "Template presentasi",
+      "tasks": {
+        "image": "Gambar",
+        "presentation": "Slide",
+        "video": "Video",
+        "website": "Situs web",
+        "workflow": "Alur kerja"
+      }
     },
     "templates": {
       "categories": {

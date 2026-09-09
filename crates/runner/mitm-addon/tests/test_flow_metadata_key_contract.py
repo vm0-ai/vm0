@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import flow_metadata_key_linter
+import pytest
 
 _ADDON_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE_ROOT = _ADDON_ROOT / "tests" / "fixtures" / "flow_metadata_key_linter"
@@ -132,7 +133,8 @@ def test_check_flow_metadata_keys_cli_reports_configured_registry_path(tmp_path)
     assert result.stderr == ""
 
 
-def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_path):
+@pytest.mark.parametrize("wrapper", ["{}", "tuple(iter(list({})))"])
+def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_path, wrapper):
     addon_root = tmp_path / "mitm-addon"
     check_script = _copy_linter_scripts(addon_root)
     src_root = addon_root / "src"
@@ -153,8 +155,9 @@ def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_p
             for index in range(2, _COMPLEX_STAR_ARGS_BRANCH_COUNT)
         ],
     ]
+    iterable_source = wrapper.format("[\n" + "\n".join(starred_elements) + "\n]")
     (tests_root / "complex_star_args.py").write_text(
-        "flow.metadata.get(*[\n" + "\n".join(starred_elements) + "\n])\n",
+        f"flow.metadata.get(*{iterable_source})\n",
         encoding="utf-8",
     )
 
@@ -277,6 +280,17 @@ def test_registered_flow_metadata_guard_flags_static_starred_mapping_keys(tmp_pa
 
     assert _normalized_violations(source_path, violations) == _expected_lines(
         "static_starred_mapping_keys.expected.txt"
+    )
+
+
+def test_registered_flow_metadata_guard_preserves_wrapped_iterable_first_arguments(tmp_path):
+    source_path = tmp_path / "wrapped_iterable_first_arguments.py"
+    _write_python_source(source_path, "wrapped_iterable_first_arguments.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "wrapped_iterable_first_arguments.expected.txt"
     )
 
 

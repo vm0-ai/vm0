@@ -14,6 +14,7 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
@@ -31,6 +32,34 @@ interface SnapshotCompactionStats {
   readonly eventsApplied: number;
   readonly removedDeletedAgentThreads: number;
   readonly eventsPruned: number;
+}
+
+type SnapshotCompactionScope =
+  | { readonly kind: "global" }
+  | {
+      readonly kind: "fixtures";
+      readonly scopes: readonly {
+        readonly userId: string;
+        readonly orgId: string;
+      }[];
+    };
+
+function snapshotScopePredicate(
+  scope: SnapshotCompactionScope,
+  userId: SQLWrapper,
+  orgId: SQLWrapper,
+): SQL | undefined {
+  if (scope.kind === "global") {
+    return undefined;
+  }
+  if (scope.scopes.length === 0) {
+    return sql`false`;
+  }
+  return or(
+    ...scope.scopes.map((ownedScope) => {
+      return and(eq(userId, ownedScope.userId), eq(orgId, ownedScope.orgId));
+    }),
+  );
 }
 
 type SnapshotRootDb = Pick<Db, "execute" | "select" | "transaction">;
@@ -101,7 +130,11 @@ function allScopesCte(staleCutoff: Date): SQL {
   `;
 }
 
-function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
+function candidateScopesCte(
+  staleCutoff: Date,
+  batchSize: number,
+  scope: SnapshotCompactionScope,
+): SQL {
   return sql`
     candidate_scopes AS (
       SELECT
@@ -127,10 +160,13 @@ function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
         ORDER BY ${desc(event.seqId)}
         LIMIT 1
       ) latest_event ON true
-      WHERE ${or(
-        isNull(snapshot.userId),
-        isNotNull(sql`latest_event.id`),
-        lt(snapshot.updatedAt, staleCutoff),
+      WHERE ${and(
+        or(
+          isNull(snapshot.userId),
+          isNotNull(sql`latest_event.id`),
+          lt(snapshot.updatedAt, staleCutoff),
+        ),
+        snapshotScopePredicate(scope, sql`scope.user_id`, sql`scope.org_id`),
       )}
       ORDER BY
         ${asc(snapshot.updatedAt)} NULLS FIRST,
@@ -298,11 +334,12 @@ function compactChatThreadSnapshotBatchSql(
     readonly updatedAt: Date;
     readonly staleCutoff: Date;
     readonly batchSize: number;
+    readonly scope: SnapshotCompactionScope;
   },
 ): SQL {
   return sql`
     WITH ${allScopesCte(args.staleCutoff)},
-    ${candidateScopesCte(args.staleCutoff, args.batchSize)},
+    ${candidateScopesCte(args.staleCutoff, args.batchSize, args.scope)},
     ${rebuiltCte(db)},
     ${upsertedCte(args.updatedAt)}
     SELECT
@@ -319,6 +356,7 @@ function compactChatThreadSnapshotBatchSql(
 async function compactChatThreadSnapshotBatch(
   db: SnapshotRootDb,
   batchSize: number,
+  scope: SnapshotCompactionScope,
 ): Promise<Omit<SnapshotCompactionStats, "eventsPruned">> {
   const updatedAt = nowDate();
   const staleCutoff = new Date(
@@ -330,6 +368,7 @@ async function compactChatThreadSnapshotBatch(
       updatedAt,
       staleCutoff,
       batchSize,
+      scope,
     }),
     snapshotBatchRowSchema,
   );
@@ -341,15 +380,16 @@ async function compactChatThreadSnapshotBatch(
   };
 }
 
-async function compactChatThreadSnapshotsForAllScopes(
+async function compactChatThreadSnapshotsForScope(
   db: SnapshotRootDb,
+  scope: SnapshotCompactionScope,
   signal?: AbortSignal,
 ): Promise<SnapshotCompactionStats> {
   const snapshotBatchSize = chatThreadSnapshotBatchSize();
   const eventPruneBatchSize = chatThreadEventPruneBatchSize();
   const compacted = await db.transaction(
     async (tx) => {
-      return await compactChatThreadSnapshotBatch(tx, snapshotBatchSize);
+      return await compactChatThreadSnapshotBatch(tx, snapshotBatchSize, scope);
     },
     { isolationLevel: "repeatable read" },
   );
@@ -368,6 +408,7 @@ async function compactChatThreadSnapshotsForAllScopes(
             eq(snapshot.orgId, event.orgId),
           )}
         WHERE ${and(
+          snapshotScopePredicate(scope, event.userId, event.orgId),
           isNotNull(snapshot.latestEventSeqId),
           lt(event.createdAt, cutoff),
           lte(event.seqId, snapshot.latestEventSeqId),
@@ -402,7 +443,15 @@ async function compactChatThreadSnapshotsForAllScopes(
 }
 
 export const compactChatThreadSnapshots$ = command(
-  async ({ set }, signal: AbortSignal): Promise<SnapshotCompactionStats> => {
-    return await compactChatThreadSnapshotsForAllScopes(set(writeDb$), signal);
+  async (
+    { set },
+    scope: SnapshotCompactionScope,
+    signal: AbortSignal,
+  ): Promise<SnapshotCompactionStats> => {
+    return await compactChatThreadSnapshotsForScope(
+      set(writeDb$),
+      scope,
+      signal,
+    );
   },
 );

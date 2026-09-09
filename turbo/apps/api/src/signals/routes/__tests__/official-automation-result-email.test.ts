@@ -319,7 +319,6 @@ describe.sequential("Official Automation result email callbacks", () => {
       scenario.actor,
       sessionRunId,
       ["agent:write"],
-      "vm0",
     );
     const agentRun = await accept(
       automationsClient().run({

@@ -88,7 +88,7 @@ async fn sandbox_stop_kill_and_drop_remove_the_owned_endpoint() {
 
 #[tokio::test]
 async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_guest_rpc_request() {
-    for final_exec in [false, true] {
+    for (final_exec, blank) in [(false, false), (true, false), (false, true)] {
         let dir = tempfile::tempdir().unwrap();
         let mut sandbox = test_sandbox_with_state(SandboxState::Running);
         prepare_socket_paths(&mut sandbox, dir.path());
@@ -116,6 +116,8 @@ async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_guest_rpc_req
                 )
                 .await
                 .map(drop)
+        } else if blank {
+            sandbox.park_for_blank_pool().await.map(drop)
         } else {
             sandbox.park().await.map(drop)
         };
@@ -171,7 +173,12 @@ async fn park_rpc_sandbox(sandbox: &mut FirecrackerSandbox, peer: &mut UnixStrea
 
 #[tokio::test]
 async fn successful_park_variants_replace_the_rpc_epoch_before_guest_resume() {
-    for (final_exec, handoff) in [(false, false), (true, false), (true, true)] {
+    for (final_exec, handoff, blank) in [
+        (false, false, false),
+        (true, false, false),
+        (true, true, false),
+        (false, false, true),
+    ] {
         let dir = tempfile::tempdir().unwrap();
         let (mut sandbox, mut peer) = running_rpc_sandbox(dir.path()).await;
         let path = sandbox.sock_paths.guest_rpc();
@@ -231,6 +238,11 @@ async fn successful_park_variants_replace_the_rpc_epoch_before_guest_resume() {
                         .unwrap();
                     assert_eq!(outcome.park_outcome, SandboxParkOutcome::Reusable);
                 }
+            } else if blank {
+                assert_eq!(
+                    sandbox.park_for_blank_pool().await.unwrap(),
+                    SandboxParkOutcome::Reusable
+                );
             } else {
                 assert_eq!(sandbox.park().await.unwrap(), SandboxParkOutcome::Reusable);
             }
@@ -311,6 +323,275 @@ async fn successful_park_variants_replace_the_rpc_epoch_before_guest_resume() {
         assert_eq!(mock_request_body_json(&requests[0])["state"], "Paused");
         assert_eq!(mock_request_body_json(&requests[1])["state"], "Resumed");
     }
+}
+
+#[tokio::test]
+async fn blank_park_preserves_memory_then_returns_to_ordinary_reclamation_after_reuse() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut sandbox, mut peer) = running_rpc_sandbox(dir.path()).await;
+    sandbox.config.resources.memory_mb = 4096;
+    *sandbox.runtime.balloon_mut() = Some(test_balloon_controller());
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
+    std::os::unix::fs::symlink(api.socket_path(), sandbox.sock_paths.api_sock()).unwrap();
+
+    let (result, ()) = tokio::join!(
+        sandbox.park_for_blank_pool(),
+        acknowledge_lifecycle(
+            &mut peer,
+            guest_control_proto::MSG_QUIESCE_OPERATIONS,
+            guest_control_proto::MSG_OPERATIONS_QUIESCED,
+        ),
+    );
+    assert_eq!(result.unwrap(), SandboxParkOutcome::Reusable);
+    assert!(sandbox.is_parked);
+    assert!(sandbox.park_fence.is_some());
+    assert!(sandbox.runtime.balloon_mut().is_none());
+    assert!(!sandbox.sock_paths.guest_rpc().exists());
+    let requests = api.drain_requests();
+    assert_eq!(
+        requests.len(),
+        1,
+        "blank park must not inflate or poll balloon"
+    );
+    assert_eq!(requests[0].path, "/vm");
+    assert_eq!(mock_request_body_json(&requests[0])["state"], "Paused");
+
+    assert_eq!(
+        sandbox.park_for_blank_pool().await.unwrap(),
+        SandboxParkOutcome::Reusable
+    );
+    assert!(api.drain_requests().is_empty(), "repeat park is a no-op");
+
+    sandbox.bind_run_control("run-b").unwrap();
+    // The external API keeps reporting a nonzero actual balloon. Physical
+    // convergence must not prevent Guest operation admission from reopening.
+    let (result, ()) = tokio::join!(
+        sandbox.unpark(),
+        acknowledge_lifecycle(
+            &mut peer,
+            guest_control_proto::MSG_RESUME_OPERATIONS,
+            guest_control_proto::MSG_OPERATIONS_RESUMED,
+        ),
+    );
+    result.unwrap();
+    assert!(!sandbox.is_parked);
+    assert!(sandbox.park_fence.is_none());
+    assert!(sandbox.guest_rpc("run-b").is_some());
+    assert!(sandbox.runtime.balloon_mut().is_some());
+    let requests = api.drain_requests();
+    let requests = patches(&requests);
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].path, "/vm");
+    assert_eq!(mock_request_body_json(requests[0])["state"], "Resumed");
+    assert_eq!(requests[1].path, "/balloon");
+    assert_eq!(mock_request_body_json(requests[1])["amount_mib"], 0);
+
+    park_rpc_sandbox(&mut sandbox, &mut peer).await;
+    assert!(sandbox.runtime.balloon_mut().is_none());
+    let requests = api.drain_requests();
+    let requests = patches(&requests);
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].path, "/balloon");
+    assert_eq!(mock_request_body_json(requests[0])["amount_mib"], 3072);
+    assert_eq!(requests[1].path, "/vm");
+    assert_eq!(mock_request_body_json(requests[1])["state"], "Paused");
+}
+
+#[tokio::test]
+async fn blank_reclamation_starts_only_after_successful_agent_readiness() {
+    for agent_outcome in ["ready", "exit", "cancel"] {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut sandbox, mut peer) = running_rpc_sandbox(dir.path()).await;
+        sandbox.config.resources.memory_mb = 4096;
+        let zero_stats = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0,"free_memory":1073741824,"available_memory":1073741824}"#;
+        let mut api = MockFirecrackerApi::with_responses([
+            MockResponse::no_content(),        // Blank pause.
+            MockResponse::no_content(),        // Resume vCPUs.
+            MockResponse::no_content(),        // Request all memory back.
+            MockResponse::ok_body(zero_stats), // Convergence guard.
+            MockResponse::ok_body(zero_stats), // Reactive tick after readiness.
+            MockResponse::no_content(),        // Reactive inflation.
+        ]);
+        std::os::unix::fs::symlink(api.socket_path(), sandbox.sock_paths.api_sock()).unwrap();
+        let (park, ()) = tokio::join!(
+            sandbox.park_for_blank_pool(),
+            acknowledge_lifecycle(
+                &mut peer,
+                guest_control_proto::MSG_QUIESCE_OPERATIONS,
+                guest_control_proto::MSG_OPERATIONS_QUIESCED,
+            ),
+        );
+        assert_eq!(park.unwrap(), SandboxParkOutcome::Reusable);
+        // An ordinary idempotent park must not replace the blank's policy.
+        assert_eq!(sandbox.park().await.unwrap(), SandboxParkOutcome::Reusable);
+        sandbox.bind_run_control("blank-first-agent").unwrap();
+        let (unpark, ()) = tokio::join!(
+            sandbox.unpark(),
+            acknowledge_lifecycle(
+                &mut peer,
+                guest_control_proto::MSG_RESUME_OPERATIONS,
+                guest_control_proto::MSG_OPERATIONS_RESUMED,
+            ),
+        );
+        unpark.unwrap();
+        for (method, path) in [
+            ("PATCH", "/vm"),
+            ("PATCH", "/vm"),
+            ("PATCH", "/balloon"),
+            ("GET", "/balloon/statistics"),
+        ] {
+            let request = api.next_request().await;
+            assert_eq!(
+                (request.method.as_str(), request.path.as_str()),
+                (method, path)
+            );
+        }
+
+        let workload = StartProcessRequest {
+            cmd: "true",
+            timeout: Duration::from_secs(5),
+            timeout_is_expected: false,
+            start_timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::stream(),
+        };
+        let (workload, ()) = tokio::join!(sandbox.start_process(&workload), async {
+            let start = read_vsock_message(&mut peer).await;
+            send_exec_started(&mut peer, start.seq, 72).await;
+            send_exec_exit(&mut peer, start.seq).await;
+        });
+        sandbox
+            .wait_process(workload.unwrap(), Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert!(
+            api.drain_requests().is_empty(),
+            "workload released reclamation"
+        );
+
+        let request = StartAgentProcessRequest {
+            timeout: Duration::from_secs(5),
+            env: &[],
+            output: ProcessOutputMode::stream(),
+        };
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        let start_agent = async {
+            if agent_outcome == "cancel" {
+                tokio::select! {
+                    result = sandbox.start_agent_process(&request) => Some(result),
+                    _ = cancel_rx => None,
+                }
+            } else {
+                Some(sandbox.start_agent_process(&request).await)
+            }
+        };
+        let (result, seq) = tokio::join!(start_agent, async {
+            let start = read_vsock_message(&mut peer).await;
+            assert_eq!(start.msg_type, guest_control_proto::MSG_EXEC_START);
+            assert!(
+                api.drain_requests().is_empty(),
+                "reclamation preceded Agent readiness"
+            );
+            if agent_outcome == "ready" {
+                send_agent_started_and_ready(&mut peer, start.seq, 73).await;
+            } else if agent_outcome == "cancel" {
+                cancel_tx.send(()).unwrap();
+            } else {
+                // A terminal result without readiness must not release memory protection.
+                send_exec_started(&mut peer, start.seq, 73).await;
+                send_exec_exit(&mut peer, start.seq).await;
+            }
+            start.seq
+        });
+        if agent_outcome == "ready" {
+            let (process, _control) = result.unwrap().unwrap().into_parts();
+            let tick = api.next_request().await;
+            assert_eq!(
+                (tick.method.as_str(), tick.path.as_str()),
+                ("GET", "/balloon/statistics")
+            );
+            let inflate = api.next_request().await;
+            assert_eq!(
+                (inflate.method.as_str(), inflate.path.as_str()),
+                ("PATCH", "/balloon")
+            );
+            assert_eq!(mock_request_body_json(&inflate)["amount_mib"], 256);
+            send_exec_exit(&mut peer, seq).await;
+            sandbox
+                .wait_process(process, Duration::from_secs(5))
+                .await
+                .unwrap();
+        } else if agent_outcome == "exit" {
+            assert!(result.unwrap().is_err());
+        } else {
+            assert!(result.is_none());
+        }
+        sandbox.kill().await.unwrap();
+        assert!(sandbox.runtime.balloon_mut().is_none());
+        assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+        assert!(api.drain_requests().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn blank_park_requires_guest_quiescence_before_touching_memory_or_vcpus() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut sandbox, mut peer) = running_rpc_sandbox(dir.path()).await;
+    sandbox.config.resources.memory_mb = 4096;
+    let controller = test_balloon_controller();
+    let controller_id = controller.id();
+    *sandbox.runtime.balloon_mut() = Some(controller);
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
+    std::os::unix::fs::symlink(api.socket_path(), sandbox.sock_paths.api_sock()).unwrap();
+
+    let (result, ()) = tokio::join!(sandbox.park_for_blank_pool(), async {
+        let request = read_vsock_message(&mut peer).await;
+        assert_eq!(
+            request.msg_type,
+            guest_control_proto::MSG_QUIESCE_OPERATIONS
+        );
+        drop(peer);
+    },);
+    assert!(result.is_err());
+    assert!(!sandbox.is_parked);
+    assert!(sandbox.park_outcome.is_none());
+    assert_eq!(
+        sandbox.runtime.balloon_mut().as_ref().unwrap().id(),
+        controller_id
+    );
+    assert!(api.drain_requests().is_empty());
+}
+
+#[tokio::test]
+async fn blank_park_pause_failure_does_not_publish_a_reusable_sandbox() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut sandbox, mut peer) = running_rpc_sandbox(dir.path()).await;
+    sandbox.config.resources.memory_mb = 4096;
+    *sandbox.runtime.balloon_mut() = Some(test_balloon_controller());
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::from([500]), None);
+    std::os::unix::fs::symlink(api.socket_path(), sandbox.sock_paths.api_sock()).unwrap();
+
+    let (result, ()) = tokio::join!(
+        sandbox.park_for_blank_pool(),
+        acknowledge_lifecycle(
+            &mut peer,
+            guest_control_proto::MSG_QUIESCE_OPERATIONS,
+            guest_control_proto::MSG_OPERATIONS_QUIESCED,
+        ),
+    );
+    assert!(result.unwrap_err().to_string().contains("vm pause"));
+    assert!(!sandbox.is_parked);
+    assert!(sandbox.park_outcome.is_none());
+    assert!(sandbox.runtime.balloon_mut().is_none());
+    assert!(
+        sandbox.unpark().await.is_err(),
+        "partial park is destroy-only"
+    );
+    let requests = api.drain_requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].path, "/vm");
+    assert_eq!(mock_request_body_json(&requests[0])["state"], "Paused");
 }
 
 #[tokio::test]

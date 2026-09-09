@@ -30,6 +30,7 @@ export const createPrivateHostedPreview$ = command(
       readonly deploymentId: string;
       readonly userId: string;
       readonly orgId: string;
+      readonly snapshotId?: string;
     },
     signal: AbortSignal,
   ) => {
@@ -78,15 +79,18 @@ export const createPrivateHostedPreview$ = command(
     const expiresAt = new Date(
       nowDate().getTime() + 15 * 60 * 1000,
     ).toISOString();
-    const url = new URL(`${scheme}://pv-${token}.${hostDomain}/`);
+    const url = new URL(
+      `${scheme}://${args.snapshotId ? "ps" : "pv"}-${token}.${hostDomain}/`,
+    );
     await get(
       putHostedSitesS3Object(
         bucket,
-        `private-previews/${deployment.publicBrand}/${token}.json`,
+        `${args.snapshotId ? "shared-previews" : "private-previews"}/${deployment.publicBrand}/${token}.json`,
         JSON.stringify({
           version: 1,
           publicBrand: deployment.publicBrand,
           deploymentId: deployment.id,
+          ...(args.snapshotId ? { snapshotId: args.snapshotId } : {}),
           expiresAt,
         }),
         "application/json",

@@ -159,6 +159,8 @@ export interface PiApiAssistantMessage {
     readonly output: number;
     readonly cacheRead: number;
     readonly cacheWrite: number;
+    /** Subset of cacheWrite; retained as provider evidence, never added twice. */
+    readonly cacheWrite1h?: number;
   };
 }
 

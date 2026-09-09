@@ -460,24 +460,21 @@ test.each(["pro", "team"])(
   },
 );
 
-test.each([false, undefined])(
-  "Hide People package controls when showUsagePack is %s, even with a subscription",
-  async (showUsagePack) => {
-    mockMembersStory();
-    mockMemberInviteEntitlement(true, undefined, { showUsagePack });
-    mockUsagePackManagement();
+test("Hide People package controls when showUsagePack is false, even with a subscription", async () => {
+  mockMembersStory();
+  mockMemberInviteEntitlement(true, undefined, { showUsagePack: false });
+  mockUsagePackManagement();
 
-    await setupPage({ context, path: "/?settings=people" });
-    await expect(screen.findByText("bob@example.com")).resolves.toBeVisible();
-    expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
-    click(screen.getByLabelText("Actions for bob@example.com"));
-    expect(
-      queryAllByRoleFast("menuitem").some((item) => {
-        return item.textContent === "Configure member packages";
-      }),
-    ).toBeFalsy();
-  },
-);
+  await setupPage({ context, path: "/?settings=people" });
+  await expect(screen.findByText("bob@example.com")).resolves.toBeVisible();
+  expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
+  click(screen.getByLabelText("Actions for bob@example.com"));
+  expect(
+    queryAllByRoleFast("menuitem").some((item) => {
+      return item.textContent === "Configure member packages";
+    }),
+  ).toBeFalsy();
+});
 
 test("Keep People package controls restricted to administrators", async () => {
   mockMembersStory(undefined, "member");

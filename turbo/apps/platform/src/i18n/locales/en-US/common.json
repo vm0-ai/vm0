@@ -578,6 +578,11 @@
       "unavailable": "{{kind}} preview unavailable.",
       "videoLabel": "Video preview for {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Share to organization",
+      "sharePublic": "Share to Public",
+      "unavailable": "This artifact is unavailable or you do not have access."
+    },
     "sidebar": {
       "openSharedConversation": "Open shared conversation",
       "panelTitle": "Artifacts",
@@ -1887,6 +1892,9 @@
         "presentationPlaceholder": "What is your presentation about?",
         "question": "What would you like to make happen?",
         "settingsAdjusted": "Some video settings were adjusted for this model",
+        "slideCount": "Slide count",
+        "slideCountAuto": "Auto",
+        "slideCountRange": "{{range}} slides",
         "title": "Create",
         "video": "Create video",
         "videoPlaceholder": "Describe the video you want to create…"
@@ -1972,11 +1980,8 @@
         "emptyCustomTitle": "No custom connectors yet",
         "emptyYoursBody": "Connect an app and Okou can read and act in it for you.",
         "emptyYoursTitle": "You haven't connected anything yet",
-        "keyMove": "move",
-        "keyOpen": "open",
         "matchCount_one": "{{count}} match",
         "matchCount_other": "{{count}} matches",
-        "matchedOn": "Matched on name, description, and tags",
         "moreAccounts_one": "+{{count}}",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "Needs attention",
@@ -2339,6 +2344,199 @@
       "openTemplatesAria": "Browse templates",
       "startWithPrompt": "Create",
       "templates": "Templates"
+    },
+    "taskChips": {
+      "chooseTask": "Choose a task",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Design a birthday invitation",
+            "prompt": "Create a birthday invitation. Help me combine the name, date, location, and party theme in a personal design."
+          },
+          "brandCharacter": {
+            "label": "Create a character for my brand",
+            "prompt": "Create a character concept for my brand. Help me define its personality, appearance, and where it will be used."
+          },
+          "businessLogo": {
+            "label": "Create a logo for my business",
+            "prompt": "Help me create a logo concept for my business. Start with the business name, what it does, and the impression I want to make."
+          },
+          "cafeMenu": {
+            "label": "Design a menu for my café",
+            "prompt": "Design a menu visual for my café. Use the items, prices, and brand details I provide, with clear readable sections."
+          },
+          "eventPoster": {
+            "label": "Design a poster for my event",
+            "prompt": "Design a poster for my event. Help me put the event name, date, location, and main message into a clear visual."
+          },
+          "finishedSketch": {
+            "label": "Turn my sketch into a finished visual",
+            "prompt": "Turn my sketch into a finished visual. Keep its main idea and composition, and help me choose the final visual style."
+          },
+          "greetingCard": {
+            "label": "Make a personal greeting card",
+            "prompt": "Design a greeting card for someone I know. Help me choose a personal message and visual style for the occasion."
+          },
+          "headshot": {
+            "label": "Make a headshot for work",
+            "prompt": "Turn a photo of me into a professional headshot. Keep my identity recognizable and help me choose a natural background and lighting."
+          },
+          "infographic": {
+            "label": "Turn an idea into an infographic",
+            "prompt": "Turn my idea or information into an infographic. Help me choose a clear structure and use only the facts and numbers I provide."
+          },
+          "newsletterCover": {
+            "label": "Make a cover for my newsletter",
+            "prompt": "Create a cover image for my newsletter. Help me turn the issue topic into a clear visual that fits my audience."
+          },
+          "packaging": {
+            "label": "Explore packaging for my product",
+            "prompt": "Create a packaging concept for my product. Help me explore colors, layout, and visual direction using my product and brand details."
+          },
+          "photoLighting": {
+            "label": "Improve the light in my photo",
+            "prompt": "Improve the lighting in a photo I provide. Keep the subject and recognizable details intact, and aim for a natural result."
+          },
+          "presentationVisual": {
+            "label": "Make a visual for my presentation",
+            "prompt": "Create a visual that explains a key idea in my presentation. Help me make the idea easy to understand at a glance."
+          },
+          "productScene": {
+            "label": "Put my product in a new scene",
+            "prompt": "Put my product in a new scene. I will add a product photo; help me choose a setting while keeping the product itself consistent."
+          },
+          "profileBanner": {
+            "label": "Refresh my profile banner",
+            "prompt": "Create a profile banner that represents my work. Help me choose a message, style, and composition for the platform I use."
+          },
+          "roomDesign": {
+            "label": "Try a new look for my room",
+            "prompt": "Help me visualize a different look for my room from a photo. Keep the room layout recognizable and explore furniture, colors, and decor."
+          },
+          "storePhoto": {
+            "label": "Make a photo ready for my store",
+            "prompt": "Prepare a product photo for my online store. Keep the product accurate and help me choose a clean background, crop, and consistent lighting."
+          },
+          "websiteImage": {
+            "label": "Create an image for my website",
+            "prompt": "Create a main image for my website. Help me match the image to the business, audience, page layout, and main message."
+          }
+        },
+        "video": {
+          "animatePhoto": {
+            "label": "Turn a photo into a video",
+            "prompt": "Animate a photo I provide with natural movement. Keep the subject recognizable and ask what should move."
+          },
+          "brandIntro": {
+            "label": "Make a brand intro",
+            "prompt": "Create a short opening video for my brand. Use the logo and brand details I provide and help me choose the mood."
+          },
+          "eventPromo": {
+            "label": "Promote my event",
+            "prompt": "Create a short promotional video for my event. Ask about the event, audience, and details to include."
+          },
+          "loopingBackground": {
+            "label": "Create a looping background",
+            "prompt": "Create a seamless looping video background with gentle motion. Ask what scene and mood I want."
+          },
+          "productDemo": {
+            "label": "Show my product in motion",
+            "prompt": "Create a short product showcase from my product photo. Keep its appearance consistent and highlight the feature I choose."
+          },
+          "socialClip": {
+            "label": "Make a clip for social media",
+            "prompt": "Create a short video for social media. Help me choose a clear message and a visual style for my audience."
+          },
+          "videoGreeting": {
+            "label": "Create a video greeting",
+            "prompt": "Create a short video greeting for a birthday, holiday, or celebration. Ask about the occasion, recipient, and message."
+          },
+          "visualExplainer": {
+            "label": "Explain an idea visually",
+            "prompt": "Create a short video that makes one idea easy to understand. Ask which idea to explain and who it is for."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Give people a place to book me",
+            "prompt": "Create a page explaining my services and how to book me. Use my existing booking link and ask for my service details."
+          },
+          "businessSite": {
+            "label": "Build a website for my business",
+            "prompt": "Build a website that explains my business, services, and how to contact me. Start with my business details and audience."
+          },
+          "cafeMenu": {
+            "label": "Put my café menu online",
+            "prompt": "Create a café website with my menu, prices, opening hours, and location. Use the details and photos I provide."
+          },
+          "coursePage": {
+            "label": "Create a page for my course",
+            "prompt": "Create a page introducing my course, who it is for, what learners will gain, and how to sign up using my registration link."
+          },
+          "eventPage": {
+            "label": "Create a page for my event",
+            "prompt": "Create an event page with the date, location, agenda, and registration link I provide. Ask for any missing details."
+          },
+          "linkPage": {
+            "label": "Bring my links together on one page",
+            "prompt": "Create a simple link-in-bio page with my introduction, work, and social links. Ask which links to include."
+          },
+          "portfolio": {
+            "label": "Showcase my work in a portfolio",
+            "prompt": "Create a portfolio website for my work. Help me organize my projects, introduce myself, and add contact details."
+          },
+          "productLaunch": {
+            "label": "Launch a page for my product",
+            "prompt": "Create a landing page for my product with its benefits, visuals, and a clear next step. Ask what I am launching and who it is for."
+          }
+        },
+        "workflow": {
+          "emailBrief": {
+            "label": "Get my morning email brief",
+            "prompt": "Give me a morning brief of the emails I need to pay attention to, including replies and action items. First confirm which inbox to use and when I want to receive it."
+          },
+          "fileOrganization": {
+            "label": "Organize incoming files",
+            "prompt": "Organize new files as they arrive, using agreed naming and filing rules. First confirm the source, destination folder, and categories."
+          },
+          "meetingActions": {
+            "label": "Turn meeting notes into action items",
+            "prompt": "When new meeting notes arrive, extract action items, owners, and due dates. Flag missing details. First confirm where to find my meeting notes."
+          },
+          "meetingPrep": {
+            "label": "Help me prepare for meetings",
+            "prompt": "Before meetings, prepare the people, background, and discussion points I need. First confirm my calendar, source material, and how far ahead to remind me."
+          },
+          "numbersBrief": {
+            "label": "Get a daily numbers summary",
+            "prompt": "Give me a daily summary of the numbers I track and how they changed since the last update. First confirm the data source, the numbers to include, and when to send it."
+          },
+          "progressRecap": {
+            "label": "Recap my progress and next steps",
+            "prompt": "Regularly recap my completed work, unfinished items, and next priorities. First confirm where to find my work records and whether I want a daily or weekly recap."
+          },
+          "replyWatch": {
+            "label": "Tell me when an email gets a reply",
+            "prompt": "Watch one email for a reply, then notify me and summarize it. First confirm which email to follow."
+          },
+          "topicUpdates": {
+            "label": "Follow updates on a topic",
+            "prompt": "Follow a topic I care about and summarize important new information with source links. Ask what I want to follow and how often I want an update."
+          }
+        }
+      },
+      "ideasLabel": "Ideas to get started",
+      "label": "Tasks to get started",
+      "moreIdeas": "More ideas",
+      "moreTemplates": "More templates",
+      "presentationTemplates": "Presentation templates",
+      "tasks": {
+        "image": "Image",
+        "presentation": "Slides",
+        "video": "Video",
+        "website": "Website",
+        "workflow": "Workflow"
+      }
     },
     "templates": {
       "categories": {

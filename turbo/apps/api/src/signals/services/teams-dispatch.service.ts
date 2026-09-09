@@ -1493,7 +1493,6 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
 function teamsValidationFallbackNotice(args: {
   readonly command: TeamsBotCommand | null;
   readonly isGreeting: boolean;
-  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult | null {
   if (args.command === "help") {
@@ -1837,12 +1836,10 @@ const runAgentForTeams$ = command(
 function connectNotice(
   activity: TeamsMessageActivity,
   installation: TeamsInstallation | null,
-  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
   const { assistantName } = teamsIdentity(installation);
   const connectUrl = buildTeamsConnectUrlForActivity({
     activity,
-    publicBrand,
     installation,
   });
   return {
@@ -1885,7 +1882,6 @@ function unboundInstallationNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation | null;
-  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
@@ -1900,7 +1896,7 @@ function unboundInstallationNotice(args: {
   if (args.isGreeting) {
     return greetingNotice(args.installation);
   }
-  return connectNotice(args.activity, args.installation, args.publicBrand);
+  return connectNotice(args.activity, args.installation);
 }
 
 function missingConnectionNotice(args: {
@@ -1908,7 +1904,6 @@ function missingConnectionNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
-  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
@@ -1920,7 +1915,7 @@ function missingConnectionNotice(args: {
   if (args.isGreeting) {
     return greetingNotice(args.installation);
   }
-  return connectNotice(args.activity, args.installation, args.publicBrand);
+  return connectNotice(args.activity, args.installation);
 }
 
 interface ConnectedCommandBeforeComposeArgs {
@@ -1928,7 +1923,6 @@ interface ConnectedCommandBeforeComposeArgs {
   readonly command: TeamsBotCommand | null;
   readonly installation: BoundTeamsInstallation;
   readonly connection: TeamsConnection;
-  readonly publicBrand: PublicBrand;
 }
 
 const connectedCommandBeforeCompose$ = command(
@@ -2296,7 +2290,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         teamsValidationFallbackNotice({
           command,
           isGreeting,
-          publicBrand: args.publicBrand,
           installation: args.installation,
         }) ?? {
           kind: "ignored",
@@ -2326,7 +2319,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
-        publicBrand: args.publicBrand,
       });
     }
     const boundInstallation: BoundTeamsInstallation = {
@@ -2348,7 +2340,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
-        publicBrand: args.publicBrand,
       });
     }
 
@@ -2373,7 +2364,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         command,
         installation: boundInstallation,
         connection,
-        publicBrand: args.publicBrand,
       },
       signal,
     );

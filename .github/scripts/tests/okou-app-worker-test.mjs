@@ -262,7 +262,7 @@ const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
 const clerkJsVersion = "6.25.8";
 const previewClerkHost = "informed-calf-6.clerk.accounts.dev";
-const productionClerkHost = "clerk.vm0.ai";
+const productionClerkHost = "clerk.okou.ai";
 const previewClerkPublishableKey = publishableKey("test", previewClerkHost);
 const productionClerkPublishableKey = publishableKey(
   "live",
@@ -1381,5 +1381,16 @@ const upstreamFailure = await requestSharedPage({
 });
 assert.equal(upstreamFailure.response.status, 502);
 assert.equal(upstreamFailure.response.headers.get("cache-control"), "no-store");
+
+const artifactHandoff = await worker.fetch(
+  new Request(
+    "https://app.okou.ai/share/artifacts/00000000-0000-4000-8000-000000000010",
+  ),
+  assetEnvironment(),
+);
+assert.equal(artifactHandoff.status, 200);
+assert.equal(artifactHandoff.headers.get("cache-control"), "private, no-store");
+assert.equal(artifactHandoff.headers.get("referrer-policy"), "no-referrer");
+assert.doesNotMatch(await artifactHandoff.text(), /<iframe/iu);
 
 console.log("okou app worker tests passed");

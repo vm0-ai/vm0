@@ -4,7 +4,7 @@ import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**
- * Get current org info via zero API
+ * Get current org info via Okou API
  */
 export async function getOrg(): Promise<OrgResponse> {
   const config = await getClientConfig();

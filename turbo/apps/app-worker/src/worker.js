@@ -907,7 +907,14 @@ export function createWorker(
         clerkClientFactory,
         apiFetcher,
       );
-      return withAppHeaders(response, requestUrl);
+      const result = withAppHeaders(response, requestUrl);
+      if (requestUrl.pathname.startsWith("/share/artifacts/")) {
+        const headers = new Headers(result.headers);
+        headers.set("Cache-Control", "private, no-store");
+        headers.set("Referrer-Policy", "no-referrer");
+        return new Response(result.body, { status: result.status, headers });
+      }
+      return result;
     },
   };
 }

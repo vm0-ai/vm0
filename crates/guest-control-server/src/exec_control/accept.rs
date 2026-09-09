@@ -5,7 +5,7 @@ use std::thread;
 
 use crate::log::log;
 
-use super::sink::ControlSinkState;
+use super::sink::{ControlSinkFailure, ControlSinkState};
 use super::{
     CONTROL_ACCEPT_POLL_TIMEOUT, CONTROL_SINK_IO_TIMEOUT, EXEC_CONTROL_LOG_NAME,
     THREAD_EXEC_CONTROL_ACCEPT, is_timeout,
@@ -57,7 +57,7 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
                 "WARN",
                 &format!("{EXEC_CONTROL_LOG_NAME}: control sink accept failed: {error}"),
             );
-            sink.fail(error.to_string());
+            sink.fail(ControlSinkFailure::Other(error.to_string()));
         }
     }
 }

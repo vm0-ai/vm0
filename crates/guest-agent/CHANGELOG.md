@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.86.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.21...guest-agent-v0.86.22) (2026-09-09)
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+
+
+### Refactoring
+
+* **pi-memory:** stop maintenance journal production and forwarding ([#32805](https://github.com/vm0-ai/vm0/issues/32805)) ([46576db](https://github.com/vm0-ai/vm0/commit/46576dbbca793e345e9b20e56618b998c3a8b629))
+
+## [0.86.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.20...guest-agent-v0.86.21) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+
+
+### Documentation
+
+* **guest-agent:** correct pi configuration handoff documentation ([#32789](https://github.com/vm0-ai/vm0/issues/32789)) ([13b101e](https://github.com/vm0-ai/vm0/commit/13b101e5871985b0a34d5613468f7444960c4a9f))
+
 ## [0.86.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.19...guest-agent-v0.86.20) (2026-09-08)
 
 

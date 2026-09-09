@@ -1,9 +1,13 @@
 import { http, HttpResponse } from "msw";
 import type {
   CustomConnectorHttpResponse,
+  CustomConnectorMcpResponse,
   CustomConnectorResponse,
 } from "@okouai/api-contracts/contracts/custom-connectors";
-import { customConnectorHttpResponseSchema } from "@okouai/api-contracts/contracts/custom-connectors";
+import {
+  customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 
@@ -38,6 +42,22 @@ export function customConnector(
     configuredFieldKeys: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  });
+}
+
+export function customMcpConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return customConnectorMcpResponseSchema.parse({
+    ...customConnector(),
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    slug: "_acme-mcp",
+    displayName: "Acme MCP",
+    endpoint: "https://mcp.acme.test/server",
+    transport: "streamable-http",
+    prefixTemplates: [],
     ...overrides,
   });
 }

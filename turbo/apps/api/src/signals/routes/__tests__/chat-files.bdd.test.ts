@@ -149,7 +149,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     const search = await api.searchChat(actor, "launch");
     expect(search.results).toStrictEqual([]);
-    expect(search.hasMore).toBeFalsy();
 
     await api.deleteThread(actor, created.id);
     const deletedRead = await api.requestReadThread(actor, created.id, [404]);

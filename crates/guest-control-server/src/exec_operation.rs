@@ -1036,6 +1036,9 @@ impl RunningExec {
             connection_cancel.load(Ordering::Acquire) || exec_cancel.load(Ordering::Acquire);
         let cleanup_mode = cleanup_mode_for_wait_outcome(&outcome, cancellation_observed);
         drop(placement_bootstrap);
+        if !matches!(&outcome, WaitOutcome::Exited(status) if status.success()) {
+            process_containment.capture_error();
+        }
         let containment_result = cleanup_process_containment(process_containment, cleanup_mode);
         join_stdin_writer_after_wait(stdin_writer, request.seq, &request.label);
         if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
@@ -1253,6 +1256,26 @@ fn successful_containment_evidence_diagnostic(
     diagnostic: String,
     containment_evidence: Option<&str>,
 ) -> String {
+    if let Some(evidence) = containment_evidence
+        && evidence.starts_with(guest_contracts::oom_evidence::EVIDENCE_PREFIX)
+    {
+        // The existing diagnostic frame transports metadata independently of
+        // outcome. Runner and Guest ship as one artifact. Never let optional
+        // evidence exhaust the existing u16 diagnostic length field.
+        if diagnostic
+            .len()
+            .saturating_add(evidence.len())
+            .saturating_add(1)
+            > u16::MAX as usize
+        {
+            return diagnostic;
+        }
+        return if diagnostic.is_empty() {
+            evidence.to_owned()
+        } else {
+            format!("{diagnostic}\n{evidence}")
+        };
+    }
     if lifecycle != ExecOperationLifecycle::OneShot
         || label != "runner-exec"
         || !diagnostic.is_empty()
@@ -2634,6 +2657,22 @@ mod tests {
         assert_eq!(termination, ExecTermination::WaitFailed);
         assert!(diagnostic.contains("Failed to clean process containment"));
         assert!(diagnostic.contains("wait for cgroup.kill"));
+    }
+
+    #[test]
+    fn terminal_oom_evidence_cannot_overflow_diagnostic() {
+        let evidence = format!("{}{{}}", guest_contracts::oom_evidence::EVIDENCE_PREFIX);
+        let diagnostic = "x".repeat(u16::MAX as usize);
+        assert_eq!(
+            successful_containment_evidence_diagnostic(
+                ExecOperationLifecycle::Supervised,
+                "guest-agent",
+                ExecTermination::TimedOut,
+                diagnostic.clone(),
+                Some(&evidence)
+            ),
+            diagnostic
+        );
     }
 
     #[test]

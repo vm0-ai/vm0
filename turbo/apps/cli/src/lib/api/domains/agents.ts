@@ -15,6 +15,7 @@ import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-id
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   agentCustomConnectorsContract,
+  agentCustomConnectorGrantsSchema,
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -92,7 +93,9 @@ export async function getAgentCustomConnectorGrants(
   const config = await getClientConfig();
   const client = initClient(agentCustomConnectorsContract, config);
   const result = await client.get({ params: { id } });
-  if (result.status === 200) return result.body.grants;
+  if (result.status === 200) {
+    return agentCustomConnectorGrantsSchema.parse(result.body).grants;
+  }
   handleError(
     result,
     `Failed to get custom connector permissions for agent "${id}"`,

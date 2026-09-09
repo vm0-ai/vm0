@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.6...guest-contracts-v0.13.7) (2026-09-09)
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+
 ## [0.13.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.5...guest-contracts-v0.13.6) (2026-09-08)
 
 

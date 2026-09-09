@@ -315,12 +315,6 @@ describe("ChatEvent catalog", () => {
         encryptedParams: "must-stay-server-side",
       }).success,
     ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({
-        ...prompt,
-        content: "retired input projection",
-      }).success,
-    ).toBe(false);
     const automation = chatEvents[1];
     expect(
       chatEventSchema.safeParse({

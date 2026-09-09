@@ -1,4 +1,3 @@
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import type {
   PublicConnectorCatalogListResponse,
@@ -30,15 +29,11 @@ interface ConnectorCatalogReadArgs {
   readonly featureStates: ConnectorFeatureStates;
 }
 
-interface BrandedConnectorCatalogReadArgs extends ConnectorCatalogReadArgs {
-  readonly publicBrand: PublicBrand;
-}
-
 interface ConnectorCatalogSearchArgs extends ConnectorCatalogReadArgs {
   readonly keyword: string | undefined;
 }
 
-interface ConnectorCatalogConnectorReadArgs extends BrandedConnectorCatalogReadArgs {
+interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
   readonly connectorSlug: string;
 }
 
@@ -49,13 +44,13 @@ export async function searchConnectorCatalog(
 }
 
 export async function listPublicConnectorCatalog(
-  args: BrandedConnectorCatalogReadArgs,
+  args: ConnectorCatalogReadArgs,
 ): Promise<PublicConnectorCatalogListResponse> {
   return await listExternalPublicConnectorCatalog(args);
 }
 
 export async function listPublicConnectorCatalogStatus(
-  args: BrandedConnectorCatalogReadArgs & {
+  args: ConnectorCatalogReadArgs & {
     readonly connections: readonly ConnectorCatalogConnection[];
   },
 ): Promise<PublicConnectorCatalogStatusResponse> {
@@ -67,7 +62,7 @@ export async function listPublicConnectorCatalogStatus(
 }
 
 export async function discoverPublicConnectorCatalogStatus(
-  args: BrandedConnectorCatalogReadArgs & {
+  args: ConnectorCatalogReadArgs & {
     readonly connections: readonly ConnectorCatalogConnection[];
     readonly keyword: string | undefined;
   },

@@ -13,7 +13,9 @@ use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::writer::GuestWriter;
 
 use super::deadline_io::DeadlineStream;
-use super::sink::{ControlSinkState, ControlStreamLockError, PendingControlSlot};
+use super::sink::{
+    ControlSinkFailure, ControlSinkState, ControlStreamLockError, PendingControlSlot,
+};
 use super::{
     EXEC_CONTROL_LOG_NAME, EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX,
     EXEC_CONTROL_WORKER_START_ERROR_PREFIX, EXEC_OPERATION_INACTIVE_MESSAGE,
@@ -115,7 +117,11 @@ pub(super) fn forward_control_request(
                         forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
                     };
                     if matches!(outcome.sink_disposition, ControlSinkDisposition::Fail) {
-                        sink.fail(outcome.diagnostic.clone());
+                        sink.fail(if outcome.status == ExecControlStatus::SinkClosed {
+                            ControlSinkFailure::Closed(outcome.diagnostic.clone())
+                        } else {
+                            ControlSinkFailure::Other(outcome.diagnostic.clone())
+                        });
                     }
                     outcome
                 }
@@ -129,9 +135,9 @@ pub(super) fn forward_control_request(
                     diagnostic: EXEC_REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
                     sink_disposition: ControlSinkDisposition::Keep,
                 },
-                Err(ControlStreamLockError::SinkError(diagnostic)) => ControlForwardOutcome {
-                    status: ExecControlStatus::SinkError,
-                    diagnostic,
+                Err(ControlStreamLockError::SinkError(failure)) => ControlForwardOutcome {
+                    status: failure.status(),
+                    diagnostic: failure.diagnostic().to_owned(),
                     sink_disposition: ControlSinkDisposition::Keep,
                 },
             },
@@ -254,6 +260,17 @@ fn control_forward_io_error(
     error: io::Error,
     sink_disposition: ControlSinkDisposition,
 ) -> ControlForwardOutcome {
+    let status = if status == ExecControlStatus::SinkError
+        && matches!(
+            error.kind(),
+            io::ErrorKind::BrokenPipe
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::UnexpectedEof
+        ) {
+        ExecControlStatus::SinkClosed
+    } else {
+        status
+    };
     ControlForwardOutcome {
         status,
         diagnostic: error.to_string(),

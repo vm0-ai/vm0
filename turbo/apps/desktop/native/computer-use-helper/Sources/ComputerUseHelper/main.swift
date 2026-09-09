@@ -3284,7 +3284,7 @@ func throwBrowserNavigationFailure(result: AppleScriptRunResult) throws -> Never
             code: "automation_permission_denied",
             message:
                 "macOS denied Automation permission for browser navigation. "
-                + "Allow vm0 to control the target browser in System Settings > Privacy & Security > Automation. "
+                + "Allow Okou to control the target browser in System Settings > Privacy & Security > Automation. "
                 + message
         )
     }

@@ -19,6 +19,7 @@ import request_classification
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.aws_sigv4_helpers import resolved_aws_sigv4_credentials
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
@@ -205,27 +206,19 @@ async def test_public_destination_allows_public_runtime_destination(
     [
         pytest.param(
             {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
-            {
-                "headers": {"Authorization": "Bearer resolved"},
-                "resolved_secrets": ["EXAMPLE_TOKEN"],
-                "refreshed_connectors": [],
-                "refreshed_secrets": [],
-                "cache_hit": False,
-                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-            },
+            firewall_auth_response(
+                headers={"Authorization": "Bearer resolved"},
+                resolved_secrets=["EXAMPLE_TOKEN"],
+            ),
             id="header",
         ),
         pytest.param(
             {"query": {"api_key": "${{ secrets.EXAMPLE_TOKEN }}"}},
-            {
-                "headers": {},
-                "query": {"api_key": "resolved"},
-                "resolved_secrets": ["EXAMPLE_TOKEN"],
-                "refreshed_connectors": [],
-                "refreshed_secrets": [],
-                "cache_hit": False,
-                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-            },
+            firewall_auth_response(
+                headers={},
+                query={"api_key": "resolved"},
+                resolved_secrets=["EXAMPLE_TOKEN"],
+            ),
             id="query",
         ),
         pytest.param(
@@ -235,15 +228,11 @@ async def test_public_destination_allows_public_runtime_destination(
                     "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                 }
             },
-            {
-                "headers": {},
-                "aws_sigv4": resolved_aws_sigv4_credentials(session_token=None),
-                "resolved_secrets": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
-                "refreshed_connectors": [],
-                "refreshed_secrets": [],
-                "cache_hit": False,
-                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-            },
+            firewall_auth_response(
+                headers={},
+                aws_sigv4=resolved_aws_sigv4_credentials(session_token=None),
+                resolved_secrets=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+            ),
             id="aws-sigv4",
         ),
     ],

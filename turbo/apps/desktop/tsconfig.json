@@ -7,6 +7,6 @@
     "noEmit": true,
     "types": ["node", "vite/client", "vitest/globals"]
   },
-  "include": ["src/**/*", "scripts/**/*.ts"],
+  "include": ["src/**/*", "scripts/**/*.ts", "cua/discovery-proof/main.ts"],
   "exclude": ["dist", "node_modules"]
 }
