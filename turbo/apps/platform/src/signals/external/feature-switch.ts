@@ -130,6 +130,10 @@ export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
 });
 
+export const avatarFramingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AvatarFraming] ?? false;
+});
+
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
