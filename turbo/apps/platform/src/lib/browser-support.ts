@@ -10,16 +10,28 @@ export interface BrowserUpgrade {
   readonly target: BrowserUpgradeTarget;
 }
 
+const IOS_VERSION_PATTERN = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
+
 function supportsAppleVersion(match: RegExpExecArray): boolean {
   const major = Number(match[1]);
   const minor = Number(match[2] ?? 0);
   return major > 16 || (major === 16 && minor >= 4);
 }
 
+/**
+ * The iOS major.minor version advertised by a WebKit user agent, or null when
+ * the user agent is not an iOS device.
+ */
+export function iosVersionFromUserAgent(userAgent: string): string | null {
+  const match = IOS_VERSION_PATTERN.exec(userAgent);
+  if (!match) {
+    return null;
+  }
+  return `${match[1]}.${match[2] ?? "0"}`;
+}
+
 function browserUpgradeForUserAgent(userAgent: string): BrowserUpgrade | null {
-  const iosMatch = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/.exec(
-    userAgent,
-  );
+  const iosMatch = IOS_VERSION_PATTERN.exec(userAgent);
   if (iosMatch) {
     return supportsAppleVersion(iosMatch)
       ? null

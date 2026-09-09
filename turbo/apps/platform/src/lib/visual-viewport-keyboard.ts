@@ -1,5 +1,6 @@
 import { delay } from "signal-timers";
 import { detach, Reason } from "../signals/utils.ts";
+import { createKeyboardViewportRecorder } from "./keyboard-viewport-telemetry.ts";
 
 const KEYBOARD_SHRINK_RATIO = 0.15;
 const MIN_KEYBOARD_SHRINK_PX = 120;
@@ -175,6 +176,73 @@ function revealFocusedComposer(): void {
   });
 }
 
+type FrameTask = {
+  /** Run once on the next animation frame; a pending frame is reused. */
+  schedule(): void;
+  cancel(): void;
+};
+
+function createFrameTask(run: () => void): FrameTask {
+  let frameId: number | null = null;
+  return {
+    schedule() {
+      if (frameId !== null) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        run();
+      });
+    },
+    cancel() {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+    },
+  };
+}
+
+type SettledCommit = {
+  /** Commit once the viewport has been quiet for the settle delay. */
+  schedule(): void;
+  cancel(): void;
+};
+
+function createSettledCommit(
+  resetSettledSignal: () => AbortSignal,
+  commit: () => void,
+): SettledCommit {
+  let timerSignal: AbortSignal | null = null;
+
+  const cancel = () => {
+    if (timerSignal) {
+      resetSettledSignal();
+      timerSignal = null;
+    }
+  };
+
+  const run = async (settledSignal: AbortSignal) => {
+    await delay(VIEWPORT_SETTLE_DELAY_MS, { signal: settledSignal });
+    settledSignal.throwIfAborted();
+    if (timerSignal !== settledSignal) {
+      return;
+    }
+    timerSignal = null;
+    commit();
+  };
+
+  return {
+    cancel,
+    schedule() {
+      cancel();
+      const settledSignal = resetSettledSignal();
+      timerSignal = settledSignal;
+      detach(run(settledSignal), Reason.DomCallback, "visual viewport settle");
+    },
+  };
+}
+
 type KeyboardViewportState = {
   baselineHeight: number;
   keyboardOpen: boolean;
@@ -242,77 +310,58 @@ export function setupVisualViewportKeyboardState(
     keyboardOpen: false,
     resetBaselineOnSettle: false,
   };
-  let scheduledFrameId: number | null = null;
-  let revealFrameId: number | null = null;
-  let settledTimerSignal: AbortSignal | null = null;
-
-  const cancelSettledUpdate = () => {
-    if (settledTimerSignal) {
-      resetSettledSignal();
-      settledTimerSignal = null;
+  const recorder = isIOSDevice()
+    ? createKeyboardViewportRecorder(viewport)
+    : null;
+  // The scroll reserve is a pseudo-element driven by the keyboard-open style.
+  // Give WebKit one layout frame to publish the new scrollHeight before asking
+  // it to reveal the composer.
+  const revealFrame = createFrameTask(() => {
+    if (state.keyboardOpen) {
+      revealFocusedComposer();
     }
-  };
-
-  const commitSettledUpdate = async (settledSignal: AbortSignal) => {
-    await delay(VIEWPORT_SETTLE_DELAY_MS, { signal: settledSignal });
-    settledSignal.throwIfAborted();
-    if (settledTimerSignal !== settledSignal) {
-      return;
-    }
-    settledTimerSignal = null;
-    update(true);
-  };
+  });
 
   const update = (commitOpening: boolean) => {
     const keyboardWasOpen = state.keyboardOpen;
     updateKeyboardViewportState(state, viewport, commitOpening);
-    if (!keyboardWasOpen && state.keyboardOpen) {
-      if (revealFrameId !== null) {
-        window.cancelAnimationFrame(revealFrameId);
+    if (!state.keyboardOpen) {
+      if (keyboardWasOpen) {
+        recorder?.closed(isTextEntryElement(document.activeElement));
       }
-      // The scroll reserve is a pseudo-element driven by the keyboard-open
-      // style. Give WebKit one layout frame to publish the new scrollHeight
-      // before asking it to reveal the composer.
-      revealFrameId = window.requestAnimationFrame(() => {
-        revealFrameId = null;
-        if (state.keyboardOpen) {
-          revealFocusedComposer();
-        }
-      });
-    } else if (!state.keyboardOpen && revealFrameId !== null) {
-      window.cancelAnimationFrame(revealFrameId);
-      revealFrameId = null;
+      revealFrame.cancel();
+      return;
+    }
+    if (!keyboardWasOpen) {
+      recorder?.opened();
+      revealFrame.cancel();
+      revealFrame.schedule();
     }
   };
 
-  const scheduleUpdate = () => {
-    // Keep committed keyboard geometry live during animation and caret-driven
-    // viewport panning.
-    if (scheduledFrameId === null) {
-      scheduledFrameId = window.requestAnimationFrame(() => {
-        scheduledFrameId = null;
-        update(false);
-      });
-    }
+  // Keep committed keyboard geometry live during animation and caret-driven
+  // viewport panning.
+  const updateFrame = createFrameTask(() => {
+    update(false);
+  });
+  // Standalone WebKit can publish its final offsetTop without another event.
+  // The short trailing read also prevents the first stale resize sample from
+  // moving the page before the native focus pan has settled.
+  const settledCommit = createSettledCommit(resetSettledSignal, () => {
+    update(true);
+  });
 
-    // Standalone WebKit can publish its final offsetTop without another event.
-    // The short trailing read also prevents the first stale resize sample from
-    // moving the page before the native focus pan has settled.
-    cancelSettledUpdate();
-    const settledSignal = resetSettledSignal();
-    settledTimerSignal = settledSignal;
-    detach(
-      commitSettledUpdate(settledSignal),
-      Reason.DomCallback,
-      "visual viewport settle",
-    );
+  const scheduleUpdate = () => {
+    updateFrame.schedule();
+    settledCommit.schedule();
   };
 
   const scheduleBaselineReset = () => {
     state.resetBaselineOnSettle = true;
     state.keyboardOpen = false;
-    cancelSettledUpdate();
+    settledCommit.cancel();
     setKeyboardClosed();
+    recorder?.clear();
 
     // Some WebKit versions emit orientationchange before the new viewport
     // metrics and others emit it afterwards. Commit immediately only for the
@@ -344,14 +393,11 @@ export function setupVisualViewportKeyboardState(
     window.removeEventListener("orientationchange", scheduleBaselineReset);
     document.removeEventListener("focusin", scheduleUpdate);
     document.removeEventListener("focusout", scheduleUpdate);
-    if (scheduledFrameId !== null) {
-      window.cancelAnimationFrame(scheduledFrameId);
-    }
-    if (revealFrameId !== null) {
-      window.cancelAnimationFrame(revealFrameId);
-    }
-    cancelSettledUpdate();
+    updateFrame.cancel();
+    revealFrame.cancel();
+    settledCommit.cancel();
     setKeyboardClosed();
+    recorder?.clear();
   };
   signal.addEventListener("abort", cleanup, { once: true });
   return cleanup;

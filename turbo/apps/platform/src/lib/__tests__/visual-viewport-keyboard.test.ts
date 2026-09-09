@@ -1,3 +1,5 @@
+// @vitest-environment-options {"url":"https://app.okou.ai/"}
+
 import { expect, test, vi, type Mock } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
@@ -361,4 +363,130 @@ test("Browsers without visual-viewport support keep the normal layout", () => {
   focusTextEntry();
 
   expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+});
+
+const IPHONE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
+const KEYBOARD_SESSION_EVENT = "keyboard_viewport_session";
+
+function setIPhoneUserAgent(): void {
+  Object.defineProperty(navigator, "userAgent", {
+    configurable: true,
+    value: IPHONE_USER_AGENT,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(navigator, "userAgent");
+    },
+    { once: true },
+  );
+}
+
+function keyboardSessionEvents(): Record<string, unknown>[] {
+  return context.mocks
+    .posthog()
+    .events.filter(({ name }) => {
+      return name === KEYBOARD_SESSION_EVENT;
+    })
+    .map(({ properties }) => {
+      return { ...properties };
+    });
+}
+
+// The close window samples the viewport on animation frames for 1.5s of
+// platform time; advancing the clock and flushing a frame ends it.
+async function finishCloseWindow(
+  clock: ControlledViewportClock,
+): Promise<void> {
+  await vi.advanceTimersByTimeAsync(1500);
+  await clock.flushUpdate();
+}
+
+test("An iOS keyboard session reports the visual viewport after the keyboard closes", async () => {
+  context.mocks.posthog();
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  setIPhoneUserAgent();
+  installVisualViewport(viewport);
+  const { editor } = focusComposer(true);
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+  expect(keyboardSessionEvents()).toHaveLength(0);
+
+  editor.blur();
+  await resizeAndSettle(viewport, clock, 844, 310);
+  await finishCloseWindow(clock);
+
+  const events = keyboardSessionEvents();
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({
+    focused_at_close: false,
+    inner_height: 844,
+    ios_version: "26.0",
+    keyboard_occlusion: 324,
+    max_offset_top_after_close: 310,
+    offset_top_after_close: 310,
+    offset_top_at_close: 310,
+    offset_top_open: 310,
+    page: "other",
+    residue_ms: null,
+    standalone: false,
+    viewport_height_after_close: 844,
+    viewport_height_open: 520,
+  });
+  expect(events[0]?.close_samples).toHaveLength(2);
+});
+
+test("A pan that clears after the keyboard closes reports how long it lasted", async () => {
+  context.mocks.posthog();
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  setIPhoneUserAgent();
+  installVisualViewport(viewport);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, 310);
+  await vi.advanceTimersByTimeAsync(300);
+  await clock.flushUpdate();
+
+  // The pan ends without any viewport event.
+  viewport.offsetTop = 0;
+  await vi.advanceTimersByTimeAsync(100);
+  await clock.flushUpdate();
+  await finishCloseWindow(clock);
+
+  const events = keyboardSessionEvents();
+  expect(events).toHaveLength(1);
+  // The close settles 50ms after its event, so the pan was last seen at 350ms
+  // and first seen gone at 450ms.
+  expect(events[0]).toMatchObject({
+    max_offset_top_after_close: 310,
+    offset_top_after_close: 0,
+    offset_top_at_close: 310,
+    residue_ms: 450,
+  });
+});
+
+test("Keyboard sessions outside iOS are not reported", async () => {
+  context.mocks.posthog();
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, 0);
+  await finishCloseWindow(clock);
+
+  expect(keyboardSessionEvents()).toHaveLength(0);
 });

@@ -303,6 +303,57 @@ export function captureTaskCompletedSuccessfully(): void {
   });
 }
 
+export type KeyboardViewportPage = "home" | "other" | "thread";
+
+export interface KeyboardViewportCloseSample {
+  /** Composer bottom to visual viewport bottom, null without a composer. */
+  readonly gap: number | null;
+  readonly height: number;
+  readonly offset: number;
+  readonly root_top: number | null;
+  readonly scroll_y: number;
+  /** Milliseconds after the keyboard closed. */
+  readonly t: number;
+}
+
+interface KeyboardViewportSessionProperties {
+  readonly close_samples: readonly KeyboardViewportCloseSample[];
+  readonly composer_gap_after_close: number | null;
+  readonly focused_at_close: boolean;
+  readonly inner_height: number;
+  readonly ios_version: string;
+  readonly keyboard_occlusion: number;
+  readonly max_offset_top_after_close: number;
+  readonly offset_top_after_close: number;
+  readonly offset_top_at_close: number;
+  readonly offset_top_open: number;
+  readonly page: KeyboardViewportPage;
+  readonly referrer_origin: string;
+  readonly residue_ms: number | null;
+  readonly root_top_after_close: number | null;
+  readonly safe_area_bottom: number;
+  readonly safe_area_top: number;
+  readonly scale_at_close: number;
+  readonly screen_height: number;
+  readonly session_ms: number;
+  readonly standalone: boolean;
+  readonly viewport_height_after_close: number;
+  readonly viewport_height_open: number;
+}
+
+/**
+ * One software-keyboard session on iOS, with the visual viewport sampled for
+ * 1.5s after the keyboard closed. Used to attribute a viewport that stays
+ * panned after the close (#32420) to iOS versions, surfaces, and pages.
+ */
+export function captureKeyboardViewportSession(
+  properties: KeyboardViewportSessionProperties,
+): void {
+  runPostHog(() => {
+    posthog.capture("keyboard_viewport_session", { ...properties });
+  });
+}
+
 export type ChatThreadMetadataShortcutOutcome =
   | "hit"
   | "not-found"
