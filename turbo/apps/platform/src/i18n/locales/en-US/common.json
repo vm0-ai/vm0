@@ -5221,6 +5221,11 @@
         "categoryImage": "Image",
         "categoryVideo": "Video",
         "chatModels": "Chat models",
+        "effort": "Reasoning effort",
+        "effortDefault": "Model default",
+        "effortImpact": "Higher effort may take longer and use more credits. Applies to the next task.",
+        "effortReset": "Restore model default",
+        "effortUnavailable": "Effort is unavailable for this model route. Restore the default to continue.",
         "fast": "Fast",
         "fastImpact": "1.5× model speed · 2.5× credit usage",
         "generationPriceTiers": {

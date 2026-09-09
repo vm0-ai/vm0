@@ -68,7 +68,15 @@ const setModelSelection$ = command(
     selection: ModelProviderSelection | null,
     signal: AbortSignal,
   ): Promise<void> => {
+    const previous = await get(chatPageModelSelection$);
+    signal.throwIfAborted();
     set(setChatPageModelSelection$, selection);
+    if (
+      previous?.selectedModel === selection?.selectedModel &&
+      previous?.codexServiceTier === selection?.codexServiceTier
+    ) {
+      return;
+    }
     const selectedModel = selection?.selectedModel;
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;

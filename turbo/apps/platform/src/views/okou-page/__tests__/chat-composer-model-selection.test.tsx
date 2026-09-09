@@ -2,7 +2,11 @@ import {
   billingStatusContract,
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
-import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  chatThreadDraftContract,
+  chatThreadsContract,
+  type ChatThreadEvent,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   type ModelProviderType,
   type OrgModelPolicy,
@@ -34,7 +38,11 @@ import {
   NEW_CHAT_PATH,
   readyChat,
   RUN_PATH,
+  RUN_THREAD_ID,
 } from "./chat-run-test-fixtures.ts";
+
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
+import { fillComposer } from "./chat-test-helpers.ts";
 
 const POLICY_DATE = "2026-08-12T09:00:00.000Z";
 
@@ -740,4 +748,403 @@ test("Choose a model from the flyout without leaving the type list", async () =>
   expect(next).toHaveFocus();
   click(next);
   await expect(findButton("GPT 5.6 Luna")).resolves.toBeVisible();
+});
+
+test("Choose effort for a new chat and keep Fast independent", async () => {
+  const user = userEvent.setup({ delay: null });
+  const updates: {
+    reasoningEffort?: string | null;
+    codexServiceTier?: string | null;
+  }[] = [];
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    onModelSelectionUpdate: (body) => {
+      updates.push(body);
+    },
+  });
+  configurePolicies(["gpt-5.6-sol"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.PiLoop]: false,
+      [FeatureSwitchKey.ChatPreference]: true,
+    },
+  });
+  const composer = await readyComposer();
+  click(await findButton("GPT 5.6 Sol"));
+  click(
+    buttonNamed(
+      "Adjust GPT 5.6 Sol settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  const slider = await screen.findByRole("slider", {
+    name: "Reasoning effort",
+  });
+  expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+  slider.focus();
+  await user.keyboard("{End}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "max");
+  });
+  click(screen.getByRole("switch", { name: "Fast" }));
+  await expect(findButton("GPT 5.6 Sol Fast")).resolves.toBeVisible();
+  expect(slider).toHaveAttribute("aria-valuetext", "max");
+  await user.click(composer);
+  await fillComposer(composer, "Use this effort for the new task");
+  click(await findButton("Send"));
+  await waitFor(() => {
+    expect(updates).toContainEqual(
+      expect.objectContaining({
+        reasoningEffort: "max",
+        codexServiceTier: "fast",
+      }),
+    );
+  });
+});
+
+test("Restore effort on an existing thread without changing Fast", async () => {
+  const updates: {
+    reasoningEffort?: string | null;
+    codexServiceTier?: string | null;
+  }[] = [];
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    codexServiceTier: "fast",
+    onModelSelectionUpdate: (body) => {
+      updates.push(body);
+    },
+  });
+  configurePolicies(["gpt-5.6-sol"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.PiLoop]: false,
+    },
+  });
+  await readyChat();
+  click(await findButton("GPT 5.6 Sol Fast"));
+  click(
+    buttonNamed(
+      "Adjust GPT 5.6 Sol settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  const slider = await screen.findByRole("slider", {
+    name: "Reasoning effort",
+  });
+  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  click(
+    buttonNamed(
+      "Restore model default",
+      screen.getByRole("region", { name: "Chat settings" }),
+    ),
+  );
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+  });
+  expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
+  await waitFor(() => {
+    expect(updates).toContainEqual(
+      expect.objectContaining({
+        reasoningEffort: null,
+        codexServiceTier: "fast",
+      }),
+    );
+  });
+});
+
+test("Preserve compatible effort and reset incompatible choices when changing models", async () => {
+  const user = userEvent.setup({ delay: null });
+  installNewChat(
+    ["claude-sonnet-5", "gpt-5.6-sol", "gpt-5.5"],
+    "claude-sonnet-5",
+  );
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.PiLoop]: false,
+      [FeatureSwitchKey.ChatPreference]: true,
+    },
+  });
+  await readyComposer();
+  click(await findButton("Claude Sonnet 5"));
+  click(
+    buttonNamed(
+      "Adjust Claude Sonnet 5 settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  let slider = await screen.findByRole("slider", { name: "Reasoning effort" });
+  slider.focus();
+  await user.keyboard("{End}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "max");
+  });
+  await user.keyboard("{ArrowLeft}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "extra");
+  });
+  expect(screen.queryByText("ultracode")).not.toBeInTheDocument();
+  await user.keyboard("{ArrowLeft}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "high");
+  });
+  click(
+    buttonNamed(
+      "Back to models",
+      screen.getByRole("region", { name: "Chat settings" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Change Chat model, Claude Sonnet 5",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "GPT 5.6 Sol",
+      await screen.findByRole("region", { name: "Chat models" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Adjust GPT 5.6 Sol settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  slider = await screen.findByRole("slider", { name: "Reasoning effort" });
+  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  slider.focus();
+  await user.keyboard("{End}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "max");
+  });
+  click(
+    buttonNamed(
+      "Back to models",
+      screen.getByRole("region", { name: "Chat settings" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Change Chat model, GPT 5.6 Sol",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "GPT 5.5",
+      await screen.findByRole("region", { name: "Chat models" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Adjust GPT 5.5 settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  slider = await screen.findByRole("slider", { name: "Reasoning effort" });
+  expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+  slider.focus();
+  await user.keyboard("{End}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
+  });
+});
+
+test("Keep saved effort dormant when its feature is disabled", async () => {
+  const updates: { reasoningEffort?: string | null }[] = [];
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    onModelSelectionUpdate: (body) => {
+      updates.push(body);
+    },
+  });
+  configurePolicies(["gpt-5.6-sol"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: false,
+      [FeatureSwitchKey.CodexFastMode]: true,
+    },
+  });
+  await readyChat();
+  click(await findButton("GPT 5.6 Sol"));
+  click(
+    buttonNamed(
+      "Adjust GPT 5.6 Sol settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  await screen.findByRole("region", { name: "Chat settings" });
+  expect(
+    screen.queryByRole("slider", { name: "Reasoning effort" }),
+  ).not.toBeInTheDocument();
+  click(screen.getByRole("switch", { name: "Fast" }));
+  await waitFor(() => {
+    expect(updates).toHaveLength(1);
+  });
+  expect(updates[0]?.reasoningEffort).toBeUndefined();
+});
+
+test("Allow restoring a saved effort when the route no longer supports it", async () => {
+  const updates: { reasoningEffort?: string | null }[] = [];
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    onModelSelectionUpdate: (body) => {
+      updates.push(body);
+    },
+  });
+  configurePolicies(["gpt-5.6-sol"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.PiLoop]: true,
+    },
+  });
+  await readyChat();
+  click(await findButton("GPT 5.6 Sol"));
+  click(
+    buttonNamed(
+      "Adjust GPT 5.6 Sol settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  const settings = await screen.findByRole("region", { name: "Chat settings" });
+  expect(settings).toHaveTextContent(
+    "Effort is unavailable for this model route",
+  );
+  expect(
+    screen.queryByRole("slider", { name: "Reasoning effort" }),
+  ).not.toBeInTheDocument();
+  click(buttonNamed("Restore model default", settings));
+  await waitFor(() => {
+    expect(updates).toContainEqual(
+      expect.objectContaining({ reasoningEffort: null }),
+    );
+  });
+});
+
+test("Follow effort changes and resets made in another session", async () => {
+  const events: ChatThreadEvent[] = [];
+  installRunChat({ selectedModel: "claude-sonnet-5", reasoningEffort: "high" });
+  configurePolicies(["claude-sonnet-5"], "claude-sonnet-5");
+  context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+    return respond(200, {
+      events: events.filter((event) => {
+        return event.seqId > (query.sinceSeqId ?? 0);
+      }),
+      hasMore: false,
+    });
+  });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    },
+  });
+  await readyChat();
+  click(await findButton("Claude Sonnet 5"));
+  click(
+    buttonNamed(
+      "Adjust Claude Sonnet 5 settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  const slider = await screen.findByRole("slider", {
+    name: "Reasoning effort",
+  });
+  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  for (const reasoningEffort of ["extra", null] as const) {
+    events.push({
+      id: crypto.randomUUID(),
+      seqId: events.length + 1,
+      kind: "model_selection_updated",
+      chatThreadId: RUN_THREAD_ID,
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      title: null,
+      selectedModel: "claude-sonnet-5",
+      reasoningEffort,
+      serviceTier: null,
+      computerUseHostId: null,
+      selectedVideoModel: null,
+      createdAt: POLICY_DATE,
+    });
+    changeChatThreadList();
+    await waitFor(() => {
+      expect(slider).toHaveAttribute(
+        "aria-valuetext",
+        reasoningEffort ?? "Model default",
+      );
+    });
+  }
+});
+
+test("Adjust effort and Fast from the desktop flyout with keyboard controls", async () => {
+  const user = userEvent.setup({ delay: null });
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(min-width: 640px)";
+  });
+  installNewChat(["gpt-5.6-sol"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerFlyout]: true,
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.PiLoop]: false,
+      [FeatureSwitchKey.ChatPreference]: true,
+    },
+  });
+  await readyComposer();
+  click(await findButton("GPT 5.6 Sol"));
+  await screen.findByRole("listbox", { name: "Chat models" });
+  click(await findButton("Adjust GPT 5.6 Sol settings"));
+  const slider = await screen.findByRole("slider", {
+    name: "Reasoning effort",
+  });
+  slider.focus();
+  await user.keyboard("{End}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "max");
+  });
+  await user.keyboard("{ArrowLeft}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
+  });
+  click(screen.getByRole("switch", { name: "Fast" }));
+  await expect(findButton("GPT 5.6 Sol Fast")).resolves.toBeVisible();
+  expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
+  const settings = screen.getByRole("region", { name: "Chat settings" });
+  click(buttonNamed("Restore model default", settings));
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+  });
+  expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
+  click(buttonNamed("Back to models", settings));
+  await screen.findByRole("listbox", { name: "Chat models" });
 });

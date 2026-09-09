@@ -1,3 +1,7 @@
+import { Slider } from "@okouai/ui/components/ui/slider";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../../signals/external/feature-switch.ts";
+import { availableChatReasoningEfforts } from "../../../signals/okou-page/model-reasoning-effort.ts";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
@@ -165,6 +169,15 @@ interface ModelPickerMenuContentProps {
   onChange: (selection: ModelProviderSelection) => void;
 }
 
+function canAdjustChatSettings(
+  option: ModelPickerMenuOption | undefined,
+  hasEffortControls: boolean,
+) {
+  return (
+    option?.disabled === false && (option.fastAvailable || hasEffortControls)
+  );
+}
+
 function ModelPickerOverview({
   signals,
   value,
@@ -173,6 +186,11 @@ function ModelPickerOverview({
   mediaModelPanel,
 }: Omit<ModelPickerMenuContentProps, "onChange">) {
   const { t } = useTranslation();
+  const switches = useGet(featureSwitch$);
+  const efforts = availableChatReasoningEfforts(value?.selectedModel, switches);
+  const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
+    ? value?.reasoningEffort
+    : undefined;
   const showModels = useSet(signals.showModels$);
   const editSettings = useSet(signals.editSettings$);
   const selectedOption = options.find((option) => {
@@ -212,13 +230,24 @@ function ModelPickerOverview({
               <Cpu size={17} />
             )
           }
-          summary={selectedOption?.fastAvailable ? speedLabel : undefined}
+          summary={
+            [
+              selectedOption?.fastAvailable ? speedLabel : undefined,
+              savedEffort,
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined
+          }
           onChange={() => {
             mediaModelPanel?.onActiveCategoryChange(null);
             showModels("chat");
           }}
           onSettings={
-            selectedOption?.fastAvailable && value
+            value &&
+            canAdjustChatSettings(
+              selectedOption,
+              efforts.length > 0 || Boolean(savedEffort),
+            )
               ? () => {
                   mediaModelPanel?.onActiveCategoryChange(null);
                   editSettings();
@@ -245,6 +274,99 @@ function ModelPickerOverview({
         })}
       </div>
     </>
+  );
+}
+
+function ChatReasoningEffortSettings({
+  selection,
+  disabled,
+  onChange,
+}: {
+  selection: ModelProviderSelection;
+  disabled: boolean;
+  onChange: ModelPickerMenuContentProps["onChange"];
+}) {
+  const { t } = useTranslation();
+  const switches = useGet(featureSwitch$);
+  const efforts = availableChatReasoningEfforts(
+    selection.selectedModel,
+    switches,
+  );
+  if (
+    !switches[FeatureSwitchKey.ChatReasoningEffort] ||
+    (efforts.length === 0 && !selection.reasoningEffort)
+  ) {
+    return null;
+  }
+  const defaultLabel = t(($) => {
+    return $.settings.models.picker.effortDefault;
+  });
+  const label = t(($) => {
+    return $.settings.models.picker.effort;
+  });
+  const value = selection.reasoningEffort ?? null;
+  const index =
+    value === null
+      ? 0
+      : efforts.findIndex((effort) => {
+          return effort === value;
+        }) + 1;
+  return (
+    <div className="flex flex-col gap-3 border-b border-border/60 px-2 py-4">
+      <div className="flex items-baseline justify-between gap-3 text-[13px]">
+        <span>{label}</span>
+        <span className="font-medium text-foreground">
+          {value ?? defaultLabel}
+        </span>
+      </div>
+      {efforts.length > 0 && (
+        <>
+          <Slider
+            ticks
+            min={0}
+            max={efforts.length}
+            step={1}
+            value={index}
+            disabled={disabled}
+            aria-label={label}
+            aria-valuetext={value ?? defaultLabel}
+            onValueChange={(next) => {
+              const reasoningEffort = next === 0 ? null : efforts[next - 1];
+              if (reasoningEffort !== undefined) {
+                onChange({ ...selection, reasoningEffort });
+              }
+            }}
+          />
+          <div
+            className="flex justify-between text-[11px] text-muted-foreground"
+            aria-hidden="true"
+          >
+            <span>{defaultLabel}</span>
+            <span>{efforts.at(-1)}</span>
+          </div>
+        </>
+      )}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        {t(($) => {
+          return efforts.length > 0
+            ? $.settings.models.picker.effortImpact
+            : $.settings.models.picker.effortUnavailable;
+        })}
+      </p>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2 h-7 self-start px-2 text-xs text-muted-foreground hover:text-foreground"
+        disabled={disabled || value === null}
+        onClick={() => {
+          onChange({ ...selection, reasoningEffort: null });
+        }}
+      >
+        {t(($) => {
+          return $.settings.models.picker.effortReset;
+        })}
+      </Button>
+    </div>
   );
 }
 
@@ -276,34 +398,41 @@ function ChatModelSettings({
         {option?.content ??
           getCanonicalModelDisplayName(selection.selectedModel)}
       </div>
-      <div className="flex items-center justify-between gap-3 px-2 py-4">
-        <div>
-          <span className="text-[13px]">
-            {t(($) => {
+      <ChatReasoningEffortSettings
+        selection={selection}
+        disabled={option?.disabled ?? true}
+        onChange={onChange}
+      />
+      {option?.fastAvailable && (
+        <div className="flex items-center justify-between gap-3 px-2 py-4">
+          <div>
+            <span className="text-[13px]">
+              {t(($) => {
+                return $.settings.models.picker.fast;
+              })}
+            </span>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {t(($) => {
+                return $.settings.models.picker.fastImpact;
+              })}
+            </p>
+          </div>
+          <Switch
+            size="compact"
+            aria-label={t(($) => {
               return $.settings.models.picker.fast;
             })}
-          </span>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {t(($) => {
-              return $.settings.models.picker.fastImpact;
-            })}
-          </p>
+            checked={selection.codexServiceTier === "fast"}
+            onCheckedChange={(fast) => {
+              onChange({
+                ...selection,
+                codexServiceTier: fast ? "fast" : undefined,
+              });
+            }}
+            disabled={option.disabled}
+          />
         </div>
-        <Switch
-          size="compact"
-          aria-label={t(($) => {
-            return $.settings.models.picker.fast;
-          })}
-          checked={selection.codexServiceTier === "fast"}
-          onCheckedChange={(fast) => {
-            onChange({
-              selectedModel: selection.selectedModel,
-              ...(fast ? { codexServiceTier: "fast" } : {}),
-            });
-          }}
-          disabled={!option?.fastAvailable || option.disabled}
-        />
-      </div>
+      )}
     </>
   );
 }
@@ -607,6 +736,89 @@ function ModelPickerFlyoutOptions({
   });
 }
 
+function ModelPickerFlyoutPanel({
+  activeMedia,
+  panelLabel,
+  ...props
+}: ModelPickerMenuContentProps & {
+  activeMedia: MediaModelPanelState["categories"][number] | undefined;
+  panelLabel: string;
+}) {
+  const { t } = useTranslation();
+  const switches = useGet(featureSwitch$);
+  const page = useGet(props.signals.page$);
+  const editSettings = useSet(props.signals.editSettings$);
+  const panelRef = useSet(props.signals.focusFlyoutPanelRef$);
+  const settingsRef = useSet(props.signals.focusPanelRef$);
+  const selectedOption = props.options.find((option) => {
+    return option.model === props.value?.selectedModel;
+  });
+  const efforts = availableChatReasoningEfforts(
+    props.value?.selectedModel,
+    switches,
+  );
+  const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
+    ? props.value?.reasoningEffort
+    : undefined;
+  if (!activeMedia && page.kind === "settings" && props.value) {
+    return (
+      <div
+        ref={settingsRef}
+        role="region"
+        className="max-h-[360px] overflow-y-auto overscroll-contain"
+        aria-label={t(($) => {
+          return $.settings.models.picker.menu.chatSettings;
+        })}
+      >
+        <ChatModelSettings {...props} selection={props.value} />
+      </div>
+    );
+  }
+  return (
+    <>
+      <div
+        ref={panelRef}
+        role="listbox"
+        aria-label={panelLabel}
+        className="flex max-h-[244px] flex-col gap-0.5 overflow-y-auto overscroll-contain"
+      >
+        <ModelPickerFlyoutOptions {...props} activeMedia={activeMedia} />
+        {props.options.length === 0 && !activeMedia && (
+          <p className="px-2 py-2 text-sm text-muted-foreground">
+            {t(($) => {
+              return $.settings.models.picker.noConfiguredModels;
+            })}
+          </p>
+        )}
+      </div>
+      {!activeMedia &&
+        props.value &&
+        selectedOption &&
+        canAdjustChatSettings(
+          selectedOption,
+          efforts.length > 0 || Boolean(savedEffort),
+        ) && (
+          <Button
+            variant="ghost"
+            className="h-9 shrink-0 justify-start gap-2 border-t border-border/60 px-2 text-xs text-muted-foreground"
+            aria-label={t(
+              ($) => {
+                return $.settings.models.picker.menu.adjustSettings;
+              },
+              { model: selectedOption.label },
+            )}
+            onClick={editSettings}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" />
+            {t(($) => {
+              return $.settings.models.picker.menu.chatSettings;
+            })}
+          </Button>
+        )}
+    </>
+  );
+}
+
 export function ModelPickerFlyoutContent({
   signals,
   value,
@@ -620,7 +832,6 @@ export function ModelPickerFlyoutContent({
   const side = useGet(signals.flyoutSide$);
   const setCategory = useSet(signals.setFlyoutCategory$);
   const rootRef = useSet(signals.flyoutRootRef$);
-  const panelRef = useSet(signals.focusFlyoutPanelRef$);
   const selectedOption = options.find((option) => {
     return option.model === value?.selectedModel;
   });
@@ -697,11 +908,8 @@ export function ModelPickerFlyoutContent({
         </div>
       )}
       <div
-        ref={panelRef}
-        role="listbox"
-        aria-label={panelLabel}
         className={cn(
-          "flex max-h-[284px] w-[252px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
+          "flex w-[252px] flex-col gap-0.5",
           FLYOUT_PANEL_CLASS,
           types.length > 1
             ? cn(
@@ -713,19 +921,16 @@ export function ModelPickerFlyoutContent({
             : "w-[252px]",
         )}
       >
-        <ModelPickerFlyoutOptions
+        <ModelPickerFlyoutPanel
+          signals={signals}
+          placeholder={placeholder}
+          mediaModelPanel={mediaModelPanel}
           activeMedia={activeMedia}
+          panelLabel={panelLabel}
           options={options}
           value={value}
           onChange={onChange}
         />
-        {options.length === 0 && !activeMedia && (
-          <p className="px-2 py-2 text-sm text-muted-foreground">
-            {t(($) => {
-              return $.settings.models.picker.noConfiguredModels;
-            })}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -739,6 +944,10 @@ function moveFlyoutFocus(
   const target = event.target as HTMLElement;
   const root = event.currentTarget;
   const onType = target.getAttribute("role") === "tab";
+  const onOption = target.getAttribute("role") === "option";
+  if (!onType && !onOption) {
+    return;
+  }
   const options = Array.from(
     root.querySelectorAll<HTMLElement>('[role="option"]'),
   );

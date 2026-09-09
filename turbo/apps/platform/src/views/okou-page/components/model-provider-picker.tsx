@@ -84,9 +84,12 @@ import {
   ModelPickerMenuContent,
 } from "./model-picker-menu.tsx";
 
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
+
 export interface ModelProviderSelection {
   selectedModel: SupportedRunModel;
   codexServiceTier?: CodexServiceTier;
+  reasoningEffort?: ReasoningEffort | null;
 }
 
 export interface MediaModelPanelOption {
@@ -1478,6 +1481,7 @@ function EnabledExplicitModelFirstModelPicker(
         const result = await resolveSelection(
           {
             selection,
+            previousSelection: props.value,
           },
           pageSignal,
         );

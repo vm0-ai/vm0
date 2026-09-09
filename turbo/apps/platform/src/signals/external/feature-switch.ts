@@ -139,6 +139,10 @@ export const modelPickerFlyoutEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ModelPickerFlyout] ?? false;
 });
 
+export const chatReasoningEffortEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatReasoningEffort] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });

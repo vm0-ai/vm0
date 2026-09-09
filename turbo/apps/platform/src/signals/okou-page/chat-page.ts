@@ -7,7 +7,10 @@ import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
-import { codexFastModeEnabled$ } from "../external/feature-switch.ts";
+import {
+  chatReasoningEffortEnabled$,
+  codexFastModeEnabled$,
+} from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
@@ -80,8 +83,18 @@ export const chatPageModelSelection$ = computed(
   async (get): Promise<ModelProviderSelection | null> => {
     const user = get(internalChatPageUserOverride$);
     if (user.kind === "set") {
-      if (user.value?.codexServiceTier !== "fast") {
-        return user.value;
+      if (!user.value) {
+        return null;
+      }
+      const selection: ModelProviderSelection = {
+        selectedModel: user.value.selectedModel,
+        ...(get(chatReasoningEffortEnabled$) &&
+        user.value.reasoningEffort !== undefined
+          ? { reasoningEffort: user.value.reasoningEffort }
+          : {}),
+      };
+      if (user.value.codexServiceTier !== "fast") {
+        return selection;
       }
       const policies = await get(orgModelPolicies$);
       return isCodexFastModeAvailableForSelection({
@@ -89,8 +102,8 @@ export const chatPageModelSelection$ = computed(
         selectedModel: user.value.selectedModel,
         codexFastModeEnabled: get(codexFastModeEnabled$),
       })
-        ? user.value
-        : { selectedModel: user.value.selectedModel };
+        ? { ...selection, codexServiceTier: "fast" }
+        : selection;
     }
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);

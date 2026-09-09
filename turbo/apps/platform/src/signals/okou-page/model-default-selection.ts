@@ -6,6 +6,8 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { withCompatibleChatReasoningEffort } from "./model-reasoning-effort.ts";
 import {
   modelAllowedForPlan,
   modelPlanCapabilities$,
@@ -100,6 +102,7 @@ export const resolveExplicitModelSelection$ = command(
     { get },
     params: {
       selection: ModelProviderSelection | null;
+      previousSelection: ModelProviderSelection | null;
     },
     signal: AbortSignal,
   ): Promise<ExplicitModelSelectionResult> => {
@@ -119,6 +122,13 @@ export const resolveExplicitModelSelection$ = command(
     ) {
       return { kind: "compare-plans" };
     }
-    return { kind: "select", selection: params.selection };
+    return {
+      kind: "select",
+      selection: withCompatibleChatReasoningEffort(
+        params.selection,
+        params.previousSelection,
+        get(featureSwitch$),
+      ),
+    };
   },
 );
