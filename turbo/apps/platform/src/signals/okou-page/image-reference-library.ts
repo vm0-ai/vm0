@@ -56,9 +56,9 @@ interface ImageReferenceCreator {
   readonly imageUrl: string;
 }
 
-type ImageReferenceImageSlot = "a" | "b";
+export type ImageReferenceImageSlot = "a" | "b";
 
-interface ImageReferenceLoadedImage {
+export interface ImageReferenceLoadedImage {
   readonly desiredUrl: string;
   readonly sourceUrl: string;
   readonly slot: ImageReferenceImageSlot;
@@ -69,7 +69,7 @@ interface ImageReferenceImageState {
   readonly failed: readonly ImageReferenceLoadedImage[];
 }
 
-interface ImageReferenceImageSignals {
+export interface ImageReferenceImageSignals {
   readonly desiredUrl$: Computed<Promise<string | null>>;
   readonly state$: Computed<ImageReferenceImageState>;
   readonly commitLoadedImage$: Command<
