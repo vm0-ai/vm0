@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.323.0](https://github.com/vm0-ai/vm0/compare/cli-v9.322.0...cli-v9.323.0) (2026-09-09)
+
+
+### Features
+
+* **cli:** extend artifact presentation guidance to generation results ([#33029](https://github.com/vm0-ai/vm0/issues/33029)) ([ff4b64d](https://github.com/vm0-ai/vm0/commit/ff4b64df5a101a2f1216f54eeeeea07603b88db2))
+
 ## [9.322.0](https://github.com/vm0-ai/vm0/compare/cli-v9.321.3...cli-v9.322.0) (2026-09-09)
 
 
