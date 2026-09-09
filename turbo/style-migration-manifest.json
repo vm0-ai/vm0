@@ -240,7 +240,7 @@
         "tone-dark",
         "tone-mobile"
       ],
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay-with-calibration",
@@ -249,13 +249,25 @@
           "commit": "0b5a1934a9d4279f84ae1a83127ab7f7e4c1997b"
         },
         {
-          "kind": "after-and-raw-diffs-with-live-persistence-and-initial-failure",
+          "kind": "shared-button-base-after-raw-diffs-and-live-persistence",
+          "url": "https://a.okou.io/iuba6g9yb2.zip",
+          "sha256": "ddd753c9e3d12480847d4f9656076e813b4892a27bc8673fc1009c9a02960e29",
+          "commit": "775b8ba760699a5f60fc9d9add8673d70b6211ab"
+        },
+        {
+          "kind": "shared-button-base-before-after-comparison-image",
+          "url": "https://a.okou.io/dua9x3cxng.png",
+          "sha256": "2fbca1a8e2850f813f17800c5817801ba159311c0dd22e6cf7f8f1631bc888c6",
+          "commit": "775b8ba760699a5f60fc9d9add8673d70b6211ab"
+        },
+        {
+          "kind": "initial-after-and-raw-diffs-with-live-persistence-and-initial-failure",
           "url": "https://a.okou.io/2ylnq5pvv1.zip",
           "sha256": "ed9657bb02a28fa6803c214c6bbe2ce8a7412ef967ccca3d629fe26faa4d2897",
           "commit": "7da162302e3de54931c8c9c66e49f4c1d3211960"
         },
         {
-          "kind": "before-after-comparison-image",
+          "kind": "initial-before-after-comparison-image",
           "url": "https://a.okou.io/eirvvzcyr7.png",
           "sha256": "7573d823d7634f4860d602bd50602886fdc1809dd4f5a740520d21c602e05015",
           "commit": "7da162302e3de54931c8c9c66e49f4c1d3211960"

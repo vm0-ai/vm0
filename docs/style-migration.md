@@ -253,12 +253,20 @@ zero changed pixels and identical control observations on App/API build
 `92f0e94405a15b7c5f94fdd05660ab698a22f7af`. Real API Save, reload, Discard
 and restoration of the original tone passed. The 15 shared UI tests, 27 page
 tests, relevant types/lint/Knip checks and all source-head CI gates passed.
-These results predate the shared `ButtonBase` rendering follow-up; that change
-requires a new replay against the same frozen BEFORE evidence.
 The legacy inventory remains 94 tokens, 534 declarations, 309 production uses
 and two injections.
 
-The archive retains the first AFTER invocation: two initial Light frames
+The shared `ButtonBase` rendering follow-up was replayed against the same frozen
+BEFORE evidence. Its [AFTER archive](https://a.okou.io/iuba6g9yb2.zip) and
+[comparison image](https://a.okou.io/dua9x3cxng.png) record all 54 states passing
+with zero changed pixels and identical control observations on App/API build
+`775b8ba760699a5f60fc9d9add8673d70b6211ab`, from source
+`ff6300001b95407e5db1421e589c1d2ebab5888d`. The runner, fixtures, cases and
+rounding limits are unchanged. The same 42 focused tests and affected static
+checks passed again; real API Save, reload, Discard and restoration passed on
+this build. Both artifacts were anonymously downloaded and hash-verified.
+
+The initial AFTER archive retains its first invocation: two initial Light frames
 captured the sidebar promo before it appeared, while control observations and
 all other states matched. After confirming the live promo had loaded, a new
 invocation with identical source, runner, cases, fixture and limits passed.
