@@ -1696,7 +1696,6 @@
       "saving": "Salvataggio...",
       "send": "Invia",
       "stop": "Interrompi",
-      "undo": "Annulla",
       "view": "Visualizza"
     },
     "actionUnavailable": {
@@ -1999,7 +1998,6 @@
       "directory": {
         "allCategories": "Tutti",
         "askAdmin": "Chiedi a un amministratore di abilitarlo",
-        "browse": "Esplora i connettori",
         "configure": "Configura",
         "connected": "Connesso",
         "createCustom": "Crea personalizzato",
@@ -2011,8 +2009,6 @@
         "detailPermissions": "Autorizzazioni",
         "emptyCustomBody": "Creane uno da qualsiasi API HTTP o server MCP e Okou potrà usarlo come ogni altro connettore.",
         "emptyCustomTitle": "Nessun connettore personalizzato",
-        "emptyYoursBody": "Connetti un'app e Okou potrà leggerla e agire al posto tuo.",
-        "emptyYoursTitle": "Non hai ancora connesso nulla",
         "matchCount_one": "{{count}} risultato",
         "matchCount_many": "{{count}} risultati",
         "matchCount_other": "{{count}} risultati",
@@ -2027,13 +2023,11 @@
         "permissionCount_one": "{{count}} autorizzazione",
         "permissionCount_many": "{{count}} autorizzazioni",
         "permissionCount_other": "{{count}} autorizzazioni",
-        "searchYours": "Cerca tra i tuoi connettori",
         "showAll_one": "Mostra tutti ({{count}})",
         "showAll_many": "Mostra tutti ({{count}})",
         "showAll_other": "Mostra tutti ({{count}})",
         "tabCustom": "Personalizzati",
-        "tabDiscover": "Scopri",
-        "tabYours": "I tuoi connettori"
+        "tabDiscover": "Scopri"
       },
       "fallsBackTo": "Passa a {{account}} come alternativa",
       "find": "Trova connettori...",
@@ -2303,6 +2297,7 @@
       "thinking": {
         "assembling": "Assemblando i pezzi...",
         "brewing": "Sto preparando una risposta...",
+        "default": "Sto pensando...",
         "mapping": "Definendo il percorso...",
         "onIt": "Ci sto lavorando...",
         "piecingTogether": "Mettendo insieme le cose...",
@@ -2648,10 +2643,7 @@
     },
     "toasts": {
       "copied": "Copiato",
-      "deleted": "Chat eliminata",
-      "pinned": "Chat fissata",
-      "pinUpdateFailed": "Impossibile confermare la modifica. Ricarica la pagina per verificare lo stato salvato.",
-      "unpinned": "Chat non più fissata"
+      "deleted": "Chat eliminata"
     },
     "translation": {
       "action": "Traduci",
@@ -2677,7 +2669,7 @@
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
       "cleanupFailed": "Il testo è stato aggiunto, ma non è stato possibile rimuovere la registrazione salvata.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Fatto",
       "discarding": "Rimozione della bozza vocale...",
       "input": "Ingresso vocale",
       "inputLimitReached": "Limite di input vocale raggiunto. Passa a Pro o Team per limiti più alti.",
@@ -2690,13 +2682,44 @@
       "removeDraft": "Rimuovi bozza vocale",
       "restoreFailed": "Impossibile caricare la bozza vocale. Riprova.",
       "retry": "Riprova",
+      "retryingSavedAudio": "Nuovo tentativo con l’audio salvato",
       "retryReady": "La registrazione è conservata. Riprova la trascrizione.",
+      "returningToComposer": "Ritorno al campo di testo",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",
       "storageFailed": "Impossibile salvare l’audio. Riprova recupera solo l’audio già salvato su questo dispositivo.",
+      "textTakingShape": "Il testo sta prendendo forma",
       "transcribing": "Trascrizione",
       "transcribingProgress": "Trascrizione...",
       "transcriptionFailed": "La trascrizione vocale non è riuscita. Riprova."
+    },
+    "welcomeThread": {
+      "content": "# Ciao, sono {{assistantName}}\n\nSono il tuo collega IA. Dimmi quale risultato ti serve e posso lavorare con i tuoi strumenti per riportare qui il risultato finito.\n\n## Cosa posso consegnare\n\n### Immagini\n\nPosso creare visual per campagne, illustrazioni di prodotto, grafiche social e creatività pubblicitarie.\n\n![Visual di campagna consegnato da {{assistantName}}]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Presentazioni\n\nPosso trasformare un brief iniziale in una presentazione strutturata, progettata e pronta per essere presentata.\n\n![Presentazione consegnata da {{assistantName}}]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} slide\n\n### Video\n\nPosso consegnare demo di prodotto montate, video di lancio, spiegazioni e contenuti social con sottotitoli.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · pronto da condividere\n\n### Suggerimenti per l'automazione\n\nPosso analizzare il lavoro ripetitivo del team e restituire un elenco prioritario delle attività che vale la pena automatizzare.\n\n| Priorità | Attività | Trigger | Risultato |\n| --- | --- | --- | --- |\n| 1 | Qualificare i lead in ingresso | Nuova risposta al modulo | Record CRM arricchito e bozza di risposta |\n| 2 | Trasformare le riunioni in follow-up | Chiamata completata | Riepilogo, nota CRM e bozza email |\n| 3 | Revisione settimanale della crescita | Lunedì mattina | Sintesi delle metriche e rapporto sulle anomalie |\n\n## Perché i team ottengono di più da {{assistantName}}\n\nUn buon risultato non deve rimanere nella chat di una sola persona. Salva il processo che funziona come workflow condiviso e il prossimo collega partirà da ciò che ha già dimostrato di funzionare.\n\n```mermaid\nflowchart TB\n  A[\"1. Scopri cosa funziona<br/>Un collega e {{assistantName}} completano insieme l'attività\"]\n  B[\"2. Condividi il workflow<br/>Il processo e il contesto diventano riutilizzabili\"]\n  C[\"3. Riutilizza ciò che funziona<br/>Gli altri partono dal processo collaudato\"]\n  D[\"4. Migliorate insieme<br/>Il feedback migliora le esecuzioni future\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Condividi il workflow, non solo il file finale.**\n- Offri a ogni collega lo stesso contesto iniziale.\n- Migliora un processo una volta e lascia che ne benefici tutto il team.\n\n## Come lavorare con me in team\n\nUna buona risposta aiuta una persona. Un flusso di lavoro salvato aiuta tutte quelle che faranno lo stesso lavoro dopo di lei.\n\n[Schema del flusso di lavoro del team](<{{teamDiagramUrl}}>)\n\n1. **Svolga il compito con me una volta.** Descriva il risultato che vuole invece dei passaggi per arrivarci, e mi corregga mentre il lavoro è ancora in corso. È proprio quella correzione che vale la pena conservare.\n2. **Lo salvi come flusso di lavoro.** Scelga **Crea flusso di lavoro** nella casella del messaggio qui sotto. Le chiederò quale risultato vuole, che cosa deve avviarlo e che cosa fare del risultato, poi lo scriverò come un flusso di lavoro che potrà eseguire di nuovo.\n3. **Porti la sua visibilità su Pubblico.** Apra il flusso di lavoro e imposti **Visibilità**. Un flusso **Privato** resta con lei; uno **Pubblico** può essere eseguito da chiunque nello spazio di lavoro.\n4. **Lo avvii con il suo nome.** Digiti `/` seguito dal nome del flusso di lavoro in qualsiasi chat. Aggiunga un'automazione quando deve partire in base a una pianificazione o a un evento invece che su richiesta.\n\nCominci dal compito che il suo team ripete più spesso, non dal più difficile. Un flusso di lavoro che gira ogni settimana vale più di uno ingegnoso che gira una volta sola.\n\n## Mi parli in Slack\n\nGran parte di questo lavoro viene già discussa in Slack. Una volta che sono installato lì, la risposta arriva nel thread invece che in un'altra scheda.\n\n[Schema della conversazione in Slack](<{{slackDiagramUrl}}>)\n\n**Da configurare una volta sola**\n\n1. Apra **Dove lavora {{assistantName}}** nella barra laterale sinistra.\n2. Sulla scheda di Slack scelga **Installa su Slack** e approvi i permessi. Solo chi amministra lo spazio di lavoro può installare, quindi lo chieda a chi lo amministra se non è il suo caso.\n3. Tutti gli altri aprono la stessa scheda e scelgono **Connettiti** per collegare il proprio account Slack.\n\n**Poi mi usi come qualsiasi altro membro del team**\n\n| In Slack | Che cosa faccio |\n| --- | --- |\n| Mi mandi un messaggio diretto | Lavoriamo in privato, in una conversazione continua |\n| `@{{assistantName}}` in un canale | Rispondo in un thread sul suo messaggio, dove il team può seguire |\n| `@{{assistantName}}` di nuovo dentro un thread | Riprendo quel thread e continuo a lavorarci |\n| `/okou` | Apre il mio elenco di comandi: connettersi, cambiare agente, cambiare modello, disconnettersi |\n\nDue cose vale la pena saperle. In un canale rispondo solo quando vengo menzionato, quindi resto fuori dai thread in cui non sono stato chiamato. E può allegare un file a un messaggio diretto: lo leggerò prima di rispondere.\n\n[Configura Slack]({{worksUrl}}) così i flussi di lavoro salvati qui sopra possono essere avviati senza uscire dal canale.\n\n[Invita il tuo team]({{inviteUrl}}) affinché il prossimo workflow che crei sia già riutilizzabile dalle persone che ne hanno bisogno.\n\n[Leggi la documentazione]({{docsUrl}}) per scoprire come funzionano i workflow condivisi.",
+      "slackDiagram": {
+        "caption": "Dove arriva una risposta in Slack: nel thread sul suo messaggio, o in un messaggio diretto privato",
+        "channelEyebrow": "In un canale",
+        "channelNote": "La risposta resta sul suo messaggio, così il canale non si intasa e il team può comunque seguirla.",
+        "directEyebrow": "In un messaggio diretto",
+        "directLabel": "Lei e {{assistantName}}",
+        "directNote": "Una conversazione privata che mantiene il contesto tra un compito e l'altro.",
+        "mentionLabel": "Lei menziona {{assistantName}}",
+        "replyLabel": "{{assistantName}} risponde nel thread"
+      },
+      "teamDiagram": {
+        "automationBody": "Lo avvia con una pianificazione o un evento, senza che nessuno lo chieda.",
+        "automationTitle": "Un'automazione",
+        "caption": "Una chat riuscita diventa un flusso di lavoro da cui partono tutto il team e il suo calendario",
+        "chatBody": "Lei e {{assistantName}} portate a termine il compito una volta.",
+        "chatTitle": "Una chat che ha funzionato",
+        "savedEyebrow": "Salvato una volta",
+        "teamEyebrow": "Di tutti",
+        "teammateBody": "Lo avvia con il suo nome e parte da ciò che già funziona.",
+        "teammateTitle": "Chiunque nel team",
+        "workflowBody": "Il processo e il suo contesto, conservati e riutilizzabili.",
+        "workflowTitle": "Un flusso di lavoro",
+        "yoursEyebrow": "Suo"
+      },
+      "title": "Ti diamo il benvenuto in {{assistantName}}"
     },
     "workflows": {
       "named": "Flusso di lavoro {{title}}",
@@ -2895,6 +2918,7 @@
         "notConnected": "Nessun connettore rimasto da collegare",
         "search": "Nessun connettore corrispondente a \"{{search}}\""
       },
+      "filterCategory": "Categoria",
       "filters": {
         "agents": "Agenti",
         "all": "Tutto",
@@ -2903,11 +2927,21 @@
         "notConnected": "Non connesso",
         "status": "Stato"
       },
+      "filterWith": "Filtro: {{category}}",
       "iconUnavailable": "Icona del connettore non disponibile",
       "newConnector": "Nuovo connettore",
       "noConnectorsAlt": "Nessun connettore",
       "otherCategory": "Altro",
       "search": "Trova connettori",
+      "shelf": {
+        "moreCategories": "Altre categorie",
+        "popular": "Popolari",
+        "seeMore_one": "Vedi {{names}} e altro {{count}}",
+        "seeMore_many": "Vedi {{names}} e altri {{count}}",
+        "seeMore_other": "Vedi {{names}} e altri {{count}}",
+        "top": "Connettori principali",
+        "yours": "I tuoi connettori"
+      },
       "tabs": {
         "builtin": "Integrato",
         "custom": "Personalizzato"
@@ -5442,19 +5476,14 @@
         },
         "connectionDiagnostics": {
           "activeWaits": "Attese attive",
-          "blurred": "senza focus",
           "channel": "canale",
           "clear": "Cancella",
           "connection": "connessione",
           "copyJson": "Copia JSON",
-          "description": "Controlla il ciclo di vita del browser, il recupero dell'autenticazione e i segnali di connessione Ably.",
+          "description": "Esamina i segnali di autenticazione e connessione Ably.",
           "empty": "Nessun evento diagnostico registrato.",
           "events": "eventi",
-          "focused": "con focus",
           "log": "Registro eventi",
-          "offline": "offline",
-          "online": "online",
-          "recovery": "recupero",
           "refresh": "Aggiorna",
           "title": "Diagnostica della connessione in tempo reale",
           "unavailable": "non disponibile",
@@ -5490,6 +5519,18 @@
           "unavailable": "Modello non disponibile ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Email facoltative, inclusi riepiloghi e promemoria, in tutti i tuoi spazi di lavoro.",
+        "loading": "Verifica dell’iscrizione email…",
+        "retryMessage": "Impossibile salvare o caricare l’iscrizione email. Riprova.",
+        "saving": "Salvataggio…",
+        "sectionTitle": "Iscrizioni email",
+        "subscribed": "Iscrizione attiva",
+        "title": "Ricevi email da Okou",
+        "unavailable": "Email non disponibile",
+        "unavailableDescription": "Controlla l’email in Account e sicurezza o contatta l’assistenza se la consegna è bloccata.",
+        "unsubscribed": "Iscrizione annullata"
+      },
       "language": {
         "description": "Scegli la tua lingua preferita per l'interfaccia {{brandName}}",
         "label": "Lingua",
@@ -5508,13 +5549,19 @@
         "title": "Lingua"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + email",
+        "chatOnly": "Solo Chat",
+        "checkEmailSubscription": "Controlla l’iscrizione email qui sopra per lo stato della consegna.",
         "conflict": "Morning Brief non è temporaneamente disponibile perché lo stato dell'installazione non è coerente. Riprova al termine della riconciliazione.",
-        "description": "Ricevi ogni giorno alle 7:00, nel tuo fuso orario, un'email con le priorità da Gmail, GitHub, Calendar e Chats non lette.",
+        "description": "Ricevi le priorità quotidiane di questo spazio di lavoro alle 7:00 nel tuo fuso orario.",
+        "emailOff": "L’email è disattivata. Il riepilogo continuerà ad apparire in Chat.",
+        "emailWhenReady": "Riceverai un’email quando il riepilogo sarà pronto.",
         "loading": "Caricamento delle impostazioni di Morning Brief...",
         "missingDefaultAgent": "Scegli un Agent predefinito utilizzabile prima di attivare Morning Brief.",
         "missingTimezone": "Imposta un fuso orario valido prima di attivare Morning Brief.",
         "multipleInstallations": "Esistono più installazioni di Morning Brief. Risolvi il conflitto prima di modificare questa preferenza.",
-        "nextEmail": "Prossima email: {{date}} ({{timezone}})",
+        "nextBrief": "Prossimo riepilogo {{date}} ({{timezone}})",
+        "paused": "In pausa",
         "retry": "Riprova",
         "retryMessage": "Non è stato possibile caricare o aggiornare le impostazioni di Morning Brief. Riprova per continuare.",
         "title": "Riepilogo mattutino"

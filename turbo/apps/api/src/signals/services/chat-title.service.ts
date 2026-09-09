@@ -25,15 +25,20 @@ import { logger } from "../../lib/log";
 import { stripMarkdown } from "../../lib/strip-markdown";
 import { waitUntil } from "../context/wait-until";
 import {
+  AUXILIARY_TEXT_MAX_TOKENS,
   FAST_PATH_MODEL,
-  generateText,
+  generateTextWithUsage,
   isLlmConfigured,
+  openRouterTokenCounts,
 } from "../external/openrouter";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
-import { generateAuxiliary } from "./auxiliary-generation.service";
+import {
+  generateAuxiliary,
+  type RecordAuxiliaryGenerationDetail,
+} from "./auxiliary-generation.service";
 import { chatEventTextCondition } from "./chat-event-type.service";
 import { visibleChatEventCondition } from "./chat-event-shared.service";
 import {
@@ -186,29 +191,43 @@ function chatCompletionContextMessage(
 
 async function generateFastPathText(
   messages: readonly ChatMessageForGeneration[],
-  maxTokens = 512,
+  maxTokens = AUXILIARY_TEXT_MAX_TOKENS,
   options?: {
     readonly stripMarkdown?: boolean;
+    readonly acceptTruncatedText?: boolean;
+    readonly record?: RecordAuxiliaryGenerationDetail;
   },
   signal?: AbortSignal,
 ): Promise<string | null> {
-  const content = await generateText(
+  const generation = await generateTextWithUsage(
     FAST_PATH_MODEL,
     messages,
     maxTokens,
     {
       reasoning: { effort: "low" },
       temperature: 0.3,
+      ...(options?.acceptTruncatedText === true
+        ? { acceptTruncatedText: true }
+        : {}),
     },
     signal,
   );
-  if (content === null) {
+  if (generation === null) {
     return null;
   }
-  return options?.stripMarkdown === false ? content : stripMarkdown(content);
+  options?.record?.({
+    truncated: generation.truncated === true,
+    tokens: openRouterTokenCounts(generation.usage),
+  });
+  return options?.stripMarkdown === false
+    ? generation.text
+    : stripMarkdown(generation.text);
 }
 
-function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
+function generateChatTitle(
+  input: ChatTitleInput,
+  record: RecordAuxiliaryGenerationDetail,
+): Promise<string | null> {
   const sections: string[] = [];
 
   if (input.priorRounds && input.priorRounds.length > 0) {
@@ -227,17 +246,23 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
     `Most recent user message:\n${input.currentUserMessage.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
   );
 
-  return generateFastPathText([
-    {
-      role: "system",
-      content:
-        "Generate a short, descriptive title (max 60 chars) for a chat conversation. Weight the most recent exchange highest, but use the earlier rounds to keep the title consistent as the thread evolves. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
-    },
-    {
-      role: "user",
-      content: sections.join("\n\n"),
-    },
-  ]);
+  // A title is persisted immutably onto the thread, so a mid-word fragment is
+  // worse than leaving the thread untitled: truncation stays rejected here.
+  return generateFastPathText(
+    [
+      {
+        role: "system",
+        content:
+          "Generate a short, descriptive title (max 60 chars) for a chat conversation. Weight the most recent exchange highest, but use the earlier rounds to keep the title consistent as the thread evolves. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+      },
+      {
+        role: "user",
+        content: sections.join("\n\n"),
+      },
+    ],
+    AUXILIARY_TEXT_MAX_TOKENS,
+    { record },
+  );
 }
 
 /** Generate the immutable title stored with a public shared-thread snapshot. */
@@ -254,7 +279,9 @@ export async function generateSharedThreadTitle(
   const title = await generateAuxiliary(
     {
       feature: "shared_thread_title",
-      generate: () => {
+      generate: (record) => {
+        // Public snapshots keep this title forever; a partial one is worse
+        // than the fixed fallback, so truncation stays rejected.
         return generateFastPathText(
           [
             {
@@ -267,8 +294,8 @@ export async function generateSharedThreadTitle(
               content: conversation,
             },
           ],
-          512,
-          undefined,
+          AUXILIARY_TEXT_MAX_TOKENS,
+          { record },
           signal,
         );
       },
@@ -388,11 +415,14 @@ async function generateAndPersistChatThreadTitle(args: {
         : [];
       const title = await generateAuxiliary({
         feature: "chat_title",
-        generate: () => {
-          return generateChatTitle({
-            currentUserMessage: args.prompt,
-            priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
-          });
+        generate: (record) => {
+          return generateChatTitle(
+            {
+              currentUserMessage: args.prompt,
+              priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+            },
+            record,
+          );
         },
         usable: (value) => {
           return Boolean(value);
@@ -446,6 +476,10 @@ export async function generateChatNotificationSummary(
   },
   signal?: AbortSignal,
 ): Promise<string | null> {
+  // Accepting truncated text makes an empty result reachable here: a partial
+  // completion can be non-empty for the provider and still strip to nothing.
+  // The caller reads `null` as "no summary" and shows its own copy, so the
+  // empty string must never reach it as a notification body.
   return (
     (await generateAuxiliary(
       {
@@ -454,7 +488,9 @@ export async function generateChatNotificationSummary(
         usable: (value) => {
           return Boolean(value);
         },
-        generate: () => {
+        generate: (record) => {
+          // A shortened notification sentence still tells the user their task
+          // finished; the alternative is a notification with no summary at all.
           return generateFastPathText(
             [
               {
@@ -467,14 +503,14 @@ export async function generateChatNotificationSummary(
                 content: `User request:\n${args.prompt.slice(0, TITLE_CONTEXT_CHAR_CAP)}\n\nAssistant reply:\n${args.resultText.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
               },
             ],
-            512,
-            undefined,
+            AUXILIARY_TEXT_MAX_TOKENS,
+            { acceptTruncatedText: true, record },
             signal,
           );
         },
       },
       signal,
-    )) ?? null
+    )) || null
   );
 }
 
@@ -519,6 +555,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
+  record: RecordAuxiliaryGenerationDetail,
   signal?: AbortSignal,
 ): Promise<ChatRecommendedFollowup[]> {
   const context = messages
@@ -527,6 +564,8 @@ async function generateRecommendedFollowups(
     })
     .join("\n\n");
 
+  // The output must parse as JSON, so a truncated array is unusable by
+  // construction and stays rejected.
   const text = await generateFastPathText(
     [
       {
@@ -538,8 +577,8 @@ async function generateRecommendedFollowups(
         content: `Recent conversation:\n${context}`,
       },
     ],
-    1024,
-    { stripMarkdown: false },
+    AUXILIARY_TEXT_MAX_TOKENS,
+    { stripMarkdown: false, record },
     signal,
   );
 
@@ -568,8 +607,8 @@ export async function generateChatThreadRecommendedFollowupsFromContext(
     (await generateAuxiliary(
       {
         feature: "recommended_followups",
-        generate: () => {
-          return generateRecommendedFollowups(args.messages, signal);
+        generate: (record) => {
+          return generateRecommendedFollowups(args.messages, record, signal);
         },
         usable: (value) => {
           return value.length > 0;

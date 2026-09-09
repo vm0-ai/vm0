@@ -31,6 +31,7 @@ export const webFilesContract = c.router({
     responses: {
       200: z.object({
         url: z.string(),
+        expiresAt: z.string().datetime(),
         /**
          * Stable public artifacts URL for the same object, suitable for a link
          * handed to someone else. Null for private artifacts.

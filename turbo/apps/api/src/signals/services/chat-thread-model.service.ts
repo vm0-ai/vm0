@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
+import { resolveChatReasoningEffort } from "./chat-reasoning-effort.service";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, eq } from "drizzle-orm";
@@ -51,6 +53,8 @@ interface ResolvePersistedChatThreadModelParams {
   readonly threadId: string;
   readonly threadSnapshot?: PersistedChatThreadModelSnapshot;
   readonly requestedCodexServiceTier?: CodexServiceTier;
+  readonly requestedReasoningEffort?: ReasoningEffort | null;
+  readonly reasoningEffortEnabled?: boolean;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
 }
@@ -58,6 +62,7 @@ interface ResolvePersistedChatThreadModelParams {
 export function persistedChatThreadModelSnapshotColumns() {
   return {
     selectedModel: chatThreads.selectedModel,
+    reasoningEffort: chatThreads.reasoningEffort,
     modelProviderId: chatThreads.modelProviderId,
     modelProviderType: chatThreads.modelProviderType,
     modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
@@ -68,6 +73,7 @@ export function persistedChatThreadModelSnapshotColumns() {
 
 interface PersistedChatThreadModelSnapshot {
   readonly selectedModel: string | null;
+  readonly reasoningEffort?: ReasoningEffort | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
@@ -84,17 +90,21 @@ export interface ResolvedPersistedChatThreadModel {
   readonly providerAdmission: ModelFirstProviderAdmission;
   readonly runCodexServiceTier: "fast" | undefined;
   readonly persistedCodexServiceTier: CodexServiceTier | null;
+  readonly reasoningEffort: ReasoningEffort | null;
   readonly selectedModelChanged: boolean;
   readonly resolutionPath: PersistedChatThreadModelResolutionPath;
 }
 
 interface PersistedChatThreadModelEvaluation {
+  readonly persistedReasoningEffort: ReasoningEffort | null;
   readonly pin: ModelFirstPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
   readonly runCodexServiceTier: "fast" | undefined;
   readonly persistedCodexServiceTier: CodexServiceTier | null;
+  readonly reasoningEffort: ReasoningEffort | null;
   readonly selectedModelChanged: boolean;
   readonly tierChanged: boolean;
+  readonly effortChanged: boolean;
   readonly requiresReconciliation: boolean;
 }
 
@@ -240,12 +250,15 @@ async function persistReconciledChatThreadModel(args: {
   readonly thread: PersistedChatThreadModelSnapshot;
   readonly pin: ModelFirstPin;
   readonly persistedCodexServiceTier: CodexServiceTier | null;
+  readonly reasoningEffort: ReasoningEffort | null;
   readonly selectedModelChanged: boolean;
   readonly tierChanged: boolean;
+  readonly effortChanged: boolean;
 }): Promise<void> {
   if (
     !args.selectedModelChanged &&
     !args.tierChanged &&
+    !args.effortChanged &&
     !legacyProviderPinPresent(args.thread)
   ) {
     return;
@@ -261,6 +274,7 @@ async function persistReconciledChatThreadModel(args: {
       modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
       selectedModel: pinColumns.selectedModel,
       codexServiceTier: args.persistedCodexServiceTier,
+      reasoningEffort: args.reasoningEffort,
       updatedAt,
     })
     .where(
@@ -270,7 +284,7 @@ async function persistReconciledChatThreadModel(args: {
         chatThreadOrganizationCondition(args.tx, args.params.orgId),
       ),
     );
-  if (args.selectedModelChanged) {
+  if (args.selectedModelChanged || args.effortChanged) {
     await appendChatThreadEvent(args.tx, {
       kind: "model_selection_updated",
       userId: args.params.userId,
@@ -278,6 +292,7 @@ async function persistReconciledChatThreadModel(args: {
       chatThreadId: args.params.threadId,
       agentId: args.thread.agentId,
       selectedModel: args.pin.selectedModel,
+      reasoningEffort: args.reasoningEffort,
       createdAt: updatedAt,
     });
   }
@@ -357,6 +372,17 @@ async function evaluatePersistedChatThreadModel(
       capabilities: modelResolution.orgPlanCapabilities,
     };
   }
+  const effort = resolveChatReasoningEffort({
+    selectedModel: pin.selectedModel,
+    stored: thread.reasoningEffort,
+    requested: params.requestedReasoningEffort,
+    enabled: params.reasoningEffortEnabled ?? false,
+  });
+  if ("status" in effort) {
+    return { kind: "error", error: effort };
+  }
+  const effortChanged =
+    effort.persistedReasoningEffort !== (thread.reasoningEffort ?? null);
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db,
     orgId: params.orgId,
@@ -386,11 +412,15 @@ async function evaluatePersistedChatThreadModel(
       providerAdmission,
       runCodexServiceTier: tier.runCodexServiceTier,
       persistedCodexServiceTier: tier.persistedCodexServiceTier,
+      reasoningEffort: effort.reasoningEffort,
+      persistedReasoningEffort: effort.persistedReasoningEffort,
+      effortChanged,
       selectedModelChanged,
       tierChanged: tier.tierChanged,
       requiresReconciliation:
         selectedModelChanged ||
         tier.tierChanged ||
+        effortChanged ||
         legacyProviderPinPresent(thread),
     },
   };
@@ -405,6 +435,7 @@ function resolvedPersistedChatThreadModel(
     providerAdmission: evaluation.providerAdmission,
     runCodexServiceTier: evaluation.runCodexServiceTier,
     persistedCodexServiceTier: evaluation.persistedCodexServiceTier,
+    reasoningEffort: evaluation.reasoningEffort,
     selectedModelChanged: evaluation.selectedModelChanged,
     resolutionPath,
   };
@@ -431,8 +462,10 @@ async function resolvePersistedChatThreadModelInTransaction(
     thread,
     pin: evaluation.pin,
     persistedCodexServiceTier: evaluation.persistedCodexServiceTier,
+    reasoningEffort: evaluation.persistedReasoningEffort,
     selectedModelChanged: evaluation.selectedModelChanged,
     tierChanged: evaluation.tierChanged,
+    effortChanged: evaluation.effortChanged,
   });
   return {
     resolved: resolvedPersistedChatThreadModel(
@@ -440,8 +473,10 @@ async function resolvePersistedChatThreadModelInTransaction(
       "locked_reconciliation",
     ),
     publishThreadList:
-      evaluation.selectedModelChanged || evaluation.tierChanged,
-    publishThreadDetail: evaluation.tierChanged,
+      evaluation.selectedModelChanged ||
+      evaluation.tierChanged ||
+      evaluation.effortChanged,
+    publishThreadDetail: evaluation.tierChanged || evaluation.effortChanged,
   };
 }
 

@@ -33,7 +33,7 @@ interface EmailOutboxItemsContext extends EmailOutboxDrainContext {
   readonly itemIds: readonly string[];
 }
 
-const log = logger("zero:email");
+const log = logger("EmailCommon");
 const USER_CACHE_TTL_MS = 900_000;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;

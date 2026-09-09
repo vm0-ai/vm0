@@ -398,8 +398,10 @@
     --interrupt-foreground: var(--on-filled); /* white on Coral 500 */
 
     --border: var(--gray-200); /* gray-200 - primary border color (lighter) */
-    /* Large editable surfaces emphasize their existing edge on focus. */
-    --surface-focus: var(--gray-500);
+    /* Large editable surfaces emphasize their existing edge on focus. One step
+       is enough: the composer is the widest border on the page, so its stroke
+       carries far more ink than a control-sized one at the same color. */
+    --surface-focus: var(--gray-400);
     --input: var(--white); /* white - same as card */
     --ring: var(--primary-400); /* primary-400 - 6.73:1 on the canvas */
 
@@ -553,6 +555,8 @@
     --interrupt-foreground: var(--on-filled); /* white on Coral 500 */
 
     --border: var(--gray-200); /* gray-200 - primary border color */
+    /* Saturation, not lightness, carries focus here: lifting a neutral against a
+       dark card reads as a white outline rather than as emphasis. */
     --surface-focus: 38.8 38% 38%;
     --input: var(
       --gray-200

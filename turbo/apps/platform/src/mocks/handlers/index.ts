@@ -71,6 +71,10 @@ import {
   resetMockUserPreferences,
 } from "./api-user-preferences.ts";
 import {
+  apiEmailSubscriptionHandlers,
+  resetMockEmailSubscription,
+} from "./api-email-subscription.ts";
+import {
   apiMorningBriefPreferenceHandlers,
   resetMockMorningBriefPreference,
 } from "./api-morning-brief-preference.ts";
@@ -124,6 +128,7 @@ export const handlers = [
   ...apiRunsHandlers,
   ...apiUserPreferencesHandlers,
   ...apiMorningBriefPreferenceHandlers,
+  ...apiEmailSubscriptionHandlers,
   ...apiUserModelPreferenceHandlers,
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
@@ -146,6 +151,7 @@ export function resetAllMockHandlers(): void {
   resetMockGithubIntegration();
   resetMockUserPreferences();
   resetMockMorningBriefPreference();
+  resetMockEmailSubscription();
   resetMockUserModelPreference();
   resetMockOrgModelProviders();
   resetMockOrgModelPolicies();

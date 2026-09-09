@@ -1671,7 +1671,6 @@
       "saving": "Menyimpan...",
       "send": "Kirim",
       "stop": "Hentikan",
-      "undo": "Urungkan",
       "view": "Lihat"
     },
     "actionUnavailable": {
@@ -1966,7 +1965,6 @@
       "directory": {
         "allCategories": "Semua",
         "askAdmin": "Minta admin untuk mengaktifkan",
-        "browse": "Jelajahi konektor",
         "configure": "Konfigurasi",
         "connected": "Terhubung",
         "createCustom": "Buat kustom",
@@ -1978,8 +1976,6 @@
         "detailPermissions": "Izin",
         "emptyCustomBody": "Buat satu dari API HTTP atau server MCP mana pun, dan Okou dapat menggunakannya seperti konektor lain.",
         "emptyCustomTitle": "Belum ada konektor kustom",
-        "emptyYoursBody": "Hubungkan aplikasi dan Okou dapat membaca serta bertindak di dalamnya untuk Anda.",
-        "emptyYoursTitle": "Anda belum menghubungkan apa pun",
         "matchCount_other": "{{count}} hasil",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "Perlu perhatian",
@@ -1988,11 +1984,9 @@
         "openDetailAria": "Buka detail {{connector}}",
         "otherCategory": "Lainnya",
         "permissionCount_other": "{{count}} izin",
-        "searchYours": "Cari konektor Anda",
         "showAll_other": "Lihat semua {{count}}",
         "tabCustom": "Kustom",
-        "tabDiscover": "Temukan",
-        "tabYours": "Konektor Anda"
+        "tabDiscover": "Temukan"
       },
       "fallsBackTo": "Beralih kembali ke {{account}}",
       "find": "Cari konektor...",
@@ -2252,6 +2246,7 @@
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
         "brewing": "Meracik respons...",
+        "default": "Sedang berpikir...",
         "mapping": "Memetakan...",
         "onIt": "Sedang dikerjakan...",
         "piecingTogether": "Menyusun semuanya...",
@@ -2595,10 +2590,7 @@
     },
     "toasts": {
       "copied": "Disalin",
-      "deleted": "Chat dihapus",
-      "pinned": "Chat disematkan",
-      "pinUpdateFailed": "Perubahan sematan belum dapat dikonfirmasi. Muat ulang untuk memeriksa status yang tersimpan.",
-      "unpinned": "Sematan chat dilepas"
+      "deleted": "Chat dihapus"
     },
     "translation": {
       "action": "Terjemahkan",
@@ -2624,7 +2616,7 @@
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
       "cleanupFailed": "Teks ditambahkan, tetapi rekaman yang tersimpan tidak dapat dihapus.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Selesai",
       "discarding": "Menghapus draf suara...",
       "input": "Input suara",
       "inputLimitReached": "Batas input suara tercapai. Upgrade ke Pro atau Team untuk batas yang lebih tinggi.",
@@ -2637,13 +2629,44 @@
       "removeDraft": "Hapus draf suara",
       "restoreFailed": "Draf suara Anda tidak dapat dimuat. Coba lagi.",
       "retry": "Coba lagi",
+      "retryingSavedAudio": "Mencoba ulang audio tersimpan",
       "retryReady": "Rekaman Anda tetap tersimpan. Coba transkripsi lagi.",
+      "returningToComposer": "Kembali ke kolom pesan",
       "starting": "Memulai input suara",
       "stopRecording": "Berhenti merekam",
       "storageFailed": "Audio tidak dapat disimpan. Coba lagi hanya memulihkan audio yang sudah tersimpan di perangkat ini.",
+      "textTakingShape": "Teks sedang terbentuk",
       "transcribing": "Mentranskripsi",
       "transcribingProgress": "Mentranskripsi...",
       "transcriptionFailed": "Transkripsi suara gagal. Coba lagi."
+    },
+    "welcomeThread": {
+      "content": "# Hai, saya {{assistantName}}\n\nSaya adalah rekan satu tim AI Anda. Beri tahu hasil yang Anda butuhkan, lalu saya dapat bekerja di berbagai alat Anda dan membawa hasil akhirnya kembali ke sini.\n\n## Yang dapat saya hasilkan\n\n### Gambar\n\nSaya dapat membuat visual kampanye, ilustrasi produk, grafis media sosial, dan materi iklan.\n\n![Visual kampanye yang dihasilkan oleh {{assistantName}}]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Presentasi\n\nSaya dapat mengubah brief awal menjadi deck yang terstruktur, didesain, dan siap dipresentasikan.\n\n![Presentasi yang dihasilkan oleh {{assistantName}}]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} slide\n\n### Video\n\nSaya dapat menghasilkan demo produk yang telah diedit, film peluncuran, video penjelasan, dan potongan media sosial dengan teks.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · siap dibagikan\n\n### Rekomendasi otomatisasi\n\nSaya dapat meninjau pekerjaan tim yang berulang dan memberikan daftar prioritas tugas yang layak diotomatisasi.\n\n| Prioritas | Tugas | Pemicu | Hasil |\n| --- | --- | --- | --- |\n| 1 | Menyeleksi lead masuk | Respons formulir baru | Catatan CRM yang diperkaya dan draf balasan |\n| 2 | Mengubah rapat menjadi tindak lanjut | Panggilan selesai | Ringkasan, catatan CRM, dan draf email |\n| 3 | Tinjauan pertumbuhan mingguan | Senin pagi | Ringkasan metrik dan laporan anomali |\n\n## Mengapa tim mendapatkan lebih banyak manfaat dari {{assistantName}}\n\nHasil yang bagus tidak perlu tetap berada di dalam chat satu orang. Simpan proses yang berhasil sebagai workflow bersama, lalu rekan berikutnya dapat memulai dari cara yang sudah terbukti.\n\n```mermaid\nflowchart TB\n  A[\"1. Temukan yang berhasil<br/>Rekan tim dan {{assistantName}} menyelesaikan tugas bersama\"]\n  B[\"2. Bagikan workflow<br/>Proses dan konteks dapat digunakan kembali\"]\n  C[\"3. Gunakan kembali yang berhasil<br/>Rekan lain memulai dari proses yang sudah terbukti\"]\n  D[\"4. Tingkatkan bersama<br/>Masukan membuat proses berikutnya lebih baik\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Bagikan workflow, bukan hanya file akhirnya.**\n- Berikan konteks awal yang sama kepada setiap rekan tim.\n- Tingkatkan satu proses sekali, lalu biarkan seluruh tim memanfaatkannya.\n\n## Cara bekerja bersama saya dalam tim\n\nJawaban yang bagus membantu satu orang. Alur kerja yang disimpan membantu semua orang yang mengerjakan tugas itu setelah Anda.\n\n[Diagram alur kerja tim](<{{teamDiagramUrl}}>)\n\n1. **Kerjakan tugasnya bersama saya sekali.** Jelaskan hasil yang Anda inginkan, bukan langkah-langkah untuk mencapainya, dan koreksi saya selagi pekerjaan masih berjalan. Koreksi itulah yang layak disimpan.\n2. **Simpan sebagai alur kerja.** Pilih **Buat alur kerja** di kotak pesan di bawah. Saya akan menanyakan hasil yang Anda inginkan, apa yang memicunya, dan apa yang harus dilakukan dengan hasilnya, lalu menuliskannya sebagai alur kerja yang bisa Anda jalankan lagi.\n3. **Ubah visibilitasnya menjadi Publik.** Buka alur kerja dan atur **Visibilitas**. Alur kerja **Pribadi** hanya milik Anda; yang **Publik** bisa dijalankan siapa pun di ruang kerja ini.\n4. **Jalankan lewat namanya.** Ketik `/` diikuti nama alur kerja di obrolan mana pun. Tambahkan otomatisasi bila alur itu perlu berjalan sesuai jadwal atau pemicu, bukan atas permintaan.\n\nMulailah dari tugas yang paling sering diulang tim Anda, bukan yang paling sulit. Alur kerja yang berjalan setiap minggu lebih berharga daripada alur kerja cerdik yang berjalan sekali.\n\n## Ajak saya bicara di Slack\n\nSebagian besar pekerjaan ini sudah dibahas di Slack. Setelah saya terpasang di sana, jawabannya muncul di utasnya, bukan di tab lain.\n\n[Diagram percakapan Slack](<{{slackDiagramUrl}}>)\n\n**Siapkan sekali saja**\n\n1. Buka **Tempat {{assistantName}} bekerja** di bilah sisi kiri.\n2. Pada kartu Slack, pilih **Pasang ke Slack** dan setujui izinnya. Hanya admin ruang kerja yang bisa memasang, jadi mintalah bantuan admin bila Anda bukan admin.\n3. Anggota lain membuka kartu yang sama dan memilih **Hubungkan** untuk menautkan akun Slack masing-masing.\n\n**Setelah itu, perlakukan saya seperti rekan tim lainnya**\n\n| Di Slack | Yang saya lakukan |\n| --- | --- |\n| Kirimi saya pesan langsung | Kita bekerja secara privat dalam satu percakapan berkelanjutan |\n| `@{{assistantName}}` di sebuah kanal | Saya menjawab di utas pada pesan Anda, tempat tim bisa mengikutinya |\n| `@{{assistantName}}` lagi di dalam utas | Saya melanjutkan utas itu dan terus mengerjakannya |\n| `/okou` | Membuka daftar perintah saya: hubungkan, ganti agen, ganti model, putuskan sambungan |\n\nDua hal yang perlu diketahui. Di kanal saya hanya membalas bila disebut, jadi saya tidak masuk ke utas yang tidak memanggil saya. Dan Anda bisa melampirkan berkas pada pesan langsung; saya akan membacanya sebelum menjawab.\n\n[Siapkan Slack]({{worksUrl}}) supaya alur kerja yang Anda simpan di atas bisa dijalankan tanpa meninggalkan kanal.\n\n[Undang tim Anda]({{inviteUrl}}) agar workflow berikutnya yang Anda buat langsung dapat digunakan kembali oleh orang yang membutuhkannya.\n\n[Baca dokumentasi]({{docsUrl}}) untuk memahami cara kerja workflow bersama.",
+      "slackDiagram": {
+        "caption": "Ke mana jawaban muncul di Slack: di utas pada pesan Anda, atau di pesan langsung yang privat",
+        "channelEyebrow": "Di sebuah kanal",
+        "channelNote": "Jawabannya tetap di pesan Anda, jadi kanal tidak penuh dan tim tetap bisa mengikutinya.",
+        "directEyebrow": "Di pesan langsung",
+        "directLabel": "Anda dan {{assistantName}}",
+        "directNote": "Satu percakapan privat yang menjaga konteksnya antar tugas.",
+        "mentionLabel": "Anda menyebut {{assistantName}}",
+        "replyLabel": "{{assistantName}} menjawab di utas"
+      },
+      "teamDiagram": {
+        "automationBody": "Menjalankannya sesuai jadwal atau pemicu, tanpa diminta.",
+        "automationTitle": "Sebuah otomatisasi",
+        "caption": "Satu obrolan yang berhasil menjadi alur kerja yang dipakai seluruh tim dan jadwal Anda",
+        "chatBody": "Anda dan {{assistantName}} menyelesaikan tugas dengan benar sekali.",
+        "chatTitle": "Obrolan yang berhasil",
+        "savedEyebrow": "Disimpan sekali",
+        "teamEyebrow": "Milik semua",
+        "teammateBody": "Menjalankannya lewat nama dan mulai dari yang sudah terbukti.",
+        "teammateTitle": "Siapa pun di tim",
+        "workflowBody": "Prosesnya beserta konteksnya, tersimpan dan bisa dipakai ulang.",
+        "workflowTitle": "Sebuah alur kerja",
+        "yoursEyebrow": "Milik Anda"
+      },
+      "title": "Selamat datang di {{assistantName}}"
     },
     "workflows": {
       "named": "Alur kerja {{title}}",
@@ -2834,6 +2857,7 @@
         "notConnected": "Tidak ada konektor lagi untuk dihubungkan",
         "search": "Tidak ada konektor yang cocok dengan \"{{search}}\""
       },
+      "filterCategory": "Kategori",
       "filters": {
         "agents": "Agen",
         "all": "Semua",
@@ -2842,11 +2866,20 @@
         "notConnected": "Tidak terhubung",
         "status": "Status"
       },
+      "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Ikon konektor tidak tersedia",
       "newConnector": "Konektor baru",
       "noConnectorsAlt": "Tidak ada konektor",
       "otherCategory": "Lainnya",
       "search": "Cari konektor",
+      "shelf": {
+        "moreCategories": "Kategori lainnya",
+        "popular": "Populer",
+        "seeMore_one": "Lihat {{names}} dan {{count}} lainnya",
+        "seeMore_other": "Lihat {{names}} dan {{count}} lainnya",
+        "top": "Konektor teratas",
+        "yours": "Konektor Anda"
+      },
       "tabs": {
         "builtin": "Bawaan",
         "custom": "Kustom"
@@ -5370,19 +5403,14 @@
         },
         "connectionDiagnostics": {
           "activeWaits": "Penantian aktif",
-          "blurred": "tidak fokus",
           "channel": "kanal",
           "clear": "Hapus",
           "connection": "koneksi",
           "copyJson": "Salin JSON",
-          "description": "Periksa siklus hidup browser, pemulihan autentikasi, dan sinyal koneksi Ably.",
+          "description": "Periksa sinyal autentikasi dan koneksi Ably.",
           "empty": "Tidak ada peristiwa diagnostik yang direkam.",
           "events": "peristiwa",
-          "focused": "fokus",
           "log": "Log peristiwa",
-          "offline": "luring",
-          "online": "daring",
-          "recovery": "pemulihan",
           "refresh": "Segarkan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia",
@@ -5418,6 +5446,18 @@
           "unavailable": "Model tidak tersedia ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Email opsional, termasuk ringkasan dan pengingat, di seluruh ruang kerja Anda.",
+        "loading": "Memeriksa langganan email…",
+        "retryMessage": "Tidak dapat menyimpan atau memuat langganan email. Coba lagi.",
+        "saving": "Menyimpan…",
+        "sectionTitle": "Langganan email",
+        "subscribed": "Berlangganan",
+        "title": "Terima email dari Okou",
+        "unavailable": "Email tidak tersedia",
+        "unavailableDescription": "Periksa email di Akun & keamanan, atau hubungi dukungan jika pengiriman diblokir.",
+        "unsubscribed": "Berhenti berlangganan"
+      },
       "language": {
         "description": "Pilih bahasa pilihan Anda untuk antarmuka {{brandName}}",
         "label": "Bahasa",
@@ -5436,13 +5476,19 @@
         "title": "Bahasa"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + email",
+        "chatOnly": "Hanya Chat",
+        "checkEmailSubscription": "Periksa langganan email di atas untuk status pengiriman.",
         "conflict": "Morning Brief untuk sementara tidak tersedia karena status instalasinya tidak konsisten. Coba lagi setelah rekonsiliasi selesai.",
-        "description": "Dapatkan email harian pukul 07.00 di zona waktu Anda dengan prioritas dari Gmail, GitHub, Calendar, dan Chats yang belum dibaca.",
+        "description": "Dapatkan prioritas harian pukul 07.00 sesuai zona waktu Anda untuk ruang kerja ini.",
+        "emailOff": "Email nonaktif. Ringkasan tetap muncul di Chat.",
+        "emailWhenReady": "Anda akan menerima email saat ringkasan siap.",
         "loading": "Memuat pengaturan Morning Brief...",
         "missingDefaultAgent": "Pilih Agent default yang dapat digunakan sebelum mengaktifkan Morning Brief.",
         "missingTimezone": "Tetapkan zona waktu yang valid sebelum mengaktifkan Morning Brief.",
         "multipleInstallations": "Ada beberapa instalasi Morning Brief. Selesaikan konflik sebelum mengubah preferensi ini.",
-        "nextEmail": "Email berikutnya: {{date}} ({{timezone}})",
+        "nextBrief": "Ringkasan berikutnya {{date}} ({{timezone}})",
+        "paused": "Dijeda",
         "retry": "Coba lagi",
         "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
         "title": "Brief Pagi"

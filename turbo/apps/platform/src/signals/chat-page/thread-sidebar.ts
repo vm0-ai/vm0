@@ -1,5 +1,16 @@
+import {
+  prepareAttachmentDisplay$,
+  type AttachmentDisplay,
+} from "../attachment-resource-url.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 
 import {
   createArtifactCatalogSignals,
@@ -49,6 +60,7 @@ export type ArtifactPreviewKind =
   | "file";
 
 export type ArtifactRef = {
+  readonly display?: AttachmentDisplay;
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
@@ -95,6 +107,8 @@ export type ThreadSidebarTarget =
 export interface ThreadSidebarSignals {
   readonly target$: Computed<ThreadSidebarTarget | null>;
   readonly open$: Command<void, [ThreadSidebarTarget]>;
+  readonly openCatalogArtifact$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly selectedArtifactDisplay$: Computed<AttachmentDisplay | null>;
   readonly close$: Command<void, []>;
   /**
    * Whether the current sidebar session should animate into the split layout.
@@ -136,6 +150,62 @@ function attachmentResourceReset(
     : undefined;
 }
 
+function createCatalogArtifactPreviewSignals(
+  artifactCatalog: ArtifactCatalogSignals,
+  internalArtifactPreviewSignal$: State<AbortSignal>,
+) {
+  const internalSelectedArtifactDisplay$ = state<AttachmentDisplay | null>(
+    null,
+  );
+  const selectedArtifactDisplay$ = computed((get) => {
+    return get(internalSelectedArtifactDisplay$);
+  });
+
+  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    if (!detail) {
+      throw new Error("Selected artifact is unavailable");
+    }
+    const preview = artifactDetailPreview(detail);
+    if (!isTextPreviewKind(preview.kind)) {
+      throw new Error("Selected artifact is not a text preview");
+    }
+    const display = get(selectedArtifactDisplay$);
+    if (!display) {
+      throw new Error("Selected artifact preview is unavailable");
+    }
+    const urls = await get(display.urls$);
+    return fetchPreviewText(urls.resourceUrl, get(rootSignal$));
+  });
+  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
+    selectedArtifactText$,
+    internalArtifactPreviewSignal$,
+  );
+
+  const reset$ = command(({ set }) => {
+    set(internalSelectedArtifactDisplay$, null);
+  });
+  const prepare$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const previewSignal = get(internalArtifactPreviewSignal$);
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    signal.throwIfAborted();
+    if (previewSignal.aborted || !detail) {
+      return;
+    }
+    set(
+      internalSelectedArtifactDisplay$,
+      set(prepareAttachmentDisplay$, artifactDetailPreview(detail).url),
+    );
+  });
+  return {
+    display$: selectedArtifactDisplay$,
+    text$: selectedArtifactText$,
+    markdownTree$: selectedArtifactMarkdownTree$,
+    reset$,
+    prepare$,
+  };
+}
+
 export function createThreadSidebarSignals(
   threadId: string,
   ownerSignal: AbortSignal,
@@ -149,23 +219,11 @@ export function createThreadSidebarSignals(
   const resetArtifactPreviewSignal$ = resetSignal();
   const internalArtifactPreviewSignal$ = state(ownerSignal);
   const imageCanvas = createZoomableImageCanvasSignals();
-
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
-  const selectedArtifactText$ = computed(async (get): Promise<string> => {
-    const detail = await get(artifactCatalog.selectedArtifactDetail$);
-    if (!detail) {
-      throw new Error("Selected artifact is unavailable");
-    }
-    const preview = artifactDetailPreview(detail);
-    if (!isTextPreviewKind(preview.kind)) {
-      throw new Error("Selected artifact is not a text preview");
-    }
-    return fetchPreviewText(preview.url, get(rootSignal$));
-  });
-  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
-    selectedArtifactText$,
+  const preview = createCatalogArtifactPreviewSignals(
+    artifactCatalog,
     internalArtifactPreviewSignal$,
   );
 
@@ -187,11 +245,35 @@ export function createThreadSidebarSignals(
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
-    set(internalTarget$, target);
+    set(preview.reset$);
+    set(
+      internalTarget$,
+      target.type === "artifact" && target.source.kind === "attachment"
+        ? {
+            ...target,
+            source: {
+              ...target.source,
+              ref: {
+                ...target.source.ref,
+                display:
+                  target.source.ref.display ??
+                  set(prepareAttachmentDisplay$, target.source.ref.url),
+              },
+            },
+          }
+        : target,
+    );
     if (currentResourceReset$ && currentResourceReset$ !== nextResourceReset$) {
       set(currentResourceReset$);
     }
   });
+
+  const openCatalogArtifact$ = command(
+    async ({ set }, artifactId: string, signal: AbortSignal) => {
+      set(open$, { type: "artifact", source: { kind: "catalog", artifactId } });
+      await set(preview.prepare$, signal);
+    },
+  );
 
   const close$ = command(({ get, set }) => {
     set(
@@ -200,6 +282,7 @@ export function createThreadSidebarSignals(
     );
     const resourceReset$ = attachmentResourceReset(get(internalTarget$));
     set(internalTarget$, null);
+    set(preview.reset$);
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
@@ -249,7 +332,9 @@ export function createThreadSidebarSignals(
     }),
     imageCanvas,
     artifactCatalog,
-    selectedArtifactText$,
-    selectedArtifactMarkdownTree$,
+    selectedArtifactText$: preview.text$,
+    selectedArtifactMarkdownTree$: preview.markdownTree$,
+    selectedArtifactDisplay$: preview.display$,
+    openCatalogArtifact$,
   };
 }

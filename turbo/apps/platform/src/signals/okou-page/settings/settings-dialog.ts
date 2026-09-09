@@ -9,6 +9,7 @@ import { reloadPersonalModelProviders$ } from "../../external/personal-model-pro
 import { resetSignal } from "../../utils.ts";
 import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
 import { reloadBuiltInModelCooldownDiagnostics$ } from "./built-in-model-cooldown-diagnostics.ts";
+import { retryEmailSubscription$ } from "./email-subscription.ts";
 import { reloadIndexedDbDiagnosticsFromWorker$ } from "../../shared-database.ts";
 import {
   billingPlansStandalone$,
@@ -236,6 +237,7 @@ export const setSettingsDialogOpen$ = command(
       return;
     }
 
+    set(retryEmailSubscription$);
     if (get(internalSettingsDialogSessionActive$)) {
       set(internalSettingsDialogOpen$, true);
       set(setSettingsActiveSection$, get(internalActiveSection$));

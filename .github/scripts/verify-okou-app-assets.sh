@@ -32,7 +32,7 @@ while IFS= read -r -d '' source_path; do
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
     clerk-ui-*.js) clerk_ui_files+=("$relative_path") ;;
-    *.js) app_files+=("$relative_path") ;;
+    app-*.js|index-*.js) app_files+=("$relative_path") ;;
   esac
 done < "$layout_files"
 

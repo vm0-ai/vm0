@@ -29,6 +29,7 @@ import {
 } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 import type { PiAgentStreamOptions } from "./stream-options";
+import { PiApiModelRequestError } from "./api-failure";
 
 interface CreateMemoryPiSessionOptions {
   readonly cwd: string;
@@ -56,6 +57,7 @@ interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
 interface PiModelTurnResult {
   readonly assistantMessage: AssistantMessage;
   readonly handoffRequired: boolean;
+  readonly responseStatus?: number;
 }
 
 type NewMemorySessionEntry =
@@ -332,16 +334,38 @@ export async function runPiFirstModelTurn<TApi extends Api>(
   } else {
     options.ownership.markProviderRequestMayHaveStarted();
   }
-  const responseStream = options.stream(options.model, context, {
+  let responseStatus: number | undefined;
+  let assistantMessage: AssistantMessage;
+  const streamOptions: PiAgentStreamOptions = {
     ...options.streamOptions,
+    onObservedResponseStatus(status) {
+      responseStatus = status;
+      options.streamOptions?.onObservedResponseStatus?.(status);
+    },
     reasoning:
       options.streamOptions?.reasoning ?? piReasoningLevel(sessionContext),
     sessionId: options.session.getSessionId(),
-  });
-  const assistantMessage = await consumeAssistantMessage(responseStream);
+  };
+  // Preparation, durable ownership and session writes are outside this catch:
+  // their failures must never authorize replay of the original H0.
+  try {
+    const responseStream = options.stream(
+      options.model,
+      context,
+      streamOptions,
+    );
+    assistantMessage = await consumeAssistantMessage(responseStream);
+  } catch (error) {
+    throw new PiApiModelRequestError(
+      error,
+      options.model.provider,
+      responseStatus,
+    );
+  }
   options.session.appendMessage(assistantMessage);
   return {
     assistantMessage,
     handoffRequired: piAssistantRequiresHandoff(assistantMessage),
+    responseStatus,
   };
 }

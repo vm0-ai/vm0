@@ -698,20 +698,14 @@ export function AccountDropdown({
   };
 
   const handleSwitchSession = (sessionId: string) => {
+    const okou = window._okou;
+    if (!okou) {
+      throw new Error("Platform lifecycle was not initialized");
+    }
     detach(
-      clerk?.setActive({
-        session: sessionId,
-        navigate: ({ session, decorateUrl }) => {
-          // Navigate to "/" rather than reloading the current URL: the new
-          // account may not have access to the current route (e.g. an org
-          // scoped chat/agent id), which would otherwise render as 404.
-          const destination = session.currentTask
-            ? `/sign-in/tasks/${session.currentTask.key}`
-            : "/";
-          window.location.href = decorateUrl(destination);
-        },
-      }),
+      okou.switchClerkSession(sessionId),
       Reason.DomCallback,
+      "switch Clerk session",
     );
   };
 

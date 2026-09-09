@@ -60,14 +60,16 @@ function RichContentLoading({
 }
 
 function RichContentError({
+  className,
   onRetry,
   style,
 }: {
+  readonly className?: string;
   readonly onRetry: () => void;
   readonly style?: CSSProperties;
 }) {
   return (
-    <MarkdownFrame style={style}>
+    <MarkdownFrame className={className} style={style}>
       <button
         type="button"
         className="rounded-md border border-border px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
@@ -83,10 +85,12 @@ function RichContentError({
 
 /** Renders prepared plain trees immediately and rich trees synchronously. */
 export function MarkdownEventBody({
+  className,
   onRetry,
   tree,
   mediaPreview,
 }: {
+  readonly className?: string;
   readonly onRetry?: () => void;
   readonly tree: Root | undefined;
   readonly mediaPreview: boolean | "link";
@@ -95,6 +99,7 @@ export function MarkdownEventBody({
     if (onRetry !== undefined) {
       return (
         <RichContentError
+          className={className}
           onRetry={onRetry}
           style={{ fontSize: "inherit", lineHeight: "inherit" }}
         />
@@ -102,6 +107,7 @@ export function MarkdownEventBody({
     }
     return (
       <RichContentLoading
+        className={className}
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
       />
     );
@@ -110,12 +116,19 @@ export function MarkdownEventBody({
   if (plainText !== null) {
     return (
       <PlainMarkdown
+        className={className}
         text={plainText}
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
       />
     );
   }
-  return <RichMarkdownEventBody tree={tree} mediaPreview={mediaPreview} />;
+  return (
+    <RichMarkdownEventBody
+      className={className}
+      tree={tree}
+      mediaPreview={mediaPreview}
+    />
+  );
 }
 
 /** One-off Markdown entry point. */

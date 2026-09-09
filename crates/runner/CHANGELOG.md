@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.189.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.4...runner-rs-v0.189.5) (2026-09-09)
+
+
+### Refactoring
+
+* **runner:** delete retired mitmdump runtime marker tombstone tests ([#32973](https://github.com/vm0-ai/vm0/issues/32973)) ([011e6f0](https://github.com/vm0-ai/vm0/commit/011e6f0c62582cc594ff51655ac4a84143bc356a)), closes [#32937](https://github.com/vm0-ai/vm0/issues/32937)
+
+## [0.189.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.3...runner-rs-v0.189.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** bound codex timestamp parsing across history encodings ([#32945](https://github.com/vm0-ai/vm0/issues/32945)) ([c625c2e](https://github.com/vm0-ai/vm0/commit/c625c2e0b216d5ac5641f2ed69f6a13e30b5bb5e))
+
+
+### Refactoring
+
+* **naming:** correct residual retired-brand copy and internal names ([#32946](https://github.com/vm0-ai/vm0/issues/32946)) ([c5e6ef9](https://github.com/vm0-ai/vm0/commit/c5e6ef9e41593c017fd2fd57222a40d123270db5)), closes [#32939](https://github.com/vm0-ai/vm0/issues/32939)
+
+## [0.189.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.2...runner-rs-v0.189.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **pi-memory:** preserve unchanged files and safe failure diagnostics ([#32911](https://github.com/vm0-ai/vm0/issues/32911)) ([dcf5e10](https://github.com/vm0-ai/vm0/commit/dcf5e10bb749b56b091ad0d0de6770928195db23)), closes [#32744](https://github.com/vm0-ai/vm0/issues/32744)
+* **runner:** preserve jsonl framing after partial append failures ([#32928](https://github.com/vm0-ai/vm0/issues/32928)) ([6de90ea](https://github.com/vm0-ai/vm0/commit/6de90eacb2d78ff367384723ef2097e37628b387))
+
 ## [0.189.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.1...runner-rs-v0.189.2) (2026-09-09)
 
 

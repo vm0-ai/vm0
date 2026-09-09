@@ -17,6 +17,7 @@ fail() {
 
 printf 'javascript\n' > "${assets_directory}/app-AbCd1234.js"
 printf '{}\n' > "${assets_directory}/app-AbCd1234.js.map"
+printf 'lazy\n' > "${assets_directory}/lazy-Lazy1234.js"
 printf 'vendor\n' > "${assets_directory}/vendor-EfGh5678.js"
 printf '{}\n' > "${assets_directory}/vendor-EfGh5678.js.map"
 printf 'runtime\n' > "${assets_directory}/rolldown-runtime-IjKl9012.js"
@@ -60,6 +61,7 @@ grep -Fq \
 for relative_path in \
   app-AbCd1234.js \
   app-AbCd1234.js.map \
+  lazy-Lazy1234.js \
   vendor-EfGh5678.js \
   vendor-EfGh5678.js.map \
   rolldown-runtime-IjKl9012.js \

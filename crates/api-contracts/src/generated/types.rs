@@ -1921,60 +1921,6 @@ pub mod webhooks {
             }
         }
 
-        /// Private Pi memory maintenance control.
-        pub mod pi_memory_phase2 {
-            /// Bounded provider-attempt accounting.
-            pub mod usage {
-                /// Background token quantities, separate from foreground accounting.
-                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-                #[serde(rename_all = "camelCase")]
-                pub struct RequestAttemptUsage {
-                    /// Uncached input tokens.
-                    pub input: u64,
-                    /// Output tokens.
-                    pub output: u64,
-                    /// Cached input tokens.
-                    pub cache_read: u64,
-                    /// Cache creation tokens.
-                    pub cache_write: u64,
-                    /// Reasoning tokens included in output.
-                    pub reasoning: u64,
-                }
-
-                /// One observed provider attempt.
-                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-                #[serde(rename_all = "camelCase")]
-                pub struct RequestAttempt {
-                    /// Provider response or exact lease-attempt identity.
-                    pub response_id: String,
-                    /// Token quantities incurred by this attempt.
-                    pub usage: RequestAttemptUsage,
-                }
-
-                /// Private maintenance provider-attempt usage; contains no memory content.
-                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-                #[serde(rename_all = "camelCase")]
-                pub struct Request {
-                    /// Private journal schema version.
-                    pub schema_version: i64,
-                    /// Authenticated maintenance run.
-                    pub run_id: String,
-                    /// Exact mounted Storage owner.
-                    pub memory_storage_id: String,
-                    /// Exact dispatched claim token.
-                    pub lease_token: String,
-                    /// Claimed input revision.
-                    pub claimed_revision: i64,
-                    /// Pinned mounted base version.
-                    pub claimed_base_version_id: String,
-                    /// Bounded candidate selection identity.
-                    pub selection_digest: String,
-                    /// Provider attempts observed by the private child.
-                    pub attempts: Vec<RequestAttempt>,
-                }
-            }
-        }
-
         /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.
         pub mod storages {
             /// File metadata entry used to compute and commit content-addressed storage uploads.

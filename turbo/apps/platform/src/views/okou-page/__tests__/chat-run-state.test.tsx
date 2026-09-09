@@ -17,6 +17,7 @@ import {
   queryButton,
   readyChat,
   RUN_PATH,
+  RUN_THREAD_ID,
   sendText,
   thinkingEvent,
 } from "./chat-run-test-fixtures.ts";
@@ -237,8 +238,8 @@ test("Explain queued work while a cancelled run is recovering", async () => {
   events.push(
     automationEvent("new-recovery-automation", 4, "Check the follow-up"),
   );
-  context.mocks.ably.triggerReconnect();
   publishRunUpdate();
+  context.mocks.ably.trigger(`chatThreadDetailChanged:${RUN_THREAD_ID}`);
 
   const nextPendingAutomation = await screen.findByRole("listitem", {
     name: "Pending automation event",

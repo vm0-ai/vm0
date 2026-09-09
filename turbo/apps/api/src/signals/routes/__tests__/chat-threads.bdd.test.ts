@@ -1,3 +1,4 @@
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import AdmZip from "adm-zip";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
@@ -709,6 +710,38 @@ const malformedChatThreadIdRequests = [
 ] as const;
 
 describe("CHAT-01 thread detail, create, and delete cascades", () => {
+  it("preserves reasoning effort through snapshot compaction and reset replay", async () => {
+    const { actor, thread } =
+      await createSnapshotCursorScenario("Effort snapshot");
+    await createBillingMediaApi(context).updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      reasoningEffort: "high",
+    });
+    await compactChatThreadSnapshots(actor);
+    const snapshot = await chat.getThreadSnapshot(actor);
+    expect(snapshot.chatThreads).toContainEqual(
+      expect.objectContaining({ id: thread.id, reasoningEffort: "high" }),
+    );
+    if (snapshot.latestSeqId === null) {
+      throw new Error("Expected snapshot cursor");
+    }
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      reasoningEffort: null,
+    });
+    const events = await threadEventPage(actor, snapshot.latestSeqId);
+    expect(
+      replayChatThreadEvents(snapshot.chatThreads, events.events),
+    ).toContainEqual(
+      expect.objectContaining({ id: thread.id, reasoningEffort: null }),
+    );
+    await compactChatThreadSnapshots(actor);
+    expect((await chat.getThreadSnapshot(actor)).chatThreads).toContainEqual(
+      expect.objectContaining({ id: thread.id, reasoningEffort: null }),
+    );
+  });
+
   it("rejects malformed thread ids before auth and unauthenticated clerk bearers", async () => {
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 

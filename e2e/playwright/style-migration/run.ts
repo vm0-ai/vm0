@@ -7,11 +7,12 @@ import {
   chromium,
   expect as playwrightExpect,
   type Locator,
-  type Page,
 } from "@playwright/test";
 
 import { seedPreviewBypassCookie } from "../lib/preview-bypass";
 import { compareImages, roundingTolerance, sha256 } from "./images";
+import { browserArgs, stableScreenshot } from "./capture";
+import { fixtureBootstrap } from "./bootstrap";
 
 const expect = playwrightExpect.configure({ timeout: 30_000 });
 
@@ -77,48 +78,6 @@ function origin(value: string): string {
   assert(!url.username && !url.password && !url.search && !url.hash);
   assert.equal(url.pathname, "/", "Pass origins, not routes or bypass URLs");
   return url.origin;
-}
-
-async function frames(page: Page) {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      }),
-  );
-}
-
-async function stableScreenshot(page: Page): Promise<Buffer> {
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      document
-        .getAnimations()
-        .filter(
-          (animation) =>
-            animation.effect?.getComputedTiming().iterations !== Infinity,
-        )
-        .map((animation) => animation.finished),
-    );
-    for (const animation of document.getAnimations()) {
-      if (animation.effect?.getComputedTiming().iterations === Infinity) {
-        animation.pause();
-        animation.currentTime = 0;
-      }
-    }
-  });
-  let previous: Buffer | undefined;
-  let consecutive = 0;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    await frames(page);
-    const image = await page.screenshot({ fullPage: true, caret: "initial" });
-    consecutive = previous?.equals(image) ? consecutive + 1 : 1;
-    if (consecutive === 3) return image;
-    previous = image;
-  }
-  throw new Error(
-    "Three identical painted frames were not observed; baseline is not stable",
-  );
 }
 
 async function observe(dialog: Locator) {
@@ -188,6 +147,8 @@ async function run() {
       await Promise.all([
         readFile(__filename),
         readFile(path.join(__dirname, "images.ts")),
+        readFile(path.join(__dirname, "capture.ts")),
+        readFile(path.join(__dirname, "bootstrap.ts")),
         readFile(path.join(__dirname, "../lib/preview-bypass.ts")),
         readFile(path.join(__dirname, "../../pnpm-lock.yaml")),
       ]),
@@ -216,11 +177,7 @@ async function run() {
   await mkdir(out);
   const browser = await chromium.launch({
     executablePath: values["executable-path"],
-    args: [
-      "--disable-gpu",
-      "--force-color-profile=srgb",
-      "--deterministic-mode",
-    ],
+    args: browserArgs,
   });
   const manifest: Manifest = {
     version: 1,
@@ -316,6 +273,9 @@ async function run() {
           captureNetworkBodiesRemaining: 0,
           voiceInputModel: null,
         };
+        await fixtureBootstrap(page, appOrigin, () => ({
+          "/api/user-preferences": preferences,
+        }));
         let savePending: Promise<void> | undefined;
         await page.route(
           (url) =>
@@ -493,6 +453,18 @@ async function run() {
         const failure = `${item.id}: ${error instanceof Error ? error.message : String(error)}`;
         manifest.failures.push(failure);
         console.error(failure);
+        const failedPage = context.pages()[0];
+        if (failedPage) {
+          await failedPage.screenshot({
+            path: path.join(out, `${item.id}-failure.png`),
+            fullPage: true,
+          });
+          await writeFile(
+            path.join(out, `${item.id}-failure.txt`),
+            await failedPage.locator("body").innerText(),
+            { flag: "wx" },
+          );
+        }
       } finally {
         releaseSave?.();
         await context.close();

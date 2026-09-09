@@ -583,11 +583,8 @@ type PreparedOAuthStart = {
 );
 
 function connectorConnectionMutationFailure(
-  resolution: ConnectorConnectionMutationResolution,
+  resolution: Exclude<ConnectorConnectionMutationResolution, { kind: "ready" }>,
 ) {
-  if (resolution.kind === "ready") {
-    return null;
-  }
   return resolution.kind === "missing"
     ? notFound("Connector account not found")
     : conflict(
@@ -675,9 +672,11 @@ async function prepareAutomaticOAuthStart(
     });
   });
   signal.throwIfAborted();
-  const preflightFailure = connectorConnectionMutationFailure(preflight);
-  if (preflightFailure) {
-    return { ok: false as const, response: preflightFailure };
+  if (preflight.kind !== "ready") {
+    return {
+      ok: false as const,
+      response: connectorConnectionMutationFailure(preflight),
+    };
   }
   const state = generateConnectorOAuthState();
   const automatic = await settle(
@@ -777,12 +776,7 @@ async function persistCustomConnectorOAuthStart(
       allowSiblings: !isIntegrationManagedCustomConnector(connector),
     });
     if (resolution.kind !== "ready") {
-      return {
-        resolution,
-        connectionId: null,
-        oauthAttemptId: null,
-        expiresAt,
-      };
+      return resolution;
     }
     const oauthStateId = await insertConnectorOAuthState(tx, {
       state: prepared.state,
@@ -802,7 +796,7 @@ async function persistCustomConnectorOAuthStart(
       expiresAt,
     });
     return {
-      resolution,
+      kind: "ready" as const,
       oauthAttemptId: oauthStateId,
       connectionId: args.account.intent === "add" ? oauthStateId : null,
       expiresAt,
@@ -920,10 +914,9 @@ async function persistAutomaticNoAuthConnection(
   if (signal.aborted) {
     postCommitAbort = { reason: signal.reason };
   }
-  const failure = connectorConnectionMutationFailure(result.resolution);
-  if (failure) {
+  if (result.resolution.kind !== "ready") {
     signal.throwIfAborted();
-    return failure;
+    return connectorConnectionMutationFailure(result.resolution);
   }
   if (!result.connection) {
     throw new Error("Ready connector mutation did not return a connection");
@@ -1037,17 +1030,14 @@ export const startCustomConnectorOAuth2$ = command(
       },
       signal,
     );
-    const mutationFailure = connectorConnectionMutationFailure(
-      mutationStart.resolution,
-    );
-    if (mutationFailure) {
-      return mutationFailure;
+    if (mutationStart.kind !== "ready") {
+      return connectorConnectionMutationFailure(mutationStart);
     }
     return {
       result: "authorization" as const,
       authorizationUrl: prepared.authorizationUrl,
       connectionId: mutationStart.connectionId ?? undefined,
-      oauthAttemptId: mutationStart.oauthAttemptId ?? undefined,
+      oauthAttemptId: mutationStart.oauthAttemptId,
     };
   },
 );
@@ -1218,7 +1208,7 @@ export const startCustomConnectorAutomaticOAuthReauthorization$ = command(
       },
       signal,
     );
-    if (persisted.resolution.kind !== "ready") {
+    if (persisted.kind !== "ready") {
       return automaticOAuthReauthorizationUnavailable("account");
     }
     return {

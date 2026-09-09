@@ -26,7 +26,7 @@ import {
 } from "../image-load.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
-// One heartbeat per minute keeps a viewed browser comfortably inside its
+// One heartbeat per minute keeps an open browser panel comfortably inside its
 // ten-minute idle lease without making the lease itself stackable.
 const LEASE_HEARTBEAT_INTERVAL_MS = 60_000;
 
@@ -92,12 +92,6 @@ export function parseBrowserSessionUrl(
     threadId,
     href: `/browsers/${threadId}`,
   };
-}
-
-function viewerIsVisible(): boolean {
-  return typeof document === "undefined"
-    ? false
-    : document.visibilityState === "visible";
 }
 
 const BROWSER_FIT_GAP_TOLERANCE_PX = 2;
@@ -420,8 +414,7 @@ function createBrowserSessionSubscriptionSignals(
         {
           topic: "browserSessionChanged",
           loopCommand$: onBrowserSessionChanged$,
-          catchUpCommand$: reloadBrowserSession$,
-          options: { runOnSubscribe: true },
+          initializeCommand$: reloadBrowserSession$,
         },
         signal,
       );
@@ -485,9 +478,6 @@ export function createBrowserSessionSignals(
       async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
         await setLoop(
           async () => {
-            if (!viewerIsVisible()) {
-              return false;
-            }
             const response = await accept(
               get(apiClient$)(browserContract).leaseByThread({
                 params: { threadId: descriptor.threadId },
@@ -512,8 +502,8 @@ export function createBrowserSessionSignals(
               );
               return false;
             }
-            // The browser was reclaimed while the panel was hidden or idle. Stop
-            // the heartbeat and let the panel offer a resume instead.
+            // The browser was reclaimed. Stop the heartbeat and let the panel
+            // offer a resume instead.
             set(reload$);
             return true;
           },

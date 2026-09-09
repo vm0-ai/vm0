@@ -18,6 +18,28 @@ source = "arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f9
 target = "arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947"
 
 if name == "pnpm":
+    if arguments[2].endswith("/verify-business.ts"):
+        # The business verifier has its own HTTP + real-Postgres integration
+        # suite. Here exercise the workflow driver's child-process boundary.
+        assert not any(name.startswith("AWS_") for name in os.environ)
+        assert "NEON_API_KEY" not in os.environ
+        assert "VERCEL_TOKEN" not in os.environ
+        assert os.environ["CLERK_SECRET_KEY"] == "synthetic-clerk-secret"
+        assert arguments[5:] == ["user_fixture", "org_fixture", "agent_fixture"]
+        business = {
+            "result": "passed", "cleanup": "passed", "cleanupFailures": [],
+            "historicalCiphertextWrites": 0, "fixtureWrites": 4,
+            "checks": [
+                "deployed_webhook_create_and_reveal_target_key",
+                "deployed_connector_add_and_shared_reader",
+                "deployed_connector_reconnect_and_shared_reader",
+                "deployed_source_envelope_read", "deployed_source_legacy_read",
+            ],
+        }
+        if scenario == "business-incomplete":
+            business["cleanup"] = "failed"
+        Path(arguments[4]).write_text(json.dumps(business))
+        sys.exit(0)
     # Delegate to the actual migration and canary TypeScript entry points.
     # Only the external KMS endpoint and database connection are redirected.
     env = {**os.environ, "AWS_ENDPOINT_URL_KMS": state["kmsEndpoint"]}
@@ -28,13 +50,30 @@ if name == "pnpm":
 
 if name == "aws":
     if arguments[:2] == ["sts", "assume-role-with-web-identity"]:
-        payload = json.load(sys.stdin)
+        # Honor the real CLI's file argument and repeated reads instead of
+        # assuming a single stdin read. A consumed pipe cannot satisfy this.
+        input_path = arguments[arguments.index("--cli-input-json") + 1]
+        assert input_path.startswith("file://")
+        input_file = Path(input_path.removeprefix("file://"))
+        payload = json.loads(input_file.read_text())
+        assert json.loads(input_file.read_text()) == payload
         assert (
             payload["RoleArn"]
             == "arn:aws:iam::251964670836:role/vm0-kms-migration-github-32264"
         )
         assert payload["WebIdentityToken"] == "synthetic-oidc-token"
         state["assumeCalls"] += 1
+        if scenario.startswith("aws-"):
+            errors = {
+                "aws-access-denied": "An error occurred (AccessDenied) when calling the AssumeRoleWithWebIdentity operation: synthetic-provider-secret-must-not-be-logged",
+                "aws-invalid-identity-token": "An error occurred (InvalidIdentityToken) when calling the AssumeRoleWithWebIdentity operation: synthetic-oidc-token",
+                "aws-cli-input-error": "Error parsing parameter 'cli-input-json': Invalid JSON: synthetic-oidc-token",
+                "aws-unclassified": "An error occurred (syntheticOperatorSecret) when calling the AssumeRoleWithWebIdentity operation: synthetic-provider-secret-must-not-be-logged",
+            }
+            state_path.write_text(json.dumps(state))
+            print("synthetic-operator-session")
+            print(errors[scenario], file=sys.stderr)
+            sys.exit(255)
         result = {
             "Credentials": {
                 "AccessKeyId": "operator",

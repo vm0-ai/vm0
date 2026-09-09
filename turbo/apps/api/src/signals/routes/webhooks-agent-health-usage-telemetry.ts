@@ -3,7 +3,6 @@ import {
   webhookHeartbeatContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
-  webhookPiMemoryPhase2UsageContract,
   type RunnerPreSpawnConcurrencyBucket,
   type RunnerResourceBudgetLeaseCountBucket,
   type RunnerResourceBudgetUtilizationBucket,
@@ -35,7 +34,6 @@ import {
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
 import { usageUnderbillingFields } from "../usage-underbilling";
-import { loadPiMemoryPhase2UsageBinding } from "../services/pi-memory-phase2-usage.service";
 
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
@@ -246,41 +244,6 @@ const heartbeat$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const usageEventBody$ = bodyResultOf(webhookUsageEventContract.send);
-const maintenanceUsageBody$ = bodyResultOf(
-  webhookPiMemoryPhase2UsageContract.send,
-);
-const maintenanceUsage$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const result = await get(maintenanceUsageBody$);
-  signal.throwIfAborted();
-  if (!result.ok) {
-    return result.response;
-  }
-  const body = result.data;
-  const auth = getSandboxAuthForRun(body.runId, get(authorization$));
-  if (!auth) {
-    return unauthorizedRunMismatch;
-  }
-  const db = set(writeDb$);
-  const binding = await loadPiMemoryPhase2UsageBinding(db, auth);
-  signal.throwIfAborted();
-  if (
-    !binding ||
-    binding.memoryStorageId !== body.memoryStorageId ||
-    binding.leaseToken !== body.leaseToken ||
-    binding.claimedRevision !== body.claimedRevision ||
-    binding.claimedBaseVersionId !== body.claimedBaseVersionId ||
-    binding.selectionDigest !== body.selectionDigest
-  ) {
-    return notFound("Pi memory maintenance usage binding not found");
-  }
-  // Existing Guest/commit-pinned CLI contexts still submit this journal. ACK
-  // their validated private binding, but only usageEvent$ charges the provider
-  // work. The proxy survives a killed child and also covers missing journals.
-  // Retire this ACK under #32788 only after the last old
-  // producer's contexts drain: up to two hours queued, two hours executing,
-  // and bounded finalization. New API + old Guest/CLI keeps the same response.
-  return { status: 200 as const, body: { success: true } };
-});
 const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(usageEventBody$);
   signal.throwIfAborted();
@@ -584,10 +547,6 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
 });
 
 export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
-  {
-    route: webhookPiMemoryPhase2UsageContract.send,
-    handler: maintenanceUsage$,
-  },
   {
     route: webhookHeartbeatContract.send,
     handler: heartbeat$,

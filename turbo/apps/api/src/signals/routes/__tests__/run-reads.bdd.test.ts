@@ -770,7 +770,7 @@ describe("RUN-03: cancel through the run cancel route", () => {
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
-    // A queued agent run cancelled through the Zero route disappears from
+    // A queued agent run cancelled through the agent route disappears from
     // the visible queue.
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {

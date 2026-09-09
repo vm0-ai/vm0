@@ -28,7 +28,10 @@ import {
 import { logger } from "../signals/log.ts";
 import {
   createDeferredPromise,
+  detach,
   onDomEventFn,
+  onRejection,
+  Reason,
   settle,
 } from "../signals/utils.ts";
 
@@ -52,6 +55,8 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   >();
   private readonly handleMessage: (event: MessageEvent<unknown>) => void;
   private readonly handleBridgeAbort: () => void;
+  private releaseConnectionLock: (() => void) | null = null;
+  private registration: Promise<void> | null = null;
   private registered = false;
   private closed = false;
   private closeReason: unknown = new Error("Shared database bridge is closed");
@@ -75,10 +80,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       }
       if (message.type === "invalidate") {
         await this.events.databaseInvalidated(message.dataKey);
-        return;
-      }
-      if (message.type === "reconnect") {
-        await this.events.databaseReconnected();
         return;
       }
       if (message.type === "worker-unavailable") {
@@ -146,9 +147,50 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   registerTab(signal: AbortSignal): Promise<void> {
     AbortSignal.any([signal, this.bridgeSignal]).throwIfAborted();
-    this.registered = true;
-    this.emit({ type: "register-tab" });
-    return Promise.resolve();
+    if (this.closed) {
+      throw this.closeReason;
+    }
+    if (!this.registration) {
+      const ready = createDeferredPromise<void>(signal);
+      const lockName = `okou:shared-database:${crypto.randomUUID()}`;
+      this.registration = ready.promise;
+      // A destroyed document releases its Web Locks without running page JS.
+      // Register only after acquiring the lock so the Worker can wait for its release.
+      detach(
+        onRejection(
+          navigator.locks.request(
+            lockName,
+            { signal: this.bridgeSignal },
+            async () => {
+              if (this.closed) {
+                throw this.closeReason;
+              }
+              const lockReleased = createDeferredPromise<void>(
+                this.bridgeSignal,
+              );
+              this.releaseConnectionLock = () => {
+                lockReleased.resolve();
+              };
+              this.registered = true;
+              this.emit({ type: "register-tab", lockName });
+              if (!ready.settled()) {
+                ready.resolve();
+              }
+              await lockReleased.promise;
+            },
+          ),
+          (error) => {
+            if (!ready.settled()) {
+              ready.reject(error);
+            }
+            this.close(error, false);
+          },
+        ),
+        Reason.Daemon,
+        "shared database connection lock",
+      );
+    }
+    return this.registration;
   }
 
   fail(reason: unknown): void {
@@ -308,6 +350,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       type: "disconnect",
     } satisfies SharedDatabaseClientMessage);
     this.closed = true;
+    this.releaseConnectionLock?.();
     this.closeReason = reason;
     this.bridgeSignal.removeEventListener("abort", this.handleBridgeAbort);
     this.port.removeEventListener("message", this.handleMessage);

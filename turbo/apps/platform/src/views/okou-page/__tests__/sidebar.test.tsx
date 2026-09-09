@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { compile } from "tailwindcss";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -25,6 +26,10 @@ import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import {
+  avatarComposerUrl,
+  DEFAULT_AGENT_AVATAR_URL,
+} from "@okouai/core/agent-avatar";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
@@ -73,6 +78,14 @@ const INCIDENT_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
+const LAYERED_AVATAR_URL = avatarComposerUrl({
+  face: "round",
+  hair: "curly-cap",
+  expression: "calm",
+  skin: "light",
+  hairColor: "blue",
+  sweater: "lime",
+});
 
 interface SidebarThread {
   readonly id: string;
@@ -86,7 +99,10 @@ interface SidebarThread {
   readonly sortAt?: string;
 }
 
-function prepareDefaultAgent(targetContext = context): void {
+function prepareDefaultAgent(
+  targetContext = context,
+  avatarUrl: string | null = null,
+): void {
   targetContext.mocks.data.agents([
     {
       agentId: AGENT_ID,
@@ -94,7 +110,7 @@ function prepareDefaultAgent(targetContext = context): void {
       displayName: "Zero",
       description: null,
       sound: null,
-      avatarUrl: null,
+      avatarUrl,
       visibility: "public",
     },
   ]);
@@ -181,14 +197,22 @@ const OVERFLOW_PINNED_AGENTS = [
  * Pins five agents so the grid holds six cards plus Pin, which overflows the
  * five-column row and puts cards on both sides of the Pin button.
  */
-function prepareOverflowingPinnedAgents(targetContext = context): string[] {
+function prepareOverflowingPinnedAgents(
+  targetContext = context,
+  supportAvatarUrl: string | null = null,
+): string[] {
   const agents = prepareAgents(targetContext);
+  const agentsWithAvatar = agents.map((agent) => {
+    return agent.agentId === SUPPORT_AGENT_ID
+      ? { ...agent, avatarUrl: supportAvatarUrl }
+      : agent;
+  });
   const templateAgent = agents[1];
   if (!templateAgent) {
     throw new Error("Pinned-agent template is unavailable");
   }
   targetContext.mocks.data.agents([
-    ...agents,
+    ...agentsWithAvatar,
     ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
         ...templateAgent,
@@ -426,11 +450,25 @@ function commandItemByText(container: HTMLElement, text: string): HTMLElement {
  * jsdom does not implement DataTransfer, so drag events need a stub that keeps
  * the payload the pinned grid writes on drag start.
  */
+interface DragImageSnapshot {
+  readonly width: string;
+  readonly height: string;
+  readonly renderedImageLayerCount: number;
+}
+
+interface DataTransferStub extends DataTransfer {
+  readonly dragImage: DragImageSnapshot | null;
+}
+
 function createDataTransferStub(
   initialValues: Readonly<Record<string, string>> = {},
-): DataTransfer {
+): DataTransferStub {
   let values = new Map<string, string>(Object.entries(initialValues));
+  let dragImage: DragImageSnapshot | null = null;
   return {
+    get dragImage() {
+      return dragImage;
+    },
     effectAllowed: "none",
     dropEffect: "none",
     clearData: (format?: string) => {
@@ -446,7 +484,64 @@ function createDataTransferStub(
     getData: (format: string) => {
       return values.get(format) ?? "";
     },
-  } as unknown as DataTransfer;
+    setDragImage: (image: Element) => {
+      if (!(image instanceof HTMLElement)) {
+        throw new Error("Drag image must be an HTML element");
+      }
+      const style = getComputedStyle(image);
+      const renderedImageLayerCount = Array.from(
+        image.querySelectorAll("img"),
+      ).filter((layer) => {
+        const layerStyle = getComputedStyle(layer);
+        return (
+          layerStyle.display !== "none" &&
+          layerStyle.visibility !== "hidden" &&
+          layerStyle.opacity !== "0"
+        );
+      }).length;
+      dragImage = {
+        width: style.width,
+        height: style.height,
+        renderedImageLayerCount,
+      };
+    },
+  } as unknown as DataTransferStub;
+}
+
+async function renderTailwindUtilities(
+  signal: AbortSignal,
+  ...elements: readonly HTMLElement[]
+): Promise<void> {
+  const compiler = await compile(`
+    @theme {
+      --spacing: 0.25rem;
+    }
+    @tailwind utilities;
+  `);
+  const classNames = new Set<string>();
+  for (const element of elements) {
+    for (const candidate of [
+      element,
+      ...element.querySelectorAll<HTMLElement>("[class]"),
+    ]) {
+      for (const className of candidate.classList) {
+        classNames.add(className);
+      }
+    }
+  }
+  const styleElement = document.createElement("style");
+  styleElement.textContent = compiler
+    .build([...classNames])
+    .replaceAll("calc(var(--spacing) * 9)", "36px")
+    .replaceAll("calc(infinity * 1px)", "9999px");
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
 }
 
 const SIDEBAR_TITLE_BOX_WIDTH = 160;
@@ -2422,6 +2517,68 @@ test("Reorder pinned agents while keeping Zero first", async () => {
   });
   expect(pinnedAgentNames(grid)).toStrictEqual(orderAfterReorder);
   expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
+});
+
+test("Keep the default Okou sweater outside a circular mask", async () => {
+  prepareDefaultAgent(context, DEFAULT_AGENT_AVATAR_URL);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  const avatar = grid.querySelector(`img[src="${DEFAULT_AGENT_AVATAR_URL}"]`);
+  if (!(avatar instanceof HTMLImageElement)) {
+    throw new Error("Default Okou avatar not found");
+  }
+  await renderTailwindUtilities(context.signal, avatar);
+  expect(getComputedStyle(avatar).borderRadius).toBe("");
+});
+
+test("Render the complete layered drag image with grab feedback", async () => {
+  const pinnedAgentIds = prepareOverflowingPinnedAgents(
+    context,
+    LAYERED_AVATAR_URL,
+  );
+  context.mocks.data.userPreferences({ pinnedAgentIds });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+  });
+
+  const dragged = pinnedAgentLink(grid, "Support Agent");
+  const avatar = dragged.querySelector('[data-slot="pinned-agent-avatar"]');
+  if (!(avatar instanceof HTMLElement)) {
+    throw new Error("Pinned-agent avatar not found");
+  }
+  const avatarLayers = avatar.querySelectorAll("img");
+  const topAvatarLayer = avatarLayers.item(avatarLayers.length - 1);
+  if (!(topAvatarLayer instanceof HTMLImageElement)) {
+    throw new Error("Layered pinned-agent avatar not found");
+  }
+  await renderTailwindUtilities(context.signal, dragged, avatar);
+  const dataTransfer = createDataTransferStub();
+
+  expect(getComputedStyle(dragged).cursor).toBe("grab");
+
+  fireEvent.dragStart(topAvatarLayer, { dataTransfer });
+
+  expect(dataTransfer.dragImage).toStrictEqual({
+    width: "36px",
+    height: "36px",
+    renderedImageLayerCount: avatarLayers.length,
+  });
+  expect(dataTransfer.dragImage?.renderedImageLayerCount).toBeGreaterThan(1);
 });
 
 test("Search, pin, and open an agent from the pin manager", async () => {

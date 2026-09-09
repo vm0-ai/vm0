@@ -40,7 +40,10 @@ const sharedDatabaseErrorSchema = z
 type SerializedSharedDatabaseError = z.infer<typeof sharedDatabaseErrorSchema>;
 
 const registerTabMessageSchema = z
-  .object({ type: z.literal("register-tab") })
+  .object({
+    type: z.literal("register-tab"),
+    lockName: z.string().startsWith("okou:shared-database:"),
+  })
   .strict();
 
 const queryRequestSchema = z
@@ -224,10 +227,6 @@ const invalidateMessageSchema = z
   })
   .strict();
 
-const reconnectMessageSchema = z
-  .object({ type: z.literal("reconnect") })
-  .strict();
-
 const getTokenRequestSchema = z
   .object({
     type: z.literal("get-token"),
@@ -302,7 +301,6 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   resultMessageSchema,
   errorMessageSchema,
   invalidateMessageSchema,
-  reconnectMessageSchema,
   getTokenRequestSchema,
   workerUnavailableMessageSchema,
   reloadComputedMessageSchema,

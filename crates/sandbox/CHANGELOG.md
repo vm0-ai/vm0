@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.3...sandbox-v0.22.4) (2026-09-09)
+
+
+### Refactoring
+
+* finish vm0 residual brand cleanup ([#32891](https://github.com/vm0-ai/vm0/issues/32891)) ([0453123](https://github.com/vm0-ai/vm0/commit/04531239c7e796799f1dca20ab36f7af1d075f85))
+
 ## [0.22.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.2...sandbox-v0.22.3) (2026-09-09)
 
 

@@ -27,6 +27,7 @@ import {
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
+  type ReasoningEffort,
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
@@ -914,6 +915,7 @@ export function createChatFilesBddApi(context: TestContext) {
       model: SupportedRunModel | null,
       options?: {
         readonly codexServiceTier?: CodexServiceTier | null;
+        readonly reasoningEffort?: ReasoningEffort | null;
         readonly eventId?: string;
       },
     ): Promise<void> {
@@ -924,6 +926,7 @@ export function createChatFilesBddApi(context: TestContext) {
           body: {
             model,
             codexServiceTier: options?.codexServiceTier,
+            reasoningEffort: options?.reasoningEffort,
             eventId: options?.eventId,
           },
         }),
@@ -988,6 +991,7 @@ export function createChatFilesBddApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 402 | 404)[],
       options?: {
         readonly codexServiceTier?: CodexServiceTier | null;
+        readonly reasoningEffort?: ReasoningEffort | null;
         readonly eventId?: string;
       },
     ) {
@@ -998,6 +1002,7 @@ export function createChatFilesBddApi(context: TestContext) {
           body: {
             model,
             codexServiceTier: options?.codexServiceTier,
+            reasoningEffort: options?.reasoningEffort,
             eventId: options?.eventId,
           },
         }),

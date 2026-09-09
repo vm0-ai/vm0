@@ -6,6 +6,7 @@ import {
   workflowsCollectionContract,
 } from "@okouai/api-contracts";
 import {
+  FeatureSwitchKey,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@okouai/core";
@@ -13,6 +14,7 @@ import { expect, test } from "vitest";
 
 import {
   click,
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -75,6 +77,15 @@ function slashMenu(): HTMLElement {
 
 function slashMenuButtons(): HTMLElement[] {
   return queryAllByRoleFast("button", slashMenu());
+}
+
+function slashWorkflowNames(): string[] {
+  return Array.from(
+    slashMenu().querySelectorAll('[data-slot="slash-workflow-name"]'),
+    (element) => {
+      return element.textContent ?? "";
+    },
+  );
 }
 
 function slashButton(name: string): HTMLElement {
@@ -465,7 +476,7 @@ test("Insert an attached workflow with slash suggestions", async () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   const emphasizedMatch = slashButton("/sales-research").querySelector(
-    String.raw`span.text-brand-text\/60`,
+    '[data-slot="workflow-query-match"]',
   );
   expect(emphasizedMatch).toHaveTextContent("research");
 
@@ -478,6 +489,146 @@ test("Insert an attached workflow with slash suggestions", async () => {
   });
   expect(window.visualViewport?.offsetTop).toBe(160);
 });
+
+test("Find and insert a workflow with an abbreviated name", async () => {
+  mockAgent();
+  mockThread();
+  installWorkflows(() => {
+    return [
+      workflow("pr-design-acceptance-url"),
+      workflow("pr-url-design-acceptance"),
+      workflow("pr-auto"),
+    ];
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: true },
+  });
+
+  const user = userEvent.setup();
+  const editor = await findComposerEditor();
+  await user.click(editor);
+  await user.keyboard("Review /PdAu");
+
+  await waitFor(() => {
+    expect(slashWorkflowNames()).toStrictEqual(["/pr-design-acceptance-url"]);
+  });
+  const highlighted = Array.from(
+    slashButton("/pr-design-acceptance-url").querySelectorAll(
+      '[data-slot="workflow-query-match"]',
+    ),
+    (element) => {
+      return element.textContent;
+    },
+  );
+  expect(highlighted).toStrictEqual(["p", "d", "a", "u"]);
+
+  await user.keyboard("{Enter}");
+
+  await waitFor(() => {
+    expect(editor).toHaveTextContent(/^Review \/pr-design-acceptance-url\s*$/);
+    expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
+  });
+});
+
+test("Rank exact workflow names before prefixes, substrings, and abbreviations", async () => {
+  mockAgent();
+  mockThread();
+  installWorkflows(() => {
+    return [
+      workflow("pr-audit-report"),
+      workflow("team-pr-auto"),
+      workflow("pr-auto-deploy"),
+      workflow("pr-auto"),
+    ];
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: true },
+  });
+
+  const user = userEvent.setup();
+  const editor = await findComposerEditor();
+  await user.click(editor);
+  await user.keyboard("/pr-auto");
+
+  await waitFor(() => {
+    expect(slashWorkflowNames()).toStrictEqual([
+      "/pr-auto",
+      "/pr-auto-deploy",
+      "/team-pr-auto",
+      "/pr-audit-report",
+    ]);
+  });
+
+  await user.keyboard("{Enter}");
+
+  await waitFor(() => {
+    expect(editor).toHaveTextContent(/^\/pr-auto\s*$/);
+    expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
+  });
+});
+
+test("Keep numeric workflow identifiers contiguous in abbreviated queries", async () => {
+  mockAgent();
+  mockThread();
+  installWorkflows(() => {
+    return [
+      workflow("pr-26-809-ship-watch"),
+      workflow("pr-26819-ship-watch"),
+      workflow("pr-26809-ship-watch"),
+    ];
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: true },
+  });
+
+  const editor = await findComposerEditor();
+  await fill(editor, "/26809");
+  await waitFor(() => {
+    expect(slashWorkflowNames()).toStrictEqual(["/pr-26809-ship-watch"]);
+  });
+
+  await fill(editor, "/pr26809");
+  await waitFor(() => {
+    expect(slashWorkflowNames()).toStrictEqual(["/pr-26809-ship-watch"]);
+  });
+});
+
+test.each([
+  { enabled: false, query: "/pdau" },
+  { enabled: true, query: "/pd" },
+])(
+  "Keep strict workflow matching for $query when fuzzy search is $enabled",
+  async ({ enabled, query }) => {
+    mockAgent();
+    mockThread();
+    installWorkflows(() => {
+      return [workflow("pr-design-acceptance-url")];
+    });
+
+    await setupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: enabled,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await fill(editor, query);
+    await expect(
+      screen.findByText("No matching workflows"),
+    ).resolves.toBeVisible();
+  },
+);
 
 test("Suggest only the effective workflow when a private workflow shadows a public workflow", async () => {
   const privateWorkflow = workflow("pr-auto", {

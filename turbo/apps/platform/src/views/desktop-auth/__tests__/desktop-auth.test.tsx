@@ -72,6 +72,12 @@ async function page(path: string, auth?: SetupPageAuth, host = "app.okou.ai") {
   await screen.findByRole("heading", { name: "Sign in to Desktop" });
 }
 
+async function leaveDesktopAuthPage(): Promise<void> {
+  window.history.pushState({}, "", "/desktop-auth/missing");
+  fireEvent.popState(window);
+  await screen.findByRole("heading", { name: "Page not found" });
+}
+
 function button(name: string) {
   const result = queryAllByRoleFast("button").find((item) => {
     return (
@@ -481,7 +487,7 @@ test("cancelling a delayed token read prevents late IPC", async () => {
   });
   await page("/desktop-auth/token");
   await requested.promise;
-  fireEvent(window, new Event("pagehide"));
+  await leaveDesktopAuthPage();
   token.resolve("too-late-token");
   await token.promise;
   expect(tokens).toStrictEqual([]);
@@ -632,7 +638,7 @@ test("cancellation after IPC starts discards its delayed acknowledgement", async
   await waitFor(() => {
     expect(tokens).toStrictEqual(["test-token"]);
   });
-  fireEvent(window, new Event("pagehide"));
+  await leaveDesktopAuthPage();
   pending.resolve();
   await pending.promise;
   expect(completions).toBe(0);
@@ -816,7 +822,7 @@ test("a cancelled ticket activation cannot navigate after the Clerk response arr
   });
   await page(`/desktop-auth/consume?code=${CODE}`, null);
   await requested.promise;
-  fireEvent(window, new Event("pagehide"));
+  await leaveDesktopAuthPage();
   ticket.resolve({ status: "complete", createdSessionId: "late-session" });
   await ticket.promise;
   expect(documents).toStrictEqual([]);
@@ -838,7 +844,7 @@ test("cancelling a server completion request cannot publish late native success"
   );
   await page(`/desktop-auth/token?handoffId=${HANDOFF}`);
   await requested.promise;
-  fireEvent(window, new Event("pagehide"));
+  await leaveDesktopAuthPage();
   completion.resolve();
   await completion.promise;
   expect(documents).toStrictEqual([]);
@@ -858,7 +864,7 @@ test("a delayed handoff-create response after cancellation never opens a native 
   });
   await page(`/desktop-auth/callback?callbackScheme=${SCHEME}`);
   await requested.promise;
-  fireEvent(window, new Event("pagehide"));
+  await leaveDesktopAuthPage();
   handoff.resolve();
   await handoff.promise;
   expect(opened.calls).toStrictEqual([]);

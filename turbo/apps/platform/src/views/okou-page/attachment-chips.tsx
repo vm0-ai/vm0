@@ -83,7 +83,10 @@ import {
   type ImageAnnotationSignals,
 } from "../../signals/okou-page/image-annotation.ts";
 import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
+import {
+  useResolvedAttachmentUrl,
+  useAttachmentMediaError,
+} from "./attachment-resource.ts";
 import {
   ArtifactActionSeparator,
   ArtifactDownloadMenu,
@@ -655,6 +658,7 @@ function ArtifactDialogImageStage({
             </div>
           ) : (
             <ZoomableArtifactImageCanvas
+              resourceDisplay={preview.display}
               key={resourceUrl}
               src={resourceUrl}
               alt={filename}
@@ -709,7 +713,7 @@ function ArtifactDialogImageBody({
   imageNavigation?: ArtifactImageNavigationActions;
   preview: Extract<AttachmentLightboxState, { kind: "image" }>;
 }) {
-  const resourceUrl = useResolvedAttachmentUrl(preview.url);
+  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
   return (
     <ArtifactDialogImageStage
       filename={filename}
@@ -728,8 +732,9 @@ function ArtifactDialogVideoBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.url);
+  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
 
+  const retryExpiredMedia = useAttachmentMediaError(preview.display);
   return (
     <ArtifactDialogStage centered>
       <div
@@ -738,6 +743,7 @@ function ArtifactDialogVideoBody({
       >
         {resourceUrl !== null && (
           <video
+            onError={retryExpiredMedia}
             src={resourceUrl}
             controls
             autoPlay
@@ -765,8 +771,9 @@ function ArtifactDialogAudioBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.url);
+  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
 
+  const retryExpiredMedia = useAttachmentMediaError(preview.display);
   return (
     <ArtifactDialogStage centered>
       <div className="okou-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
@@ -778,6 +785,7 @@ function ArtifactDialogAudioBody({
         </p>
         {resourceUrl !== null && (
           <audio
+            onError={retryExpiredMedia}
             src={resourceUrl}
             controls
             autoPlay
@@ -805,7 +813,7 @@ function ArtifactDialogDocumentFrameBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.url);
+  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail so the
   // embedded preview shows just the page and toolbar by default.
   const src =
@@ -864,6 +872,7 @@ function ArtifactDialogOfficeDocumentBody({
     <ArtifactDialogStage scrollable={false}>
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <OfficeDocumentPreview
+          resourceDisplay={preview.display}
           filename={filename}
           focusKey={`${preview.url}:dialog`}
           focusOnMount={false}
@@ -953,7 +962,7 @@ function ArtifactDialogHtmlBody({
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const src = useResolvedAttachmentUrl(preview.url);
+  const src = useResolvedAttachmentUrl(preview.url, preview.display);
   const isPresentationHtml = artifact?.artifactKind === "presentation-html";
 
   if (src === null) {

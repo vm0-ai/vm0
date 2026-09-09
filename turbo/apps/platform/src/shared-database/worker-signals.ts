@@ -292,11 +292,6 @@ const updateSharedDatabaseRealtimeStatus$ = command(
   },
 );
 
-const broadcastSharedDatabaseReconnect$ = command(({ set }): boolean => {
-  set(broadcastSharedDatabaseWorkerMessage$, { type: "reconnect" });
-  return false;
-});
-
 export const handleSharedDatabaseRealtimeMessage$ = command(
   ({ set }, payload: unknown, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
@@ -399,28 +394,12 @@ const reloadWorkerQueueDataFromRealtime$ = command(
   },
 );
 
-export const recoverSharedDatabaseWorkerAfterRealtimeReconnect$ = command(
-  ({ set }, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    set(broadcastSharedDatabaseReconnect$);
-    set(reloadWorkerComputed$, "chat-thread-indicators");
-    set(reloadWorkerComputed$, "computer-use-hosts");
-    set(reloadWorkerComputed$, "queue-data");
-    set(reloadComputedForConnections$, "chat-thread-indicators");
-    set(reloadComputedForConnections$, "computer-use-hosts");
-    set(reloadComputedForConnections$, "queue-data");
-  },
-);
-
 const runSharedDatabaseWorkerDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     set(
       subscribeRealtimeConnectionState$,
-      ({ state, reconnected }) => {
+      (state) => {
         set(updateSharedDatabaseRealtimeStatus$, state);
-        if (reconnected) {
-          set(recoverSharedDatabaseWorkerAfterRealtimeReconnect$, signal);
-        }
       },
       signal,
     );
@@ -429,7 +408,6 @@ const runSharedDatabaseWorkerDaemons$ = command(
       set(updateSharedDatabaseRealtimeStatus$, "failed");
       return;
     }
-    let initiallySubscribed = false;
     const subscriptions = await settle(
       Promise.all([
         set(
@@ -439,15 +417,6 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: null,
             loopCommand$: handleSharedDatabaseRealtimeMessage$,
             includeMessage: true,
-            options: {
-              onSubscribed: () => {
-                if (!initiallySubscribed) {
-                  initiallySubscribed = true;
-                  return;
-                }
-                set(broadcastSharedDatabaseReconnect$);
-              },
-            },
           },
           signal,
         ),
@@ -458,7 +427,6 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: "threadListChanged",
             loopCommand$: reloadWorkerChatIndicatorsFromRealtime$,
             options: {
-              runOnForegroundCatchUp: false,
               runOnSubscribe: true,
             },
           },
@@ -470,7 +438,6 @@ const runSharedDatabaseWorkerDaemons$ = command(
             scope: "credential",
             topic: "chatThreadReadCursorUpdated",
             loopCommand$: reloadWorkerChatIndicatorsFromReadCursor$,
-            options: { runOnForegroundCatchUp: false },
           },
           signal,
         ),
@@ -481,7 +448,6 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: "computerUseHostsChanged",
             loopCommand$: reloadWorkerComputerUseHostsFromRealtime$,
             options: {
-              runOnForegroundCatchUp: false,
               runOnSubscribe: true,
             },
           },
@@ -494,7 +460,6 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: "billing:changed",
             loopCommand$: reloadWorkerQueueDataFromRealtime$,
             options: {
-              runOnForegroundCatchUp: false,
               runOnSubscribe: true,
             },
           },

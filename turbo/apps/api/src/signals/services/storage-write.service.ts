@@ -652,8 +652,8 @@ function createStorageUploadResponse(
           args.bucket,
           archiveKey,
           "application/gzip",
-          3600,
-          true,
+          { expiresIn: 3600, usePublicEndpoint: true },
+          signal,
         ),
       ),
       get(
@@ -661,8 +661,8 @@ function createStorageUploadResponse(
           args.bucket,
           manifestKey,
           "application/json",
-          3600,
-          true,
+          { expiresIn: 3600, usePublicEndpoint: true },
+          signal,
         ),
       ),
     ]);

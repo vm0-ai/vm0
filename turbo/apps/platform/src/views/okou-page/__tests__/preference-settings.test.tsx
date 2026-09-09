@@ -143,7 +143,7 @@ describe("unified preference settings", () => {
     });
   });
 
-  it("hides Morning Brief when only Official Workflows is available", async () => {
+  it("hides email subscriptions and Morning Brief when only Official Workflows is available", async () => {
     await setupPage({
       context,
       path: "/agents?settings=preference",
@@ -156,6 +156,9 @@ describe("unified preference settings", () => {
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(
       within(dialog).queryByTestId("morning-brief-preference"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("region", { name: "Email subscriptions" }),
     ).not.toBeInTheDocument();
   });
 
@@ -184,7 +187,7 @@ describe("unified preference settings", () => {
     ).resolves.toBeVisible();
   });
 
-  it("preserves the legacy Morning Brief focus and displays its authoritative next email", async () => {
+  it("preserves the legacy Morning Brief focus and displays its authoritative next brief", async () => {
     const scrollIntoView = mockScrollIntoView();
     const nextRunAt = "2030-01-02T23:30:00.000Z";
     context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
@@ -213,10 +216,10 @@ describe("unified preference settings", () => {
       timeZone: "Asia/Shanghai",
     }).format(new Date(nextRunAt));
     expect(
-      within(dialog).getByText(`Next email ${formatted} (Asia/Shanghai)`),
+      within(dialog).getByText(`Next brief ${formatted} (Asia/Shanghai)`),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("switch", { name: "Morning Brief" }),
+      within(dialog).getByRole("switch", { name: "Morning brief" }),
     ).toBeChecked();
     expect(within(dialog).queryByText("Send now")).not.toBeInTheDocument();
     expect(pathname()).toBe("/agents");
@@ -280,7 +283,7 @@ describe("unified preference settings", () => {
       },
     });
     const toggle = await screen.findByRole("switch", {
-      name: "Morning Brief",
+      name: "Morning brief",
     });
     click(toggle);
     await waitFor(() => {

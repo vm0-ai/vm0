@@ -108,6 +108,7 @@ function getButtonByText(text: string): HTMLElement {
 }
 
 function mockConnectorOauthStart(): { readonly authWindow: Window } {
+  mockOAuthCompletions(context);
   const authWindow = context.mocks.browser.authWindow();
   Object.defineProperty(authWindow, "location", {
     value: { href: "" },
@@ -126,6 +127,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
       });
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
+        oauthAttemptId: crypto.randomUUID(),
       });
     },
   );

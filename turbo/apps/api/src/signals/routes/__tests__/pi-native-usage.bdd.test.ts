@@ -106,7 +106,12 @@ function turn(
       responseId: randomUUID(),
       timestamp: 1,
       content: [],
-      stopReason,
+      ...(stopReason === "error" || stopReason === "aborted"
+        ? {
+            stopReason,
+            failureDiagnostic: { category: "unknown" as const },
+          }
+        : { stopReason }),
       usage: {
         input: 11,
         output: 3,

@@ -78,37 +78,90 @@ for uri in [
 
 # Mock only the external Git source boundary, so these executable checks also
 # run in the PR pipeline's shallow checkout without fetching production history.
+# The runbook additionally requires this exact shell step against real Git at
+# the reviewed HEAD; synthetic success cannot certify the accepted source bytes.
+ancestors = [
+    "3e1544d55ac0dc54a1cdb21d6aee72d651a6808d",
+    "cede9cbfb62872ddabb705de852dc6fd81a3cc6d",
+    "04531239c7e796799f1dca20ab36f7af1d075f85",
+]
+protected_paths = {
+    ancestors[1]: [
+        "turbo/packages/db/scripts/migrations/014-goal-archive-search",
+        "turbo/packages/db/src/migrations/1093_goal_retirement_receipt.sql",
+        "turbo/packages/db/src/migrations/1094_archive_retired_goals.sql",
+        "turbo/apps/api/src/lib/chat-search-bigram.ts",
+        "turbo/packages/api-contracts/src/contracts/chat-event-rows.ts",
+        "turbo/packages/api-contracts/src/contracts/chat-events.ts",
+        "turbo/packages/api-contracts/src/contracts/run-failure-reasons.ts",
+        "turbo/packages/api-contracts/src/contracts/retired-goal-archive.ts",
+        "turbo/packages/api-contracts/src/contracts/pi-memory-citation-literals.ts",
+    ],
+    ancestors[2]: ["turbo/packages/api-contracts/src/contracts/pi-memory-citations.ts"],
+}
+expected_commands = [
+    ["rev-parse", "HEAD"],
+    *[["merge-base", "--is-ancestor", sha, "HEAD"] for sha in ancestors],
+    *[["diff", "--quiet", sha, "HEAD", "--", *paths] for sha, paths in protected_paths.items()],
+]
 with tempfile.TemporaryDirectory() as directory:
     git = Path(directory) / "git"
+    expectations = Path(directory) / "expectations.json"
+    expectations.write_text(json.dumps(expected_commands))
+    calls = Path(directory) / "calls.jsonl"
     git.write_text('''#!/usr/bin/env python3
-import os, sys
+import json, os, sys
+from pathlib import Path
 args = sys.argv[1:]
+assert args in json.loads(Path(os.environ["SOURCE_EXPECTATIONS"]).read_text())
+with open(os.environ["SOURCE_CALLS"], "a") as output:
+    output.write(json.dumps(args) + "\\n")
+failure = os.environ["SOURCE_FAILURE"]
 if args == ["rev-parse", "HEAD"]:
     print("a" * 40)
 elif args[:2] == ["merge-base", "--is-ancestor"]:
-    assert args[2] in ("3e1544d55ac0dc54a1cdb21d6aee72d651a6808d", "cede9cbfb62872ddabb705de852dc6fd81a3cc6d")
-    sys.exit(1 if os.environ.get("SOURCE_FAILURE") == "ancestor" else 0)
+    sys.exit(1 if failure == "ancestor:" + args[2] else 0)
 elif args[:2] == ["diff", "--quiet"]:
-    assert args[2] == "cede9cbfb62872ddabb705de852dc6fd81a3cc6d"
-    assert "turbo/packages/db/scripts/migrations/014-goal-archive-search" in args
-    sys.exit(1 if os.environ.get("SOURCE_FAILURE") == "changed" else 0)
+    sys.exit(1 if any(failure == "changed:" + path for path in args[5:]) else 0)
 else:
     sys.exit(1)
 ''')
     git.chmod(0o700)
     def check_source(mode, failure="", sha="a" * 40):
-        return subprocess.run(["bash", "-c", source_check], cwd=root,
+        calls.write_text("")
+        result = subprocess.run(["bash", "-c", source_check], cwd=root,
             env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"],
-                 "RECOVERY_MODE": mode, "GITHUB_SHA": sha, "SOURCE_FAILURE": failure},
-            capture_output=True, text=True).returncode
+                 "RECOVERY_MODE": mode, "GITHUB_SHA": sha, "SOURCE_FAILURE": failure,
+                 "SOURCE_EXPECTATIONS": str(expectations), "SOURCE_CALLS": str(calls)},
+            capture_output=True, text=True)
+        actual_commands = [json.loads(line) for line in calls.read_text().splitlines()]
+        if mode not in ("dry-run", "apply"):
+            assert actual_commands == []
+        elif sha != "a" * 40:
+            assert actual_commands == expected_commands[:1]
+        elif not failure:
+            assert actual_commands == expected_commands
+        else:
+            # A failed ancestor/path must terminate the step, not continue to
+            # another baseline and accidentally turn its success into approval.
+            failed_command = next(command for command in expected_commands
+                if (failure.startswith("ancestor:") and command[:2] == ["merge-base", "--is-ancestor"] and failure[9:] == command[2])
+                or (failure.startswith("changed:") and command[:2] == ["diff", "--quiet"] and failure[8:] in command[5:]))
+            assert actual_commands == expected_commands[:expected_commands.index(failed_command) + 1]
+        return result.returncode
     for mode in ["dry-run", "apply", "", "migrate", "apply --after-thread=x", "$(touch forbidden)"]:
         assert (check_source(mode) == 0) == (mode in ("dry-run", "apply"))
-    assert check_source("apply", "ancestor") != 0
-    assert check_source("apply", "changed") != 0
+    for ancestor in ancestors:
+        assert check_source("apply", "ancestor:" + ancestor) != 0
+    for paths in protected_paths.values():
+        for path in paths:
+            assert check_source("apply", "changed:" + path) != 0
     assert check_source("apply", sha="b" * 40) != 0
 
 assert workflow.count("  workflow_dispatch:") == 1
 assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" in workflow
+assert workflow.count("timeout-minutes:") == 1 and "timeout-minutes: 240\n" in workflow
+assert workflow.index("Validate mode and accepted operation source") < workflow.index("pnpm install --frozen-lockfile --ignore-scripts")
 assert workflow.index("pnpm install --frozen-lockfile --ignore-scripts") < workflow.index("${{ secrets.NEON_API_KEY }}")
 assert workflow.index("pnpm install --frozen-lockfile --ignore-scripts") < workflow.index("${{ secrets.R2_ACCESS_KEY_ID }}")
 assert "environment: production" in workflow and "cancel-in-progress: false" in workflow

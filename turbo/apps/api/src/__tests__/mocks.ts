@@ -108,6 +108,7 @@ export interface ApiTestMocks {
     readonly sdkIngest: UnknownMock;
   };
   readonly axiomLogging: {
+    readonly useRealTransport: Mock<() => boolean>;
     readonly debug: SyncMock;
     readonly info: SyncMock;
     readonly warn: SyncMock;
@@ -331,7 +332,7 @@ interface ResendClientMock {
   };
 }
 type SlackWebClientMock = Omit<ApiTestMocks["slack"], "fetchFile">;
-type AxiomLoggerMock = ApiTestMocks["axiomLogging"];
+type AxiomLoggerMock = Omit<ApiTestMocks["axiomLogging"], "useRealTransport">;
 type AxiomJSTransportMock = Readonly<Record<string, never>>;
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
@@ -525,6 +526,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const axiomLogging = {
+    useRealTransport: vi.fn<() => boolean>(),
     debug: vi.fn<(...args: unknown[]) => void>(),
     info: vi.fn<(...args: unknown[]) => void>(),
     warn: vi.fn<(...args: unknown[]) => void>(),
@@ -1234,40 +1236,56 @@ vi.mock("../signals/external/axiom", async () => {
   };
 });
 
-function createAxiomSdkMock() {
+async function createAxiomSdkMock() {
+  const actual =
+    await vi.importActual<typeof import("@axiomhq/js")>("@axiomhq/js");
   return {
-    Axiom: vi.fn<(...args: AxiomSdkConstructorArguments) => AxiomSdkClientMock>(
-      function (options) {
-        apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
-          options.onError?.(error);
-        });
-        const client: AxiomSdkClientMock = {
-          options,
-          flush: vi.fn<AxiomSdkClient["flush"]>(async (...args) => {
-            await apiTestMocks.axiom.flush(...args);
-          }),
-          ingest: vi.fn<AxiomSdkClient["ingest"]>((...args) => {
-            apiTestMocks.axiom.sdkIngest(...args);
-          }),
-          query: vi.fn<AxiomSdkQueryBridge>((...args) => {
-            return apiTestMocks.axiom.query(...args);
-          }),
-        };
-        apiTestMocks.axiom.clients.push(client);
-        return client;
-      },
-    ),
+    Axiom: vi.fn<
+      (
+        ...args: AxiomSdkConstructorArguments
+      ) => AxiomSdkClientMock | AxiomSdkClient
+    >(function (options) {
+      if (apiTestMocks.axiomLogging.useRealTransport()) {
+        return new actual.Axiom(options);
+      }
+      apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
+        options.onError?.(error);
+      });
+      const client: AxiomSdkClientMock = {
+        options,
+        flush: vi.fn<AxiomSdkClient["flush"]>(async (...args) => {
+          await apiTestMocks.axiom.flush(...args);
+        }),
+        ingest: vi.fn<AxiomSdkClient["ingest"]>((...args) => {
+          apiTestMocks.axiom.sdkIngest(...args);
+        }),
+        query: vi.fn<AxiomSdkQueryBridge>((...args) => {
+          return apiTestMocks.axiom.query(...args);
+        }),
+      };
+      apiTestMocks.axiom.clients.push(client);
+      return client;
+    }),
   };
 }
 
 vi.mock("@axiomhq/js", createAxiomSdkMock);
 
-function createAxiomLoggingMock() {
+async function createAxiomLoggingMock() {
+  const actual =
+    await vi.importActual<typeof import("@axiomhq/logging")>(
+      "@axiomhq/logging",
+    );
   return {
-    EVENT: Symbol("EVENT"),
+    EVENT: actual.EVENT,
     Logger: vi.fn<
-      (...args: AxiomLoggerConstructorArguments) => AxiomLoggerMock
-    >(function () {
+      (
+        ...args: AxiomLoggerConstructorArguments
+      ) => AxiomLoggerMock | InstanceType<typeof actual.Logger>
+    >(function (...args) {
+      if (apiTestMocks.axiomLogging.useRealTransport()) {
+        return new actual.Logger(...args);
+      }
       const logger: AxiomLoggerMock = {
         debug: apiTestMocks.axiomLogging.debug,
         info: apiTestMocks.axiomLogging.info,
@@ -1278,8 +1296,13 @@ function createAxiomLoggingMock() {
       return logger;
     }),
     AxiomJSTransport: vi.fn<
-      (...args: AxiomJSTransportConstructorArguments) => AxiomJSTransportMock
-    >(function () {
+      (
+        ...args: AxiomJSTransportConstructorArguments
+      ) => AxiomJSTransportMock | InstanceType<typeof actual.AxiomJSTransport>
+    >(function (...args) {
+      if (apiTestMocks.axiomLogging.useRealTransport()) {
+        return new actual.AxiomJSTransport(...args);
+      }
       const transport: AxiomJSTransportMock = {};
       return transport;
     }),
@@ -1349,6 +1372,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiom.ingest.mockReturnValue(true);
   apiTestMocks.axiom.query.mockReset();
   apiTestMocks.axiom.sdkIngest.mockReset();
+  apiTestMocks.axiomLogging.useRealTransport.mockReset();
+  apiTestMocks.axiomLogging.useRealTransport.mockReturnValue(false);
   apiTestMocks.axiomLogging.debug.mockReset();
   apiTestMocks.axiomLogging.info.mockReset();
   apiTestMocks.axiomLogging.warn.mockReset();

@@ -31,8 +31,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { apiClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
-import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
-import { foregroundReady$ } from "../foreground-catch-up.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import { bestEffort, settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
@@ -243,7 +242,6 @@ const maybeShowPendingRestoreToast$ = command(
 const billingReload$ = state(0);
 const accountMenuBillingStatusReload$ = state(0);
 const accountMenuUsagePackCreditsReload$ = state(0);
-const completedForegroundBillingCatchUp$ = state<Promise<void> | null>(null);
 const usagePackManagementReload$ = state(0);
 const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
@@ -598,33 +596,14 @@ const joinAccountMenuCreditResources$ = command(
 export const reloadAccountMenuCreditBalances$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    const foregroundReady = get(foregroundReady$);
     const isAdmin = await get(isOrgAdmin$);
     signal.throwIfAborted();
-
-    if (!foregroundReady.pending) {
-      const resources = set(readAccountMenuCreditResources$, isAdmin);
-      const pendingResources = set(
-        reloadSettledAccountMenuCreditResources$,
-        resources,
-      );
-      await set(joinAccountMenuCreditResources$, pendingResources, signal);
-      signal.throwIfAborted();
-      return;
-    }
-
-    const foregroundCatchUp = foregroundReady.promise;
-    await settle(foregroundCatchUp, signal);
-    signal.throwIfAborted();
-    if (get(completedForegroundBillingCatchUp$) !== foregroundCatchUp) {
-      if (isAdmin) {
-        set(reloadAccountMenuBillingStatusResource$);
-      }
-      set(reloadAccountMenuUsagePackCreditsResource$);
-    }
     const resources = set(readAccountMenuCreditResources$, isAdmin);
-    await set(joinAccountMenuCreditResources$, resources, signal);
-    signal.throwIfAborted();
+    const pendingResources = set(
+      reloadSettledAccountMenuCreditResources$,
+      resources,
+    );
+    await set(joinAccountMenuCreditResources$, pendingResources, signal);
   },
 );
 
@@ -756,32 +735,14 @@ const reloadBillingStatusFromRealtime$ = command(
   },
 );
 
-const reloadBillingStatusOnForeground$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const foregroundCatchUp = get(foregroundReady$).promise;
-    const result = await settle(
-      set(reloadBillingStatusFromRemoteChange$, signal),
-      signal,
-    );
-    if (result.ok) {
-      set(completedForegroundBillingCatchUp$, foregroundCatchUp);
-    }
-  },
-);
-
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(
-      subscribeRealtimeReadyCatchUp$,
-      reloadBillingStatusOnForeground$,
-      signal,
-    );
     await set(
       setAblyLoop$,
       {
         topic: "billing:changed",
         loopCommand$: reloadBillingStatusFromRealtime$,
-        options: { runOnForegroundCatchUp: false, runOnSubscribe: true },
+        options: { runOnSubscribe: true },
       },
       signal,
     );

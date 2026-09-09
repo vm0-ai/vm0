@@ -14,7 +14,10 @@ import type {
   PiObservedServiceTier,
 } from "./api-types";
 import { UnsupportedPiResourceSnapshotError } from "./errors";
-import { classifyPiApiProviderFailure } from "./api-failure";
+import {
+  classifyPiApiProviderFailure,
+  projectPiApiModelFailure,
+} from "./api-failure";
 
 function projectAssistantContent(message: AssistantMessage): {
   readonly content: PiApiAssistantContent[];
@@ -61,6 +64,7 @@ function projectAssistantContent(message: AssistantMessage): {
 
 export function projectPiApiAssistantMessage(
   message: AssistantMessage,
+  responseStatus?: number,
 ): PiApiAssistantMessage {
   const projection = projectAssistantContent(message);
   const failureReason =
@@ -69,14 +73,13 @@ export function projectPiApiAssistantMessage(
     message.provider === "openai-codex"
       ? classifyPiApiProviderFailure(message.errorMessage)
       : undefined;
-  return {
+  const projected = {
     content: projection.content,
     ...(projection.memoryCitation
       ? { memoryCitation: projection.memoryCitation }
       : {}),
     model: message.model,
     responseId: message.responseId,
-    stopReason: message.stopReason,
     ...(failureReason ? { failureReason } : {}),
     timestamp: message.timestamp,
     usage: {
@@ -89,6 +92,17 @@ export function projectPiApiAssistantMessage(
         : { cacheWrite1h: message.usage.cacheWrite1h }),
     },
   };
+  if (message.stopReason === "error" || message.stopReason === "aborted") {
+    return {
+      ...projected,
+      stopReason: message.stopReason,
+      failureDiagnostic: projectPiApiModelFailure(
+        message.errorMessage,
+        responseStatus,
+      ),
+    };
+  }
+  return { ...projected, stopReason: message.stopReason };
 }
 
 /** Run exactly one provider request using Pi's official prompt and tool schemas. */
@@ -157,7 +171,10 @@ export async function runPiApiFirstTurn(
       providerRequestBoundary: args.providerRequestBoundary,
     });
     return {
-      assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
+      assistantMessage: projectPiApiAssistantMessage(
+        turn.assistantMessage,
+        turn.responseStatus,
+      ),
       handoffRequired: turn.handoffRequired,
       observedServiceTier,
       sessionJsonl: memorySession.toJsonl(),

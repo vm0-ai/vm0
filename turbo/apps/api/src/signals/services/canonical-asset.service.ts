@@ -986,11 +986,12 @@ export const prepareCanonicalPublishedAsset$ = command(
         env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         storageKey,
         args.contentType,
-        CANONICAL_UPLOAD_URL_TTL_SECONDS,
         {
+          expiresIn: CANONICAL_UPLOAD_URL_TTL_SECONDS,
           usePublicEndpoint: true,
           metadata,
         },
+        signal,
       ),
     );
     signal.throwIfAborted();

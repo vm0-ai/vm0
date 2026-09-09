@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import {
   pgTable,
   uuid,
@@ -97,6 +98,9 @@ export const chatThreads = pgTable(
     }),
     /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
+    reasoningEffort: varchar("reasoning_effort", {
+      length: 20,
+    }).$type<ReasoningEffort>(),
     /** Per-thread Codex service tier pin. Null means standard service tier. */
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,

@@ -11,8 +11,9 @@ import { applicationResourcePriorityHtmlPlugin } from "./scripts/app-resource-pr
 import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
 import { clerkUiAssetPlugin } from "./scripts/clerk-ui.ts";
 import {
-  VENDOR_MODULE_PATTERN,
+  APPLICATION_LAZY_CHUNK,
   applicationJavaScriptBundlePlugin,
+  isVendorModule,
   singleWorkerJavaScriptBundlePlugin,
 } from "./scripts/single-bundle.ts";
 import { workerDomGlobalsPlugin } from "./scripts/worker-dom-globals.ts";
@@ -106,14 +107,18 @@ export default defineConfig(({ command }) => ({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Keep third-party modules and the pinned generated Mermaid package in
-        // one cache-stable vendor chunk. The application entry and Rolldown
-        // runtime remain separate chunks, while the SharedWorker is an asset.
+        // Keep the optional KaTeX runtime in its own lazy chunk. All other
+        // third-party modules and the pinned generated Mermaid package remain
+        // in one cache-stable eager vendor chunk.
         codeSplitting: {
           groups: [
             {
+              name: APPLICATION_LAZY_CHUNK.name,
+              test: APPLICATION_LAZY_CHUNK.modulePattern,
+            },
+            {
               name: "vendor",
-              test: VENDOR_MODULE_PATTERN,
+              test: isVendorModule,
             },
           ],
         },

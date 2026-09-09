@@ -1,3 +1,6 @@
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { validateReasoningEffortDispatch } from "./chat-reasoning-effort.service";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import type { FeatureSwitchContext } from "@okouai/core";
 
@@ -41,10 +44,21 @@ export async function resolveRunChatThreadModelContext(params: {
     userId: params.userId,
     threadId: params.threadId,
     persistRequestedCodexServiceTier: false,
+    reasoningEffortEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ChatReasoningEffort,
+      featureSwitchContext,
+    ),
     codexFastModeEnabled: isCodexFastModeEnabled(featureSwitchContext),
   });
   if (!resolved) {
     return badRequestMessage("Chat thread not found");
+  }
+  if ("status" in resolved) {
+    return resolved;
+  }
+  const effortError = validateReasoningEffortDispatch(resolved.reasoningEffort);
+  if (effortError) {
+    return effortError;
   }
   return { ...resolved, featureSwitchContext };
 }

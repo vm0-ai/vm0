@@ -17,8 +17,8 @@ import { renderUnsupportedBrowserPage } from "../views/unsupported-browser-page.
 
 // (no-op Platform release marker refreshed again on 2026-07-31)
 
-function startApplication(): void {
-  const resetRootSignal$ = resetSignal();
+function startApplication(rootSignal: AbortSignal): void {
+  rootSignal.throwIfAborted();
   const resetViewportSettleSignal$ = resetSignal();
 
   // Initialize Sentry before bootstrap so errors during startup are captured
@@ -28,16 +28,6 @@ function startApplication(): void {
 
   async function main() {
     const store = createStore();
-    const rootSignal = store.set(resetRootSignal$);
-    window.addEventListener(
-      "pagehide",
-      (event) => {
-        if (!event.persisted) {
-          store.set(resetRootSignal$);
-        }
-      },
-      { signal: rootSignal },
-    );
     detach(initPlausible(rootSignal), Reason.Entrance, "initPlausible");
     setupVisualViewportKeyboardState(rootSignal, () => {
       return store.set(resetViewportSettleSignal$, rootSignal);
@@ -78,6 +68,11 @@ function startApplication(): void {
 }
 
 export function startPlatformEntrypoint(): void {
+  const rootSignal = window._okou?.rootSignal;
+  if (!rootSignal) {
+    throw new Error("Platform lifecycle was not initialized");
+  }
+  rootSignal.throwIfAborted();
   window.__appBootstrapModuleReady = performance.now();
   const browserUpgrade = browserUpgradeRequired();
   if (browserUpgrade) {
@@ -85,9 +80,14 @@ export function startPlatformEntrypoint(): void {
     if (!rootElement) {
       throw new Error("can't find root el to render unsupported browser page");
     }
-    renderUnsupportedBrowserPage(rootElement, ASSISTANT_NAME, browserUpgrade);
+    renderUnsupportedBrowserPage(
+      rootElement,
+      ASSISTANT_NAME,
+      browserUpgrade,
+      rootSignal,
+    );
   } else {
-    startApplication();
+    startApplication(rootSignal);
   }
   initGoogleAds();
 }

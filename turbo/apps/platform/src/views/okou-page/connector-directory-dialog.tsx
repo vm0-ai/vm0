@@ -16,8 +16,8 @@ import {
   SegmentControlItem,
 } from "@okouai/ui/components/ui/segment-control";
 import { Button, cn } from "@okouai/ui";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/connector-accounts.ts";
 import type {
   ComposerConnectorUiState,
@@ -29,6 +29,10 @@ import {
   DIRECTORY_HAIRLINE,
   DIRECTORY_SURFACE,
 } from "./components/settings/connector-card.tsx";
+import {
+  ConnectorShelfChips,
+  ConnectorShelfSection,
+} from "./components/settings/connector-shelf.tsx";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import {
@@ -49,8 +53,6 @@ import {
  */
 const SCROLL_EDGE_FADE =
   "[mask-image:linear-gradient(to_bottom,transparent_0,#000_18px,#000_calc(100%-44px),transparent_100%)]";
-
-const SECTION_PREVIEW_LIMIT = 6;
 
 type UpdateDirectoryState = (patch: Partial<ComposerConnectorUiState>) => void;
 
@@ -271,10 +273,12 @@ function CustomConnectorDirectoryCard({
 
 function DirectoryCategoryChips({
   sections,
+  categoryCounts,
   selected,
   onSelect,
 }: {
   readonly sections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly selected: string | null;
   readonly onSelect: (category: string | null) => void;
 }) {
@@ -318,78 +322,19 @@ function DirectoryCategoryChips({
               }}
             >
               {section.menuLabel}
-              <span className="text-[11px] text-muted-foreground/70 tabular-nums">
-                {section.connectors.length}
-              </span>
+              {/* The chip stands for the whole category, not the slice
+                  discovery returned, so it counts only what the server
+                  reported and shows nothing when it reported nothing. */}
+              {categoryCounts?.[section.category] !== undefined && (
+                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                  {categoryCounts[section.category]}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
     </div>
-  );
-}
-
-function DirectoryYoursPanel({
-  model,
-  renderCard,
-  onBrowse,
-  search,
-}: {
-  readonly model: ConnectorDirectoryModel;
-  readonly renderCard: RenderConnectorCard;
-  readonly onBrowse: () => void;
-  readonly search: string;
-}) {
-  const { t } = useTranslation();
-  if (model.connectedCount === 0) {
-    return (
-      <DirectoryEmptyState
-        icon={<Plus size={24} aria-hidden="true" />}
-        title={t(($) => {
-          return $.chat.connectors.directory.emptyYoursTitle;
-        })}
-        body={t(($) => {
-          return $.chat.connectors.directory.emptyYoursBody;
-        })}
-        action={
-          <Button type="button" onClick={onBrowse}>
-            {t(($) => {
-              return $.chat.connectors.directory.browse;
-            })}
-          </Button>
-        }
-      />
-    );
-  }
-  if (model.attention.length === 0 && model.healthy.length === 0) {
-    return <DirectoryNoResults query={search} />;
-  }
-  return (
-    <>
-      {model.attention.length > 0 && (
-        <DirectorySection
-          tone="warning"
-          title={t(($) => {
-            return $.chat.connectors.directory.needsAttention;
-          })}
-        >
-          {model.attention.map((item) => {
-            return renderCard(item, true);
-          })}
-        </DirectorySection>
-      )}
-      {model.healthy.length > 0 && (
-        <DirectorySection
-          title={t(($) => {
-            return $.chat.connectors.directory.connected;
-          })}
-        >
-          {model.healthy.map((item) => {
-            return renderCard(item, true);
-          })}
-        </DirectorySection>
-      )}
-    </>
   );
 }
 
@@ -409,60 +354,99 @@ function DirectoryDiscoverPanel({
   readonly onCreateCustom: () => void;
 }) {
   const { t } = useTranslation();
-  if (model.discover.length === 0) {
+  // Connection health has no other home in the composer: the connector popover
+  // lists what is connected but not whether it still works.
+  const attention =
+    model.attention.length > 0 ? (
+      <DirectorySection
+        tone="warning"
+        title={t(($) => {
+          return $.chat.connectors.directory.needsAttention;
+        })}
+      >
+        {model.attention.map((item) => {
+          return renderCard(item, true);
+        })}
+      </DirectorySection>
+    ) : null;
+  if (model.discover.length === 0 && model.matchedConnected.length === 0) {
     return (
-      <DirectoryNoResults
-        query={search}
-        action={
-          <Button type="button" variant="outline" onClick={onCreateCustom}>
-            {t(($) => {
-              return $.chat.connectors.directory.createCustom;
-            })}
-          </Button>
-        }
-      />
+      <>
+        {attention}
+        <DirectoryNoResults
+          query={search}
+          action={
+            <Button type="button" variant="outline" onClick={onCreateCustom}>
+              {t(($) => {
+                return $.chat.connectors.directory.createCustom;
+              })}
+            </Button>
+          }
+        />
+      </>
     );
   }
   // A query or a chosen category is already a filter: show what matched as one
-  // list instead of scattering the results back across category sections.
-  if (search.trim() || category !== null) {
+  // list instead of scattering the results back across category sections. A
+  // catalog too small for any category to fill a shelf takes the same path --
+  // shelves need something to shelve.
+  if (
+    search.trim() ||
+    category !== null ||
+    model.shelfLayout.shelves.length === 0
+  ) {
     return (
-      <DirectorySection
-        title={t(
-          ($) => {
-            return $.chat.connectors.directory.matchCount;
-          },
-          { count: model.discover.length },
+      <>
+        {attention}
+        {model.matchedConnected.length > 0 && (
+          <DirectorySection
+            title={t(($) => {
+              return $.chat.connectors.directory.connected;
+            })}
+          >
+            {model.matchedConnected.map((item) => {
+              return renderCard(item, true);
+            })}
+          </DirectorySection>
         )}
-      >
-        {model.discover.map((item) => {
-          return renderCard(item, false);
-        })}
-      </DirectorySection>
+        {model.discover.length > 0 && (
+          <DirectorySection
+            title={t(
+              ($) => {
+                return $.chat.connectors.directory.matchCount;
+              },
+              { count: model.discover.length },
+            )}
+          >
+            {model.discover.map((item) => {
+              return renderCard(item, false);
+            })}
+          </DirectorySection>
+        )}
+      </>
     );
   }
   return (
     <>
-      {model.categorySections.map((section) => {
+      {attention}
+      {model.shelfLayout.shelves.map((shelf) => {
         return (
-          <DirectorySection
-            key={section.category}
-            title={section.label}
-            showAllCount={section.connectors.length}
-            onShowAll={
-              section.connectors.length > SECTION_PREVIEW_LIMIT
-                ? () => {
-                    onSelectCategory(section.category);
-                  }
-                : undefined
-            }
+          <ConnectorShelfSection
+            key={shelf.category ?? "head"}
+            shelf={shelf}
+            columns={2}
+            onOpenCategory={onSelectCategory}
           >
-            {section.connectors.slice(0, SECTION_PREVIEW_LIMIT).map((item) => {
+            {shelf.connectors.map((item) => {
               return renderCard(item, false);
             })}
-          </DirectorySection>
+          </ConnectorShelfSection>
         );
       })}
+      <ConnectorShelfChips
+        chips={model.shelfLayout.chips}
+        onSelect={onSelectCategory}
+      />
     </>
   );
 }
@@ -540,11 +524,6 @@ function DirectoryToolbar({
             return $.chat.connectors.title;
           })}
         >
-          <SegmentControlItem value="yours">
-            {t(($) => {
-              return $.chat.connectors.directory.tabYours;
-            })}
-          </SegmentControlItem>
           <SegmentControlItem value="discover">
             {t(($) => {
               return $.chat.connectors.directory.tabDiscover;
@@ -566,15 +545,9 @@ function DirectoryToolbar({
         <Input
           type="text"
           className="pl-9"
-          placeholder={
-            tab === "yours"
-              ? t(($) => {
-                  return $.chat.connectors.directory.searchYours;
-                })
-              : t(($) => {
-                  return $.chat.connectors.find;
-                })
-          }
+          placeholder={t(($) => {
+            return $.chat.connectors.find;
+          })}
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
@@ -608,18 +581,6 @@ function DirectoryBody({
   if (loading) {
     return <DirectorySkeleton />;
   }
-  if (tab === "yours") {
-    return (
-      <DirectoryYoursPanel
-        model={model}
-        renderCard={renderCard}
-        search={search}
-        onBrowse={() => {
-          onUpdateState({ directoryTab: "discover", directoryActiveIndex: 0 });
-        }}
-      />
-    );
-  }
   if (tab === "discover") {
     return (
       <DirectoryDiscoverPanel
@@ -648,6 +609,7 @@ function DirectoryBrowseView({
   tab,
   search,
   category,
+  categoryCounts,
   loading,
   model,
   renderCard,
@@ -657,6 +619,7 @@ function DirectoryBrowseView({
   readonly tab: ConnectorDirectoryTab;
   readonly search: string;
   readonly category: string | null;
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
@@ -681,6 +644,7 @@ function DirectoryBrowseView({
       {tab === "discover" && (
         <DirectoryCategoryChips
           sections={model.categorySections}
+          categoryCounts={categoryCounts}
           selected={category}
           onSelect={(next) => {
             onUpdateState({
@@ -756,13 +720,7 @@ function navigableDirectorySlugs(
   tab: ConnectorDirectoryTab,
   model: ConnectorDirectoryModel,
 ): readonly ConnectorSlug[] {
-  if (tab === "yours") {
-    return model.yoursSlugs;
-  }
-  if (tab === "discover") {
-    return model.discoverSlugs;
-  }
-  return [];
+  return tab === "discover" ? model.discoverSlugs : [];
 }
 
 function createDirectoryKeyDownHandler({
@@ -858,6 +816,16 @@ function DirectoryDetailSlot({
 interface ConnectorDirectoryDialogProps {
   readonly state: ComposerConnectorUiState;
   readonly onUpdateState: UpdateDirectoryState;
+  /** Category totals from discovery; a shelf's closing cell stands for these. */
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  /**
+   * The catalog's category names, from the same discovery response as the
+   * connectors. Reading them from the full-catalog status endpoint instead
+   * made every chip wait on a 6.7 MB response and show an id-derived name
+   * until it arrived.
+   */
+  readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
+  readonly loading: boolean;
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
   readonly connectedCustom: readonly CustomConnectorResponse[];
@@ -895,6 +863,9 @@ function nextDirectoryIndex(
 export function ConnectorDirectoryDialog({
   state,
   onUpdateState,
+  categoryCounts,
+  categoryMetadata,
+  loading,
   connected,
   unconnected,
   connectedCustom,
@@ -907,7 +878,6 @@ export function ConnectorDirectoryDialog({
 }: ConnectorDirectoryDialogProps) {
   const { t } = useTranslation();
   const accountLabelOf = useConnectorAccountLabel();
-  const catalogLoadable = useLastLoadable(connectorCatalogStatus$);
   const accountsLoadable = useLastLoadable(connectorAccountSummaryByTarget$);
   const accountSummaries: ReadonlyMap<string, ConnectorAccountSummary> =
     accountsLoadable.state === "hasData"
@@ -924,15 +894,15 @@ export function ConnectorDirectoryDialog({
     unconnectedCustom,
     search,
     category,
-    categoryMetadata:
-      catalogLoadable.state === "hasData"
-        ? catalogLoadable.data.categoryMetadata
-        : undefined,
+    categoryMetadata,
     otherCategoryLabel: t(($) => {
       return $.chat.connectors.directory.otherCategory;
     }),
+    categoryCounts,
+    headShelfLabel: t(($) => {
+      return $.connectors.catalog.shelf.popular;
+    }),
   });
-  const loading = catalogLoadable.state === "loading" && connected.length === 0;
   const navigableSlugs = navigableDirectorySlugs(tab, model);
   const activeSlug = navigableSlugs[state.directoryActiveIndex];
   const detailConnector = state.directoryDetailSlug
@@ -999,6 +969,7 @@ export function ConnectorDirectoryDialog({
             tab={tab}
             search={search}
             category={category}
+            categoryCounts={categoryCounts}
             loading={loading}
             model={model}
             renderCard={renderCard}

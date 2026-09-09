@@ -7,7 +7,7 @@ export function VoiceLevelWaveform({
 }) {
   return (
     <div
-      className="flex h-6 min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden"
+      className="flex h-6 min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden"
       data-voice-level-waveform
       aria-hidden="true"
     >

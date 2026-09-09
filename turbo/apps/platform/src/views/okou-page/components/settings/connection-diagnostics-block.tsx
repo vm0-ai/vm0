@@ -64,31 +64,6 @@ function ConnectionDiagnosticsSummary({
             })}
             : {channelState}
           </span>
-          <span className="okou-badge rounded-md px-2 py-0.5">
-            {diagnostics.snapshot.visibilityState}
-          </span>
-          <span className="okou-badge rounded-md px-2 py-0.5">
-            {diagnostics.snapshot.online
-              ? t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .online;
-                })
-              : t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .offline;
-                })}
-          </span>
-          <span className="okou-badge rounded-md px-2 py-0.5">
-            {diagnostics.snapshot.focused
-              ? t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .focused;
-                })
-              : t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .blurred;
-                })}
-          </span>
         </span>
       </span>
       <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground group-open:hidden" />
@@ -159,19 +134,11 @@ function ConnectionDiagnosticsDetails({
   };
   return (
     <div className="flex flex-col gap-4 border-t border-border/60 p-4">
-      <div className="grid gap-2 font-mono text-[11px] sm:grid-cols-2">
-        <div className="rounded-md bg-muted/40 px-3 py-2 break-all">
-          {t(($) => {
-            return $.settings.preferences.debug.connectionDiagnostics.recovery;
-          })}
-          : {diagnostics.snapshot.recoveryPhase}
-        </div>
-        <div className="rounded-md bg-muted/40 px-3 py-2">
-          {t(($) => {
-            return $.settings.preferences.debug.connectionDiagnostics.events;
-          })}
-          : {diagnostics.events.length} / {diagnostics.capacity}
-        </div>
+      <div className="rounded-md bg-muted/40 px-3 py-2 font-mono text-[11px]">
+        {t(($) => {
+          return $.settings.preferences.debug.connectionDiagnostics.events;
+        })}
+        : {diagnostics.events.length} / {diagnostics.capacity}
       </div>
 
       {diagnostics.activeWaits.length > 0 && (

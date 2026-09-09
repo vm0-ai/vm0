@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  webhookPiMemoryPhase2UsageContract,
-  webhookUsageEventContract,
-} from "@okouai/api-contracts/contracts/webhooks";
+import { webhookUsageEventContract } from "@okouai/api-contracts/contracts/webhooks";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -39,7 +36,7 @@ import {
 
 // Private maintenance has no public launch/control/ledger API. Seed only its
 // infrastructure-owned cron input and terminal faults; the real dispatcher
-// persists the binding, and both real HTTP ingress paths own all usage writes.
+// persists the binding, and the real proxy HTTP ingress owns all usage writes.
 const context = testContext();
 
 async function dispatchMaintenance() {
@@ -86,33 +83,9 @@ async function dispatchMaintenance() {
   return { scope, run, runId, binding };
 }
 
-function usageReports({
-  runId,
-  binding,
-}: Awaited<ReturnType<typeof dispatchMaintenance>>) {
-  const attempts = [1, 2].map((index) => {
-    return {
-      responseId: `response-${index}`,
-      usage: {
-        input: 3,
-        output: 2093,
-        cacheRead: 43_845,
-        cacheWrite: 24_236,
-        reasoning: 100,
-      },
-    };
-  });
-  const journal = {
-    schemaVersion: 1 as const,
-    runId,
-    memoryStorageId: binding.memoryStorageId,
-    leaseToken: binding.leaseToken,
-    claimedRevision: binding.claimedRevision,
-    claimedBaseVersionId: binding.claimedBaseVersionId,
-    selectionDigest: binding.selectionDigest,
-    attempts,
-  };
-  // One proxy flush aggregates the same two provider responses in the journal.
+async function launchMaintenance() {
+  const { scope, run, runId, binding } = await dispatchMaintenance();
+  // One proxy flush aggregates two provider responses.
   const events = [
     { category: "tokens.input", quantity: 6 },
     { category: "tokens.output", quantity: 4186 },
@@ -126,13 +99,6 @@ function usageReports({
       provider: "gpt-5.6-terra",
     };
   });
-  return { journal, events };
-}
-
-async function launchMaintenance() {
-  const maintenance = await dispatchMaintenance();
-  const { scope, run, runId, binding } = maintenance;
-  const { journal, events } = usageReports(maintenance);
   const headers = {
     authorization: `Bearer ${generateSandboxToken(scope.userId, runId, scope.orgId)}`,
   };
@@ -157,8 +123,6 @@ async function launchMaintenance() {
     run,
     runId,
     binding,
-    headers,
-    journal,
     events,
     async proxy() {
       return await accept(
@@ -168,12 +132,6 @@ async function launchMaintenance() {
         }),
         [200],
       );
-    },
-    async reportJournal(body = journal) {
-      return await client(webhookPiMemoryPhase2UsageContract).send({
-        headers,
-        body,
-      });
     },
     async ledger() {
       return await db()
@@ -214,34 +172,22 @@ function canonicalLedger(run: Awaited<ReturnType<typeof launchMaintenance>>) {
   );
 }
 
-describe("Pi memory Phase 2 cross-writer billing", () => {
-  it.each(["proxy-first", "journal-first", "concurrent"] as const)(
-    "charges one provider vector with aggregated batches and retries: %s",
-    async (order) => {
-      const run = await launchMaintenance();
-      if (order === "concurrent") {
-        await Promise.all([run.proxy(), accept(run.reportJournal(), [200])]);
-      } else if (order === "proxy-first") {
-        await run.proxy();
-        await accept(run.reportJournal(), [200]);
-      } else {
-        await accept(run.reportJournal(), [200]);
-        await run.proxy();
-      }
-      await run.proxy();
-      await accept(run.reportJournal(), [200]);
-      await expect(run.ledger()).resolves.toHaveLength(4);
-      await expect(run.ledger()).resolves.toStrictEqual(canonicalLedger(run));
-    },
-  );
+describe("Pi memory Phase 2 proxy billing", () => {
+  it("charges one provider vector with concurrent batches and retries", async () => {
+    const run = await launchMaintenance();
+    await Promise.all([run.proxy(), run.proxy()]);
+    await run.proxy();
+    await expect(run.ledger()).resolves.toHaveLength(4);
+    await expect(run.ledger()).resolves.toStrictEqual(canonicalLedger(run));
+  });
 
   it.each(["completed", "failed", "cancelled", "timeout"])(
-    "keeps the proxy owner without a journal through %s and delayed cleanup",
+    "keeps the proxy owner through %s and delayed cleanup",
     async (status) => {
       const run = await launchMaintenance();
       const completedAt = nowDate();
-      // A persisted V1 context can pin a CLI without journal support. Terminal
-      // states and the lost/delayed proxy flush are infrastructure-only inputs.
+      // Terminal states, persisted launch snapshots and delayed proxy flushes
+      // are infrastructure-only inputs.
       await db()
         .update(agentRuns)
         .set({
@@ -319,17 +265,6 @@ describe("Pi memory Phase 2 cross-writer billing", () => {
     },
   );
 
-  it("rejects mismatched journal bindings without exempting proxy usage", async () => {
-    const run = await launchMaintenance();
-    await accept(
-      run.reportJournal({ ...run.journal, leaseToken: randomUUID() }),
-      [404],
-    );
-    await run.proxy();
-    await expect(run.ledger()).resolves.toHaveLength(4);
-    await expect(run.ledger()).resolves.toStrictEqual(canonicalLedger(run));
-  });
-
   it.each([
     "missing-callback",
     "mismatched-owner",
@@ -337,7 +272,7 @@ describe("Pi memory Phase 2 cross-writer billing", () => {
     "owned-thread",
     "api-first",
   ])(
-    "cannot turn %s into a private journal billing exemption",
+    "cannot turn %s into a private maintenance billing exemption",
     async (fault) => {
       const run = await launchMaintenance();
       if (fault === "missing-callback") {
@@ -379,7 +314,6 @@ describe("Pi memory Phase 2 cross-writer billing", () => {
           })
           .where(eq(agentRuns.id, run.runId));
       }
-      await accept(run.reportJournal(), [404]);
       await run.proxy();
       await expect(run.ledger()).resolves.toHaveLength(4);
       await expect(run.ledger()).resolves.toStrictEqual(canonicalLedger(run));
@@ -394,7 +328,6 @@ describe("Pi memory Phase 2 cross-writer billing", () => {
         .update(agentRuns)
         .set({ modelProvider })
         .where(eq(agentRuns.id, run.runId));
-      await accept(run.reportJournal(), [404]);
       await run.proxy();
       await expect(run.ledger()).resolves.toStrictEqual([]);
     },

@@ -3,6 +3,8 @@ import { expect, test } from "vitest";
 import {
   chatThreadPinContract,
   chatThreadUnpinContract,
+  chatThreadsContract,
+  type ChatThreadEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
@@ -14,11 +16,16 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { chatListEvent } from "./chat-list-test-helpers.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000951";
 
-async function setupHeaderPage(enabled = true) {
+async function setupHeaderPage(
+  enabled = true,
+  threadEvents: readonly ChatThreadEvent[] = [],
+) {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "😀 Header planning",
@@ -38,6 +45,14 @@ async function setupHeaderPage(enabled = true) {
         createdAt: "2026-09-01T10:00:01Z",
       },
     ],
+  });
+  context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+    return respond(200, {
+      events: threadEvents.filter((event) => {
+        return event.seqId > (query.sinceSeqId ?? 0);
+      }),
+      hasMore: false,
+    });
   });
   context.mocks.api(browserContract.get, ({ respond }) => {
     return respond(404, {
@@ -98,27 +113,51 @@ test.each([true, false])(
   },
 );
 
-test("Pin optimistically, keep the pending action through resize, and undo", async () => {
+test("Keep rapid pin changes responsive across resize and save without a success toast", async () => {
   const viewport = context.mocks.browser.matchMedia(true);
   const pinResponse = context.mocks.deferred<void>();
-  const pinRequests: string[] = [];
-  const unpinRequests: string[] = [];
-  context.mocks.api(chatThreadPinContract.pin, async ({ params, respond }) => {
-    pinRequests.push(params.id);
-    await pinResponse.promise;
-    return respond(204);
-  });
-  context.mocks.api(chatThreadUnpinContract.unpin, ({ params, respond }) => {
-    unpinRequests.push(params.id);
-    return respond(204);
-  });
-  await setupHeaderPage();
+  const events: ChatThreadEvent[] = [];
+  context.mocks.api(
+    chatThreadPinContract.pin,
+    async ({ params, query, respond }) => {
+      await pinResponse.promise;
+      events.push(
+        chatListEvent(951, events.length + 1, "pinned", params.id, {
+          id: query?.eventId,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          pinOrder: query?.pinOrder,
+        }),
+      );
+      return respond(204);
+    },
+  );
+  context.mocks.api(
+    chatThreadUnpinContract.unpin,
+    ({ params, query, respond }) => {
+      events.push(
+        chatListEvent(951, events.length + 1, "unpinned", params.id, {
+          id: query?.eventId,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+        }),
+      );
+      // A following server event makes completed reconciliation observable.
+      events.push(
+        chatListEvent(951, events.length + 1, "renamed", params.id, {
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          title: "😀 Pin changes saved",
+        }),
+      );
+      changeChatThreadList();
+      return respond(204);
+    },
+  );
+  await setupHeaderPage(true, events);
   const title = screen.getByTestId("chat-thread-header-title");
   expect(title.closest("header")).toContainElement(buttonNamed("Pin chat"));
 
   click(buttonNamed("Pin chat"));
   await waitFor(() => {
-    expect(buttonNamed("Unpin chat")).toBeDisabled();
+    expect(buttonNamed("Unpin chat")).toBeEnabled();
     expect(buttonNamed("Unpin chat")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
       "data-pinned",
@@ -130,23 +169,33 @@ test("Pin optimistically, keep the pending action through resize, and undo", asy
   });
   await waitFor(() => {
     expect(buttonNamed("More actions")).toBeInTheDocument();
-    expect(buttonNamed("Unpin chat")).toBeDisabled();
-  });
-  expect(pinRequests).toStrictEqual([THREAD_ID]);
-  pinResponse.resolve();
-  await screen.findByText("Chat pinned");
-  await waitFor(() => {
     expect(buttonNamed("Unpin chat")).toBeEnabled();
   });
 
-  click(buttonNamed("Undo"));
-  await screen.findByText("Chat unpinned");
-  expect(unpinRequests).toStrictEqual([THREAD_ID]);
+  click(buttonNamed("Unpin chat"));
+  await waitFor(() => {
+    expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
+  });
+  expect(buttonNamed("Pin chat")).toBeEnabled();
+  expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
+    "data-pinned",
+    "false",
+  );
+
+  pinResponse.resolve();
+  await waitFor(() => {
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      "Pin changes saved",
+    );
+  });
   expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
     "data-pinned",
     "false",
   );
+  expect(screen.queryByText("Chat pinned")).not.toBeInTheDocument();
+  expect(screen.queryByText("Chat unpinned")).not.toBeInTheDocument();
+  expect(screen.queryByText("Undo")).not.toBeInTheDocument();
 });
 
 test("Keep Pin, Share, and More in order and rename from the mobile menu", async () => {
@@ -246,18 +295,45 @@ test("Retain message selection and restore mobile actions after sharing", async 
   expect(search).toBeInTheDocument();
 });
 
-test("Explain uncertain persistence without undoing an optimistic pin", async () => {
+test("Show the existing API error without undoing an optimistic pin", async () => {
   context.mocks.browser.matchMedia(true);
   context.mocks.api(chatThreadPinContract.pin, ({ respond }) => {
     return respond(500, { error: { message: "Pin request failed" } });
   });
   await setupHeaderPage();
   click(buttonNamed("Pin chat"));
-  const error = await screen.findByText(
-    "Couldn’t confirm the pin change. Refresh to check its saved status.",
-  );
+  const error = await screen.findByText("Pin request failed");
   expect(error).toBeInTheDocument();
   expect(buttonNamed("Unpin chat")).toBeEnabled();
   expect(buttonNamed("Unpin chat")).toHaveAttribute("aria-pressed", "true");
   expect(screen.queryByText("Chat pinned")).not.toBeInTheDocument();
+});
+
+test("Continue saving the next pin change after an earlier request fails", async () => {
+  context.mocks.browser.matchMedia(false);
+  const pinResponse = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadPinContract.pin, async ({ respond }) => {
+    await pinResponse.promise;
+    return respond(500, { error: { message: "Pin request failed" } });
+  });
+  context.mocks.api(chatThreadUnpinContract.unpin, ({ respond }) => {
+    return respond(500, { error: { message: "Unpin request failed" } });
+  });
+  await setupHeaderPage();
+  click(buttonNamed("Pin chat"));
+  await waitFor(() => {
+    expect(buttonNamed("Unpin chat")).toBeEnabled();
+  });
+  click(buttonNamed("Unpin chat"));
+  await waitFor(() => {
+    expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  pinResponse.resolve();
+  await screen.findByText("Unpin request failed");
+  expect(screen.getByText("Pin request failed")).toBeInTheDocument();
+  expect(buttonNamed("Pin chat")).toBeEnabled();
+  expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
+  expect(screen.queryByText("Chat pinned")).not.toBeInTheDocument();
+  expect(screen.queryByText("Chat unpinned")).not.toBeInTheDocument();
 });

@@ -616,7 +616,7 @@ final class CommandResponseBox: @unchecked Sendable {
 
 final class ComputerUseCommandExecutor: @unchecked Sendable {
     private let queue = DispatchQueue(
-        label: "ai.vm0.computer-use-helper.command",
+        label: "ai.okou.computer-use-helper.command",
         qos: .userInitiated
     )
 

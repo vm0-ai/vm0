@@ -29,4 +29,5 @@ pub mod session_history;
 pub mod session_history_identity;
 pub mod stdout_framing;
 pub mod storage_manifest;
+pub mod storage_resources;
 pub mod workspace_mount;

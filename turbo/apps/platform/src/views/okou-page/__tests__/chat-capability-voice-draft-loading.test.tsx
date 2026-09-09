@@ -347,14 +347,14 @@ test("Do not carry a pending transcription into another agent's composer", async
   click(await findEnabledButton("Voice input"));
   click(await findEnabledButton("Stop recording"));
   await requested.promise;
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
 
   click(await findLink("Other Agent"));
   await findEnabledButton("Voice input");
   await findEnabledButton("Send");
   expect(queryButton("Attach")).toBeVisible();
   expect(queryButton("Retry")).toBeNull();
-  expect(screen.queryByText("Transcribing...")).toBeNull();
+  expect(screen.queryByText("Transcribing")).toBeNull();
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
     "Second agent.",
   );

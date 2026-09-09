@@ -435,7 +435,8 @@ function createAttachmentAnnotationSignals(args: {
           // through R2 CORS; public inputs retain their existing CDN URL.
           const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
           const resolved = await get(
-            resolveResourceUrl(publicAttachmentUrl(original.url)),
+            set(resolveResourceUrl.prepare$, publicAttachmentUrl(original.url))
+              .urls$,
           );
           signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(

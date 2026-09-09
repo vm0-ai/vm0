@@ -646,8 +646,8 @@ export const prepareCheckpointHistoryUpload$ = command(
         bucketName,
         s3Key,
         "application/octet-stream",
-        3600,
-        true,
+        { expiresIn: 3600, usePublicEndpoint: true },
+        signal,
       ),
     );
     signal.throwIfAborted();

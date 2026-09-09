@@ -39,6 +39,7 @@ import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onb
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
+import { mockOAuthCompletions } from "../../okou-page/__tests__/connector-page-test-helpers.ts";
 
 const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -778,6 +779,7 @@ test("Custom workflow onboarding preserves an explicit assistant mention", async
 });
 
 test("Connecting an OAuth account starts its standard authorization", async () => {
+  mockOAuthCompletions(context);
   const authWindow = context.mocks.browser.authWindow();
   Object.defineProperty(authWindow, "location", {
     value: { href: "" },
@@ -790,6 +792,7 @@ test("Connecting an OAuth account starts its standard authorization", async () =
       expect(params.connectorSlug).toBe("github");
       return respond(200, {
         authorizationUrl: "https://oauth.test/github/authorize",
+        oauthAttemptId: crypto.randomUUID(),
       });
     },
   );

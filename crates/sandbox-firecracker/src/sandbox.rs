@@ -2754,7 +2754,10 @@ impl Sandbox for FirecrackerSandbox {
                     Duration::from_millis(u64::from(timeout_ms) + 5_000),
                 )
                 .await
-                .map(storage_manifest_exec_result)
+                .map(|result| {
+                    result.log_resources(&self.id);
+                    storage_manifest_exec_result(result)
+                })
         })
         .await
     }

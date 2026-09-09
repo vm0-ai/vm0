@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  ListMultipartUploadsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -19,7 +21,10 @@ function fixture() {
   });
   const objects = new Map<string, string>();
   const metadata = new Map<string, Record<string, string>>();
+  const contentTypes = new Map<string, string | undefined>();
   const writes: string[] = [];
+  const beforeGet = vi.fn((_key: string) => {});
+  const multipart: { Key: string; UploadId: string }[] = [];
   const id = "00000000-0000-4000-8000-000000000001";
   const prefix = `sites/demo/deployments/${id}`;
   objects.set("public/artifacts/0123456789.pdf", "historical bytes");
@@ -43,16 +48,58 @@ function fixture() {
   });
   objects.set("hosted/sites/demo/active.json", pointer);
   objects.set(`hosted/sites/deployments/${id}.json`, pointer);
+  function readObject(command: GetObjectCommand) {
+    beforeGet(`${command.input.Bucket}/${command.input.Key}`);
+    const body = objects.get(`${command.input.Bucket}/${command.input.Key}`);
+    if (body === undefined)
+      throw Object.assign(new Error("Missing"), { name: "NoSuchKey" });
+    const etag = `"${createHash("md5").update(body).digest("hex")}"`;
+    if (command.input.IfMatch && command.input.IfMatch !== etag)
+      throw Object.assign(new Error("Object changed"), {
+        name: "PreconditionFailed",
+      });
+    return {
+      ContentLength: Buffer.byteLength(body),
+      ETag: etag,
+      Body: {
+        transformToString: async () => {
+          return body;
+        },
+        transformToByteArray: async () => {
+          return Buffer.from(body);
+        },
+      },
+    };
+  }
   const sender: {
     send(
       command:
         | GetObjectCommand
         | HeadObjectCommand
+        | ListMultipartUploadsCommand
         | ListObjectsV2Command
         | PutObjectCommand,
     ): Promise<unknown>;
   } = client;
   const send = vi.spyOn(sender, "send").mockImplementation(async (command) => {
+    if (command instanceof ListMultipartUploadsCommand) {
+      const offset = command.input.KeyMarker
+        ? multipart.findIndex((upload) => {
+            return (
+              upload.Key === command.input.KeyMarker &&
+              upload.UploadId === command.input.UploadIdMarker
+            );
+          }) + 1
+        : 0;
+      const last = multipart[offset];
+      const truncated = offset + 1 < multipart.length;
+      return {
+        Uploads: last ? [last] : [],
+        IsTruncated: truncated,
+        NextKeyMarker: truncated ? last?.Key : undefined,
+        NextUploadIdMarker: truncated ? last?.UploadId : undefined,
+      };
+    }
     if (command instanceof ListObjectsV2Command) {
       const root = `${command.input.Bucket}/`;
       const keys = [...objects.keys()]
@@ -71,23 +118,19 @@ function fixture() {
           offset + 1 < keys.length ? String(offset + 1) : undefined,
       };
     }
-    if (command instanceof HeadObjectCommand)
+    if (command instanceof HeadObjectCommand) {
+      const body = objects.get(`${command.input.Bucket}/${command.input.Key}`);
+      if (body === undefined) throw new Error("Missing fixture object");
       return {
-        ContentType: "application/pdf",
+        ContentLength: Buffer.byteLength(body),
+        ETag: `"${createHash("md5").update(body).digest("hex")}"`,
+        ContentType: contentTypes.has(command.input.Key!)
+          ? contentTypes.get(command.input.Key!)
+          : "application/pdf",
         Metadata: metadata.get(command.input.Key!) ?? {},
       };
-    if (command instanceof GetObjectCommand) {
-      const body = objects.get(`${command.input.Bucket}/${command.input.Key}`);
-      if (body === undefined)
-        throw Object.assign(new Error("Missing"), { name: "NoSuchKey" });
-      return {
-        Body: {
-          transformToString: async () => {
-            return body;
-          },
-        },
-      };
     }
+    if (command instanceof GetObjectCommand) return readObject(command);
     if (command instanceof PutObjectCommand) {
       const key = `${command.input.Bucket}/${command.input.Key}`;
       if (command.input.IfNoneMatch === "*" && objects.has(key))
@@ -114,7 +157,18 @@ function fixture() {
       expect([...deployments]).toStrictEqual([id]);
     },
   );
-  return { client, objects, metadata, writes, options, reconcile, send };
+  return {
+    client,
+    objects,
+    metadata,
+    contentTypes,
+    writes,
+    beforeGet,
+    multipart,
+    options,
+    reconcile,
+    send,
+  };
 }
 
 test("dry-run inventories all pages and reconciles twice without writing", async () => {
@@ -135,6 +189,109 @@ test("dry-run inventories all pages and reconciles twice without writing", async
   });
   expect(f.writes).toStrictEqual([]);
   expect(f.reconcile).toHaveBeenCalledTimes(2);
+});
+
+test("old pending multipart uploads block coverage until their completed bytes are registered", async () => {
+  const f = fixture();
+  const key = "artifacts/abcdefghij.mp4";
+  f.multipart.push({ Key: key, UploadId: "old-upload" });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      f.options,
+      f.reconcile,
+    ),
+  ).resolves.toMatchObject({
+    pendingMultipartUploads: 1,
+    unregisteredMultipartUploads: 1,
+    verified: false,
+  });
+  const options = { ...f.options, migrate: true, verify: true, finalize: true };
+  await expect(
+    registerHistoricalPublicArtifacts(f.client, f.client, options, f.reconcile),
+  ).rejects.toThrow("1 unregistered multipart uploads");
+  expect(
+    f.writes.some((path) => {
+      return path.endsWith("registration.json");
+    }),
+  ).toBe(false);
+
+  // A client can complete already-uploaded parts after its PUT URLs expire.
+  f.multipart.splice(0);
+  f.objects.set(`public/${key}`, "late completed bytes");
+  f.contentTypes.set(key, "video/mp4");
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...options, finalize: false },
+      async () => {},
+    ),
+  ).resolves.toMatchObject({
+    registered: 1,
+    missing: 0,
+    finalFiles: 2,
+    pendingMultipartUploads: 0,
+    unregisteredMultipartUploads: 0,
+    verified: true,
+  });
+});
+
+test("pre-registered multipart uploads may continue across every inventory page", async () => {
+  const f = fixture();
+  const key = "artifacts/abcdefghij.mp4";
+  f.multipart.push(
+    { Key: key, UploadId: "new-upload-1" },
+    { Key: key, UploadId: "new-upload-2" },
+  );
+  f.objects.set(
+    `hosted/${artifactDeliveryKey("vm0", "file", "abcdefghij.mp4")}`,
+    JSON.stringify({
+      version: 1,
+      kind: "legacy-file",
+      key,
+      filename: "recording.mp4",
+      contentType: "video/mp4",
+      publicBrand: "okou",
+      audience: "public",
+    }),
+  );
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      f.reconcile,
+    ),
+  ).resolves.toMatchObject({
+    pendingMultipartUploads: 2,
+    unregisteredMultipartUploads: 0,
+    verified: true,
+  });
+});
+
+test("incomplete multipart pagination cannot produce a verified inventory", async () => {
+  const f = fixture();
+  const original = f.send.getMockImplementation()!;
+  f.send.mockImplementation((command) => {
+    if (command instanceof ListMultipartUploadsCommand)
+      return Promise.resolve({ Uploads: [], IsTruncated: true });
+    return original(command);
+  });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true, verify: true, finalize: true },
+      f.reconcile,
+    ),
+  ).rejects.toThrow("multipart upload pagination is incomplete");
+  expect(
+    f.writes.some((path) => {
+      return path.endsWith("registration.json");
+    }),
+  ).toBe(false);
 });
 
 test("registration is idempotent, verifies exact metadata, and preserves bytes and pointers", async () => {
@@ -254,3 +411,308 @@ test("bounds and unclassified keys prevent a completion marker", async () => {
     }),
   ).toBe(false);
 });
+
+test("missing R2 content types require authoritative upload metadata", async () => {
+  const f = fixture();
+  f.contentTypes.set("artifacts/0123456789.pdf", undefined);
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      f.reconcile,
+    ),
+  ).rejects.toThrow("has no content type");
+  expect(f.writes).toHaveLength(0);
+  const resolveMissingContentType = vi.fn((key: string) => {
+    expect(key).toBe("artifacts/0123456789.pdf");
+    return Promise.resolve("application/pdf");
+  });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true, resolveMissingContentType },
+      f.reconcile,
+    ),
+  ).resolves.toMatchObject({ missing: 0, verified: true });
+  expect(resolveMissingContentType).toHaveBeenCalledTimes(1);
+  // An issued upload can exist before its client completes the database write.
+  // Its exact pre-registration is sufficient for the independent verification.
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, verify: true },
+      f.reconcile,
+    ),
+  ).resolves.toMatchObject({
+    existing: 3,
+    missing: 0,
+    resolvedContentTypes: 1,
+  });
+});
+
+function clickTrackFixture(f: ReturnType<typeof fixture>, extended = false) {
+  const key = "artifacts/abcdefghij.json";
+  const filename = "screen-recording-1788354885159.clicks.json";
+  const track = {
+    version: 1,
+    recording: {
+      startedAtUnixMs: 1788354885159,
+      durationMs: 1000,
+      video: { width: 1920, height: 1080, frameRate: 30 },
+      capture: {
+        originX: 0,
+        originY: 0,
+        widthPoints: 1920,
+        heightPoints: 1080,
+        scale: 1,
+      },
+    },
+    clicks: [],
+    droppedOutOfFrameClicks: 0,
+    warnings: [],
+    ...(extended ? { pointerEvents: [], typingBursts: [] } : {}),
+  };
+  const body = JSON.stringify(track);
+  f.objects.set(`public/${key}`, body);
+  f.metadata.set(key, { filename });
+  f.contentTypes.set(key, undefined);
+  return { key, filename, body, track };
+}
+
+test.each([false, true])(
+  "recovers verified recorder JSON without rewriting source bytes (extended=%s)",
+  async (extended) => {
+    const f = fixture();
+    const track = clickTrackFixture(f, extended);
+    const dryRun = await registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      f.options,
+      async () => {},
+    );
+    expect(dryRun).toMatchObject({ resolvedContentTypes: 1, missing: 4 });
+    expect(f.writes).toHaveLength(0);
+
+    const result = await registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    );
+    expect(result).toMatchObject({
+      finalFiles: 2,
+      missing: 0,
+      verified: true,
+      finalized: false,
+    });
+    expect(
+      JSON.parse(
+        f.objects.get(
+          `hosted/${artifactDeliveryKey("vm0", "file", "abcdefghij.json")}`,
+        )!,
+      ),
+    ).toStrictEqual({
+      version: 1,
+      kind: "legacy-file",
+      audience: "public",
+      publicBrand: "vm0",
+      key: track.key,
+      filename: track.filename,
+      contentType: "application/json",
+    });
+    expect(f.objects.get(`public/${track.key}`)).toBe(track.body);
+    expect(f.contentTypes.get(track.key)).toBeUndefined();
+
+    await expect(
+      registerHistoricalPublicArtifacts(
+        f.client,
+        f.client,
+        { ...f.options, verify: true },
+        async () => {},
+      ),
+    ).resolves.toMatchObject({ existing: 4, missing: 0, verified: true });
+  },
+);
+
+test.each([
+  { label: "invalid JSON", body: "<html>not a recording</html>" },
+  { label: "unrelated JSON", body: '{"version":1,"data":[]}' },
+  { label: "oversized content", body: "x".repeat(1024 * 1024 + 1) },
+])("blocks $label before registration", async ({ body }) => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.objects.set(`public/${track.key}`, body);
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toThrow("Historical click track");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("does not classify another filename from its JSON contents", async () => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.metadata.set(track.key, { filename: "report.json" });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toThrow("has no content type");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("blocks an unsupported recorder version before registration", async () => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.objects.set(
+    `public/${track.key}`,
+    JSON.stringify({ ...track.track, version: 2 }),
+  );
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toThrow("unrecognized format");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("blocks a recording replaced between HEAD and content inspection", async () => {
+  const f = fixture();
+  const track = clickTrackFixture(f);
+  f.beforeGet.mockImplementation((key) => {
+    if (key === `public/${track.key}`)
+      f.objects.set(key, JSON.stringify({ ...track.track, version: 2 }));
+  });
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true },
+      async () => {},
+    ),
+  ).rejects.toMatchObject({ name: "PreconditionFailed" });
+  expect(f.writes).toHaveLength(0);
+});
+
+test("content inspection cannot hide an authoritative metadata conflict", async () => {
+  const f = fixture();
+  clickTrackFixture(f);
+  await expect(
+    registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      {
+        ...f.options,
+        migrate: true,
+        resolveMissingContentType: async () => {
+          throw new Error("Conflicting authoritative MIME metadata");
+        },
+      },
+      async () => {},
+    ),
+  ).rejects.toThrow("Conflicting authoritative MIME metadata");
+  expect(f.writes).toHaveLength(0);
+});
+
+test("historical public HTML drafts are included in verified coverage", async () => {
+  const f = fixture();
+  const key =
+    "artifacts/html-edit-drafts/00000000-0000-4000-8000-000000000002.html";
+  f.objects.set(`public/${key}`, "historical public HTML");
+  f.contentTypes.set(key, "text/html");
+  const result = await registerHistoricalPublicArtifacts(
+    f.client,
+    f.client,
+    { ...f.options, migrate: true },
+    async () => {},
+  );
+  expect(result).toMatchObject({
+    finalFiles: 2,
+    finalAliases: 4,
+    missing: 0,
+    skipped: 0,
+  });
+  expect(
+    JSON.parse(
+      f.objects.get(
+        `hosted/${artifactDeliveryKey("vm0", "file", key.slice("artifacts/".length))}`,
+      )!,
+    ),
+  ).toMatchObject({
+    kind: "legacy-file",
+    key,
+    contentType: "text/html",
+    audience: "public",
+  });
+});
+
+test.each([true, false])(
+  "concurrent public writes require exact registration (registered=%s)",
+  async (registered) => {
+    const f = fixture();
+    let passes = 0;
+    const reconcile = async () => {
+      if (++passes !== 1) return;
+      f.objects.set("public/artifacts/abcdefghij.pdf", "concurrent bytes");
+      if (registered) {
+        f.objects.set(
+          `hosted/${artifactDeliveryKey("vm0", "file", "abcdefghij.pdf")}`,
+          JSON.stringify({
+            version: 1,
+            kind: "legacy-file",
+            publicBrand: "vm0",
+            audience: "public",
+            key: "artifacts/abcdefghij.pdf",
+            filename: "abcdefghij.pdf",
+            contentType: "application/pdf",
+          }),
+        );
+      }
+    };
+    const operation = registerHistoricalPublicArtifacts(
+      f.client,
+      f.client,
+      { ...f.options, migrate: true, verify: true },
+      reconcile,
+    );
+    if (registered) {
+      await expect(operation).resolves.toMatchObject({
+        files: 1,
+        finalFiles: 2,
+        finalAliases: 4,
+        missing: 0,
+        verified: true,
+        finalized: false,
+      });
+    } else {
+      await expect(operation).rejects.toThrow("unregistered public artifacts");
+      // A partial pass is safe to rerun; it fills only the new missing record.
+      await expect(
+        registerHistoricalPublicArtifacts(
+          f.client,
+          f.client,
+          { ...f.options, migrate: true, verify: true },
+          async () => {},
+        ),
+      ).resolves.toMatchObject({ existing: 3, registered: 1, missing: 0 });
+    }
+    expect(
+      f.writes.some((key) => {
+        return key.endsWith("registration.json");
+      }),
+    ).toBe(false);
+  },
+);

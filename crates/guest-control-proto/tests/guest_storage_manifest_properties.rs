@@ -19,6 +19,53 @@ const MAX_GENERATED_MANIFEST_BYTES: usize = 64;
 const MAX_GENERATED_OUTPUT_BYTES: usize = 64;
 const MAX_ARBITRARY_PAYLOAD_BYTES: usize = 512;
 
+#[test]
+fn resource_field_is_bounded_and_independent_of_terminal_metadata() {
+    let result = DecodedExecResult {
+        termination: ExecTermination::TimedOut,
+        duration_ms: 17,
+        stdout: ExecCapturedOutput::Captured {
+            bytes: b"out",
+            truncated: true,
+        },
+        stderr: ExecCapturedOutput::Captured {
+            bytes: b"err",
+            truncated: false,
+        },
+        diagnostic: "original diagnostic",
+    };
+    for resources in [
+        &[][..],
+        b"{}",
+        &[0xff],
+        &vec![b'x'; guest_control_proto::GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES],
+    ] {
+        let payload = encode_guest_storage_manifest_result(result, resources).unwrap();
+        let decoded = decode_guest_storage_manifest_result(&payload).unwrap();
+        assert_eq!(decoded.result, result);
+        assert_eq!(decoded.resource_summary, resources);
+        let mut frame = Vec::new();
+        encode_guest_storage_manifest_result_frame_into(&mut frame, 7, result, resources).unwrap();
+        assert_eq!(
+            frame,
+            encode(MSG_GUEST_STORAGE_MANIFEST_RESULT, 7, &payload).unwrap()
+        );
+    }
+    let oversized = vec![0; guest_control_proto::GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES + 1];
+    assert!(encode_guest_storage_manifest_result(result, &oversized).is_err());
+    let mut frame = b"unchanged".to_vec();
+    assert!(
+        encode_guest_storage_manifest_result_frame_into(&mut frame, 7, result, &oversized).is_err()
+    );
+    assert_eq!(frame, b"unchanged");
+    let mut invalid = vec![0x10, 0x01];
+    invalid.extend_from_slice(&oversized);
+    assert!(decode_guest_storage_manifest_result(&invalid).is_err());
+    for invalid in [&[][..], &[0], &[0, 1], &[0, 0], &[0, 1, 0xff]] {
+        assert!(decode_guest_storage_manifest_result(invalid).is_err());
+    }
+}
+
 #[derive(Clone, Debug)]
 struct OwnedRequest {
     timeout_ms: u32,
@@ -140,11 +187,14 @@ impl OwnedResult {
 
     fn encode(&self) -> Result<Vec<u8>, ProtocolError> {
         encode_guest_storage_manifest_result(
-            self.termination,
-            self.duration_ms,
-            self.stdout(),
-            self.stderr(),
-            &self.diagnostic,
+            guest_control_proto::DecodedExecResult {
+                termination: self.termination,
+                duration_ms: self.duration_ms,
+                stdout: self.stdout(),
+                stderr: self.stderr(),
+                diagnostic: &self.diagnostic,
+            },
+            &[],
         )
     }
 
@@ -434,33 +484,19 @@ proptest! {
         prop_assert!(payload.is_ok(), "generated result failed to encode: {payload:?}");
         let payload = payload.unwrap();
 
-        let decoded = decode_guest_storage_manifest_result(&payload);
+        let decoded = decode_guest_storage_manifest_result(&payload).map(|value| value.result);
         prop_assert!(decoded.is_ok(), "encoded result failed to decode: {decoded:?}");
         let decoded = decoded.unwrap();
         result.assert_decoded(&decoded)?;
 
-        let reencoded = encode_guest_storage_manifest_result(
-            decoded.termination,
-            decoded.duration_ms,
-            decoded.stdout,
-            decoded.stderr,
-            decoded.diagnostic,
-        );
+        let reencoded = encode_guest_storage_manifest_result(guest_control_proto::DecodedExecResult { termination: decoded.termination, duration_ms: decoded.duration_ms, stdout: decoded.stdout, stderr: decoded.stderr, diagnostic: decoded.diagnostic }, &[]);
         prop_assert!(reencoded.is_ok(), "decoded result failed to re-encode: {reencoded:?}");
         prop_assert_eq!(reencoded.unwrap(), payload.as_slice());
 
         let expected_frame = encode(MSG_GUEST_STORAGE_MANIFEST_RESULT, seq, &payload);
         prop_assert!(expected_frame.is_ok(), "generic result frame failed: {expected_frame:?}");
         let mut direct_frame = Vec::new();
-        let direct_result = encode_guest_storage_manifest_result_frame_into(
-            &mut direct_frame,
-            seq,
-            result.termination,
-            result.duration_ms,
-            result.stdout(),
-            result.stderr(),
-            &result.diagnostic,
-        );
+        let direct_result = encode_guest_storage_manifest_result_frame_into(&mut direct_frame, seq, guest_control_proto::DecodedExecResult { termination: result.termination, duration_ms: result.duration_ms, stdout: result.stdout(), stderr: result.stderr(), diagnostic: &result.diagnostic }, &[]);
         prop_assert!(direct_result.is_ok(), "direct result frame failed: {direct_result:?}");
         prop_assert_eq!(direct_frame, expected_frame.unwrap());
     }
@@ -534,14 +570,19 @@ fn result_enforces_capture_contract_for_each_stream() {
         };
         let (stdout, stderr) = with_selected_output(stream, selected);
         let payload = encode_guest_storage_manifest_result(
-            ExecTermination::Exited { exit_code: 7 },
-            u32::MAX,
-            stdout,
-            stderr,
-            "boundary",
+            guest_control_proto::DecodedExecResult {
+                termination: ExecTermination::Exited { exit_code: 7 },
+                duration_ms: u32::MAX,
+                stdout,
+                stderr,
+                diagnostic: "boundary",
+            },
+            &[],
         )
         .unwrap();
-        let decoded = decode_guest_storage_manifest_result(&payload).unwrap();
+        let decoded = decode_guest_storage_manifest_result(&payload)
+            .unwrap()
+            .result;
         assert_eq!(decoded.stdout, stdout);
         assert_eq!(decoded.stderr, stderr);
         let expected_frame = encode(MSG_GUEST_STORAGE_MANIFEST_RESULT, 42, &payload).unwrap();
@@ -549,11 +590,14 @@ fn result_enforces_capture_contract_for_each_stream() {
         encode_guest_storage_manifest_result_frame_into(
             &mut frame,
             42,
-            ExecTermination::Exited { exit_code: 7 },
-            u32::MAX,
-            stdout,
-            stderr,
-            "boundary",
+            guest_control_proto::DecodedExecResult {
+                termination: ExecTermination::Exited { exit_code: 7 },
+                duration_ms: u32::MAX,
+                stdout,
+                stderr,
+                diagnostic: "boundary",
+            },
+            &[],
         )
         .unwrap();
         assert_eq!(frame, expected_frame);
@@ -565,11 +609,14 @@ fn result_enforces_capture_contract_for_each_stream() {
         };
         let (stdout, stderr) = with_selected_output(stream, selected);
         let encode_error = encode_guest_storage_manifest_result(
-            ExecTermination::WaitFailed,
-            0,
-            stdout,
-            stderr,
-            "",
+            guest_control_proto::DecodedExecResult {
+                termination: ExecTermination::WaitFailed,
+                duration_ms: 0,
+                stdout,
+                stderr,
+                diagnostic: "",
+            },
+            &[],
         )
         .unwrap_err();
         assert!(matches!(
@@ -582,11 +629,14 @@ fn result_enforces_capture_contract_for_each_stream() {
         let frame_error = encode_guest_storage_manifest_result_frame_into(
             &mut frame,
             42,
-            ExecTermination::WaitFailed,
-            0,
-            stdout,
-            stderr,
-            "",
+            guest_control_proto::DecodedExecResult {
+                termination: ExecTermination::WaitFailed,
+                duration_ms: 0,
+                stdout,
+                stderr,
+                diagnostic: "",
+            },
+            &[],
         )
         .unwrap_err();
         assert!(matches!(
@@ -598,7 +648,9 @@ fn result_enforces_capture_contract_for_each_stream() {
         assert_eq!(frame, b"stale frame bytes");
         let generic_payload =
             encode_exec_result(ExecTermination::WaitFailed, 0, stdout, stderr, "").unwrap();
-        let decode_error = decode_guest_storage_manifest_result(&generic_payload).unwrap_err();
+        let decode_error =
+            decode_guest_storage_manifest_result(&[&[0, 0][..], &generic_payload].concat())
+                .unwrap_err();
         assert!(matches!(
             decode_error,
             ProtocolError::PayloadTooLarge(field, size)
@@ -608,7 +660,16 @@ fn result_enforces_capture_contract_for_each_stream() {
 
         let (stdout, stderr) = with_selected_output(stream, ExecCapturedOutput::Discarded);
         assert!(matches!(
-            encode_guest_storage_manifest_result(ExecTermination::Cancelled, 0, stdout, stderr, "",),
+            encode_guest_storage_manifest_result(
+                guest_control_proto::DecodedExecResult {
+                    termination: ExecTermination::Cancelled,
+                    duration_ms: 0,
+                    stdout,
+                    stderr,
+                    diagnostic: ""
+                },
+                &[]
+            ),
             Err(ProtocolError::InvalidPayload(
                 "guest_storage_manifest_result output must be captured"
             ))
@@ -618,11 +679,14 @@ fn result_enforces_capture_contract_for_each_stream() {
             encode_guest_storage_manifest_result_frame_into(
                 &mut frame,
                 42,
-                ExecTermination::Cancelled,
-                0,
-                stdout,
-                stderr,
-                "",
+                guest_control_proto::DecodedExecResult {
+                    termination: ExecTermination::Cancelled,
+                    duration_ms: 0,
+                    stdout,
+                    stderr,
+                    diagnostic: ""
+                },
+                &[]
             ),
             Err(ProtocolError::InvalidPayload(
                 "guest_storage_manifest_result output must be captured"
@@ -632,7 +696,7 @@ fn result_enforces_capture_contract_for_each_stream() {
         let generic_payload =
             encode_exec_result(ExecTermination::Cancelled, 0, stdout, stderr, "").unwrap();
         assert!(matches!(
-            decode_guest_storage_manifest_result(&generic_payload),
+            decode_guest_storage_manifest_result(&[&[0, 0][..], &generic_payload].concat()),
             Err(ProtocolError::InvalidPayload(
                 "guest_storage_manifest_result output must be captured"
             ))
@@ -652,11 +716,14 @@ fn result_frame_enforces_diagnostic_boundary() {
     };
     let max_diagnostic = "x".repeat(u16::MAX as usize);
     let payload = encode_guest_storage_manifest_result(
-        ExecTermination::TimedOut,
-        u32::MAX,
-        stdout,
-        stderr,
-        &max_diagnostic,
+        guest_control_proto::DecodedExecResult {
+            termination: ExecTermination::TimedOut,
+            duration_ms: u32::MAX,
+            stdout,
+            stderr,
+            diagnostic: &max_diagnostic,
+        },
+        &[],
     )
     .unwrap();
     let expected_frame = encode(MSG_GUEST_STORAGE_MANIFEST_RESULT, 42, &payload).unwrap();
@@ -664,11 +731,14 @@ fn result_frame_enforces_diagnostic_boundary() {
     encode_guest_storage_manifest_result_frame_into(
         &mut frame,
         42,
-        ExecTermination::TimedOut,
-        u32::MAX,
-        stdout,
-        stderr,
-        &max_diagnostic,
+        guest_control_proto::DecodedExecResult {
+            termination: ExecTermination::TimedOut,
+            duration_ms: u32::MAX,
+            stdout,
+            stderr,
+            diagnostic: &max_diagnostic,
+        },
+        &[],
     )
     .unwrap();
     assert_eq!(frame, expected_frame);
@@ -678,11 +748,14 @@ fn result_frame_enforces_diagnostic_boundary() {
     let error = encode_guest_storage_manifest_result_frame_into(
         &mut frame,
         42,
-        ExecTermination::TimedOut,
-        u32::MAX,
-        stdout,
-        stderr,
-        &oversized_diagnostic,
+        guest_control_proto::DecodedExecResult {
+            termination: ExecTermination::TimedOut,
+            duration_ms: u32::MAX,
+            stdout,
+            stderr,
+            diagnostic: &oversized_diagnostic,
+        },
+        &[],
     )
     .unwrap_err();
     assert!(matches!(

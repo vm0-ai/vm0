@@ -154,7 +154,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       "utf8",
     );
     const baseline = JSON.parse(baselineText);
-    const cases = readJson(resolve(root, manifest.caseFile));
+    assert(
+      Array.isArray(manifest.caseFiles) && manifest.caseFiles.length > 0,
+      "Migration needs visual case files",
+    );
+    const cases = {
+      version: 1,
+      cases: manifest.caseFiles.flatMap((file) => {
+        const source = readJson(resolve(root, file));
+        assert.equal(source.version, 1, "Unsupported visual case version");
+        return source.cases;
+      }),
+    };
     validateMigration(manifest, baseline, cases);
     for (const batch of manifest.batches) {
       for (const file of batch.consumers) readFileSync(resolve(root, file));

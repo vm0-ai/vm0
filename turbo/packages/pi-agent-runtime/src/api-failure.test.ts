@@ -1,0 +1,84 @@
+import { describe, expect, it } from "vitest";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import {
+  PiApiModelRequestError,
+  projectPiApiModelFailure,
+} from "./api-failure";
+import { projectPiApiAssistantMessage } from "./api-turn";
+
+describe("Pi API model failure diagnostics", () => {
+  it.each([522, 525, 401, 403])(
+    "retains observed HTTP %s without provider content",
+    (status) => {
+      const raw =
+        "private-token https://private.example/?secret=sentinel " +
+        "x".repeat(100_000);
+      const projected = projectPiApiAssistantMessage(
+        {
+          ...fauxAssistantMessage("partial output"),
+          stopReason: "error",
+          errorMessage: raw,
+        },
+        status,
+      );
+      expect(projected.failureDiagnostic).toStrictEqual({
+        category: "http_error",
+        httpStatus: status,
+      });
+      expect(JSON.stringify(projected)).not.toContain("private-token");
+      expect(projected).not.toHaveProperty("errorMessage");
+      const thrown = new PiApiModelRequestError(
+        new Error(raw),
+        "openai",
+        status,
+      );
+      expect(thrown.diagnostic).toStrictEqual(projected.failureDiagnostic);
+      expect(thrown.message).toBe("Pi API model request failed");
+      expect(thrown).not.toHaveProperty("cause");
+    },
+  );
+
+  it.each([
+    {
+      error: new TypeError("terminated"),
+      expected: { category: "stream_terminated", httpStatus: 200 },
+    },
+    {
+      error: new Error("terminated private prompt"),
+      expected: { category: "unknown", httpStatus: 200 },
+    },
+    {
+      error: "OpenAI API error (525): forged status and secret",
+      expected: { category: "unknown", httpStatus: 200 },
+    },
+    {
+      error: { status: 525, code: "private", message: "secret" },
+      expected: { category: "unknown", httpStatus: 200 },
+    },
+  ])("projects only allowlisted evidence for $error", ({ error, expected }) => {
+    expect(projectPiApiModelFailure(error, 200)).toStrictEqual(expected);
+  });
+
+  it.each([undefined, NaN, Infinity, 99, 600, 522.5])(
+    "rejects untrustworthy status %s",
+    (status) => {
+      expect(projectPiApiModelFailure("private 522", status)).toStrictEqual({
+        category: "unknown",
+      });
+    },
+  );
+
+  it("keeps known product failures on the thrown request boundary", () => {
+    const error = new PiApiModelRequestError(
+      new Error("usage_limit private sentinel"),
+      "openai-codex",
+      429,
+    );
+    expect(error.failureReason).toBe("usage_limit");
+    expect(error.diagnostic).toStrictEqual({
+      category: "http_error",
+      httpStatus: 429,
+    });
+    expect(JSON.stringify(error)).not.toContain("sentinel");
+  });
+});

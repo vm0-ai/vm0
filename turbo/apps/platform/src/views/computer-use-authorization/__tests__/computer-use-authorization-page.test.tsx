@@ -24,7 +24,6 @@ function computerUseHost(
 ): ComputerUseHost {
   return {
     id,
-    product: "zero",
     hostName: displayName,
     displayName,
     appVersion: "1.0.0",

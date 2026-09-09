@@ -975,6 +975,58 @@ pub fn handle_connection_with_test_storage_manifest_program(
     )
 }
 
+/// Exercises storage RPC diagnostics using owned resource files.
+/// No real guest cgroup hierarchy is accessed by this integration-test hook.
+#[doc(hidden)]
+pub fn handle_connection_with_test_storage_resources(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+    resource_path: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        ConnectionPrograms {
+            guest_storage_manifest: GuestStorageManifestProgram::for_test_resources(
+                program,
+                resource_path,
+            ),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
+    )
+}
+
+/// Holds each test storage helper before starting its real request timeout.
+///
+/// Use a zero-capacity channel. Receiving the owned child's PID starts the timer,
+/// allowing tests to establish helper readiness first. Receive or drop the
+/// receiver before joining the connection so cleanup can proceed on test failure.
+/// An optional resource path selects owned diagnostic files instead of cgroups.
+#[doc(hidden)]
+pub fn handle_connection_with_test_storage_manifest_timeout_gate(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+    resource_path: Option<std::path::PathBuf>,
+    timeout_gate: std::sync::mpsc::SyncSender<u32>,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        ConnectionPrograms {
+            guest_storage_manifest: GuestStorageManifestProgram::for_test_timeout(
+                program,
+                resource_path,
+                timeout_gate,
+            ),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
+    )
+}
+
 /// Handles a host-side test connection with a test workspace mount executable
 /// and child timeout.
 #[doc(hidden)]

@@ -51,9 +51,17 @@ function authenticate(actor: ApiTestUser) {
   return { authorization: "Bearer clerk-session" };
 }
 
-function completion(content = "**Launch checklist**") {
+function completion(content = "**Launch checklist**", finishReason = "stop") {
   return HttpResponse.json({
-    choices: [{ finish_reason: "stop", message: { content } }],
+    choices: [
+      {
+        finish_reason: finishReason,
+        ...(finishReason === "length"
+          ? { native_finish_reason: "MAX_TOKENS" }
+          : {}),
+        message: { content },
+      },
+    ],
   });
 }
 
@@ -319,7 +327,17 @@ describe("optional shared-thread titles", () => {
         return completion("---");
       },
       outcome: "error",
-      reason: "invalid_output",
+      reason: "unusable_output",
+    },
+    {
+      // A public snapshot keeps its title forever, so a partial one is worse
+      // than the fixed fallback. The exhausted budget is still only counted.
+      name: "exhausted token budget",
+      response: () => {
+        return completion("A Truncated Shared Title That Must", "length");
+      },
+      outcome: "degraded",
+      reason: "output_truncated",
     },
     {
       name: "invalid JSON",

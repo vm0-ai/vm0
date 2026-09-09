@@ -314,7 +314,11 @@ test("Use a public URL for a private Office attachment preview", async () => {
   const publicUrl = `https://cdn.vm7.io/artifacts/tests/office/${filename}`;
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     expect(query.file_id).toBe(fileId);
-    return respond(200, { url: privateUrl, publicUrl });
+    return respond(200, {
+      url: privateUrl,
+      publicUrl,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
   });
   mockArtifactConversation(context, {
     catalog: [],
@@ -334,7 +338,7 @@ test("Use a public URL for a private Office attachment preview", async () => {
   expect(frame.getAttribute("src")).not.toContain(privateUrl);
 });
 
-test("Refresh a private document on tab return while preserving an existing public attachment", async () => {
+test("Preserve private and public attachments on tab return", async () => {
   const fileId = "f0000000-0000-4000-a000-000000000936";
   const filename = "private-plan.docx";
   const contentType =
@@ -350,10 +354,18 @@ test("Refresh a private document on tab return while preserving an existing publ
   const visibility = context.mocks.browser.visibilityState("visible");
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     if (query.file_id === publicFileId) {
-      return respond(200, { url: publicResourceUrl, publicUrl });
+      return respond(200, {
+        url: publicResourceUrl,
+        publicUrl,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      });
     }
     expect(query.file_id).toBe(fileId);
-    return respond(200, { url: resourceUrl, publicUrl: null });
+    return respond(200, {
+      url: resourceUrl,
+      publicUrl: null,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
   });
   mockArtifactConversation(context, {
     catalog: [],
@@ -393,7 +405,7 @@ test("Refresh a private document on tab return while preserving an existing publ
   await waitFor(() => {
     const refreshedFrame = within(dialog).getByTitle(`${filename} preview`);
     expect(refreshedFrame).toBeVisible();
-    expectOfficeViewerUrl(refreshedFrame, refreshedUrl);
+    expectOfficeViewerUrl(refreshedFrame, firstUrl);
   });
   expect(screen.getByAltText(publicFilename)).toHaveAttribute(
     "src",

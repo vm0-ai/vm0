@@ -1618,6 +1618,7 @@ test("Create, edit, and connect an OAuth MCP connector", async () => {
     return respond(200, {
       result: "authorization",
       authorizationUrl: "https://oauth.acme.test/authorize?state=mcp-ui",
+      oauthAttemptId: crypto.randomUUID(),
     });
   });
   await setupCustomPage({ mcp: true });

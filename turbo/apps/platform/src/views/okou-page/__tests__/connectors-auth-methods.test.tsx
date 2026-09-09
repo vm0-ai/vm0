@@ -1112,6 +1112,7 @@ test("Retry device authorization after a provider error", async () => {
 });
 
 test("Return Slack authorization directly to the application", async () => {
+  mockOAuthCompletions(context);
   mockConnectors(context, []);
   const authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
@@ -1120,6 +1121,7 @@ test("Return Slack authorization directly to the application", async () => {
     callbackTarget = body.callbackTarget;
     return respond(200, {
       authorizationUrl: "https://slack.com/oauth/authorize",
+      oauthAttemptId: crypto.randomUUID(),
     });
   });
   await setupPage({ context, path: "/connectors?keywords=slack" });
@@ -1172,6 +1174,7 @@ test.each([
     readonly slug: string;
     readonly callbackTarget: string | undefined;
   }[] = [];
+  mockOAuthCompletions(context);
   context.mocks.api(
     connectorOauthStartContract.start,
     ({ body, params, respond }) => {
@@ -1182,6 +1185,7 @@ test.each([
       authWindow.close();
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
+        oauthAttemptId: crypto.randomUUID(),
       });
     },
   );
@@ -1297,11 +1301,13 @@ test("Keep OAuth startup safe across repeated actions and navigation", async () 
   const browserOpen = context.mocks.browser.open(authWindow);
   const startReady = context.mocks.deferred<void>();
   let starts = 0;
+  mockOAuthCompletions(context);
   context.mocks.api(connectorOauthStartContract.start, async ({ respond }) => {
     starts += 1;
     await startReady.promise;
     return respond(200, {
       authorizationUrl: "https://oauth.test/stripe/authorize",
+      oauthAttemptId: crypto.randomUUID(),
     });
   });
   await setupPage({ context, path: "/connectors?keywords=public+stripe" });

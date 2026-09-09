@@ -246,7 +246,7 @@ test("Late thread details do not replace the conversation the user chose", async
   expect(screen.queryByText("Stale route title")).not.toBeInTheDocument();
 });
 
-test("A newly available thread appears after shared-data reconnection", async () => {
+test("A newly available thread appears after a thread-list event", async () => {
   const recoveredThread = threadEvent({
     kind: "created",
     seqId: 2,
@@ -281,10 +281,9 @@ test("A newly available thread appears after shared-data reconnection", async ()
   });
 
   const originalRegion = await expectReadyChat("Original online chat");
-  context.mocks.ably.triggerConnectionState("disconnected");
   recoveryAvailable = true;
 
-  context.mocks.ably.triggerReconnect();
+  context.mocks.ably.trigger("threadListChanged");
 
   const recoveredLink = await findLink("Recovered synchronized title");
   expect(getHeaderTitle(originalRegion, "Original online chat")).toBeVisible();

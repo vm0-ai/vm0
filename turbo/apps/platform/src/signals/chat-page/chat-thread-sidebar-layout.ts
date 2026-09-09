@@ -108,7 +108,6 @@ export const startChatThreadSidebarResize$ = command(
     dragMaskEl.addEventListener("pointercancel", resetResize, {
       signal: dragSignal,
     });
-    window.addEventListener("blur", resetResize, { signal: dragSignal });
 
     dragSignal.addEventListener(
       "abort",

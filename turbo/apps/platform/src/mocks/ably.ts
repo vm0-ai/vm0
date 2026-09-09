@@ -23,7 +23,6 @@ type NamedRealtimeEventListener = (
   channelName: string,
   message: { readonly name: string; readonly data: unknown },
 ) => void;
-type ChatDatabaseRecoveryListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
 type AuthCallbackToken = unknown;
@@ -90,7 +89,6 @@ const realtimeInstances = new Set<Realtime>();
 const chatDatabaseEventListeners = new Set<ChatDatabaseEventListener>();
 const userRealtimeEventListeners = new Set<UserRealtimeEventListener>();
 const namedRealtimeEventListeners = new Set<NamedRealtimeEventListener>();
-const chatDatabaseRecoveryListeners = new Set<ChatDatabaseRecoveryListener>();
 const directRealtimeSubscriptions = new Map<string, Map<string, number>>();
 const subscribeErrors = new Map<
   string,
@@ -601,9 +599,6 @@ export function getAuthTokenHistory(): readonly AuthCallbackToken[] {
 
 /** Fire a reconnect event on every connected Realtime instance. */
 export function triggerAblyReconnect(): void {
-  for (const listener of chatDatabaseRecoveryListeners) {
-    listener();
-  }
   for (const realtime of realtimeInstances) {
     realtime.reconnect();
   }
@@ -662,22 +657,6 @@ export function triggerSharedWorkerAblyFailure(
   message = "connection failed",
 ): void {
   requireSharedWorkerRealtime().fail(message);
-}
-
-/** Forward mock realtime recovery to a direct worker test host. */
-export function subscribeChatDatabaseRecovery(
-  listener: ChatDatabaseRecoveryListener,
-  signal: AbortSignal,
-): void {
-  signal.throwIfAborted();
-  chatDatabaseRecoveryListeners.add(listener);
-  signal.addEventListener(
-    "abort",
-    () => {
-      chatDatabaseRecoveryListeners.delete(listener);
-    },
-    { once: true },
-  );
 }
 
 export function triggerAblyConnectionState(
@@ -867,7 +846,6 @@ export function resetAblySubscriptions(): void {
   chatDatabaseEventListeners.clear();
   userRealtimeEventListeners.clear();
   namedRealtimeEventListeners.clear();
-  chatDatabaseRecoveryListeners.clear();
   directRealtimeSubscriptions.clear();
   capturedAuthCallback = null;
   tokenBodies = [];

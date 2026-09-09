@@ -17,13 +17,14 @@ type AttachmentDownload = {
  */
 export const downloadAttachment$ = command(
   async (
-    { get },
+    { get, set },
     attachment: AttachmentDownload,
     signal: AbortSignal,
   ): Promise<void> => {
     const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
-    const { resourceUrl } = await get(
-      resolveResourceUrl(publicAttachmentUrl(attachment.url)),
+    const { resourceUrl, shareUrl } = await get(
+      set(resolveResourceUrl.prepare$, publicAttachmentUrl(attachment.url))
+        .urls$,
     );
     signal.throwIfAborted();
     await downloadAttachmentUrl(
@@ -36,6 +37,7 @@ export const downloadAttachment$ = command(
       }) === "file"
         ? "native"
         : "blob",
+      shareUrl === null ? "default" : "reload",
     );
   },
 );

@@ -83,7 +83,8 @@ browser processes. Larger color changes, denser differences, alpha changes,
 dimensions and any control observation difference still fail. Every raw changed
 pixel remains visible in the diff and counted separately in the manifest.
 There are no masks. This is a bounded visual noise budget, not byte identity.
-Chromium uses fixed sRGB/software rendering arguments; those arguments and the
+Chromium uses fixed sRGB/software rendering arguments and disables partial
+raster; image decoding completes before capture. Those arguments and the
 dependency lock are part of the runner hash. Normal-motion,
 WebKit and native PWA/Desktop cases must be added before migrating their
 contracts; the initial cases do not certify those surfaces.
@@ -137,3 +138,84 @@ evidence visible. The issue closes only after a fresh main audit proves zero
 first-party selectors, zero legacy business/test dependencies and unapproved
 injections, with validated environment/adapter contracts and relevant visual,
 interaction and native-platform evidence.
+
+## Agent profile Tone batch
+
+`tone-cases.json` is a separate case source registered through the manifest's
+`caseFiles` array. Run `pnpm style:migration:tone` from `e2e` with the same
+App/API, build, source, authentication, output and optional baseline arguments
+as the preferences runner, plus:
+
+```bash
+--agent-fixture "$STYLE_SYNTHETIC_AGENT_JSON" \
+--aria-mode legacy
+```
+
+The fixture is metadata from an isolated TEST account's Agent, with an empty
+string description and initial `professional` sound. It contains no credentials.
+The route substitutes its `agentId` into `/agents/:agentId?tab=profile`. Freeze
+this fixture with the baseline; its hash is checked on every replay. Only the
+exact API origin's preferences, onboarding status, agent list and that agent's
+metadata endpoints have controlled responses. Onboarding status pins the
+synthetic Agent's default role because every preview API redeploy resets its
+database and creates a different default Agent ID. The stateful metadata response supports a delayed
+PATCH and a later GET. This checks client saving and reloading; independently
+verify real API persistence on the preview with these routes unmodified.
+
+Narrow captures center the complete Tone section and require both the choices
+and sample to be in the viewport, with the sample above the pending-edit bar.
+Each viewport checks all four tone labels, hints and sample replies; selected
+and inactive hover; keyboard focus and Space activation; Discard; pending Save;
+successful Save; and reload. Capture every state against unchanged code and
+require an A/A replay before editing business styles. Reuse the existing
+rounding limits, with no masks, and retain failed calibration attempts.
+
+The legacy native buttons have no `aria-pressed`. The shared choice control
+intentionally adds that accessibility state. Use `--aria-mode legacy` for the
+baseline and A/A, and `--aria-mode pressed` for the migrated UI. The runner
+asserts and records the four attributes separately in each capture; all other
+button semantics, geometry and computed styles must match exactly. The mode
+change does not permit any pixel or layout difference. Re-run the original
+21 preference states whenever changing the shared ChoiceButton.
+
+The Tone calibration initially queried the wrong Save label; that attempt is
+retained. A subsequent unchanged-code comparison exposed clipped-edge raster
+variation outside the choices (with identical control observations). Both
+runners now share the same capture helper and disable Chromium partial raster.
+The acceptance archive preserves the earlier failures and separately identifies
+the new unchanged-build pairs; no pixel threshold was widened. These paired
+checks demonstrate bounded reproducibility, not an unattended cross-browser gate.
+
+The first deployed migration exposed a fixture prerequisite: API redeployment
+recreates the default Agent with a different ID. Before attempting its visual
+comparison, the business migration was reverted, onboarding status was pinned
+alongside the already-controlled Agent metadata, and new BEFORE/A/A evidence
+was captured against the unmigrated UI. The old archives remain available. This
+changes the explicitly recorded external fixture boundary, not pixel limits or
+the expected rendered behavior. Actual onboarding and persistence remain live
+checks outside the screenshot fixture.
+
+The App Worker may embed successful API responses in inert bootstrap scripts
+inside the initial HTML. The runner applies the same controlled fixtures to
+those external responses before rendering; otherwise real preferences or Agent
+metadata can bypass browser request interception. Bootstrap handling is included
+in the frozen runner hash. Failed baseline attempts retain page evidence and
+must never be accepted by a replay.
+
+### Agent Tone acceptance record (#32873)
+
+The [canonical BEFORE and A/A archive](https://a.okou.io/cwffgb0gk5.zip)
+records unmigrated build `8207962cbb710165210f6c8a1282d77adda7ae0d`.
+The [AFTER and raw-diff archive](https://a.okou.io/66hlqknk2r.zip) records
+build `6b567009e0b93e2b1e0b562af0d7100474413b86`, from source
+`8b8c003cab1645a4a8b933f37e5e731185033f0f`.
+All 33 Tone and 21 preference states have zero changed pixels and identical
+control observations apart from the intentional, separately checked pressed
+state. The same limits also held after retaining main's card-surface migration.
+Real API Save, reload and Discard passed; the TEST account's original tone was
+restored. The manifest contains immutable URLs, hashes and build commits,
+including a [quick comparison image](https://a.okou.io/rrdnuv8uyy.png).
+The corresponding source passed 27 focused page tests, App/UI/E2E types,
+formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
+This is bounded Chromium acceptance; the earlier native and motion exclusions
+remain in force.

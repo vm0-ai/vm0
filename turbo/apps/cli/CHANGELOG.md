@@ -1,5 +1,72 @@
 # Changelog
 
+## [9.321.3](https://github.com/vm0-ai/vm0/compare/cli-v9.321.2...cli-v9.321.3) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.422.2
+    * @okouai/core bumped to 8.646.1
+    * @okouai/pi-agent-runtime bumped to 1.24.7
+
+## [9.321.2](https://github.com/vm0-ai/vm0/compare/cli-v9.321.1...cli-v9.321.2) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.422.1
+    * @okouai/connectors bumped to 3.8.8
+    * @okouai/core bumped to 8.646.0
+    * @okouai/pi-agent-runtime bumped to 1.24.6
+
+## [9.321.1](https://github.com/vm0-ai/vm0/compare/cli-v9.321.0...cli-v9.321.1) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.422.0
+    * @okouai/core bumped to 8.645.0
+    * @okouai/pi-agent-runtime bumped to 1.24.5
+
+## [9.321.0](https://github.com/vm0-ai/vm0/compare/cli-v9.320.1...cli-v9.321.0) (2026-09-09)
+
+
+### Features
+
+* display automation times in agent and browser timezones ([#32899](https://github.com/vm0-ai/vm0/issues/32899)) ([98d2ec1](https://github.com/vm0-ai/vm0/commit/98d2ec14f6f36170b904ebfd40204d58050e252d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.421.0
+    * @okouai/core bumped to 8.644.0
+    * @okouai/pi-agent-runtime bumped to 1.24.4
+
+## [9.320.1](https://github.com/vm0-ai/vm0/compare/cli-v9.320.0...cli-v9.320.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **pi-memory:** preserve unchanged files and safe failure diagnostics ([#32911](https://github.com/vm0-ai/vm0/issues/32911)) ([dcf5e10](https://github.com/vm0-ai/vm0/commit/dcf5e10bb749b56b091ad0d0de6770928195db23)), closes [#32744](https://github.com/vm0-ai/vm0/issues/32744)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.420.3
+    * @okouai/connectors bumped to 3.8.7
+    * @okouai/core bumped to 8.643.0
+    * @okouai/pi-agent-runtime bumped to 1.24.3
+
 ## [9.320.0](https://github.com/vm0-ai/vm0/compare/cli-v9.319.1...cli-v9.320.0) (2026-09-09)
 
 

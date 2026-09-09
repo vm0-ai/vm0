@@ -50,6 +50,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Generate short public activity summaries on visible-thread demand.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerTaskChips]: {
     maintainer: "bingjie@okou.ai",
@@ -60,6 +61,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerCreateCommands]: {
     maintainer: "bingjie@okou.ai",
     description: "Create commands and mode-specific composer controls",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: {
+    maintainer: "bingjie@okou.ai",
+    description: "Fuzzy workflow name matching in the chat composer",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -240,7 +247,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MorningBrief]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Enable the first-class Morning Brief experience in Preferences.",
+      "Enable Morning Brief and email subscription management in Preferences.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -287,6 +294,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelPickerFlyout]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Pick a model from a detached flyout: model types on the left, that type's models in a panel beside it.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -298,6 +312,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@okou.ai",
     description:
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ChatReasoningEffort]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Choose model reasoning effort for Codex and Claude Code chats.",
     enabled: false,
   },
   [FeatureSwitchKey.PiLoop]: {
@@ -312,6 +332,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
@@ -379,6 +400,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MarkdownTime]: {
+    maintainer: "ethan@okou.ai",
+    description:
+      "Render Markdown time tags with explicit datetime offsets in the browser timezone.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
     maintainer: "bingjie@okou.ai",
     description:
@@ -398,6 +426,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
+  },
+  [FeatureSwitchKey.OnboardingChat]: {
+    maintainer: "ming@okou.ai",
+    description:
+      "Show the built-in onboarding chat with Artifact examples and team collaboration guidance.",
+    enabled: false,
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
@@ -462,7 +497,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorDirectory]: {
     maintainer: "tongx@okou.ai",
     description:
-      "Connector directory in the chat composer: connected connectors separated from discovery, category browsing, per-connector detail, and keyboard navigation.",
+      "Shelf-based connector browsing in the chat composer and on the connectors page: connected connectors separated from discovery, category shelves and chips, per-connector detail, and keyboard navigation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -471,6 +506,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Pin chats from the desktop title and keep Pin, Share, and More visible in the mobile thread header.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

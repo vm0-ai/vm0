@@ -3,7 +3,6 @@ import { command, type Store } from "ccstate";
 import {
   registerDirectRealtimeSubscription,
   subscribeChatDatabaseEvents,
-  subscribeChatDatabaseRecovery,
   subscribeNamedRealtimeEvents,
   subscribeUserRealtimeEvents,
 } from "../mocks/ably.ts";
@@ -60,7 +59,6 @@ import {
   handleSharedDatabaseRealtimeMessage$,
   initializeSharedDatabaseWorker$,
   querySharedDatabaseWorker$,
-  recoverSharedDatabaseWorkerAfterRealtimeReconnect$,
   refreshWorkerComputed$,
   startSharedDatabaseWorkerDaemons$,
 } from "./worker-signals.ts";
@@ -170,10 +168,6 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         await this.events.databaseInvalidated(event.dataKey);
         return;
       }
-      if (event.type === "reconnect") {
-        await this.events.databaseReconnected();
-        return;
-      }
       if (event.type === "reload-computed") {
         this.events.computedReloaded(event.computedKey);
         return;
@@ -235,13 +229,6 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       this.workerStore.set(forwardChatThreadReadCursorUpdated$, message.data);
     }
     this.workerStore.set(refreshWorkerComputed$, computedKey);
-  }
-
-  handleRealtimeRecovery(): void {
-    this.workerStore.set(
-      recoverSharedDatabaseWorkerAfterRealtimeReconnect$,
-      this.workerSignal,
-    );
   }
 
   registerTab(signal: AbortSignal): Promise<void> {
@@ -458,9 +445,6 @@ export const setupSharedWorkerTestBootstrap$ = command(
             }, signal);
             subscribeNamedRealtimeEvents((channelName, message) => {
               directBridge?.handleNamedRealtimeMessage(channelName, message);
-            }, signal);
-            subscribeChatDatabaseRecovery(() => {
-              directBridge?.handleRealtimeRecovery();
             }, signal);
             directRealtimeForwardingInstalled = true;
           }

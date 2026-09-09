@@ -9,5 +9,6 @@
 mod exec;
 mod file_write_status;
 mod shutdown;
+mod storage_manifest;
 mod support;
 mod write_file;

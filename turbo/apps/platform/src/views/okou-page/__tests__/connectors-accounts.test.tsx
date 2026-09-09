@@ -650,218 +650,205 @@ test("Load connector accounts progressively", async () => {
   expect(accountActions(dialog)).toHaveLength(8);
 });
 
-test.each([false, true])(
-  "Reconnect the selected non-default account after cancellation (old API: %s)",
-  async (oldApi) => {
-    const completedAttempts = mockOAuthCompletions(context);
-    let oauthAttemptId = crypto.randomUUID();
-    const agentIds = [
-      "c0000000-0000-4000-a000-000000000001",
-      "c0000000-0000-4000-a000-000000000002",
-    ];
-    context.mocks.data.agents(
-      agentIds.map((id) => {
-        return listAgent(id, id);
-      }),
-    );
-    const authorizedAgents = new Set<string>();
-    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+test("Reconnect the selected non-default account after cancellation", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  let oauthAttemptId = crypto.randomUUID();
+  const agentIds = [
+    "c0000000-0000-4000-a000-000000000001",
+    "c0000000-0000-4000-a000-000000000002",
+  ];
+  context.mocks.data.agents(
+    agentIds.map((id) => {
+      return listAgent(id, id);
+    }),
+  );
+  const authorizedAgents = new Set<string>();
+  context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs: authorizedAgents.has(params.id) ? ["stripe"] : [],
+    });
+  });
+  context.mocks.api(
+    userConnectorsContract.update,
+    ({ params, body, respond }) => {
+      if (
+        body.operation === "add" &&
+        body.enabledConnectorSlugs.includes("stripe")
+      ) {
+        authorizedAgents.add(params.id);
+      }
       return respond(200, {
         enabledConnectorSlugs: authorizedAgents.has(params.id)
           ? ["stripe"]
           : [],
       });
-    });
-    context.mocks.api(
-      userConnectorsContract.update,
-      ({ params, body, respond }) => {
-        if (
-          body.operation === "add" &&
-          body.enabledConnectorSlugs.includes("stripe")
-        ) {
-          authorizedAgents.add(params.id);
-        }
-        return respond(200, {
-          enabledConnectorSlugs: authorizedAgents.has(params.id)
-            ? ["stripe"]
-            : [],
-        });
-      },
-    );
-    const [connector] = mockConnectors(context, [
-      {
-        connectorSlug: "stripe",
-        authMethod: "api-token",
-        externalUsername: "work",
-      },
-    ]);
-    if (!connector) {
-      throw new Error("Expected Stripe connector");
-    }
-    const work = builtinAccount({
-      id: connector.id,
-      slug: "stripe",
-      authMethod: "api-token",
-      displayName: "Work",
-      isDefault: true,
-      externalUsername: "work",
-    });
-    let personal = builtinAccount({
-      id: crypto.randomUUID(),
-      slug: "stripe",
-      displayName: "Personal",
-      isDefault: false,
-      externalUsername: "personal",
-      status: "reconnect-required",
-    });
-    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
-      return respond(200, {
-        summaries: [
-          {
-            target: work.target,
-            accountCount: 2,
-            attentionCount:
-              personal.connectionStatus === "reconnect-required" ? 1 : 0,
-            defaultConnection: work,
-          },
-        ],
-      });
-    });
-    context.mocks.api(
-      connectorAccountsContract.connection,
-      ({ params, respond }) => {
-        if (params.connectionId !== personal.id) {
-          return respond(404, {
-            error: { message: "Account not found", code: "NOT_FOUND" },
-          });
-        }
-        return respond(200, personal);
-      },
-    );
-    // Register the static collection route after the parameterized item route so
-    // `/connections` cannot be interpreted as a connection ID by MSW.
-    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
-      return respond(200, { connections: [work, personal], nextCursor: null });
-    });
-    let submitted: unknown;
-    let startCount = 0;
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ body, respond }) => {
-        submitted = body.account;
-        oauthAttemptId = crypto.randomUUID();
-        startCount += 1;
-        expect(body.authorizeAgent).not.toBeTruthy();
-        return respond(200, {
-          oauthAttemptId:
-            oldApi && startCount === 1 ? undefined : oauthAttemptId,
-          connectionId: personal.id,
-          authorizationUrl: "https://oauth.test/stripe/authorize",
-        });
-      },
-    );
-    let authWindow = createAuthWindow();
-    context.mocks.browser.open(authWindow);
-    await setupPage({
-      context,
-      path: "/connectors",
-      sharedWorkerTestTransport: "message-port",
-    });
-    click(
-      await waitFor(() => {
-        return getConnectorAction("button", "Manage Stripe accounts");
-      }),
-    );
-    const manager = await screen.findByRole("dialog", {
-      name: "Manage Stripe accounts",
-    });
-    const personalRow = await within(manager).findByRole("group", {
-      name: "Personal",
-    });
-    click(getConnectorAction("button", "Reconnect", personalRow));
-    const connect = await waitFor(() => {
-      const reconnectDialog = screen
-        .getAllByRole("dialog", { name: "Stripe" })
-        .find((candidate) => {
-          return queryConnectorAction("button", "Reconnect", candidate);
-        });
-      if (!reconnectDialog) {
-        throw new Error("Expected Stripe reconnect dialog");
-      }
-      return reconnectDialog;
-    });
-
-    click(getConnectorAction("button", "Reconnect", connect));
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/stripe/authorize",
-      );
-    });
-    personal = {
-      ...personal,
-      displayName: "Renamed in another tab",
-      updatedAt: "2026-01-01T00:00:00.500Z",
-    };
-    const cancelledAttemptId = oauthAttemptId;
-    authWindow.close();
-    await waitFor(() => {
-      expect(getConnectorAction("button", "Reconnect", connect)).toBeEnabled();
-    });
-    expect(connect).toBeInTheDocument();
-    expect(getConnectorCard("Stripe")).toHaveTextContent("Add access");
-
-    authWindow = createAuthWindow();
-    context.mocks.browser.open(authWindow);
-    const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
-    click(getConnectorAction("button", "Reconnect", connect));
-
-    await connectorChangedSubscribe.started;
-    connectorChangedSubscribe.attach();
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/stripe/authorize",
-      );
-    });
-    expect(submitted).toStrictEqual({
-      intent: "reconnect",
-      connectionId: personal.id,
-    });
-    personal = {
-      ...personal,
-      connectionStatus: "connected",
-      reconnectReason: null,
-      updatedAt: "2026-01-01T00:00:01.000Z",
-    };
-    expect(oauthAttemptId).not.toBe(cancelledAttemptId);
-    completedAttempts.set(oauthAttemptId, personal.id);
-    context.mocks.ably.trigger("connector:changed", {
+    },
+  );
+  const [connector] = mockConnectors(context, [
+    {
       connectorSlug: "stripe",
+      authMethod: "api-token",
+      externalUsername: "work",
+    },
+  ]);
+  if (!connector) {
+    throw new Error("Expected Stripe connector");
+  }
+  const work = builtinAccount({
+    id: connector.id,
+    slug: "stripe",
+    authMethod: "api-token",
+    displayName: "Work",
+    isDefault: true,
+    externalUsername: "work",
+  });
+  let personal = builtinAccount({
+    id: crypto.randomUUID(),
+    slug: "stripe",
+    displayName: "Personal",
+    isDefault: false,
+    externalUsername: "personal",
+    status: "reconnect-required",
+  });
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [
+        {
+          target: work.target,
+          accountCount: 2,
+          attentionCount:
+            personal.connectionStatus === "reconnect-required" ? 1 : 0,
+          defaultConnection: work,
+        },
+      ],
     });
-
+  });
+  context.mocks.api(
+    connectorAccountsContract.connection,
+    ({ params, respond }) => {
+      if (params.connectionId !== personal.id) {
+        return respond(404, {
+          error: { message: "Account not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, personal);
+    },
+  );
+  // Register the static collection route after the parameterized item route so
+  // `/connections` cannot be interpreted as a connection ID by MSW.
+  context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+    return respond(200, { connections: [work, personal], nextCursor: null });
+  });
+  let submitted: unknown;
+  context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
+    submitted = body.account;
+    oauthAttemptId = crypto.randomUUID();
+    expect(body.authorizeAgent).not.toBeTruthy();
+    return respond(200, {
+      oauthAttemptId,
+      connectionId: personal.id,
+      authorizationUrl: "https://oauth.test/stripe/authorize",
+    });
+  });
+  let authWindow = createAuthWindow();
+  context.mocks.browser.open(authWindow);
+  await setupPage({
+    context,
+    path: "/connectors",
+    sharedWorkerTestTransport: "message-port",
+  });
+  click(
     await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Stripe" }),
-      ).not.toBeInTheDocument();
-    });
+      return getConnectorAction("button", "Manage Stripe accounts");
+    }),
+  );
+  const manager = await screen.findByRole("dialog", {
+    name: "Manage Stripe accounts",
+  });
+  const personalRow = await within(manager).findByRole("group", {
+    name: "Personal",
+  });
+  click(getConnectorAction("button", "Reconnect", personalRow));
+  const connect = await waitFor(() => {
+    const reconnectDialog = screen
+      .getAllByRole("dialog", { name: "Stripe" })
+      .find((candidate) => {
+        return queryConnectorAction("button", "Reconnect", candidate);
+      });
+    if (!reconnectDialog) {
+      throw new Error("Expected Stripe reconnect dialog");
+    }
+    return reconnectDialog;
+  });
+
+  click(getConnectorAction("button", "Reconnect", connect));
+  await waitFor(() => {
+    expect(authWindow.location.href).toBe(
+      "https://oauth.test/stripe/authorize",
+    );
+  });
+  personal = {
+    ...personal,
+    displayName: "Renamed in another tab",
+    updatedAt: "2026-01-01T00:00:00.500Z",
+  };
+  const cancelledAttemptId = oauthAttemptId;
+  authWindow.close();
+  await waitFor(() => {
+    expect(getConnectorAction("button", "Reconnect", connect)).toBeEnabled();
+  });
+  expect(connect).toBeInTheDocument();
+  expect(getConnectorCard("Stripe")).toHaveTextContent("Add access");
+
+  authWindow = createAuthWindow();
+  context.mocks.browser.open(authWindow);
+  const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
+  click(getConnectorAction("button", "Reconnect", connect));
+
+  await connectorChangedSubscribe.started;
+  connectorChangedSubscribe.attach();
+  await waitFor(() => {
+    expect(authWindow.location.href).toBe(
+      "https://oauth.test/stripe/authorize",
+    );
+  });
+  expect(submitted).toStrictEqual({
+    intent: "reconnect",
+    connectionId: personal.id,
+  });
+  personal = {
+    ...personal,
+    connectionStatus: "connected",
+    reconnectReason: null,
+    updatedAt: "2026-01-01T00:00:01.000Z",
+  };
+  expect(oauthAttemptId).not.toBe(cancelledAttemptId);
+  completedAttempts.set(oauthAttemptId, personal.id);
+  context.mocks.ably.trigger("connector:changed", {
+    connectorSlug: "stripe",
+  });
+
+  await waitFor(() => {
     expect(
-      screen.queryByRole("dialog", { name: "Name your Stripe account" }),
+      screen.queryByRole("dialog", { name: "Stripe" }),
     ).not.toBeInTheDocument();
-    expect(
-      getConnectorAction("button", "Manage Stripe access"),
-    ).toHaveTextContent("Add access");
-    click(getConnectorAction("button", "Manage Stripe accounts"));
-    const reopenedManager = await screen.findByRole("dialog", {
-      name: "Manage Stripe accounts",
-    });
-    const workRow = within(reopenedManager).getByRole("group", {
-      name: "Work",
-    });
-    expect(
-      within(workRow).getByRole("radio", { name: "Default" }),
-    ).toBeChecked();
-    expect(within(workRow).queryByText("Reconnect required")).toBeNull();
-  },
-);
+  });
+  expect(
+    screen.queryByRole("dialog", { name: "Name your Stripe account" }),
+  ).not.toBeInTheDocument();
+  expect(
+    getConnectorAction("button", "Manage Stripe access"),
+  ).toHaveTextContent("Add access");
+  click(getConnectorAction("button", "Manage Stripe accounts"));
+  const reopenedManager = await screen.findByRole("dialog", {
+    name: "Manage Stripe accounts",
+  });
+  const workRow = within(reopenedManager).getByRole("group", {
+    name: "Work",
+  });
+  expect(within(workRow).getByRole("radio", { name: "Default" })).toBeChecked();
+  expect(within(workRow).queryByText("Reconnect required")).toBeNull();
+});
 
 test("Rename and delete a specific connector account", async () => {
   const [connector] = mockConnectors(context, [
@@ -1061,10 +1048,12 @@ test("Review and reconnect the connector account the user selected", async () =>
     });
   });
   let submittedAccount: unknown;
+  mockOAuthCompletions(context);
   context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
     submittedAccount = body.account;
     return respond(200, {
       authorizationUrl: "https://oauth.test/github/authorize",
+      oauthAttemptId: crypto.randomUUID(),
     });
   });
   const authWindow = createAuthWindow();

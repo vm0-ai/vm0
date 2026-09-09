@@ -17,6 +17,8 @@ export interface VoiceLevelSample {
   readonly level: number;
 }
 
+const VOICE_LEVEL_SAMPLE_COUNT = 40;
+
 interface VoiceDraftCapture {
   readonly pcm: Awaited<ReturnType<typeof startVoiceDraftPcmCapture>>;
   readonly monitor: Awaited<ReturnType<typeof startAudioActivityMonitor>>;
@@ -55,7 +57,7 @@ export function createVoiceDraftCaptureSignals() {
       set(acquisition$, controller);
       set(
         samples$,
-        Array.from({ length: 32 }, (_, id) => {
+        Array.from({ length: VOICE_LEVEL_SAMPLE_COUNT }, (_, id) => {
           return { id, level: 0 };
         }),
       );

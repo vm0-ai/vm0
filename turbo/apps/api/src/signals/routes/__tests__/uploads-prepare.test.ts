@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -46,6 +47,63 @@ function validBody() {
 }
 
 describe("POST /api/uploads/prepare", () => {
+  it("registers the legacy public URL before issuing upload credentials", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const registrations: unknown[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof PutObjectCommand) {
+        expect(command.input.Bucket).toBe("test-hosted-sites");
+        expect(command.input.IfNoneMatch).toBe("*");
+        registrations.push(JSON.parse(String(command.input.Body)));
+      }
+      return Promise.resolve({});
+    });
+    context.mocks.s3.getSignedUrl.mockImplementation(() => {
+      expect(registrations).toHaveLength(1);
+      return Promise.resolve("https://r2.example.com/upload?sig=test");
+    });
+    const response = await setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
+    ).prepare({
+      body: validBody(),
+      headers: { authorization: "Bearer clerk-session" },
+      extraHeaders: { origin: "https://app.okou.ai" },
+    });
+    expect(response.status).toBe(200);
+    expect(registrations).toStrictEqual([
+      {
+        version: 1,
+        kind: "legacy-file",
+        audience: "public",
+        publicBrand: "okou",
+        key: expect.stringMatching(/^artifacts\/[a-z0-9]{10}\.txt$/u),
+        filename: "hello.txt",
+        contentType: "text/plain",
+      },
+    ]);
+  });
+
+  it("does not issue upload credentials when public registration fails", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof PutObjectCommand) {
+        return Promise.reject(new Error("Registry unavailable"));
+      }
+      return Promise.resolve({});
+    });
+    const response = await accept(
+      setupApp({ context, routes: uploadsTestRoutes })(uploadsContract).prepare(
+        {
+          body: validBody(),
+          headers: { authorization: "Bearer clerk-session" },
+        },
+      ),
+      [500],
+    );
+    expect(response.status).toBe(500);
+    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context, routes: uploadsTestRoutes })(
       uploadsContract,

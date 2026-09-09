@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
 import { UnsupportedPiSessionVersionError } from "./errors";
+import { PiApiModelRequestError } from "./api-failure";
 import { createPiApiFirstTurnOwnership } from "./provider-ownership";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
@@ -398,8 +399,42 @@ describe("MemoryPiSession", () => {
         tools: [],
         ownership,
       }),
-    ).rejects.toThrow("provider transport failed");
+    ).rejects.toMatchObject({
+      name: "PiApiModelRequestError",
+      message: "Pi API model request failed",
+      diagnostic: { category: "unknown" },
+    });
     expect(ownership.stage).toBe("provider-may-have-started");
+  });
+
+  it("does not turn a durable ownership failure into a model request failure", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "boundary-failure",
+      provider: "boundary-failure",
+    });
+    const failure = new Error(
+      "durable transaction failed after marking ownership",
+    );
+    const turn = runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "keep the original invariant",
+      tools: [],
+      ownership: createPiApiFirstTurnOwnership(),
+      providerRequestBoundary: async (mark) => {
+        mark();
+        throw failure;
+      },
+    });
+    await expect(turn).rejects.toBe(failure);
+    await expect(turn).rejects.not.toBeInstanceOf(PiApiModelRequestError);
+    expect(faux.state.callCount).toBe(0);
   });
 
   it("uses Pi migrations and compacted-context projection", async () => {

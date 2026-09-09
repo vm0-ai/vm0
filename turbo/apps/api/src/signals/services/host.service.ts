@@ -1,3 +1,4 @@
+import { PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS } from "../../lib/private-artifact-preview";
 import { createHash } from "node:crypto";
 import { command } from "ccstate";
 import type {
@@ -1390,7 +1391,9 @@ export const getHostedSiteFiles$ = command(
           generateHostedSitesPresignedGetUrl(
             hostedR2.config.bucket,
             fileKey(deployment.r2Prefix, file.path),
-            deployment.manifest.access ? 15 * 60 : GET_URL_TTL_SECONDS,
+            deployment.manifest.access
+              ? PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS
+              : GET_URL_TTL_SECONDS,
             true,
           ),
         );

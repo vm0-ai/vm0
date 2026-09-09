@@ -277,6 +277,11 @@ describe("native Pi execution edges", () => {
       }[] = [];
       server.use(
         http.post(piNativeInferenceUrl(config), async ({ request }) => {
+          // API failure diagnostics must retain the native credential-safe
+          // fetch policy, including refusal to follow redirects.
+          if (config.dialect === "anthropic-messages") {
+            expect(request.redirect).toBe("error");
+          }
           requests.push({
             url: request.url,
             headers: request.headers,

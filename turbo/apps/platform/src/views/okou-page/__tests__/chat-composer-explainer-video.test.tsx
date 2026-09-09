@@ -340,6 +340,7 @@ test("Desktop recording handoff keeps both uploaded files with the explainer sel
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     return respond(200, {
       url: `https://resolved.example.test/${query.file_id}`,
+      expiresAt: "2099-01-01T00:00:00.000Z",
       publicUrl: `https://cdn.example.test/${query.file_id}`,
     });
   });

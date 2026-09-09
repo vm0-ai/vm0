@@ -19,7 +19,7 @@ from tests.upstream_connection_helpers import (
 )
 
 
-async def test_matching_sni_and_host_blocks_connected_vm0_api_edge_when_unbound(
+async def test_matching_sni_and_host_blocks_connected_platform_api_edge_when_unbound(
     registry_file, real_flow, mitm_ctx, headers
 ):
     flow = real_flow(
@@ -42,7 +42,7 @@ async def test_matching_sni_and_host_blocks_connected_vm0_api_edge_when_unbound(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
 
 
-async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge(
+async def test_matching_sni_and_host_allows_authenticated_connected_platform_api_edge(
     registry_file, real_flow, mitm_ctx, headers
 ):
     flow = real_flow(
@@ -74,7 +74,7 @@ async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(
+async def test_matching_sni_and_host_retargets_unconnected_platform_api_auto_allow(
     registry_file, real_flow, mitm_ctx, headers
 ):
     flow = real_flow(
@@ -97,7 +97,7 @@ async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_vm0_api_auto_allow_injects_runner_preview_bypass(
+async def test_platform_api_auto_allow_injects_runner_preview_bypass(
     registry_file, real_flow, mitm_ctx, monkeypatch
 ):
     flow = real_flow(
@@ -129,7 +129,7 @@ async def test_vm0_api_auto_allow_injects_runner_preview_bypass(
         pytest.param("/api/ordinary/%zz/test/example", id="malformed-escape"),
     ],
 )
-async def test_vm0_api_unsafe_paths_fail_closed_before_binding_or_bypass(
+async def test_platform_api_unsafe_paths_fail_closed_before_binding_or_bypass(
     registry_file, real_flow, mitm_ctx, monkeypatch, path
 ):
     flow = real_flow(
@@ -157,7 +157,7 @@ async def test_vm0_api_unsafe_paths_fail_closed_before_binding_or_bypass(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_vm0_api_unsafe_browser_path_does_not_fall_through_to_browser_allow(
+async def test_platform_api_unsafe_browser_path_does_not_fall_through_to_browser_allow(
     registry_file, real_flow, mitm_ctx, headers, monkeypatch
 ):
     flow = real_flow(
@@ -185,7 +185,7 @@ async def test_vm0_api_unsafe_browser_path_does_not_fall_through_to_browser_allo
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_vm0_api_safe_repeated_separator_path_remains_auto_allowed(
+async def test_platform_api_safe_repeated_separator_path_remains_auto_allowed(
     registry_file, real_flow, mitm_ctx, monkeypatch
 ):
     flow = real_flow(
@@ -223,7 +223,7 @@ async def test_non_api_request_does_not_receive_runner_preview_bypass(
     assert "x-vercel-protection-bypass" not in flow.request.headers
 
 
-async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
+async def test_matching_sni_and_host_allows_bound_platform_api_auto_allow(
     registry_file, real_flow, mitm_ctx, headers
 ):
     flow = real_flow(
@@ -327,7 +327,7 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
         ),
     ],
 )
-async def test_vm0_api_auto_allow_respects_authority_boundary(
+async def test_platform_api_auto_allow_respects_authority_boundary(
     registry_file,
     real_flow,
     mitm_ctx,
@@ -364,7 +364,7 @@ async def test_vm0_api_auto_allow_respects_authority_boundary(
         assert "x-vercel-protection-bypass" not in flow.request.headers
 
 
-async def test_malformed_vm0_api_url_is_cached_as_non_match(
+async def test_malformed_platform_api_url_is_cached_as_non_match(
     registry_file,
     real_flow,
     mitm_ctx,
@@ -411,7 +411,7 @@ async def test_malformed_vm0_api_url_is_cached_as_non_match(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
+async def test_platform_api_wrong_port_uses_matching_firewall_deny_policy(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -455,7 +455,7 @@ async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_vm0_api_wrong_scheme_uses_matching_firewall_deny_policy(
+async def test_platform_api_wrong_scheme_uses_matching_firewall_deny_policy(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -500,7 +500,7 @@ async def test_vm0_api_wrong_scheme_uses_matching_firewall_deny_policy(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_vm0_api_wrong_port_uses_normal_connector_auth(
+async def test_platform_api_wrong_port_uses_normal_connector_auth(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -558,7 +558,9 @@ async def test_vm0_api_wrong_port_uses_normal_connector_auth(
     assert flow.request.headers["Authorization"] == "Bearer resolved-api-token"
 
 
-async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, real_flow, mitm_ctx):
+async def test_registry_unavailable_blocks_platform_api_auto_allow(
+    registry_file, real_flow, mitm_ctx
+):
     registry.load_registry(str(registry_file))
     registry_file.write_text("{ broken registry")
     flow = real_flow(with_response=False, host="api.okou.ai")
@@ -608,7 +610,7 @@ async def test_unknown_cached_classification_does_not_bypass_registry_gate(
         ),
     ],
 )
-async def test_vm0_api_test_paths_skip_auto_allow(
+async def test_platform_api_test_paths_skip_auto_allow(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -675,7 +677,7 @@ async def test_vm0_api_test_paths_skip_auto_allow(
     assert binding.kinds == frozenset(("connector_auth",))
 
 
-async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(
+async def test_platform_api_non_test_paths_auto_allow_before_firewall_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
     reg_path = _write_registry(

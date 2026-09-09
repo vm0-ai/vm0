@@ -8,6 +8,10 @@ import {
   type ConnectorCategorySection,
 } from "../../signals/okou-page/settings/connector-categories.ts";
 import {
+  buildConnectorShelves,
+  type ConnectorShelfLayout,
+} from "../../signals/okou-page/settings/connector-shelves.ts";
+import {
   connectorCurrentConnectionStatus,
   matchesConnectorDirectorySearch,
 } from "../../signals/okou-page/settings/connectors.ts";
@@ -17,13 +21,17 @@ import { localizeConnectorCategoryMetadata } from "./components/settings/connect
 export interface ConnectorDirectoryModel {
   /** Connected connectors whose connection or permissions need a fix. */
   readonly attention: readonly PlatformConnectorCatalogStatusItem[];
-  /** Connected connectors that are working. */
-  readonly healthy: readonly PlatformConnectorCatalogStatusItem[];
+  /**
+   * Connected connectors matching the current search. Discovery only offers
+   * what can be added, so without these a search for something already
+   * connected would answer "no match".
+   */
+  readonly matchedConnected: readonly PlatformConnectorCatalogStatusItem[];
   readonly discover: readonly PlatformConnectorCatalogStatusItem[];
   readonly custom: readonly CustomConnectorResponse[];
   readonly categorySections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
-  readonly connectedCount: number;
-  readonly yoursSlugs: readonly ConnectorSlug[];
+  /** Shelves for the default browse view: no search, no chosen category. */
+  readonly shelfLayout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly discoverSlugs: readonly ConnectorSlug[];
   readonly bySlug: ReadonlyMap<
     ConnectorSlug,
@@ -78,6 +86,8 @@ export function buildConnectorDirectoryModel({
   category,
   categoryMetadata,
   otherCategoryLabel,
+  categoryCounts,
+  headShelfLabel,
 }: {
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
@@ -87,12 +97,14 @@ export function buildConnectorDirectoryModel({
   readonly category: string | null;
   readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly otherCategoryLabel: string;
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  readonly headShelfLabel: string;
 }): ConnectorDirectoryModel {
   const matchedConnected = connected.filter((connector) => {
     return matchesConnectorDirectorySearch(search, connector);
   });
-  const attention = matchedConnected.filter(needsAttention);
-  const healthy = matchedConnected.filter((connector) => {
+  const attention = connected.filter(needsAttention);
+  const searchedConnected = matchedConnected.filter((connector) => {
     return !needsAttention(connector);
   });
   const discover = unconnected.filter((connector) => {
@@ -113,6 +125,13 @@ export function buildConnectorDirectoryModel({
   ).flatMap((group) => {
     return group.sections;
   });
+  const shelfLayout = buildConnectorShelves({
+    sections: categorySections,
+    categoryCounts,
+    headLabel: headShelfLabel,
+    // The dialog's card grid is two wide, so four is two whole rows.
+    previewSize: 4,
+  });
   const categoryLabels = new Map(
     categorySections.map((section) => {
       return [section.category, section.label];
@@ -121,13 +140,15 @@ export function buildConnectorDirectoryModel({
 
   return {
     attention,
-    healthy,
+    matchedConnected: search.trim() ? searchedConnected : [],
     discover,
     custom,
     categorySections,
-    connectedCount: connected.length,
-    yoursSlugs: [...slugsOf(attention), ...slugsOf(healthy)],
-    discoverSlugs: slugsOf(discover),
+    shelfLayout,
+    discoverSlugs:
+      search.trim() || category !== null || shelfLayout.shelves.length === 0
+        ? slugsOf(discover)
+        : slugsOf(shelfLayout.connectors),
     bySlug: new Map(
       [...connected, ...unconnected].map((connector) => {
         return [connector.slug, connector];

@@ -122,11 +122,6 @@ function payloadRequestsKindsReloadFor(
   });
 }
 
-const reloadUserModelPreferenceFromRealtime$ = command(({ set }) => {
-  set(reloadUserModelPreference$);
-  return false;
-});
-
 const handleUserPreferenceChanged$ = command(
   ({ set }, payload: unknown): boolean => {
     if (
@@ -149,7 +144,6 @@ export const setupUserPreferenceRealtime$ = command(
       {
         topic: "userPreferenceChanged",
         loopCommand$: handleUserPreferenceChanged$,
-        catchUpCommand$: reloadUserModelPreferenceFromRealtime$,
       },
       signal,
     );
