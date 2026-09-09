@@ -1,3 +1,7 @@
+import {
+  sanitizePiMemoryPhase2Diagnostic,
+  type PiMemoryPhase2Diagnostic,
+} from "./phase2-memory-diagnostics";
 import type { PiAgentModelConfig } from "./types";
 
 export const PI_MEMORY_PHASE2_MAINTENANCE_REASONING = "max" as const;
@@ -165,14 +169,26 @@ const FAILURE_MESSAGES: Readonly<Record<PiMemoryPhase2FailureClass, string>> = {
 export class PiMemoryPhase2EngineError extends Error {
   readonly errorClass: PiMemoryPhase2FailureClass;
   readonly counts: PiMemoryPhase2FailureCounts;
+  readonly diagnostic?: PiMemoryPhase2Diagnostic;
 
   constructor(
     errorClass: PiMemoryPhase2FailureClass,
     counts: PiMemoryPhase2FailureCounts,
+    diagnostic?: PiMemoryPhase2Diagnostic,
   ) {
     super(FAILURE_MESSAGES[errorClass]);
     this.name = "PiMemoryPhase2EngineError";
     this.errorClass = errorClass;
     this.counts = Object.freeze({ ...counts });
+    if (diagnostic)
+      this.diagnostic = sanitizePiMemoryPhase2Diagnostic(diagnostic);
+  }
+
+  /** The existing Guest stderr consumer forwards this bounded line to terminal logs. */
+  terminalMessage(): string {
+    const message = FAILURE_MESSAGES[this.errorClass];
+    return this.diagnostic
+      ? `${message} pi_memory_phase2=${JSON.stringify(sanitizePiMemoryPhase2Diagnostic(this.diagnostic))}`
+      : message;
   }
 }

@@ -519,6 +519,35 @@ mod tests {
         diagnostic
     }
 
+    #[test]
+    fn pi_memory_phase2_terminal_diagnostics_remain_actionable() {
+        let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/pi-memory-phase2-terminal.json"
+        )))
+        .unwrap();
+        for fixture in fixtures {
+            let message = fixture["stderr"].as_str().unwrap();
+            let diagnostic = FailureDiagnostic::new(
+                FailureClass::CliNonzero,
+                AgentFramework::Pi,
+                PromptMetadata::from_prompt(""),
+            )
+            .with_cli_exit_code(1)
+            .with_failure_detail_source(FailureDetailSource::Stderr);
+            let wire = serde_json::to_vec(&diagnostic).unwrap();
+            let decoded: FailureDiagnostic = serde_json::from_slice(&wire).unwrap();
+            let failure = executor::ExecutionFailure::new(1, message, Some(decoded));
+            let event = capture_job_failure_log(&failure);
+            assert_eq!(event.level, Level::ERROR);
+            assert_field_eq(&event, "message", "job execution failed");
+            assert_field_eq(&event, "error", message);
+            assert_field_eq(&event, "failure_framework", "pi");
+            assert_field_eq(&event, "failure_class", "cli_nonzero");
+            assert_field_eq(&event, "failure_detail_source", "stderr");
+        }
+    }
+
     fn post_result_cli_termination() -> CliTerminationDiagnostic {
         CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
             .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))

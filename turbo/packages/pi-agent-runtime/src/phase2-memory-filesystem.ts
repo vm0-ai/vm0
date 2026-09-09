@@ -29,6 +29,12 @@ import {
   type PiMemoryPhase2SelectedSnapshot,
 } from "./phase2-memory-types";
 
+import {
+  Phase2OutputInvalidError,
+  phase2DiagnosticForError,
+  phase2FileClass,
+} from "./phase2-memory-diagnostics";
+
 export const PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES = 256;
 export const PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES = 21_036_800;
 export const PI_MEMORY_PHASE2_EVIDENCE_SLUG_MAX_BYTES = 48;
@@ -94,7 +100,6 @@ interface ValidatedPreparedSet {
 }
 
 export class Phase2InputInvalidError extends Error {}
-export class Phase2OutputInvalidError extends Error {}
 
 function byteLength(value: string): number {
   return Buffer.byteLength(value, "utf8");
@@ -693,14 +698,33 @@ function validMemory(content: Buffer): boolean {
   );
 }
 
-function validSummary(content: Buffer): boolean {
+function summaryFailure(content: Buffer) {
+  const details = { fileClass: "summary" as const };
   const decoded = decodeUtf8(content);
-  return (
-    decoded !== null &&
-    decoded.split(/\r?\n/u)[0] === "v1" &&
-    content.length <= PI_MEMORY_SUMMARY_MAX_BYTES &&
-    encode(decoded).length <= PI_MEMORY_SUMMARY_MAX_TOKENS
-  );
+  if (decoded === null)
+    return new Phase2OutputInvalidError("summary_encoding", details);
+  if (decoded.split(/\r?\n/u)[0] !== "v1")
+    return new Phase2OutputInvalidError("summary_header", details);
+  if (content.length > PI_MEMORY_SUMMARY_MAX_BYTES) {
+    return new Phase2OutputInvalidError("summary_bytes", {
+      ...details,
+      actual: content.length,
+      limit: PI_MEMORY_SUMMARY_MAX_BYTES,
+    });
+  }
+  const tokens = encode(decoded).length;
+  if (tokens > PI_MEMORY_SUMMARY_MAX_TOKENS) {
+    return new Phase2OutputInvalidError("summary_tokens", {
+      ...details,
+      actual: tokens,
+      limit: PI_MEMORY_SUMMARY_MAX_TOKENS,
+    });
+  }
+  return undefined;
+}
+
+function validSummary(content: Buffer): boolean {
+  return summaryFailure(content) === undefined;
 }
 
 export function baseHasValidConsolidatedArtifacts(
@@ -783,7 +807,7 @@ async function inventoryFiles(
     }
     const directoryStat = await fs.lstat(directory.path, { bigint: true });
     if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-      throw new Phase2OutputInvalidError();
+      throw new Phase2OutputInvalidError("unsafe_tree", { fileClass: "tree" });
     }
     const entries = await fs.readdir(directory.path, { withFileTypes: true });
     entries.sort((left, right) => {
@@ -796,36 +820,58 @@ async function inventoryFiles(
       try {
         assertSafeFilePath(relative);
       } catch {
-        throw new Phase2OutputInvalidError();
+        throw new Phase2OutputInvalidError("unsafe_path", {
+          fileClass: phase2FileClass(relative),
+        });
       }
       const path = join(directory.path, entry.name);
       const stat = await fs.lstat(path, { bigint: true });
       if (stat.isSymbolicLink()) {
-        throw new Phase2OutputInvalidError();
+        throw new Phase2OutputInvalidError("unsafe_tree", {
+          fileClass: phase2FileClass(relative),
+        });
       }
       if (stat.isDirectory()) {
         pending.push({ path, relative });
         continue;
       }
-      if (
-        !stat.isFile() ||
-        stat.nlink !== 1n ||
-        stat.size > BigInt(MAX_FILE_SIZE_BYTES)
-      ) {
-        throw new Phase2OutputInvalidError();
+      if (!stat.isFile() || stat.nlink !== 1n) {
+        throw new Phase2OutputInvalidError("unsafe_tree", {
+          fileClass: phase2FileClass(relative),
+        });
+      }
+      if (stat.size > BigInt(MAX_FILE_SIZE_BYTES)) {
+        throw new Phase2OutputInvalidError("file_size", {
+          fileClass: phase2FileClass(relative),
+          actual: Number(stat.size),
+          limit: MAX_FILE_SIZE_BYTES,
+        });
       }
       const content = await fs.readFile(path);
       if (BigInt(content.length) !== stat.size) {
-        throw new Phase2OutputInvalidError();
+        throw new Phase2OutputInvalidError("file_integrity", {
+          fileClass: phase2FileClass(relative),
+        });
       }
       pathBytes += byteLength(relative);
       totalBytes += content.length;
-      if (
-        result.size >= STORAGE_MANIFEST_MAX_FILES ||
-        pathBytes > STORAGE_MANIFEST_MAX_PATH_BYTES ||
-        totalBytes > PI_MEMORY_PHASE2_PREPARED_MAX_BYTES
-      ) {
-        throw new Phase2OutputInvalidError();
+      if (result.size >= STORAGE_MANIFEST_MAX_FILES) {
+        throw new Phase2OutputInvalidError("inventory_files", {
+          actual: result.size + 1,
+          limit: STORAGE_MANIFEST_MAX_FILES,
+        });
+      }
+      if (pathBytes > STORAGE_MANIFEST_MAX_PATH_BYTES) {
+        throw new Phase2OutputInvalidError("inventory_paths", {
+          actual: pathBytes,
+          limit: STORAGE_MANIFEST_MAX_PATH_BYTES,
+        });
+      }
+      if (totalBytes > PI_MEMORY_PHASE2_PREPARED_MAX_BYTES) {
+        throw new Phase2OutputInvalidError("inventory_bytes", {
+          actual: totalBytes,
+          limit: PI_MEMORY_PHASE2_PREPARED_MAX_BYTES,
+        });
       }
       result.set(relative, content);
     }
@@ -833,7 +879,7 @@ async function inventoryFiles(
   try {
     validatePathCollection([...result.keys()]);
   } catch {
-    throw new Phase2OutputInvalidError();
+    throw new Phase2OutputInvalidError("unsafe_path", { fileClass: "tree" });
   }
   return result;
 }
@@ -891,47 +937,87 @@ export async function applyValidatedPiMemoryPhase2Result(args: {
   readonly files: readonly PiMemoryPhase2PreparedFile[];
   readonly contentIdentity: string;
 }): Promise<void> {
-  const expectedBase = snapshotBaseFiles(args.baseFiles).files;
-  const mountedBefore = await inventoryFiles(args.memoryRoot);
-  const expectedBaseMap = new Map(
-    expectedBase.map((file) => {
-      return [file.path, file.bytes] as const;
-    }),
-  );
-  if (!mapsEqual(mountedBefore, expectedBaseMap)) {
-    throw new Phase2OutputInvalidError();
-  }
+  try {
+    const expectedBase = snapshotBaseFiles(args.baseFiles).files;
+    const mountedBefore = await inventoryFiles(args.memoryRoot);
+    const expectedBaseMap = new Map(
+      expectedBase.map((file) => {
+        return [file.path, file.bytes] as const;
+      }),
+    );
+    if (!mapsEqual(mountedBefore, expectedBaseMap)) {
+      throw new Phase2OutputInvalidError("base_mismatch");
+    }
 
-  const prepared = new Map<string, Buffer>();
-  for (const file of args.files) {
-    const bytes = Buffer.from(file.contentBase64, "base64");
+    const prepared = new Map<string, Buffer>();
+    for (const file of args.files) {
+      const bytes = Buffer.from(file.contentBase64, "base64");
+      if (
+        bytes.length !== file.size ||
+        hashBytes(bytes) !== file.hash ||
+        prepared.has(file.path)
+      ) {
+        throw new Phase2OutputInvalidError("file_integrity", {
+          fileClass: phase2FileClass(file.path),
+        });
+      }
+      prepared.set(file.path, bytes);
+    }
+
+    for (const path of mountedBefore.keys()) {
+      if (!prepared.has(path)) {
+        try {
+          await fs.unlink(join(args.memoryRoot, ...path.split("/")));
+        } catch (error) {
+          const diagnostic = phase2DiagnosticForError(
+            error,
+            "mounted_apply",
+            phase2FileClass(path),
+          );
+          throw new Phase2OutputInvalidError(
+            diagnostic.reason,
+            diagnostic,
+            "mounted_apply",
+          );
+        }
+      }
+    }
+    for (const [path, bytes] of prepared) {
+      // Exact-base verification above makes these bytes authoritative. Preserve
+      // unchanged files (including read-only Git objects) and their permissions.
+      if (mountedBefore.get(path)?.equals(bytes)) continue;
+      try {
+        await writeWorkspaceFile(args.memoryRoot, path, bytes);
+      } catch (error) {
+        const diagnostic = phase2DiagnosticForError(
+          error,
+          "mounted_apply",
+          phase2FileClass(path),
+        );
+        throw new Phase2OutputInvalidError(
+          diagnostic.reason,
+          diagnostic,
+          "mounted_apply",
+        );
+      }
+    }
+    await removeEmptyDirectories(args.memoryRoot);
+
+    const mountedAfter = await inventoryFiles(args.memoryRoot);
+    const committed = manifestForFiles(args.memoryStorageId, mountedAfter);
     if (
-      bytes.length !== file.size ||
-      hashBytes(bytes) !== file.hash ||
-      prepared.has(file.path)
+      !mapsEqual(mountedAfter, prepared) ||
+      committed.contentIdentity !== args.contentIdentity
     ) {
-      throw new Phase2OutputInvalidError();
+      throw new Phase2OutputInvalidError("final_identity");
     }
-    prepared.set(file.path, bytes);
-  }
-
-  for (const path of mountedBefore.keys()) {
-    if (!prepared.has(path)) {
-      await fs.unlink(join(args.memoryRoot, ...path.split("/")));
-    }
-  }
-  for (const [path, bytes] of prepared) {
-    await writeWorkspaceFile(args.memoryRoot, path, bytes);
-  }
-  await removeEmptyDirectories(args.memoryRoot);
-
-  const mountedAfter = await inventoryFiles(args.memoryRoot);
-  const committed = manifestForFiles(args.memoryStorageId, mountedAfter);
-  if (
-    !mapsEqual(mountedAfter, prepared) ||
-    committed.contentIdentity !== args.contentIdentity
-  ) {
-    throw new Phase2OutputInvalidError();
+  } catch (error) {
+    const diagnostic = phase2DiagnosticForError(error, "mounted_apply");
+    throw new Phase2OutputInvalidError(
+      diagnostic.reason,
+      diagnostic,
+      "mounted_apply",
+    );
   }
 }
 
@@ -947,7 +1033,9 @@ function validateImmutablePaths(
     const before = baseline.get(path);
     const after = finalFiles.get(path);
     if (!before || !after || !before.equals(after)) {
-      throw new Phase2OutputInvalidError();
+      throw new Phase2OutputInvalidError("immutable_changed", {
+        fileClass: phase2FileClass(path),
+      });
     }
   }
 }
@@ -966,22 +1054,32 @@ function validateChangedSkills(
       return !before || !after || !before.equals(after);
     });
   if (changed.length > PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_FILES) {
-    throw new Phase2OutputInvalidError();
+    throw new Phase2OutputInvalidError("skill_files", {
+      fileClass: "skill",
+      actual: changed.length,
+      limit: PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_FILES,
+    });
   }
   let totalBytes = 0;
   const newSkillNames = new Set<string>();
   const changedSkillManifests = new Set<string>();
   for (const path of changed) {
     if (!validChangedSkillPath(path)) {
-      throw new Phase2OutputInvalidError();
+      throw new Phase2OutputInvalidError("skill_path", { fileClass: "skill" });
     }
     const content = finalFiles.get(path);
     if (content) {
-      if (
-        content.length > PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_FILE_BYTES ||
-        decodeUtf8(content) === null
-      ) {
-        throw new Phase2OutputInvalidError();
+      if (content.length > PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_FILE_BYTES) {
+        throw new Phase2OutputInvalidError("skill_file_bytes", {
+          fileClass: "skill",
+          actual: content.length,
+          limit: PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_FILE_BYTES,
+        });
+      }
+      if (decodeUtf8(content) === null) {
+        throw new Phase2OutputInvalidError("skill_encoding", {
+          fileClass: "skill",
+        });
       }
       totalBytes += content.length;
       const skillName = path.split("/")[1];
@@ -999,18 +1097,26 @@ function validateChangedSkills(
     }
   }
   if (totalBytes > PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_BYTES) {
-    throw new Phase2OutputInvalidError();
+    throw new Phase2OutputInvalidError("skill_bytes", {
+      fileClass: "skill",
+      actual: totalBytes,
+      limit: PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_BYTES,
+    });
   }
   for (const skillName of changedSkillManifests) {
     const manifest = finalFiles.get(`skills/${skillName}/SKILL.md`);
     if (!manifest || !validSkillManifest(manifest, skillName)) {
-      throw new Phase2OutputInvalidError();
+      throw new Phase2OutputInvalidError("skill_manifest", {
+        fileClass: "skill",
+      });
     }
   }
   for (const skillName of newSkillNames) {
     const manifest = finalFiles.get(`skills/${skillName}/SKILL.md`);
     if (!manifest || !validSkillManifest(manifest, skillName)) {
-      throw new Phase2OutputInvalidError();
+      throw new Phase2OutputInvalidError("skill_manifest", {
+        fileClass: "skill",
+      });
     }
   }
 }
@@ -1083,20 +1189,36 @@ export async function validatePiMemoryPhase2Output(
   workspace: Phase2PrivateWorkspace,
   storageId: string,
 ): Promise<ValidatedPreparedSet> {
-  const finalFiles = await inventoryFiles(workspace.memoryRoot);
-  validateImmutablePaths(finalFiles, workspace.agentBaseline);
-  const memory = finalFiles.get(MEMORY_FILE);
-  const summary = finalFiles.get(SUMMARY_FILE);
-  if (
-    memory === undefined ||
-    summary === undefined ||
-    !validMemory(memory) ||
-    !validSummary(summary)
-  ) {
-    throw new Phase2OutputInvalidError();
+  try {
+    const finalFiles = await inventoryFiles(workspace.memoryRoot);
+    validateImmutablePaths(finalFiles, workspace.agentBaseline);
+    const memory = finalFiles.get(MEMORY_FILE);
+    const summary = finalFiles.get(SUMMARY_FILE);
+    if (memory === undefined || summary === undefined) {
+      throw new Phase2OutputInvalidError("required_artifact", {
+        fileClass: memory === undefined ? "memory" : "summary",
+      });
+    }
+    if (memory.length > PI_MEMORY_PHASE2_MEMORY_MAX_BYTES) {
+      throw new Phase2OutputInvalidError("memory_bytes", {
+        fileClass: "memory",
+        actual: memory.length,
+        limit: PI_MEMORY_PHASE2_MEMORY_MAX_BYTES,
+      });
+    }
+    if (!validMemory(memory))
+      throw new Phase2OutputInvalidError("memory_invalid", {
+        fileClass: "memory",
+      });
+    const invalidSummary = summaryFailure(summary);
+    if (invalidSummary) throw invalidSummary;
+    validateChangedSkills(finalFiles, workspace.agentBaseline);
+    return manifestForFiles(storageId, finalFiles);
+  } catch (error) {
+    if (error instanceof Phase2OutputInvalidError) throw error;
+    const diagnostic = phase2DiagnosticForError(error, "output_validation");
+    throw new Phase2OutputInvalidError(diagnostic.reason, diagnostic);
   }
-  validateChangedSkills(finalFiles, workspace.agentBaseline);
-  return manifestForFiles(storageId, finalFiles);
 }
 
 export function preparedSetFromSnapshot(

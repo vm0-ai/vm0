@@ -1,3 +1,7 @@
+import { http, HttpResponse } from "msw";
+import { promises as fs } from "node:fs";
+import { server } from "../mocks/server";
+import terminalFixtures from "../../../../../fixtures/pi-memory-phase2-terminal.json";
 import nativePiFixtures from "../../../../packages/api-contracts/src/contracts/__tests__/fixtures/pi-native.json";
 import { PI_NATIVE_CREDENTIAL_PLACEHOLDER } from "@okouai/api-contracts/contracts/pi-native";
 import { zstdDecompressSync } from "node:zlib";
@@ -19,12 +23,16 @@ import { createInterface, type Interface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
+import {
+  MemoryPiSession,
+  PiMemoryPhase2EngineError,
+} from "@okouai/pi-agent-runtime/node";
 
 import {
   piSandboxAgentConfigFromEnv,
   recordPiMemoryToolSourceUse,
   runPiSandboxAgentLoop,
+  reportPiSandboxAgentLoopFailure,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
@@ -370,6 +378,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await rm(launchPayloadDirectory, { recursive: true, force: true });
 });
 
@@ -613,6 +622,8 @@ async function closeServer(server: Server): Promise<void> {
 
 describe("sandbox Pi agent loop", () => {
   it("writes the private maintenance attestation only after mounted validation", async () => {
+    const errors = vi.spyOn(console, "error");
+    const exitCode = process.exitCode;
     const validationFile = join(
       launchPayloadDirectory,
       "maintenance-validation.json",
@@ -693,6 +704,154 @@ describe("sandbox Pi agent loop", () => {
       }),
     );
     expect((await stat(validationFile)).mode & 0o777).toBe(0o600);
+    expect(errors).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(exitCode);
+  });
+
+  it.each(
+    terminalFixtures.filter((fixture) => {
+      return fixture.diagnostic;
+    }),
+  )(
+    "carries $name through the real mounted runtime and CLI terminal serializer",
+    async (fixture) => {
+      server.use(
+        http.post("https://phase2-fixture.example/responses", () => {
+          return HttpResponse.text(
+            responsesTextSse("Synthetic model leaves files unchanged", 1),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        }),
+      );
+      const memoryRoot = join(launchPayloadDirectory, "terminal-memory");
+      const validationFile = join(
+        launchPayloadDirectory,
+        "maintenance-validation.json",
+      );
+      const memory = "# PRIVATE_MEMORY_SENTINEL\n";
+      const isApply = fixture.diagnostic?.stage === "mounted_apply";
+      const summary = isApply
+        ? "v1\nValid summary"
+        : fixture.name === "summary_tokens"
+          ? `v1\n${" token".repeat(2605)}`
+          : "V1\nPRIVATE_SUMMARY_SENTINEL";
+      await mkdir(memoryRoot);
+      await writeFile(join(memoryRoot, "MEMORY.md"), memory);
+      await writeFile(join(memoryRoot, "memory_summary.md"), summary);
+      await writeFile(validationFile, "stale-attestation");
+      const memoryStorageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+      const stalePath = join(
+        memoryRoot,
+        "rollout_summaries/pi/PRIVATE_PATH_SENTINEL.md",
+      );
+      const staleContent = "PRIVATE_EVIDENCE_SENTINEL";
+      if (isApply) {
+        await mkdir(join(memoryRoot, "rollout_summaries/pi"), {
+          recursive: true,
+        });
+        await writeFile(stalePath, staleContent);
+      }
+      const contentIdentity = createHash("sha256")
+        .update(
+          `storage:${memoryStorageId}\n${[
+            `MEMORY.md:${createHash("sha256").update(memory).digest("hex")}`,
+            `memory_summary.md:${createHash("sha256").update(summary).digest("hex")}`,
+            ...(isApply
+              ? [
+                  `rollout_summaries/pi/PRIVATE_PATH_SENTINEL.md:${createHash("sha256").update(staleContent).digest("hex")}`,
+                ]
+              : []),
+          ]
+            .sort()
+            .join("\n")}`,
+        )
+        .digest("hex");
+      const originalUnlink = fs.unlink;
+      const remove = vi.spyOn(fs, "unlink").mockImplementation(async (path) => {
+        if (isApply && path === stalePath)
+          throw Object.assign(new Error("PRIVATE_ERROR_SENTINEL"), {
+            code:
+              fixture.diagnostic?.errno === "unknown"
+                ? "PRIVATE_ERRNO_SENTINEL"
+                : fixture.diagnostic?.errno,
+            path: stalePath,
+          });
+        await originalUnlink(path);
+      });
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const previousExit = process.exitCode;
+      try {
+        const run = runPiSandboxAgentLoop({
+          config: {
+            ...CONFIG,
+            model: {
+              provider: "openai",
+              baseUrl: "https://phase2-fixture.example/",
+              apiKey: "SYNTHETIC_KEY",
+              model: "gpt-5.6-terra",
+              dialect: "openai-responses",
+            },
+            launchPayload: {
+              ...CONFIG.launchPayload,
+              launchConfig: {
+                ...CONFIG.launchPayload.launchConfig,
+                maintenance: {
+                  schemaVersion: 1,
+                  memoryStorageId,
+                  claimedRevision: 7,
+                  claimedBaseVersionId: contentIdentity,
+                  leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+                  selectionDigest:
+                    "f95c6835f8a93234e88b26bc2162bd3cf8defd709037f6eefb14ee6ae3d56e48",
+                  selected: [],
+                },
+              },
+            },
+          },
+          memoryRoot,
+          maintenanceValidationFile: validationFile,
+        }).catch(reportPiSandboxAgentLoopFailure);
+        await run;
+        expect(process.exitCode).toBe(1);
+        expect(log.mock.calls).toEqual([[fixture.stderr]]);
+        expect(fixture.stderr.length).toBeLessThan(512);
+        expect(fixture.stderr).not.toMatch(
+          /PRIVATE_|SYNTHETIC_KEY|terminal-memory/,
+        );
+        await expect(readFile(validationFile)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        expect(await readFile(join(memoryRoot, "MEMORY.md"), "utf8")).toBe(
+          memory,
+        );
+      } finally {
+        process.exitCode = previousExit;
+        log.mockRestore();
+        remove.mockRestore();
+      }
+    },
+  );
+
+  it("preserves failure status when the terminal log sink throws", () => {
+    const previousExit = process.exitCode;
+    const log = vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("PRIVATE_SINK_SENTINEL");
+    });
+    try {
+      const failure = new PiMemoryPhase2EngineError("agent_output_invalid", {
+        candidateCount: 0,
+        fileCount: 0,
+        totalBytes: 0,
+        heartbeatCount: 0,
+      });
+      expect(() => {
+        return reportPiSandboxAgentLoopFailure(failure);
+      }).not.toThrow();
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExit;
+      log.mockRestore();
+    }
   });
 
   it("removes a stale maintenance attestation when validation fails", async () => {

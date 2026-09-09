@@ -10,6 +10,7 @@ import {
   type PiLaunchPayload,
 } from "@okouai/api-contracts/contracts/runners";
 import {
+  PiMemoryPhase2EngineError,
   materializePiAgentModelConfig,
   runPiOfficialRpcMode,
   runPiMemoryPhase2MountedConsolidation,
@@ -238,4 +239,20 @@ export async function runPiSandboxAgentLoop(args: {
     sessionFile: handoff.sessionFile,
     ownershipTransferMode: handoff.ownershipTransferMode,
   });
+}
+
+/** Preserve terminal status even if the best-effort stderr sink throws. */
+export function reportPiSandboxAgentLoopFailure(error: unknown): void {
+  process.exitCode = 1;
+  try {
+    console.error(
+      error instanceof PiMemoryPhase2EngineError
+        ? error.terminalMessage()
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    );
+  } catch {
+    // The diagnostic sink cannot turn a failed maintenance run into success.
+  }
 }

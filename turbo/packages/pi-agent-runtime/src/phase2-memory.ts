@@ -24,7 +24,6 @@ import {
   createPiMemoryPhase2Workspace,
   mapsEqual,
   Phase2InputInvalidError,
-  Phase2OutputInvalidError,
   preparedSetFromSnapshot,
   removePiMemoryPhase2Workspace,
   snapshotPiMemoryPhase2Input,
@@ -33,6 +32,10 @@ import {
   type SnapshotPhase2Input,
   validatePiMemoryPhase2Output,
 } from "./phase2-memory-filesystem";
+import {
+  Phase2OutputInvalidError,
+  phase2DiagnosticForError,
+} from "./phase2-memory-diagnostics";
 import { renderPiMemoryPhase2Prompt } from "./phase2-memory-prompt";
 import {
   createPiMemoryPhase2Tools,
@@ -678,7 +681,11 @@ function normalizeFailure(
     return engineError("input_invalid", input, state);
   }
   if (error instanceof Phase2OutputInvalidError) {
-    return engineError("agent_output_invalid", input, state);
+    return new PiMemoryPhase2EngineError(
+      "agent_output_invalid",
+      failureCounts(input, state),
+      error.diagnostic,
+    );
   }
   if (input === null) {
     return engineError("input_invalid", input, state);
@@ -974,13 +981,17 @@ export async function runPiMemoryPhase2MountedConsolidation(
       files: result.files,
       contentIdentity: result.contentIdentity,
     });
-  } catch {
-    throw new PiMemoryPhase2EngineError("agent_output_invalid", {
-      candidateCount: args.selected.length,
-      fileCount: result.manifest.fileCount,
-      totalBytes: result.manifest.totalBytes,
-      heartbeatCount: 0,
-    });
+  } catch (error) {
+    throw new PiMemoryPhase2EngineError(
+      "agent_output_invalid",
+      {
+        candidateCount: args.selected.length,
+        fileCount: result.manifest.fileCount,
+        totalBytes: result.manifest.totalBytes,
+        heartbeatCount: 0,
+      },
+      phase2DiagnosticForError(error, "mounted_apply"),
+    );
   }
   signal.throwIfAborted();
   return {
