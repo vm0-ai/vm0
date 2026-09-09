@@ -155,8 +155,10 @@ The fixture is metadata from an isolated TEST account's Agent, with an empty
 string description and initial `professional` sound. It contains no credentials.
 The route substitutes its `agentId` into `/agents/:agentId?tab=profile`. Freeze
 this fixture with the baseline; its hash is checked on every replay. Only the
-exact API origin's preferences, agent list and that agent's metadata endpoints
-have controlled responses. The stateful metadata response supports a delayed
+exact API origin's preferences, onboarding status, agent list and that agent's
+metadata endpoints have controlled responses. Onboarding status pins the
+synthetic Agent's default role because every preview API redeploy resets its
+database and creates a different default Agent ID. The stateful metadata response supports a delayed
 PATCH and a later GET. This checks client saving and reloading; independently
 verify real API persistence on the preview with these routes unmodified.
 
@@ -183,3 +185,12 @@ runners now share the same capture helper and disable Chromium partial raster.
 The acceptance archive preserves the earlier failures and separately identifies
 the new unchanged-build pairs; no pixel threshold was widened. These paired
 checks demonstrate bounded reproducibility, not an unattended cross-browser gate.
+
+The first deployed migration exposed a fixture prerequisite: API redeployment
+recreates the default Agent with a different ID. Before attempting its visual
+comparison, the business migration was reverted, onboarding status was pinned
+alongside the already-controlled Agent metadata, and new BEFORE/A/A evidence
+was captured against the unmigrated UI. The old archives remain available. This
+changes the explicitly recorded external fixture boundary, not pixel limits or
+the expected rendered behavior. Actual onboarding and persistence remain live
+checks outside the screenshot fixture.

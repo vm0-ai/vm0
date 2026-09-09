@@ -325,6 +325,31 @@ async function run() {
             await route.fulfill({ json: preferences });
           },
         );
+        // Preview API redeploys reset its database. Pin the synthetic Agent's
+        // default-role metadata at the same external boundary as its profile.
+        await page.route(
+          (url) =>
+            url.origin === apiOrigin &&
+            url.pathname === "/api/onboarding/status",
+          async (route) => {
+            assert.equal(route.request().method(), "GET");
+            await route.fulfill({
+              json: {
+                needsOnboarding: false,
+                onboardingComplete: true,
+                isAdmin: true,
+                hasOrg: true,
+                hasDefaultAgent: true,
+                defaultAgentId: fixture.agentId,
+                defaultAgentMetadata: {
+                  displayName: fixture.displayName,
+                  sound: fixture.sound,
+                  avatarUrl: fixture.avatarUrl,
+                },
+              },
+            });
+          },
+        );
         let profile = { ...fixture };
         let savePending: Promise<void> | undefined;
         await page.route(
