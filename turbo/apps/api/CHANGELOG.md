@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.577.2](https://github.com/vm0-ai/vm0/compare/api-v1.577.1...api-v1.577.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **artifacts:** register legacy writes before publishing files ([#32990](https://github.com/vm0-ai/vm0/issues/32990)) ([7cd7576](https://github.com/vm0-ai/vm0/commit/7cd757646de81fdda65546b4abd54ea8a35ae782))
+* **artifacts:** renew private previews on demand ([#32977](https://github.com/vm0-ai/vm0/issues/32977)) ([bc0a009](https://github.com/vm0-ai/vm0/commit/bc0a009965fb966f60b78902003984751fb76f6a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.2
+    * @okouai/core bumped to 8.646.1
+    * @okouai/db bumped to 1.249.2
+    * @okouai/pi-agent-runtime bumped to 1.24.7
+
 ## [1.577.1](https://github.com/vm0-ai/vm0/compare/api-v1.577.0...api-v1.577.1) (2026-09-09)
 
 

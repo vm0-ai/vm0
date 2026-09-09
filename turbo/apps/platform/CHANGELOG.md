@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.878.0](https://github.com/vm0-ai/vm0/compare/app-v0.877.0...app-v0.878.0) (2026-09-09)
+
+
+### Features
+
+* **app:** put the connector shelves on cards and drop the yours tab ([#33003](https://github.com/vm0-ai/vm0/issues/33003)) ([768f745](https://github.com/vm0-ai/vm0/commit/768f745c7647760dede6492beb30965eea7bee69))
+
+
+### Bug Fixes
+
+* **artifacts:** renew private previews on demand ([#32977](https://github.com/vm0-ai/vm0/issues/32977)) ([bc0a009](https://github.com/vm0-ai/vm0/commit/bc0a009965fb966f60b78902003984751fb76f6a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.2
+    * @okouai/core bumped to 8.646.1
+
 ## [0.877.0](https://github.com/vm0-ai/vm0/compare/app-v0.876.0...app-v0.877.0) (2026-09-09)
 
 
