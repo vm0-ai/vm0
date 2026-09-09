@@ -57,9 +57,12 @@ import {
 import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
 import { connectorAuthMethodFeatureSwitch } from "./connector-auth-method-feature-switches";
 import {
-  CONNECTOR_DISCOVERY_LIMIT,
-  FEATURED_CONNECTOR_SLUGS,
-} from "./connector-catalog-featured";
+  CONNECTOR_DISCOVERY_PER_CATEGORY,
+  CONNECTOR_SEARCH_LIMIT,
+  compareConnectorPopularity,
+  connectorPopularityRank,
+  isInternalConnector,
+} from "./connector-popularity";
 import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 
 const log = logger("connector-catalog:reader");
@@ -773,12 +776,14 @@ function authMethodDetailForCatalog(
 function connectorCatalogItem(
   effective: EffectiveConnector,
 ): PublicConnectorCatalogItem {
+  const rank = connectorPopularityRank(effective.connector.slug);
   return {
     slug: effective.connector.slug,
     label: effective.connector.label,
     description: effective.connector.description,
     icon: iconForCatalog(effective.connector),
     category: effective.connector.category,
+    ...(rank === Number.MAX_SAFE_INTEGER ? {} : { popularityRank: rank }),
     generation: [...effective.connector.generation],
     tags: [...effective.connector.tags],
     authMethods: effective.authMethods.map(authMethodSummaryForCatalog),
@@ -1024,33 +1029,38 @@ function connectorMatchesKeyword(
   );
 }
 
-function featuredEffectiveConnectors(
+function rankedEffectiveConnectors(
   effective: readonly EffectiveConnector[],
 ): EffectiveConnector[] {
-  const bySlug = new Map(
-    effective.map((entry) => {
-      return [entry.connector.slug, entry];
-    }),
-  );
-  const featured = FEATURED_CONNECTOR_SLUGS.flatMap((slug) => {
-    const entry = bySlug.get(slug);
-    return entry ? [entry] : [];
-  });
-  const selectedSlugs = new Set(
-    featured.map((entry) => {
-      return entry.connector.slug;
-    }),
-  );
-  for (const entry of effective) {
-    if (featured.length >= CONNECTOR_DISCOVERY_LIMIT) {
-      break;
+  return [...effective]
+    .filter((entry) => {
+      return !isInternalConnector(entry.connector.slug);
+    })
+    .sort((left, right) => {
+      return compareConnectorPopularity(left.connector, right.connector);
+    });
+}
+
+/**
+ * The keyword-free response. Every category contributes its own top slice, so
+ * a category holding a quarter of the catalog cannot crowd out the eleven
+ * others, and each slice is ordered by rank rather than alphabetically.
+ */
+function browseEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+): EffectiveConnector[] {
+  const perCategory = new Map<string, EffectiveConnector[]>();
+  for (const entry of rankedEffectiveConnectors(effective)) {
+    const bucket = perCategory.get(entry.connector.category);
+    if (bucket) {
+      if (bucket.length < CONNECTOR_DISCOVERY_PER_CATEGORY) {
+        bucket.push(entry);
+      }
+      continue;
     }
-    if (!selectedSlugs.has(entry.connector.slug)) {
-      featured.push(entry);
-      selectedSlugs.add(entry.connector.slug);
-    }
+    perCategory.set(entry.connector.category, [entry]);
   }
-  return featured;
+  return [...perCategory.values()].flat();
 }
 
 function searchEffectiveConnectors(
@@ -1059,13 +1069,28 @@ function searchEffectiveConnectors(
 ): EffectiveConnector[] {
   const normalizedKeyword = keyword?.trim().toLowerCase();
   if (!normalizedKeyword) {
-    return featuredEffectiveConnectors(effective);
+    return browseEffectiveConnectors(effective);
   }
-  return effective
+  return rankedEffectiveConnectors(effective)
     .filter((entry) => {
       return connectorMatchesKeyword(entry, normalizedKeyword);
     })
-    .slice(0, CONNECTOR_DISCOVERY_LIMIT);
+    .slice(0, CONNECTOR_SEARCH_LIMIT);
+}
+
+/** How many connectors each category holds, before the per-category slice. */
+function categoryConnectorCounts(
+  effective: readonly EffectiveConnector[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const entry of effective) {
+    if (isInternalConnector(entry.connector.slug)) {
+      continue;
+    }
+    counts[entry.connector.category] =
+      (counts[entry.connector.category] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function discoveryEffectiveConnectors(
@@ -1085,7 +1110,7 @@ function discoveryEffectiveConnectors(
   });
   return [
     ...connected,
-    ...featuredEffectiveConnectors(effective).filter((entry) => {
+    ...browseEffectiveConnectors(effective).filter((entry) => {
       return !connectedSlugs.has(entry.connector.slug);
     }),
   ];
@@ -1171,6 +1196,7 @@ export async function discoverExternalPublicConnectorCatalogStatus(
     status: {
       ...read.status,
       totalConnectorCount: effective.length,
+      categoryConnectorCounts: categoryConnectorCounts(effective),
     },
   };
 }

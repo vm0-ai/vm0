@@ -30,15 +30,28 @@ function fallbackCategoryLabel(category: string): string {
   return label;
 }
 
+/**
+ * Connected first, then discovery rank, then label. Ordering a 1 184-connector
+ * category alphabetically means it opens on "123FormBuilder, 1Password,
+ * 1SaaS", so the rank the catalog carries decides the head of every category
+ * and the alphabet only breaks ties in the unranked tail.
+ */
 function sortedCategoryConnectors<
   T extends {
     connected: boolean;
     label: string;
+    popularityRank?: number;
   },
 >(items: readonly T[]): T[] {
   return [...items].sort((a, b) => {
     if (a.connected !== b.connected) {
       return a.connected ? -1 : 1;
+    }
+    const rankDelta =
+      (a.popularityRank ?? Number.MAX_SAFE_INTEGER) -
+      (b.popularityRank ?? Number.MAX_SAFE_INTEGER);
+    if (rankDelta !== 0) {
+      return rankDelta;
     }
     return a.label.localeCompare(b.label);
   });
@@ -49,6 +62,7 @@ export function groupConnectorsByCategory<
     category: string;
     connected: boolean;
     label: string;
+    popularityRank?: number;
   },
 >(
   connectors: readonly T[],
