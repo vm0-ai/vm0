@@ -180,6 +180,70 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843"
+    },
+    {
+      "id": "page-surface-cards",
+      "family": "page-surfaces",
+      "tokens": ["okou-card"],
+      "consumers": [
+        "apps/platform/src/views/agents-page/agents-page-tabs.tsx",
+        "apps/platform/src/views/artifacts-page/artifact-catalog-page.tsx",
+        "apps/platform/src/views/export-page/export-page.tsx",
+        "apps/platform/src/views/lab-page/lab-page.tsx",
+        "apps/platform/src/views/okou-page/activity-detail-page.tsx",
+        "apps/platform/src/views/okou-page/agentphone-card.tsx",
+        "apps/platform/src/views/okou-page/chat-composer.tsx",
+        "apps/platform/src/views/okou-page/components/delete-agent-dialog.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/unsaved-bar.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-card.tsx",
+        "apps/platform/src/views/okou-page/components/settings/custom-connectors-panel.tsx",
+        "apps/platform/src/views/okou-page/connect-page-shell.tsx",
+        "apps/platform/src/views/okou-page/connectors-page.tsx",
+        "apps/platform/src/views/okou-page/feishu-card.tsx",
+        "apps/platform/src/views/okou-page/ideation-page.tsx",
+        "apps/platform/src/views/okou-page/settings-tab.tsx",
+        "apps/platform/src/views/okou-page/sidebar-upgrade.tsx",
+        "apps/platform/src/views/okou-page/start-cards.tsx",
+        "apps/platform/src/views/okou-page/telegram-settings-page.tsx",
+        "apps/platform/src/views/okou-page/tiptap-instructions-editor.tsx",
+        "apps/platform/src/views/okou-page/unsaved-bar.tsx",
+        "apps/platform/src/views/okou-page/works-page.tsx",
+        "apps/platform/src/views/team-page/job-custom-connectors-section.tsx",
+        "apps/platform/src/views/team-page/job-detail-page.tsx",
+        "apps/platform/src/views/workflows-page/official-workflows-page.tsx",
+        "apps/platform/src/views/workflows-page/workflow-automation-card.tsx",
+        "apps/platform/src/views/workflows-page/workflow-detail-page.tsx",
+        "apps/platform/src/views/workflows-page/workflows-page.tsx"
+      ],
+      "cases": [],
+      "externalProtocol": {
+        "reason": "Implemented and captured before the repeatable case suite covered page surfaces; cases.json still only covers the settings preference dialog.",
+        "cases": 98,
+        "passed": 96,
+        "failed": 2,
+        "failedCases": [
+          "official-settings-complete-dark",
+          "ready-home-template-focus-dark"
+        ]
+      },
+      "status": "merged",
+      "evidence": [
+        {
+          "kind": "frozen-main-baseline",
+          "url": "https://a.okou.io/412522jwib.zip",
+          "sha256": "62c882e041987cf8f3cd346834f189c1d92932fe90cbe6e947d1b67f60e47a4b",
+          "commit": "afe297e93dea741a95527536db8f9c16a36110e6"
+        },
+        {
+          "kind": "after-with-raw-diffs-and-case-manifest",
+          "url": "https://a.okou.io/bgqvk9vjev.zip",
+          "sha256": "a89e7b8655f2a8827d6f37ba9cfc72804c8583d9cdbe024ca758c3463cd647bd",
+          "commit": "6f0bd81d429fdd8d99355b3ced144b347f707922"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32604",
+      "mergeCommit": "a4abff8ecd382a0051d5ccaace5de4d76ed899f9",
+      "note": "Evidence was captured at 6f0bd81; the merged head 25c296be only replaced a duplicate hover-overlay token with the shared bg-state-hover-overlay and generates identical CSS."
     }
   ]
 }

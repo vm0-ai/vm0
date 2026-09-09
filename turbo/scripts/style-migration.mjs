@@ -18,6 +18,34 @@ function nonempty(value, label) {
   assert(value.trim(), `${label} must not be empty`);
 }
 
+/**
+ * A batch migrated before the repeatable case suite covered its surfaces
+ * records the protocol that actually ran instead of borrowing another batch's
+ * case ids. Such a batch can never claim `verified`, so the repeatable suite
+ * stays the only route to that state.
+ */
+function validateExternalProtocol(batch) {
+  const external = batch.externalProtocol;
+  nonempty(external.reason, `${batch.id} external protocol reason`);
+  assert(
+    Number.isInteger(external.cases) && external.cases > 0,
+    `${batch.id} external protocol needs a case count`,
+  );
+  assert(
+    Number.isInteger(external.passed) &&
+      Number.isInteger(external.failed) &&
+      external.passed >= 0 &&
+      external.failed >= 0 &&
+      external.passed + external.failed <= external.cases,
+    `${batch.id} external protocol needs a consistent result count`,
+  );
+  assert(
+    batch.status !== "verified",
+    `${batch.id} cannot claim verified outside the repeatable case suite`,
+  );
+  assert(batch.evidence.length > 0, `${batch.id} needs durable evidence`);
+}
+
 export function validateMigration(manifest, baseline, cases) {
   assert.equal(manifest.version, 1, "Unsupported migration manifest version");
   assert.equal(cases.version, 1, "Unsupported visual case version");
@@ -55,7 +83,12 @@ export function validateMigration(manifest, baseline, cases) {
     assert(!batches.has(batch.id), `Duplicate batch ${batch.id}`);
     batches.add(batch.id);
     assert(families.has(batch.family), `Unknown family ${batch.family}`);
-    assert(batch.consumers.length > 0 && batch.cases.length > 0);
+    assert(batch.consumers.length > 0, `${batch.id} needs consumers`);
+    if (batch.externalProtocol) {
+      validateExternalProtocol(batch);
+    } else {
+      assert(batch.cases.length > 0, `${batch.id} needs visual cases`);
+    }
     for (const token of batch.tokens) {
       assert(tokens.has(token), `Unknown batch token ${token}`);
     }

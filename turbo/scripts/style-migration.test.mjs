@@ -121,6 +121,52 @@ test("the command rejects missing replay coverage and missing consumer files", (
   assert.equal(check(root).status, 1);
 });
 
+test("a batch outside the repeatable suite records its own protocol", (t) => {
+  const { root, manifest } = workspace(t);
+  const batch = manifest.batches[0];
+  batch.cases = [];
+  const write = () =>
+    writeFileSync(
+      resolve(root, "style-migration-manifest.json"),
+      JSON.stringify(manifest),
+    );
+  write();
+  assert.match(check(root).stderr, /one needs visual cases/);
+
+  batch.externalProtocol = {
+    reason: "Migrated before the suite covered this surface",
+    cases: 98,
+    passed: 96,
+    failed: 2,
+  };
+  batch.status = "merged";
+  batch.evidence = [
+    {
+      kind: "after",
+      url: "https://example.invalid/after.zip",
+      sha256: "a".repeat(64),
+      commit: "b".repeat(40),
+    },
+  ];
+  write();
+  assert.equal(check(root).status, 0);
+
+  batch.status = "verified";
+  write();
+  assert.match(
+    check(root).stderr,
+    /one cannot claim verified outside the repeatable case suite/,
+  );
+
+  batch.status = "merged";
+  batch.externalProtocol.passed = 97;
+  write();
+  assert.match(
+    check(root).stderr,
+    /one external protocol needs a consistent result count/,
+  );
+});
+
 test("an acceptance state requires a durable commit-bound evidence record", (t) => {
   const { root, manifest } = workspace(t);
   manifest.batches[0].status = "verified";

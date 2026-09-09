@@ -113,6 +113,27 @@ Investigate that finding before using this runner as an unattended gate;
 `verified` records the successful bounded acceptance, not flake-free automation
 or completion of the issue-wide migration.
 
+## Batches migrated outside the repeatable suite
+
+The `page-surface-cards` batch, [PR #32604](https://github.com/vm0-ai/vm0/pull/32604),
+cleared `okou-card` from 28 consumers before `cases.json` covered any page
+surface. It was captured under its own archived protocol of 98 cases, so it
+cannot borrow the preference-dialog case ids, and recording nothing at all
+would leave the manifest unable to answer which batches were accepted.
+
+Such a batch declares `externalProtocol` with the reason, its own case count,
+and its passed/failed split, and leaves `cases` empty. The check then requires
+durable evidence and a consistent result count, and refuses the `verified`
+status, so the repeatable suite remains the only route to acceptance. This
+state records what actually ran; it does not authorize skipping the suite.
+
+`page-surface-cards` merged at 96 passed and 2 failed
+(`official-settings-complete-dark`, `ready-home-template-focus-dark`), each
+bounded to a few unclassified pixels at rounded and focus edges with comparable
+unchanged-code fluctuation. It is recorded as `merged`, never `verified`. Add
+page-surface cases to `cases.json` before the next `page-surfaces` batch takes
+`dialog-scrollable`, so that family finishes inside the repeatable suite.
+
 ## Evidence and merge gate
 
 Before changing styles, upload the frozen baseline archive to Okou file storage
