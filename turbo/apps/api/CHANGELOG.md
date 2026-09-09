@@ -8,6 +8,35 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.575.0](https://github.com/vm0-ai/vm0/compare/api-v1.574.0...api-v1.575.0) (2026-09-09)
+
+
+### Features
+
+* **pi:** prepare native claude consumers and accounting ([#32835](https://github.com/vm0-ai/vm0/issues/32835)) ([31133fc](https://github.com/vm0-ai/vm0/commit/31133fc7ba5eeecbc1c8a0cda32f16f1ff2b4602))
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+* preserve google ads first-touch attribution ([#32833](https://github.com/vm0-ai/vm0/issues/32833)) ([94b41ea](https://github.com/vm0-ai/vm0/commit/94b41ea4bdf9990eaebf7cc6cd9cceb54e92e9b5))
+* preserve literal goal archives across historical readers ([#32852](https://github.com/vm0-ai/vm0/issues/32852)) ([cede9cb](https://github.com/vm0-ai/vm0/commit/cede9cbfb62872ddabb705de852dc6fd81a3cc6d))
+
+
+### Refactoring
+
+* **pi-memory:** stop maintenance journal production and forwarding ([#32805](https://github.com/vm0-ai/vm0/issues/32805)) ([46576db](https://github.com/vm0-ai/vm0/commit/46576dbbca793e345e9b20e56618b998c3a8b629))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.0
+    * @okouai/core bumped to 8.641.1
+    * @okouai/db bumped to 1.248.1
+    * @okouai/pi-agent-runtime bumped to 1.24.0
+
 ## [1.574.0](https://github.com/vm0-ai/vm0/compare/api-v1.573.1...api-v1.574.0) (2026-09-09)
 
 

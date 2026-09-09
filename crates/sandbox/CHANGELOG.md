@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.2...sandbox-v0.22.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+* **runner:** defer blank memory reclamation until agent readiness ([#32824](https://github.com/vm0-ai/vm0/issues/32824)) ([29040ac](https://github.com/vm0-ai/vm0/commit/29040ac3b52f14bfb415bc5eeb0adcb7383b17d5))
+
 ## [0.22.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.1...sandbox-v0.22.2) (2026-09-09)
 
 
