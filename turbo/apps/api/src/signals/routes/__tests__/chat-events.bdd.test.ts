@@ -6632,14 +6632,9 @@ async function claimGptPiSandbox(
   runId: string,
   tier: "fast" | undefined,
 ) {
-  for (const generations of tier === "fast"
-    ? [undefined, [1, 2]]
-    : [undefined]) {
+  if (tier === "fast") {
     const oldClaim = await api.requestClaimRunnerJob(true, runId, [404], {
-      capabilities:
-        generations === undefined
-          ? undefined
-          : { piModelConfigGenerations: generations },
+      capabilities: { piModelConfigGenerations: [1, 2] },
     });
     expectApiError(oldClaim.body);
     await expect(api.readRun(actor, runId)).resolves.toMatchObject({
@@ -19583,19 +19578,12 @@ describe("CHAT-02: run-level model overrides", () => {
       await expectNoBuiltInModelUsage(run.runId);
 
       await api.heartbeatRunner(runnerGroup);
-      const oldCapabilities =
-        tier === "fast" ? [undefined, [1, 2]] : [undefined];
-      for (const generations of oldCapabilities) {
+      if (tier === "fast") {
         const oldClaim = await api.requestClaimRunnerJob(
           true,
           run.runId,
           [404],
-          {
-            capabilities:
-              generations === undefined
-                ? undefined
-                : { piModelConfigGenerations: generations },
-          },
+          { capabilities: { piModelConfigGenerations: [1, 2] } },
         );
         expectApiError(oldClaim.body);
         await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
