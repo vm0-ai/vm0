@@ -375,7 +375,12 @@ test.each(["paste", "file"])(
       " passphrase-canary ",
     );
     click(getAction("button", "Save", dialog));
-    await screen.findByText("Configured · connectivity not tested");
+    await screen.findByText("deploy@ssh.example.com:22");
+    expect(
+      screen.queryByText("Configured · connectivity not tested"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Connection ID/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(id)).not.toBeInTheDocument();
     expect(requests).toStrictEqual([
       {
         displayName: "Deployment",
@@ -550,7 +555,7 @@ test.each(["Display name", "Public hostname or IP address", "SSH username"])(
     expect(dialog).toBeInTheDocument();
     await fill(field, "valid");
     click(getAction("button", "Save", dialog));
-    await screen.findByText("Configured · connectivity not tested");
+    await screen.findByText("deploy@ssh.example.com:22");
     expect(creates).toBe(1);
   },
 );
@@ -642,6 +647,11 @@ test("Reset requires confirmation, generation conflict refreshes without retry, 
   });
   await page();
   await screen.findByText("SHA256:fixture");
+  expect(
+    screen.queryByText("Configured · connectivity not tested"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/Connection ID/u)).not.toBeInTheDocument();
+  expect(screen.queryByText(id)).not.toBeInTheDocument();
   click(getAction("button", "Reset host key"));
   const reset = await screen.findByRole("dialog");
   expect(resets).toBe(0);
@@ -685,7 +695,7 @@ test("An ordinary owner can manage SSH when the feature flag is enabled", async 
     path: "/connectors/ssh",
     featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
   });
-  await screen.findByText("Configured · connectivity not tested");
+  await screen.findByText("deploy@ssh.example.com:22");
   expect(getAction("button", "Add host")).toBeEnabled();
 });
 

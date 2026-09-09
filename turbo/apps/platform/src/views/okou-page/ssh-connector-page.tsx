@@ -336,17 +336,6 @@ function HostCard({
       <p className="break-all text-sm">
         {connection.username}@{connection.host}:{connection.port}
       </p>
-      <p className="text-sm text-muted-foreground">
-        {t(($) => {
-          return $.ssh.configured;
-        })}
-      </p>
-      <p className="break-all text-sm">
-        {t(($) => {
-          return $.ssh.id;
-        })}
-        : <code>{connection.id}</code>
-      </p>
       <p className="break-all text-sm">
         {connection.learnedHostKey ? (
           <>
