@@ -531,6 +531,30 @@ test.each(["pro", "team"] as const)(
   "Default a new %s plan to the $20 member package",
   async (tier) => {
     mockInitialUsagePackPurchase(true);
+    context.mocks.api(
+      billingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        expect(body).toMatchObject({
+          tier,
+          supportsInAppPreview: true,
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: 20 },
+            { memberId: "user_2", usagePackUsd: 20 },
+            { memberId: "invitation_1", usagePackUsd: 20 },
+          ],
+        });
+        return respond(200, {
+          status: "preview",
+          purchaseType: "usage_pack",
+          tier,
+          immediateAmountCents: tier === "pro" ? 6000 : 22_000,
+          nextRecurringAmountCents: tier === "pro" ? 6000 : 22_000,
+          currency: "usd",
+          expiresAt: "2026-03-16T00:15:00Z",
+          previewToken: `usage-pack-${tier}-preview`,
+        });
+      },
+    );
     const { proPlan, teamPlan } = await openUsagePackPlanSelection();
     const plan = tier === "pro" ? proPlan : teamPlan;
     click(
@@ -552,6 +576,17 @@ test.each(["pro", "team"] as const)(
       ).toHaveTextContent("21,234 credits · 6% off");
     }
     expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
+
+    click(buttonByText(upgradeLabel, orderSummary));
+    const confirmation = await screen.findByRole("dialog", {
+      name: "Order summary",
+    });
+    click(buttonByText("Cancel", confirmation));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Order summary" }),
+      ).not.toBeInTheDocument();
+    });
 
     for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
       await selectMemberUsagePack(memberUsage, memberName, "No package");

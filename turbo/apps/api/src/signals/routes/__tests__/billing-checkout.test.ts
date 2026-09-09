@@ -11315,7 +11315,9 @@ describe("usage pack allocation management", () => {
 
   it.each([
     { sourceTier: "pro", targetTier: "pro" },
+    { sourceTier: "pro", targetTier: "team" },
     { sourceTier: "team", targetTier: "pro" },
+    { sourceTier: "team", targetTier: "team" },
   ] as const)(
     "rejects a $sourceTier-to-$targetTier subscription change without a paid usage pack",
     async ({ sourceTier, targetTier }) => {

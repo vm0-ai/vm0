@@ -653,6 +653,60 @@ test.each(["pro", "team"] as const)(
   },
 );
 
+test("Use the default $20 package when inviting a member", async () => {
+  mockMembersStory();
+  mockMemberInviteEntitlement(
+    true,
+    { tier: "pro", status: "active" },
+    { hasSubscription: true },
+  );
+  mockUsagePackManagement({ supportsFreeMembers: true });
+  mockUsagePackCatalog(true);
+  context.mocks.api(orgInviteContract.previewPurchase, ({ body, respond }) => {
+    expect(body).toMatchObject({
+      email: "default-package@example.com",
+      role: "member",
+      usagePackUsd: 20,
+      supportsInAppPreview: true,
+    });
+    return respond(200, {
+      purchaseId: "67d0ac76-170e-4a99-a5b6-ecc74c1179df",
+      usagePackUsd: 20,
+      immediateAmountCents: 500,
+      currency: "usd",
+      purchasedCredits: 5000,
+      bonusCredits: 100,
+      totalCredits: 5100,
+      currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+      expiresAt: "2026-08-10T00:00:00.000Z",
+      paymentMethodPreviewToken: "default-package-preview",
+    });
+  });
+
+  await setupPage({ context, path: "/?settings=people" });
+  await screen.findByRole("heading", { name: "People" });
+  click(buttonByText("Add member"));
+  const inviteDialog = await screen.findByRole("dialog", {
+    name: "Invite member",
+  });
+  await expect(
+    within(inviteDialog).findByRole("combobox", {
+      name: "Member packages",
+    }),
+  ).resolves.toHaveTextContent("20,400 credits");
+  await fill(
+    within(inviteDialog).getByPlaceholderText("email@example.com"),
+    "default-package@example.com",
+  );
+  click(buttonByText("Continue", inviteDialog));
+
+  const confirmation = await screen.findByRole("dialog", {
+    name: "Review invitation",
+  });
+  expect(within(confirmation).getByText("$5.00")).toBeVisible();
+  expect(within(confirmation).getByText(/5,100 credits/u)).toBeVisible();
+});
+
 test.each([
   { tier: "pro", supportsFreeMembers: true, hasVisibilityCapability: true },
   { tier: "team", supportsFreeMembers: true, hasVisibilityCapability: true },
