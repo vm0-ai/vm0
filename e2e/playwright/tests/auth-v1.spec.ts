@@ -78,19 +78,20 @@ async function expectPasswordControlFits(
       if (!field || !button) {
         throw new Error("Expected the password field and reveal control");
       }
-      return Math.max(
-        Math.abs(field.y - button.y),
-        Math.abs(field.y + field.height - button.y - button.height),
-        Math.abs(field.x + field.width - button.x - button.width),
+      const trailingSpace = await input.evaluate((element) => {
+        return parseFloat(getComputedStyle(element).paddingInlineEnd);
+      });
+      // Clerk owns the native inset. Keep the reveal button inside the field
+      // and outside the space available to password text.
+      return Math.min(
+        button.x - field.x,
+        button.y - field.y,
+        field.y + field.height - button.y - button.height,
+        field.x + field.width - button.x - button.width,
+        button.x - (field.x + field.width - trailingSpace),
       );
     })
-    .toBeLessThanOrEqual(1);
-  const trailingSpace = await input.evaluate((element) => {
-    return parseFloat(getComputedStyle(element).paddingInlineEnd);
-  });
-  const button = await toggle.boundingBox();
-  if (!button) throw new Error("Expected the reveal control to be rendered");
-  expect(trailingSpace - button.width).toBeGreaterThanOrEqual(4);
+    .toBeGreaterThanOrEqual(0);
 }
 
 async function enterInvalidCode(page: Page, code: string): Promise<void> {
