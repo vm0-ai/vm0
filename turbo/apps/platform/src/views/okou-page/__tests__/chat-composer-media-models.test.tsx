@@ -263,6 +263,12 @@ test("Choose an image model from a curated catalog", async () => {
   await waitFor(() => {
     expect(updates).toStrictEqual(["gpt-image-1"]);
   });
+  for (const label of ["GPT Image 2.5 Flare", "GPT Image 2.5 Sunburst"]) {
+    await chooseMediaModel("Image", label);
+    await openCategory("Image");
+    expectSelected(label);
+    await user.keyboard("{Escape}");
+  }
   await chooseMediaModel("Image", "Seedream 5 Pro");
   await chooseMediaModel("Image", "FLUX.2 Pro");
 
@@ -270,6 +276,8 @@ test("Choose an image model from a curated catalog", async () => {
   expectSelected("FLUX.2 Pro");
   expect(updates).toStrictEqual([
     "gpt-image-1",
+    "gpt-image-2.5-flare",
+    "gpt-image-2.5-sunburst",
     "dola-seedream-5-0-pro-260628",
     "fal-ai/flux-2-pro",
   ]);

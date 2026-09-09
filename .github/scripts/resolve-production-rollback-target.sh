@@ -5,6 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CHAT_EVENT_FAILURE_REASON_READER_COMMIT=c093e0ffdab988d2a8a071809f90d87fa3e79f20
 readonly CHAT_EVENT_FAILURE_REASON_READER_RELEASE=89c6a521944e2ac8550da424f164db08f4f80f0c
 readonly BLANK_SANDBOX_STATUS_READER_COMMIT=febec8a3399be74b0f14a89cb9f42e39dd5ce69f
+readonly SHOW_USAGE_PACK_WRITER_COMMIT=65ac0518bde2310887470cb0874aeae06c0c0397
 
 fail() {
   echo "::error::$*" >&2
@@ -43,6 +44,9 @@ fi
 if ! git merge-base --is-ancestor \
   "$CHAT_EVENT_FAILURE_REASON_READER_COMMIT" "$TARGET_COMMIT"; then
   fail "Target commit predates the Chat Event failure-reason reader. The first compatible release is ${CHAT_EVENT_FAILURE_REASON_READER_RELEASE}."
+fi
+if ! git merge-base --is-ancestor "$SHOW_USAGE_PACK_WRITER_COMMIT" "$TARGET_COMMIT"; then
+  fail "Target commit predates the explicit showUsagePack writer and billing response. The first compatible API release is api-v1.570.0."
 fi
 
 release_tags=$(git tag --points-at "$TARGET_COMMIT" | grep -E -- '-v[0-9]' || true)

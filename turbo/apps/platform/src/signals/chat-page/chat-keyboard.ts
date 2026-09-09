@@ -442,7 +442,7 @@ function createChatPageShortcutBindings({
   };
 }
 
-export const focusChatThreadContainer$ = command(
+export const chatThreadContainerElement$ = command(
   ({ get }, threadId: string) => {
     const leftThread = get(currentLeftThread$);
     const rightThread = get(currentRightThread$);
@@ -453,14 +453,9 @@ export const focusChatThreadContainer$ = command(
           ? leftThread
           : null;
     if (!thread) {
-      return false;
+      return null;
     }
-    const containerEl = get(thread.containerEl$);
-    if (!containerEl) {
-      return false;
-    }
-    containerEl.focus({ preventScroll: true });
-    return true;
+    return get(thread.containerEl$);
   },
 );
 

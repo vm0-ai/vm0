@@ -13,7 +13,7 @@ import { githubInstallations } from "./github-installation";
 
 /**
  * Stable mapping from one linked GitHub user's view of an issue or pull
- * request to the canonical VM0 chat thread that owns its queue and session.
+ * request to the canonical Okou chat thread that owns its queue and session.
  */
 export const githubChatThreadRoutes = pgTable(
   "github_chat_thread_routes",

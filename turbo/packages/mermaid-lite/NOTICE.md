@@ -16,7 +16,7 @@ vm0's build makes these functional changes:
   renderer into one ESM file;
 - excludes the other diagram detectors, ELK/Cytoscape layouts, and
   diagram-specific KaTeX code from the generated module graph; and
-- exposes only the Mermaid API surface used by the vm0 platform.
+- exposes only the Mermaid API surface used by the Okou platform.
 
 The generated files retain the bundled third-party license comments emitted
 by Mermaid's upstream esbuild configuration. This package is not affiliated

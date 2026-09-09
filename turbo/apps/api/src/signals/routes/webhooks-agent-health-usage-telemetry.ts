@@ -49,6 +49,11 @@ interface SandboxOperationDimensionInput {
   readonly error?: string;
   readonly outcome?: string;
   readonly reason?: string;
+  readonly dns_readiness_attempt?: number;
+  readonly dns_readiness_final_attempt?: boolean;
+  readonly dns_readiness_guest_duration_ms?: number;
+  readonly dns_readiness_host_residual_ms?: number;
+  readonly dns_readiness_timing?: string;
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly runner_pre_spawn_concurrency_bucket?: RunnerPreSpawnConcurrencyBucket;
@@ -97,10 +102,32 @@ function runnerResourceBudgetDimensions(
   };
 }
 
+function dnsReadinessDimensions(
+  op: SandboxOperationDimensionInput,
+): Record<string, string | number | boolean> {
+  return {
+    ...(op.dns_readiness_attempt !== undefined
+      ? { dns_readiness_attempt: op.dns_readiness_attempt }
+      : {}),
+    ...(op.dns_readiness_final_attempt !== undefined
+      ? { dns_readiness_final_attempt: op.dns_readiness_final_attempt }
+      : {}),
+    ...(op.dns_readiness_guest_duration_ms !== undefined
+      ? { dns_readiness_guest_duration_ms: op.dns_readiness_guest_duration_ms }
+      : {}),
+    ...(op.dns_readiness_host_residual_ms !== undefined
+      ? { dns_readiness_host_residual_ms: op.dns_readiness_host_residual_ms }
+      : {}),
+    ...(op.dns_readiness_timing
+      ? { dns_readiness_timing: op.dns_readiness_timing }
+      : {}),
+  };
+}
+
 function sandboxOperationDimensions(
   op: SandboxOperationDimensionInput,
   runner: SandboxRunnerDimensionInput,
-): Record<string, string> {
+): Record<string, string | number | boolean> {
   return {
     source: "sandbox",
     ...(runner.runnerHostname
@@ -110,6 +137,7 @@ function sandboxOperationDimensions(
     ...(op.error ? { error: op.error } : {}),
     ...(op.outcome ? { outcome: op.outcome } : {}),
     ...(op.reason ? { reason: op.reason } : {}),
+    ...dnsReadinessDimensions(op),
     ...(op.runner_startup_path
       ? { runner_startup_path: op.runner_startup_path }
       : {}),

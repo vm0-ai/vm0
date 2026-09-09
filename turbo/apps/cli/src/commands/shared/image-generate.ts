@@ -260,7 +260,7 @@ export function createImageGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: gpt-image-1 (default), gpt-image-2, flux-2-pro, ideogram-4, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, seedream5-pro, seedream5-lite, nano-banana-2, or nano-banana-2-lite",
+      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst, flux-2-pro, ideogram-4, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, seedream5-pro, seedream5-lite, nano-banana-2, or nano-banana-2-lite",
       IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
     )
     .option(
@@ -270,7 +270,7 @@ export function createImageGenerateCommand(
     )
     .option(
       "--quality <quality>",
-      "Image quality: low, medium, high, or auto",
+      "Image quality: low, medium, high, or auto; GPT Image 2.5 also supports xhigh and max",
       "medium",
     )
     .option(
@@ -335,9 +335,12 @@ Output:
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful image generation
-  - Uses fal.ai and BytePlus for built-in image model execution
+  - Uses OpenAI, fal.ai, and BytePlus for built-in image model execution
 
 Models:
+  - OpenAI: gpt-image-2.5-flare and gpt-image-2.5-sunburst.
+    GPT Image 2.5 generations bill the returned text input, image input,
+    and image output tokens using configured model pricing.
   - fal.ai: gpt-image-1 (default), gpt-image-2, flux-2-pro, ideogram-4,
     flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4,
     nano-banana-2, nano-banana-2-lite.
@@ -358,7 +361,7 @@ Options:
     --compile to prepare a styled prompt-compilation packet, --compiled-prompt
     to generate from an agent-compiled prompt, or --raw-prompt to generate
     without a style. stdin is supported for --prompt in compile mode.
-  - Size: gpt-image-2 accepts auto or WIDTHxHEIGHT. Popular sizes include
+  - Size: GPT Image 2 and 2.5 accept auto or WIDTHxHEIGHT. Popular sizes include
     1024x1024,
     1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160,
     and 2160x3840. Custom sizes must have edges <= 3840px, both
@@ -369,8 +372,10 @@ Options:
     seedream5-lite accepts 2K, 3K, 4K, auto, or supported custom sizes.
     qwen-image-3 and flux-2-pro accept at most 4,194,304 total pixels.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
+    GPT Image 2.5 also accepts xhigh and max for more detailed output.
   - Background: auto, opaque, or transparent when supported. gpt-image-2,
     Flux, Qwen, and Seedream do not support transparent backgrounds.
+    GPT Image 2.5 supports transparent backgrounds with png or webp.
   - Format: png, jpeg, or webp for GPT Image, Nano Banana 2, and qwen-image-3
     models; png or jpeg for other fal and BytePlus models.
   - fal-only controls: --seed and --safety-tolerance for supported fal models;
@@ -378,6 +383,7 @@ Options:
     not supported on the fal-backed image path. Ideogram prompt expansion is
     disabled because Okou supplies the final prompt and expansion costs extra.
   - Image-to-image: pass --image-url to use the model's edit/reference path.
+    GPT Image 2.5 accepts up to 16 source images and an optional mask.
     Nano Banana 2 models and Seedream 5 Lite accept up to 14 source images;
     Seedream 5 Pro accepts up to 10; flux-2-pro accepts up to 9;
     qwen-image-3 accepts up to 3. Flux Redux accepts --image-prompt-strength

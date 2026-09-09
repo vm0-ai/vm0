@@ -1,13 +1,9 @@
 import { screen } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
-import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
   cancelledEvent,
@@ -15,8 +11,10 @@ import {
   context,
   creditUsage,
   expectTextOrder,
+  findWorkHistoryToggle,
   installRunChat,
   promptEvent,
+  queryWorkHistoryToggles,
   readyChat,
   RUN_PATH,
   usageEvent,
@@ -177,20 +175,18 @@ test("Review goal continuations as one work history", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
   expect(screen.getByText("Review the launch readiness")).toBeVisible();
   expect(screen.getByText("The launch is ready in every region")).toBeVisible();
   expect(screen.getByLabelText("Credit usage 10")).toBeVisible();
-  expect(
-    queryMessageBody("Checked the initial launch evidence"),
-  ).not.toBeInTheDocument();
-  expect(queryMessageBody("Validated the regional rollout")).toBeNull();
+  expect(screen.queryByText("Checked the initial launch evidence")).toBeNull();
+  expect(screen.queryByText("Validated the regional rollout")).toBeNull();
   expect(screen.queryByText("Keep checking launch readiness")).toBeNull();
   expect(screen.queryByText("Finish checking launch readiness")).toBeNull();
 
+  click(await findWorkHistoryToggle("collapsed"));
   await expect(
     screen.findByText("Checked the initial launch evidence"),
   ).resolves.toBeVisible();
@@ -294,7 +290,6 @@ async function renderWaitingGoalContinuation(currentRunGroupId: string) {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -419,7 +414,6 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -441,8 +435,8 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
       return link.getAttribute("aria-label") === "View agent profile";
     }),
   ).toHaveLength(1);
-  expect(screen.getByText("Model changed to GPT 5.6 Luna")).toBeVisible();
-  expect(screen.getByText("Model changed to GPT 5.6 Sol")).toBeVisible();
+  expect(screen.queryByText("Model changed to GPT 5.6 Luna")).toBeNull();
+  expect(screen.queryByText("Model changed to GPT 5.6 Sol")).toBeNull();
   expect(
     screen.queryByText("Continue the deployment investigation with Luna"),
   ).toBeNull();
@@ -450,7 +444,12 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
     screen.queryByText("Continue the deployment investigation with Sol"),
   ).toBeNull();
 
-  expect(screen.getByText("Checked the deployment logs")).toBeVisible();
+  click(await findWorkHistoryToggle("collapsed"));
+  await expect(
+    screen.findByText("Checked the deployment logs"),
+  ).resolves.toBeVisible();
+  expect(screen.getByText("Model changed to GPT 5.6 Luna")).toBeVisible();
+  expect(screen.getByText("Model changed to GPT 5.6 Sol")).toBeVisible();
   expectTextOrder(
     "Checked the deployment logs",
     "Model changed to GPT 5.6 Luna",
@@ -548,7 +547,6 @@ test("Start a fresh work history after interrupting a goal continuation", async 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -556,11 +554,7 @@ test("Start a fresh work history after interrupting a goal continuation", async 
     "[data-chat-run-work-history]",
   );
   expect(workHistories).toHaveLength(2);
-  expect(queryMessageBody("Checked the first rollout logs")).toBeNull();
-  expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();
-
-  await expect(
-    screen.findByText("Checked the first rollout logs"),
-  ).resolves.toBeVisible();
-  expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();
+  expect(screen.queryByText("Checked the first rollout logs")).toBeNull();
+  expect(screen.queryByText("Checked the replacement rollout logs")).toBeNull();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(2);
 });

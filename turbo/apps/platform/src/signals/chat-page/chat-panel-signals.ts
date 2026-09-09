@@ -148,6 +148,10 @@ export interface ChatPanelSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
+  readonly composerLayoutOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   readonly scrollContentOnRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
@@ -168,6 +172,7 @@ export interface ChatPanelSignals {
   >;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
+  readonly restoreScrollPosition$: Command<Promise<void>, [AbortSignal]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
   readonly containerEl$: Computed<HTMLElement | null>;
   readonly setContainerRef$: Command<
@@ -190,8 +195,6 @@ export interface ChatPanelSignals {
   // -- Thread-owned utility sidebar -----------------------------------------
   readonly sidebar: ThreadSidebarSignals;
   // -- Per-thread UI state --------------------------------------------------
-  readonly timelineExpandedIds$: Computed<Set<string>>;
-  readonly toggleTimelineExpanded$: Command<void, [string]>;
   readonly copiedEventId$: Computed<string | null>;
   readonly copyEvent$: Command<
     Promise<void>,

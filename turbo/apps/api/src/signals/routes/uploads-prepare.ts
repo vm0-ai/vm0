@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
-import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
 import {
   MAX_UPLOAD_SIZE_BYTES,
@@ -18,7 +17,7 @@ import {
   generatePresignedUploadPartUrl,
   s3MetadataHeaders,
 } from "../external/s3";
-import { allocateArtifactObject$ } from "../services/artifact-storage.service";
+import { allocateUploadedArtifact$ } from "../services/uploaded-artifact.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 import { onRejection, tapError } from "../utils";
@@ -52,16 +51,20 @@ const prepareUploadInner$ = command(
       }
     }
 
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const artifact = await set(
-      allocateArtifactObject$,
+      allocateUploadedArtifact$,
       {
         userId: auth.userId,
+        orgId: auth.orgId,
         filename,
+        contentType,
+        size,
         publicBrand: PUBLIC_BRAND,
+        purpose: bodyResult.data.purpose,
       },
       signal,
     );
+    const bucket = artifact.bucket;
     const { id, key: s3Key, url, metadata } = artifact;
     const uploadHeaders = s3MetadataHeaders(metadata);
 

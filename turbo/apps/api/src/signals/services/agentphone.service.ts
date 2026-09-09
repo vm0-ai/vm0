@@ -387,7 +387,7 @@ export async function linkAgentPhoneUser(
     readonly channel: AgentPhoneChannel;
     readonly userId: string;
     readonly orgId: string;
-    readonly publicBrand?: PublicBrand;
+    readonly publicBrand: PublicBrand;
   },
 ): Promise<LinkAgentPhoneUserResult> {
   const phoneHandle = normalizeAgentPhoneHandle(
@@ -462,7 +462,7 @@ export async function linkAgentPhoneUser(
       phoneHandle,
       userId: params.userId,
       orgId: params.orgId,
-      publicBrand: params.publicBrand ?? "vm0",
+      publicBrand: params.publicBrand,
     })
     .onConflictDoNothing()
     .returning();

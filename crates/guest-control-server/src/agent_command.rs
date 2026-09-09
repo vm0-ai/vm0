@@ -10,13 +10,15 @@ use std::io;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{ChildStderr, ChildStdout, Command, Stdio};
+use std::process::{ChildStderr, ChildStdout};
+
+use crate::contained_command::{CommandStdio, ContainedCommand as Command};
 
 use guest_contracts::codex_session_cleanup::CodexSessionCleanupRequest;
 use guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest;
 
 use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
-use crate::shell_command::{SpawnedCommand, spawn_command_in_containment};
+use crate::shell_command::SpawnedCommand;
 
 #[derive(Clone)]
 pub(crate) enum GuestAgentProgram {
@@ -74,10 +76,10 @@ pub(crate) fn spawn_session_history_identity_verifier_with_pipes(
                 guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &request.runtime_dir,
             )
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdout(CommandStdio::Piped)
+            .stderr(CommandStdio::Piped);
         crate::user::configure_guest_agent_command_environment(&mut command)?;
-        spawn_command_in_containment(&mut command, false, &process_containment)
+        command.spawn(false, &process_containment)
     })();
 
     match spawn_result {
@@ -109,10 +111,10 @@ pub(crate) fn spawn_codex_session_cleanup_with_pipes(
             .arg(&request.session_id)
             .arg(&request.fallback_relative_path)
             .env_clear()
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdout(CommandStdio::Piped)
+            .stderr(CommandStdio::Piped);
         crate::user::configure_guest_agent_command_environment(&mut command)?;
-        spawn_command_in_containment(&mut command, false, &process_containment)
+        command.spawn(false, &process_containment)
     })();
 
     match spawn_result {
@@ -145,10 +147,10 @@ fn spawn_agent_executable_with_pipes(
         command
             .env_clear()
             .envs(env.iter().copied())
-            .stdout(Stdio::from(output_writer))
-            .stderr(Stdio::from(output_stderr));
+            .stdout(CommandStdio::Owned(output_writer))
+            .stderr(CommandStdio::Owned(output_stderr));
         crate::user::configure_guest_agent_command_environment(&mut command)?;
-        let mut child = spawn_command_in_containment(&mut command, false, &process_containment)?;
+        let mut child = command.spawn(false, &process_containment)?;
         child.stdout = Some(ChildStdout::from(output_reader));
         child.stderr = Some(ChildStderr::from(diagnostic_reader));
         Ok(child)
@@ -208,6 +210,7 @@ fn cloexec_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
 
 #[cfg(test)]
 mod tests {
+    use crate::process::ChildProcess;
     use std::io::{Read, Write};
 
     use guest_control_proto::ExecProcessRole;

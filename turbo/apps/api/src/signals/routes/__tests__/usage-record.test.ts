@@ -27,6 +27,7 @@ import { createRouteMocks } from "./helpers/route-test";
 import {
   materializeHourlyUsage$,
   readUsageStorageCounts$,
+  seedRun$,
 } from "./helpers/usage-state";
 import { mapsRoutes } from "../maps";
 import { usageRecordRoutes } from "../usage-record";
@@ -182,6 +183,26 @@ async function createUnthreadedRun(
       },
     },
   });
+  if (args.triggerSource === "goal") {
+    if (!actor.orgId) {
+      throw new Error("Historical Goal usage requires an org-scoped actor");
+    }
+    // Goal history remains billable/readable after its runtime writer retires.
+    return await store.set(
+      seedRun$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        composeId: compose.agentId,
+        prompt: args.prompt,
+        triggerSource: "goal",
+        status: "completed",
+        completedAt: nowDate(),
+        createdAt: args.createdAt,
+      },
+      context.signal,
+    );
+  }
   if (args.createdAt) {
     mockNow(args.createdAt);
   }

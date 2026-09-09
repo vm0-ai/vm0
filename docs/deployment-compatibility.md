@@ -429,6 +429,32 @@ Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
 
+### Usage pack visibility compatibility retirement
+
+`showUsagePack` has an explicit API writer and billing response starting with
+commit `65ac0518bde2310887470cb0874aeae06c0c0397`, first released in
+`api-v1.570.0` (`22c62b9e92f42078ae314e505b983a62eda35dac`). Its
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34227208941/job/102068385804)
+completed on 2026-09-08 at 12:54:51 UTC. The later `api-v1.572.1` artifact
+(`561b7d6bf0da6ccca2542c0f9cd053d67151ba31`) also completed
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34297728653/job/102298538957)
+on 2026-09-09 at 01:11:34 UTC.
+
+Migration `1092` removes the temporary legacy-writer trigger and function after
+this rollout. The billing response now requires the flag, and the frontend
+reads it directly. The production rollback resolver, loaded from `main`, rejects
+targets without the explicit writer commit before resolving deployment artifacts.
+This guard is active before the cleanup release runs its migration and also
+rejects older entries retained in the rollback dashboard. Other rollback checks,
+including deployment availability and Runner architecture coverage, still apply.
+Recovery below `api-v1.570.0` requires restoring compatibility first.
+
+The cleanup retains existing visibility values, the physical
+`member_invite_usage_pack_required` column and its ORM declaration, and all
+existing admin requirements. It does not change usage-pack balances or purchase
+eligibility. Further legacy-column retirement remains tracked in
+[issue #32575](https://github.com/vm0-ai/vm0/issues/32575).
+
 ### Workflow automation connector-account projections
 
 Connector-backed workflow event automations persist account authority in an

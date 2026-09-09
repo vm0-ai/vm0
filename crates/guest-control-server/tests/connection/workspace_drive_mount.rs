@@ -65,24 +65,7 @@ fn slow_program(pid_path: &Path) -> String {
 fn workspace_drive_mount_runs_only_the_fixed_command() {
     let (_directory, program) = create_program(
         r#"
-[ "$#" -eq 2 ]
-[ "$1" = "-c" ]
-case "$2" in
-  *"workspace_dir='/home/user/workspace'"*) ;;
-  *) exit 91 ;;
-esac
-case "$2" in
-  *"workspace_device='/dev/vdb'"*) ;;
-  *) exit 92 ;;
-esac
-case "$2" in
-  *"workspace_mountinfo_path='/proc/self/mountinfo'"*) ;;
-  *) exit 93 ;;
-esac
-case "$2" in
-  *'mount -t ext4 -- "$workspace_device" "$workspace_dir"'*) ;;
-  *) exit 94 ;;
-esac
+[ "$#" -eq 0 ]
 printf 'mounted\n'
 printf 'helper stderr\n' >&2
 "#,

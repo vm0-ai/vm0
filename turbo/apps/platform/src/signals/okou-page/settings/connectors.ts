@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import { toast } from "@okouai/ui/components/ui/sonner";
+import { withConnectorConnectionProgress } from "../../connector-connection-progress.ts";
 
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
@@ -242,14 +243,6 @@ export function hasConnectorStatusProviderDrivenConnectMethod(
     );
   });
 }
-export function hasConnectorStatusBrowserAuthGrant(
-  connector: PlatformConnectorCatalogStatusItem,
-): boolean {
-  return connector.authMethods.some((method) => {
-    return isBrowserAuthGrantKind(method.grantKind);
-  });
-}
-
 export function getConnectorStatusConnectLaunchMode(
   connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorConnectLaunchMode {
@@ -425,6 +418,30 @@ export function matchesConnectorSearch(
     return true;
   }
   return false;
+}
+
+/**
+ * Directory search. Widens `matchesConnectorSearch` to the description and the
+ * catalog tags, so intent words ("email", "chat", "crm") reach the connectors
+ * that serve them even when the product name shares no letters with the query.
+ */
+export function matchesConnectorDirectorySearch(
+  search: string,
+  connector: Pick<
+    PlatformConnectorCatalogStatusItem,
+    "slug" | "label" | "description" | "tags"
+  >,
+): boolean {
+  if (matchesConnectorSearch(search, connector)) {
+    return true;
+  }
+  const needle = search.trim().toLowerCase();
+  if (connector.description.toLowerCase().includes(needle)) {
+    return true;
+  }
+  return connector.tags.some((tag) => {
+    return tag.toLowerCase().includes(needle);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1674,7 +1691,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
   },
 );
 
-export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
+const connectConnectorOAuthDeviceAuthAndSettleCommand$ = command(
   async (
     { set },
     args: {
@@ -1702,6 +1719,11 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
     }
   },
 );
+
+export const connectConnectorOAuthDeviceAuthAndSettle$ =
+  withConnectorConnectionProgress(
+    connectConnectorOAuthDeviceAuthAndSettleCommand$,
+  );
 
 // ---------------------------------------------------------------------------
 // External-code authorization flow state
@@ -1809,7 +1831,7 @@ export const openConnectorExternalCodeAuthorizationPage$ = command(
   },
 );
 
-export const connectConnectorExternalCode$ = command(
+const connectConnectorExternalCodeCommand$ = command(
   async (
     { get, set },
     args: ConnectConnectorExternalCodeParams,
@@ -1923,6 +1945,10 @@ export const connectConnectorExternalCode$ = command(
       },
     );
   },
+);
+
+export const connectConnectorExternalCode$ = withConnectorConnectionProgress(
+  connectConnectorExternalCodeCommand$,
 );
 
 const completeConnectorExternalCode$ = command(
@@ -2042,7 +2068,7 @@ const completeConnectorExternalCode$ = command(
   },
 );
 
-export const completeConnectorExternalCodeAndSettle$ = command(
+const completeConnectorExternalCodeAndSettleCommand$ = command(
   async (
     { set },
     args: CompleteConnectorExternalCodeParams & {
@@ -2065,6 +2091,11 @@ export const completeConnectorExternalCodeAndSettle$ = command(
     }
   },
 );
+
+export const completeConnectorExternalCodeAndSettle$ =
+  withConnectorConnectionProgress(
+    completeConnectorExternalCodeAndSettleCommand$,
+  );
 
 // ---------------------------------------------------------------------------
 // Standalone mode detection
@@ -2512,7 +2543,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
   },
 );
 
-export const connectConnectorOAuthAuthCode$ = command(
+const connectConnectorOAuthAuthCodeCommand$ = command(
   async (
     { get, set },
     connectorSlug: ConnectorSlug,
@@ -2598,11 +2629,15 @@ export const connectConnectorOAuthAuthCode$ = command(
   },
 );
 
+export const connectConnectorOAuthAuthCode$ = withConnectorConnectionProgress(
+  connectConnectorOAuthAuthCodeCommand$,
+);
+
 // ---------------------------------------------------------------------------
 // Connect via browser authorization, then run onSuccess callback.
 // ---------------------------------------------------------------------------
 
-export const connectConnectorOAuthAuthCodeAndSettle$ = command(
+const connectConnectorOAuthAuthCodeAndSettleCommand$ = command(
   async (
     { set },
     args: {
@@ -2626,3 +2661,15 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
     }
   },
 );
+
+export const connectConnectorOAuthAuthCodeAndSettle$ =
+  withConnectorConnectionProgress(
+    connectConnectorOAuthAuthCodeAndSettleCommand$,
+  );
+
+/** Menu actions disappear on activation and need their own progress feedback. */
+export const connectConnectorOAuthAuthCodeWithDialogAndSettle$ =
+  withConnectorConnectionProgress(
+    connectConnectorOAuthAuthCodeAndSettleCommand$,
+    { showDialog: true },
+  );

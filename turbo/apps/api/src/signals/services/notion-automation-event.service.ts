@@ -14,7 +14,6 @@ import {
   type NotionPageContentUpdatedScope,
   type NotionPageReference,
 } from "@okouai/api-contracts/contracts/workflows";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import {
   notionWebhookEvents,
@@ -679,7 +678,6 @@ export async function prepareNotionChildPageEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
-    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionChildPageCreatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -761,7 +759,6 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
-    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionDatabaseItemCreatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -894,7 +891,6 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
-    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionPageContentUpdatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -912,7 +908,6 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
         orgId: args.orgId,
         userId: args.userId,
         connectorId: args.connectorId,
-        publicBrand: args.publicBrand,
         eventConfig: {
           provider: "notion",
           event: "child_page_created",
@@ -951,7 +946,6 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.connectorId,
-      publicBrand: args.publicBrand,
       eventConfig: {
         provider: "notion",
         event: "database_item_created",

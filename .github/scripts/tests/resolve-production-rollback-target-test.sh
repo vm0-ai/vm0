@@ -24,6 +24,8 @@ case "${1:-}" in
   merge-base)
     if [ "${3:-}" = "c093e0ffdab988d2a8a071809f90d87fa3e79f20" ]; then
       [ "${MOCK_READER_FLOOR_VALID:-1}" = "1" ]
+    elif [ "${3:-}" = "65ac0518bde2310887470cb0874aeae06c0c0397" ]; then
+      [ "${MOCK_USAGE_PACK_FLOOR_VALID:-1}" = "1" ]
     elif [ "${3:-}" = "febec8a3399be74b0f14a89cb9f42e39dd5ce69f" ]; then
       if [ "${4:-}" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ]; then
         [ "${MOCK_BLANK_RUNNER_FLOOR_VALID:-1}" = "1" ]
@@ -159,6 +161,14 @@ assert_failure \
 [ ! -s "${tmp_dir}/reader-floor.output" ] || fail "incompatible reader target must not publish outputs"
 if grep -qE '^(curl|aws) ' "${tmp_dir}/boundaries.log"; then
   fail "reader-floor rejection must happen before artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "first compatible API release is api-v1.570.0" \
+  run_resolver "${tmp_dir}/usage-pack-floor.output" MOCK_USAGE_PACK_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/usage-pack-floor.output" ] || fail "old usage pack writer target must not publish outputs"
+if grep -q '^curl ' "${tmp_dir}/boundaries.log"; then
+  fail "usage pack writer rejection must precede artifact resolution"
 fi
 
 : >"${tmp_dir}/boundaries.log"

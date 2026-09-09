@@ -146,7 +146,7 @@ test("Agent formulas render from explicit delimiters without treating currency a
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     cachedFeatureSwitches: { [FeatureSwitchKey.AgentMessageMath]: false },
     featureSwitches: { [FeatureSwitchKey.AgentMessageMath]: true },
   });
@@ -191,7 +191,7 @@ test("Shared Agent formulas use the fetched rollout after stale cache hydration"
     return respond(200, {
       id: sharedThreadId,
       title: "Shared formula",
-      publicBrand: "vm0",
+      publicBrand: "okou",
       messages: [
         {
           messageIndex: 0,
@@ -206,7 +206,7 @@ test("Shared Agent formulas use the fetched rollout after stale cache hydration"
   await setupPage({
     context,
     path: `/share/threads/${sharedThreadId}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     cachedFeatureSwitches: { [FeatureSwitchKey.AgentMessageMath]: false },
     featureSwitches: { [FeatureSwitchKey.AgentMessageMath]: true },
   });
@@ -234,7 +234,7 @@ test("The enabled rollout leaves dollar prose alone without loading KaTeX", asyn
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.AgentMessageMath]: true },
   });
 
@@ -257,7 +257,7 @@ test("The disabled rollout does not request the math runtime", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.AgentMessageMath]: false },
   });
 

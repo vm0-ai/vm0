@@ -8,7 +8,6 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   morningBriefPreference$,
   updateMorningBriefPreference$,
@@ -101,7 +100,6 @@ const updateMorningBriefPreferenceInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         enabled: body.data.enabled,
-        publicBrand: PUBLIC_BRAND,
       },
       signal,
     );

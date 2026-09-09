@@ -3957,6 +3957,11 @@ test("Converge Calendar recovery after the first stale summary without another c
   oauthCompleted = true;
   reconnect.complete();
   await firstRead.promise;
+  const recovery = await screen.findByRole("region", {
+    name: "Google Calendar recovery",
+  });
+  expect(within(recovery).getByRole("status")).toBeVisible();
+  expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
   expect(screen.getByRole("alert")).toHaveTextContent("delivery paused");
   workflow.automations[0] = googleCalendarWorkflowAutomation();
   watchRecovery.resolve();
@@ -4175,6 +4180,7 @@ test.each(["cancel", "navigate"] as const)(
     const recovery = await screen.findByRole("region", {
       name: "Google Calendar recovery",
     });
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
     if (action === "cancel") {
       click(buttonByText("Cancel", recovery));
     } else {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/vm0-ai/vm0/compare/host-worker-v1.2.2...host-worker-v1.3.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+
 ## [1.2.2](https://github.com/vm0-ai/vm0/compare/host-worker-v1.2.1...host-worker-v1.2.2) (2026-09-08)
 
 

@@ -12,7 +12,7 @@ import { chatThreads } from "./chat-thread";
 
 /**
  * Stable mapping from an AgentPhone conversation identity to the canonical
- * VM0 chat thread that owns its queue and session chain.
+ * Okou chat thread that owns its queue and session chain.
  */
 export const agentphoneChatThreadRoutes = pgTable(
   "agentphone_chat_thread_routes",

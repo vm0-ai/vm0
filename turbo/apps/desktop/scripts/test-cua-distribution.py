@@ -218,6 +218,9 @@ class DistributionTest(unittest.TestCase):
             target.write_text(json.dumps({"version": "0.23.2"}))
             payload["files"][relative] = hashlib.sha256(target.read_bytes()).hexdigest()
         payload_path.write_text(json.dumps(payload))
+        (resources / "native").mkdir()
+        for name in ["cua-owner.node", "cua-guardian", "cua-sdk-process.js"]:
+            (resources / "native" / name).write_text("owned lifecycle fixture")
         (resources / "app/dist").mkdir(parents=True)
         (resources / "app/package.json").write_text(json.dumps(package))
         for name in ["main.js", "bootstrap.js", "preload.js"]:

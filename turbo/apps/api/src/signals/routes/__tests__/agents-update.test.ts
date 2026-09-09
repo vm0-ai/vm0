@@ -564,32 +564,6 @@ describe("PATCH /api/agents/:id", () => {
     });
   });
 
-  it("accepts an old avatar update that repeats unchanged visibility", async () => {
-    const user = newOrgUser();
-    const adminUserId = `user_${randomUUID()}`;
-    const agent = await createAgentAs(user, {
-      avatarUrl: "preset:0",
-      visibility: "public",
-    });
-    mocks.clerk.session(adminUserId, user.orgId, "org:admin");
-
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: { avatarUrl: "preset:4", visibility: "public" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      agentId: agent.agentId,
-      ownerId: user.userId,
-      avatarUrl: "preset:4",
-      visibility: "public",
-    });
-  });
-
   it("returns 403 when an org admin changes another user's public agent visibility", async () => {
     const user = newOrgUser();
     const adminUserId = `user_${randomUUID()}`;

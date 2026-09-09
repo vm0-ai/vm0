@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
+import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageAssets,
@@ -10,28 +10,27 @@ import type {
 } from "@okouai/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@okouai/db/jsonb-contracts/chat-teams-context";
 import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
-import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
-import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { chatEvents } from "@okouai/db/schema/chat-event";
-import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
+import { conversations } from "@okouai/db/schema/conversation";
 import { feishuChatIngress } from "@okouai/db/schema/feishu-chat-ingress";
 import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
-import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
-import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
-import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { runOutputLegacyPiEvents } from "@okouai/db/schema/run-output-legacy-pi-event";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { runOutputMemoryCitations } from "@okouai/db/schema/run-output-memory-citation";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { usageEvent } from "@okouai/db/schema/usage-event";
@@ -52,23 +51,23 @@ import { executeRawRows } from "../lib/db-raw-rows";
 import type { Tx } from "../lib/db-types";
 import { nowDate } from "../lib/time";
 import {
-  insertChatEvent,
-  insertChatEvents,
-  replaceChatEvent,
-} from "../signals/services/chat-event.service";
+  acquireBuiltInModelKeyFixture,
+  releaseBuiltInModelKeyFixture,
+} from "../signals/services/built-in-model-key-fixture";
 import { canonicalChatEventUserMessage } from "../signals/services/canonical-chat-event-read.service";
+import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
+import { visibleChatEventCondition } from "../signals/services/chat-event-shared.service";
 import {
   chatInputPromptDispatchCondition,
   runOwnedChatEventForRunCondition,
 } from "../signals/services/chat-event-type.service";
 import {
-  acquireBuiltInModelKeyFixture,
-  releaseBuiltInModelKeyFixture,
-} from "../signals/services/built-in-model-key-fixture";
-import { visibleChatEventCondition } from "../signals/services/chat-event-shared.service";
-import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
-import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
+  insertChatEvent,
+  insertChatEvents,
+  replaceChatEvent,
+} from "../signals/services/chat-event.service";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
+import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -1002,6 +1001,7 @@ export async function timeoutRunWithoutCallbacksFixture(args: {
 
 /** Holds one unique run row so route tests can order lifecycle competitors. */
 export async function holdAgentRunRowLockFixture(args: {
+  readonly statusOnRelease?: "running";
   readonly runId: string;
   readonly signal: AbortSignal;
 }): Promise<{
@@ -1034,6 +1034,12 @@ export async function holdAgentRunRowLockFixture(args: {
     }
     started.resolve(holderPid);
     await released.promise;
+    if (args.statusOnRelease === "running") {
+      await tx
+        .update(agentRuns)
+        .set({ status: "running", startedAt: nowDate() })
+        .where(eq(agentRuns.id, args.runId));
+    }
   });
   const holderPid = await started.promise;
 
@@ -1161,118 +1167,6 @@ export async function queueChatEventPhysicalDeletionFixture(args: {
   });
   await started.promise;
   return { done };
-}
-
-/**
- * Holds model-policy reads so a route test can pause after a queued goal
- * captured its target but before model resolution returns. Product APIs cannot
- * pause at this query boundary, and the fixture does not mutate policy rows.
- */
-export async function holdModelPolicyReadsFixture(args: {
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly release: () => void;
-  readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
-}> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
-    const pidRows = await executeRawRows(
-      tx,
-      sql`
-        SELECT pg_backend_pid() AS "pid"
-      `,
-      databasePidRowSchema,
-    );
-    const holderPid = pidRows[0]?.pid;
-    if (!holderPid) {
-      throw new Error("Expected the model-policy lock holder pid");
-    }
-    await tx.execute(
-      sql`LOCK TABLE ${orgModelPolicies} IN ACCESS EXCLUSIVE MODE`,
-    );
-    started.resolve(holderPid);
-    await released.promise;
-  });
-  const holderPid = await started.promise;
-
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
-    blockedWaiterCount: async () => {
-      return await directBlockedWaiterCount(holderPid);
-    },
-  };
-}
-
-/**
- * Holds the production per-thread goal lifecycle lock so a route test can
- * order one user lifecycle change ahead of a concurrent queue settlement.
- * The lock key is scoped to the test's unique thread id, so unrelated API
- * tests cannot satisfy the waiter barrier.
- */
-export async function holdGoalThreadLockFixture(args: {
-  readonly threadId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly release: () => void;
-  readonly done: Promise<void>;
-  readonly waiterCount: () => Promise<number>;
-}> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
-    const rows = await executeRawRows(
-      tx,
-      sql`
-        SELECT
-          pg_backend_pid() AS "pid",
-          pg_advisory_xact_lock(hashtext('goal:' || ${args.threadId}))
-      `,
-      databasePidRowSchema,
-    );
-    const holderPid = rows[0]?.pid;
-    if (!holderPid) {
-      throw new Error("Expected the goal thread lock holder pid");
-    }
-    started.resolve(holderPid);
-    await released.promise;
-  });
-  const holderPid = await started.promise;
-
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
-    waiterCount: async () => {
-      const rows = await executeRawRows(
-        db(),
-        sql`
-          SELECT ${count()}::int AS "waiterCount"
-          FROM pg_locks AS waiting
-          WHERE waiting.locktype = 'advisory'
-            AND NOT waiting.granted
-            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
-              SELECT held.classid, held.objid, held.objsubid
-              FROM pg_locks AS held
-              WHERE held.locktype = 'advisory'
-                AND held.pid = ${holderPid}
-                AND held.granted
-            )
-        `,
-        waiterCountRowSchema,
-      );
-      return rows[0]?.waiterCount ?? 0;
-    },
-  };
 }
 
 /**

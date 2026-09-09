@@ -7,7 +7,6 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isBadRequestResponse, isNotFoundResponse } from "../../lib/error";
 import { syncArtifactToGoogleDrive$ } from "../services/google-drive-artifact-sync.service";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -29,7 +28,6 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       threadId: params.threadId,
       runId: bodyResult.data.runId,
       fileId: bodyResult.data.fileId,
-      publicBrand: PUBLIC_BRAND,
     },
     signal,
   );

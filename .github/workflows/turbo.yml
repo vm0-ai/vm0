@@ -2463,7 +2463,10 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image-groups.sh
 
-  # Deploy runner start: generate config with real API preview URL and start service
+  # Deploy runner start: start one service on the existing deterministic host
+  # selection for runner-image-job-ref, matching the Crates Runner behavior lane.
+  # Retire the same service namespace on unselected hosts before reporting ready.
+  # Shared image preparation and lifecycle locking still cover all hosts.
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
   deploy-runner-start:
     runs-on: ubuntu-latest
@@ -2951,6 +2954,8 @@ jobs:
           report_type: test_results
       - name: Upload runner E2E JUnit XML
         if: ${{ !cancelled() }}
+        # JUnit artifacts are diagnostic; the BATS step determines test success.
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: e2e-runner-junit-${{ matrix.index }}

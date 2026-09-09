@@ -229,26 +229,14 @@ describe("global Lucide defaults", () => {
   });
 });
 
-describe("dialog transitions", () => {
-  it("does not apply exit styles while a remounted dialog is open", () => {
-    expect(
-      readRuleBody(
-        globalCss,
-        ".okou-dialog-overlay[data-ending-style]:not([data-open])",
-      ),
-    ).toMatch(/animation:\s*okou-dialog-overlay-out/);
-    expect(
-      readRuleBody(
-        globalCss,
-        ".okou-dialog-overlay[data-ending-style]:not([data-open])::after",
-      ),
-    ).toMatch(/visibility:\s*hidden/);
-    expect(
-      readRuleBody(
-        globalCss,
-        ".okou-dialog-content[data-ending-style]:not([data-open])",
-      ),
-    ).toMatch(/animation:\s*okou-dialog-content-out/);
+describe("dialog motion", () => {
+  it("fades and translates dialog content in both directions", () => {
+    expect(readRuleBody(globalCss, "@keyframes okou-dialog-popup-in")).toMatch(
+      /from\s*{[\s\S]*?opacity:\s*0;[\s\S]*?translateY\(8px\)[\s\S]*?to\s*{[\s\S]*?opacity:\s*1;[\s\S]*?translateY\(0\)/,
+    );
+    expect(readRuleBody(globalCss, "@keyframes okou-dialog-popup-out")).toMatch(
+      /from\s*{[\s\S]*?opacity:\s*1;[\s\S]*?translateY\(0\)[\s\S]*?to\s*{[\s\S]*?opacity:\s*0;[\s\S]*?translateY\(8px\)/,
+    );
   });
 });
 

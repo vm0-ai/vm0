@@ -199,16 +199,27 @@ export function makeRunGroupMessages(params: {
     const itemNumber = index + 1;
     const runId = `${params.runGroupId}-run-${itemNumber}`;
     const createdAt = new Date(
-      Date.UTC(2026, 5, 9, 10, params.startMinute + index, 0),
+      Date.UTC(2026, 7, 1, 12, params.startMinute + index, 0),
     ).toISOString();
     const assistantCreatedAt = new Date(
-      Date.UTC(2026, 5, 9, 10, params.startMinute + index, 30),
+      Date.UTC(2026, 7, 1, 12, params.startMinute + index, 30),
     ).toISOString();
     return [
       {
         id: `msg-${params.label.toLowerCase()}-${itemNumber}-user`,
         role: "user" as const,
-        content: params.label,
+        eventType: "input.automation" as const,
+        content: null,
+        userMessage: {
+          version: 1 as const,
+          parts: [
+            {
+              type: "automation" as const,
+              workflowName: params.label.toLowerCase().replaceAll(" ", "-"),
+              automationBrief: params.label,
+            },
+          ],
+        },
         runId,
         runGroupId: params.runGroupId,
         createdAt,

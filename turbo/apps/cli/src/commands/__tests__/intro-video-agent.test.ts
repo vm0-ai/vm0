@@ -112,6 +112,7 @@ describe("internal Intro Video Agent command", () => {
             fileUrls: [
               "https://api.okou.ai/f/user-1/deck-id/source.pdf",
               "https://api.okou.ai/f/user-1/recording-id/source.webm",
+              `http://localhost:3000/api/web/download-file?file_id=${REQUEST_ID}&filename=reference.png`,
             ],
           });
           return HttpResponse.json(PENDING_RESULT, { status: 202 });
@@ -134,6 +135,8 @@ describe("internal Intro Video Agent command", () => {
           "https://api.okou.ai/f/user-1/deck-id/source.pdf",
           "--file-url",
           "https://api.okou.ai/f/user-1/recording-id/source.webm",
+          "--file-url",
+          `http://localhost:3000/api/web/download-file?file_id=${REQUEST_ID}&filename=reference.png`,
           "--json",
         ),
       );

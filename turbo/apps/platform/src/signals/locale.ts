@@ -9,14 +9,18 @@ import {
   loadI18nLanguageResources,
   loadInitialLocaleResources,
 } from "../i18n/index.ts";
+import { resolveInitialLocaleFallbackFromBrowser } from "../i18n/locale-fallback.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import { clerk$ } from "./auth.ts";
+import { logger } from "./log.ts";
 import {
   updateUserPreference$,
   userPreferences$,
 } from "./okou-page/settings/user-preferences.ts";
+import { settle } from "./utils.ts";
 
 const internalLocale$ = state<SupportedLocale>(DEFAULT_LOCALE);
+const L = logger("Locale");
 
 export const locale$ = computed((get) => {
   return get(internalLocale$);
@@ -27,17 +31,35 @@ export const availableLocalePreferences$ = computed(async (get) => {
   return preferences.supportedLocales;
 });
 
+const loadInitialLocale$ = command(
+  async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
+    return await Promise.all([
+      loadInitialLocaleResources(locale, signal),
+      set(loadClerkLocalization$, locale, signal),
+    ]);
+  },
+);
+
 export const initLocale$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    const requestedLocale = DEFAULT_LOCALE;
-    const [initial, clerkLocalization] = await Promise.all([
-      loadInitialLocaleResources(requestedLocale, signal),
-      set(loadClerkLocalization$, requestedLocale, signal),
-    ]);
+    const requestedLocale = resolveInitialLocaleFallbackFromBrowser();
+    const initialResult = await settle(
+      set(loadInitialLocale$, requestedLocale, signal),
+      signal,
+    );
+    if (!initialResult.ok) {
+      L.error(
+        `Failed to initialize ${requestedLocale}; falling back to ${DEFAULT_LOCALE}`,
+        initialResult.error,
+      );
+    }
+    const [initial, clerkLocalization] = initialResult.ok
+      ? initialResult.value
+      : await set(loadInitialLocale$, DEFAULT_LOCALE, signal);
     signal.throwIfAborted();
     const locale = await initializeI18nWithResources(initial, signal);
     signal.throwIfAborted();
-    set(cacheClerkLocalization$, requestedLocale, clerkLocalization);
+    set(cacheClerkLocalization$, initial.locale, clerkLocalization);
     set(internalLocale$, locale);
     document.documentElement.lang = locale;
   },
@@ -77,12 +99,28 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
-    const preferredLocale = preferences.locale ?? DEFAULT_LOCALE;
-    const locale = supportedLocales.includes(preferredLocale)
+    const preferredLocale =
+      preferences.locale ?? resolveInitialLocaleFallbackFromBrowser();
+    let locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale
       : DEFAULT_LOCALE;
 
-    await set(applyLocalePreference$, locale, signal);
+    if (preferences.locale === null && locale !== DEFAULT_LOCALE) {
+      const fallbackResult = await settle(
+        set(applyLocalePreference$, locale, signal),
+        signal,
+      );
+      if (!fallbackResult.ok) {
+        L.error(
+          `Failed to apply locale fallback ${locale}; falling back to ${DEFAULT_LOCALE}`,
+          fallbackResult.error,
+        );
+        locale = DEFAULT_LOCALE;
+        await set(applyLocalePreference$, locale, signal);
+      }
+    } else {
+      await set(applyLocalePreference$, locale, signal);
+    }
 
     if (preferences.locale === null) {
       await set(updateUserPreference$, { locale }, signal);

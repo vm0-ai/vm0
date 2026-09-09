@@ -7,7 +7,7 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { useEditorState } from "@tiptap/react";
-import { Popover, PopoverAnchor, type KeyboardEventLike } from "@okouai/ui";
+import { Popover, type KeyboardEventLike } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/okou-page/composer-agent-suggestion-domain.ts";
@@ -26,10 +26,11 @@ import {
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 import {
-  COMPOSER_CREATE_MODES,
+  composerCreateCommandLabel,
   composerCreateModeLabel,
+  composerCreateModeName,
   composerCreatePlaceholder,
-  type ComposerCreateMode,
+  type ComposerCreateCommand,
 } from "../../signals/okou-page/composer-create.ts";
 
 function isMacKeyboard(): boolean {
@@ -89,49 +90,29 @@ interface ComposerSuggestionRange {
   readonly end: number;
 }
 
-interface ComposerSuggestionCaretVirtualRef {
-  current: {
-    readonly contextElement: HTMLElement;
-    getBoundingClientRect(): DOMRect;
-  };
-}
-
-function composerSuggestionCaretVirtualRef(
+function composerSuggestionCaretAnchor(
   editor: Editor,
   range: ComposerSuggestionRange | null,
-): ComposerSuggestionCaretVirtualRef | null {
+) {
   if (!range || !editor.isInitialized) {
-    return null;
+    return undefined;
   }
   return {
-    current: {
-      contextElement: editor.view.dom,
-      getBoundingClientRect() {
-        const suggestionStart = Math.max(
-          editor.state.selection.head - (range.end - range.start),
-          0,
-        );
-        const coords = editor.view.coordsAtPos(suggestionStart);
-        return new DOMRect(
-          coords.left,
-          coords.top,
-          0,
-          coords.bottom - coords.top,
-        );
-      },
+    contextElement: editor.view.dom,
+    getBoundingClientRect() {
+      const suggestionStart = Math.max(
+        editor.state.selection.head - (range.end - range.start),
+        0,
+      );
+      const coords = editor.view.coordsAtPos(suggestionStart);
+      return new DOMRect(
+        coords.left,
+        coords.top,
+        0,
+        coords.bottom - coords.top,
+      );
     },
   };
-}
-
-function ComposerSuggestionCaretAnchor({
-  editor,
-  range,
-}: {
-  readonly editor: Editor;
-  readonly range: ComposerSuggestionRange | null;
-}) {
-  const virtualRef = composerSuggestionCaretVirtualRef(editor, range);
-  return virtualRef ? <PopoverAnchor virtualRef={virtualRef} /> : null;
 }
 
 function workflowComposerPlaceholder(sending: boolean | undefined): string {
@@ -166,8 +147,9 @@ function WorkflowComposerPlaceholder({
   composer: ComposerSignals;
   sending: boolean | undefined;
 }) {
-  useTranslation();
+  const { t } = useTranslation();
   const createMode = useGet(composer.create.mode$);
+  const choosing = useGet(composer.create.choosing$);
   const hasInput = useGet(composer.editor.hasInput$);
   const hasEditorContent = useEditorState({
     editor: composer.editor.editor,
@@ -188,9 +170,13 @@ function WorkflowComposerPlaceholder({
       }`}
       aria-hidden="true"
     >
-      {createMode
-        ? composerCreatePlaceholder(createMode)
-        : workflowComposerPlaceholder(sending)}
+      {choosing
+        ? t(($) => {
+            return $.chat.composer.create.question;
+          })
+        : createMode
+          ? composerCreatePlaceholder(createMode)
+          : workflowComposerPlaceholder(sending)}
     </div>
   );
 }
@@ -298,8 +284,8 @@ interface ComposerSuggestionMenuState {
   readonly selectedIndex: number;
   readonly close: () => void;
   readonly workflows: readonly ComposerSlashWorkflow[];
-  readonly createModes: readonly ComposerCreateMode[];
-  readonly selectCreate: (mode: ComposerCreateMode) => void;
+  readonly createModes: readonly ComposerCreateCommand[];
+  readonly selectCreate: (mode: ComposerCreateCommand) => void;
   readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
@@ -315,23 +301,24 @@ interface ComposerSuggestionMenuState {
 function useComposerCreateSuggestions(
   composer: ComposerSignals,
   query: string | undefined,
-): readonly ComposerCreateMode[] {
+): readonly ComposerCreateCommand[] {
   useTranslation();
   const enabled = useGet(composer.create.enabled$);
   if (!enabled || query === undefined) {
     return [];
   }
-  return COMPOSER_CREATE_MODES.filter((mode) => {
-    if (
-      (mode === "image" && !composer.imageModel) ||
-      (mode === "video" && !composer.videoModel)
-    ) {
-      return false;
-    }
-    const normalized = query.toLowerCase().trim();
+  const normalized = query.toLowerCase().trim();
+  if (
+    "create".startsWith(normalized) ||
+    composerCreateCommandLabel("choose").toLowerCase().startsWith(normalized)
+  ) {
+    return ["choose"];
+  }
+  return composer.create.modes.filter((mode) => {
     return (
       `create ${mode}`.includes(normalized) ||
-      composerCreateModeLabel(mode).toLowerCase().includes(normalized)
+      composerCreateModeLabel(mode).toLowerCase().includes(normalized) ||
+      composerCreateModeName(mode).toLowerCase().includes(normalized)
     );
   });
 }
@@ -343,7 +330,9 @@ function useComposerSuggestionMenu({
   readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
-  const selectCreate = useSet(composer.create.setMode$);
+  const selectCreate = useSet(composer.create.selectCommand$);
+  const setCreateMode = useSet(composer.create.setMode$);
+  const choosing = useGet(composer.create.choosing$);
   const slashRange = useGet(composer.suggestion.activeSlashRange$);
   const createModes = useComposerCreateSuggestions(composer, slashRange?.query);
   const chatThreadRange = useGet(
@@ -428,6 +417,11 @@ function useComposerSuggestionMenu({
   }
 
   function handleKeyDown(event: KeyboardEvent): boolean {
+    if (event.key === "Escape" && choosing && !open) {
+      event.preventDefault();
+      setCreateMode(null);
+      return true;
+    }
     return handleComposerKeyDownCapture(event, {
       composer,
       suggestionCount,
@@ -519,10 +513,6 @@ export function TiptapWorkflowComposer({
         }
       }}
     >
-      <ComposerSuggestionCaretAnchor
-        editor={composer.editor.editor}
-        range={suggestionMenu.range}
-      />
       <div className="relative">
         <WorkflowComposerPlaceholder composer={composer} sending={sending} />
         <div
@@ -565,6 +555,10 @@ export function TiptapWorkflowComposer({
       </div>
       {suggestionMenu.showWorkflows && (
         <SlashWorkflowMenu
+          anchor={composerSuggestionCaretAnchor(
+            composer.editor.editor,
+            suggestionMenu.range,
+          )}
           workflows={suggestionMenu.workflows}
           createModes={suggestionMenu.createModes}
           onSelectCreate={suggestionMenu.selectCreate}
@@ -577,6 +571,10 @@ export function TiptapWorkflowComposer({
       )}
       {suggestionMenu.showMentions && (
         <ComposerMentionSuggestionMenu
+          anchor={composerSuggestionCaretAnchor(
+            composer.editor.editor,
+            suggestionMenu.range,
+          )}
           agents={suggestionMenu.agents}
           chatThreads={suggestionMenu.chatThreads}
           selectedIndex={suggestionMenu.selectedIndex}

@@ -60,7 +60,6 @@ export {
   Popover,
   PopoverTrigger,
   PopoverContent,
-  PopoverAnchor,
   PopoverClose,
 } from "./components/ui/popover";
 export {

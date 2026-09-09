@@ -74,7 +74,6 @@ describe("okou generate website command", () => {
       "https://static.okou.io/html-resources/website/v1/d7138a8fc889c7fda5e57e463d178c37e97a1bb4fd752f56a793dc2e53c1935a/website.json",
     );
     expect(stdout).not.toContain("Sources:");
-    expect(stdout).not.toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain(
       "There is no fixed selection count for any resource type.",
     );

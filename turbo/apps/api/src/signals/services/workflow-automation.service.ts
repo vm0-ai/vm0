@@ -282,7 +282,6 @@ interface CreateEventAutomationWorkflowContext {
   readonly workflowId: string;
   readonly agentId: string;
   readonly workflowTitle: string;
-  readonly publicBrand: PublicBrand;
   readonly automationId?: string;
 }
 
@@ -598,12 +597,10 @@ type RowToSummaryOptions = {
   | {
       readonly webhookToken: string;
       readonly webhookSecret: string;
-      readonly publicBrand: PublicBrand;
     }
   | {
       readonly webhookToken?: undefined;
       readonly webhookSecret?: undefined;
-      readonly publicBrand?: undefined;
     }
 );
 
@@ -1373,7 +1370,6 @@ export async function revealWorkflowWebhookSecret(
     readonly orgId: string;
     readonly member: WorkflowMember;
     readonly automationId: string;
-    readonly publicBrand: PublicBrand;
   },
 ): Promise<WorkflowWebhookSecretResponse | null> {
   const automation = await loadAutomationRow(db, {
@@ -1396,10 +1392,7 @@ export async function revealWorkflowWebhookSecret(
   if (!visible) {
     return null;
   }
-  return await revealWorkflowWebhookSecretFields(db, {
-    automation,
-    publicBrand: args.publicBrand,
-  });
+  return await revealWorkflowWebhookSecretFields(db, { automation });
 }
 
 interface CreateScheduleAutomationInput {
@@ -1777,7 +1770,6 @@ async function insertWebhookEventAutomation(
     readonly workflowTitle: string;
     readonly automationId?: string;
     readonly currentTime: Date;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<WorkflowAutomationSummary | null> {
@@ -1848,7 +1840,6 @@ async function insertWebhookEventAutomation(
       chatThreadId,
       webhookToken: token,
       webhookSecret: secret,
-      publicBrand: args.publicBrand,
     });
   });
 }
@@ -2156,7 +2147,6 @@ async function createWebhookEventAutomationForWorkflow(
       workflowTitle: args.context.workflowTitle,
       automationId: args.context.automationId,
       currentTime: nowDate(),
-      publicBrand: args.context.publicBrand,
     },
     signal,
   );
@@ -2650,7 +2640,6 @@ async function createNotionEventAutomationForWorkflow(
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               connectorId: eventConnectorId,
-              publicBrand: args.context.publicBrand,
               eventConfig:
                 "parentPageUrl" in eventConfig
                   ? eventConfig
@@ -2677,7 +2666,6 @@ async function createNotionEventAutomationForWorkflow(
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               connectorId: eventConnectorId,
-              publicBrand: args.context.publicBrand,
               eventConfig:
                 "databaseUrl" in eventConfig
                   ? eventConfig
@@ -2704,7 +2692,6 @@ async function createNotionEventAutomationForWorkflow(
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               connectorId: eventConnectorId,
-              publicBrand: args.context.publicBrand,
               eventConfig:
                 "scope" in eventConfig
                   ? eventConfig.scope.type === "page"
@@ -2964,7 +2951,6 @@ const createEventAutomationForWorkflow$ = command(
       readonly workflowId: string;
       readonly agentId: string;
       readonly workflowTitle: string;
-      readonly publicBrand: PublicBrand;
       readonly automationId?: string;
     },
     signal: AbortSignal,
@@ -3286,7 +3272,6 @@ export const createWorkflowAutomation$ = command(
   async (
     { set },
     args: CreateAutomationInput,
-    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
     const writeDb = set(writeDb$);
@@ -3351,7 +3336,6 @@ export const createWorkflowAutomation$ = command(
           workflowId: workflow.id,
           agentId: agent.id,
           workflowTitle,
-          publicBrand,
           automationId: args.officialInstallation?.automationId,
         },
         signal,
@@ -3489,7 +3473,6 @@ export type OfficialAutomationEventPreparationResult =
 interface PrepareOfficialAutomationReconfigurationInput {
   readonly automationId: string;
   readonly input: CreateAutomationInput;
-  readonly publicBrand: PublicBrand;
 }
 
 function preparedOfficialEvent(
@@ -3538,7 +3521,6 @@ async function prepareOfficialChatRunFinishedEvent(
 async function prepareOfficialNotionEvent(
   db: Db,
   input: CreateNotionEventAutomationInput,
-  publicBrand: PublicBrand,
   signal: AbortSignal,
 ): Promise<OfficialAutomationEventPreparationResult> {
   const eventConnectorId = await resolveNotionAutomationConnectorId(db, {
@@ -3567,7 +3549,6 @@ async function prepareOfficialNotionEvent(
         orgId: input.orgId,
         userId: input.member.userId,
         connectorId: eventConnectorId,
-        publicBrand,
         eventConfig:
           "parentPageUrl" in config
             ? config
@@ -3597,7 +3578,6 @@ async function prepareOfficialNotionEvent(
         orgId: input.orgId,
         userId: input.member.userId,
         connectorId: eventConnectorId,
-        publicBrand,
         eventConfig:
           "databaseUrl" in config
             ? config
@@ -3640,7 +3620,6 @@ async function prepareOfficialNotionEvent(
       orgId: input.orgId,
       userId: input.member.userId,
       connectorId: eventConnectorId,
-      publicBrand,
       eventConfig,
     },
     signal,
@@ -3928,12 +3907,7 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGoogleMeetEvent(db, input, signal);
     }
     if (automationCreateInputIsNotion(input)) {
-      return await prepareOfficialNotionEvent(
-        db,
-        input,
-        args.publicBrand,
-        signal,
-      );
+      return await prepareOfficialNotionEvent(db, input, signal);
     }
     if (automationCreateInputIsStripeInvoicePaid(input)) {
       const enabled = await get(

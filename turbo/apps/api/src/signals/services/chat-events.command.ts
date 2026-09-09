@@ -1,4 +1,6 @@
+import { clerk$, type ClerkClient } from "../external/clerk";
 /** Canonical ChatEvent write commands. */
+import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
@@ -455,7 +457,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   /**
    * Carried whole so downstream checks can read it without reloading the
    * switches this request already read.
@@ -1067,14 +1069,19 @@ async function resolveExplicitRunConfiguration(params: {
 
 async function resolveNormalSendFeatureSwitches(
   db: Db,
+  clerk: ClerkClient,
   orgId: string,
   userId: string,
+  templates: readonly GenerationTemplateRequest[],
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
     codexFastModeEnabled: isCodexFastModeEnabled(context),
-    presentationTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplates,
+    introVideoEnabled: await loadIntroVideoTemplateAccess(
+      db,
+      clerk,
+      userId,
+      templates,
       context,
     ),
     featureSwitchContext: context,
@@ -1095,9 +1102,9 @@ function resolveSelectedTemplateContext(
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
 } {
   const resolved = resolveThreadGenerationTemplatePrompt({
+    introVideoEnabled: featureSwitches.introVideoEnabled,
     explicit: runtimeBody.primaryTemplate,
     explicitTemplates: runtimeBody.templates,
-    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds,
   });
   return {
@@ -1127,13 +1134,11 @@ async function validateGenerationTemplatePrompt(
     return { userPresentationTemplateIds: [] };
   }
   // Syntax first: every selection this message names is a candidate mount, so
-  // the builder can reject a malformed or switched-off private id here without
-  // the database having been consulted yet.
+  // the builder can reject a malformed private id before consulting the database.
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
+      introVideoEnabled: featureSwitches.introVideoEnabled,
       mountedUserPresentationTemplateIds: selectedIds,
     });
     if (validation.status === "invalid") {
@@ -2428,13 +2433,22 @@ function resolveTimedExplicitRunConfiguration(
 function resolveTimedNormalSendFeatureSwitches(
   args: NormalSendArgs,
   db: Db,
+  clerk: ClerkClient,
 ): ReturnType<typeof resolveNormalSendFeatureSwitches> {
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
     "nested",
     () => {
-      return resolveNormalSendFeatureSwitches(db, args.orgId, args.userId);
+      return resolveNormalSendFeatureSwitches(
+        db,
+        clerk,
+        args.orgId,
+        args.userId,
+        args.body.userMessage.parts.flatMap((part) => {
+          return part.type === "template" ? [part.template] : [];
+        }),
+      );
     },
   );
 }
@@ -2675,7 +2689,7 @@ function usesPi(
 
 const prepareNormalSend$ = command(
   async (
-    { set },
+    { get, set },
     args: NormalSendArgs,
     signal: AbortSignal,
   ): Promise<
@@ -2694,6 +2708,7 @@ const prepareNormalSend$ = command(
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
       db,
+      get(clerk$),
     );
     signal.throwIfAborted();
     const agentRunSourceResult = await resolveTimedNormalSendAgentRunSource(
@@ -3361,7 +3376,6 @@ function buildCreateAgentRunArgs(params: {
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
-    publicBrand: args.publicBrand,
     chatThreadId: prepared.thread.threadId,
     computerUseHostId: prepared.computerUseHostGrant?.hostId,
     modelProviderId: modelPin.modelProviderId ?? undefined,

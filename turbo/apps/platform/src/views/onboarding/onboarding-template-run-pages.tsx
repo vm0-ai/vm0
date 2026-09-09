@@ -18,11 +18,9 @@ import {
   ONBOARDING_TEXTAREA_CLASS,
   OnboardingShell,
 } from "./onboarding-shell.tsx";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-} from "../../lib/platform-template-items.ts";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 
 type TemplateRunKind = "presentation" | "image" | "video";
 

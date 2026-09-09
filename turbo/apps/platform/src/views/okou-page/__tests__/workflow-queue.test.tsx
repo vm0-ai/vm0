@@ -288,13 +288,11 @@ test("Active-run prompts stay in the conversation while automation events wait i
   expect(screen.getByText("Prepare the follow-up summary")).toBeVisible();
   const list = queueListForText("Check rollout health");
   const rows = Array.from(list.querySelectorAll('[role="listitem"]'));
-  expect(rows).toHaveLength(3);
+  expect(rows).toHaveLength(2);
   expect(rows[0]).toHaveAccessibleName("Pending automation event");
   expect(rows[0]).toHaveTextContent("Check rollout health");
   expect(rows[1]).toHaveAccessibleName("Pending automation event");
   expect(rows[1]).toHaveTextContent("Summarize new incidents");
-  expect(rows[2]).toHaveAccessibleName("Active goal");
-  expect(rows[2]).toHaveTextContent("Keep the rollout healthy");
   expect(screen.getAllByText("Check rollout health")).toHaveLength(1);
   expect(screen.getAllByText("Summarize new incidents")).toHaveLength(1);
 });

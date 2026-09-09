@@ -1922,19 +1922,24 @@ function UsagePackMigrationProgressPage({
 
 function StandaloneBillingPricingDialog({
   children,
+  open,
   onClose,
+  onOpenChangeComplete,
 }: {
   readonly children: React.ReactNode;
+  readonly open: boolean;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
 }) {
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) {
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           onClose();
         }
       }}
+      onOpenChangeComplete={onOpenChangeComplete}
     >
       <DialogContent
         aria-describedby={undefined}
@@ -1955,16 +1960,20 @@ function StandaloneBillingPricingDialog({
 
 function billingPricingReplacement({
   onStandaloneClose,
+  onStandaloneOpenChangeComplete,
   pricingFlow,
   pricingOpen,
   pricingPage,
+  standaloneOpen,
   standalonePlans,
   usagePackPlanDialogs,
 }: {
   readonly onStandaloneClose: () => void;
+  readonly onStandaloneOpenChangeComplete?: (open: boolean) => void;
   readonly pricingFlow: React.ReactNode;
   readonly pricingOpen: boolean;
   readonly pricingPage: React.ReactNode;
+  readonly standaloneOpen: boolean;
   readonly standalonePlans: boolean;
   readonly usagePackPlanDialogs: boolean;
 }): React.ReactNode | null {
@@ -1973,7 +1982,11 @@ function billingPricingReplacement({
   }
   if (!usagePackPlanDialogs) {
     return standalonePlans ? (
-      <StandaloneBillingPricingDialog onClose={onStandaloneClose}>
+      <StandaloneBillingPricingDialog
+        open={standaloneOpen}
+        onClose={onStandaloneClose}
+        onOpenChangeComplete={onStandaloneOpenChangeComplete}
+      >
         {pricingPage}
       </StandaloneBillingPricingDialog>
     ) : (
@@ -2103,6 +2116,8 @@ function UsagePackPricingFlowDialogs({
   migrationTargetTier,
   onMigrationBack,
   onClose,
+  onOpenChangeComplete,
+  open,
   onReplaceCancellationWithPro,
   onSelectMigration,
 }: {
@@ -2114,6 +2129,8 @@ function UsagePackPricingFlowDialogs({
   readonly migrationTargetTier: "pro" | "team" | null;
   readonly onMigrationBack: () => void;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open: boolean;
   readonly onReplaceCancellationWithPro?: () => void;
   readonly onSelectMigration: (tier: "pro" | "team") => void;
 }) {
@@ -2126,6 +2143,8 @@ function UsagePackPricingFlowDialogs({
         migrationTargetTier={migrationTargetTier}
         onBack={onMigrationBack}
         onClose={onClose}
+        onOpenChangeComplete={onOpenChangeComplete}
+        open={open}
         onSelect={onSelectMigration}
       />
     );
@@ -2136,6 +2155,8 @@ function UsagePackPricingFlowDialogs({
       currentTier={currentTier}
       grantedPlanCheckoutAllowed={grantedPlanCheckoutAllowed}
       onClose={onClose}
+      onOpenChangeComplete={onOpenChangeComplete}
+      open={open}
       onReplaceCancellationWithPro={onReplaceCancellationWithPro}
     />
   );
@@ -2167,8 +2188,12 @@ function BillingSubPage({
 
 export function OrgBillingTab({
   standalonePlans = false,
+  standaloneOpen,
+  onStandaloneOpenChangeComplete,
 }: {
   readonly standalonePlans?: boolean;
+  readonly standaloneOpen: boolean;
+  readonly onStandaloneOpenChangeComplete?: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const pricingOpen = useGet(billingSubPage$);
@@ -2287,6 +2312,8 @@ export function OrgBillingTab({
       migrationTargetTier={migrationTargetTier}
       onMigrationBack={closeMigrationSubPage}
       onClose={dismissPlans}
+      onOpenChangeComplete={onStandaloneOpenChangeComplete}
+      open={standaloneOpen}
       onReplaceCancellationWithPro={replaceCancellationWithPro}
       onSelectMigration={openMigrationPage}
     />
@@ -2300,9 +2327,11 @@ export function OrgBillingTab({
   );
   const pricingReplacement = billingPricingReplacement({
     onStandaloneClose: dismissPlans,
+    onStandaloneOpenChangeComplete,
     pricingFlow,
     pricingOpen,
     pricingPage,
+    standaloneOpen,
     standalonePlans,
     usagePackPlanDialogs,
   });

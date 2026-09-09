@@ -1,4 +1,3 @@
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   workflowAutomationCreateRequestSchema,
   type WorkflowAutomationCreateRequest,
@@ -968,7 +967,6 @@ export const installOfficialWorkflow$ = command(
   async (
     { set },
     args: InstallOfficialWorkflowArgs,
-    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<OfficialWorkflowInstallResult> => {
     const db = set(writeDb$);
@@ -1031,12 +1029,7 @@ export const installOfficialWorkflow$ = command(
           resolved,
           workflowId: inserted.workflowId,
           createAutomation: async (input) => {
-            return await set(
-              createWorkflowAutomation$,
-              input,
-              publicBrand,
-              signal,
-            );
+            return await set(createWorkflowAutomation$, input, signal);
           },
           cleanup: removeInserted,
         },

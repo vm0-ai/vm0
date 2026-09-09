@@ -44,7 +44,7 @@ export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
 /**
  * Common artifact registry. Holds only what the catalog list renders, so the
  * list query never touches a kind-specific table. `author_user_id` is the
- * owning vm0 user, never an external chat sender.
+ * owning Okou user, never an external chat sender.
  */
 export const artifacts = pgTable(
   "artifacts",

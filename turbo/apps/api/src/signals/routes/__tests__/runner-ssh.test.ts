@@ -129,6 +129,173 @@ async function fixture(runtimeOverrides: Partial<RuntimeBody> = {}) {
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
+describe("SSH authority invalidation", () => {
+  it("notifies all active owner Runs after committed edits, rotations, reset and deletion", async () => {
+    const group = `ssh-cache-${randomUUID()}`;
+    const f = await fixture({ runnerGroup: group });
+    const withoutGrant = await createRuntime(f, {
+      runnerGroup: group,
+      access: false,
+    });
+    await createRuntime(f, { runnerGroup: group, status: "completed" });
+    await fixture({ runnerGroup: `other-${randomUUID()}` });
+    authenticate(f);
+    const expected = [f.runId, withoutGrant.runId].map((runId) => {
+      return [
+        "ssh-authority-invalidated",
+        { runId, connectionId: f.connectionId },
+      ];
+    });
+    const updates = [
+      { host: "changed.example.com" },
+      {
+        credentials: {
+          privateKey: "rotated-private-key",
+          passphrase: "rotated-passphrase",
+        },
+      },
+    ];
+    let generation = 1;
+    for (const update of updates) {
+      context.mocks.ably.publish.mockClear();
+      context.mocks.ably.channelGet.mockClear();
+      const changed = await accept(
+        config().update({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+          body: { expectedGeneration: generation, ...update },
+        }),
+        [200],
+      );
+      generation = changed.body.generation;
+      expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+      expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
+        expect.arrayContaining(expected),
+      );
+      expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+        [`runner-group:${group}`],
+        [`runner-group:${group}`],
+      ]);
+    }
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      config().resetHostKey({
+        headers: sessionHeaders,
+        params: { connectionId: f.connectionId },
+        body: { expectedGeneration: generation },
+      }),
+      [200],
+    );
+    expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
+      expect.arrayContaining(expected),
+    );
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      config().delete({
+        headers: sessionHeaders,
+        params: { connectionId: f.connectionId },
+      }),
+      [204],
+    );
+    expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
+      expect.arrayContaining(expected),
+    );
+    const listed = await accept(
+      config().list({ headers: sessionHeaders }),
+      [200],
+    );
+    expect(listed.body.connections).toStrictEqual([]);
+  });
+
+  it("keeps committed mutations successful when notification delivery fails", async () => {
+    const f = await fixture({ runnerGroup: `ssh-cache-${randomUUID()}` });
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Synthetic Ably publish failure"),
+    );
+    const changed = await accept(
+      config().update({
+        headers: sessionHeaders,
+        params: { connectionId: f.connectionId },
+        body: { expectedGeneration: 1, username: "new-login" },
+      }),
+      [200],
+    );
+    expect(changed.body.generation).toBe(2);
+    const listed = await accept(
+      config().list({ headers: sessionHeaders }),
+      [200],
+    );
+    expect(listed.body.connections).toStrictEqual([
+      expect.objectContaining({
+        id: f.connectionId,
+        generation: 2,
+        username: "new-login",
+      }),
+    ]);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      [
+        "ssh-authority-invalidated",
+        { runId: f.runId, connectionId: f.connectionId },
+      ],
+    ]);
+  });
+
+  it("publishes only the successful generation when concurrent updates conflict", async () => {
+    const f = await fixture({ runnerGroup: `ssh-cache-${randomUUID()}` });
+    context.mocks.ably.publish.mockClear();
+    const outcomes = await Promise.all(
+      ["first-login", "second-login"].map(async (username) => {
+        return await accept(
+          config().update({
+            headers: sessionHeaders,
+            params: { connectionId: f.connectionId },
+            body: { expectedGeneration: 1, username },
+          }),
+          [200, 409],
+        );
+      }),
+    );
+    expect(
+      outcomes
+        .map((result) => {
+          return result.status;
+        })
+        .sort(),
+    ).toStrictEqual([200, 409]);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      [
+        "ssh-authority-invalidated",
+        { runId: f.runId, connectionId: f.connectionId },
+      ],
+    ]);
+  });
+
+  it("invalidates the affected Agent's whole Run even after its grant is deleted", async () => {
+    const f = await fixture({ runnerGroup: `ssh-cache-${randomUUID()}` });
+    await createRuntime(f, { runnerGroup: `other-agent-${randomUUID()}` });
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      stateClient().action({
+        body: {
+          action: "set-agent-access",
+          orgId: f.orgId,
+          userId: f.userId,
+          agentId: f.agentId,
+          enabled: false,
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh-authority-invalidated", { runId: f.runId, connectionId: null }],
+    ]);
+    await expect(resolve(f)).resolves.toStrictEqual({ outcome: "unavailable" });
+  });
+});
+
 async function resolve(
   f: Fixture,
   override: Partial<RunnerSshResolveRequest> = {},

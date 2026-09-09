@@ -1,4 +1,4 @@
-//! Explicit shell-tool launcher and runtime hook adapter for VM0 guests.
+//! Explicit shell-tool launcher and runtime hook adapter for Okou guests.
 
 use std::env;
 use std::ffi::{OsStr, OsString};

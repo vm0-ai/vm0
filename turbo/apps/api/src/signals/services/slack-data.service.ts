@@ -8,7 +8,6 @@ import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
-import { listConversations } from "../../lib/slack-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import type { ApiOrgRole } from "../../types/auth";
 import { userFeatureSwitchContext } from "./feature-switches.service";
@@ -21,6 +20,7 @@ export const SLACK_BOT_SCOPES: readonly string[] = [
   "groups:read",
   "groups:history",
   "im:history",
+  "im:read",
   "im:write",
   "commands",
   "users:read",
@@ -259,22 +259,60 @@ export function slackOrgInstallation(args: {
   });
 }
 
-interface SlackChannel {
-  readonly id: string;
-  readonly name: string;
-}
-
-export function slackChannels(args: {
+export function slackUserInstallation(args: {
   readonly orgId: string;
-  readonly userId?: string;
-}): Computed<Promise<readonly SlackChannel[] | null>> {
+  readonly userId: string;
+}): Computed<
+  Promise<
+    | {
+        readonly kind: "connected";
+        readonly workspaceId: string;
+        readonly botToken: string;
+        readonly workspaceName: string | null;
+        readonly slackUserId: string;
+      }
+    | { readonly kind: "not-installed" }
+    | { readonly kind: "not-connected" }
+  >
+> {
   return computed(async (get) => {
-    const installation = await get(slackOrgInstallation(args));
+    const db = get(db$);
+    const [installation] = await db
+      .select()
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.orgId, args.orgId))
+      .limit(1);
     if (!installation) {
-      return null;
+      return { kind: "not-installed" } as const;
     }
 
-    const channels = await listConversations(installation.botToken);
-    return channels;
+    const [connection] = await db
+      .select({ slackUserId: slackOrgConnections.slackUserId })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.userId, args.userId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        ),
+      )
+      .limit(1);
+    if (!connection) {
+      return { kind: "not-connected" } as const;
+    }
+
+    const botToken = await decryptPersistentSecretValue(
+      installation.encryptedBotToken,
+      await get(userFeatureSwitchContext(args.orgId, args.userId)),
+    );
+    return {
+      kind: "connected",
+      workspaceId: installation.slackWorkspaceId,
+      botToken,
+      workspaceName: installation.slackWorkspaceName ?? null,
+      slackUserId: connection.slackUserId,
+    } as const;
   });
 }

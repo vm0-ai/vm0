@@ -130,6 +130,7 @@
         "diskPressure": "ランナーのディスク使用量が逼迫していたため、ワークスペースの再利用をスキップしました。",
         "environment": "環境",
         "featureDisabled": "この実行ではサンドボックスの再利用が無効になっています。",
+        "framework": "フレームワーク",
         "generation": "世代",
         "hostname": "ホスト名",
         "invalidMetadata": "キャッシュ済みワークスペースのメタデータが無効でした。",
@@ -591,6 +592,9 @@
       "categories": "テンプレートのカテゴリ",
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
+      "creativeVideo": "クリエイティブ動画",
+      "explainerUnavailable": "この動画テンプレートは現在利用できません。削除してメッセージを送信してください。",
+      "explainerVideo": "解説動画",
       "filters": {
         "age": "年齢",
         "all": "すべて",
@@ -1871,11 +1875,14 @@
       "create": {
         "addStyle": "スタイルを追加",
         "addTemplate": "テンプレートを追加",
+        "chooseType": "種類を選択",
+        "description": "プレゼンテーション、動画、画像",
         "exit": "作成モードを終了",
         "image": "画像を作成",
         "imagePlaceholder": "作成したい画像を説明してください…",
         "presentation": "プレゼンテーションを作成",
         "presentationPlaceholder": "プレゼンテーションのテーマは何ですか？",
+        "question": "何を実現したいですか？",
         "settingsAdjusted": "このモデルに合わせて一部の動画設定を調整しました",
         "title": "作成",
         "video": "動画を作成",
@@ -1945,6 +1952,40 @@
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
       "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",
+      "directory": {
+        "allCategories": "すべて",
+        "askAdmin": "管理者に有効化を依頼してください",
+        "browse": "コネクターを見る",
+        "configure": "設定",
+        "connected": "接続済み",
+        "createCustom": "カスタムを作成",
+        "customBadge": "カスタム",
+        "detailAccounts": "アカウント",
+        "detailCategory": "カテゴリー",
+        "detailConnection": "接続",
+        "detailMethod": "認証方法",
+        "detailPermissions": "権限",
+        "emptyCustomBody": "HTTP API や MCP サーバーから作成すると、Okou は他のコネクターと同じように使えます。",
+        "emptyCustomTitle": "カスタムコネクターはまだありません",
+        "emptyYoursBody": "アプリを接続すると、Okou が代わりに読み取り、操作できます。",
+        "emptyYoursTitle": "まだ何も接続していません",
+        "keyMove": "移動",
+        "keyOpen": "開く",
+        "matchCount_other": "{{count}} 件の一致",
+        "matchedOn": "名前・説明・タグで一致",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "対応が必要",
+        "noResultsBody": "製品名で検索するか、API や MCP サーバーから自分で作成してください。",
+        "noResultsTitle": "「{{query}}」に一致するコネクターがありません",
+        "openDetailAria": "{{connector}} の詳細を開く",
+        "otherCategory": "その他",
+        "permissionCount_other": "{{count}} 件の権限",
+        "searchYours": "接続済みのコネクターを検索",
+        "showAll_other": "すべて表示 ({{count}})",
+        "tabCustom": "カスタム",
+        "tabDiscover": "見つける",
+        "tabYours": "接続済み"
+      },
       "fallsBackTo": "{{account}} にフォールバック",
       "find": "コネクタを検索...",
       "noUsableAccount": "使用可能なアカウントがありません",
@@ -1983,6 +2024,20 @@
       },
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "コンテンツに合う音声を選びます。",
+      "avatarVoice": "アバターの音声",
+      "changeAvatar": "アバターを変更",
+      "chooseStyle": "スタイルを選択",
+      "chooseStyleAndVoice": "スタイルと音声を選択してください。",
+      "noMatches": "見つかりませんでした。検索条件やカテゴリを変更してください。",
+      "ready": "準備ができました。チャットにコンテンツを追加してください。",
+      "searchAvatars": "アバターを検索",
+      "searchStyles": "スタイルを検索",
+      "settings": "解説動画の設定",
+      "style": "スタイル",
+      "useSelection": "この設定を使用"
+    },
     "feedback": {
       "emailDraftDescription": "メールの下書き (メールの下書き ID: {{id}})",
       "partHeading": "返信のこの部分に関するフィードバック:",
@@ -2011,50 +2066,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "自動 · Okou におまかせ",
-        "autoDescription": "ご要望に合う HeyGen の公開プレゼンターを選択",
         "heading": "アバターを選択",
         "label": "アバター",
         "none": "アバターなし",
-        "noneDescription": "プレゼンターなしで動画を作成",
         "previewLook": "{{name}} の外見をプレビュー"
       },
-      "cardDescription": "アイデアや資料を完成した動画に変換",
       "catalog": {
-        "empty": "HeyGen の公開オプションはありません。",
-        "error": "HeyGen の一覧を読み込めませんでした。",
+        "error": "カタログを読み込めませんでした。",
         "loading": "さらに読み込み中",
         "reload": "一覧を再読み込み",
         "retry": "再試行"
       },
-      "description": "資料を追加してご要望を説明し、必要に応じて HeyGen のスタイル、アバター、音声を選んでください。",
-      "errors": {
-        "sendFailed": "チャットスレッドを作成できませんでした。リクエストはこの画面に残っているので、もう一度お試しください。",
-        "uploadFailed": "一部のファイルをアップロードできませんでした。削除するか、もう一度お試しください。"
-      },
       "footer": {
-        "cancel": "キャンセル",
-        "create": "動画を作成",
-        "hint": "指示やファイルを追加してください"
-      },
-      "format": {
-        "auto": "自動",
-        "output": "出力の画面比率"
-      },
-      "heading": "イントロビデオを作成",
-      "help": "資料の追加やご要望の説明、またはその両方から始められます。あとは Okou におまかせください。",
-      "prompt": {
-        "label": "動画で何を伝えたいですか？",
-        "placeholder": "目的、対象者、言語、雰囲気など、大切なことを説明してください"
-      },
-      "source": {
-        "drop": "ここにファイルをドロップ、またはクリックしてアップロード",
-        "remove": "{{filename}} を削除"
+        "cancel": "キャンセル"
       },
       "style": {
         "auto": "Okou におまかせ",
         "browseGroups": "スタイルから探す",
-        "description": "スタイルはシーン、トランジション、テキストの表示、テンポを決めます。",
         "groups": {
           "cinematic": "映画と写真",
           "handmade": "手作りと素材",
@@ -2064,25 +2092,16 @@
           "print": "印刷と出版",
           "retro-tech": "レトロテックとインターフェース"
         },
-        "heading": "参考にするスタイルを選択",
-        "label": "スタイル参考",
         "preview": "{{title}} のプレビュー",
         "previewUnavailable": "このスタイルの動画プレビューはありません。"
       },
-      "title": "イントロビデオを作成",
       "voice": {
         "auto": "Okou におまかせ",
-        "autoDescription": "Okou が最適な HeyGen の公開音声を選択",
-        "default": "デフォルト · アバターに合わせる",
         "defaultDescription": "選択したアバターのデフォルト音声を使用",
-        "defaultForAvatar": "デフォルト · {{avatar}}",
-        "defaultForAvatarDescription": "{{avatar}} の HeyGen デフォルト音声を使用",
         "heading": "音声を選択",
         "label": "音声",
         "none": "ナレーションなし",
-        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。",
-        "original": "元の音声",
-        "originalDescription": "選択した元の音声を保持し、生成音声は追加しません"
+        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。"
       }
     },
     "mail": {
@@ -2162,26 +2181,17 @@
     "promptDocumentTitle": "プロンプト",
     "queue": {
       "aboutAutomationEvent": "このオートメーションイベントについて",
-      "aboutGoal": "この目標について",
       "aboutQueuedMessage": "このキューに入れられたメッセージについて",
-      "activeGoal": "アクティブな目標",
       "automationEvent": "オートメーションイベント",
       "automationEventDescription": "キューに入れられたメッセージの後ろで待機し、現在の実行が終了すると実行されます。",
-      "cancelGoal": "ゴールをキャンセルする",
       "cancellationRecoveryPending": "キュー内の作業を続行する前に、キャンセルされた実行の終了処理を行っています。",
       "event_one": "{{count}} イベント",
       "event_other": "{{count}} イベント",
       "goal": "目標",
-      "goalDescription": "キューが空になった後に実行され、キャンセルされるまで実行され続けます。",
-      "goalLoadFailed": "この目標を読み込めませんでした",
-      "goalRetry": "ダイアログを閉じて、もう一度開いて再試行してください。",
-      "goalUnavailable": "この目標はもう利用できません。",
       "itemsWaiting": "{{items}} 待機中",
       "itemsWaitingTogether": "{{messages}} と {{events}} が待機中です",
-      "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
-      "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",
       "queuedMessageDescription": "列に並んで待機し、現在の実行が終了したら送信します。",
@@ -2193,9 +2203,6 @@
       "title": "コンポーザーの下書きを置き換えますか？"
     },
     "run": {
-      "automatedRun": "自動実行",
-      "collapseGroupedHistory": "グループ化された実行履歴を折りたたむ",
-      "collapseHistoryMessage": "履歴メッセージを折りたたむ: {{message}}",
       "collapseWorkHistory": "作業履歴を折りたたむ",
       "creditUsage": "クレジット使用量",
       "done": {
@@ -2210,28 +2217,19 @@
         "wrappedUp": "{{time}} で終了"
       },
       "duration": {
-        "hour_one": "{{count}} 時間",
-        "hour_other": "{{count}} 時間",
         "hoursShort_one": "{{count}}h",
         "hoursShort_other": "{{count}}h",
-        "minute_one": "{{count}} 分",
-        "minute_other": "{{count}} 分",
         "minutesShort_one": "{{count}}m",
         "minutesShort_other": "{{count}}m",
         "secondsShort_one": "{{count}}s",
         "secondsShort_other": "{{count}}s"
       },
-      "durationFor": "{{label}} の場合は {{duration}}",
-      "expandGroupedHistory": "グループ化された実行履歴を展開する",
       "expandWorkHistory": "作業履歴を展開",
       "fastModelName": "{{model}} Fast",
       "fastModeOff": "Fastモード オフ",
       "fastModeOn": "Fastモード オン",
       "fastModeWillBeOff": "Fastモードがオフになります",
       "fastModeWillBeOn": "Fastモードがオンになります",
-      "goalFor": "{{label}} の目標",
-      "groupedRunsFor_one": "{{count}} は {{source}} に対して実行されます",
-      "groupedRunsFor_other": "{{count}} は {{source}} に対して実行されます",
       "justNow": "たった今",
       "keepGoing": "続ける",
       "keepGoingAt": "続ける · {{timestamp}}",
@@ -2256,7 +2254,6 @@
       "viewActivityLogs": "アクティビティログを表示する",
       "viewLogs": "実行ログを表示する",
       "waitingIn": "待機中",
-      "worked": "働いた",
       "workedFor": "{{duration}} で働いていました",
       "workingFor": "{{duration}} 作業中"
     },
@@ -2295,13 +2292,9 @@
       "openChatMenu": "チャットメニューを開く",
       "openListMenu": "チャットリストメニューを開く",
       "pin": "チャットをピン留めする",
-      "pinDropAfter": "「{{title}}」の後に配置",
-      "pinDropBefore": "「{{title}}」の前に配置",
       "pinned": "ピン留め済み",
       "rename": "チャットの名前を変更する",
       "renameDescription": "このチャット スレッドの新しい名前を入力します。",
-      "reorderInstructions": "ドラッグして並べ替えます。スペースキーで選択し、矢印キーで移動、スペースキーで配置、Escキーでキャンセルします。",
-      "reorderThread": "「{{title}}」を並べ替え",
       "titlePlaceholder": "チャットのタイトル",
       "unpin": "チャットの固定を解除する",
       "unread": "未読",
@@ -2533,8 +2526,8 @@
     },
     "callback": {
       "connected": "{{connector}} が接続されました",
-      "connectedAs": "{{username}} として接続されています。このウィンドウは閉じても構いません。",
-      "connectedDescription": "あなたのアカウントは接続されました。このウィンドウは閉じても構いません。",
+      "connectedAs": "{{username}} として接続されました。このウィンドウを閉じて元のページに戻り、続行してください。",
+      "connectedDescription": "アカウントが接続されました。このウィンドウを閉じて元のページに戻り、続行してください。",
       "connecting": "{{connector}} を接続中…",
       "connectingDescription": "アカウントの接続が完了するまでお待ちください。",
       "customConnectorLabel": "カスタムコネクタ",
@@ -2701,6 +2694,10 @@
         "title": "利用できない接続方法"
       }
     },
+    "connectionProgress": {
+      "description": "認証を求められた場合は完了してください。接続の設定が完了するまでお待ちください。",
+      "title": "アカウントを接続中"
+    },
     "custom": {
       "connect": {
         "configured": "設定済み",
@@ -2769,7 +2766,7 @@
         "prefixesHint": "(1 行に 1 つ、https のみ)",
         "recommended": "（推奨）",
         "redirectCopy": "リダイレクト URL をコピーする",
-        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録してください。既存の VM0 または Okou のリダイレクト URL も登録したままにしてください。)",
+        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録してください。)",
         "redirectUrl": "リダイレクトURL",
         "removeApiAuthentication": "API認証を削除する",
         "removeAutomatic": "自動認証を削除",
@@ -5658,7 +5655,7 @@
         "branches": "支店",
         "branchesPlaceholder": "メイン、リリース",
         "commentPrefixes": "コメント接頭辞",
-        "commentPrefixesPlaceholder": "/zero、/verify、/deploy",
+        "commentPrefixesPlaceholder": "/okou, /verify, /deploy",
         "conclusions": "結論",
         "conclusionsSummary": "結論 {{values}}",
         "creators": "クリエイター",

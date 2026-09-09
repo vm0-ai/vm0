@@ -237,7 +237,7 @@ const resolveVideoProviderOptions$ = command(
     { set },
     args: Pick<VideoJobArgs, "orgId" | "userId" | "options">,
     signal: AbortSignal,
-  ): Promise<VideoOptions> => {
+  ): Promise<VideoOptions | ReturnType<typeof badRequestMessage>> => {
     const { options } = args;
     const urls = [
       ...(options.firstFrameImageUrl ? [options.firstFrameImageUrl] : []),
@@ -251,6 +251,9 @@ const resolveVideoProviderOptions$ = command(
       { orgId: args.orgId, userId: args.userId, urls },
       signal,
     );
+    if ("status" in resolved) {
+      return resolved;
+    }
     let index = 0;
     const next = (): string => {
       const value = resolved[index];
@@ -336,6 +339,14 @@ const submitVideoProviderWebhookJob$ = command(
       args,
       signal,
     );
+    if ("status" in providerOptions) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: providerOptions.body.error },
+        signal,
+      );
+      return providerOptions;
+    }
     if (provider === "fal") {
       const apiKey = env("FAL_KEY");
       if (!apiKey) {

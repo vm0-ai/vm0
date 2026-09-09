@@ -35,6 +35,13 @@
     "destination": "/sbin/guest-write-file"
   },
   {
+    "package": "guest-workspace-mount",
+    "binary": "guest-workspace-mount",
+    "pathEnv": "GUEST_WORKSPACE_MOUNT_PATH",
+    "bundledEnv": "BUNDLED_GUEST_WORKSPACE_MOUNT",
+    "destination": "/sbin/guest-workspace-mount"
+  },
+  {
     "package": "guest-tool-exec",
     "binary": "guest-tool-exec",
     "pathEnv": "GUEST_TOOL_EXEC_PATH",

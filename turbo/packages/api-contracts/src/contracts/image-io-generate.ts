@@ -43,8 +43,7 @@ export const imageIoGenerateResponseSchema = z.object({
   contentType: z.string(),
   size: z.number(),
   url: z.string(),
-  // Optional so a newly deployed client stays compatible with an API from
-  // before this field existed; the current API always sets it.
+  // Private outputs omit this; public outputs retain their optimized CDN URL.
   embedUrl: z.string().optional(),
   creditsCharged: z.number(),
   model: z.string(),

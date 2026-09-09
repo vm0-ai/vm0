@@ -1,4 +1,4 @@
-//! Reconciles VM0's drain restart override with systemd's effective state.
+//! Reconciles Okou's drain restart override with systemd's effective state.
 //!
 //! Removing `50-vm0-drain.conf` changes the on-disk state, but systemd can keep
 //! the drop-in loaded in `DropInPaths` until a coordinated reload. The cleanup

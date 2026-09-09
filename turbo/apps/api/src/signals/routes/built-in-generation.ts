@@ -18,7 +18,11 @@ const getBuiltInGenerationInner$ = command(
     const params = get(generationPathParams$);
     const job = await set(
       getBuiltInGenerationJob$,
-      { generationId: params.generationId, orgId: auth.orgId },
+      {
+        generationId: params.generationId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      },
       signal,
     );
     if (!job) {

@@ -73,7 +73,7 @@ try {
   );
   const cleanup = await readFile(
     new URL(
-      "../src/migrations/1091_retire_show_usage_pack_compatibility.sql",
+      "../src/migrations/1092_retire_show_usage_pack_compatibility.sql",
       import.meta.url,
     ),
     "utf8",

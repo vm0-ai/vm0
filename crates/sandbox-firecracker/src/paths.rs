@@ -193,7 +193,7 @@ impl SockPaths {
             .join(format!("vsock.sock_{}", runner_rpc_proto::VSOCK_PORT))
     }
 
-    /// VM0 control server Unix-domain socket, `control.sock`.
+    /// Okou control server Unix-domain socket, `control.sock`.
     pub fn control_sock(&self) -> PathBuf {
         self.dir.join("control.sock")
     }

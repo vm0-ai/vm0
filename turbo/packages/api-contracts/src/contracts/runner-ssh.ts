@@ -13,6 +13,16 @@ import {
 const c = initContract();
 const generationSchema = z.int().positive().max(2_147_483_647);
 
+/** Identifier-only invalidation; null connectionId invalidates the whole Run. */
+export const runnerSshInvalidateSchema = z
+  .object({
+    runId: z.uuid(),
+    connectionId: z.uuid().nullable(),
+  })
+  .strict();
+
+export type RunnerSshInvalidate = z.infer<typeof runnerSshInvalidateSchema>;
+
 export const sshHostKeySchema = z
   .object({
     // RSA key identity is ssh-rsa; the Runner must use SHA-2 signatures.

@@ -14,7 +14,7 @@ import { telegramOfficialUserLinks } from "./telegram-official-user-link";
 import { telegramUserLinks } from "./telegram-user-link";
 
 /**
- * Stable mapping from a Telegram reply-chain anchor to the canonical VM0 chat
+ * Stable mapping from a Telegram reply-chain anchor to the canonical Okou chat
  * thread that owns its queue and session chain.
  */
 export const telegramChatThreadRoutes = pgTable(

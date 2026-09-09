@@ -13,6 +13,7 @@ import {
   within,
 } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 import {
   click,
@@ -109,6 +110,35 @@ function mockViewportHeight(height: () => number, threadCount = 120): void {
 function resizeWindow(): void {
   fireEvent(window, new Event("resize"));
 }
+
+test("entering the scrolled list keeps the visible threads available for navigation", async () => {
+  mockThreads(120);
+  mockViewportHeight(() => {
+    return 612;
+  });
+  await setupPage({ context, path: `/chats/${threadId(80)}` });
+  const sidebar = screen.getByTestId("chat-list-column");
+  await within(sidebar).findByText("History 81");
+  const viewport = within(sidebar).getByTestId("sidebar-scroll-area");
+  await waitFor(() => {
+    expect(viewport.scrollTop).toBe(80 * ROW_HEIGHT);
+  });
+  viewport.scrollTop = 0;
+  fireEvent.scroll(viewport);
+  const title = await within(sidebar).findByText("History 1");
+  const link = title.closest("a");
+  const user = userEvent.setup();
+  act(() => {
+    viewport.focus();
+  });
+  await user.keyboard("{Tab}");
+  expect(link).toHaveFocus();
+  expect(viewport.scrollTop).toBe(0);
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(window.location.pathname).toBe(`/chats/${threadId(0)}`);
+  });
+});
 
 function queueAnimationFrames(): () => void {
   let nextFrameId = 0;

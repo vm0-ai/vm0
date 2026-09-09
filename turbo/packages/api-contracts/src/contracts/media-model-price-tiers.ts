@@ -16,6 +16,8 @@ export const IMAGE_MODEL_PRICE_TIER = Object.freeze<
 >({
   "gpt-image-1": "$$",
   "gpt-image-2": "$$$",
+  "gpt-image-2.5-flare": "$$$",
+  "gpt-image-2.5-sunburst": "$$$",
   "fal-ai/flux-pro/v1.1": "$$$",
   "fal-ai/flux-pro/v1.1-ultra": "$$$",
   "fal-ai/flux-2-pro": "$$",

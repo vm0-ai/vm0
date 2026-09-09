@@ -1,3 +1,4 @@
+import type { ClerkClient } from "../external/clerk";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -174,6 +175,7 @@ function materializedPrompt(
 
 async function prepareReservation(
   db: Db,
+  clerk: ClerkClient,
   scope: ActiveInputDeliveryScope,
   signal: AbortSignal,
 ): Promise<PreparedReservation> {
@@ -189,6 +191,7 @@ async function prepareReservation(
   }
   const prompts = await materializePendingActiveInputPrompts(
     db,
+    clerk,
     rows,
     scope,
     signal,
@@ -379,6 +382,7 @@ async function transitionReservation(
 
 async function materializeDelivery(
   db: Db,
+  clerk: ClerkClient,
   scope: ActiveInputDeliveryScope,
   delivery: ActiveInputDeliveryReference,
   signal: AbortSignal,
@@ -393,6 +397,7 @@ async function materializeDelivery(
   }
   const prompts = await materializePendingActiveInputPrompts(
     db,
+    clerk,
     rows,
     scope,
     signal,
@@ -411,6 +416,7 @@ async function materializeDelivery(
 
 export async function reserveActiveInputDelivery(
   db: Db,
+  clerk: ClerkClient,
   args: {
     readonly runId: string;
     readonly userId: string;
@@ -425,7 +431,7 @@ export async function reserveActiveInputDelivery(
   while (true) {
     const prepared =
       scope.status === "running"
-        ? await prepareReservation(db, scope, signal)
+        ? await prepareReservation(db, clerk, scope, signal)
         : ({ kind: "empty" } as const);
     // A committed open delivery hides its source from the pending query, so
     // recheck for one after an empty preparation before bypassing serialization.
@@ -470,7 +476,7 @@ export async function reserveActiveInputDelivery(
         outcome: "reserved",
         deliveryId: result.deliveryId,
         sourceEventId: result.sourceEventId,
-        prompt: await materializeDelivery(db, scope, result, signal),
+        prompt: await materializeDelivery(db, clerk, scope, result, signal),
       };
     }
     return result;

@@ -1,28 +1,32 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createStore } from "ccstate";
-import { HttpResponse, http } from "msw";
+import AdmZip from "adm-zip";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import {
+  chatThreadConnectorSelectionContract,
+  chatThreadsContract,
+  type ChatEvent,
+  type ChatThreadArtifactGoogleDriveSync,
+  type UserMessageInputDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
 } from "@okouai/api-contracts/contracts/cron";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import {
-  chatThreadConnectorSelectionContract,
-  chatThreadsContract,
-  type ChatThreadArtifactGoogleDriveSync,
-  type ChatEvent,
-  type UserMessageInputDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
-import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { createStore } from "ccstate";
+import { HttpResponse, http } from "msw";
+import { createHash, randomUUID } from "node:crypto";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
   clearMockNow,
@@ -30,13 +34,7 @@ import {
   now,
   withMockNowForTest,
 } from "../../../lib/time";
-import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import {
-  seedOrgMetadata,
-  seedUsagePricingRows,
-} from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
@@ -51,9 +49,19 @@ import {
   setChatThreadSnapshotBoundaryFixture,
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
+import { seedGoalForRunFixture } from "../../../test-fixtures/goal-queue";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { chatThreadRoutes } from "../chat-threads";
+import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
+import { goalsRoutes } from "../goals";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import {
   createBddApi,
   expectApiError,
@@ -63,7 +71,6 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
@@ -71,6 +78,7 @@ import {
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
@@ -85,11 +93,6 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/usage-state";
-import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
-import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
-import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
-import { chatThreadRoutes } from "../chat-threads";
-import { goalsRoutes } from "../goals";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronCompactChatThreadSnapshotsRoutes,
@@ -623,17 +626,11 @@ function goalHeaders(
 }
 
 async function createThreadGoal(
-  actor: ApiTestUser,
+  _actor: ApiTestUser,
   runId: string,
   objective: string,
 ): Promise<void> {
-  await accept(
-    goalsClient().create({
-      headers: goalHeaders(actor, runId),
-      body: { objective },
-    }),
-    [201],
-  );
+  await seedGoalForRunFixture(runId, objective);
 }
 
 async function completeThreadGoal(
@@ -3924,6 +3921,109 @@ describe("CHAT-01 chat search index", () => {
 });
 
 describe("CHAT-03 thread artifacts and google drive status", () => {
+  it.each(["hosted-site", "presentation-html"] as const)(
+    "exports private %s as an owned bundle to Google Drive",
+    async (artifactKind) => {
+      const { actor, agentId } = await entitledChatActor(
+        "Private HTML Drive owner",
+      );
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      await createBillingMediaApi(context).updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PrivateArtifacts]: true,
+      });
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Create a private HTML artifact",
+      });
+      const objectStore = chatCallbacks.acceptChatObjectStorage();
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        "https://r2.example.com/hosted-upload?sig=test",
+      );
+      const index =
+        '<!doctype html><link rel="stylesheet" href="/assets/style.css"><h1>Private report</h1>';
+      const css = "h1 { color: green }";
+      const bearer = okouCapabilityHeaders(actor, run.runId, [
+        "host:write",
+      ]).authorization;
+      const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
+        site: `private-drive-${randomUUID().slice(0, 8)}`,
+        artifactKind,
+        spaFallback: false,
+        files: [
+          hostedTextFile("/index.html", index),
+          hostedTextFile("/assets/style.css", css),
+        ],
+      });
+      for (const [path, body] of [
+        ["/index.html", index],
+        ["/assets/style.css", css],
+      ] as const) {
+        objectStore.addObject({
+          bucket: "test-hosted-sites",
+          key: `private-sites/okou/${prepared.deploymentId}${path}`,
+          size: Buffer.byteLength(body),
+          body: Buffer.from(body),
+        });
+      }
+      await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
+      const artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+      const artifact = artifacts.runs
+        .flatMap((item) => {
+          return item.files;
+        })
+        .find((file) => {
+          return file.url === prepared.url;
+        });
+      if (!artifact) {
+        throw new Error("Expected private hosted artifact");
+      }
+      mockGoogleDriveConnectorOAuth();
+      const start = await connectorsApi.startOauth(
+        actor,
+        "google-drive",
+        "oauth",
+      );
+      await connectorsApi.completeOauthCallback("google-drive", {
+        code: "drive-ok",
+        state: stateFromAuthorizationUrl(start.authorizationUrl),
+      });
+      await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
+      const upload = mockGoogleDriveArtifactUpload({
+        id: "private-drive-file",
+        name: "private-report.zip",
+      });
+      const synced = await chat.requestSyncThreadArtifact(
+        actor,
+        run.threadId,
+        { runId: run.runId, fileId: artifact.id },
+        [200],
+      );
+      expect(synced.body).toMatchObject({ id: "private-drive-file" });
+      const multipart = Buffer.from(upload.bodies[0]!);
+      expect(multipart.toString("utf8")).toContain("application/zip");
+      const zip = new AdmZip(
+        multipart.subarray(
+          multipart.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
+        ),
+      );
+      expect(
+        zip
+          .getEntries()
+          .map((entry) => {
+            return entry.entryName;
+          })
+          .sort(),
+      ).toStrictEqual(["assets/style.css", "index.html"]);
+      expect(zip.readAsText("index.html")).toBe(index);
+      expect(zip.readAsText("assets/style.css")).toBe(css);
+      expect(
+        objectStore.puts.filter((put) => {
+          return put.key.startsWith("artifacts/");
+        }),
+      ).toStrictEqual([]);
+    },
+  );
+
   it("groups run uploads and reports google drive sync status", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Artifacts drive status agent",

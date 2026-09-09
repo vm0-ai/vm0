@@ -1,5 +1,4 @@
 import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -25,7 +24,6 @@ export const formatIntegrationRunError$ = command(
       readonly userId: string;
       readonly code: string;
       readonly message: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<string> => {

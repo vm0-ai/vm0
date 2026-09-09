@@ -14,7 +14,7 @@
 //!    recursively populated only by the helper's workload leaf.
 //! 3. Open the runtime parent and every protected runtime directory, require them to share a mount,
 //!    and record their identities before deletion.
-//! 4. Remove VM0-managed Codex authentication from the canonical Codex home without following
+//! 4. Remove Okou-managed Codex authentication from the canonical Codex home without following
 //!    symlinks.
 //! 5. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
 //!    parent, revalidate each protected identity, and measure capacity again.

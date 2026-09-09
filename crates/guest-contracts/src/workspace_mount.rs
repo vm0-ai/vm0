@@ -5,9 +5,6 @@ use std::time::Duration;
 use crate::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use crate::file_write::GUEST_FRAME_WRITE_DEADLINE;
 
-/// Fixed shell helper used by the typed fresh mount and idle reuse preparation.
-pub const WORKSPACE_MOUNT_SCRIPT: &str = include_str!("../scripts/mount-workspace-drive.sh");
-
 /// Maximum time the guest waits for the fixed workspace-mount helper process.
 pub const WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS: u32 = 30_000;
 

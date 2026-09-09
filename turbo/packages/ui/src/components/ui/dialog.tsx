@@ -4,11 +4,11 @@ import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
+import { asChildRender } from "../../lib/base-ui-compat";
 import {
-  asChildRender,
-  type LegacyAutoFocusHandler,
-  withLegacyAutoFocus,
-} from "../../lib/base-ui-compat";
+  dialogBackdropAnimationClassName,
+  dialogPopupAnimationClassName,
+} from "./popup-motion";
 import { cn } from "../../lib/utils";
 
 function Dialog(props: DialogPrimitive.Root.Props) {
@@ -75,7 +75,8 @@ const DialogOverlay = React.forwardRef<
       ref={ref}
       data-slot="dialog-overlay"
       className={cn(
-        "okou-dialog-overlay fixed inset-0 bg-overlay/45 dark:bg-overlay/55",
+        dialogBackdropAnimationClassName,
+        "fixed inset-0 bg-overlay/45 dark:bg-overlay/55",
         className,
       )}
       {...props}
@@ -86,8 +87,6 @@ DialogOverlay.displayName = "DialogOverlay";
 
 interface DialogContentProps extends DialogPrimitive.Popup.Props {
   readonly closeLabel?: string;
-  readonly onCloseAutoFocus?: LegacyAutoFocusHandler;
-  readonly onOpenAutoFocus?: LegacyAutoFocusHandler;
   readonly overlayClassName?: string;
   readonly showCloseButton?: boolean;
 }
@@ -98,10 +97,6 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       children,
       className,
       closeLabel = "Close",
-      finalFocus,
-      initialFocus,
-      onCloseAutoFocus,
-      onOpenAutoFocus,
       overlayClassName,
       showCloseButton = true,
       ...props
@@ -115,18 +110,9 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           ref={ref}
           data-slot="dialog-content"
           className={cn(
-            "okou-dialog-content fixed left-[50%] top-[50%] grid max-h-[90vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg outline-none dialog-scrollable",
+            dialogPopupAnimationClassName,
+            "fixed left-[50%] top-[50%] grid max-h-[90vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg outline-none dialog-scrollable",
             className,
-          )}
-          finalFocus={withLegacyAutoFocus(
-            finalFocus,
-            onCloseAutoFocus,
-            "closeAutoFocus",
-          )}
-          initialFocus={withLegacyAutoFocus(
-            initialFocus,
-            onOpenAutoFocus,
-            "openAutoFocus",
           )}
           {...props}
         >

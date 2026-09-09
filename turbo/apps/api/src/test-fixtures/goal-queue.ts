@@ -1,16 +1,31 @@
-import { chatEvents } from "@okouai/db/schema/chat-event";
+import { storedExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { createStore } from "ccstate";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { pgTextDecoder } from "../lib/db-structured-result";
+import { now } from "../lib/time";
+import { ApiDispatchTimingCollector } from "../signals/services/api-dispatch-timing.service";
+import {
+  claimQueueFirstRunAssociation,
+  lockGoalQueueFirstRunSource,
+} from "../signals/services/chat-queued-event.service";
+import { requirePiApiFirstTurnExecutionContext } from "../signals/services/pi-api-first-turn-config";
+import { runPiApiFirstTurn$ } from "../signals/services/pi-api-first-turn.service";
 
 import { db } from "../lib/db";
 import { dispatchFailedRunCallbacks } from "../signals/services/agent-run-callback.service";
 import {
-  admitGoalQueueEvent,
-  type GoalQueueAdmission,
-} from "../signals/services/chat-goal-queue.service";
+  lockChatQueueThread,
+  pendingChatQueueEventCondition,
+} from "../signals/services/chat-event-queue.service";
+import { insertChatEvent } from "../signals/services/chat-event.service";
+import { appendGoalOpenMarker } from "../signals/services/chat-goal-marker.service";
 import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
+import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
@@ -18,19 +33,107 @@ interface GoalQueueAdmissionFixtureArgs {
   readonly objectiveBrief: string;
 }
 
-/**
- * Admit the internal trigger through its production service. No product API
- * exposes a standalone goal-continuation trigger; callers normally reach this
- * boundary from bootstrap or terminal callback processing.
- */
+/** Seed an old input: production no longer admits Goal events. */
 export async function admitGoalQueueEventFixture(
   args: GoalQueueAdmissionFixtureArgs,
-): Promise<GoalQueueAdmission> {
-  return await admitGoalQueueEvent(db(), {
-    chatThreadId: args.threadId,
-    goalId: args.goalId,
-    objectiveBrief: args.objectiveBrief,
+): Promise<
+  | { readonly kind: "inserted"; readonly eventId: string }
+  | { readonly kind: "coalesced" }
+> {
+  return await db().transaction(async (tx) => {
+    await lockChatQueueThread(tx, args.threadId);
+    const [pending] = await tx
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.chatThreadId, args.threadId),
+          eq(chatEvents.eventType, "input.goal"),
+          pendingChatQueueEventCondition(tx),
+        ),
+      );
+    if (pending) {
+      return { kind: "coalesced" };
+    }
+    const event = await insertChatEvent(tx, {
+      chatThreadId: args.threadId,
+      eventType: "input.goal",
+      content: null,
+      contextType: "goal",
+      runId: null,
+      runGroupId: args.goalId,
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: { type: "goal", goalBrief: args.objectiveBrief },
+      }),
+    });
+    if (!event) {
+      throw new Error("Expected an old Goal input fixture");
+    }
+    return { kind: "inserted", eventId: event.id };
   });
+}
+
+/** Persist a pre-retirement Goal on a thread created through the ordinary API. */
+export async function seedGoalForRunFixture(
+  runId: string,
+  objective: string,
+  status: "active" | "paused" | "blocked" | "complete" = "active",
+): Promise<typeof threadGoals.$inferSelect> {
+  const [run] = await db()
+    .select({
+      orgId: agentRuns.orgId,
+      userId: agentRuns.userId,
+      chatThreadId: agentRuns.chatThreadId,
+      agentId: chatThreads.agentId,
+    })
+    .from(agentRuns)
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .where(eq(agentRuns.id, runId));
+  const chatThreadId = run?.chatThreadId;
+  const agentId = run?.agentId;
+  if (!run || !chatThreadId || !agentId) {
+    throw new Error(
+      "Expected an owned thread run for the historical Goal fixture",
+    );
+  }
+  return await db().transaction(async (tx) => {
+    const [goal] = await tx
+      .insert(threadGoals)
+      .values({
+        orgId: run.orgId,
+        ownerUserId: run.userId,
+        agentId,
+        chatThreadId,
+        status,
+        objective,
+        objectiveBrief: objective,
+        autonomyBudget: 9,
+      })
+      .returning();
+    if (!goal) {
+      throw new Error("Expected a historical Goal fixture");
+    }
+    if (status === "active") {
+      await appendGoalOpenMarker(tx, {
+        chatThreadId: goal.chatThreadId,
+        objectiveBrief: objective,
+      });
+    }
+    return goal;
+  });
+}
+
+/** Restore actual legacy provenance independently of the current Goal writer. */
+export async function setLegacyGoalRunOriginFixture(
+  runId: string,
+  goalId: string,
+  triggerSource: "goal" | "chat" = "goal",
+): Promise<void> {
+  await db()
+    .update(agentRuns)
+    .set({ goalId, triggerSource })
+    .where(eq(agentRuns.id, runId));
 }
 
 /** Read queue source event ids and admitted goal-run ids for route assertions. */
@@ -200,4 +303,97 @@ export async function createActiveGoalQueueEventFixture(args: {
     throw new Error("Expected the goal fixture event to be inserted");
   }
   return { goalId: goal.id, eventId: admission.eventId };
+}
+
+/** Replay the final claim of a Goal prepared by an outgoing API instance. */
+export async function claimPreparedGoalFixture(args: {
+  readonly goal: typeof threadGoals.$inferSelect;
+  readonly eventId: string;
+  readonly runId: string;
+}): Promise<"claimed" | "lost"> {
+  return await db().transaction(async (tx) => {
+    const [revision] = await tx
+      .select({
+        value: sql`${threadGoals.updatedAt}::text`.mapWith(pgTextDecoder),
+      })
+      .from(threadGoals)
+      .where(eq(threadGoals.id, args.goal.id));
+    if (!revision) {
+      throw new Error("Expected the captured Goal revision");
+    }
+    const association = {
+      kind: "goal_input" as const,
+      threadId: args.goal.chatThreadId,
+      eventId: args.eventId,
+      prompt: "captured continuation",
+      goalId: args.goal.id,
+      goalObjectiveBrief: args.goal.objectiveBrief,
+      goalStateRevision: revision.value,
+      orgId: args.goal.orgId,
+      userId: args.goal.ownerUserId,
+    };
+    await lockGoalQueueFirstRunSource(tx, association);
+    await lockChatQueueThread(tx, association.threadId);
+    const claim = await claimQueueFirstRunAssociation(tx, {
+      ...association,
+      admission: { kind: "idle" },
+      runId: args.runId,
+      selectedModel: null,
+      timing: new ApiDispatchTimingCollector(),
+    });
+    return claim.kind;
+  });
+}
+
+/** Invoke a captured API-owned Pi activation at its final execution entry. */
+export async function activateLegacyGoalPiFixture(
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [row] = await db()
+    .select({ run: agentRuns, job: runnerJobQueue })
+    .from(agentRuns)
+    .innerJoin(runnerJobQueue, eq(agentRuns.id, runnerJobQueue.runId))
+    .where(eq(agentRuns.id, runId));
+  if (!row || !row.run.chatThreadId) {
+    throw new Error("Expected a captured pending Goal job");
+  }
+  const startedAt = now();
+  await createStore().set(
+    runPiApiFirstTurn$,
+    {
+      runId,
+      userId: row.run.userId,
+      orgId: row.run.orgId,
+      runnerGroup: row.job.runnerGroup,
+      prompt: row.run.prompt,
+      appendSystemPrompt: row.run.appendSystemPrompt,
+      executionContext: requirePiApiFirstTurnExecutionContext({
+        ...storedExecutionContextSchema.parse(row.job.executionContext),
+        apiStartTime: startedAt,
+        billableFirewalls: [],
+        piSessionId: row.run.chatThreadId,
+        piModelConfig: {
+          provider: "openai",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-5.6-terra",
+          apiKeyEnv: "OPENAI_API_KEY",
+          credentialSecretName: "OPENAI_API_KEY",
+        },
+        piLaunchConfig: {
+          schemaVersion: 2,
+          apiFirstTurn: {
+            schemaVersion: 1,
+            resourceSnapshotDigest: "a".repeat(64),
+            manifestUrl: "https://storage.example/manifest.json",
+            sessionUrl: "https://storage.example/session.jsonl",
+            deadlineAt: startedAt + 55_000,
+            baseSession: { sessionId: row.run.chatThreadId, sha256: null },
+            sandboxEventSequenceStart: 1,
+          },
+        },
+      }),
+    },
+    signal,
+  );
 }

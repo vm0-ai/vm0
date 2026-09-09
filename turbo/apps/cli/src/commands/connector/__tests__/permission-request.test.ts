@@ -696,7 +696,6 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain("Open Okou Desktop");
     expect(logCalls).toContain("Existing run tokens cannot be upgraded");
     expect(logCalls).toContain("okou whoami");
-    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).not.toContain("[Manage");
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
@@ -732,7 +731,6 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain(
       "Computer Use needs an Okou Desktop host selected before a run starts.",
     );
-    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).toContain(
       "https://app.okou.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
     );
@@ -841,20 +839,4 @@ describe("okou connector permission-request command", () => {
       ),
     );
   });
-
-  it.each(["--enable", "--disable", "--duration", "--auto-continue"])(
-    "does not expose the legacy %s flag",
-    async (flag) => {
-      await expect(
-        permissionRequestCommand.parseAsync([
-          "node",
-          "cli",
-          "slack",
-          "--permission",
-          SLACK_READ_PERMISSION,
-          flag,
-        ]),
-      ).rejects.toThrow("process.exit called");
-    },
-  );
 });

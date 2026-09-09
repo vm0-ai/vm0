@@ -657,7 +657,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         appendSystemPrompts: 0,
         systemPromptDigest: createHash("sha256")
           .update(
-            `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory`,
+            `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory\n`,
           )
           .digest("hex"),
       },
@@ -686,7 +686,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       (firstRequest.body.input as Array<Record<string, unknown>>)[0],
     ).toStrictEqual({
       role: "developer",
-      content: `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory`,
+      content: `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory\n`,
     });
     expect(usages).toHaveLength(4);
     expect(usages.at(-1)).toMatchObject({ responseId: result.responseId });

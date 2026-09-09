@@ -168,6 +168,7 @@ export const recordGeneratedIntroVideoVoice$ = command(
       readonly userId: string;
       readonly runId: string;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly pricing: IntroVideoVoicePricingRow;
       readonly options: IntroVideoVoiceOptions;
       readonly speech: HeyGenGeneratedSpeech;
@@ -180,6 +181,8 @@ export const recordGeneratedIntroVideoVoice$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "intro-video-voice",
         extension,
         body: Buffer.from(params.speech.audioBytes),
@@ -210,7 +213,7 @@ export const recordGeneratedIntroVideoVoice$ = command(
           provider: "heygen",
           model: HEYGEN_INTRO_VIDEO_VOICE_MODEL,
           voiceId: params.options.voiceId,
-          sourceUrl: params.speech.sourceUrl,
+          sourceUrl: artifact.isPrivate ? undefined : params.speech.sourceUrl,
           durationSeconds: params.speech.durationSeconds,
           billingQuantity,
           ...(params.speech.providerRequestId

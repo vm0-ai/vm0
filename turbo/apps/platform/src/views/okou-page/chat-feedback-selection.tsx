@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   Copy,
   Forward,
@@ -16,7 +16,6 @@ import {
   Kbd,
   KbdGroup,
   Popover,
-  PopoverAnchor,
   PopoverContent,
   Select,
   SelectContent,
@@ -41,14 +40,12 @@ import type {
 } from "../../signals/chat-page/chat-thread-feedback.ts";
 import { ChatForwardDialog } from "./chat-forward-dialog.tsx";
 
-function anchorStyle(selection: ChatThreadFeedbackSelection): CSSProperties {
+function selectionAnchor(selection: ChatThreadFeedbackSelection) {
   return {
-    position: "fixed",
-    top: selection.rect.top,
-    left: selection.rect.left,
-    width: selection.rect.width,
-    height: selection.rect.height,
-    pointerEvents: "none",
+    getBoundingClientRect() {
+      const { left, top, width, height } = selection.rect;
+      return new DOMRect(left, top, width, height);
+    },
   };
 }
 
@@ -423,21 +420,15 @@ export function ChatFeedbackSelection({
             }
           }}
         >
-          <PopoverAnchor asChild>
-            <div style={anchorStyle(selection)} aria-hidden />
-          </PopoverAnchor>
           <span ref={setFeedbackSelectionToolbarRef} hidden />
           <PopoverContent
+            anchor={selectionAnchor(selection)}
             data-chat-selection-interaction
             side="top"
             align="center"
             sideOffset={8}
-            onOpenAutoFocus={(event) => {
-              return event.preventDefault();
-            }}
-            onCloseAutoFocus={(event) => {
-              return event.preventDefault();
-            }}
+            initialFocus={false}
+            finalFocus={false}
             className={
               translationEnabled && translationResult
                 ? "w-[min(380px,calc(100vw-2rem))] rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.96)] p-3 text-foreground shadow-lg"

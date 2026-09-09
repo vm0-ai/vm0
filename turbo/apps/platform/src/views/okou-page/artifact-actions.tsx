@@ -1,9 +1,4 @@
-import type {
-  ComponentPropsWithRef,
-  MouseEvent,
-  ReactElement,
-  ReactNode,
-} from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,6 +26,7 @@ import type {
   ChatThreadArtifactGoogleDriveRecovery,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import type { PlatformConnectorAccountMutationIntent } from "../../signals/connector-domain.ts";
@@ -41,21 +37,14 @@ import {
   connectors$,
 } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason, withCleanup } from "../../signals/utils.ts";
-import {
-  artifactDownloadMenuOpenKey$,
-  artifactDownloadPendingKey$,
-  closeArtifactDownloadMenu$,
-  finishArtifactDownload$,
-  openArtifactDownloadMenu$,
-  startArtifactDownload$,
-} from "../../signals/okou-page/artifact-actions.ts";
+import { connectorConnectionPending$ } from "../../signals/connector-connection-progress.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   authorizeGoogleDriveForAgent,
   syncArtifactFileToGoogleDrive,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import {
-  connectConnectorOAuthAuthCodeAndSettle$,
+  connectConnectorOAuthAuthCodeWithDialogAndSettle$,
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
@@ -182,8 +171,8 @@ export function ArtifactShareButton({
       return $.artifacts.actions.share;
     });
   if (shareUrl === null) {
-    // The share address is still being resolved. Offering the action now would
-    // hand out nothing, so wait until the resolution settles.
+    // Private artifacts have no public address. Keep the action hidden while
+    // resolving, and until explicit publication provides a share URL.
     return null;
   }
   return (
@@ -341,7 +330,9 @@ function useGoogleDriveMenuAction(
 ): () => void {
   const createClient = useGet(apiClient$);
   const pageSignal = useGet(pageSignal$);
-  const connectGoogleDrive = useSet(connectConnectorOAuthAuthCodeAndSettle$);
+  const connectGoogleDrive = useSet(
+    connectConnectorOAuthAuthCodeWithDialogAndSettle$,
+  );
 
   return () => {
     if (!syncTarget) {
@@ -436,6 +427,7 @@ function GoogleDriveMenuItem({
 }) {
   const { t } = useTranslation();
   const availability = useGoogleDriveAvailability(syncTarget);
+  const connectionPending = useGet(connectorConnectionPending$);
   const syncOrConnect = useGoogleDriveMenuAction(syncTarget, availability);
   const {
     connectorListLoaded,
@@ -453,7 +445,7 @@ function GoogleDriveMenuItem({
     return <GoogleDriveDisabledMenuItem kind="synced" />;
   }
 
-  if (!connectorListLoaded) {
+  if (!connectorListLoaded || connectionPending) {
     return (
       <GoogleDriveDisabledMenuItem
         kind={syncTarget.disconnected ? "connect" : "upload"}
@@ -514,80 +506,9 @@ type ArtifactDownloadMenuProps = {
   className?: string;
   filename: string;
   iconSize?: number;
-  menuInstanceKey: string;
   syncTarget?: ArtifactDownloadSyncTarget;
   url: string;
 };
-
-function ArtifactDownloadTrigger({
-  ariaLabel,
-  className,
-  downloadPending,
-  iconSize,
-  open,
-  ref,
-  ...props
-}: ComponentPropsWithRef<"button"> & {
-  ariaLabel: string;
-  downloadPending: boolean;
-  iconSize: number;
-  open: boolean;
-}) {
-  return (
-    <button
-      {...props}
-      ref={ref}
-      type="button"
-      aria-label={ariaLabel}
-      aria-busy={downloadPending ? "true" : undefined}
-      aria-haspopup="menu"
-      aria-expanded={open}
-      disabled={downloadPending}
-      className={iconButtonClassName(
-        cn(
-          "data-popup-open:bg-state-hover data-popup-open:text-foreground disabled:pointer-events-none disabled:opacity-70",
-          className,
-        ),
-      )}
-    >
-      {downloadPending ? (
-        <Loader2 size={iconSize} className="animate-spin" />
-      ) : (
-        <Download size={iconSize} />
-      )}
-    </button>
-  );
-}
-
-function setArtifactDownloadMenuOpen(params: {
-  readonly closeMenu: () => void;
-  readonly nextOpen: boolean;
-  readonly openMenu: (key: string) => void;
-  readonly menuKey: string;
-}): void {
-  if (params.nextOpen) {
-    params.openMenu(params.menuKey);
-    return;
-  }
-  params.closeMenu();
-}
-
-function startArtifactDownloadWithCleanup(params: {
-  readonly operation: string;
-  readonly download: Promise<void>;
-  readonly downloadKey: string;
-  readonly finish: (key: string) => void;
-  readonly start: (key: string) => void;
-}): void {
-  params.start(params.downloadKey);
-  detach(
-    withCleanup(params.download, () => {
-      params.finish(params.downloadKey);
-    }),
-    Reason.DomCallback,
-    params.operation,
-  );
-}
 
 export function ArtifactDownloadMenu({
   align = "end",
@@ -596,7 +517,6 @@ export function ArtifactDownloadMenu({
   className,
   filename,
   iconSize = 16,
-  menuInstanceKey,
   syncTarget,
   url,
 }: ArtifactDownloadMenuProps) {
@@ -606,63 +526,45 @@ export function ArtifactDownloadMenu({
     t(($) => {
       return $.artifacts.actions.downloadOptions;
     });
-  const artifactDownloadKey = `${url}:${filename}`;
-  const openKey = useGet(artifactDownloadMenuOpenKey$);
-  const pendingKey = useGet(artifactDownloadPendingKey$);
-  const openMenu = useSet(openArtifactDownloadMenu$);
-  const closeMenu = useSet(closeArtifactDownloadMenu$);
-  const startArtifactDownload = useSet(startArtifactDownload$);
-  const finishArtifactDownload = useSet(finishArtifactDownload$);
-  const downloadAttachment = useSet(downloadAttachment$);
+  const [downloadLoadable, downloadAttachment] =
+    useLoadableSet(downloadAttachment$);
   const pageSignal = useGet(pageSignal$);
-  const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
-  const downloadPending = pendingKey === artifactDownloadKey;
+  const downloadPending = downloadLoadable.state === "loading";
   const downloadName = artifactDownloadFilename(artifactKind, filename, url);
   return (
-    <DropdownMenu
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setArtifactDownloadMenuOpen({
-          closeMenu,
-          menuKey: `${menuInstanceKey}:${artifactDownloadKey}`,
-          nextOpen,
-          openMenu,
-        });
-      }}
-    >
+    <DropdownMenu>
       <ArtifactActionTooltip label={label}>
         <DropdownMenuTrigger
+          aria-label={label}
+          aria-busy={downloadPending ? "true" : undefined}
+          disabled={downloadPending}
           render={
-            <ArtifactDownloadTrigger
-              ariaLabel={label}
-              className={className}
-              downloadPending={downloadPending}
-              iconSize={iconSize}
-              open={open}
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-sm"
+              className={cn(
+                "data-popup-open:bg-state-hover data-popup-open:text-foreground disabled:pointer-events-none disabled:opacity-70",
+                className,
+              )}
             />
           }
-        />
+        >
+          {downloadPending ? (
+            <Loader2 size={iconSize} className="animate-spin" />
+          ) : (
+            <Download size={iconSize} />
+          )}
+        </DropdownMenuTrigger>
       </ArtifactActionTooltip>
-      <DropdownMenuContent
-        align={align}
-        sideOffset={6}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-        }}
-        className="w-56"
-      >
+      <DropdownMenuContent align={align} sideOffset={6} className="w-56">
         <DropdownMenuItem
           onClick={() => {
-            startArtifactDownloadWithCleanup({
-              operation: "artifact download",
-              download: downloadAttachment(
-                { filename: downloadName, url },
-                pageSignal,
-              ),
-              downloadKey: artifactDownloadKey,
-              finish: finishArtifactDownload,
-              start: startArtifactDownload,
-            });
+            detach(
+              downloadAttachment({ filename: downloadName, url }, pageSignal),
+              Reason.DomCallback,
+              "artifact download",
+            );
           }}
         >
           <Download size={14} />

@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { homeAgentId$ } from "../agent.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -27,6 +28,7 @@ export const setupHomePage$ = command(
     const billingView = params.get("billingView");
     const templatePicker = parseTemplatePickerEntryCategory(
       params.get("templatePicker"),
+      get(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true,
     );
     const forwardParams = new URLSearchParams();
     if (prompt) {

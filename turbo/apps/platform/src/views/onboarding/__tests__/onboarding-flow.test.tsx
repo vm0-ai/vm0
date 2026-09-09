@@ -803,9 +803,8 @@ test("Connecting an OAuth account starts its standard authorization", async () =
       "https://oauth.test/github/authorize",
     );
   });
-  expect(
-    screen.queryByRole("dialog", { name: "GitHub" }),
-  ).not.toBeInTheDocument();
+  expect(connectButton).toBeDisabled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("An existing account connection is recognized during onboarding", async () => {

@@ -15,10 +15,20 @@ import {
   userConnectorsContract,
   type UserConnectorUpdate,
 } from "@okouai/api-contracts/contracts/user-connectors";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
-import { click, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import {
+  findNamedLink,
+  publicArtifactUrl,
+} from "./chat-attachment-test-helpers.ts";
 import {
   testContext,
   type TestContext,
@@ -44,7 +54,7 @@ const DRIVE_ARTIFACT_ID = "a0000000-0000-4000-a000-000000000940";
 const DRIVE_FILE_ID = "f0000000-0000-4000-a000-000000000940";
 const SELECTED_DRIVE_CONNECTION_ID = "d0000000-0000-4000-a000-000000000942";
 const NEW_DRIVE_CONNECTION_ID = "d0000000-0000-4000-a000-000000000943";
-const DRIVE_FILE_URL = "https://files.example.test/drive-report.pdf";
+const DRIVE_FILE_URL = publicArtifactUrl("drive-report.pdf");
 const AUTHORIZATION_URL = "https://accounts.google.test/authorize-drive";
 
 type DriveConnectionState =
@@ -72,6 +82,7 @@ interface DriveMockControl {
 interface DriveMockOptions {
   readonly selectedAccountReady?: boolean;
   readonly agentAuthorized?: boolean;
+  readonly waitForSync?: () => Promise<void>;
 }
 
 function installDriveMocks(
@@ -85,6 +96,11 @@ function installDriveMocks(
   const authorizationUpdates: UserConnectorUpdate[] = [];
   const oauthRequests: OauthRequest[] = [];
   const syncRequests: { fileId: string; runId: string }[] = [];
+  targetContext.mocks.http.get(DRIVE_FILE_URL, () => {
+    return HttpResponse.text("PDF preview", {
+      headers: { "Content-Type": "application/pdf" },
+    });
+  });
 
   const summary = artifactSummary(
     DRIVE_ARTIFACT_ID,
@@ -105,6 +121,17 @@ function installDriveMocks(
   mockArtifactConversation(targetContext, {
     catalog: [summary],
     details,
+    chatEvents: [
+      {
+        id: "drive-preview-message",
+        role: "assistant",
+        content: `[Drive preview](${DRIVE_FILE_URL})`,
+        runId: NAVIGATION_ARTIFACT_RUN_ID,
+        runEventId: "drive-preview-event",
+        sequenceNumber: 1,
+        createdAt: "2026-09-01T12:00:00.000Z",
+      },
+    ],
     artifactRuns: () => {
       return [
         artifactRun({
@@ -245,8 +272,9 @@ function installDriveMocks(
   );
   targetContext.mocks.api(
     chatThreadArtifactsContract.syncGoogleDrive,
-    ({ body, respond }) => {
+    async ({ body, respond }) => {
       syncRequests.push(body);
+      await options.waitForSync?.();
       artifactSynced = true;
       return respond(200, {
         id: "drive-file-1",
@@ -271,6 +299,7 @@ function installDriveMocks(
 }
 
 interface AuthorizationPopupMock {
+  readonly window: Window;
   readonly location: { href: string };
   readonly open: ReturnType<TestContext["mocks"]["browser"]["open"]>;
 }
@@ -283,6 +312,7 @@ function installAuthorizationPopup(): AuthorizationPopupMock {
     value: location,
   });
   return {
+    window: authorizationWindow,
     location,
     open: context.mocks.browser.open(authorizationWindow),
   };
@@ -322,7 +352,10 @@ async function openDriveArtifactMenu(
   });
   click(buttonNamed("Download artifact", artifactPreview()));
   await waitFor(() => {
-    expect(roleItemNamed("menuitem", actionName)).toBeEnabled();
+    expect(roleItemNamed("menuitem", actionName)).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 }
 
@@ -481,3 +514,163 @@ test("Sync with the artifact's ready Drive account when the default needs attent
   expect(drive.authorizationUpdates).toHaveLength(0);
   await expectSyncedPreview();
 });
+
+test("Keep a reopened artifact usable after dismissing Drive OAuth progress", async () => {
+  useWideScreen();
+  const popup = installAuthorizationPopup();
+  const syncing = context.mocks.deferred<void>();
+  const sync = context.mocks.deferred<void>();
+  const drive = installDriveMocks(context, "not-connected", {
+    waitForSync: () => {
+      syncing.resolve();
+      return sync.promise;
+    },
+  });
+  await setupPage({
+    context,
+    path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
+    host: "app.okou.ai",
+  });
+  click(await findNamedLink("Drive preview"));
+  const preview = await screen.findByRole("dialog", {
+    name: "drive-report.pdf preview",
+  });
+  click(buttonNamed("Download options", preview));
+  await waitFor(() => {
+    expect(
+      roleItemNamed("menuitem", "Connect Google Drive"),
+    ).not.toHaveAttribute("aria-disabled", "true");
+  });
+  click(roleItemNamed("menuitem", "Connect Google Drive"));
+  await expect(within(preview).findByRole("status")).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(popup.location.href).toBe(AUTHORIZATION_URL);
+  });
+  drive.completeAuthorization();
+  await syncing.promise;
+  click(buttonNamed("Close", preview));
+  await waitFor(() => {
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
+  });
+
+  click(await findNamedLink("Drive preview"));
+  const reopened = await screen.findByRole("dialog", {
+    name: "drive-report.pdf preview",
+  });
+  await waitFor(() => {
+    expect(buttonNamed("Download options", reopened)).toBeEnabled();
+  });
+  expect(within(reopened).queryByRole("status")).toBeNull();
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  expect(popup.window.closed).toBeFalsy();
+  click(buttonNamed("Download options", reopened));
+  await waitFor(() => {
+    expect(roleItemNamed("menuitem", "Connect Google Drive")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+  await userEvent.setup().keyboard("{Escape}");
+
+  sync.resolve();
+  await expect(
+    screen.findByText("Synced to Google Drive"),
+  ).resolves.toBeVisible();
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  expect(buttonNamed("Download options", reopened)).toBeEnabled();
+});
+
+test.each([
+  { state: "not-connected", dismiss: null },
+  { state: "reconnect-required", dismiss: null },
+  { state: "not-connected", dismiss: "Close" },
+  { state: "not-connected", dismiss: "Escape" },
+  { state: "not-connected", dismiss: "backdrop" },
+] as const)(
+  "Reuse the artifact preview for Drive OAuth ($state, dismissal: $dismiss)",
+  async ({ state, dismiss }) => {
+    useWideScreen();
+    const popup = installAuthorizationPopup();
+    const syncing = context.mocks.deferred<void>();
+    const sync = context.mocks.deferred<void>();
+    const drive = installDriveMocks(context, state, {
+      waitForSync: () => {
+        syncing.resolve();
+        return sync.promise;
+      },
+    });
+    await setupPage({
+      context,
+      path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
+      host: "app.okou.ai",
+    });
+    click(await findNamedLink("Drive preview"));
+    const preview = await screen.findByRole("dialog", {
+      name: "drive-report.pdf preview",
+    });
+    click(buttonNamed("Download options", preview));
+    await waitFor(() => {
+      expect(
+        roleItemNamed("menuitem", "Connect Google Drive"),
+      ).not.toHaveAttribute("aria-disabled", "true");
+    });
+    click(roleItemNamed("menuitem", "Connect Google Drive"));
+    await expect(
+      within(preview).findByRole("status"),
+    ).resolves.toHaveTextContent(
+      "Please wait while we finish setting up your connection.",
+    );
+    expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+    expect(buttonNamed("Close", preview)).toBeEnabled();
+    await waitFor(() => {
+      expect(popup.location.href).toBe(AUTHORIZATION_URL);
+    });
+
+    if (dismiss) {
+      const user = userEvent.setup();
+      if (dismiss === "Close") {
+        await user.click(buttonNamed("Close", preview));
+      } else if (dismiss === "Escape") {
+        await user.keyboard("{Escape}");
+      } else {
+        await user.click(screen.getByTestId("attachment-lightbox-backdrop"));
+      }
+    }
+    await waitFor(() => {
+      expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
+        dismiss ? 0 : 1,
+      );
+    });
+    expect(popup.window.closed).toBeFalsy();
+
+    drive.completeAuthorization();
+    await syncing.promise;
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
+      dismiss ? 0 : 1,
+    );
+    expect(
+      screen.queryAllByText(
+        /Please wait while we finish setting up your connection/,
+      ),
+    ).toHaveLength(dismiss ? 0 : 1);
+    sync.resolve();
+    await expect(
+      screen.findByText("Synced to Google Drive"),
+    ).resolves.toBeVisible();
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("button").filter((button) => {
+          return button.getAttribute("aria-label") === "Download options";
+        }),
+      ).toHaveLength(dismiss ? 0 : 1);
+    });
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
+      dismiss ? 0 : 1,
+    );
+    expect(
+      screen.queryByText(
+        /Please wait while we finish setting up your connection/,
+      ),
+    ).toBeNull();
+  },
+);

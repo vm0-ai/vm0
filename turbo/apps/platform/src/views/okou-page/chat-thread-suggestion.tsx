@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import type { ComposerAgentSuggestion } from "../../signals/okou-page/composer-agent-suggestion-domain.ts";
@@ -19,12 +20,14 @@ function scrollSelectedSuggestionIntoView(
 }
 
 export function ComposerMentionSuggestionMenu({
+  anchor,
   agents,
   chatThreads,
   selectedIndex,
   onSelectAgent,
   onSelectChatThread,
 }: {
+  readonly anchor?: ComponentProps<typeof PopoverContent>["anchor"];
   readonly agents: readonly ComposerAgentSuggestion[];
   readonly chatThreads: readonly ComposerChatThreadSuggestion[];
   readonly selectedIndex: number;
@@ -36,14 +39,13 @@ export function ComposerMentionSuggestionMenu({
   const { t } = useTranslation();
   return (
     <PopoverContent
+      anchor={anchor}
       side="top"
       align="start"
       sideOffset={8}
       collisionPadding={composerSuggestionCollisionPadding()}
       updatePositionStrategy="always"
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-      }}
+      initialFocus={false}
       className="flex h-[min(16rem,var(--available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="chat-thread-suggestion-menu"
     >
