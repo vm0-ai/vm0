@@ -281,13 +281,16 @@ function DirectoryCategoryChips({
   readonly onSelect: (category: string | null) => void;
 }) {
   const { t } = useTranslation();
+  // The row is horizontal and every chip is auto-width, so selection may not
+  // change a chip's metrics: a heavier selected label widens that chip and
+  // shifts every chip after it, one frame after the click. Weight stays
+  // constant and selection is carried by the fill and the ink, which is how
+  // SegmentControl already does it.
   const chipClass = (active: boolean) => {
     return cn(
-      "flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 text-xs whitespace-nowrap transition-colors",
+      "flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 text-xs font-medium whitespace-nowrap transition-colors",
       DIRECTORY_HAIRLINE,
-      active
-        ? "bg-state-selected font-medium text-foreground"
-        : "text-muted-foreground",
+      active ? "bg-state-selected text-foreground" : "text-muted-foreground",
     );
   };
   return (
