@@ -8795,7 +8795,7 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 }
 
 const VOICE_DRAFT_TRAY_CLASS =
-  "min-h-10 rounded-xl bg-neutral-50 px-1 py-1 dark:bg-neutral-900";
+  "min-h-10 rounded-xl bg-neutral-50 py-1 dark:bg-neutral-900";
 
 function VoiceDraftFooter({
   signals,
@@ -8822,7 +8822,10 @@ function VoiceDraftFooter({
   if (status === "failed") {
     return (
       <div
-        className={cn("flex w-full items-center gap-3", VOICE_DRAFT_TRAY_CLASS)}
+        className={cn(
+          "flex w-full items-center gap-3 px-1",
+          VOICE_DRAFT_TRAY_CLASS,
+        )}
         data-composer-voice-tray
       >
         <span
@@ -8896,6 +8899,7 @@ function VoiceDraftFooter({
       <div
         className={cn(
           "grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 text-sm",
+          "px-1",
           VOICE_DRAFT_TRAY_CLASS,
         )}
         role="status"
@@ -8920,7 +8924,10 @@ function VoiceDraftFooter({
   });
   return (
     <div
-      className={cn("flex w-full items-center gap-3", VOICE_DRAFT_TRAY_CLASS)}
+      className={cn(
+        "flex w-full items-center gap-2 pl-0 pr-2",
+        VOICE_DRAFT_TRAY_CLASS,
+      )}
       data-composer-voice-tray
     >
       <span
@@ -10787,9 +10794,9 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
-          {/* The standard footer keeps a 16px content inset. Active voice
-              states keep the tray 12px from the inner edge and add a 4px
-              neutral cushion, aligning their controls to the same inset. */}
+          {/* Active voice states keep the neutral tray 12px from the inner
+              edge. The recording row uses optical padding so its compact
+              telemetry and bordered confirmation control feel balanced. */}
           <ComposerFooter
             signals={signals}
             actions={actions}
