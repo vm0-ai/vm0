@@ -2,7 +2,7 @@ use crate::LOG_TAG;
 use crate::path::normalize_path;
 use guest_telemetry::{log_info, log_warn};
 use std::cell::OnceCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -59,10 +59,7 @@ fn cleanup_stale_paths_with_options<M, R>(
     M: Fn(&Path) -> bool,
     R: Fn(&fs::DirEntry) -> io::Result<()>,
 {
-    let preserved = preserved
-        .iter()
-        .map(|path| normalize_path(Path::new(path)))
-        .collect::<HashSet<_>>();
+    let preserved = PreservedPaths::new(preserved);
     let mut sorted = cleanup_paths
         .iter()
         .map(|path| {
@@ -76,11 +73,11 @@ fn cleanup_stale_paths_with_options<M, R>(
     sorted.sort_by_key(|path| path.logical.components().count());
 
     for path in sorted {
-        if is_preserved_or_descendant(&path.logical, &preserved) {
+        if preserved.is_preserved_or_descendant(&path.logical) {
             continue;
         }
 
-        let preserved_child_count = count_preserved_children(&path.logical, &preserved);
+        let preserved_child_count = preserved.count_preserved_children(&path.logical);
 
         if preserved_child_count > 0 {
             if let Err(e) =
@@ -143,7 +140,7 @@ struct CleanupPath<'a> {
 fn clean_directory_contents<R>(
     original_path: &Path,
     logical_path: &Path,
-    preserved: &HashSet<PathBuf>,
+    preserved: &PreservedPaths,
     remove_entry: &R,
 ) -> io::Result<()>
 where
@@ -171,7 +168,7 @@ where
         let entry_path = original_path.join(entry.file_name());
         let logical_entry_path = logical_path.join(entry.file_name());
 
-        if entry_overlaps_preserved_path(&logical_entry_path, preserved) {
+        if preserved.entry_overlaps_preserved_path(&logical_entry_path) {
             continue;
         }
 
@@ -294,25 +291,50 @@ impl CleanupDirectory {
     }
 }
 
-fn is_preserved_or_descendant(path: &Path, preserved: &HashSet<PathBuf>) -> bool {
-    preserved
-        .iter()
-        .any(|preserved_path| path.starts_with(preserved_path))
+/// Index path relationships once per cleanup pass, so lookups depend on path
+/// depth rather than the number of unrelated preserved mounts.
+struct PreservedPaths {
+    paths: HashSet<PathBuf>,
+    descendant_counts: HashMap<PathBuf, usize>,
 }
 
-fn count_preserved_children(path: &Path, preserved: &HashSet<PathBuf>) -> usize {
-    preserved
-        .iter()
-        .filter(|preserved_path| {
-            preserved_path.as_path() != path && preserved_path.starts_with(path)
-        })
-        .count()
-}
+impl PreservedPaths {
+    fn new(preserved: &[String]) -> Self {
+        let paths = preserved
+            .iter()
+            .map(|path| normalize_path(Path::new(path)))
+            .collect::<HashSet<_>>();
+        let mut descendant_counts = HashMap::new();
 
-fn entry_overlaps_preserved_path(entry_path: &Path, preserved: &HashSet<PathBuf>) -> bool {
-    preserved.iter().any(|preserved_path| {
-        preserved_path == entry_path || preserved_path.starts_with(entry_path)
-    })
+        for path in &paths {
+            // The empty path is a prefix of absolute paths too, but their
+            // ancestors() iterator stops at `/` without yielding it.
+            let empty_prefix = path.is_absolute().then_some(Path::new(""));
+            for ancestor in path.ancestors().skip(1).chain(empty_prefix) {
+                *descendant_counts.entry(ancestor.to_path_buf()).or_insert(0) += 1;
+            }
+        }
+
+        Self {
+            paths,
+            descendant_counts,
+        }
+    }
+
+    fn is_preserved_or_descendant(&self, path: &Path) -> bool {
+        self.paths.contains(Path::new(""))
+            || path
+                .ancestors()
+                .any(|ancestor| self.paths.contains(ancestor))
+    }
+
+    fn count_preserved_children(&self, path: &Path) -> usize {
+        self.descendant_counts.get(path).copied().unwrap_or(0)
+    }
+
+    fn entry_overlaps_preserved_path(&self, entry_path: &Path) -> bool {
+        self.paths.contains(entry_path) || self.descendant_counts.contains_key(entry_path)
+    }
 }
 
 struct CleanupMountPointDetector<L>

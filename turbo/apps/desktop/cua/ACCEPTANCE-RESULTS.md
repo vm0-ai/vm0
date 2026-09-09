@@ -141,3 +141,39 @@ from missing samples, CI speed or upstream claims.
 
 The first row records reviewed automation only; it cannot mark any other row
 passed. Keep the Epic open and manual acceptance unchecked until the user decides.
+
+## Targeted Calculator regression — 2026-09-09
+
+Issue #32784 was reproduced on macOS 15.6 (24G84), arm64, using the installed
+0.48.14 distribution's CUA 0.23.2 SDK/daemon. With `noOverlay: true`, a successful
+Calculator launch returned a live PID while subsequent discovery in the same
+daemon still reported PID 0 / stopped. A daemon started before Calculator quit
+instead retained the obsolete PID. Enabling the AppKit loop corrected both.
+
+The repair was tested from local source through the production driver controller,
+shared executor, bundled SDK helper, Unix socket and native guardian, with the
+unmodified signed CUA payload and native supervisor from Desktop 0.48.14.
+The installed Electron 42.5.1 executable ran the isolated harness in Node mode;
+the installed app and its preferences were not replaced. This is local source
+acceptance, not a deployed cloud-to-Desktop run or signed-upgrade/TCC acceptance.
+
+| Check                                             | Observed result                                                                                |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Existing Calculator discovery and window snapshot | Exact live PID/window, CUA PNG and AX tree obtained                                            |
+| Calculator `100 + 250`                            | Nine AX button actions including clear; CUA screenshot and independent UI read both show `350` |
+| Calculator quit then `app.open`                   | Stopped PID 0, then new live PID, launch confirmation and usable post-state                    |
+| Old snapshot after quit/reopen                    | Rejected before action; displayed `350` preserved                                              |
+| External quit and reopen                          | Stopped state and new PID correctly discovered in the same generation                          |
+| Reopened window in another Space                  | Explicit `window_unavailable`; raw CUA inventory confirms every window is off-screen           |
+| Target process cleanup                            | Controller retired, no pending cleanup, daemon exit independently observed                     |
+
+The separate [native discovery proof](discovery-proof/README.md) passed seven
+same-generation lifecycle observations for its disposable application. Changing
+only the generated helper back to `noOverlay: true` made the post-launch assertion
+fail; both versions still cleaned up. The adapter proof also passed refusal,
+incorrect-success and cancellation cases for cursor suppression, with no target
+launch and completed retirement.
+
+Raw AX trees and screenshots remain private; no unrelated app inventory is
+published. These results do not fill the broader paired application, permissions,
+recording, plugin continuity, or signed upgrade/rollback tables above.

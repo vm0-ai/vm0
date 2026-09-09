@@ -1,3 +1,6 @@
+import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native";
+import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { streamPiNative } from "./native-stream";
 import { stream as streamCodexResponses } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import {
   stream as streamResponses,
@@ -23,6 +26,10 @@ const PI_AGENT_USER_AGENT = "okou-pi-agent/1.0";
 
 function providerModels(provider: string): readonly Model<Api>[] {
   switch (provider) {
+    case "anthropic":
+    case "amazon-bedrock": {
+      return anthropicProvider().getModels();
+    }
     case "deepseek": {
       return deepseekProvider().getModels();
     }
@@ -39,6 +46,12 @@ function providerModels(provider: string): readonly Model<Api>[] {
       return [];
     }
   }
+}
+
+function isMessagesModel(
+  model: Model<Api>,
+): model is Model<"anthropic-messages"> {
+  return model.api === "anthropic-messages";
 }
 
 function isResponsesModel(
@@ -262,7 +275,14 @@ export const piAgentRegisteredStream = (
 export function piAgentStreamForConfig(
   config: Pick<
     PiAgentModelConfig,
-    "accountId" | "dialect" | "requestHeaders" | "serviceTier" | "transport"
+    | "accountId"
+    | "dialect"
+    | "requestHeaders"
+    | "serviceTier"
+    | "transport"
+    | "catalogModel"
+    | "region"
+    | "bedrockAuth"
   >,
 ): typeof piAgentRegisteredStream {
   return (model, context, options) => {
@@ -286,6 +306,12 @@ export function piAgentStreamForConfig(
       // The immutable route owns tier even when standard omits it.
       serviceTier: config.serviceTier,
     };
+    if (
+      config.dialect === "anthropic-messages" ||
+      config.dialect === "bedrock-converse-stream"
+    ) {
+      return streamPiNative(config, model, context, configuredOptions);
+    }
     if (config.dialect === "openai-responses") {
       if (!isResponsesModel(model)) {
         throw new Error(
@@ -314,16 +340,57 @@ export function piAgentStreamForConfig(
   };
 }
 
+function resolveNativeModel(
+  config: PiAgentModelConfig,
+): Model<"anthropic-messages"> | Model<"bedrock-converse-stream"> | null {
+  if (
+    config.serviceTier !== undefined ||
+    !piNativeCatalogModelSchema.safeParse(config.catalogModel).success ||
+    !config.catalogModel ||
+    config.provider !==
+      (config.dialect === "anthropic-messages" ? "anthropic" : "amazon-bedrock")
+  )
+    return null;
+  const native = sourceModel("anthropic", config.catalogModel);
+  if (!native || !isMessagesModel(native)) return null;
+  const common = {
+    ...native,
+    id: config.model,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+  };
+  return config.dialect === "anthropic-messages"
+    ? { ...common, api: "anthropic-messages" }
+    : {
+        ...common,
+        api: "bedrock-converse-stream",
+        compat: {
+          supportsStrictMode: native.compat?.supportsStrictTools,
+        },
+      };
+}
+
 /** Resolve model metadata from Pi's native provider catalog. */
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
-): Model<"openai-responses"> | Model<"openai-codex-responses"> | null {
+):
+  | Model<"openai-responses">
+  | Model<"openai-codex-responses">
+  | Model<"anthropic-messages">
+  | Model<"bedrock-converse-stream">
+  | null {
   if (
     config.serviceTier !== undefined &&
     config.serviceTier !==
       (config.dialect === "openai-codex-responses" ? "fast" : "priority")
   ) {
     return null;
+  }
+  if (
+    config.dialect === "anthropic-messages" ||
+    config.dialect === "bedrock-converse-stream"
+  ) {
+    return resolveNativeModel(config);
   }
   const source = sourceModel(
     config.provider,

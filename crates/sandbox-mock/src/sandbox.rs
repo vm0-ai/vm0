@@ -683,6 +683,13 @@ impl Sandbox for MockSandbox {
         result
     }
 
+    async fn park_for_blank_pool(&mut self) -> Result<SandboxParkOutcome> {
+        if let Some(o) = &self.overrides {
+            *o.lifecycle.blank_park_calls.lock_ignoring_poison() += 1;
+        }
+        self.park().await
+    }
+
     async fn final_exec_and_park(
         &mut self,
         request: &ExecRequest<'_>,

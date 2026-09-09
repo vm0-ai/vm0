@@ -1048,6 +1048,52 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/report-memory-peak
 
+  guest-rpc-firecracker-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
+    needs: [runner-build]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_TRIPLE: ${{ needs.runner-build.outputs.target }}
+      METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+      HOST: ${{ needs.runner-build.outputs.host }}
+      JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+      DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+      DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
+        with:
+          workspaces: crates -> target
+          shared-key: ${{ needs.runner-build.outputs.target }}-guest-rpc
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile native guest RPC test
+        run: |
+          cd crates
+          TEST_BIN=$(cargo test --no-run --profile ci --target "$TARGET_TRIPLE" \
+            -p sandbox-firecracker --test guest_rpc --message-format=json \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "guest_rpc" and .profile.test) | .executable // empty')
+          test -x "$TEST_BIN"
+          echo "TEST_BIN=$TEST_BIN" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ env.METAL_USER }}
+          ssh-hosts: ${{ env.HOST }}
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Verify packaged RPC over fresh and restored Firecracker
+        run: bash .github/scripts/runner-behavior-guest-rpc.sh
+
   ci-gate-crates:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1067,6 +1113,7 @@ jobs:
       - runner-behavior-lane-c
       - runner-behavior-lane-d
       - host-cpu-fairness-test
+      - guest-rpc-firecracker-test
       - nbd-cow-test
       - runner-rootfs-process-test
     # Always run so the gate reports an explicit result (not "skipped").
@@ -1119,6 +1166,12 @@ jobs:
           check_result "runner-behavior-lane-c" "${{ needs.runner-behavior-lane-c.result }}" "true"
           check_result "runner-behavior-lane-d" "${{ needs.runner-behavior-lane-d.result }}" "true"
           check_result "host-cpu-fairness-test" "${{ needs.host-cpu-fairness-test.result }}" "true"
+          # A selected Runner image must execute the native RPC regression.
+          RPC_ALLOW_SKIP=true
+          if [ "${{ needs.runner-build.result }}" = "success" ]; then
+            RPC_ALLOW_SKIP=""
+          fi
+          check_result "guest-rpc-firecracker-test" "${{ needs.guest-rpc-firecracker-test.result }}" "$RPC_ALLOW_SKIP"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
           check_result "runner-rootfs-process-test" "${{ needs.runner-rootfs-process-test.result }}" "true"
 

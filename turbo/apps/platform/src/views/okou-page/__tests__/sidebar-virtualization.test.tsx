@@ -506,6 +506,7 @@ test("Refresh virtualization when the upgrade card appears and disappears", asyn
   let tier = "team";
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
+      showUsagePack: false,
       tier,
       credits: 10_000,
       onboardingPaymentPending: false,

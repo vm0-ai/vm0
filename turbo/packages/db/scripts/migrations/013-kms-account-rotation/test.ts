@@ -47,6 +47,7 @@ const directory = await mkdtemp(join(tmpdir(), "kms-rotation-test-"));
 const blobs = new Map<string, { key: string; plaintext: Buffer }>();
 let kmsRequests = 0;
 let beforeRewrap: (() => Promise<void>) | undefined;
+let beforeDecrypt: ((ciphertext: string) => Promise<void>) | undefined;
 let failRewrap = false;
 function wrap(plaintext: Buffer, key: string): string {
   const blob = randomBytes(64).toString("base64");
@@ -89,6 +90,7 @@ const server = createServer((request, response) => {
         operation === "ReEncrypt" ? body.SourceKeyId : body.KeyId,
       );
       if (operation === "Decrypt") {
+        await beforeDecrypt?.(string(body.CiphertextBlob));
         result = {
           KeyId: stored.key,
           Plaintext: stored.plaintext.toString("base64"),
@@ -168,6 +170,7 @@ async function cli(
   let stderr = "";
   try {
     const output = await execute("pnpm", command, {
+      timeout: 30_000,
       env: {
         ...process.env,
         DATABASE_URL: input.toString(),
@@ -223,6 +226,125 @@ try {
   for (const [table, columns] of tables) {
     await db.query(`CREATE TABLE "${table}" (${columns.join(", ")})`);
   }
+  const concurrentFixtures: { id: string; ciphertext: string }[] = [];
+  for (let index = 0; index < 9; index++) {
+    const envelope = await encrypt(kms, Buffer.from(secret), source);
+    const id = `parallel-${index}`;
+    await db.query("INSERT INTO secrets VALUES ($1, $2)", [
+      id,
+      encode(envelope),
+    ]);
+    concurrentFixtures.push({
+      id,
+      ciphertext: string(envelope.kms.encryptedDataKey),
+    });
+  }
+  const beforeConcurrentVerification: unknown[] = (
+    await db.query("SELECT * FROM secrets ORDER BY id")
+  ).rows;
+  let activeDecrypts = 0;
+  let peakDecrypts = 0;
+  const waiting: (() => void)[] = [];
+  beforeDecrypt = async () => {
+    activeDecrypts++;
+    peakDecrypts = Math.max(peakDecrypts, activeDecrypts);
+    try {
+      await new Promise<void>((resolve) => {
+        waiting.push(resolve);
+        if (waiting.length === 3) {
+          for (const release of waiting.splice(0)) {
+            release();
+          }
+        }
+      });
+    } finally {
+      activeDecrypts--;
+    }
+  };
+  try {
+    const concurrent = await cli("concurrent-verify", [
+      "--verify",
+      "--verify-concurrency",
+      "3",
+      "--batch-size",
+      "9",
+      "--max-rows",
+      "100001",
+    ]);
+    assert.equal(concurrent.complete, true);
+    assert.equal(object(concurrent.totals).verified, 9);
+    assert.equal(object(concurrent.totals).updated, 0);
+    assert.equal(
+      peakDecrypts,
+      3,
+      "Decrypts must run concurrently within the cap",
+    );
+    assert.equal(activeDecrypts, 0, "The CLI must drain all requests");
+  } finally {
+    beforeDecrypt = undefined;
+    for (const release of waiting.splice(0)) {
+      release();
+    }
+  }
+  const firstFixture = concurrentFixtures[0];
+  const failedFixture = concurrentFixtures[1];
+  const laterFixture = concurrentFixtures[2];
+  assert.ok(firstFixture && failedFixture && laterFixture);
+  let releaseFirst: (() => void) | undefined;
+  const firstMayComplete = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  beforeDecrypt = async (ciphertext) => {
+    if (ciphertext === firstFixture.ciphertext) {
+      await firstMayComplete;
+    } else if (ciphertext === failedFixture.ciphertext) {
+      throw new Error("synthetic failure in the middle of a concurrent group");
+    } else if (ciphertext === laterFixture.ciphertext) {
+      assert.ok(releaseFirst);
+      releaseFirst();
+    }
+  };
+  let concurrentFailure: Record<string, unknown>;
+  try {
+    concurrentFailure = await cli(
+      "concurrent-failure",
+      ["--verify", "--verify-concurrency", "3", "--batch-size", "9"],
+      false,
+      true,
+    );
+  } finally {
+    beforeDecrypt = undefined;
+    assert.ok(releaseFirst);
+    releaseFirst();
+  }
+  assert.equal(concurrentFailure.complete, false);
+  assert.equal(object(concurrentFailure.totals).rows, 1);
+  assert.equal(object(concurrentFailure.totals).verified, 1);
+  const failedCursor = object(
+    JSON.parse(
+      Buffer.from(string(concurrentFailure.cursor), "base64url").toString(
+        "utf8",
+      ),
+    ),
+  );
+  assert.equal(failedCursor.id, firstFixture.id);
+  const concurrentResume = await cli("concurrent-resume", [
+    "--verify",
+    "--verify-concurrency",
+    "3",
+    "--cursor",
+    string(concurrentFailure.cursor),
+  ]);
+  assert.equal(concurrentResume.complete, true);
+  assert.equal(concurrentResume.resumed, true);
+  assert.equal(object(concurrentResume.totals).verified, 8);
+  assert.equal(object(concurrentResume.totals).updated, 0);
+  assert.deepEqual(
+    (await db.query("SELECT * FROM secrets ORDER BY id")).rows,
+    beforeConcurrentVerification,
+    "Concurrent verification and resume must preserve every stored ciphertext",
+  );
+  await db.query("DELETE FROM secrets");
   const original = encode(await encrypt(kms, Buffer.from(secret), source));
   const latest = encode(
     await encrypt(kms, Buffer.from(`${secret}-updated`), source),
@@ -420,7 +542,7 @@ try {
   assert.equal(object(invalid.totals).invalid, 1);
   assert.equal(invalid.databaseVerifiedOnTarget, false);
   process.stdout.write(
-    "KMS rotation CLI integration passed: read-only inventory, nested verification, bounded resume, concurrent writes, KMS failure recovery, rewrap preservation, reverse migration, and malformed ciphertext.\n",
+    "KMS rotation CLI integration passed: read-only inventory, concurrent verification and failure checkpoints, nested verification, bounded resume, concurrent writes, KMS failure recovery, rewrap preservation, reverse migration, and malformed ciphertext.\n",
   );
 } finally {
   kms.destroy();

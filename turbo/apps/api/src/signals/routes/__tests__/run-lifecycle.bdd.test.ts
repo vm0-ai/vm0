@@ -1,3 +1,4 @@
+import nativePiFixtures from "../../../../../../packages/api-contracts/src/contracts/__tests__/fixtures/pi-native.json";
 import { createHash, randomUUID } from "node:crypto";
 
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
@@ -10692,6 +10693,45 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it.each(nativePiFixtures)(
+    "claims stored native $name only with generation 4 capability",
+    async ({ config: piModelConfig }) => {
+      const api = createRunsApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "read a future native context",
+        modelProvider: "anthropic-api-key",
+      });
+      await setRunnerJobPiContextAsVersionedWriter(
+        context,
+        run.runId,
+        piModelConfig,
+      );
+      await api.heartbeatRunner(runnerGroup);
+      for (const capabilities of [
+        undefined,
+        { piModelConfigGenerations: [1, 2, 3] },
+      ]) {
+        await api.requestClaimRunnerJob(true, run.runId, [404], {
+          capabilities,
+        });
+        await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+          status: "pending",
+        });
+      }
+      const claim = await api.claimRunnerJob(run.runId, {
+        capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
+      });
+      expect(claim).toMatchObject({
+        cliAgentType: "pi",
+        piSessionId: run.runId,
+        piModelConfig,
+      });
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
+
   // Current admission cannot produce generation 3 or future/invalid rows.
   // The explicit stored-writer fixture exercises claim/read API behavior first.
   it.each([1, 2, 3] as const)(
@@ -10792,7 +10832,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
   it.each([
     {
-      schemaVersion: 4,
+      schemaVersion: 5,
       serviceTier: "priority",
       status: 404,
       runStatus: "pending",
@@ -10826,7 +10866,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       });
       await api.heartbeatRunner(runnerGroup);
       await api.requestClaimRunnerJob(true, run.runId, [route.status], {
-        capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
+        capabilities: { piModelConfigGenerations: [1, 2, 3, 4, 5] },
       });
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: route.runStatus,
@@ -11663,12 +11703,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, []);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      { runId: run.runId, target: targetIdentity },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     const [defaultPermissionRuntime] = await api.syncConnectorRuntime(
       run.runId,
       {
@@ -11681,16 +11727,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(defaultPermissionRuntime?.nextSyncAt).toBeUndefined();
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
-    const restoredGrantWakeups = context.mocks.ably.publish.mock.calls.filter(
-      ([eventName]) => {
-        return eventName === "connector-runtime-sync";
-      },
-    );
-    expect(restoredGrantWakeups).toStrictEqual([
-      ["connector-runtime-sync", { runId: run.runId, target: targetIdentity }],
-    ]);
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledExactlyOnceWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -11775,8 +11823,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
-    context.mocks.ably.publish.mockClear();
-    context.mocks.ably.publish.mockRejectedValueOnce(
+    context.mocks.ably.batchPublish.mockClear();
+    context.mocks.ably.batchPublish.mockRejectedValueOnce(
       new Error("Custom runtime wakeup unavailable"),
     );
     await connectors.updateCustomConnector(actor, custom.id, {
@@ -11794,10 +11842,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       queryInjections: custom.queryInjections,
       authMode: custom.authMode,
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      { runId: run.runId, target: targetIdentity },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
     const lastKnownGoodAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -13715,7 +13769,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(kms.decryptCalls).toBe(1);
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.setCustomConnectorValues(
       actor,
       saved.connector.id,
@@ -13732,10 +13786,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         ),
       },
     );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      expect.anything(),
-    );
+    expect(context.mocks.ably.batchPublish).not.toHaveBeenCalled();
     const [pinnedRuntimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [pinnedTarget],
     });
@@ -15048,20 +15099,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(otherUserRuntime.body.error.message).toBe(
       "Run does not belong to user",
     );
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: snapshotRun.runId,
-        target: { kind: "builtin", connectorSlug: "slack" },
-      },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: expect.arrayContaining([
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({
+            runId: snapshotRun.runId,
+            target: { kind: "builtin", connectorSlug: "slack" },
+          }),
+          encoding: "json",
+        },
+      ]),
+    });
     const [refreshedRuntime] = await api.syncConnectorRuntime(
       snapshotRun.runId,
       { targets: [snapshotSlackTarget] },

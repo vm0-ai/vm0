@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { zstdDecompressSync } from "node:zlib";
+import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
   readGoalThreadFixture,
@@ -46,6 +46,8 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
+  PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
@@ -13836,6 +13838,247 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
+  it.each(["identity", "gzip", "zstd"] as const)(
+    "saves large Pi %s history and transfers the next turn without API history or resource IO",
+    async (encoding) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      let modelCalls = 0;
+      let resourceDownloads = 0;
+      server.use(
+        http.post("https://api.openai.com/v1/responses", () => {
+          modelCalls += 1;
+          return nativeCodexSseResponse(
+            piResponsesTextSse("unexpected API answer", modelCalls),
+          );
+        }),
+        http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, () => {
+          resourceDownloads += 1;
+          return HttpResponse.json(
+            { error: "API resources unavailable" },
+            { status: 503 },
+          );
+        }),
+      );
+      const queued = await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "/skill:long-session finish in sandbox",
+      });
+      await completeChatRunOk(
+        queued.anchor.runId,
+        queued.anchorClaim.sandboxHeaders,
+        { usagePricingResolution: queued.usagePricingResolution },
+      );
+      await flushWaitUntilForTest();
+      const { run } = queued;
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      const session = MemoryPiSession.create({
+        cwd: "/home/user/workspace",
+        id: run.threadId,
+      });
+      session.appendMessage({
+        role: "user",
+        content: "preserve the complete native history",
+        timestamp: 1,
+      });
+      session.appendMessage({
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "x".repeat(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+          },
+        ],
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      });
+      const raw = Buffer.from(session.toJsonl());
+      const encoded =
+        encoding === "gzip"
+          ? gzipSync(raw)
+          : encoding === "zstd"
+            ? zstdCompressSync(raw)
+            : raw;
+      const hash = createHash("sha256").update(raw).digest("hex");
+      expect(raw.length).toBeGreaterThan(PI_API_FIRST_TURN_SESSION_MAX_BYTES);
+      const invalidHash = createHash("sha256")
+        .update(randomUUID())
+        .digest("hex");
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: invalidHash,
+          rawSize: encoding === "identity" ? raw.length : 1,
+          encodedSize: encoded.length,
+          encoding,
+        },
+        claimed.sandboxHeaders,
+        [200],
+      );
+      const invalidSuffix =
+        encoding === "identity"
+          ? "blob"
+          : encoding === "gzip"
+            ? "blob.gz"
+            : "blob.zst";
+      checkpointObjects.set(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${invalidHash}.${invalidSuffix}`,
+        encoded,
+      );
+      const invalidCheckpoint = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: run.threadId,
+            cliAgentSessionHistoryHash: invalidHash,
+          },
+        },
+        claimed.sandboxHeaders,
+        [400],
+        undefined,
+        queued.usagePricingResolution,
+      );
+      expect(JSON.stringify(invalidCheckpoint.body)).toContain(
+        encoding === "identity"
+          ? "[PI_H2_HASH_MISMATCH]"
+          : "[PI_H2_DECOMPRESSION_FAILED]",
+      );
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "running",
+      });
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash,
+          rawSize: raw.length,
+          encodedSize: encoded.length,
+          encoding,
+        },
+        claimed.sandboxHeaders,
+        [200],
+      );
+      const suffix =
+        encoding === "identity"
+          ? "blob"
+          : encoding === "gzip"
+            ? "blob.gz"
+            : "blob.zst";
+      const blobKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${hash}.${suffix}`;
+      checkpointObjects.set(blobKey, encoded);
+      const completed = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: run.threadId,
+            cliAgentSessionHistoryHash: hash,
+          },
+        },
+        claimed.sandboxHeaders,
+        [200],
+        undefined,
+        queued.usagePricingResolution,
+      );
+      expect(completed.body).toStrictEqual({
+        success: true,
+        status: "completed",
+      });
+      await flushWaitUntilForTest();
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "completed",
+      });
+      const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
+      const resumed = await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: run.threadId,
+          prompt: "continue the long session",
+          model: "gpt-5.6-terra",
+        },
+        queued.usagePricingResolution,
+      );
+      await flushWaitUntilForTest();
+      const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      const manifest = piApiFirstTurnManifestSchema.parse(
+        JSON.parse(
+          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
+        ),
+      );
+      expect(manifest).toMatchObject({
+        schemaVersion: 4,
+        mode: "sandbox-first",
+        outcome: "ownership-transfer",
+        baseSession: { sessionId: run.threadId, sha256: hash },
+        session: { sessionId: run.threadId, sha256: hash, rawSize: raw.length },
+        history: {
+          encoding,
+          encodedSize: encoded.length,
+          url: expect.any(String),
+        },
+        sandboxEventSequenceStart: 1,
+      });
+      if (manifest.schemaVersion !== 4) {
+        throw new Error("Expected a referenced sandbox checkpoint");
+      }
+      expect(new URL(manifest.history.url).searchParams.get("object")).toBe(
+        blobKey,
+      );
+      expect(modelCalls).toBe(0);
+      expect(resourceDownloads).toBe(0);
+      expect(
+        context.mocks.s3.send.mock.calls
+          .slice(callsBeforeResume)
+          .some(([command]) => {
+            const candidate = command as PiCheckpointS3Command;
+            return (
+              candidate.constructor?.name === "GetObjectCommand" &&
+              piS3ObjectKey(candidate) === blobKey
+            );
+          }),
+      ).toBeFalsy();
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
+        ),
+      ).toBeFalsy();
+      const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
+      expect(resumedClaim.claim.resumeSession).toMatchObject({
+        sessionId: run.threadId,
+        historyRef: { hash, encoding, rawSize: raw.length },
+      });
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: resumed.runId,
+          hash: "f".repeat(64),
+          rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+          encodedSize: 1,
+          encoding,
+        },
+        resumedClaim.sandboxHeaders,
+        [400],
+      );
+      await cancelChatRun(actor, resumed.runId, resumedClaim.sandboxHeaders);
+    },
+    30_000,
+  );
+
   it.each([
     "/skill:handoff-skill first  argument\nsecond line",
     " \n\t/skill:handoff-skill first  argument\nsecond line",
@@ -18288,10 +18531,36 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it.each(
     [
+      ...[
+        "refresh_token_reused",
+        "refresh_token_expired",
+        "refresh_token_invalidated",
+      ].map((refreshErrorCode) => {
+        return {
+          name: refreshErrorCode,
+          failureReason: "reconnect_required" as const,
+          errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+          refreshErrorCode,
+          expectedReconnect: true,
+          expired: true,
+          providerCalls: 0,
+        };
+      }),
       {
-        name: "reconnect-required refresh",
+        name: "unknown refresh failure",
         failureReason: "reconnect_required" as const,
         errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+        refreshErrorCode: "new_provider_error",
+        expectedReconnect: false,
+        expired: true,
+        providerCalls: 0,
+      },
+      {
+        name: "transient refresh failure",
+        failureReason: undefined,
+        errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+        refreshErrorCode: null,
+        expectedReconnect: false,
         expired: true,
         providerCalls: 0,
       },
@@ -18299,6 +18568,8 @@ describe("CHAT-02: run-level model overrides", () => {
         name: "subscription usage limit",
         failureReason: "usage_limit" as const,
         errorCode: "PI_API_MODEL_FAILED",
+        refreshErrorCode: null,
+        expectedReconnect: false,
         expired: false,
         providerCalls: 1,
       },
@@ -18310,6 +18581,7 @@ describe("CHAT-02: run-level model overrides", () => {
   )(
     "classifies a $name with tier $tier without replay, billing, or private diagnostics",
     async (scenario) => {
+      mockOptionalEnv("OKOU_DEBUG", "webhook:firewall-auth,pi-api-first-turn");
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const privateMarker = `private-${scenario.failureReason}-diagnostic`;
       const externalAccountId = `chat-${scenario.failureReason}-account`;
@@ -18349,18 +18621,18 @@ describe("CHAT-02: run-level model overrides", () => {
         throw new Error("Expected subscription auth to complete");
       }
       let refreshAttempts = 0;
-      if (scenario.failureReason === "reconnect_required") {
+      if (scenario.expired) {
         server.use(
           http.post("https://auth.openai.com/oauth/token", () => {
             refreshAttempts += 1;
             return HttpResponse.json(
               {
                 error: {
-                  code: "refresh_token_invalidated",
+                  code: scenario.refreshErrorCode ?? "server_error",
                   message: privateMarker,
                 },
               },
-              { status: 401 },
+              { status: scenario.refreshErrorCode === null ? 503 : 401 },
             );
           }),
         );
@@ -18410,14 +18682,44 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(modelCalls).toBe(scenario.providerCalls);
       expect(refreshAttempts).toBe(scenario.expired ? 1 : 0);
       expect(oauth.oauthToken).toHaveLength(1);
+      if (scenario.expectedReconnect) {
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        for (const log of [
+          context.mocks.axiomLogging.debug,
+          context.mocks.axiomLogging.info,
+        ]) {
+          expect(log).not.toHaveBeenCalledWith(
+            "codex-oauth-token token refresh failed",
+            expect.anything(),
+          );
+          expect(log).not.toHaveBeenCalledWith(
+            "Pi API first-turn outcome",
+            expect.objectContaining({
+              runId: run.runId,
+              outcome: "terminal_failure",
+            }),
+          );
+        }
+      } else {
+        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+          "Pi API first-turn outcome",
+          expect.objectContaining({
+            runId: run.runId,
+            outcome: "terminal_failure",
+            reason: scenario.errorCode,
+          }),
+        );
+      }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          eventType: "run.failed",
-          runId: run.runId,
-          failureReason: scenario.failureReason,
-        }),
-      );
+      const failureEvent = events.find((event) => {
+        return event.eventType === "run.failed" && event.runId === run.runId;
+      });
+      if (failureEvent?.eventType !== "run.failed") {
+        throw new Error("Expected the subscription run failure event");
+      }
+      expect(failureEvent.failureReason).toBe(scenario.failureReason);
       const publicState = JSON.stringify({
         failed,
         events,
@@ -18441,6 +18743,30 @@ describe("CHAT-02: run-level model overrides", () => {
         capabilities: { piModelConfigGenerations: [1, 2, 3] },
       });
       expectApiError(claim.body);
+      if (scenario.expectedReconnect) {
+        const repeated = await sendChatRun(actor, {
+          agentId,
+          prompt: "retry the terminal subscription account",
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: scenario.tier },
+        });
+        await waitForRunStatus(actor, repeated.runId, "failed", 10_000);
+        await flushWaitUntilForTest();
+        expect(refreshAttempts).toBe(1);
+        expect(modelCalls).toBe(0);
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        expect(
+          (await chat.listThreadEvents(actor, repeated.threadId)).events,
+        ).toContainEqual(
+          expect.objectContaining({
+            eventType: "run.failed",
+            runId: repeated.runId,
+            failureReason: "reconnect_required",
+          }),
+        );
+      }
     },
     90_000,
   );

@@ -1,6 +1,6 @@
 # Runner Multi-Architecture Rollout
 
-This document describes the operational contract for running vm0 runners on
+This document describes the operational contract for running Okou runners on
 more than one host CPU architecture.
 
 ## Core Invariant

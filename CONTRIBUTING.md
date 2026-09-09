@@ -1,4 +1,4 @@
-# Contributing to vm0
+# Contributing to Okou
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/vm0-ai/vm0?quickstart=1)
 

@@ -84,6 +84,9 @@ export function projectPiApiAssistantMessage(
       output: message.usage.output,
       cacheRead: message.usage.cacheRead,
       cacheWrite: message.usage.cacheWrite,
+      ...(message.usage.cacheWrite1h === undefined
+        ? {}
+        : { cacheWrite1h: message.usage.cacheWrite1h }),
     },
   };
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.1...sandbox-v0.22.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify cancelled workspace promotion skips ([#32793](https://github.com/vm0-ai/vm0/issues/32793)) ([5b45464](https://github.com/vm0-ai/vm0/commit/5b4546424e912fee5831a284ea9a54ead5311c1b))
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+
 ## [0.22.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.0...sandbox-v0.22.1) (2026-09-08)
 
 

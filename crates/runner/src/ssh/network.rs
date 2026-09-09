@@ -1,6 +1,6 @@
 //! Public destination validation binds the entire DNS answer set to one socket.
 
-use api_contracts::generated::public_destination_policy::*;
+use crate::firewall_hostname_policy::is_public_ip_address;
 use async_trait::async_trait;
 use std::{
     io,
@@ -67,7 +67,7 @@ pub(super) async fn destination(
         || addresses.len() > 64
         || addresses.iter().any(|address| {
             address.port() != port
-                || !is_public(address.ip())
+                || !is_public_ip_address(address.ip())
                 || matches!(address, SocketAddr::V6(v6) if v6.scope_id() != 0 || v6.flowinfo() != 0)
         })
     {
@@ -77,37 +77,4 @@ pub(super) async fn destination(
         .first()
         .copied()
         .ok_or(FailureReason::UnsafeDestination)
-}
-
-fn is_public(address: IpAddr) -> bool {
-    match address {
-        IpAddr::V4(ip) => !IPV4_NON_PUBLIC_RANGES
-            .iter()
-            .any(|&(start, end)| (start..=end).contains(&u32::from(ip))),
-        IpAddr::V6(ip) => {
-            let words = ip.segments();
-            let first = words[0];
-            let second = words[1];
-            if !(IPV6_GLOBAL_UNICAST_FIRST_MIN..=IPV6_GLOBAL_UNICAST_FIRST_MAX).contains(&first) {
-                return false;
-            }
-            if first == IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST
-                && second <= IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX
-            {
-                return (second == IPV6_SPECIAL_EXACT_SECOND
-                    && words[2..7].iter().all(|&word| word == 0)
-                    && (IPV6_SPECIAL_EXACT_LAST_MIN..=IPV6_SPECIAL_EXACT_LAST_MAX)
-                        .contains(&words[7]))
-                    || second == IPV6_AMT_SECOND
-                    || (second == IPV6_AS112_SECOND && words[2] == IPV6_AS112_THIRD)
-                    || (IPV6_ORCHID_SECOND_MIN..=IPV6_ORCHID_SECOND_MAX).contains(&second)
-                    || (IPV6_DRONE_REMOTE_ID_SECOND_MIN..=IPV6_DRONE_REMOTE_ID_SECOND_MAX)
-                        .contains(&second);
-            }
-            !(first == IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST && second == IPV6_DOCUMENTATION_SECOND
-                || first == IPV6_EXPANDED_DOCUMENTATION_FIRST
-                    && second <= IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX
-                || first == IPV6_SIX_TO_FOUR_FIRST)
-        }
-    }
 }

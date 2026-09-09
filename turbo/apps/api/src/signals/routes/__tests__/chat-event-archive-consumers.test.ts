@@ -258,7 +258,7 @@ describe("archived chat event consumers", () => {
     ]);
   }, 60_000);
 
-  it("preserves user-requested shared-title failures for archived selections", async () => {
+  it("shares archived selections with a fixed title when the title provider is unavailable", async () => {
     const fixture = await createArchiveFixture("sharing-provider-failure");
     // Expired, physically removed events are historical state with no public
     // write API. Reuse this archive harness, then observe the public share API.
@@ -276,20 +276,41 @@ describe("archived chat event consumers", () => {
     chatCallbacks.mockOpenRouterCompletions(() => {
       return new HttpResponse(null, { status: 503 });
     });
-    const client = setupApp({
-      context,
-      routes: sharedThreadRoutes,
-      rethrowErrors: true,
-    })(sharedThreadsContract);
-    await expect(
-      client.create({
+    const created = await accept(
+      sharedThreadClient().create({
         params: { threadId: fixture.threadId },
         headers: authenticate(fixture.actor),
         body: { eventIds: [eventId] },
       }),
-    ).rejects.toMatchObject({ name: "OpenRouterRequestError", status: 503 });
+      [201],
+    );
     await flushWaitUntilForTest();
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    const shared = await accept(
+      sharedThreadClient().get({ params: { id: created.body.id } }),
+      [200],
+    );
+    expect(shared.body).toStrictEqual({
+      id: created.body.id,
+      publicBrand: "okou",
+      title: "Shared conversation",
+      messages: [
+        {
+          messageIndex: 0,
+          role: "assistant",
+          content: "A completed answer to share",
+        },
+      ],
+    });
+    expect(auxiliaryResults(context)).toStrictEqual([
+      expect.objectContaining({
+        feature: "shared_thread_title",
+        outcome: "degraded",
+        reason: "provider_unavailable",
+      }),
+    ]);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("shares an archived selection while excluding archived revoked and invisible messages", async () => {

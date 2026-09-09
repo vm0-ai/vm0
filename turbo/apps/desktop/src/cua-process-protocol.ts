@@ -43,7 +43,7 @@ export const cuaToolSchema = z.discriminatedUnion("name", [
   z
     .object({
       name: z.literal("list_windows"),
-      args: z.object({ pid, on_screen_only: z.literal(false) }).strict(),
+      args: z.object({ pid, on_screen_only: z.literal(true) }).strict(),
     })
     .strict(),
   z

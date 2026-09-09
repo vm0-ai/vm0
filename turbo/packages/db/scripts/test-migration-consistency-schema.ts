@@ -1235,14 +1235,6 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
-  // Rollout writer compatibility; remove with vm0-ai/vm0#32575.
-  {
-    definition:
-      "CREATE TRIGGER trg_org_plan_entitlement_show_usage_pack BEFORE INSERT OR UPDATE OF plan_key, member_invite_usage_pack_required ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_show_usage_pack()",
-    schemaName: "public",
-    tableName: "org_plan_entitlements",
-    triggerName: "trg_org_plan_entitlement_show_usage_pack",
-  },
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -1387,14 +1379,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
-  // Rollout writer compatibility; remove with vm0-ai/vm0#32575.
-  {
-    bodyHash: "4e770f8113e4468021ea440dc674e92b",
-    functionName: "sync_legacy_org_plan_entitlement_show_usage_pack",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",

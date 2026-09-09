@@ -41,6 +41,8 @@ export function cuaBoundary() {
   let granted = true;
   let pid = 123;
   let windowId = 42;
+  let windowVisible = true;
+  let extraWindows: { windowId: number; visible: boolean }[] = [];
   let bounds = { x: 10, y: 20, width: 800, height: 600 };
   let scale = 2;
   let resize = 1;
@@ -160,9 +162,15 @@ export function cuaBoundary() {
             });
           if (name === "list_windows")
             return toolResult({
-              windows: [
-                { pid, window_id: windowId, title: "Document", bounds },
-              ],
+              windows: [{ windowId, visible: windowVisible }, ...extraWindows]
+                .filter((window) => !args.on_screen_only || window.visible)
+                .map((window) => ({
+                  pid,
+                  window_id: window.windowId,
+                  title: "Document",
+                  bounds,
+                  is_on_screen: window.visible,
+                })),
             });
           if (name === "launch_app")
             return toolResult({
@@ -244,6 +252,12 @@ export function cuaBoundary() {
     },
     set windowId(value: number) {
       windowId = value;
+    },
+    set windowVisible(value: boolean) {
+      windowVisible = value;
+    },
+    set extraWindows(value: typeof extraWindows) {
+      extraWindows = value;
     },
     set bounds(value: typeof bounds) {
       bounds = value;

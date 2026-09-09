@@ -2,9 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync, zstdCompressSync } from "node:zlib";
 
 import {
   PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   type PiApiFirstTurnConfig,
   type PiApiFirstTurnManifest,
   type PiApiFirstTurnOwnershipTransferMode,
@@ -167,6 +169,130 @@ afterEach(async () => {
 });
 
 describe("Pi API first-turn handoff loader", () => {
+  it.each(["identity", "gzip", "zstd"] as const)(
+    "restores large %s H0 directly from a V4 history reference",
+    async (encoding) => {
+      const sessionDir = await mkdtemp(join(tmpdir(), "pi-large-handoff-"));
+      temporaryDirectories.push(sessionDir);
+      const jsonl = SETTLED_SESSION_JSONL.replace(
+        "continued from API",
+        "x".repeat(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+      );
+      const raw = Buffer.from(jsonl);
+      const encoded =
+        encoding === "gzip"
+          ? gzipSync(raw)
+          : encoding === "zstd"
+            ? zstdCompressSync(raw)
+            : raw;
+      const hash = createHash("sha256").update(raw).digest("hex");
+      const pointer = {
+        ...manifestV3(jsonl, "sandbox-first", 1, hash),
+        schemaVersion: 4,
+        history: {
+          url: "https://history.example/checkpoint",
+          encoding,
+          encodedSize: encoded.length,
+        },
+      };
+      const downloadedUrls: string[] = [];
+      server.use(
+        http.get("https://handoff.example/manifest.json", ({ request }) => {
+          downloadedUrls.push(request.url);
+          return HttpResponse.json(pointer);
+        }),
+        http.get(pointer.history.url, ({ request }) => {
+          downloadedUrls.push(request.url);
+          return new HttpResponse(encoded, {
+            headers: { "content-length": String(encoded.length) },
+          });
+        }),
+      );
+      const restored = await resolvePiApiFirstTurnHandoff({
+        config: config(5_000, 1, hash),
+        sessionDir,
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetch),
+      });
+      expect((await readFile(restored.sessionFile)).equals(raw)).toBe(true);
+      expect(restored.boundaryControl).toStrictEqual({
+        schemaVersion: 2,
+        sandboxEventSequenceStart: 1,
+        ownershipTransferMode: "sandbox-first",
+      });
+      expect(downloadedUrls).toStrictEqual([
+        "https://handoff.example/manifest.json",
+        pointer.history.url,
+      ]);
+    },
+  );
+
+  it.each([
+    "raw size",
+    "encoded size",
+    "hash",
+    "unsettled",
+    "malformed",
+    "over limit",
+  ] as const)("rejects an invalid V4 checkpoint: %s", async (fault) => {
+    const sessionDir = await mkdtemp(join(tmpdir(), "pi-invalid-handoff-"));
+    temporaryDirectories.push(sessionDir);
+    const jsonl =
+      fault === "unsettled"
+        ? HANDOFF_SESSION_JSONL
+        : fault === "malformed"
+          ? `${SETTLED_SESSION_JSONL}{malformed\n`
+          : SETTLED_SESSION_JSONL;
+    const hash = createHash("sha256").update(jsonl).digest("hex");
+    const encoded = gzipSync(jsonl);
+    const base = manifestV3(jsonl, "sandbox-first", 1, hash);
+    const pointer = {
+      ...base,
+      schemaVersion: 4,
+      session: {
+        ...base.session,
+        rawSize:
+          fault === "raw size"
+            ? 1
+            : fault === "over limit"
+              ? RESUME_SESSION_HISTORY_MAX_BYTES + 1
+              : base.session.rawSize,
+        sha256: fault === "hash" ? H0_HASH : hash,
+      },
+      history: {
+        url: "https://history.example/checkpoint",
+        encoding: "gzip",
+        encodedSize: encoded.length + (fault === "encoded size" ? 1 : 0),
+      },
+    };
+    server.use(
+      http.get("https://handoff.example/manifest.json", () => {
+        return HttpResponse.json(pointer);
+      }),
+      http.get(pointer.history.url, () => {
+        return new HttpResponse(encoded);
+      }),
+    );
+    await expect(
+      resolvePiApiFirstTurnHandoff({
+        config: config(5_000, 1, hash),
+        sessionDir,
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetch),
+      }),
+    ).rejects.toMatchObject({
+      code:
+        fault === "over limit"
+          ? "PI_HANDOFF_MANIFEST_INVALID"
+          : fault === "encoded size" || fault === "hash"
+            ? "PI_HANDOFF_H1_HASH_MISMATCH"
+            : "PI_HANDOFF_H1_INVALID",
+    });
+    await expect(
+      readFile(join(sessionDir, `api-first-turn-${SESSION_ID}.jsonl`)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("polls 404, validates H0/H1 identity, and atomically restores native JSONL", async () => {
     const sessionDir = await mkdtemp(join(tmpdir(), "pi-handoff-loader-"));
     temporaryDirectories.push(sessionDir);

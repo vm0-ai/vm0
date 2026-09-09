@@ -938,15 +938,9 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     expect(refreshCalls).toBe(1);
     expect(usageCalls).toBe(1);
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      expect.stringContaining("codex-oauth-token token refresh failed"),
-      expect.objectContaining({
-        modelProviderAccountId: connected.body.provider.id,
-        errorCode: "refresh_token_expired",
-        failureReason: "reconnect_required",
-      }),
-    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("retries transient Codex refresh failure without false reconnect", async () => {

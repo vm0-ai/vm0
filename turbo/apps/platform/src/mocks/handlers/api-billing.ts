@@ -24,6 +24,7 @@ let mockBillingInvoices: BillingInvoice[] = [];
 function defaultBillingStatus(): BillingStatusResponse {
   return {
     tier: "pro-suspend",
+    showUsagePack: false,
     credits: 0,
     onboardingPaymentPending: true,
     subscriptionStatus: null,

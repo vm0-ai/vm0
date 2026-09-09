@@ -6,7 +6,7 @@ import {
   runStatusSchema,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
-import { PI_API_FIRST_TURN_SESSION_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
+import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -228,6 +228,7 @@ async function lockCheckpointRunContext(
 }
 
 async function decodePiCheckpointHistory(args: {
+  readonly rawSize: number;
   readonly encoded: Buffer;
   readonly encoding: string;
   readonly key: string;
@@ -240,14 +241,14 @@ async function decodePiCheckpointHistory(args: {
       return await gunzipSessionHistoryBufferWithMaxBytes(
         args.key,
         args.encoded,
-        PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+        args.rawSize,
       );
     }
     case SESSION_HISTORY_ENCODING_ZSTD: {
       return await unzstdSessionHistoryBufferWithMaxBytes(
         args.key,
         args.encoded,
-        PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+        args.rawSize,
       );
     }
     default: {
@@ -299,8 +300,8 @@ function validatePiCheckpointMetadata(
     );
   }
   if (
-    metadata.rawSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES ||
-    metadata.encodedSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES
+    metadata.rawSize > RESUME_SESSION_HISTORY_MAX_BYTES ||
+    metadata.encodedSize > RESUME_SESSION_HISTORY_MAX_BYTES
   ) {
     return piCheckpointError(
       "PI_H2_TOO_LARGE",
@@ -355,7 +356,12 @@ const downloadAndDecodePiCheckpoint$ = command(
       );
     }
     const decoded = await settle(
-      decodePiCheckpointHistory({ encoded, encoding, key }),
+      decodePiCheckpointHistory({
+        encoded,
+        encoding,
+        key,
+        rawSize: args.metadata.rawSize,
+      }),
       signal,
     );
     if (!decoded.ok) {

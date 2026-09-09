@@ -577,6 +577,11 @@
       "unavailable": "{{kind}} プレビューは利用できません。",
       "videoLabel": "{{filename}} のビデオ プレビュー"
     },
+    "sharing": {
+      "shareOrganization": "組織内で共有",
+      "sharePublic": "一般公開する",
+      "unavailable": "このアーティファクトは利用できないか、アクセス権がありません。"
+    },
     "sidebar": {
       "openSharedConversation": "共有された会話を開く",
       "panelTitle": "アーティファクト",
@@ -1884,6 +1889,9 @@
         "presentationPlaceholder": "プレゼンテーションのテーマは何ですか？",
         "question": "何を実現したいですか？",
         "settingsAdjusted": "このモデルに合わせて一部の動画設定を調整しました",
+        "slideCount": "スライド数",
+        "slideCountAuto": "自動",
+        "slideCountRange": "{{range}}枚",
         "title": "作成",
         "video": "動画を作成",
         "videoPlaceholder": "作成したい動画を説明してください…"

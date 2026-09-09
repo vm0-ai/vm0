@@ -57,6 +57,7 @@ function billingStatus(args: {
 }): BillingStatusResponse {
   const paid = args.tier === "pro" || args.tier === "team";
   return {
+    showUsagePack: false,
     tier: args.tier,
     canBuyCredits: args.canBuyCredits,
     credits: args.credits,

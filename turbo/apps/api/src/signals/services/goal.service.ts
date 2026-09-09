@@ -45,7 +45,10 @@ type ClearGoalResult =
   | { readonly kind: "ok"; readonly cleared: true }
   | Exclude<GoalResult, { readonly kind: "ok" }>;
 
-type GoalRow = typeof threadGoals.$inferSelect;
+type GoalRow = Pick<
+  typeof threadGoals.$inferSelect,
+  keyof ReturnType<typeof threadGoalColumns>
+>;
 
 type GoalRowResult =
   | {

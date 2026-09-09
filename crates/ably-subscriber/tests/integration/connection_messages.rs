@@ -298,6 +298,13 @@ async fn batched_messages_in_single_frame() {
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
 
+    let payloads = vec![
+        serde_json::json!({"runId": "run-1", "target": {"kind": "builtin", "connectorSlug": "slack"}}),
+        serde_json::json!({"runId": "run-1", "target": {"kind": "custom", "customConnectorId": "custom-1"}}),
+        serde_json::json!({"runId": "run-2", "target": {"kind": "custom", "customConnectorId": "custom-1"}}),
+    ];
+    let expected = payloads.clone();
+
     let ws_port = ws.port;
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
@@ -305,23 +312,17 @@ async fn batched_messages_in_single_frame() {
             action: action::MESSAGE,
             channel: Some("ch".into()),
             channel_serial: Some("serial-1".into()),
-            messages: Some(vec![
-                AblyMessage {
-                    name: Some("a".into()),
-                    data: Some(serde_json::json!(1)),
-                    ..Default::default()
-                },
-                AblyMessage {
-                    name: Some("b".into()),
-                    data: Some(serde_json::json!(2)),
-                    ..Default::default()
-                },
-                AblyMessage {
-                    name: Some("c".into()),
-                    data: Some(serde_json::json!(3)),
-                    ..Default::default()
-                },
-            ]),
+            messages: Some(
+                payloads
+                    .into_iter()
+                    .map(|payload| AblyMessage {
+                        name: Some("connector-runtime-sync".into()),
+                        data: Some(serde_json::Value::String(payload.to_string())),
+                        encoding: Some("json".into()),
+                        ..Default::default()
+                    })
+                    .collect(),
+            ),
             ..Default::default()
         };
         conn.send(tungstenite::Message::Binary(
@@ -337,15 +338,15 @@ async fn batched_messages_in_single_frame() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    let mut names = Vec::new();
-    for _ in 0..3 {
+    for payload in expected {
         match expect_event(&mut sub, "batched message").await.unwrap() {
-            Event::Message(m) => names.push(m.name.unwrap_or_default()),
+            Event::Message(m) => {
+                assert_eq!(m.name.as_deref(), Some("connector-runtime-sync"));
+                assert_eq!(m.data, payload);
+            }
             other => panic!("expected Message, got {other:?}"),
         }
     }
-
-    assert_eq!(names, vec!["a", "b", "c"]);
 
     join_server_task(server_task, "mock server").await.unwrap();
 }

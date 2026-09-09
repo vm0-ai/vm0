@@ -1,3 +1,8 @@
+import {
+  artifactSharePolicySchema,
+  type ArtifactSharePolicy,
+} from "@okouai/api-contracts/contracts/artifact-shares";
+
 interface R2ObjectBody {
   readonly body: ReadableStream;
   readonly httpEtag: string;
@@ -10,8 +15,13 @@ interface R2Bucket {
 
 interface Env {
   readonly HOSTED_SITES_BUCKET: R2Bucket;
+  readonly PRIVATE_ARTIFACTS_BUCKET?: R2Bucket;
   readonly HOST_DOMAIN: string;
   readonly OKOU_HOST_DOMAIN: string;
+}
+
+interface ExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
 }
 
 type PublicBrand = "vm0" | "okou";
@@ -351,7 +361,11 @@ function cacheControl(file: ManifestFile): string {
   return "public, max-age=3600";
 }
 
-async function serveHostedSite(request: Request, env: Env): Promise<Response> {
+async function serveHostedSite(
+  request: Request,
+  env: Env,
+  execution: ExecutionContext,
+): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", {
       status: 405,
@@ -370,7 +384,21 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
     return new Response("Bad path", { status: 400 });
   }
 
-  const previewToken = /^pv-([a-f0-9]{48})$/u.exec(target.publicSlug)?.[1];
+  const shared = /^sh-([a-f0-9]{32})-([a-f0-9]{24})$/u.exec(target.publicSlug);
+  if (shared?.[1] && shared[2]) {
+    const result = await serveSharedArtifact(
+      request,
+      env,
+      target.publicBrands,
+      pathname,
+      shared[1],
+      shared[2],
+      execution,
+    );
+    if (result) return result;
+  }
+
+  const previewToken = /^p[vs]-([a-f0-9]{48})$/u.exec(target.publicSlug)?.[1];
   if (previewToken) {
     const preview = await servePrivatePreview(
       request,
@@ -464,6 +492,7 @@ async function serveManifestFile(
 }
 
 interface PrivatePreviewGrant {
+  readonly snapshotId?: string;
   readonly version: 1;
   readonly publicBrand: PublicBrand;
   readonly deploymentId: string;
@@ -483,6 +512,24 @@ function privateResponse(response: Response): Response {
   return new Response(response.body, { status: response.status, headers });
 }
 
+function privatePreviewPrefix(
+  deploymentId: string,
+  snapshotId: string | undefined,
+  publicBrand: PublicBrand,
+  shared: boolean,
+): string | null {
+  if (!shared)
+    return snapshotId === undefined
+      ? `private-sites/${publicBrand}/${deploymentId}`
+      : null;
+  if (
+    !snapshotId ||
+    !IMMUTABLE_DEPLOYMENT_HOST_PATTERN.test(`dpl-${snapshotId}`)
+  )
+    return null;
+  return `shared-artifacts/${publicBrand}/${snapshotId}/${deploymentId}`;
+}
+
 async function servePrivatePreview(
   request: Request,
   env: Env,
@@ -490,11 +537,12 @@ async function servePrivatePreview(
   pathname: string,
   token: string,
 ): Promise<Response | null> {
+  const shared = target.publicSlug.startsWith("ps-");
   const grants = (
     await Promise.all(
       target.publicBrands.map(async (publicBrand) => {
         const object = await env.HOSTED_SITES_BUCKET.get(
-          `private-previews/${publicBrand}/${token}.json`,
+          `${shared ? "shared-previews" : "private-previews"}/${publicBrand}/${token}.json`,
         );
         if (!object) {
           return null;
@@ -543,7 +591,13 @@ async function servePrivatePreview(
   ) {
     return privateResponse(notFoundResponse());
   }
-  const prefix = `private-sites/${publicBrand}/${grant.deploymentId}`;
+  const prefix = privatePreviewPrefix(
+    grant.deploymentId,
+    grant.snapshotId,
+    publicBrand,
+    shared,
+  );
+  if (!prefix) return privateResponse(notFoundResponse());
   const manifest = await readJson<HostedSiteManifest>(
     env.HOSTED_SITES_BUCKET,
     `${prefix}/manifest.json`,
@@ -570,12 +624,135 @@ async function servePrivatePreview(
   return privateResponse(response);
 }
 
+async function readPublicShare(
+  env: Env,
+  brands: readonly PublicBrand[],
+  id: string,
+  token: string,
+): Promise<ArtifactSharePolicy | Response | null> {
+  const denied = () => {
+    return privateResponse(notFoundResponse());
+  };
+  const records: ArtifactSharePolicy[] = [];
+  try {
+    for (const brand of brands) {
+      const object = await env.HOSTED_SITES_BUCKET.get(
+        `artifact-shares/${brand}/${id}.json`,
+      );
+      if (!object) continue;
+      const parsed = artifactSharePolicySchema.safeParse(
+        await new Response(object.body).json(),
+      );
+      if (
+        !parsed.success ||
+        parsed.data.shareId !== id ||
+        parsed.data.publicBrand !== brand
+      )
+        return denied();
+      records.push(parsed.data);
+    }
+  } catch {
+    // Unavailable authorization state never falls through to cached bytes.
+    return new Response("Artifact unavailable", {
+      status: 503,
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  }
+  // Preserve historical aliases with a coincidentally matching hostname.
+  if (records.length === 0) return null;
+  const policy = records[0];
+  if (
+    records.length !== 1 ||
+    !policy ||
+    policy.status !== "active" ||
+    policy.audience !== "public" ||
+    policy.publicToken !== token
+  )
+    return denied();
+  return policy;
+}
+
+/** Authorization is deliberately uncached and precedes every content-cache hit. */
+async function serveSharedArtifact(
+  request: Request,
+  env: Env,
+  brands: readonly PublicBrand[],
+  pathname: string,
+  compactId: string,
+  token: string,
+  execution: ExecutionContext,
+): Promise<Response | null> {
+  const id = `${compactId.slice(0, 8)}-${compactId.slice(8, 12)}-${compactId.slice(12, 16)}-${compactId.slice(16, 20)}-${compactId.slice(20)}`;
+  const denied = () => {
+    return privateResponse(notFoundResponse());
+  };
+  const policy = await readPublicShare(env, brands, id, token);
+  if (!policy || policy instanceof Response) return policy;
+  const target = policy.target;
+  if (target.kind === "file" && pathname !== "/") return denied();
+  const cacheUrl = new URL(request.url);
+  cacheUrl.pathname = `/__artifact-content/${policy.publicBrand}/${target.kind === "html" ? target.snapshotId : encodeURIComponent(target.key)}${pathname}`;
+  cacheUrl.search = `?html=${acceptsHtml(request)}`;
+  const key = new Request(cacheUrl);
+  // Cache only bytes on this Worker's own host. Browser/CDN caches outside
+  // this Worker must re-enter authorization; public responses are no-store.
+  const cache = (caches as CacheStorage & { readonly default: Cache }).default;
+  const cached = await cache.match(key);
+  if (cached)
+    return privateResponse(
+      new Response(request.method === "HEAD" ? null : cached.body, cached),
+    );
+  let response: Response;
+  if (target.kind === "html") {
+    response = await serveManifestFile(
+      request,
+      env,
+      pathname,
+      {
+        prefix: `shared-artifacts/${policy.publicBrand}/${target.snapshotId}/${target.id}`,
+        spaFallback: target.manifest.spaFallback,
+      },
+      target.manifest,
+    );
+  } else {
+    if (!env.PRIVATE_ARTIFACTS_BUCKET) return denied();
+    const object = await env.PRIVATE_ARTIFACTS_BUCKET.get(target.key);
+    if (!object) return denied();
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set("Content-Type", target.contentType);
+    headers.set("ETag", object.httpEtag);
+    headers.set("X-Content-Type-Options", "nosniff");
+    // Active uploaded formats execute only as downloads; hosted HTML uses the
+    // isolated bundle path with its sandbox and disabled service workers.
+    if (/html|svg|xml/iu.test(target.contentType)) {
+      headers.set(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(target.filename)}`,
+      );
+    }
+    response = new Response(request.method === "HEAD" ? null : object.body, {
+      headers,
+    });
+  }
+  if (request.method === "GET" && response.status === 200) {
+    const stored = response.clone();
+    stored.headers.set("Cache-Control", "public, max-age=86400");
+    execution.waitUntil(cache.put(key, stored));
+  }
+  return privateResponse(response);
+}
+
 export default {
-  fetch(request: Request, env: Env): Promise<Response> {
+  fetch(
+    request: Request,
+    env: Env,
+    execution: ExecutionContext,
+  ): Promise<Response> {
     if (request.method === "OPTIONS") {
       return Promise.resolve(optionsResponse(request));
     }
-    return serveHostedSite(request, env).then((response) => {
+    return serveHostedSite(request, env, execution).then((response) => {
       return corsResponse(response, request);
     });
   },

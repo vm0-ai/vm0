@@ -5,17 +5,21 @@ const MAX_DIAGNOSTIC_LENGTH = 500;
 export class OAuthProviderHttpError extends ProviderHttpError {
   readonly oauthError: string | undefined;
   readonly oauthErrorSubtype: string | undefined;
+  // Provider-specific code, independent of any OAuth error normalization.
+  readonly providerErrorCode: string | undefined;
 
   constructor(
     message: string,
     status: number,
     oauthError: string | undefined = undefined,
     oauthErrorSubtype: string | undefined = undefined,
+    providerErrorCode: string | undefined = undefined,
   ) {
     super(message, status);
     this.name = "OAuthProviderHttpError";
     this.oauthError = oauthError;
     this.oauthErrorSubtype = oauthErrorSubtype;
+    this.providerErrorCode = providerErrorCode;
   }
 }
 

@@ -1,4 +1,9 @@
 import {
+  piModelConfigV4Schema,
+  PI_NATIVE_CREDENTIAL_PLACEHOLDER,
+} from "@okouai/api-contracts/contracts/pi-native";
+import { piNativeFirewall } from "@okouai/api-contracts/contracts/pi-native-firewall";
+import {
   getBuiltInModelRouteCandidates,
   getBuiltInVendor,
   MODEL_PROVIDER_TYPES,
@@ -1000,10 +1005,23 @@ async function setRunnerJobPiContextAsVersionedWriter(
   body: SetRunnerJobPiContextAsVersionedWriterAction,
   signal: AbortSignal,
 ): Promise<void> {
-  // Production writers still emit generations 1/2. This fixture models a
-  // stored route from each supported writer so claim compatibility is tested
-  // before generation 3 admission activates in #31803.
+  // Native generation 4 has no production writer in this preparation release.
+  // This private infrastructure fixture models stored contexts to exercise
+  // the real claim API without changing production admission.
+  const native = piModelConfigV4Schema.safeParse(body.pi_model_config);
   const piContext = {
+    ...(native.success
+      ? {
+          environment: Object.fromEntries(
+            native.data.credentialBindings.map((binding) => {
+              return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
+            }),
+          ),
+          firewalls: [
+            { kind: "inline", firewall: piNativeFirewall(native.data) },
+          ],
+        }
+      : {}),
     cliAgentType: "pi",
     piSessionId: body.run_id,
     piLaunchConfig: {

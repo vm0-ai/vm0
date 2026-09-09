@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use runner_rpc_proto::*;
 use serde_json::{json, value::RawValue};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time::timeout;
 
@@ -48,9 +48,13 @@ async fn unrelated_methods_round_trip_opaque_objects_and_large_escaped_input() {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         let send = async {
             write_request(&mut sender, &request).await.unwrap();
-            sender.shutdown().await.unwrap();
         };
-        let ((), received) = tokio::join!(send, read_request(&mut receiver));
+        // Keep the peer open: Firecracker does not forward guest send-half EOF.
+        let ((), received) = tokio::join!(
+            send,
+            timeout(Duration::from_secs(1), read_request(&mut receiver))
+        );
+        let received = received.expect("a complete frame must not wait for peer EOF");
         let received = received.unwrap();
         assert_eq!(received.method, method);
         assert_eq!(
@@ -160,20 +164,36 @@ async fn advertised_oversize_is_rejected_before_waiting_for_a_body() {
 }
 
 #[tokio::test]
-async fn partial_malformed_and_extra_requests_fail_closed() {
-    let request =
-        raw_frame(serde_json::from_slice(&request_json("fixture.echo", json!({}))).unwrap());
+async fn partial_and_malformed_requests_fail_closed() {
     for bytes in [
         vec![],
         vec![0, 0],
         vec![0, 0, 0, 10, b'{'],
-        [request.clone(), request].concat(),
         raw_frame(json!({"version": 1})),
     ] {
         let (mut peer, mut host) = UnixStream::pair().unwrap();
         peer.write_all(&bytes).await.unwrap();
         peer.shutdown().await.unwrap();
         assert!(read_request(&mut host).await.is_err());
+    }
+}
+
+#[tokio::test]
+async fn a_request_consumes_only_its_complete_frame() {
+    let frame = raw_frame(json!({"version":1,"method":"fixture.echo","params":{}}));
+    for trailing in [vec![255], frame.clone()] {
+        let (mut peer, mut host) = UnixStream::pair().unwrap();
+        peer.write_all(&[frame.clone(), trailing.clone()].concat())
+            .await
+            .unwrap();
+        let request = timeout(Duration::from_secs(1), read_request(&mut host))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(request.method, "fixture.echo");
+        let mut unread = vec![0; trailing.len()];
+        host.read_exact(&mut unread).await.unwrap();
+        assert_eq!(unread, trailing);
     }
 }
 

@@ -1,3 +1,5 @@
+use crate::binary_logging::BinaryLoggingFixture;
+use crate::process::CommandExecution;
 use crate::support::run_guest_storage_apply_manifest_json;
 use serde_json::json;
 use std::fs;
@@ -230,4 +232,169 @@ fn cleanup_normalization_does_not_bypass_intermediate_symlink() {
         fs::read_to_string(cache.join("content.txt")).unwrap(),
         "keep"
     );
+}
+
+#[test]
+fn cleanup_preserves_many_cached_siblings_and_unrelated_roots() {
+    let dir = tempfile::tempdir().unwrap();
+    let cleanup_root = dir.path().join("workspace");
+    let unrelated_root = dir.path().join("unrelated");
+    let removed_root = dir.path().join("removed");
+    let mut preserved = Vec::new();
+    let mut stale = Vec::new();
+    let mut cleanup_paths = vec![cleanup_root.clone(), removed_root.clone()];
+
+    fs::create_dir_all(&removed_root).unwrap();
+    fs::write(removed_root.join("content.txt"), "remove").unwrap();
+    for i in 0..128 {
+        let cached = cleanup_root.join(format!("cached-{i:03}"));
+        let unrelated = unrelated_root.join(format!("cached-{i:03}"));
+        let stale_sibling = cleanup_root.join(format!("cached-{i:03}-old"));
+        for path in [&cached, &unrelated] {
+            fs::create_dir_all(path.join("nested")).unwrap();
+            fs::write(path.join("nested/content.txt"), "keep").unwrap();
+            preserved.push(path.clone());
+        }
+        cleanup_paths.push(cached.join("nested"));
+        fs::create_dir_all(&stale_sibling).unwrap();
+        fs::write(stale_sibling.join("content.txt"), "remove").unwrap();
+        stale.push(stale_sibling);
+    }
+    fs::write(cleanup_root.join("stale.txt"), "remove").unwrap();
+    let storage_mounts: Vec<_> = preserved
+        .iter()
+        .enumerate()
+        .map(|(i, path)| json!({"mountPath": path, "cached": true, "writeback": i % 2 == 0}))
+        .collect();
+    let manifest = serde_json::to_vec(&json!({
+        "storageMounts": storage_mounts,
+        "cleanupPaths": cleanup_paths
+    }))
+    .unwrap();
+
+    assert!(run_guest_storage_apply_manifest_json(&manifest));
+
+    for path in preserved {
+        assert_eq!(
+            fs::read_to_string(path.join("nested/content.txt")).unwrap(),
+            "keep"
+        );
+    }
+    assert!(stale.iter().all(|path| !path.exists()));
+    assert!(!cleanup_root.join("stale.txt").exists());
+    assert!(!removed_root.exists());
+}
+
+#[test]
+fn cleanup_counts_distinct_nested_cached_paths_and_preserves_their_ancestors() {
+    let fixture = BinaryLoggingFixture::new("cleanup-nested-cached-paths").unwrap();
+    let root = fixture.dir.path().join("workspace");
+    let group = root.join("group");
+    let cached = group.join("cache");
+    let nested = cached.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::create_dir_all(group.join("alias")).unwrap();
+    fs::write(nested.join("content.txt"), "keep").unwrap();
+    fs::write(group.join("stale.txt"), "remove when group is cleaned").unwrap();
+    fs::write(root.join("stale.txt"), "remove").unwrap();
+    let storage_mounts = json!([
+        {"mountPath": cached, "cached": true, "writeback": false},
+        {"mountPath": nested, "cached": true, "writeback": true},
+        {"mountPath": group.join("alias/../cache"), "cached": true, "writeback": false}
+    ]);
+    let manifest = serde_json::to_vec(&json!({
+        "storageMounts": storage_mounts,
+        "cleanupPaths": [root]
+    }))
+    .unwrap();
+
+    assert!(
+        fixture
+            .run_manifest_stdin(&manifest)
+            .unwrap()
+            .status
+            .success()
+    );
+    assert!(group.join("stale.txt").exists());
+    assert!(!root.join("stale.txt").exists());
+
+    let manifest = serde_json::to_vec(&json!({
+        "storageMounts": storage_mounts,
+        "cleanupPaths": [nested, cached, group]
+    }))
+    .unwrap();
+    assert!(
+        fixture
+            .run_manifest_stdin(&manifest)
+            .unwrap()
+            .status
+            .success()
+    );
+
+    assert_eq!(
+        fs::read_to_string(nested.join("content.txt")).unwrap(),
+        "keep"
+    );
+    assert!(!group.join("stale.txt").exists());
+    assert!(!group.join("alias").exists());
+    let log = fixture.read_system_log().unwrap();
+    for path in [&root, &group] {
+        assert!(log.contains(&format!(
+            "Selectively cleaned {} (preserved 2 children)",
+            path.display()
+        )));
+    }
+}
+
+#[test]
+fn cleanup_preserves_relative_cached_paths_and_leading_parent_components() {
+    let fixture = BinaryLoggingFixture::new("cleanup-relative-paths").unwrap();
+    let workspace = fixture.dir.path().join("workspace");
+    let outside = fixture.dir.path().join("outside");
+    for root in [&workspace, &outside] {
+        fs::create_dir_all(root.join("cache/nested")).unwrap();
+        fs::write(root.join("cache/nested/content.txt"), "keep").unwrap();
+        fs::write(root.join("stale.txt"), "remove").unwrap();
+    }
+    let manifest = serde_json::to_vec(&json!({
+        "storageMounts": [
+            {"mountPath": "cache", "cached": true, "writeback": false},
+            {"mountPath": "../outside/cache", "cached": true, "writeback": true}
+        ],
+        "cleanupPaths": ["cache/nested", "../outside/cache/nested", "../outside", "."]
+    }))
+    .unwrap();
+    let mut command = fixture.command();
+    command.current_dir(&workspace).arg("--manifest-stdin");
+
+    let output = CommandExecution::spawn(&mut command, Some(&manifest))
+        .unwrap()
+        .wait()
+        .unwrap();
+
+    assert!(output.status.success());
+    for root in [&workspace, &outside] {
+        assert_eq!(
+            fs::read_to_string(root.join("cache/nested/content.txt")).unwrap(),
+            "keep"
+        );
+        assert!(!root.join("stale.txt").exists());
+    }
+}
+
+#[test]
+fn cleanup_skips_absolute_paths_when_root_or_empty_prefix_is_preserved() {
+    let dir = tempfile::tempdir().unwrap();
+    let cleanup_root = dir.path().join("workspace");
+    fs::create_dir_all(&cleanup_root).unwrap();
+    fs::write(cleanup_root.join("content.txt"), "keep").unwrap();
+
+    for preserved in [Path::new("/"), Path::new(""), Path::new(".")] {
+        let manifest = cleanup_manifest(&[&cleanup_root], Some(preserved)).unwrap();
+        assert!(run_guest_storage_apply_manifest_json(&manifest));
+        assert_eq!(
+            fs::read_to_string(cleanup_root.join("content.txt")).unwrap(),
+            "keep"
+        );
+    }
 }

@@ -52,7 +52,14 @@ function registeredModelConfig(
   apiKey: string,
   config: Pick<
     PiAgentModelConfig,
-    "accountId" | "dialect" | "requestHeaders" | "serviceTier" | "transport"
+    | "accountId"
+    | "dialect"
+    | "requestHeaders"
+    | "serviceTier"
+    | "transport"
+    | "catalogModel"
+    | "region"
+    | "bedrockAuth"
   >,
 ) {
   return {
@@ -169,7 +176,10 @@ export async function createPiAgentSessionForRuntime(args: {
     allowModelNetwork: false,
     modelsPath: null,
     refreshOnCreate: false,
-    ...(args.resourceSnapshot
+    ...(args.resourceSnapshot ||
+    ["anthropic-messages", "bedrock-converse-stream"].includes(
+      args.model.dialect,
+    )
       ? { credentials: new InMemoryCredentialStore() }
       : {}),
   });

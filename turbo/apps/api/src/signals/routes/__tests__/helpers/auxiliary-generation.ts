@@ -8,6 +8,7 @@ const resultSchema = z
     source: z.literal("api"),
     feature: z.enum([
       "chat_title",
+      "shared_thread_title",
       "run_summary",
       "recommended_followups",
       "notification_summary",

@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.641.0](https://github.com/vm0-ai/vm0/compare/core-v8.640.1...core-v8.641.0) (2026-09-09)
+
+
+### Features
+
+* **web-chat:** render mobile follow-ups as quick replies ([#32817](https://github.com/vm0-ai/vm0/issues/32817)) ([ff05a2e](https://github.com/vm0-ai/vm0/commit/ff05a2e71c346d460c74166d497b057b3c8f264f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.419.0
+
+## [8.640.1](https://github.com/vm0-ai/vm0/compare/core-v8.640.0...core-v8.640.1) (2026-09-09)
+
+
+### Refactoring
+
+* finish brand retirement cleanup ([#32728](https://github.com/vm0-ai/vm0/issues/32728)) ([6254182](https://github.com/vm0-ai/vm0/commit/62541820a08410060d6cfde83887e17fa7a86429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.2
+
 ## [8.640.0](https://github.com/vm0-ai/vm0/compare/core-v8.639.0...core-v8.640.0) (2026-09-09)
 
 

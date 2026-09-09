@@ -11,6 +11,45 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.870.0](https://github.com/vm0-ai/vm0/compare/app-v0.869.1...app-v0.870.0) (2026-09-09)
+
+
+### Features
+
+* **artifacts:** add explicit organization and public sharing ([#32721](https://github.com/vm0-ai/vm0/issues/32721)) ([0b1a54a](https://github.com/vm0-ai/vm0/commit/0b1a54a43889c361c4a47669923ca5c5c4d909bf))
+* **web-chat:** render mobile follow-ups as quick replies ([#32817](https://github.com/vm0-ai/vm0/issues/32817)) ([ff05a2e](https://github.com/vm0-ai/vm0/commit/ff05a2e71c346d460c74166d497b057b3c8f264f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.419.0
+    * @okouai/connectors bumped to 3.8.6
+    * @okouai/core bumped to 8.641.0
+
+## [0.869.1](https://github.com/vm0-ai/vm0/compare/app-v0.869.0...app-v0.869.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** cap chat search at 25 and bound sparse keyword scans ([#32767](https://github.com/vm0-ai/vm0/issues/32767)) ([0e7fdb7](https://github.com/vm0-ai/vm0/commit/0e7fdb77c421152675528b82feeb698fd95b29d6))
+* **platform:** align composer focus and connector borders ([#32701](https://github.com/vm0-ai/vm0/issues/32701)) ([8dfdc75](https://github.com/vm0-ai/vm0/commit/8dfdc75666353ff056b155c5ebc257f8c7b2b7f2))
+
+
+### Refactoring
+
+* finish brand retirement cleanup ([#32728](https://github.com/vm0-ai/vm0/issues/32728)) ([6254182](https://github.com/vm0-ai/vm0/commit/62541820a08410060d6cfde83887e17fa7a86429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.2
+    * @okouai/core bumped to 8.640.1
+    * @okouai/ui bumped to 1.6.6
+
 ## [0.869.0](https://github.com/vm0-ai/vm0/compare/app-v0.868.1...app-v0.869.0) (2026-09-09)
 
 

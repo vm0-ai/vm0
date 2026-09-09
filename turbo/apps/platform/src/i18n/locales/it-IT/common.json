@@ -596,6 +596,11 @@
       "unavailable": "{{kind}} anteprima non disponibile.",
       "videoLabel": "Anteprima video per {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Condividi con l’organizzazione",
+      "sharePublic": "Condividi pubblicamente",
+      "unavailable": "Questo artefatto non è disponibile oppure non hai accesso."
+    },
     "sidebar": {
       "openSharedConversation": "Apri la conversazione condivisa",
       "panelTitle": "Artefatti",
@@ -1916,6 +1921,9 @@
         "presentationPlaceholder": "Di cosa tratta la tua presentazione?",
         "question": "Cosa vorresti realizzare?",
         "settingsAdjusted": "Alcune impostazioni video sono state adattate a questo modello",
+        "slideCount": "Numero di diapositive",
+        "slideCountAuto": "Automatico",
+        "slideCountRange": "{{range}} diapositive",
         "title": "Crea",
         "video": "Crea video",
         "videoPlaceholder": "Descrivi il video che vuoi creare…"
