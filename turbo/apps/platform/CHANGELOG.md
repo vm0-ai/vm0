@@ -11,6 +11,13 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.868.1](https://github.com/vm0-ai/vm0/compare/app-v0.868.0...app-v0.868.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **platform:** drop the dashed outline on a selected freehand stroke ([#32735](https://github.com/vm0-ai/vm0/issues/32735)) ([79896cd](https://github.com/vm0-ai/vm0/commit/79896cde1145c44abdba9ae62b13e94f791f7c51))
+
 ## [0.868.0](https://github.com/vm0-ai/vm0/compare/app-v0.867.1...app-v0.868.0) (2026-09-09)
 
 
