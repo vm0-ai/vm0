@@ -167,11 +167,16 @@ export const captureRunActivity$ = command(
       return { status: 200 };
     }
     // Never attach a database error: driver messages can include bound evidence.
-    log.debug("Activity snapshot capture", {
+    const capture = {
       runId: payload.runId,
       outcome: outcome.ok ? outcome.value : "write_failed",
       eventCount: payload.events.length,
-    });
+    };
+    if (outcome.ok) {
+      log.info("Activity snapshot capture", capture);
+    } else {
+      log.warn("Activity snapshot capture", capture);
+    }
     return { status: 200 };
   },
 );
@@ -218,10 +223,15 @@ export const cleanupExpiredRunActivity$ = command(
       }),
     );
     signal.throwIfAborted();
-    log.debug("Activity snapshot cleanup", {
+    const cleanup = {
       outcome: outcome.ok ? "success" : "failed",
       removed: outcome.ok ? outcome.value : 0,
       retentionMs: ACTIVITY_RETENTION_MS,
-    });
+    };
+    if (outcome.ok) {
+      log.info("Activity snapshot cleanup", cleanup);
+    } else {
+      log.warn("Activity snapshot cleanup", cleanup);
+    }
   },
 );

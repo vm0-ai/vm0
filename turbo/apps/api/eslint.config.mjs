@@ -256,6 +256,37 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/chat-activity-summary.service.ts"],
+    rules: {
+      // Existing content-free operation records must survive Axiom's info default.
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: [
+            "Activity summary cache",
+            "Activity summary attempt",
+            "Activity summary completion",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/signals/services/run-activity-snapshot.service.ts"],
+    rules: {
+      // One record per relevant batch or cleanup; suppressed captures stay silent.
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: [
+            "Activity snapshot capture",
+            "Activity snapshot cleanup",
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/signals/services/onboarding.service.ts"],
     rules: {
       "api/no-logger-info": [
