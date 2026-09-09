@@ -22,16 +22,11 @@ import {
   resetChatPageModelSelection$,
   resetChatPageVideoModelSelection$,
 } from "./chat-page.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupWelcomeThreadPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!get(featureSwitch$)[FeatureSwitchKey.BuiltInWelcomeThread]) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
-      return;
-    }
-
-    if (await set(onboardGuard$, signal)) {
       return;
     }
 
