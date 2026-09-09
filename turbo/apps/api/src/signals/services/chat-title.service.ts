@@ -476,6 +476,10 @@ export async function generateChatNotificationSummary(
   },
   signal?: AbortSignal,
 ): Promise<string | null> {
+  // Accepting truncated text makes an empty result reachable here: a partial
+  // completion can be non-empty for the provider and still strip to nothing.
+  // The caller reads `null` as "no summary" and shows its own copy, so the
+  // empty string must never reach it as a notification body.
   return (
     (await generateAuxiliary(
       {
@@ -506,7 +510,7 @@ export async function generateChatNotificationSummary(
         },
       },
       signal,
-    )) ?? null
+    )) || null
   );
 }
 

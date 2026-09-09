@@ -1812,6 +1812,62 @@ describe("CHAT-02: completed chat callback", () => {
     expect(auxiliaryWarnings(context)).toStrictEqual([]);
   });
 
+  it("falls back to the fixed notification copy when the token-limited summary strips to nothing", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("one short notification sentence")) {
+        // Non-empty for the provider, nothing once the Markdown rule is
+        // stripped. Accepting truncated text made this state reachable.
+        return { content: "---", finishReason: "length" };
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Emptied Notification";
+      }
+      if (systemContent.includes("recommended follow-up messages")) {
+        return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
+      }
+      return "Generated summary";
+    });
+
+    const prompt = "Summarize the emptied notification";
+    const run = await startChatRun(actor, { agentId, prompt });
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.some(
+          (call) => {
+            const payload = pushPayload(call) as Record<string, unknown>;
+            return (
+              payload.title === prompt.slice(0, 60) &&
+              payload.body === "Your task is complete"
+            );
+          },
+        );
+      })
+      .toBe(true);
+    expect(
+      context.mocks.webpush.sendNotification.mock.calls.every((call) => {
+        const payload = pushPayload(call) as Record<string, unknown>;
+        return payload.body !== "";
+      }),
+    ).toBeTruthy();
+  });
+
   it("leaves the thread untitled when the title completion is token-limited", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
