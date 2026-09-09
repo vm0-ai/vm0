@@ -1,6 +1,10 @@
 import { loadClerkJSScript } from "@clerk/shared/loadClerkJsScript";
 import { loadScript } from "@clerk/shared/loadScript";
-import type { BrowserClerk, EnvironmentResource } from "@clerk/shared/types";
+import type {
+  BrowserClerk,
+  ClerkOptions,
+  EnvironmentResource,
+} from "@clerk/shared/types";
 import type { ClerkUIConstructor } from "@clerk/shared/ui";
 import type { ui } from "@clerk/ui";
 import { createDeferredPromise } from "../signals/utils.ts";
@@ -31,6 +35,45 @@ interface ClerkBrowserRuntime {
 
 type EarlyClerkBootstrap = NonNullable<Window["__okouClerkBootstrap"]>;
 type ResolveClerkUI = EarlyClerkBootstrap["resolveClerkUI"];
+type ClerkRouter = NonNullable<ClerkOptions["routerPush"]>;
+type ClerkRouterMetadata = Parameters<ClerkRouter>[1];
+
+function delegateClerkNavigation(
+  method: keyof NonNullable<Window["__okouClerkRouter"]>,
+  url: string,
+  metadata?: ClerkRouterMetadata,
+): unknown {
+  const router = window.__okouClerkRouter?.[method];
+  if (router) {
+    return router(url, metadata);
+  }
+  // Outside an owning route, preserve Clerk's full-document navigation.
+  return metadata?.windowNavigate(url);
+}
+
+const clerkRouterPush: ClerkRouter = (url, metadata) => {
+  return delegateClerkNavigation("push", url, metadata);
+};
+
+const clerkRouterReplace: ClerkRouter = (url, metadata) => {
+  return delegateClerkNavigation("replace", url, metadata);
+};
+
+/**
+ * Installs route-owned handlers behind the callbacks Clerk captured at load.
+ * Cleanup only removes the same registration, so a newer route cannot be
+ * detached by an older React ref callback.
+ */
+export function registerClerkRouter(
+  router: NonNullable<Window["__okouClerkRouter"]>,
+): () => void {
+  window.__okouClerkRouter = router;
+  return () => {
+    if (window.__okouClerkRouter === router) {
+      Reflect.deleteProperty(window, "__okouClerkRouter");
+    }
+  };
+}
 
 export type PlatformClerk = BrowserClerk & {
   readonly __internal_environment?: EnvironmentResource;
@@ -160,6 +203,8 @@ export async function startClerkBrowserRuntime(
   const clerkUI = createDeferredPromise<ClerkUIConstructor>(signal);
   const loaded = clerk.load({
     ...options.loadOptions,
+    routerPush: clerkRouterPush,
+    routerReplace: clerkRouterReplace,
     ui: { ClerkUI: clerkUI.promise },
   });
   return {

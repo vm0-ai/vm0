@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import indexHtml from "../../index.html?raw";
 import { setupPage } from "./page-helper.ts";
+import { mockedClerkLoad } from "./mock-auth.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -25,11 +26,44 @@ test("Okou production uses its own authentication URLs", async () => {
   });
 });
 
+test("App-started Clerk keeps browser navigation until a route owns it", async () => {
+  context.mocks.clerk();
+  await setupPage({
+    context,
+    host: "app.okou.ai",
+    path: "/agents",
+  });
+  expect(window.__okouClerkRouter).toBeUndefined();
+
+  const loadOptions = mockedClerkLoad.mock.lastCall?.[0];
+  expect(loadOptions?.routerPush).toBeTypeOf("function");
+  expect(loadOptions?.routerReplace).toBeTypeOf("function");
+  const windowNavigations: string[] = [];
+  await loadOptions?.routerPush?.("/sign-in", {
+    windowNavigate(to) {
+      windowNavigations.push(to.toString());
+    },
+  });
+
+  expect(windowNavigations).toStrictEqual(["/sign-in"]);
+});
+
 const BOOTSTRAP_SCRIPT_SELECTOR = "[data-okou-clerk-bootstrap]";
 
 interface InlineBootstrapLoadOptions {
+  readonly routerPush: InlineClerkRouter;
+  readonly routerReplace: InlineClerkRouter;
   readonly signInUrl: string;
 }
+
+interface InlineClerkRouterMetadata {
+  readonly windowNavigate: (to: URL | string) => void;
+}
+
+type InlineClerkRouter = (
+  url: string,
+  metadata: InlineClerkRouterMetadata,
+) => unknown;
 
 interface InlineBootstrapConfiguration {
   readonly domain?: string;
@@ -38,6 +72,10 @@ interface InlineBootstrapConfiguration {
 
 interface InlineBootstrapWindow {
   __okouClerkBootstrap?: InlineBootstrapConfiguration;
+  __okouClerkRouter?: {
+    readonly push: InlineClerkRouter;
+    readonly replace: InlineClerkRouter;
+  };
 }
 
 interface InlineBootstrapScript {
@@ -104,7 +142,7 @@ function runInlineBootstrap(hostname: string, pathname = "/sign-in") {
   if (!bootstrap) {
     throw new Error("The inline Clerk bootstrap published no configuration");
   }
-  return { bootstrap, appendedScripts };
+  return { bootstrap, bootstrapWindow, appendedScripts };
 }
 
 const PAGE_HOSTNAMES = [
@@ -150,4 +188,35 @@ test("The inline bootstrap loads installed UI only for v1 auth routes", () => {
     expect(appendedScripts).toHaveLength(1);
     expect(appendedScripts[0]?.src).toBe("__OKOU_CLERK_UI_SCRIPT_URL__");
   }
+});
+
+test("The inline Clerk router delegates only while an app route owns it", () => {
+  const { bootstrap, bootstrapWindow } = runInlineBootstrap("app.okou.ai");
+  const windowNavigations: string[] = [];
+  const metadata = {
+    windowNavigate(to: URL | string) {
+      windowNavigations.push(to.toString());
+    },
+  };
+
+  bootstrap.loadOptions.routerPush("/v1/sign-in/factor-one", metadata);
+  expect(windowNavigations).toStrictEqual(["/v1/sign-in/factor-one"]);
+
+  const routeNavigations: string[] = [];
+  bootstrapWindow.__okouClerkRouter = {
+    push(url) {
+      routeNavigations.push(`push:${url}`);
+    },
+    replace(url) {
+      routeNavigations.push(`replace:${url}`);
+    },
+  };
+  bootstrap.loadOptions.routerPush("/v1/sign-in/factor-one", metadata);
+  bootstrap.loadOptions.routerReplace("/v1/sign-in", metadata);
+
+  expect(routeNavigations).toStrictEqual([
+    "push:/v1/sign-in/factor-one",
+    "replace:/v1/sign-in",
+  ]);
+  expect(windowNavigations).toStrictEqual(["/v1/sign-in/factor-one"]);
 });

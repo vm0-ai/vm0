@@ -60,6 +60,8 @@ export function AuthV1ClerkProvider({
   const clerkLocalizations = useGet(clerkLocalizations$);
   const locale = useGet(locale$);
   const theme = useGet(theme$);
+  const clerkRouterPush = useSet(signals.clerkRouterPush$);
+  const clerkRouterReplace = useSet(signals.clerkRouterReplace$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -73,6 +75,8 @@ export function AuthV1ClerkProvider({
     appearance: getAuthV1ProviderAppearance(theme),
     localization: clerkLocalizationForLocale(clerkLocalizations, locale),
     publishableKey,
+    routerPush: clerkRouterPush,
+    routerReplace: clerkRouterReplace,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/v1/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
