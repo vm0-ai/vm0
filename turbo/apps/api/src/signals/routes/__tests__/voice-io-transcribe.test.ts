@@ -14,6 +14,8 @@ import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
+import { mockNow } from "../../../lib/time";
+import { createDeferredPromise } from "../../utils";
 import { server } from "../../../mocks/server";
 import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
@@ -25,6 +27,23 @@ import { voiceIoTranscribeRoutes } from "../voice-io-transcribe";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+function recoveredVoiceResponse() {
+  return HttpResponse.json({
+    choices: [
+      {
+        finish_reason: "stop",
+        message: {
+          content: JSON.stringify({
+            transcript: "Recorded speech.",
+            polishedText: "Recorded speech.",
+            language: "en",
+          }),
+        },
+      },
+    ],
+  });
+}
 
 interface OpenRouterRequest {
   readonly model: string;
@@ -1346,5 +1365,468 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       ),
     });
     expect(result.status).toBe(502);
+  });
+});
+
+describe("voice provider capacity recovery", () => {
+  beforeEach(() => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+  });
+
+  it.each([429, 503])(
+    "recovers HTTP %i without error signals and counts the recording once",
+    async (status) => {
+      const actor = await enabledActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization");
+      }
+      await seedOrgMetadata({
+        orgId: actor.orgId,
+        tier: "free",
+        credits: 10_000,
+      });
+      const requests: string[] = [];
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          requests.push(await request.text());
+          return requests.length === 1
+            ? new HttpResponse(null, { status })
+            : recoveredVoiceResponse();
+        }),
+      );
+      const headers = { authorization: "Bearer clerk-session" };
+      const result = await accept(
+        client().segment({ headers, body: form([audioFile(1)]) }),
+        [200],
+      );
+      expect(result.body.polishedText).toBe("Recorded speech.");
+      expect(requests).toHaveLength(2);
+      expect(requests[1]).toBe(requests[0]);
+      const quota = setupApp({ context, routes: voiceIoQuotaRoutes })(
+        voiceIoQuotaContract,
+      );
+      const usage = await accept(quota.get({ headers }), [200]);
+      expect(usage.body).toMatchObject({ count: 1, allowed: true });
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+      expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+        "Voice provider request recovered",
+        expect.objectContaining({ attempts: 2, provider: "openrouter" }),
+      );
+    },
+  );
+
+  it("ends persistent capacity failures after three attempts with actionable reporting", async () => {
+    await enabledActor();
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        return attempts <= 3
+          ? new HttpResponse(null, { status: 429 })
+          : recoveredVoiceResponse();
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [503],
+    );
+    expect(response.body.error).toStrictEqual({
+      code: "PROVIDER_UNAVAILABLE",
+      message:
+        "Speech recognition is temporarily busy. Please retry in a moment.",
+    });
+    expect(attempts).toBe(3);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Voice provider recovery exhausted",
+      expect.objectContaining({ status: 429, attempts: 3 }),
+    );
+  });
+
+  it.each([
+    { value: "2", wait: 2000 },
+    { value: "Wed, 09 Sep 2026 08:00:03 GMT", wait: 3000 },
+    { value: "invalid", wait: 1000 },
+  ])(
+    "honors Retry-After $value within the recovery budget",
+    async ({ value, wait }) => {
+      await enabledActor();
+      mockNow(new Date("2026-09-09T08:00:00Z"));
+      const waits: number[] = [];
+      context.mocks.signalTimers.delay.mockImplementation((ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      });
+      let available = false;
+      server.use(
+        http.post(OPENROUTER_URL, () => {
+          if (available) {
+            return recoveredVoiceResponse();
+          }
+          available = true;
+          return new HttpResponse(null, {
+            status: 429,
+            headers: { "Retry-After": value },
+          });
+        }),
+      );
+      const result = await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: form([audioFile(1)]),
+        }),
+        [200],
+      );
+      expect(result.body.polishedText).toBe("Recorded speech.");
+      expect(waits).toStrictEqual([wait]);
+    },
+  );
+
+  it("does not retry earlier than a provider delay that exceeds the budget", async () => {
+    await enabledActor();
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        return attempts === 1
+          ? new HttpResponse(null, {
+              status: 429,
+              headers: { "Retry-After": "60" },
+            })
+          : recoveredVoiceResponse();
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [503],
+    );
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(attempts).toBe(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+  });
+
+  it("stops recovery when the elapsed budget is exhausted", async () => {
+    await enabledActor();
+    const started = new Date("2026-09-09T08:00:00Z").getTime();
+    mockNow(started);
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        if (attempts > 1) {
+          mockNow(started + 15_000);
+        }
+        return attempts <= 2
+          ? new HttpResponse(null, { status: 503 })
+          : recoveredVoiceResponse();
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [503],
+    );
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(attempts).toBe(2);
+  });
+
+  it("aborts an in-flight recovery request when its budget expires", async () => {
+    await enabledActor();
+    mockNow(new Date("2026-09-09T08:00:00Z"));
+    const deadline = new AbortController();
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      return milliseconds === 15_000 ? deadline.signal : undefined;
+    });
+    const retryStarted = createDeferredPromise<void>(context.signal);
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, async ({ request }) => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new HttpResponse(null, { status: 429 });
+        }
+        const aborted = createDeferredPromise<void>(context.signal);
+        request.signal.addEventListener(
+          "abort",
+          () => {
+            return aborted.resolve();
+          },
+          {
+            once: true,
+          },
+        );
+        retryStarted.resolve();
+        await aborted.promise;
+        return HttpResponse.error();
+      }),
+    );
+    const pending = client().segment({
+      headers: { authorization: "Bearer clerk-session" },
+      body: form([audioFile(1)]),
+    });
+    await retryStarted.promise;
+    deadline.abort(
+      new DOMException("Recovery deadline reached", "TimeoutError"),
+    );
+    const response = await accept(pending, [503]);
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(attempts).toBe(2);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Voice provider recovery exhausted",
+      expect.objectContaining({ status: 429, attempts: 2 }),
+    );
+  });
+
+  it("keeps the recovery deadline active while reading a successful response body", async () => {
+    await enabledActor();
+    mockNow(new Date("2026-09-09T08:00:00Z"));
+    const deadline = new AbortController();
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      return milliseconds === 15_000 ? deadline.signal : undefined;
+    });
+    const reading = createDeferredPromise<void>(context.signal);
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, ({ request }) => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new HttpResponse(null, { status: 429 });
+        }
+        const body = new ReadableStream<Uint8Array>(
+          {
+            start(controller) {
+              request.signal.addEventListener(
+                "abort",
+                () => {
+                  controller.error(
+                    new DOMException("Body aborted", "AbortError"),
+                  );
+                },
+                { once: true },
+              );
+            },
+            pull() {
+              reading.resolve();
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        return new HttpResponse(body, {
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    const pending = client().segment({
+      headers: { authorization: "Bearer clerk-session" },
+      body: form([audioFile(1)]),
+    });
+    await reading.promise;
+    deadline.abort(
+      new DOMException("Recovery deadline reached", "TimeoutError"),
+    );
+    const response = await accept(pending, [503]);
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(attempts).toBe(2);
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      "Voice provider request recovered",
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Voice provider recovery exhausted",
+      expect.objectContaining({ status: 429, attempts: 2 }),
+    );
+  });
+
+  it("keeps provider authentication errors non-retryable and actionable", async () => {
+    await enabledActor();
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        return attempts === 1
+          ? new HttpResponse(null, { status: 401 })
+          : recoveredVoiceResponse();
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+    expect(attempts).toBe(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "OpenRouter voice request rejected",
+      expect.objectContaining({ status: 401 }),
+    );
+  });
+
+  it("keeps an invalid successful response as a genuine transcription failure", async () => {
+    await enabledActor();
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({ choices: [] });
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+  });
+
+  it("cancels backoff with the request owner without reporting provider exhaustion", async () => {
+    await enabledActor();
+    const controller = new AbortController();
+    const waiting = createDeferredPromise<void>(context.signal);
+    context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected an owned voice recovery delay");
+      }
+      waiting.resolve();
+      return createDeferredPromise<void>(signal).promise;
+    });
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        return new HttpResponse(null, { status: 429 });
+      }),
+    );
+    const scopedClient = setupApp({
+      context,
+      routes: voiceIoTranscribeRoutes,
+      signal: AbortSignal.any([context.signal, controller.signal]),
+      rethrowErrors: true,
+    })(voiceIoTranscribeContract);
+    const pending = scopedClient.segment({
+      headers: { authorization: "Bearer clerk-session" },
+      body: form([audioFile(1)]),
+    });
+    const outcome = Promise.allSettled([pending]);
+    await waiting.promise;
+    controller.abort(new DOMException("Request cancelled", "AbortError"));
+    const [result] = await outcome;
+    expect(result).toMatchObject({
+      status: "rejected",
+      reason: { name: "AbortError", message: "Request cancelled" },
+    });
+    expect(attempts).toBe(1);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "qwen/qwen3-asr-1.7b",
+    "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+  ] as const)(
+    "recovers capacity errors in the selected %s ASR step",
+    async (model) => {
+      await enabledActor();
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      const endpoint = model.startsWith("fal-ai/")
+        ? `https://fal.run/${model}`
+        : "https://openrouter.ai/api/v1/audio/transcriptions";
+      let attempts = 0;
+      server.use(
+        http.post(endpoint, () => {
+          attempts += 1;
+          return attempts === 1
+            ? new HttpResponse(null, { status: 429 })
+            : HttpResponse.json({ text: "Recorded speech." });
+        }),
+      );
+      const response = await accept(
+        client().segment({
+          headers,
+          body: segmentForm([audioFile(1)], "", false, 1),
+        }),
+        [200],
+      );
+      expect(response.body).toStrictEqual({
+        transcript: "Recorded speech.",
+        language: "und",
+      });
+      expect(attempts).toBe(2);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retries failed polish without repeating successful dedicated ASR", async () => {
+    await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      preferencesClient().update({
+        headers,
+        body: { voiceInputModel: "qwen/qwen3-asr-1.7b" },
+      }),
+      [200],
+    );
+    let asrAttempts = 0;
+    let polishAttempts = 0;
+    server.use(
+      http.post("https://openrouter.ai/api/v1/audio/transcriptions", () => {
+        asrAttempts += 1;
+        return asrAttempts === 1
+          ? HttpResponse.json({ text: "Recorded speech." })
+          : new HttpResponse(null, { status: 400 });
+      }),
+      http.post(OPENROUTER_URL, () => {
+        polishAttempts += 1;
+        return polishAttempts === 1
+          ? new HttpResponse(null, { status: 503 })
+          : HttpResponse.json({
+              choices: [
+                {
+                  finish_reason: "stop",
+                  message: {
+                    content: JSON.stringify({
+                      polishedText: "Recorded speech.",
+                      language: "en",
+                    }),
+                  },
+                },
+              ],
+            });
+      }),
+    );
+    const response = await accept(
+      client().segment({ headers, body: form([audioFile(1)]) }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      transcript: "Recorded speech.",
+      polishedText: "Recorded speech.",
+      language: "en",
+    });
+    expect(asrAttempts).toBe(1);
+    expect(polishAttempts).toBe(2);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
   });
 });

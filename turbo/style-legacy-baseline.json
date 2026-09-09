@@ -32,7 +32,6 @@
     "okou-chat-card",
     "okou-chat-frame",
     "okou-chat-skeleton-reveal",
-    "okou-chip",
     "okou-color-theme-swatch",
     "okou-composer",
     "okou-desktop-no-drag",
@@ -804,34 +803,6 @@
         "selector": ".okou-badge",
         "property": "background-color",
         "value": "hsl(var(--gray-0))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-chip",
-        "property": "background-color",
-        "value": "hsl(var(--gray-50))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-chip",
-        "property": "border",
-        "value": "0.7px solid hsl(var(--gray-400))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-chip:hover",
-        "property": "background-image",
-        "value": "linear-gradient(var(--color-state-hover),var(--color-state-hover))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-chip:hover",
-        "property": "border-color",
-        "value": "hsl(var(--gray-400))",
         "important": false
       },
       {
@@ -4123,8 +4094,7 @@
     "apps/platform/src/views/okou-page/settings-tab.tsx": {
       "okou-border": 1,
       "okou-bubble-cool": 1,
-      "okou-chat-bubble-assistant": 1,
-      "okou-chip": 1
+      "okou-chat-bubble-assistant": 1
     },
     "apps/platform/src/views/okou-page/sidebar-account.tsx": {
       "okou-realtime-cloud-flow": 1,

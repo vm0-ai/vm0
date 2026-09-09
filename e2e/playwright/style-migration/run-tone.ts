@@ -31,6 +31,7 @@ interface Capture {
   image: string;
   sha256: string;
   observation: unknown;
+  pressed: (string | null)[];
   changedPixels?: number;
   contentChangedPixels?: number;
   roundingPixels?: number;
@@ -50,6 +51,8 @@ interface Manifest {
   browser: string;
   captures: Capture[];
   cases: VisualCase[];
+  ariaMode: "legacy" | "pressed";
+  fixtureSha256: string;
   failures: string[];
 }
 
@@ -63,6 +66,8 @@ const { values } = parseArgs({
     out: { type: "string" },
     baseline: { type: "string" },
     "executable-path": { type: "string" },
+    "agent-fixture": { type: "string" },
+    "aria-mode": { type: "string" },
   },
 });
 
@@ -80,8 +85,8 @@ function origin(value: string): string {
   return url.origin;
 }
 
-async function observe(dialog: Locator) {
-  return dialog.evaluate((element) => {
+async function observe(group: Locator) {
+  return group.evaluate((element) => {
     const properties = [
       "background-color",
       "background-image",
@@ -100,31 +105,33 @@ async function observe(dialog: Locator) {
       "line-height",
       "padding",
       "gap",
+      "display",
+      "align-items",
+      "justify-content",
+      "text-align",
+      "min-width",
       "opacity",
       "outline",
       "outline-offset",
       "overflow",
     ];
-    return Array.from(element.querySelectorAll("button[aria-pressed]")).map(
-      (control) => {
-        const box = control.getBoundingClientRect();
-        const style = getComputedStyle(control);
-        return {
-          tag: control.tagName,
-          text: control.textContent?.trim(),
-          pressed: control.getAttribute("aria-pressed"),
-          disabled: control.hasAttribute("disabled"),
-          focused: document.activeElement === control,
-          box: { x: box.x, y: box.y, width: box.width, height: box.height },
-          styles: Object.fromEntries(
-            properties.map((property) => [
-              property,
-              style.getPropertyValue(property),
-            ]),
-          ),
-        };
-      },
-    );
+    return Array.from(element.querySelectorAll("button")).map((control) => {
+      const box = control.getBoundingClientRect();
+      const style = getComputedStyle(control);
+      return {
+        tag: control.tagName,
+        text: control.textContent?.trim(),
+        disabled: control.hasAttribute("disabled"),
+        focused: document.activeElement === control,
+        box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        styles: Object.fromEntries(
+          properties.map((property) => [
+            property,
+            style.getPropertyValue(property),
+          ]),
+        ),
+      };
+    });
   });
 }
 
@@ -141,7 +148,7 @@ async function run() {
   for (const sha of [appBuildSha, sourceSha])
     assert(/^[a-f0-9]{40}$/.test(sha));
   const out = path.resolve(required("out"));
-  const caseBytes = await readFile(path.join(__dirname, "cases.json"));
+  const caseBytes = await readFile(path.join(__dirname, "tone-cases.json"));
   const runnerSha256 = sha256(
     Buffer.concat(
       await Promise.all([
@@ -154,9 +161,28 @@ async function run() {
       ]),
     ),
   );
-  const caseFile: { version: number; cases: VisualCase[] } = JSON.parse(
-    caseBytes.toString(),
+  const ariaMode = required("aria-mode");
+  assert(ariaMode === "legacy" || ariaMode === "pressed");
+  const fixtureBytes = await readFile(required("agent-fixture"));
+  const fixture: { agentId: string; sound: string; [key: string]: unknown } =
+    JSON.parse(fixtureBytes.toString());
+  assert(/^[a-f0-9-]{36}$/.test(fixture.agentId));
+  assert.equal(
+    fixture.sound,
+    "professional",
+    "Use a synthetic professional-tone fixture",
   );
+  const caseFile: {
+    version: number;
+    cases: VisualCase[];
+    tones: {
+      value: string;
+      label: string;
+      hint: string;
+      agentSample: string;
+      userSample: string;
+    }[];
+  } = JSON.parse(caseBytes.toString());
   assert.equal(caseFile.version, 1);
   const baseline: Manifest | undefined = values.baseline
     ? JSON.parse(
@@ -172,6 +198,11 @@ async function run() {
       "Frozen cases changed",
     );
     assert.deepEqual(baseline.failures, [], "Cannot accept a failed baseline");
+    assert.equal(
+      baseline.fixtureSha256,
+      sha256(fixtureBytes),
+      "Frozen agent fixture changed",
+    );
   }
   // Deliberately exclusive: no command can replace a frozen archive or failed attempt.
   await mkdir(out);
@@ -192,6 +223,8 @@ async function run() {
     browser: browser.version(),
     captures: [],
     cases: caseFile.cases,
+    ariaMode,
+    fixtureSha256: sha256(fixtureBytes),
     failures: [],
   };
   try {
@@ -273,77 +306,161 @@ async function run() {
           captureNetworkBodiesRemaining: 0,
           voiceInputModel: null,
         };
-        await fixtureBootstrap(page, appOrigin, () => ({
-          "/api/user-preferences": preferences,
-        }));
-        let savePending: Promise<void> | undefined;
         await page.route(
           (url) =>
             url.origin === apiOrigin &&
             url.pathname === "/api/user-preferences",
           async (route) => {
+            // Theme bootstrap can sync the already-selected values. Tone never changes preferences.
+            if (route.request().method() === "POST") {
+              const update: Record<string, unknown> = route
+                .request()
+                .postDataJSON();
+              for (const [key, value] of Object.entries(update)) {
+                assert.deepEqual(
+                  value,
+                  Reflect.get(preferences, key),
+                  `Unexpected preference update: ${key}`,
+                );
+              }
+            } else assert.equal(route.request().method(), "GET");
+            await route.fulfill({ json: preferences });
+          },
+        );
+        let profile = { ...fixture };
+        const onboarding = () => ({
+          needsOnboarding: false,
+          onboardingComplete: true,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: fixture.agentId,
+          defaultAgentMetadata: {
+            displayName: profile.displayName,
+            sound: profile.sound,
+            avatarUrl: profile.avatarUrl,
+          },
+        });
+        // Preview redeploys recreate the real default Agent with a new ID.
+        await page.route(
+          (url) =>
+            url.origin === apiOrigin &&
+            url.pathname === "/api/onboarding/status",
+          async (route) => {
+            assert.equal(route.request().method(), "GET");
+            await route.fulfill({ json: onboarding() });
+          },
+        );
+        await fixtureBootstrap(page, appOrigin, () => ({
+          "/api/user-preferences": preferences,
+          "/api/onboarding/status": onboarding(),
+          "/api/agents": [profile],
+        }));
+        let savePending: Promise<void> | undefined;
+        await page.route(
+          (url) =>
+            url.origin === apiOrigin &&
+            (url.pathname === "/api/agents" ||
+              url.pathname === `/api/agents/${fixture.agentId}`),
+          async (route) => {
             try {
-              if (route.request().method() === "POST") {
-                const update: Record<string, unknown> = route
-                  .request()
-                  .postDataJSON();
+              const request = route.request();
+              if (request.method() === "PATCH") {
+                assert.equal(
+                  new URL(request.url()).pathname,
+                  `/api/agents/${fixture.agentId}`,
+                );
+                const update: Record<string, unknown> = request.postDataJSON();
+                assert(
+                  caseFile.tones.some((tone) => tone.value === update.sound),
+                );
                 for (const [key, value] of Object.entries(update)) {
-                  if (key === "sendMode") {
-                    assert(value === "cmd-enter" || value === "enter");
-                  } else {
-                    assert(
-                      Object.hasOwn(preferences, key),
-                      `Unexpected preference: ${key}`,
-                    );
+                  if (key !== "sound")
                     assert.deepEqual(
                       value,
-                      Reflect.get(preferences, key),
-                      `Fixture changed: ${key}`,
+                      Reflect.get(fixture, key),
+                      `Unexpected metadata change: ${key}`,
                     );
-                  }
                 }
-                if (update.sendMode !== undefined) {
-                  assert(
-                    update.sendMode === "enter" ||
-                      update.sendMode === "cmd-enter",
-                  );
-                  if (savePending) await savePending;
-                  preferences.sendMode = update.sendMode;
-                }
-              } else assert.equal(route.request().method(), "GET");
+                if (savePending) await savePending;
+                profile = { ...profile, ...update };
+              } else assert.equal(request.method(), "GET");
               await route.fulfill({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify(preferences),
+                json:
+                  new URL(request.url()).pathname === "/api/agents"
+                    ? [profile]
+                    : profile,
               });
             } catch (error) {
               manifest.failures.push(
-                `${item.id}: preference fixture: ${error instanceof Error ? error.message : String(error)}`,
+                `${item.id}: agent fixture: ${String(error)}`,
               );
               await route.fulfill({
                 status: 500,
-                body: "Preference fixture rejected the request",
+                body: "Agent fixture rejected the request",
               });
             }
           },
         );
-        await page.goto(new URL(item.path, appOrigin).href, {
-          waitUntil: "domcontentloaded",
-        });
+        await page.goto(
+          new URL(item.path.replace(":agentId", fixture.agentId), appOrigin)
+            .href,
+          {
+            waitUntil: "domcontentloaded",
+          },
+        );
         await expect(
           page.locator('meta[name="okou-app-git-commit-sha"]'),
         ).toHaveAttribute("content", appBuildSha);
-        const dialog = page.getByRole("dialog");
-        await expect(dialog).toBeVisible();
-        const light = dialog.getByRole("button", {
-          name: "Light",
+        const group = page.getByRole("group", { name: "Tone", exact: true });
+        await expect(group).toBeVisible();
+        const section = page.getByRole("group", {
+          name: `How ${fixture.displayName} sounds`,
           exact: true,
         });
-        const dark = dialog.getByRole("button", { name: "Dark", exact: true });
-        await expect(item.theme === "light" ? light : dark).toHaveAttribute(
-          "aria-pressed",
-          "true",
+        await expect(page.locator("html")).toHaveClass(
+          item.theme === "dark"
+            ? /(?:^| )dark(?: |$)/
+            : /^(?!.*(?:^| )dark(?: |$)).*$/,
         );
+        const buttons = caseFile.tones.map((tone) =>
+          group.getByRole("button", { name: tone.label, exact: true }),
+        );
+        const save = page.getByRole("button", {
+          name: "Save",
+          exact: true,
+        });
+        const discard = page.getByRole("button", {
+          name: "Discard",
+          exact: true,
+        });
+        let selected = 0;
+        async function expectTone(index: number) {
+          selected = index;
+          await expect(group.getByRole("button")).toHaveCount(4);
+          await expect(
+            page.getByText(caseFile.tones[index].userSample, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText(caseFile.tones[index].hint, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText(caseFile.tones[index].agentSample, { exact: true }),
+          ).toBeVisible();
+          for (let button = 0; button < buttons.length; button++) {
+            if (ariaMode === "pressed")
+              await expect(buttons[button]).toHaveAttribute(
+                "aria-pressed",
+                String(button === index),
+              );
+            else
+              assert.equal(
+                await buttons[button].getAttribute("aria-pressed"),
+                null,
+              );
+          }
+        }
+        await expectTone(0);
 
         async function capture(state: string) {
           await expect(
@@ -351,14 +468,47 @@ async function run() {
           ).toHaveAttribute("content", appBuildSha);
           const id = `${item.id}-${state}`;
           const image = `${id}.png`;
+          // Keep the complete sample visible above the narrow viewport's save bar.
+          if (item.isMobile) {
+            await section.evaluate((element) =>
+              element.scrollIntoView({
+                block: "center",
+                inline: "nearest",
+                behavior: "instant",
+              }),
+            );
+            const sample = page.getByText(
+              caseFile.tones[selected].agentSample,
+              { exact: true },
+            );
+            await expect(sample).toBeInViewport({ ratio: 1 });
+            await expect(buttons[0]).toBeInViewport({ ratio: 1 });
+            if (await discard.isVisible()) {
+              const sampleBox = await sample.boundingBox();
+              const barBox = await page
+                .getByTestId("unsaved-bar")
+                .boundingBox();
+              assert(
+                sampleBox &&
+                  barBox &&
+                  sampleBox.y + sampleBox.height <= barBox.y,
+                "Save bar obscures the tone sample",
+              );
+            }
+          }
           const bytes = await stableScreenshot(page);
-          const observation = await observe(dialog);
+          await expectTone(selected);
+          const observation = await observe(group);
+          const pressed = await Promise.all(
+            buttons.map((button) => button.getAttribute("aria-pressed")),
+          );
           await writeFile(path.join(out, image), bytes, { flag: "wx" });
           const record: Capture = {
             id,
             image,
             sha256: sha256(bytes),
             observation,
+            pressed,
             status: "BASELINE",
           };
           if (baseline && values.baseline) {
@@ -407,48 +557,59 @@ async function run() {
           );
         }
 
-        await light.scrollIntoViewIfNeeded();
+        await group.scrollIntoViewIfNeeded();
         await page.mouse.move(0, 0);
-        await capture("appearance");
-        const inactive = item.theme === "light" ? dark : light;
-        await inactive.hover();
-        await capture("appearance-hover");
+        await capture("professional");
+        await buttons[0].hover();
+        await capture("selected-hover");
+        await buttons[1].hover();
+        await capture("inactive-hover");
         await page.mouse.move(0, 0);
-        await light.focus();
+        await buttons[0].focus();
         await page.keyboard.press("Tab");
-        await expect(dark).toBeFocused();
-        await capture("appearance-focus");
-
-        const enter = dialog.getByRole("button", {
-          name: "Enter",
-          exact: true,
-        });
-        const commandEnter = dialog.getByRole("button", {
-          name: /^(Cmd|Ctrl|⌘).*Enter$/,
-        });
-        await expect(enter).toHaveAttribute("aria-pressed", "true");
-        await enter.scrollIntoViewIfNeeded();
-        await enter.click();
-        await expect(enter).toBeEnabled();
+        await expect(buttons[1]).toBeFocused();
+        await capture("keyboard-focus");
+        await page.keyboard.press("Space");
+        await expectTone(1);
+        await expect(save).toBeVisible();
+        await capture("friendly");
+        for (const index of [2, 3]) {
+          await buttons[index].click();
+          await expectTone(index);
+          await page.mouse.move(0, 0);
+          await capture(caseFile.tones[index].value);
+        }
+        await discard.click();
+        await expectTone(0);
+        await expect(save).not.toBeVisible();
+        await group.scrollIntoViewIfNeeded();
         await page.mouse.move(0, 0);
-        await capture("send-mode");
-        await commandEnter.hover();
-        await capture("send-hover");
+        await capture("discarded");
+        await buttons[1].click();
+        await expectTone(1);
         savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
-        await commandEnter.click();
-        await expect(enter).toBeDisabled();
-        await expect(commandEnter).toHaveAttribute("aria-pressed", "true");
+        await save.click();
+        await expect(discard).toBeDisabled();
         await page.mouse.move(0, 0);
-        await capture("send-saving");
+        await capture("saving");
         releaseSave?.();
         savePending = undefined;
-        await expect(commandEnter).toBeEnabled();
-        await expect(commandEnter).toHaveAttribute("aria-pressed", "true");
-        await capture("send-saved");
-        await page.keyboard.press("Escape");
-        await expect(dialog).not.toBeVisible();
+        await expect(
+          page.getByText("Profile saved", { exact: true }),
+        ).toBeVisible();
+        await expect(save).not.toBeVisible();
+        await expect(
+          page.getByText("Profile saved", { exact: true }),
+        ).not.toBeVisible();
+        await group.scrollIntoViewIfNeeded();
+        await capture("saved");
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expectTone(1);
+        await expect(save).not.toBeVisible();
+        await group.scrollIntoViewIfNeeded();
+        await capture("reloaded");
       } catch (error) {
         const failure = `${item.id}: ${error instanceof Error ? error.message : String(error)}`;
         manifest.failures.push(failure);

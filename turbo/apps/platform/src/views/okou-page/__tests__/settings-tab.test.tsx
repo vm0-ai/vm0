@@ -620,6 +620,74 @@ test("Keep the default agent’s canonical identity read-only", async () => {
   expect(within(nameRow).queryByLabelText("Name")).not.toBeInTheDocument();
 });
 
+test("Tone selection is accessible and follows preview, discard and saved profile state", async () => {
+  prepareAgentProfile();
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  let group = await screen.findByRole("group", { name: "Tone" });
+  const labels = ["Professional", "Friendly", "Direct", "Supportive"];
+  function toneButton(label: string): HTMLElement {
+    const button = queryAllByRoleFast("button", group).find((candidate) => {
+      return candidate.textContent?.trim() === label;
+    });
+    if (!button) {
+      throw new Error(`Missing tone choice ${label}`);
+    }
+    return button;
+  }
+  function expectSelected(label: string) {
+    for (const candidate of labels) {
+      expect(toneButton(candidate)).toHaveAttribute(
+        "aria-pressed",
+        String(candidate === label),
+      );
+    }
+  }
+  expectSelected("Professional");
+  for (const [label, hint, sample] of [
+    [
+      "Friendly",
+      "Warm and approachable",
+      "Sure thing! I'll get that Q3 report to you by Friday—I'll send over a draft Thursday so you can take a look.",
+    ],
+    ["Direct", "To the point", "Friday. I'll send a draft Thursday."],
+    [
+      "Supportive",
+      "In your corner",
+      "I'll make sure you have the Q3 report by Friday. I'll send a draft on Thursday so you have time to review—let me know if you'd like anything else.",
+    ],
+  ]) {
+    click(toneButton(label));
+    await screen.findByText(hint);
+    expect(screen.getByText(sample)).toBeVisible();
+    expectSelected(label);
+  }
+  click(screen.getByText("Discard", { selector: "button" }));
+  await screen.findByText("Clear and polished");
+  expectSelected("Professional");
+  expect(
+    screen.queryByText("You have unsaved changes"),
+  ).not.toBeInTheDocument();
+  click(toneButton("Direct"));
+  await screen.findByText("To the point");
+  click(screen.getByText("Save", { selector: "button" }));
+  await screen.findByText("Profile saved");
+  await waitFor(() => {
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
+  });
+  click(tabByText("Instructions"));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("group", { name: "Tone" }),
+    ).not.toBeInTheDocument();
+  });
+  click(tabByText("Profile"));
+  group = await screen.findByRole("group", { name: "Tone" });
+  expectSelected("Direct");
+  expect(screen.getByText("Friday. I'll send a draft Thursday.")).toBeVisible();
+});
+
 test("Edit and save an agent profile", async () => {
   const profile = prepareAgentProfile();
 

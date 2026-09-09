@@ -31,7 +31,7 @@ function workspace(t) {
   const manifest = {
     version: 1,
     owner: "test-owner",
-    caseFile: "cases.json",
+    caseFiles: ["cases.json"],
     families: [
       {
         id: "controls",
@@ -134,4 +134,27 @@ test("an acceptance state requires a durable commit-bound evidence record", (t) 
       .batches[0].status,
     "verified",
   );
+});
+
+test("case files jointly cover a batch and reject duplicate IDs across files", (t) => {
+  const { root, manifest } = workspace(t);
+  const original = JSON.parse(
+    readFileSync(resolve(root, "cases.json"), "utf8"),
+  );
+  manifest.caseFiles.push("second-cases.json");
+  manifest.batches[0].cases.push("second");
+  writeFileSync(
+    resolve(root, "style-migration-manifest.json"),
+    JSON.stringify(manifest),
+  );
+  writeFileSync(
+    resolve(root, "second-cases.json"),
+    JSON.stringify({
+      version: 1,
+      cases: [{ ...original.cases[0], id: "second" }],
+    }),
+  );
+  assert.equal(check(root).status, 0);
+  writeFileSync(resolve(root, "second-cases.json"), JSON.stringify(original));
+  assert.match(check(root).stderr, /Duplicate case light/);
 });

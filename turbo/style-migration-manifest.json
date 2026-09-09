@@ -2,7 +2,6 @@
   "version": 1,
   "issue": "https://github.com/vm0-ai/vm0/issues/32402",
   "owner": "bingjiez666",
-  "caseFile": "../e2e/playwright/style-migration/cases.json",
   "families": [
     {
       "id": "local-controls",
@@ -164,7 +163,7 @@
         "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx"
       ],
       "cases": ["preferences-light", "preferences-dark", "preferences-mobile"],
-      "status": "verified",
+      "status": "merged",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay",
@@ -179,7 +178,53 @@
           "commit": "beee41651324fb0563ecdfa635cbffdf68a07a5e"
         }
       ],
-      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843"
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843",
+      "mergeCommit": "afe297e93dea741a95527536db8f9c16a36110e6"
+    },
+    {
+      "id": "agent-tone-choices",
+      "family": "local-controls",
+      "tokens": ["okou-chip"],
+      "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
+      "cases": ["tone-light", "tone-dark", "tone-mobile"],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay",
+          "url": "https://a.okou.io/cwffgb0gk5.zip",
+          "sha256": "b478f34dbc11a4b437f30fd6a96061f79009257ce1e9bf053f28cdb208faec11",
+          "commit": "8207962cbb710165210f6c8a1282d77adda7ae0d"
+        },
+        {
+          "kind": "after-raw-diffs-and-live-persistence",
+          "url": "https://a.okou.io/66hlqknk2r.zip",
+          "sha256": "e113f93e7bf328b9e0556a1f664b126879e65ca55252049d95595f4f3bafa21e",
+          "commit": "6b567009e0b93e2b1e0b562af0d7100474413b86"
+        },
+        {
+          "kind": "before-after-comparison-image",
+          "url": "https://a.okou.io/rrdnuv8uyy.png",
+          "sha256": "349303514e8efa8089b9e73b98724d56ec1adbbaf8e18b196533cabf6bb1832d",
+          "commit": "6b567009e0b93e2b1e0b562af0d7100474413b86"
+        },
+        {
+          "kind": "superseded-before-and-unchanged-replay",
+          "url": "https://a.okou.io/d8rr777pqa.zip",
+          "sha256": "c63955589a6069bf8741f1ce71a5d116822c78d9a7508fa877cad18a582deff5",
+          "commit": "b628dd86f0a37205ba3b74cc200dace9890f649f"
+        },
+        {
+          "kind": "preserved-calibration-and-interrupted-attempt",
+          "url": "https://a.okou.io/4cyraibt44.zip",
+          "sha256": "0c1e3b64c1fecc7c6794728fcef94681c33e07efbd2f9a8ac0fe544e115ffebb",
+          "commit": "b628dd86f0a37205ba3b74cc200dace9890f649f"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873"
     }
+  ],
+  "caseFiles": [
+    "../e2e/playwright/style-migration/cases.json",
+    "../e2e/playwright/style-migration/tone-cases.json"
   ]
 }
