@@ -190,27 +190,21 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (display-mode:standalone)"
-        ],
+        "atRules": ["@media (display-mode:standalone)"],
         "selector": ".okou-pwa-fixed-cover",
         "property": "bottom",
         "value": "calc(-1*var(--sab))",
         "important": false
       },
       {
-        "atRules": [
-          "@media (max-width:767px)"
-        ],
+        "atRules": ["@media (max-width:767px)"],
         "selector": ".okou-mobile-fixed-safe-area",
         "property": "box-sizing",
         "value": "border-box",
         "important": false
       },
       {
-        "atRules": [
-          "@media (max-width:767px)"
-        ],
+        "atRules": ["@media (max-width:767px)"],
         "selector": ".okou-mobile-fixed-safe-area",
         "property": "padding",
         "value": "var(--sat) var(--sar) var(--sab) var(--sal)",
@@ -266,9 +260,7 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (display-mode:standalone)"
-        ],
+        "atRules": ["@media (display-mode:standalone)"],
         "selector": ".okou-mobile-sidebar::before",
         "property": "bottom",
         "value": "calc(-1*var(--sab))",
@@ -296,81 +288,63 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-sidebar-header",
         "property": "padding-top",
         "value": "0",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
         "property": "display",
         "value": "block",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
         "property": "flex-shrink",
         "value": "0",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
         "property": "height",
         "value": "var(--okou-desktop-titlebar-height)",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
         "property": "-webkit-app-region",
         "value": "drag",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-workspace-bg",
         "property": "position",
         "value": "relative",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-workspace-bg :where(button,a,input,textarea,select,[role=\"button\"],[role=\"link\"],[role=\"textbox\"],[contenteditable]:not([contenteditable=\"false\"]))",
         "property": "position",
         "value": "relative",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-workspace-bg :where(button,a,input,textarea,select,[role=\"button\"],[role=\"link\"],[role=\"textbox\"],[contenteditable]:not([contenteditable=\"false\"]))",
         "property": "z-index",
         "value": "2",
         "important": false
       },
       {
-        "atRules": [
-          "@media (min-width:768px)"
-        ],
+        "atRules": ["@media (min-width:768px)"],
         "selector": ".okou-app[data-desktop-shell] .okou-workspace-bg :where(button,a,input,textarea,select,[role=\"button\"],[role=\"link\"],[role=\"textbox\"],[contenteditable]:not([contenteditable=\"false\"]))",
         "property": "-webkit-app-region",
         "value": "no-drag",
@@ -790,36 +764,28 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".okou-realtime-status-reconnecting",
         "property": "opacity",
         "value": "0.8",
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".okou-realtime-status-reconnecting",
         "property": "animation",
         "value": "none",
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".okou-realtime-cloud-flow",
         "property": "stroke-dasharray",
         "value": "none",
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".okou-realtime-cloud-flow",
         "property": "animation",
         "value": "none",
@@ -1022,9 +988,7 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".okou-nav-title-row:hover .okou-nav-title,.okou-nav-title-row:focus-visible .okou-nav-title",
         "property": "--okou-nav-title-shift",
         "value": " 0px",
@@ -1066,36 +1030,28 @@
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".okou-app .okou-chat-card,.okou-app .okou-chat-frame",
         "property": "border",
         "value": "1px solid hsl(var(--gray-400))",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".okou-app .okou-chat-card,.okou-app .okou-chat-frame",
         "property": "border-radius",
         "value": "var(--okou-chat-card-radius)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".okou-app .okou-chat-card,.okou-app .okou-chat-frame",
         "property": "box-shadow",
         "value": "var(--okou-chat-card-shadow)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".okou-app .okou-chat-card",
         "property": "background-color",
         "value": "hsl(var(--card))",
@@ -1256,9 +1212,7 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".okou-app .okou-composer::after",
         "property": "transition",
         "value": "none",
@@ -2406,18 +2360,14 @@
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".owf-diagram-beam",
         "property": "animation",
         "value": "none",
         "important": false
       },
       {
-        "atRules": [
-          "@media (prefers-reduced-motion:reduce)"
-        ],
+        "atRules": ["@media (prefers-reduced-motion:reduce)"],
         "selector": ".owf-diagram-beam",
         "property": "opacity",
         "value": "0.35",
@@ -3616,351 +3566,273 @@
     ],
     "packages/ui/src/styles/globals.css": [
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".icon-button",
         "property": "@apply",
         "value": "flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable",
         "property": "scrollbar-width",
         "value": "thin",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable",
         "property": "scrollbar-color",
         "value": "rgba(128,128,128,0.3) transparent",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable::-webkit-scrollbar",
         "property": "width",
         "value": "6px",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable::-webkit-scrollbar-track",
         "property": "background",
         "value": "transparent",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable::-webkit-scrollbar-track",
         "property": "margin",
         "value": "4px 0",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable::-webkit-scrollbar-thumb",
         "property": "background-color",
         "value": "rgba(128,128,128,0.3)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable::-webkit-scrollbar-thumb",
         "property": "border-radius",
         "value": "3px",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".dialog-scrollable::-webkit-scrollbar-thumb:hover",
         "property": "background-color",
         "value": "rgba(128,128,128,0.5)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "position",
         "value": "relative",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "display",
         "value": "inline-flex",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "width",
         "value": "0.86rem",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "height",
         "value": "0.86rem",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "border-radius",
         "value": "9999px",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "color",
         "value": "var(--color-sky-600, #0284c7)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "position",
         "value": "absolute",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "top",
         "value": "50%",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "left",
         "value": "50%",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "width",
         "value": "calc(100% - 5px)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "height",
         "value": "calc(100% - 5px)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "border-radius",
         "value": "inherit",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "background",
         "value": "currentColor",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "transform",
         "value": "translate(-50%,-50%) scale(0.64)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "transform-origin",
         "value": "center",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "opacity",
         "value": "0.34",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "animation",
         "value": "running-indicator-center 2400ms cubic-bezier(0.33,0,0.66,1) infinite",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-center",
         "property": "animation-delay",
         "value": "var(--running-indicator-delay, 0ms)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "position",
         "value": "absolute",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "top",
         "value": "50%",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "left",
         "value": "50%",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "width",
         "value": "calc(100% - 3px)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "height",
         "value": "calc(100% - 3px)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "border-radius",
         "value": "inherit",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "border",
         "value": "1px solid currentColor",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "transform",
         "value": "translate(-50%,-50%) scale(0.8)",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "transform-origin",
         "value": "center",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "opacity",
         "value": "0",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "animation",
         "value": "running-indicator-ripple 2400ms ease-out infinite",
         "important": false
       },
       {
-        "atRules": [
-          "@layer components"
-        ],
+        "atRules": ["@layer components"],
         "selector": ".running-indicator-ripple",
         "property": "animation-delay",
         "value": "var(--running-indicator-delay, 0ms)",
