@@ -772,7 +772,9 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     }
     expect(
       driveUploadContentTypes.every((contentType) => {
-        return contentType?.startsWith("multipart/related; boundary=vm0-");
+        return contentType?.startsWith(
+          "multipart/related; boundary=multipart-",
+        );
       }),
     ).toBeTruthy();
 
