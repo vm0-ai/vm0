@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.189.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.0...runner-rs-v0.189.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** isolate codex timing across websocket flows ([#32874](https://github.com/vm0-ai/vm0/issues/32874)) ([22af62b](https://github.com/vm0-ai/vm0/commit/22af62b889e097ed05c3be9d95a723ccb44c8e69))
+* **runner:** own catalog validation work after thread startup failures ([#32862](https://github.com/vm0-ai/vm0/issues/32862)) ([98ae7da](https://github.com/vm0-ai/vm0/commit/98ae7daf58fab723e1dfb6383e9401c61b7d6ad5))
+* **runner:** recover blank runs after unsafe codex prefetch start ([#32865](https://github.com/vm0-ai/vm0/issues/32865)) ([594d907](https://github.com/vm0-ai/vm0/commit/594d907ca844e845f674c04640a58ae8cebcdc8a))
+* **runner:** reject local input when forwarding is disabled ([#32863](https://github.com/vm0-ai/vm0/issues/32863)) ([5a82c53](https://github.com/vm0-ai/vm0/commit/5a82c5384c047d91976fce66f889944b1ba5bd91))
+
 ## [0.189.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.19...runner-rs-v0.189.0) (2026-09-09)
 
 
