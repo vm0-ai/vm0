@@ -128,6 +128,10 @@ test("artifact dialogs keep their panel and fullscreen controls inside safe area
   await imagePreview.click();
   const dialog = page.getByTestId("attachment-lightbox");
   await expect(dialog).toBeVisible();
+  const zoom = dialog.getByTestId("artifact-dialog-image-zoom-level");
+  await expect(zoom).toHaveText("100%");
+  await dialog.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect(zoom).toHaveText("115%");
 
   for (const scenario of [
     { width: 402, height: 874, top: 62, right: 0, bottom: 34, left: 0 },
@@ -191,6 +195,7 @@ test("artifact dialogs keep their panel and fullscreen controls inside safe area
       exact: true,
     });
     await expect(exitFullscreen).toBeVisible();
+    await expect(zoom).toHaveText("115%");
     for (const control of [
       exitFullscreen,
       dialog.getByRole("button", { name: "Close", exact: true }),
@@ -212,6 +217,7 @@ test("artifact dialogs keep their panel and fullscreen controls inside safe area
     await expect(
       dialog.getByRole("button", { name: "Enter fullscreen", exact: true }),
     ).toBeVisible();
+    await expect(zoom).toHaveText("115%");
   }
 
   // Native outside-press ownership must distinguish a drag from a deliberate click.
@@ -224,6 +230,68 @@ test("artifact dialogs keep their panel and fullscreen controls inside safe area
   await expect(dialog).toBeVisible();
   await page.mouse.click(5, 5);
   await expect(dialog).toBeHidden();
+});
+
+test("short dialogs keep nested avatar and agent footer actions reachable by scrolling", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  await page.goto(new URL("/agents", appUrl).href);
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--sat", "59px");
+    document.documentElement.style.setProperty("--sab", "34px");
+  });
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  const agent = page.getByRole("dialog", {
+    name: "Create a new agent",
+    exact: true,
+  });
+  await agent
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Safe area draft");
+  await agent
+    .getByRole("button", { name: "Customize avatar", exact: true })
+    .click();
+  const avatar = page.getByRole("dialog", {
+    name: /^(Edit avatar|Give your agent a face)$/,
+  });
+  await expect(avatar).toBeVisible();
+  const avatarBox = await avatar.boundingBox();
+  if (!avatarBox) throw new Error("Expected the avatar dialog bounds");
+  // Use native scrolling before clicking: click's automatic scrollIntoView can
+  // otherwise reach an action even when overflow-hidden prevents user scrolling.
+  await page.mouse.move(avatarBox.x + 8, avatarBox.y + avatarBox.height / 2);
+  await page.mouse.wheel(0, 1000);
+  const useAvatar = avatar.getByRole("button", {
+    name: "Use this avatar",
+    exact: true,
+  });
+  await expect(useAvatar).toBeInViewport({ ratio: 1 });
+  await useAvatar.click();
+  await expect(avatar).toBeHidden();
+  await expect(
+    agent.getByRole("textbox", { name: "Name", exact: true }),
+  ).toHaveValue("Safe area draft");
+
+  await page.setViewportSize({ width: 874, height: 402 });
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--sat", "0px");
+    style.setProperty("--sab", "21px");
+    style.setProperty("--sal", "62px");
+    style.setProperty("--sar", "62px");
+  });
+  const agentBox = await agent.boundingBox();
+  if (!agentBox) throw new Error("Expected the agent dialog bounds");
+  await page.mouse.move(agentBox.x + 8, agentBox.y + agentBox.height / 2);
+  await page.mouse.wheel(0, 1000);
+  await expect(
+    agent.getByRole("button", { name: "Create", exact: true }),
+  ).toBeInViewport({ ratio: 1 });
+  const cancel = agent.getByRole("button", { name: "Cancel", exact: true });
+  await expect(cancel).toBeInViewport({ ratio: 1 });
+  await cancel.click();
+  await expect(agent).toBeHidden();
 });
 
 test("chat page displays tagline after onboarding", async ({ page }) => {

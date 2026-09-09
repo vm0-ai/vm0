@@ -193,7 +193,6 @@ export const lightboxDialogFullscreen$ = computed((get) => {
 });
 
 export const toggleLightboxDialogFullscreen$ = command(({ get, set }) => {
-  set(attachmentLightboxImageCanvasSignals.reset$);
   set(
     internalLightboxDialogFullscreen$,
     !get(internalLightboxDialogFullscreen$),

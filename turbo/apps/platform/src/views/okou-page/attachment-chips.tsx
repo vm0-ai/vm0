@@ -635,7 +635,6 @@ function ArtifactDialogImageStage({
   resourceUrl: string | null;
 }) {
   const { t } = useTranslation();
-  const fullscreen = useGet(lightboxDialogFullscreen$);
   // Marks live on the draft rather than in the file, so the viewer has to draw
   // them too — otherwise reopening an annotated image shows a clean picture.
   const annotation = preview.annotationTarget?.annotations ?? null;
@@ -656,7 +655,7 @@ function ArtifactDialogImageStage({
             </div>
           ) : (
             <ZoomableArtifactImageCanvas
-              key={`${fullscreen ? "fullscreen" : "windowed"}:${resourceUrl}`}
+              key={resourceUrl}
               src={resourceUrl}
               alt={filename}
               signals={attachmentLightboxImageCanvasSignals}

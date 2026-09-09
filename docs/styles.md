@@ -82,6 +82,9 @@ safe boundary.
 The popup does not accept `className`, `style`, or `render`. Use
 `contentClassName` for the inner layout and `DialogBody` for a scrolling body
 below a fixed header. `contentClassName` remains subject to the style policy.
+The shared inner container protects vertical scrolling even when caller layout
+classes include `overflow-hidden`. Short panels must keep their footer actions
+reachable by scrolling; clipping the popup to its safe boundary is not enough.
 Use `showCloseButton` instead of CSS selectors that hide the close control.
 Business code must import the shared dialog rather than Base UI's dialog
 primitives; ESLint enforces this boundary. Preserve Base UI's focus, nested

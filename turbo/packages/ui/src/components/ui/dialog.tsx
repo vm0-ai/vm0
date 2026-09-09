@@ -130,7 +130,7 @@ interface DialogContentProps extends Omit<
   "className" | "style" | "render"
 > {
   readonly closeLabel?: string;
-  /** Styles the inner content, never the viewport or popup boundary. */
+  /** Styles the inner layout; viewport bounds and vertical scrolling stay owned here. */
   readonly contentClassName?: string;
   /** Maximum width; the available safe viewport may be narrower. */
   readonly maxWidth?: keyof typeof dialogMaxWidthClasses;
@@ -213,8 +213,11 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
               <div
                 data-slot="dialog-inner"
                 className={cn(
-                  "grid min-h-0 min-w-0 flex-1 gap-4 overflow-y-auto p-6 dialog-scrollable",
+                  "grid min-h-0 min-w-0 flex-1 gap-4 p-6 dialog-scrollable",
                   contentClassName,
+                  // A caller's clipping utility must not make footer actions
+                  // unreachable when the safe viewport constrains the panel.
+                  "overflow-y-auto!",
                 )}
               >
                 {children}
