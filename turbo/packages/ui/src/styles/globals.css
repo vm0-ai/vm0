@@ -151,10 +151,6 @@
   --radius-surface-compact: 12px;
   --border-width-surface: 0.7px;
   --shadow-surface: var(--surface-shadow);
-  --background-image-surface-hover: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
   --ease-surface: ease;
 
   /* Font Size (from Figma) */

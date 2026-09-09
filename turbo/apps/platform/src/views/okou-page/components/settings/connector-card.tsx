@@ -189,10 +189,10 @@ function CatalogConnectorCard({
 }
 
 /**
- * `okou-card` and `okou-border` as utilities. The directory renders through a
- * dialog portal, outside the `.okou-app` scope that owns the card tokens, so
- * the radius and shadow values are inlined the way the other portalled
- * surfaces already do.
+ * `okou-border` as utilities, plus the page-surface recipe inlined. The
+ * directory renders through a dialog portal, so it keeps the neutral shadow
+ * the way the other portalled surfaces already do; adopting `surfaceVariants`
+ * here would newly pick up the gradient-theme elevation and change pixels.
  */
 export const DIRECTORY_HAIRLINE =
   "border-[0.7px] border-[hsl(var(--gray-400))]";
