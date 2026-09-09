@@ -855,17 +855,20 @@ function buildConnectorsBrowseModel({
       return group.sections;
     });
   };
+  const layout = buildConnectorShelves({
+    sections: sectionsOf(
+      catalogItems.filter((connector) => {
+        return !connector.connected;
+      }),
+    ),
+    categoryCounts,
+    headLabel,
+  });
   return {
-    showShelves: ready && !filtered,
-    layout: buildConnectorShelves({
-      sections: sectionsOf(
-        catalogItems.filter((connector) => {
-          return !connector.connected;
-        }),
-      ),
-      categoryCounts,
-      headLabel,
-    }),
+    // Shelves need something to shelve: a catalog too small for any category to
+    // fill one falls through to the plain list.
+    showShelves: ready && !filtered && layout.shelves.length > 0,
+    layout,
     connected: catalogItems.filter((connector) => {
       return connector.connected;
     }),

@@ -1,8 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Loader2, Plus } from "lucide-react";
-import { cn } from "@okouai/ui";
+import { cn, surfaceVariants } from "@okouai/ui";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
-import type { ConnectorShelf } from "../../../../signals/okou-page/settings/connector-shelves.ts";
+import type {
+  ConnectorShelf,
+  ConnectorShelfChip,
+} from "../../../../signals/okou-page/settings/connector-shelves.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { DIRECTORY_HAIRLINE } from "./connector-card.tsx";
 
@@ -48,12 +51,15 @@ export function ConnectorShelfRow({
             )
       }
       aria-disabled={busy}
-      className={cn(
-        "flex items-center gap-2.5 rounded-[12px] bg-card px-2.5 py-1.5 transition-colors",
-        DIRECTORY_HAIRLINE,
-        busy ? "cursor-default" : "cursor-pointer hover:bg-card-hover",
-        active && "bg-state-selected",
-      )}
+      className={surfaceVariants({
+        radius: "compact",
+        interactive: !busy,
+        className: cn(
+          "flex items-center gap-2.5 px-2.5 py-1.5",
+          busy && "cursor-default",
+          active && "bg-state-selected",
+        ),
+      })}
       onClick={() => {
         if (!busy) {
           onActivate();
@@ -206,7 +212,7 @@ export function ConnectorShelfChips({
   chips,
   onSelect,
 }: {
-  readonly chips: readonly { category: string; label: string; total: number }[];
+  readonly chips: readonly ConnectorShelfChip[];
   readonly onSelect: (category: string) => void;
 }) {
   const { t } = useTranslation();
@@ -235,9 +241,11 @@ export function ConnectorShelfChips({
               }}
             >
               {chip.label}
-              <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                {chip.total}
-              </span>
+              {chip.total !== undefined && (
+                <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                  {chip.total}
+                </span>
+              )}
             </button>
           );
         })}

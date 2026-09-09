@@ -433,8 +433,14 @@ function DirectoryDiscoverPanel({
     );
   }
   // A query or a chosen category is already a filter: show what matched as one
-  // list instead of scattering the results back across category sections.
-  if (search.trim() || category !== null) {
+  // list instead of scattering the results back across category sections. A
+  // catalog too small for any category to fill a shelf takes the same path --
+  // shelves need something to shelve.
+  if (
+    search.trim() ||
+    category !== null ||
+    model.shelfLayout.shelves.length === 0
+  ) {
     return (
       <DirectorySection
         title={t(

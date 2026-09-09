@@ -18,11 +18,12 @@ export interface ConnectorShelf<T> {
   readonly remaining: number;
 }
 
-/** A category too thinly ranked to fill a shelf; offered as a counted chip. */
+/** A category too thinly ranked to fill a shelf; offered as a chip instead. */
 export interface ConnectorShelfChip {
   readonly category: string;
   readonly label: string;
-  readonly total: number;
+  /** Absent when discovery did not report a total for this category. */
+  readonly total: number | undefined;
 }
 
 export interface ConnectorShelfLayout<T> {
@@ -67,11 +68,18 @@ function rankedCount(items: readonly ShelfConnector[]): number {
   }).length;
 }
 
-function totalOf(
+/**
+ * What a shelf closes on. Discovery returns a slice per category, so only the
+ * server can say how many the rest stands for; when it does not, the shelf
+ * closes on nothing rather than on a number invented from the slice.
+ */
+function remainingOf(
   section: ConnectorCategorySection<unknown>,
   counts: Readonly<Record<string, number>> | undefined,
+  shown: number,
 ): number {
-  return counts?.[section.category] ?? section.connectors.length;
+  const total = counts?.[section.category];
+  return total === undefined ? 0 : Math.max(total - shown, 0);
 }
 
 /**
@@ -112,58 +120,36 @@ export function buildConnectorShelves<T extends ShelfConnector>({
   const ordered = sections.map((section) => {
     return { section, connectors: byRank(section.connectors) };
   });
-  const ranked = ordered.filter((entry) => {
+  const eligible = ordered.filter((entry) => {
     return rankedCount(entry.connectors) >= minRanked;
   });
-  // An API that predates discovery ranking sends no rank at all, and a catalog
-  // can be filtered down to nothing ranked. Either way the reader must still
-  // get shelves rather than an empty sheet, so every category keeps one and
-  // the head shelf — which only means something against a ranking — is
-  // dropped. See docs/deployment-compatibility.md.
-  const rankAware = ranked.length > 0;
-  const eligible = rankAware ? ranked : ordered;
-  const chips = rankAware
-    ? ordered
-        .filter((entry) => {
-          return rankedCount(entry.connectors) < minRanked;
-        })
-        .map((entry) => {
-          return {
-            category: entry.section.category,
-            label: entry.section.menuLabel,
-            total: totalOf(entry.section, categoryCounts),
-          };
-        })
-    : [];
+  const chips = ordered
+    .filter((entry) => {
+      return rankedCount(entry.connectors) < minRanked;
+    })
+    .map((entry) => {
+      return {
+        category: entry.section.category,
+        label: entry.section.menuLabel,
+        total: categoryCounts?.[entry.section.category],
+      };
+    });
 
   const shelves: ConnectorShelf<T>[] = [];
   const used = new Set<string>();
-  const head = rankAware ? headConnectors(eligible, previewSize) : [];
+  const head = headConnectors(eligible, previewSize);
   if (head.length > 0) {
     for (const connector of head) {
       used.add(connector.slug);
     }
-    const catalogTotal = categoryCounts
-      ? Object.values(categoryCounts).reduce((sum, count) => {
-          return sum + count;
-        }, 0)
-      : undefined;
-    const rest = byRank(
-      eligible.flatMap((entry) => {
-        return entry.connectors;
-      }),
-    ).filter((connector) => {
-      return !used.has(connector.slug);
-    });
+    // The head shelf spans every category, so it has no category to open and
+    // closes on nothing; the shelves under it are the way through.
     shelves.push({
       category: null,
       label: headLabel,
       connectors: head,
-      tail: catalogTotal === undefined ? [] : rest.slice(0, 3),
-      remaining:
-        catalogTotal === undefined
-          ? 0
-          : Math.max(catalogTotal - head.length, 0),
+      tail: [],
+      remaining: 0,
     });
   }
 
@@ -172,13 +158,11 @@ export function buildConnectorShelves<T extends ShelfConnector>({
       return !used.has(connector.slug);
     });
     // Only ranked connectors reach a shelf; the alphabet stays in the tail.
-    const preview = (
-      rankAware
-        ? available.filter((connector) => {
-            return rankOf(connector) !== UNRANKED;
-          })
-        : available
-    ).slice(0, previewSize);
+    const preview = available
+      .filter((connector) => {
+        return rankOf(connector) !== UNRANKED;
+      })
+      .slice(0, previewSize);
     if (preview.length === 0) {
       continue;
     }
@@ -193,10 +177,7 @@ export function buildConnectorShelves<T extends ShelfConnector>({
       label: entry.section.label,
       connectors: preview,
       tail: remainder.slice(0, 3),
-      remaining: Math.max(
-        totalOf(entry.section, categoryCounts) - preview.length,
-        0,
-      ),
+      remaining: remainingOf(entry.section, categoryCounts, preview.length),
     });
   }
 

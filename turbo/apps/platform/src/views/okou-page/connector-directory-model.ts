@@ -144,7 +144,7 @@ export function buildConnectorDirectoryModel({
     connectedCount: connected.length,
     yoursSlugs: [...slugsOf(attention), ...slugsOf(healthy)],
     discoverSlugs:
-      search.trim() || category !== null
+      search.trim() || category !== null || shelfLayout.shelves.length === 0
         ? slugsOf(discover)
         : slugsOf(shelfLayout.connectors),
     bySlug: new Map(
