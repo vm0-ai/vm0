@@ -10,6 +10,7 @@ import {
   mockClerkSessionSignedOut,
   mockedClerk,
   mockedClerkLoad,
+  mockedClerkStatusListenerCount,
   mockOrganization,
   mockUser,
   type MockedClerkLoadOptions,
@@ -246,6 +247,8 @@ interface ClerkMock {
   readonly resourceRequests: ClerkResourceRequest[];
   /** Hosted UI script requests; only v1 comparison routes should add one. */
   readonly uiRequests: string[];
+  /** Clerk `status` handlers the SDK still holds, so leaks stay observable. */
+  readonly statusListenerCount: () => number;
   readonly loaded: (loaded: boolean) => void;
   readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;
   readonly organization: (...args: Parameters<typeof mockOrganization>) => void;
@@ -755,6 +758,7 @@ function mockClerk(
     localizationRequests,
     resourceRequests: resource.requests,
     uiRequests: resource.uiRequests,
+    statusListenerCount: mockedClerkStatusListenerCount,
     loaded: mockClerkLoaded,
     localizationUnavailable(locale): void {
       unavailableLocalizations.add(locale);

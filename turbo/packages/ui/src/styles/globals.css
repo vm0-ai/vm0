@@ -159,11 +159,9 @@
   --font-size-sm: 14px;
   --font-size-xs: 12px;
 
-  /* Figma typography roles consumed by the hosted auth adapter. */
+  /* Figma action-label role, used by compact primary actions. */
   --text-action: 13px;
   --text-action--line-height: 17px;
-  --text-badge: 10px;
-  --text-badge--line-height: 1;
 
   /* Line Height (from Figma) */
   --line-height-8: 32px;
@@ -184,8 +182,6 @@
   --input-border-radius: 8px; /* rounded-lg */
   --input-focus-ring-width: 3px;
   --input-focus-ring-opacity: 0.1;
-  --okou-input-padding-block: 0.5rem;
-  --okou-input-padding-inline: 0.75rem;
 
   /* ===================================
    * Interaction States

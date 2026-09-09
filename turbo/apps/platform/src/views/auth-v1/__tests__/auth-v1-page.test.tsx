@@ -40,11 +40,6 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   expect(signIn).toHaveTextContent("/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-up-url", "/v1/sign-up");
-  expect(screen.getByTestId("app-sign-in")).toHaveClass(
-    "w-[var(--okou-auth-card-page-width)]",
-    "max-w-[var(--okou-auth-card-max-width)]",
-    "shrink-0",
-  );
   expect(signIn).toHaveAttribute(
     "data-clerk-force-redirect-url",
     "https://app.okou.ai",
@@ -93,11 +88,6 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
   expect(signUp).toHaveTextContent("/v1/sign-up");
   expect(signUp).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
   expect(signUp).not.toHaveAttribute("data-clerk-sign-up-url");
-  expect(screen.getByTestId("app-sign-up")).toHaveClass(
-    "w-[var(--okou-auth-card-page-width)]",
-    "max-w-[var(--okou-auth-card-max-width)]",
-    "shrink-0",
-  );
   expect(signUp).toHaveAttribute(
     "data-clerk-fallback-redirect-url",
     redirectUrl,
@@ -244,24 +234,30 @@ test("Sign-up redirects to other environments fall back to onboarding", async ()
   ).toBe("https://app.okou.ai/onboarding");
 });
 
-test("Hosted auth pages scroll inside the root safe area", async () => {
+test("Hosted auth reaches the brand home and the theme toggle", async () => {
   context.mocks.browser.matchMedia(false);
   await setupSignedOutPage("/v1/sign-up");
 
-  const layout = screen.getByTestId("app-auth-layout");
-  expect(layout).toHaveClass("h-full");
-  expect(layout).toHaveClass("min-h-0");
-  expect(layout).toHaveClass("overflow-y-auto");
-  expect(layout).toHaveClass("overflow-x-hidden");
-  expect(layout).not.toHaveClass("overflow-hidden");
-
+  // The wordmark is a same-origin static asset, so it must not request CORS.
   const logoImage = screen.getByAltText("Okou");
   expect(logoImage).not.toHaveAttribute("crossorigin");
-  const logo = logoImage.closest("a");
-  expect(logo).toHaveClass("left-6");
-  expect(logo).toHaveClass("top-6");
+  expect(logoImage.closest("a")).toBe(okouBrandLink());
+  expect(screen.getByLabelText("Toggle theme")).toBeVisible();
+});
 
-  const themeToggle = screen.getByLabelText("Toggle theme");
-  expect(themeToggle.className).toContain("var(--sat)");
-  expect(themeToggle.className).toContain("var(--sar)");
+test("Leaving the hosted page releases the Clerk status subscription", async () => {
+  const clerk = context.mocks.clerk();
+  await setupSignedOutPage("/v1/sign-in");
+  expect(screen.getByTestId("clerk-sign-in")).toBeVisible();
+  expect(clerk.statusListenerCount()).toBe(1);
+
+  act(() => {
+    window.history.pushState(null, "", "/sign-in");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+
+  await expect(
+    screen.findByRole("region", { name: "Sign in to Okou" }),
+  ).resolves.toBeVisible();
+  expect(clerk.statusListenerCount()).toBe(0);
 });

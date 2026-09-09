@@ -15,7 +15,7 @@ import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
 import { AuthV1LoadError } from "../views/auth-v1/auth-v1-load-error.tsx";
 import { logger } from "./log.ts";
-import { throwIfAbort } from "./utils.ts";
+import { settle } from "./utils.ts";
 import { createAuthV1ClerkSignals } from "./auth-v1-clerk.ts";
 
 const L = logger("AuthV1");
@@ -40,21 +40,20 @@ function setupAuthV1Page(mode: AuthV1PageMode) {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     // Only the v1 comparison routes request Clerk's optional UI. Stable auth
-    // routes continue to use the platform-owned auth v2 implementation.
-    let ui;
-    // eslint-disable-next-line no-restricted-syntax -- The optional SDK resource can fail before a form exists; offer a visible reload without converting auth/API failures into success.
-    try {
-      ui = await set(ensureClerkUiLoaded$, signal);
-    } catch (error) {
-      throwIfAbort(error);
-      signal.throwIfAborted();
-      L.error("Clerk UI failed to load", error);
+    // routes continue to use the platform-owned auth v2 implementation. That
+    // resource can fail before a form exists, so `settle` keeps cancellation
+    // propagating while this route offers a visible reload instead.
+    const uiLoad = await settle(set(ensureClerkUiLoaded$, signal), signal);
+    if (!uiLoad.ok) {
+      L.error("Clerk UI failed to load", uiLoad.error);
       set(updatePage$, createElement(AuthV1LoadError));
       return;
     }
-    signal.throwIfAborted();
     const signals = createAuthV1ClerkSignals();
-    set(updatePage$, createElement(AuthV1Page, { clerk, mode, ui, signals }));
+    set(
+      updatePage$,
+      createElement(AuthV1Page, { clerk, mode, ui: uiLoad.value, signals }),
+    );
   });
 }
 
