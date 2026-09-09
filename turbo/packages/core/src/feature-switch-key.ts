@@ -65,7 +65,6 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
-  ChatDesktopSelection = "chatDesktopSelection",
   VoiceInputV2 = "voiceInputV2",
   ComposerCreateCommands = "composerCreateCommands",
   ComposerTaskChips = "composerTaskChips",

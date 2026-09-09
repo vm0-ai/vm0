@@ -168,15 +168,12 @@ function closestExpandedFeedbackSource(node: Node | null): Element | null {
   );
 }
 
-function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
-  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
+function shouldExpandSelectionToAssistantReply(): boolean {
+  return !window.matchMedia(COARSE_POINTER_QUERY).matches;
 }
 
-function resolveSelectionSource(
-  range: Range,
-  expandToAssistantReply: boolean,
-): Element | null {
-  if (expandToAssistantReply) {
+function resolveSelectionSource(range: Range): Element | null {
+  if (shouldExpandSelectionToAssistantReply()) {
     const startSource = closestExpandedFeedbackSource(range.startContainer);
     const endSource = closestExpandedFeedbackSource(range.endContainer);
     return startSource !== null && startSource === endSource
@@ -324,9 +321,7 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function readFeedbackSelection(
-  expandToAssistantReply: boolean,
-): CapturedFeedbackSelection | null {
+function readFeedbackSelection(): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
@@ -336,7 +331,7 @@ function readFeedbackSelection(
     return null;
   }
   const range = selection.getRangeAt(0);
-  const sourceElement = resolveSelectionSource(range, expandToAssistantReply);
+  const sourceElement = resolveSelectionSource(range);
   if (!sourceElement) {
     return null;
   }
@@ -404,11 +399,7 @@ function createSelectionState(threadId: string) {
   });
   const capture$ = command(({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    const selection = readFeedbackSelection(
-      shouldExpandSelectionToAssistantReply(
-        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
-      ),
-    );
+    const selection = readFeedbackSelection();
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -430,11 +421,7 @@ function createSelectionState(threadId: string) {
     if (!currentSelection) {
       return;
     }
-    const selection = readFeedbackSelection(
-      shouldExpandSelectionToAssistantReply(
-        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
-      ),
-    );
+    const selection = readFeedbackSelection();
     if (
       !selection ||
       selection.threadId !== threadId ||
@@ -824,9 +811,7 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            (shouldExpandSelectionToAssistantReply(
-              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
-            )
+            (shouldExpandSelectionToAssistantReply()
               ? closestExpandedFeedbackSource(event.target)
               : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;
