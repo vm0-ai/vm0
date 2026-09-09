@@ -6,14 +6,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { asChildRender } from "../../lib/base-ui-compat";
 import { cn } from "../../lib/utils";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./tooltip";
+  buttonBaseClassName,
+  ButtonTooltip,
+  type ButtonTooltipOptions,
+} from "./button-shared";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  [
+    buttonBaseClassName,
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap ring-offset-background transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  ],
   {
     variants: {
       variant: {
@@ -74,16 +76,7 @@ interface ButtonBaseProps
   render?: ButtonPrimitive.Props["render"];
 }
 
-export type ButtonProps = ButtonBaseProps &
-  (
-    | {
-        showTooltip: true;
-        "aria-label": string;
-      }
-    | {
-        showTooltip?: false;
-      }
-  );
+export type ButtonProps = ButtonBaseProps & ButtonTooltipOptions;
 
 interface ButtonAsChildProps {
   children: React.ReactNode;
@@ -160,21 +153,13 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(
       return button;
     }
 
-    const tooltipTrigger = buttonProps.disabled ? (
-      <span className="inline-flex">{button}</span>
-    ) : (
-      button
-    );
-
     return (
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger render={tooltipTrigger} />
-          <TooltipContent>
-            <p className="text-xs">{buttonProps["aria-label"]}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <ButtonTooltip
+        disabled={buttonProps.disabled}
+        label={buttonProps["aria-label"]}
+      >
+        {button}
+      </ButtonTooltip>
     );
   },
 );

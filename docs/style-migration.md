@@ -176,7 +176,7 @@ baseline and A/A, and `--aria-mode pressed` for the migrated UI. The runner
 asserts and records the four attributes separately in each capture; all other
 button semantics, geometry and computed styles must match exactly. The mode
 change does not permit any pixel or layout difference. Re-run the original
-21 preference states whenever changing the shared ChoiceButton.
+21 preference states whenever changing the shared ToggleButton.
 
 The Tone calibration initially queried the wrong Save label; that attempt is
 retained. A subsequent unchanged-code comparison exposed clipped-edge raster
@@ -223,11 +223,10 @@ remain in force.
 ## Shared toggle button follow-up
 
 The three migrated consumers (Appearance, Send mode and Agent profile Tone)
-share a persistent selected-state contract. Rename their shared control to
-`ToggleButton`, retaining its native element, controlled `selected` prop,
-inline/tile layouts and existing activation and focus behavior. Share common
-button styles and optional tooltip composition with `Button`; tooltips remain
-off by default and require an accessible label when enabled. Group selection
+share a persistent selected-state contract through `ToggleButton`, retaining
+its native element, controlled `selected` prop, inline/tile layouts and existing
+activation and focus behavior. Common button styles and optional tooltip
+composition are shared with `Button`; tooltips remain off by default and require an accessible label when enabled. Group selection
 and arrow-key behavior remain owned by the existing callers.
 
 Before implementation, freeze the 33 Tone and 21 preference states against
@@ -235,3 +234,13 @@ unchanged main code on the PR preview and require an unchanged-code replay.
 After implementation, replay those frozen cases and verify tooltip activation,
 disabled controls and existing Button trigger composition through focused
 component tests. Record commit-bound before/after evidence with the PR.
+
+[PR #32958](https://github.com/vm0-ai/vm0/pull/32958) starts from main after
+the Tone migration merged. Its [BEFORE and unchanged-code replay archive](https://a.okou.io/c8j22q6j4i.zip)
+pins App/API build `0b5a1934a9d4279f84ae1a83127ab7f7e4c1997b` and records
+54 states with zero changed pixels. The archive also preserves failed calibration
+attempts. Generate the Agent fixture from the same TEST account used by the
+browser: its owner identity controls whether visibility settings render. Tone
+also freezes that Agent's empty user-connectors and permission-grants GET
+responses, so preview database resets cannot invalidate ancillary reads.
+Geometry assertions run against the same settled paint that is archived.

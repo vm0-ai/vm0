@@ -187,7 +187,7 @@
       "tokens": ["okou-chip"],
       "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
       "cases": ["tone-light", "tone-dark", "tone-mobile"],
-      "status": "verified",
+      "status": "merged",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay",
@@ -220,7 +220,36 @@
           "commit": "b628dd86f0a37205ba3b74cc200dace9890f649f"
         }
       ],
-      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873"
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873",
+      "mergeCommit": "cd0012572ce91c992d330c1599961e4248207303"
+    },
+    {
+      "id": "shared-toggle-button",
+      "family": "local-controls",
+      "tokens": [],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/sections/preference-section.tsx",
+        "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx",
+        "apps/platform/src/views/okou-page/settings-tab.tsx"
+      ],
+      "cases": [
+        "preferences-light",
+        "preferences-dark",
+        "preferences-mobile",
+        "tone-light",
+        "tone-dark",
+        "tone-mobile"
+      ],
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-calibration",
+          "url": "https://a.okou.io/c8j22q6j4i.zip",
+          "sha256": "d9218b85d44d2d2c32f433c1a33625c15952e941f21085e3e785fda5c4383a95",
+          "commit": "0b5a1934a9d4279f84ae1a83127ab7f7e4c1997b"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32958"
     }
   ],
   "caseFiles": [

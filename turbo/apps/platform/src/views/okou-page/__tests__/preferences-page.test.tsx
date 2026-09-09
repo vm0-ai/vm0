@@ -185,6 +185,10 @@ test("Account-backed appearance preferences are restored and saved", async () =>
     expectSelected(getFastRole("button", "Light"));
   });
 
+  click(getFastRole("button", "Light"));
+  expectSelected(getFastRole("button", "Light"));
+  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
   click(getFastRole("button", "Limelight", colorTheme));
 
   await waitFor(() => {
@@ -376,7 +380,16 @@ test("A user can save message-send and time-zone preferences", async () => {
 
   await waitFor(() => {
     expect(updates).toContainEqual({ sendMode: "cmd-enter" });
+    expect(getFastRole("button", "⌘ Enter")).toBeEnabled();
+    expectSelected(getFastRole("button", "⌘ Enter"));
   });
+
+  click(getFastRole("button", "⌘ Enter"));
+  expectSelected(getFastRole("button", "⌘ Enter"));
+  expect(getFastRole("button", "Enter")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 
   const timezone = getFastRole("combobox", /UTC/u);
   click(timezone);
