@@ -20992,6 +20992,70 @@ describe("POST /api/billing/credit-checkout", () => {
     );
   });
 
+  it("carries the purchaser's Impact click into new and existing Stripe customers", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const capturedAt = new Date("2026-09-09T04:00:00.000Z");
+    mockNow(capturedAt);
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const impact = {
+      clickId: "partner-first",
+      capturedAt: capturedAt.toISOString(),
+    };
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        { id: fixture.userId, privateMetadata: { impact_attribution: impact } },
+      ],
+    });
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      metadata: {
+        unrelated: "keep",
+        impact_click_id: "partner-first",
+        impact_click_at: capturedAt.toISOString(),
+      },
+    });
+    context.mocks.stripe.customers.update.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/impact-credit",
+    });
+    const client = setupApp({ context, routes: billingCreditCheckoutRoutes })(
+      billingCreditCheckoutContract,
+    );
+    const checkout = () => {
+      return client.create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      });
+    };
+    await accept(checkout(), [200]);
+    expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
+      metadata: {
+        orgId: fixture.orgId,
+        impact_click_id: "partner-first",
+        impact_click_at: capturedAt.toISOString(),
+      },
+    });
+    mockNow(new Date(capturedAt.getTime() + 60_000));
+    impact.clickId = "partner-next";
+    impact.capturedAt = new Date(capturedAt.getTime() + 60_000).toISOString();
+    await accept(checkout(), [200]);
+    expect(context.mocks.stripe.customers.create).toHaveBeenCalledTimes(1);
+    expect(
+      context.mocks.stripe.customers.update,
+    ).toHaveBeenCalledExactlyOnceWith(customerId, {
+      metadata: {
+        impact_click_id: "partner-next",
+        impact_click_at: impact.capturedAt,
+      },
+    });
+  });
+
   it("automatically applies the customer's coupon", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
     const { customerId } = fixture;
