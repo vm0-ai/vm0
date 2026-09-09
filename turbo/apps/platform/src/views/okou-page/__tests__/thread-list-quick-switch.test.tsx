@@ -23,7 +23,10 @@ import {
 const context = testContext();
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
+  [FeatureSwitchKey.ChatQuickSwitch]: true,
 } as const;
+const MAC_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36";
 const SEARCH_LABEL = "Search workspace...";
 
 function hintKeys(container: ParentNode): string[] {
@@ -32,7 +35,7 @@ function hintKeys(container: ParentNode): string[] {
       return keycap.textContent ?? "";
     })
     .filter((label) => {
-      return /^(?:Ctrl\+|⌘⌃?)[1-9]$/.test(label);
+      return /^⌥[ASDFG]$/.test(label);
     });
 }
 
@@ -42,56 +45,45 @@ test.each([
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
     maxTouchPoints: 0,
-    modifier: "Meta",
-    additionalModifier: "",
-    releaseModifiers: "{/Meta}",
-    label: "⌘",
+    modifier: "Alt",
+    releaseModifiers: "{/Alt}",
+    label: "⌥",
+    fifthKey: "©",
   },
   {
     platform: "Mac Safari",
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
     maxTouchPoints: 0,
-    modifier: "Meta",
-    additionalModifier: "{Control>}",
-    releaseModifiers: "{/Control}{/Meta}",
-    label: "⌘⌃",
+    modifier: "Alt",
+    releaseModifiers: "{/Alt}",
+    label: "⌥",
+    fifthKey: "©",
   },
   {
     platform: "iPad Safari with a desktop user agent",
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
     maxTouchPoints: 5,
-    modifier: "Meta",
-    additionalModifier: "",
-    releaseModifiers: "{/Meta}",
-    label: "⌘",
-  },
-  {
-    platform: "Windows",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    maxTouchPoints: 0,
-    modifier: "Control",
-    additionalModifier: "",
-    releaseModifiers: "{/Control}",
-    label: "Ctrl+",
+    modifier: "Alt",
+    releaseModifiers: "{/Alt}",
+    label: "⌥",
+    fifthKey: "©",
   },
 ])(
-  "Reveal the first nine thread shortcuts after holding the modifier for 500 ms on $platform",
+  "Reveal the first five chat shortcuts after holding the modifier for 500 ms on $platform",
   async ({
     userAgent,
     maxTouchPoints,
     modifier,
-    additionalModifier,
+    fifthKey,
     releaseModifiers,
     label,
   }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.maxTouchPoints(maxTouchPoints);
     context.mocks.browser.matchMedia((query) => {
-      return (
-        query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
-      );
+      return query === "(min-width: 48rem)";
     });
     const threads = Array.from({ length: 11 }, (_, index) => {
       return chatListThread(index + 1, `Thread ${index + 1}`, {
@@ -134,28 +126,29 @@ test.each([
     await user.keyboard(`{${modifier}>}`);
     expect(hintKeys(list)).toStrictEqual([]);
     await waitFor(() => {
-      expect(hintKeys(list)).toHaveLength(9);
+      expect(hintKeys(list)).toHaveLength(5);
     });
     expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
     expect(hintKeys(list)).toStrictEqual(
-      Array.from({ length: 9 }, (_, index) => {
-        return `${label}${index + 1}`;
+      ["A", "S", "D", "F", "G"].map((key) => {
+        return `${label}${key}`;
       }),
     );
-    if (additionalModifier) {
-      await user.keyboard(additionalModifier);
-    }
-    expect(hintKeys(list)).toHaveLength(9);
-    await user.keyboard(`9${releaseModifiers}`);
+    const composer = screen.getByRole("textbox", { name: "Message" });
+    click(composer);
+    fireEvent.keyDown(composer, {
+      key: fifthKey,
+      code: "KeyG",
+      altKey: true,
+    });
+    await user.keyboard(releaseModifiers);
     await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
+      expect(pathname()).toBe(`/chats/${threads[8]!.id}`);
     });
     expect(hintKeys(list)).toStrictEqual([]);
 
     // A known shortcut can be used immediately, without waiting for its hint.
-    await user.keyboard(
-      `{${modifier}>}${additionalModifier}1${releaseModifiers}`,
-    );
+    await user.keyboard(`{${modifier}>}a${releaseModifiers}`);
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${threads[0]!.id}`);
     });
@@ -163,6 +156,7 @@ test.each([
 );
 
 test("Cancel a short hold and clear hints on release, blur, and visibility loss", async () => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -185,113 +179,129 @@ test("Cancel a short hold and clear hints on release, blur, and visibility loss"
   });
   const list = screen.getByTestId("chat-list-column");
   const user = userEvent.setup();
-  await user.keyboard("{Control>}{/Control}");
+  await user.keyboard("{Alt>}{/Alt}");
   expect(hintKeys(list)).toStrictEqual([]);
   const pressedAt = now();
-  await user.keyboard("{Control>}");
+  await user.keyboard("{Alt>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
+    expect(hintKeys(list)).toStrictEqual(["⌥A"]);
   });
   expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
   fireEvent.blur(window);
   await waitFor(() => {
     expect(hintKeys(list)).toStrictEqual([]);
   });
-  await user.keyboard("{/Control}{Control>}");
+  await user.keyboard("{/Alt}{Alt>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
+    expect(hintKeys(list)).toStrictEqual(["⌥A"]);
   });
   visibility.changeTo("hidden");
   await waitFor(() => {
     expect(hintKeys(list)).toStrictEqual([]);
   });
   visibility.changeTo("visible");
-  await user.keyboard("{/Control}");
+  await user.keyboard("{/Alt}");
 });
 
-test("Keep browser mode free of number shortcuts and react to display mode changes", async () => {
-  const media = context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 48rem)";
-  });
-  const first = chatListThread(1, "Browser mode chat");
-  const second = chatListThread(2, "Another chat");
-  const workspace = installContinuityWorkspace(context, {
-    caseId: 42,
-    threads: [first, second],
-  });
-  await setupPage({
-    context,
-    path: `/chats/${first.id}`,
-    ...workspace.pageOptions,
-    featureSwitches,
-  });
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toStrictEqual([
-      "Another chat",
-      "Browser mode chat",
-    ]);
-  });
-  const list = screen.getByTestId("chat-list-column");
-  const shortcut = new KeyboardEvent("keydown", {
-    key: "1",
-    code: "Digit1",
-    ctrlKey: true,
-    bubbles: true,
-    cancelable: true,
-  });
-  document.body.dispatchEvent(shortcut);
-  expect(shortcut.defaultPrevented).toBeFalsy();
-  expect(pathname()).toBe(`/chats/${first.id}`);
-  expect(hintKeys(list)).toStrictEqual([]);
-
-  const user = userEvent.setup();
-  await user.keyboard("{Control>}{Shift>}f{/Shift}");
-  const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
-  await waitFor(() => {
-    expect(queryAllByRoleFast("option", dialog)).toHaveLength(2);
-  });
-  const search = within(dialog).getByPlaceholderText(SEARCH_LABEL);
-  const searchShortcut = new KeyboardEvent("keydown", {
-    key: "1",
-    code: "Digit1",
-    ctrlKey: true,
-    bubbles: true,
-    cancelable: true,
-  });
-  search.dispatchEvent(searchShortcut);
-  expect(searchShortcut.defaultPrevented).toBeFalsy();
-  expect(hintKeys(dialog)).toStrictEqual([]);
-  expect(dialog).toBeInTheDocument();
-  await user.keyboard("{/Control}{Escape}");
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
-
-  media.setMatches((query) => {
-    return (
-      query === "(display-mode: window-controls-overlay)" ||
-      query === "(min-width: 48rem)"
-    );
-  });
-  await user.keyboard("{Control>}");
-  await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl+1", "Ctrl+2"]);
-  });
-  media.setMatches((query) => {
-    return query === "(min-width: 48rem)";
-  });
-  await waitFor(() => {
+test.each([
+  {
+    platform: "Mac browser",
+    userAgent: MAC_USER_AGENT,
+    standalone: false,
+    enabled: false,
+    modifier: "Meta",
+  },
+  {
+    platform: "Mac app",
+    userAgent: MAC_USER_AGENT,
+    standalone: true,
+    enabled: false,
+    modifier: "Meta",
+  },
+  {
+    platform: "Windows browser",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    standalone: false,
+    enabled: true,
+    modifier: "Control",
+  },
+])(
+  "Preserve normal input and chat navigation when quick switch is unavailable in a $platform",
+  async ({ userAgent, standalone, enabled, modifier }) => {
+    context.mocks.browser.userAgent(userAgent);
+    context.mocks.browser.matchMedia((query) => {
+      return (
+        query === "(min-width: 48rem)" ||
+        (standalone && query === "(display-mode: standalone)")
+      );
+    });
+    const first = chatListThread(1, "Current chat");
+    const second = chatListThread(2, "Another chat");
+    const workspace = installContinuityWorkspace(context, {
+      caseId: 42,
+      threads: [first, second],
+    });
+    await setupPage({
+      context,
+      path: `/chats/${first.id}`,
+      ...workspace.pageOptions,
+      featureSwitches: {
+        ...featureSwitches,
+        [FeatureSwitchKey.ChatQuickSwitch]: enabled,
+      },
+    });
+    await waitFor(() => {
+      expect(sidebarThreadTitles()).toStrictEqual([
+        "Another chat",
+        "Current chat",
+      ]);
+    });
+    const list = screen.getByTestId("chat-list-column");
+    const shortcut = new KeyboardEvent("keydown", {
+      key: "å",
+      code: "KeyA",
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const composer = screen.getByRole("textbox", { name: "Message" });
+    click(composer);
+    composer.dispatchEvent(shortcut);
+    expect(shortcut.defaultPrevented).toBeFalsy();
+    expect(pathname()).toBe(`/chats/${first.id}`);
     expect(hintKeys(list)).toStrictEqual([]);
-  });
-  await user.keyboard("1{/Control}");
-  expect(pathname()).toBe(`/chats/${first.id}`);
-  click(sidebarThreadLinks()[0]!);
-  await waitFor(() => {
-    expect(pathname()).toBe(`/chats/${second.id}`);
-  });
-});
 
-test("Number filtered threads and give the search dialog priority over the list", async () => {
+    const user = userEvent.setup();
+    await user.keyboard(`{${modifier}>}{Shift>}f{/Shift}{/${modifier}}`);
+    const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
+    await waitFor(() => {
+      expect(queryAllByRoleFast("option", dialog)).toHaveLength(2);
+    });
+    const search = within(dialog).getByPlaceholderText(SEARCH_LABEL);
+    const searchShortcut = new KeyboardEvent("keydown", {
+      key: "å",
+      code: "KeyA",
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    search.dispatchEvent(searchShortcut);
+    expect(searchShortcut.defaultPrevented).toBeFalsy();
+    expect(hintKeys(dialog)).toStrictEqual([]);
+    expect(dialog).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    click(sidebarThreadLinks()[0]!);
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${second.id}`);
+    });
+  },
+);
+
+test("Show shortcuts for filtered chats and give the search dialog priority over the list", async () => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -330,17 +340,17 @@ test("Number filtered threads and give the search dialog priority over the list"
   });
   const list = screen.getByTestId("chat-list-column");
   const user = userEvent.setup();
-  await user.keyboard("{Control>}");
+  await user.keyboard("{Meta>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
+    expect(hintKeys(list)).toStrictEqual(["⌥A"]);
   });
   await user.keyboard("{Shift>}f{/Shift}");
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
   await waitFor(() => {
-    expect(hintKeys(dialog)).toStrictEqual(["Ctrl+1"]);
+    expect(hintKeys(dialog)).toStrictEqual(["⌥A"]);
   });
   expect(hintKeys(list)).toStrictEqual([]);
-  await user.keyboard("1{/Control}");
+  await user.keyboard("{/Meta}{Alt>}a{/Alt}");
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(pathname()).toBe(`/chats/${first.id}`);

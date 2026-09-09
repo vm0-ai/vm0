@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
-import { stableChatThreadNavigationEnabled$ } from "./external/feature-switch.ts";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  featureSwitch$,
+  stableChatThreadNavigationEnabled$,
+} from "./external/feature-switch.ts";
 import { onDomEventFn, resetSignal } from "./utils.ts";
 
 const internalKeyboardShortcutHintPhase$ = state<
@@ -33,19 +37,25 @@ const showKeyboardShortcutHints$ = command(
 const updateKeyboardShortcutHintModifiers$ = command(
   ({ get, set }, event: KeyboardEvent, signal: AbortSignal) => {
     const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
-    const modifierHeld = isMac
-      ? event.metaKey
-      : event.ctrlKey && !event.metaKey;
+    const primaryModifierHeld =
+      !event.altKey &&
+      (isMac ? event.metaKey : event.ctrlKey && !event.metaKey);
+    const quickSwitchModifierHeld =
+      isMac &&
+      get(featureSwitch$)[FeatureSwitchKey.ChatQuickSwitch] &&
+      event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey;
     if (
       !get(stableChatThreadNavigationEnabled$) ||
-      !modifierHeld ||
+      (!primaryModifierHeld && !quickSwitchModifierHeld) ||
       event.shiftKey ||
-      event.altKey ||
       event.isComposing ||
       event.keyCode === 229 ||
       (event.type === "keydown" &&
         event.key !== "Meta" &&
-        event.key !== "Control")
+        event.key !== "Control" &&
+        event.key !== "Alt")
     ) {
       set(hideKeyboardShortcutHints$);
       return;

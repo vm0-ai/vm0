@@ -12,7 +12,6 @@ import { openThreeColumnSearchDialog$ } from "./sidebar-state.ts";
 import { displayedPinnedAgents$ } from "./pinned-agents.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { isStandaloneMode } from "./settings/connectors.ts";
-import { setupThreadNumberShortcuts$ } from "./thread-number-shortcuts.ts";
 
 type PinnedAgentShortcutDirection = "prev" | "next";
 
@@ -106,7 +105,6 @@ function shouldHandleUniversalSearchShortcut(event: KeyboardEvent): boolean {
 
 export const setupGlobalKeyboardShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
-    set(setupThreadNumberShortcuts$, signal);
     set(setupKeyboardShortcutHints$, signal);
     setupGlobalShortcut(
       {

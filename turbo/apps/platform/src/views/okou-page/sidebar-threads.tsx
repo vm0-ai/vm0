@@ -86,8 +86,8 @@ import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   threeColumnSearchOpen$,
 } from "../../signals/okou-page/sidebar-state.ts";
-import { setThreadListNumberShortcutRoot$ } from "../../signals/okou-page/thread-list-number-shortcuts.ts";
-import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
+import { setThreadListQuickSwitchRoot$ } from "../../signals/okou-page/thread-list-quick-switch.ts";
+import { ThreadQuickSwitchHint } from "./thread-quick-switch-hint.tsx";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { ThreadPinMoveMenuItems } from "./sidebar-thread-reorder.tsx";
@@ -347,10 +347,10 @@ function ChatThreadMenu({
 
 function ChatThreadItemLink({
   signals,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   signals: SidebarChatThreadItemSignals;
-  shortcutNumber: number | undefined;
+  shortcutIndex: number | undefined;
 }) {
   const { t } = useTranslation();
   const title = useGet(signals.title$);
@@ -400,7 +400,7 @@ function ChatThreadItemLink({
         </span>
       </span>
       <span className="flex items-center pr-2 empty:hidden">
-        <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+        <ThreadQuickSwitchHint shortcutIndex={shortcutIndex} />
       </span>
     </Link>
   );
@@ -408,14 +408,14 @@ function ChatThreadItemLink({
 
 function ChatThreadItem({
   signals,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   signals: SidebarChatThreadItemSignals;
-  shortcutNumber: number | undefined;
+  shortcutIndex: number | undefined;
 }) {
   return (
     <div className="group relative grid grid-cols-[minmax(0,1fr)_auto] items-center">
-      <ChatThreadItemLink signals={signals} shortcutNumber={shortcutNumber} />
+      <ChatThreadItemLink signals={signals} shortcutIndex={shortcutIndex} />
       <div className="pointer-events-none relative col-start-1 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end">
         <ChatThreadMenu signals={signals} />
       </div>
@@ -615,7 +615,7 @@ function VirtualizedChatThreads({
 }: {
   listSignals: SidebarChatThreadListSignals;
 }) {
-  const setShortcutRoot = useSet(setThreadListNumberShortcutRoot$);
+  const setShortcutRoot = useSet(setThreadListQuickSwitchRoot$);
   const searchOpen = useGet(threeColumnSearchOpen$);
   const threadCount = useGet(listSignals.count$);
   const window = useGet(listSignals.window$, {
@@ -647,7 +647,7 @@ function VirtualizedChatThreads({
           >
             <ChatThreadItem
               signals={signals}
-              shortcutNumber={!searchOpen && index < 9 ? index + 1 : undefined}
+              shortcutIndex={!searchOpen ? index : undefined}
             />
           </div>
         );

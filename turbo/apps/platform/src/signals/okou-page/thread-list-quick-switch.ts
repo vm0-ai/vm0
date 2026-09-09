@@ -6,9 +6,9 @@ import {
 } from "../chat-page/chat-thread-panes.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
 import { navigateToChat$, setSidebarExpanded$ } from "./nav.ts";
-import { threadNumberShortcutIndex$ } from "./thread-number-shortcuts.ts";
+import { threadQuickSwitchIndex$ } from "./thread-quick-switch.ts";
 
-export const setThreadListNumberShortcutRoot$ = onRef(
+export const setThreadListQuickSwitchRoot$ = onRef(
   command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
     const doc = element.ownerDocument;
     doc.addEventListener(
@@ -17,7 +17,7 @@ export const setThreadListNumberShortcutRoot$ = onRef(
         if (doc.querySelector('[role="dialog"], [role="menu"]')) {
           return;
         }
-        const index = set(threadNumberShortcutIndex$, event);
+        const index = set(threadQuickSwitchIndex$, event);
         if (index === undefined) {
           return;
         }

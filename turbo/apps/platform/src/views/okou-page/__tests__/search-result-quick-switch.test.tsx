@@ -39,10 +39,13 @@ import {
 const context = testContext();
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
+  [FeatureSwitchKey.ChatQuickSwitch]: true,
 } as const;
+const MAC_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36";
 const SEARCH_LABEL = "Search workspace...";
 
-async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
+async function openSearch(modifiers = { ctrlKey: false, metaKey: true }) {
   fireEvent.keyDown(document.body, {
     key: "f",
     code: "KeyF",
@@ -51,14 +54,15 @@ async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
   });
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
   const search = within(dialog).getByPlaceholderText(SEARCH_LABEL);
-  fireEvent.keyUp(search, { key: "Shift", ...modifiers, shiftKey: false });
+  fireEvent.keyUp(search, { key: "Shift" });
+  fireEvent.keyDown(search, { key: "Alt", altKey: true });
   return { dialog, search };
 }
 
-function numberedHints(dialog: HTMLElement): string[] {
+function shortcutHints(dialog: HTMLElement): string[] {
   return [...dialog.querySelectorAll("kbd")]
     .map((keycap) => {
-      return keycap.textContent?.match(/[1-9]$/)?.[0];
+      return keycap.textContent?.match(/[ASDFG]$/)?.[0];
     })
     .filter((text): text is string => {
       return text !== undefined;
@@ -165,8 +169,8 @@ test.each([
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
     modifiers: { metaKey: true, ctrlKey: false },
-    numberModifiers: { metaKey: true, ctrlKey: false },
-    firstHint: ["⌘1"],
+    shortcutModifiers: { altKey: true },
+    firstHint: ["⌥A"],
   },
   {
     caseId: 75,
@@ -174,20 +178,12 @@ test.each([
     userAgent:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
     modifiers: { metaKey: true, ctrlKey: false },
-    numberModifiers: { metaKey: true, ctrlKey: true },
-    firstHint: ["⌘⌃1"],
-  },
-  {
-    caseId: 76,
-    platform: "Windows",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    modifiers: { metaKey: false, ctrlKey: true },
-    numberModifiers: { metaKey: false, ctrlKey: true },
-    firstHint: ["Ctrl+1"],
+    shortcutModifiers: { altKey: true },
+    firstHint: ["⌥A"],
   },
 ])(
-  "Limit empty search to 25 current chats and open the ninth result on $platform",
-  async ({ caseId, userAgent, modifiers, numberModifiers, firstHint }) => {
+  "Limit empty search to 25 current chats and open the fifth result on $platform",
+  async ({ caseId, userAgent, modifiers, shortcutModifiers, firstHint }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
       return (
@@ -228,17 +224,7 @@ test.each([
     const { dialog, search } = await openSearch(modifiers);
     await waitFor(() => {
       expect(searchResultTitles(dialog)).toStrictEqual(expectedTitles);
-      expect(numberedHints(dialog)).toStrictEqual([
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-      ]);
+      expect(shortcutHints(dialog)).toStrictEqual(["A", "S", "D", "F", "G"]);
     });
     expect(
       [...queryAllByRoleFast("option", dialog)[0]!.querySelectorAll("kbd")].map(
@@ -247,32 +233,33 @@ test.each([
         },
       ),
     ).toStrictEqual(firstHint);
-    fireEvent.keyUp(search, { key: modifiers.metaKey ? "Meta" : "Control" });
+    fireEvent.keyUp(search, { key: "Alt" });
     await waitFor(() => {
-      expect(numberedHints(dialog)).toStrictEqual([]);
+      expect(shortcutHints(dialog)).toStrictEqual([]);
     });
     fireEvent.keyDown(search, {
-      key: modifiers.metaKey ? "Meta" : "Control",
-      ...modifiers,
+      key: "Alt",
+      altKey: true,
     });
     await waitFor(() => {
-      expect(numberedHints(dialog)).toHaveLength(9);
+      expect(shortcutHints(dialog)).toHaveLength(5);
     });
     fireEvent.keyDown(search, {
-      key: "9",
-      code: "Digit9",
-      ...numberModifiers,
+      key: "©",
+      code: "KeyG",
+      ...shortcutModifiers,
       shiftKey: false,
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
-      expect(pathname()).toBe(`/chats/${threads[23]!.id}`);
+      expect(pathname()).toBe(`/chats/${threads[27]!.id}`);
     });
     expect(screen.queryByTestId("chat-list-column")).toBeNull();
   },
 );
 
 test("Empty search follows the current agent and unread filter", async () => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -332,9 +319,9 @@ test("Empty search follows the current agent and unread filter", async () => {
     ]);
   });
   fireEvent.keyDown(search, {
-    key: "1",
-    code: "Digit1",
-    ctrlKey: true,
+    key: "å",
+    code: "KeyA",
+    altKey: true,
     shiftKey: false,
   });
   await waitFor(() => {
@@ -342,7 +329,8 @@ test("Empty search follows the current agent and unread filter", async () => {
   });
 });
 
-test("Search numbers follow fresh matches and restart after filtering", async () => {
+test("Search shortcuts follow fresh matches and restart after filtering", async () => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -384,13 +372,13 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
   const { dialog, search } = await openSearch();
   await fill(search, "budget");
-  fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
+  fireEvent.keyDown(search, { key: "Alt", altKey: true });
   await waitFor(() => {
     expect(searchResultTitles(dialog)).toStrictEqual([
       "Budget planning",
       "Project notes",
     ]);
-    expect(numberedHints(dialog)).toStrictEqual(["1", "2"]);
+    expect(shortcutHints(dialog)).toStrictEqual(["A", "S"]);
   });
   const messagesTab = queryAllByRoleFast("tab", dialog).find((tab) => {
     return tab.textContent === "Messages";
@@ -401,12 +389,12 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   click(messagesTab);
   await waitFor(() => {
     expect(searchResultTitles(dialog)).toStrictEqual(["Project notes"]);
-    expect(numberedHints(dialog)).toStrictEqual(["1"]);
+    expect(shortcutHints(dialog)).toStrictEqual(["A"]);
   });
   fireEvent.keyDown(search, {
-    key: "1",
-    code: "Digit1",
-    ctrlKey: true,
+    key: "å",
+    code: "KeyA",
+    altKey: true,
     shiftKey: false,
   });
   await waitFor(() => {
@@ -415,6 +403,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
 });
 
 test("Search shortcuts preserve typing and reset hints when focus is lost or the dialog closes", async () => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -433,20 +422,22 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
   });
   const { dialog, search } = await openSearch();
   await waitFor(() => {
-    expect(numberedHints(dialog)).toStrictEqual(["1"]);
+    expect(shortcutHints(dialog)).toStrictEqual(["A"]);
   });
   for (const ignored of [
     { isComposing: true },
     { keyCode: 229 },
     { repeat: true },
-    { altKey: true },
+    { altKey: false },
+    { ctrlKey: true },
+    { code: "Digit1" },
     { shiftKey: true },
     { metaKey: true },
   ]) {
     const event = new KeyboardEvent("keydown", {
-      key: "1",
-      code: "Digit1",
-      ctrlKey: true,
+      key: "å",
+      code: "KeyA",
+      altKey: true,
       shiftKey: false,
       bubbles: true,
       cancelable: true,
@@ -457,24 +448,24 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
     expect(dialog).toBeInTheDocument();
   }
   fireEvent.keyDown(search, {
-    key: "9",
-    code: "Digit9",
-    ctrlKey: true,
+    key: "q",
+    code: "KeyQ",
+    altKey: true,
     shiftKey: false,
   });
   expect(dialog).toBeInTheDocument();
   expect(search).toHaveValue("");
   fireEvent.blur(window);
   await waitFor(() => {
-    expect(numberedHints(dialog)).toStrictEqual([]);
+    expect(shortcutHints(dialog)).toStrictEqual([]);
   });
   search.focus();
-  await userEvent.keyboard("19");
-  expect(search).toHaveValue("19");
+  await userEvent.keyboard("asdfg");
+  expect(search).toHaveValue("asdfg");
   await fill(search, "");
-  fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
+  fireEvent.keyDown(search, { key: "Alt", altKey: true });
   await waitFor(() => {
-    expect(numberedHints(dialog)).toStrictEqual(["1"]);
+    expect(shortcutHints(dialog)).toStrictEqual(["A"]);
   });
   fireEvent.keyDown(search, { key: "Escape", code: "Escape" });
   await waitFor(() => {
@@ -485,7 +476,7 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
   await waitFor(() => {
     expect(searchResultTitles(reopened)).toStrictEqual(["First chat"]);
   });
-  expect(numberedHints(reopened)).toStrictEqual([]);
+  expect(shortcutHints(reopened)).toStrictEqual([]);
 });
 
 test.each([
@@ -497,14 +488,25 @@ test.each([
       "Budget review",
       "Budget report",
     ],
-    hints: ["1", "2", "3", "4"],
-    digit: "4",
+    hints: ["A", "S", "D", "F"],
+    shortcutKey: "f",
   },
-  { filter: "Agents", titles: ["Budget agent"], hints: ["1"], digit: "1" },
-  { filter: "Workflows", titles: ["Budget review"], hints: ["1"], digit: "1" },
+  {
+    filter: "Agents",
+    titles: ["Budget agent"],
+    hints: ["A"],
+    shortcutKey: "a",
+  },
+  {
+    filter: "Workflows",
+    titles: ["Budget review"],
+    hints: ["A"],
+    shortcutKey: "a",
+  },
 ])(
-  "Open a resource from numbered search results in $filter",
-  async ({ filter, titles, hints, digit }) => {
+  "Open a resource from keyboard search results in $filter",
+  async ({ filter, titles, hints, shortcutKey }) => {
+    context.mocks.browser.userAgent(MAC_USER_AGENT);
     context.mocks.browser.matchMedia((query) => {
       return (
         query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -524,7 +526,7 @@ test.each([
     });
     const { dialog, search } = await openSearch();
     await fill(search, "budget");
-    fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
+    fireEvent.keyDown(search, { key: "Alt", altKey: true });
     await waitFor(() => {
       expect(searchResultTitles(dialog)).toStrictEqual([
         "Budget planning",
@@ -532,7 +534,7 @@ test.each([
         "Budget review",
         "Budget report",
       ]);
-      expect(numberedHints(dialog)).toStrictEqual(["1", "2", "3", "4"]);
+      expect(shortcutHints(dialog)).toStrictEqual(["A", "S", "D", "F"]);
     });
     const tab = queryAllByRoleFast("tab", dialog).find((item) => {
       return item.textContent === filter;
@@ -543,12 +545,12 @@ test.each([
     click(tab);
     await waitFor(() => {
       expect(searchResultTitles(dialog)).toStrictEqual(titles);
-      expect(numberedHints(dialog)).toStrictEqual(hints);
+      expect(shortcutHints(dialog)).toStrictEqual(hints);
     });
     fireEvent.keyDown(search, {
-      key: digit,
-      code: `Digit${digit}`,
-      ctrlKey: true,
+      key: shortcutKey,
+      code: `Key${shortcutKey.toUpperCase()}`,
+      altKey: true,
       shiftKey: false,
     });
     const expectedPath =
@@ -569,6 +571,7 @@ test.each([
 );
 
 test("Disabling stable navigation restores activity order and workspace-wide search without shortcuts", async () => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -593,6 +596,7 @@ test("Disabling stable navigation restores activity order and workspace-wide sea
     ...workspace.pageOptions,
     featureSwitches: {
       [FeatureSwitchKey.StableChatThreadNavigation]: false,
+      [FeatureSwitchKey.ChatQuickSwitch]: true,
     },
   });
   await waitFor(() => {
@@ -609,11 +613,11 @@ test("Disabling stable navigation restores activity order and workspace-wide sea
       "Another agent's chat",
     ]);
   });
-  expect(numberedHints(dialog)).toStrictEqual([]);
+  expect(shortcutHints(dialog)).toStrictEqual([]);
   const event = new KeyboardEvent("keydown", {
-    key: "1",
-    code: "Digit1",
-    ctrlKey: true,
+    key: "å",
+    code: "KeyA",
+    altKey: true,
     shiftKey: false,
     bubbles: true,
     cancelable: true,

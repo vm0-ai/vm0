@@ -411,6 +411,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatQuickSwitch]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "On Mac, use Option+A/S/D/F/G to open the first five chats or search results, including while typing. Hold Option to show hints. These keys replace their normal special-character input while enabled. Requires stableChatThreadNavigation.",
+    enabled: false,
+  },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@okou.ai",
     description:

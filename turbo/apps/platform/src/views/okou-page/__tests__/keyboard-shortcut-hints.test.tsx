@@ -4,7 +4,6 @@ import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
-import { now } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { installContinuityWorkspace } from "./chat-continuity-test-helpers.ts";
@@ -17,6 +16,7 @@ import {
 const context = testContext();
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
+  [FeatureSwitchKey.ChatQuickSwitch]: true,
 } as const;
 const SEARCH_LABEL = "Search workspace...";
 
@@ -27,14 +27,14 @@ const platforms = [
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36",
     modifier: "Meta",
     hints: ["⌘⇧F", "⌘⇧O", "⌘B"],
-    threadHint: "⌘1",
+    threadHint: "⌥A",
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifier: "Control",
     hints: ["Ctrl+Shift+F", "Ctrl+Shift+O", "Ctrl+B"],
-    threadHint: "Ctrl+1",
+    threadHint: null,
   },
 ] as const;
 
@@ -80,13 +80,16 @@ test.each(platforms)(
     const searchHover = await screen.findByRole("tooltip", {
       name: `Search workspace ${hints[0]}`,
     });
-    const pressedAt = now();
     await user.keyboard(`{${modifier}>}`);
     expect(list.querySelectorAll("kbd")).toHaveLength(0);
+    const expectedThreadHints = threadHint ? [threadHint] : [];
     await waitFor(() => {
-      expect(within(list).getByText(threadHint)).toBeVisible();
+      expect(
+        [...list.querySelectorAll("kbd")].map((hint) => {
+          return hint.textContent;
+        }),
+      ).toStrictEqual(expectedThreadHints);
     });
-    expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
     expect(searchHover).toBeVisible();
     expect(composer).toHaveFocus();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -97,6 +100,11 @@ test.each(platforms)(
       name: `New chat ${hints[1]}`,
     });
     expect(newChatHover).toBeVisible();
+    expect(
+      [...list.querySelectorAll("kbd")].map((hint) => {
+        return hint.textContent;
+      }),
+    ).toStrictEqual(expectedThreadHints);
     await user.keyboard(`{/${modifier}}`);
     await waitFor(() => {
       expect(list.querySelectorAll("kbd")).toHaveLength(0);
@@ -150,49 +158,54 @@ test.each(platforms)(
   },
 );
 
-test("Hide thread hints when stable chat navigation is disabled and preserve action tooltips", async () => {
-  context.mocks.browser.matchMedia((query) => {
-    return (
-      query === "(min-width: 48rem)" || query === "(display-mode: standalone)"
+test.each([
+  FeatureSwitchKey.StableChatThreadNavigation,
+  FeatureSwitchKey.ChatQuickSwitch,
+])(
+  "Hide thread hints when %s is disabled and preserve action tooltips",
+  async (disabledSwitch) => {
+    context.mocks.browser.userAgent(platforms[0].userAgent);
+    context.mocks.browser.matchMedia((query) => {
+      return (
+        query === "(min-width: 48rem)" || query === "(display-mode: standalone)"
+      );
+    });
+    const workspace = installContinuityWorkspace(context, {
+      caseId: 62,
+      threads: [chatListThread(1, "Thread hints")],
+    });
+    const response = context.mocks.deferred<void>();
+    context.mocks.api(
+      featureSwitchesContract.get,
+      async ({ respond, withSignal }) => {
+        await withSignal(response.promise);
+        return respond(200, {
+          switches: { [disabledSwitch]: false },
+          effectiveSwitches: { ...featureSwitches, [disabledSwitch]: false },
+        });
+      },
     );
-  });
-  const workspace = installContinuityWorkspace(context, {
-    caseId: 62,
-    threads: [chatListThread(1, "Thread hints")],
-  });
-  const response = context.mocks.deferred<void>();
-  context.mocks.api(
-    featureSwitchesContract.get,
-    async ({ respond, withSignal }) => {
-      await withSignal(response.promise);
-      return respond(200, {
-        switches: { [FeatureSwitchKey.StableChatThreadNavigation]: false },
-        effectiveSwitches: {
-          [FeatureSwitchKey.StableChatThreadNavigation]: false,
-        },
-      });
-    },
-  );
-  await setupPage({
-    context,
-    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    ...workspace.pageOptions,
-    cachedFeatureSwitches: featureSwitches,
-  });
-  await screen.findByRole("textbox", { name: "Message" });
-  const list = screen.getByTestId("chat-list-column");
-  const user = userEvent.setup();
-  await user.keyboard("{Control>}");
-  await waitFor(() => {
-    expect(within(list).getByText("Ctrl+1")).toBeVisible();
-  });
-  response.resolve(undefined);
-  await waitFor(() => {
-    expect(list.querySelectorAll("kbd")).toHaveLength(0);
-  });
-  await user.keyboard("{/Control}");
-  await user.hover(fastButton("New chat", list));
-  await expect(
-    screen.findByRole("tooltip", { name: "New chat Ctrl+Shift+O" }),
-  ).resolves.toBeVisible();
-});
+    await setupPage({
+      context,
+      path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
+      ...workspace.pageOptions,
+      cachedFeatureSwitches: featureSwitches,
+    });
+    await screen.findByRole("textbox", { name: "Message" });
+    const list = screen.getByTestId("chat-list-column");
+    const user = userEvent.setup();
+    await user.keyboard("{Meta>}");
+    await waitFor(() => {
+      expect(within(list).getByText("⌥A")).toBeVisible();
+    });
+    response.resolve(undefined);
+    await waitFor(() => {
+      expect(list.querySelectorAll("kbd")).toHaveLength(0);
+    });
+    await user.keyboard("{/Meta}");
+    await user.hover(fastButton("New chat", list));
+    await expect(
+      screen.findByRole("tooltip", { name: "New chat ⌘⇧O" }),
+    ).resolves.toBeVisible();
+  },
+);

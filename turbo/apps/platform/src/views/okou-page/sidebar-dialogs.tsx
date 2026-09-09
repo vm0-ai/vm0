@@ -67,10 +67,11 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  threadNumberShortcutsEnabled$,
-  threadNumberShortcutIndex$,
-} from "../../signals/okou-page/thread-number-shortcuts.ts";
-import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
+  THREAD_QUICK_SWITCH_KEYS,
+  threadQuickSwitchEnabled$,
+  threadQuickSwitchIndex$,
+} from "../../signals/okou-page/thread-quick-switch.ts";
+import { ThreadQuickSwitchHint } from "./thread-quick-switch-hint.tsx";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import {
@@ -499,11 +500,11 @@ function ChatMessageSnippet({
 function SpotlightRowMeta({
   indicator,
   timestamp,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly timestamp: string;
-  readonly shortcutNumber: number | undefined;
+  readonly shortcutIndex: number | undefined;
 }) {
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2.5">
@@ -513,7 +514,7 @@ function SpotlightRowMeta({
         <ChatThreadCommandIndicator indicator={indicator} />
       </span>
       <span className="text-xs text-[hsl(var(--gray-700))]">{timestamp}</span>
-      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+      <ThreadQuickSwitchHint shortcutIndex={shortcutIndex} />
     </span>
   );
 }
@@ -532,12 +533,12 @@ function SpotlightThreadCommandItem({
   thread,
   indicator,
   onSelect,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   readonly thread: WorkspaceSearchChatThread;
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
-  readonly shortcutNumber: number | undefined;
+  readonly shortcutIndex: number | undefined;
 }) {
   return (
     <CommandItem
@@ -554,7 +555,7 @@ function SpotlightThreadCommandItem({
         {thread.title}
       </span>
       <SpotlightRowMeta
-        shortcutNumber={shortcutNumber}
+        shortcutIndex={shortcutIndex}
         indicator={indicator}
         timestamp={formatRelativeTimestamp(thread.sortAt)}
       />
@@ -567,13 +568,13 @@ function SpotlightMessageCommandItem({
   thread,
   indicator,
   onSelect,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   readonly message: ChatSearchResult;
   readonly thread: WorkspaceSearchChatThread | undefined;
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
-  readonly shortcutNumber: number | undefined;
+  readonly shortcutIndex: number | undefined;
 }) {
   const title = thread?.title ?? message.agentName;
 
@@ -597,7 +598,7 @@ function SpotlightMessageCommandItem({
         <ChatMessageSnippet message={message} />
       </span>
       <SpotlightRowMeta
-        shortcutNumber={shortcutNumber}
+        shortcutIndex={shortcutIndex}
         indicator={indicator}
         timestamp={formatRelativeTimestamp(message.matchedMessage.createdAt)}
       />
@@ -612,11 +613,11 @@ const SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX = 64;
 function SpotlightAgentCommandItem({
   agent,
   onSelect,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   readonly agent: SubagentInfo;
   readonly onSelect: () => void;
-  readonly shortcutNumber: number | undefined;
+  readonly shortcutIndex: number | undefined;
 }) {
   return (
     <CommandItem
@@ -632,7 +633,7 @@ function SpotlightAgentCommandItem({
       <span className="min-w-0 flex-1 truncate text-left text-sm text-foreground">
         {agentDialogLabel(agent)}
       </span>
-      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+      <ThreadQuickSwitchHint shortcutIndex={shortcutIndex} />
     </CommandItem>
   );
 }
@@ -640,11 +641,11 @@ function SpotlightAgentCommandItem({
 function SpotlightWorkflowCommandItem({
   workflow,
   onSelect,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   readonly workflow: WorkflowSummary;
   readonly onSelect: () => void;
-  readonly shortcutNumber: number | undefined;
+  readonly shortcutIndex: number | undefined;
 }) {
   const title = workflow.displayName ?? workflow.name;
   return (
@@ -663,7 +664,7 @@ function SpotlightWorkflowCommandItem({
         </span>
       </span>
       <SpotlightRowMeta
-        shortcutNumber={shortcutNumber}
+        shortcutIndex={shortcutIndex}
         indicator={null}
         timestamp={formatRelativeTimestamp(workflow.createdAt)}
       />
@@ -769,11 +770,11 @@ function SpotlightArtifactThumbnail({
 function SpotlightArtifactCommandItem({
   artifact,
   onSelect,
-  shortcutNumber,
+  shortcutIndex,
 }: {
   readonly artifact: ThreeColumnArtifactSearchItem;
   readonly onSelect: () => void;
-  readonly shortcutNumber: number | undefined;
+  readonly shortcutIndex: number | undefined;
 }) {
   return (
     <CommandItem
@@ -791,7 +792,7 @@ function SpotlightArtifactCommandItem({
         </span>
       </span>
       <SpotlightRowMeta
-        shortcutNumber={shortcutNumber}
+        shortcutIndex={shortcutIndex}
         indicator={null}
         timestamp={formatRelativeTimestamp(artifact.createdAt)}
       />
@@ -1043,9 +1044,11 @@ function SpotlightSearchResults({
   onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
-  const numberShortcutsEnabled = useGet(threadNumberShortcutsEnabled$);
-  const shortcutNumber = (index: number) => {
-    return numberShortcutsEnabled && index < 9 ? index + 1 : undefined;
+  const quickSwitchEnabled = useGet(threadQuickSwitchEnabled$);
+  const shortcutIndex = (index: number) => {
+    return quickSwitchEnabled && index < THREAD_QUICK_SWITCH_KEYS.length
+      ? index
+      : undefined;
   };
 
   return (
@@ -1061,7 +1064,7 @@ function SpotlightSearchResults({
         {threads.map((thread, index) => {
           return (
             <SpotlightThreadCommandItem
-              shortcutNumber={shortcutNumber(index)}
+              shortcutIndex={shortcutIndex(index)}
               key={thread.id}
               thread={thread}
               indicator={chatThreadCommandIndicator(
@@ -1078,7 +1081,7 @@ function SpotlightSearchResults({
         {messages.map((message, index) => {
           return (
             <SpotlightMessageCommandItem
-              shortcutNumber={shortcutNumber(threads.length + index)}
+              shortcutIndex={shortcutIndex(threads.length + index)}
               key={`${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
               message={message}
               thread={threadMap.get(message.chatThreadId)}
@@ -1096,7 +1099,7 @@ function SpotlightSearchResults({
         {agents.map((agent, index) => {
           return (
             <SpotlightAgentCommandItem
-              shortcutNumber={shortcutNumber(
+              shortcutIndex={shortcutIndex(
                 threads.length + messages.length + index,
               )}
               key={agent.agentId}
@@ -1110,7 +1113,7 @@ function SpotlightSearchResults({
         {workflows.map((workflow, index) => {
           return (
             <SpotlightWorkflowCommandItem
-              shortcutNumber={shortcutNumber(
+              shortcutIndex={shortcutIndex(
                 threads.length + messages.length + agents.length + index,
               )}
               key={workflow.id}
@@ -1124,7 +1127,7 @@ function SpotlightSearchResults({
         {artifacts.map((artifact, index) => {
           return (
             <SpotlightArtifactCommandItem
-              shortcutNumber={shortcutNumber(
+              shortcutIndex={shortcutIndex(
                 threads.length +
                   messages.length +
                   agents.length +
@@ -1196,7 +1199,7 @@ export function ThreeColumnSearchDialog({
   const filter = useGet(threeColumnSearchFilter$);
   const setFilter = useSet(setThreeColumnSearchFilter$);
   const threadLoadable = useLoadable(threeColumnSearchChatThreads$);
-  const shortcutIndex = useSet(threadNumberShortcutIndex$);
+  const shortcutIndex = useSet(threadQuickSwitchIndex$);
   const threadMap = useGet(workspaceSearchChatThreadMap$);
   const messageLoadable = useLoadable(workspaceSearchChatMessages$);
   const agentLoadable = useLoadable(threeColumnAgentSearchResults$);

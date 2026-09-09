@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   ChatThinkingSpinner = "chatThinkingSpinner",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   StableChatThreadNavigation = "stableChatThreadNavigation",
+  ChatQuickSwitch = "chatQuickSwitch",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   FeishuIntegration = "_feishuIntegration",
