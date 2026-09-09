@@ -458,8 +458,7 @@ test("Preserve every message during a burst of realtime notifications", async ()
   owner.abort();
 });
 
-test("Do not show a false connection failure for a hidden tab", () => {
-  context.mocks.browser.visibilityState("hidden");
+test("Report the current shared database connection status", () => {
   context.store.set(writeConnectionDiagnostic$, {
     action: "set-enabled",
     enabled: true,

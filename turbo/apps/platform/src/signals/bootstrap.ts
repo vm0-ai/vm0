@@ -102,7 +102,6 @@ import {
 } from "./external/feature-switch.ts";
 import { clearRetiredPinnedAgentStorage$ } from "./external/retired-pinned-agent-storage.ts";
 import {
-  setupBrowserLifecycleDiagnostics$,
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "./connection-diagnostics.ts";
@@ -588,7 +587,7 @@ export const bootstrap$ = command(
   ): BootstrapRuntime => {
     set(clearRetiredPinnedAgentStorage$);
     set(initializeAppVersion$, appVersion);
-    set(initBootstrapPhaseTiming$, signal);
+    set(initBootstrapPhaseTiming$);
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);
     set(setRootSignal$, signal);
@@ -614,7 +613,6 @@ export const bootstrap$ = command(
     // authenticated services, so their initial Clerk and Ably waits are kept
     // even while remote feature-switch hydration is still pending.
     set(setupConnectionDiagnostics$, signal);
-    set(setupBrowserLifecycleDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,

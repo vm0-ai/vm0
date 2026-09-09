@@ -16,29 +16,14 @@ const refreshAttachmentUrls$ = command(({ set }) => {
   });
 });
 
-const scheduleAttachmentUrlRefresh$ = command(
+export const setupAttachmentUrlRefresh$ = command(
   ({ set }, signal: AbortSignal) => {
     timeout(
       () => {
         set(refreshAttachmentUrls$);
-        set(scheduleAttachmentUrlRefresh$, signal);
+        set(setupAttachmentUrlRefresh$, signal);
       },
       10 * 60 * 1000,
-      { signal },
-    );
-  },
-);
-
-export const setupAttachmentUrlRefresh$ = command(
-  ({ set }, signal: AbortSignal) => {
-    set(scheduleAttachmentUrlRefresh$, signal);
-    document.addEventListener(
-      "visibilitychange",
-      () => {
-        if (document.visibilityState === "visible") {
-          set(refreshAttachmentUrls$);
-        }
-      },
       { signal },
     );
   },

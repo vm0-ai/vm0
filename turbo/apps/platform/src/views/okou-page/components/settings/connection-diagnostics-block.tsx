@@ -64,31 +64,6 @@ function ConnectionDiagnosticsSummary({
             })}
             : {channelState}
           </span>
-          <span className="okou-badge rounded-md px-2 py-0.5">
-            {diagnostics.snapshot.visibilityState}
-          </span>
-          <span className="okou-badge rounded-md px-2 py-0.5">
-            {diagnostics.snapshot.online
-              ? t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .online;
-                })
-              : t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .offline;
-                })}
-          </span>
-          <span className="okou-badge rounded-md px-2 py-0.5">
-            {diagnostics.snapshot.focused
-              ? t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .focused;
-                })
-              : t(($) => {
-                  return $.settings.preferences.debug.connectionDiagnostics
-                    .blurred;
-                })}
-          </span>
         </span>
       </span>
       <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground group-open:hidden" />

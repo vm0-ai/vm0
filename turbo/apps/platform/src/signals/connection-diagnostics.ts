@@ -9,11 +9,6 @@ const CONNECTION_DIAGNOSTIC_EVENT = "vm0:connection-diagnostic";
 // The Worker publishes its own capture over the shared database bridge, so the
 // diagnostics shape is a wire format and Zod owns it.
 const connectionDiagnosticEventNameSchema = z.enum([
-  "lifecycle.blur",
-  "lifecycle.focus",
-  "lifecycle.network",
-  "lifecycle.snapshot",
-  "lifecycle.visibility",
   "realtime.auth-callback",
   "realtime.channel",
   "realtime.client",
@@ -67,16 +62,12 @@ type ConnectionDiagnosticChannelState = z.infer<
   typeof connectionDiagnosticChannelStateSchema
 >;
 
-const visibilityStateSchema = z.enum(["hidden", "visible"]);
-
 const connectionDiagnosticDetailsSchema = z
   .object({
     channelState: connectionDiagnosticChannelStateSchema.optional(),
     connectionState: connectionDiagnosticConnectionStateSchema.optional(),
     errorCode: z.union([z.number(), z.string()]).optional(),
     errorMessage: z.string().optional(),
-    focused: z.boolean().optional(),
-    online: z.boolean().optional(),
     pendingSubscriberCount: z.number().optional(),
     previousChannelState: connectionDiagnosticChannelStateSchema.optional(),
     previousConnectionState:
@@ -85,17 +76,6 @@ const connectionDiagnosticDetailsSchema = z
     statusCode: z.number().optional(),
     subscriberCount: z.number().optional(),
     subscriptionKind: z.enum(["channel", "payload", "topic"]).optional(),
-    trigger: z
-      .enum([
-        "blur",
-        "focus",
-        "initial",
-        "offline",
-        "online",
-        "visibilitychange",
-      ])
-      .optional(),
-    visibilityState: visibilityStateSchema.optional(),
   })
   .strict()
   .readonly();
@@ -162,9 +142,6 @@ export const connectionDiagnosticsSchema = z
       .object({
         channelState: connectionDiagnosticChannelStateSchema.nullable(),
         connectionState: connectionDiagnosticConnectionStateSchema.nullable(),
-        focused: z.boolean(),
-        online: z.boolean(),
-        visibilityState: visibilityStateSchema,
       })
       .strict()
       .readonly(),
@@ -185,34 +162,6 @@ const connectionDiagnosticState$ = state<ConnectionDiagnosticState>({
   events: [],
   nextSequence: 1,
 });
-
-function runtimeBrowserState(): {
-  readonly focused: boolean;
-  readonly online: boolean;
-  readonly visibilityState: DocumentVisibilityState;
-} {
-  return {
-    focused:
-      typeof document === "undefined" ? true : globalThis.document.hasFocus(),
-    online: typeof navigator === "undefined" ? true : navigator.onLine,
-    visibilityState:
-      typeof document === "undefined"
-        ? "visible"
-        : globalThis.document.visibilityState,
-  };
-}
-
-function browserDetails(
-  trigger: NonNullable<ConnectionDiagnosticDetails["trigger"]>,
-): ConnectionDiagnosticDetails {
-  const state = runtimeBrowserState();
-  return {
-    focused: state.focused,
-    online: state.online,
-    trigger,
-    visibilityState: state.visibilityState,
-  };
-}
 
 function sanitizeDiagnosticText(value: string): string {
   return value
@@ -245,8 +194,6 @@ function sanitizeDiagnosticDetails(
       details.errorMessage === undefined
         ? undefined
         : sanitizeDiagnosticText(details.errorMessage),
-    focused: details.focused,
-    online: details.online,
     pendingSubscriberCount: details.pendingSubscriberCount,
     previousChannelState: details.previousChannelState,
     previousConnectionState: details.previousConnectionState,
@@ -254,8 +201,6 @@ function sanitizeDiagnosticDetails(
     statusCode: details.statusCode,
     subscriberCount: details.subscriberCount,
     subscriptionKind: details.subscriptionKind,
-    trigger: details.trigger,
-    visibilityState: details.visibilityState,
   };
 }
 
@@ -312,20 +257,12 @@ export const writeConnectionDiagnostic$ = command(
         return;
       }
 
-      const enabledState: ConnectionDiagnosticState = {
+      set(connectionDiagnosticState$, {
         captureStartedAtMs: now(),
         enabled: true,
         events: [],
         nextSequence: 1,
-      };
-      set(
-        connectionDiagnosticState$,
-        appendDiagnosticEvent(enabledState, {
-          details: browserDetails("initial"),
-          event: "lifecycle.snapshot",
-          phase: "instant",
-        }),
-      );
+      });
       return;
     }
 
@@ -373,8 +310,6 @@ function activeDiagnosticWaits(
 export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
   const current = get(connectionDiagnosticState$);
   const activeWaits = activeDiagnosticWaits(current.events);
-  const states = latestConnectionStates(current.events);
-  const browserState = runtimeBrowserState();
   return {
     activeWaits,
     capacity: MAX_CONNECTION_DIAGNOSTIC_EVENTS,
@@ -384,12 +319,7 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
         : new Date(current.captureStartedAtMs).toISOString(),
     enabled: current.enabled,
     events: current.events,
-    snapshot: {
-      ...states,
-      focused: browserState.focused,
-      online: browserState.online,
-      visibilityState: browserState.visibilityState,
-    },
+    snapshot: latestConnectionStates(current.events),
   };
 });
 
@@ -456,67 +386,6 @@ export const setupConnectionDiagnostics$ = command(
     globalThis.addEventListener(
       CONNECTION_DIAGNOSTIC_EVENT,
       handleDiagnosticEvent,
-      { signal },
-    );
-  },
-);
-
-/** Browser lifecycle signals that only a page can observe. */
-export const setupBrowserLifecycleDiagnostics$ = command(
-  (_ctx, signal: AbortSignal): void => {
-    globalThis.document.addEventListener(
-      "visibilitychange",
-      () => {
-        publishConnectionDiagnostic({
-          details: browserDetails("visibilitychange"),
-          event: "lifecycle.visibility",
-          phase: "instant",
-        });
-      },
-      { signal },
-    );
-    globalThis.window.addEventListener(
-      "focus",
-      () => {
-        publishConnectionDiagnostic({
-          details: browserDetails("focus"),
-          event: "lifecycle.focus",
-          phase: "instant",
-        });
-      },
-      { signal },
-    );
-    globalThis.window.addEventListener(
-      "blur",
-      () => {
-        publishConnectionDiagnostic({
-          details: browserDetails("blur"),
-          event: "lifecycle.blur",
-          phase: "instant",
-        });
-      },
-      { signal },
-    );
-    globalThis.window.addEventListener(
-      "online",
-      () => {
-        publishConnectionDiagnostic({
-          details: browserDetails("online"),
-          event: "lifecycle.network",
-          phase: "instant",
-        });
-      },
-      { signal },
-    );
-    globalThis.window.addEventListener(
-      "offline",
-      () => {
-        publishConnectionDiagnostic({
-          details: browserDetails("offline"),
-          event: "lifecycle.network",
-          phase: "instant",
-        });
-      },
       { signal },
     );
   },

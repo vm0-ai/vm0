@@ -178,10 +178,6 @@ interface BrowserMatchMediaMock {
   ) => void;
 }
 
-interface BrowserVisibilityStateMock {
-  readonly changeTo: (visibilityState: DocumentVisibilityState) => void;
-}
-
 interface ImageDimensionsMockValue {
   width: number;
   height: number;
@@ -552,28 +548,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       languages: (languages: readonly string[]): void => {
         vi.spyOn(navigator, "languages", "get").mockReturnValue([...languages]);
-      },
-      visibilityState: (
-        visibilityState: DocumentVisibilityState,
-      ): BrowserVisibilityStateMock => {
-        const descriptor = defineWindowProperty(
-          document,
-          "visibilityState",
-          visibilityState,
-        );
-        restoreOnAbort(getSignal(), () => {
-          restoreWindowProperty(document, "visibilityState", descriptor);
-        });
-        return {
-          changeTo(nextVisibilityState): void {
-            defineWindowProperty(
-              document,
-              "visibilityState",
-              nextVisibilityState,
-            );
-            document.dispatchEvent(new Event("visibilitychange"));
-          },
-        };
       },
       cookie: (cookie: string): void => {
         vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);

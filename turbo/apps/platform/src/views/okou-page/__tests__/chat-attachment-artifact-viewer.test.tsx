@@ -461,13 +461,10 @@ test("Image navigation remains inside its split-view chat", async () => {
   );
 });
 
-test("Private HTML links open an isolated preview and refresh without exposing a share URL", async () => {
+test("Private HTML links open isolated previews without exposing a share URL", async () => {
   const deploymentId = "00000000-0000-4000-8000-000000000009";
   const canonicalUrl = `http://localhost/api/host/private-deployments/${deploymentId}/view#slide-2`;
   const firstPreview = `https://pv-${"a".repeat(48)}.sites.vm7.io/`;
-  const nextPreview = `https://pv-${"b".repeat(48)}.sites.vm7.io/`;
-  let currentPreview = firstPreview;
-  const visibility = context.mocks.browser.visibilityState("visible");
   mockAttachmentChat(context, {
     chatEvents: [assistantMessage(`[Private report](${canonicalUrl})`)],
     artifacts: [
@@ -481,7 +478,7 @@ test("Private HTML links open an isolated preview and refresh without exposing a
   });
   context.mocks.api(hostContract.privatePreview, ({ respond }) => {
     return respond(200, {
-      url: currentPreview,
+      url: firstPreview,
       expiresAt: "2099-01-01T00:00:00.000Z",
     });
   });
@@ -500,13 +497,5 @@ test("Private HTML links open an isolated preview and refresh without exposing a
     expect(
       within(sidebar).getByTestId("artifact-sidebar-body-html"),
     ).toHaveAttribute("src", `${firstPreview}#slide-2`);
-  });
-  currentPreview = nextPreview;
-  visibility.changeTo("hidden");
-  visibility.changeTo("visible");
-  await waitFor(() => {
-    expect(
-      within(sidebar).getByTestId("artifact-sidebar-body-html"),
-    ).toHaveAttribute("src", `${nextPreview}#slide-2`);
   });
 });

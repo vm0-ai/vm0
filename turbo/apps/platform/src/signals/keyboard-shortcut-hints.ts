@@ -77,15 +77,6 @@ export const setupKeyboardShortcutHints$ = command(
       signal,
     });
     window.addEventListener("blur", clearModifiers, { signal });
-    document.addEventListener(
-      "visibilitychange",
-      onDomEventFn(() => {
-        if (document.visibilityState === "hidden") {
-          set(hideKeyboardShortcutHints$);
-        }
-      }),
-      { signal },
-    );
     signal.addEventListener("abort", clearModifiers, { once: true });
   },
 );

@@ -162,13 +162,12 @@ test.each([
   },
 );
 
-test("Cancel a short hold and clear hints on release, blur, and visibility loss", async () => {
+test("Cancel a short hold and clear hints on release and blur", async () => {
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
     );
   });
-  const visibility = context.mocks.browser.visibilityState("visible");
   const thread = chatListThread(1, "Hold lifecycle");
   const workspace = installContinuityWorkspace(context, {
     caseId: 41,
@@ -201,12 +200,10 @@ test("Cancel a short hold and clear hints on release, blur, and visibility loss"
   await waitFor(() => {
     expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
   });
-  visibility.changeTo("hidden");
+  await user.keyboard("{/Control}");
   await waitFor(() => {
     expect(hintKeys(list)).toStrictEqual([]);
   });
-  visibility.changeTo("visible");
-  await user.keyboard("{/Control}");
 });
 
 test("Keep browser mode free of number shortcuts and react to display mode changes", async () => {

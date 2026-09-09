@@ -1700,10 +1700,9 @@ test("Sign out from the account menu", async () => {
   });
 });
 
-test("Keep an active session open when background auth recovery fails", async () => {
+test("Keep an active session open when provider loading remains unauthorized", async () => {
   mockAdminAccountSidebar();
   context.mocks.data.personalModelProviders([connectedPersonalCodexProvider()]);
-  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
 
   context.mocks.api(personalModelProvidersMainContract.list, ({ respond }) => {
     return respond(401, {

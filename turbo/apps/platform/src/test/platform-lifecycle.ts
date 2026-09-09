@@ -19,6 +19,7 @@ const runLifecycle = new Function(
 /** Runs the deployed HTML script, with document disposal owned by the test. */
 export function installPlatformLifecycle(signal: AbortSignal): void {
   signal.throwIfAborted();
+  const platformWindow = window;
   class DocumentAbortController extends AbortController {
     constructor() {
       super();
@@ -31,11 +32,11 @@ export function installPlatformLifecycle(signal: AbortSignal): void {
       );
     }
   }
-  runLifecycle(window, DocumentAbortController);
+  runLifecycle(platformWindow, DocumentAbortController);
   signal.addEventListener(
     "abort",
     () => {
-      delete window._okou;
+      delete platformWindow._okou;
     },
     { once: true },
   );
