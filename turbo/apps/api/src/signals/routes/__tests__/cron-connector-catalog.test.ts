@@ -3289,20 +3289,23 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([initial, replacement], replacement));
     await syncCatalog();
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: run.runId,
-        target: { kind: "custom", customConnectorId: custom.id },
-      },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: expect.arrayContaining([
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({
+            runId: run.runId,
+            target: { kind: "custom", customConnectorId: custom.id },
+          }),
+          encoding: "json",
+        },
+      ]),
+    });
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await syncCatalog();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      expect.anything(),
-    );
+    expect(context.mocks.ably.batchPublish).not.toHaveBeenCalled();
   }, 15_000);
 
   it("composes accepted connector and local model-provider runner firewalls", async () => {
