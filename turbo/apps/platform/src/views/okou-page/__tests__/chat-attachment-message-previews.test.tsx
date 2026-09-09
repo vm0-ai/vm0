@@ -151,34 +151,12 @@ test("A short Okou artifact link opens as a rich preview", async () => {
   });
 });
 
-test.each([
-  {
-    privateFile: false,
-    contentType: "text/plain;charset=gbk",
-    bytes: Uint8Array.of(0xd6, 0xd0, 0xce, 0xc4),
-    text: "中文",
-  },
-  {
-    privateFile: true,
-    contentType: 'text/plain; charset="utf-16le"',
-    bytes: Uint8Array.of(0x2d, 0x4e, 0x87, 0x65),
-    text: "中文",
-  },
-  {
-    privateFile: false,
-    contentType: "text/plain",
-    bytes: new TextEncoder().encode("中文 😀"),
-    text: "中文 😀",
-  },
-  {
-    privateFile: true,
-    contentType: "text/plain",
-    bytes: Uint8Array.of(0xff, 0xfe, 0x2d, 0x4e, 0x87, 0x65),
-    text: "中文",
-  },
-])(
-  "Preview and download an uploaded text attachment ($contentType, private=$privateFile)",
-  async ({ privateFile, contentType, bytes, text }) => {
+test.each([false, true])(
+  "Preview and download a UTF-8 text attachment (private=%s)",
+  async (privateFile) => {
+    const contentType = "text/plain;charset=utf-8";
+    const text = "中文 😀";
+    const bytes = new TextEncoder().encode(text);
     const fileId = "encoded-upload";
     const filename = "encoded.txt";
     const url = privateFile

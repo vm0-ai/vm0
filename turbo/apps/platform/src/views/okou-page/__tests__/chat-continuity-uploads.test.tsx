@@ -423,7 +423,7 @@ test("Wait for an attachment upload before sending the draft", async () => {
   });
 });
 
-test("Upload original bytes with validated or explicitly declared text encodings", async () => {
+test("Upload original bytes with default or supplied Content-Type parameters", async () => {
   const thread = continuityThread(51, 1, "Text upload encodings");
   const workspace = installContinuityWorkspace(context, {
     caseId: 51,
@@ -474,12 +474,10 @@ test("Upload original bytes with validated or explicitly declared text encodings
       type: "text/plain; charset=utf-16le",
     },
     {
-      file: new File([Uint8Array.of(0x2d, 0x4e, 0, 0)], "undeclared-utf16.txt"),
-      type: "text/plain",
-    },
-    {
-      file: new File([Uint8Array.of(0xd6, 0xd0)], "undeclared-gbk.txt"),
-      type: "text/plain",
+      file: new File(["wrapped text"], "flowed.txt", {
+        type: "text/plain; format=flowed",
+      }),
+      type: "text/plain; format=flowed",
     },
     {
       file: new File(["中文 😀"], "unknown.custom"),
@@ -507,83 +505,69 @@ test("Upload original bytes with validated or explicitly declared text encodings
   }
 });
 
-test.each([false, true])(
-  "Validate the entire multipart text upload (invalid suffix: %s)",
-  async (invalidSuffix) => {
-    const thread = continuityThread(52, 1, "Multipart text encoding");
-    const workspace = installContinuityWorkspace(context, {
-      caseId: 52,
-      threads: [thread],
-    });
-    const filename = "large.txt";
-    const partSize = 5 * 1024 * 1024;
-    const file = new File(
-      [
-        "a".repeat(partSize - 1),
-        "中文😀",
-        invalidSuffix ? Uint8Array.of(0xd6) : "",
-      ],
+test("Preserve bytes and the prepared Content-Type in multipart text uploads", async () => {
+  const thread = continuityThread(52, 1, "Multipart text encoding");
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 52,
+    threads: [thread],
+  });
+  const filename = "large.txt";
+  const partSize = 5 * 1024 * 1024;
+  const file = new File(["a".repeat(partSize - 1), "中文😀"], filename, {
+    type: "text/plain",
+  });
+  const expectedType = "text/plain;charset=utf-8";
+  const parts: ArrayBuffer[] = [];
+  const headers: (string | null)[] = [];
+  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
+    expect(body.contentType).toBe("text/plain; charset=utf-8");
+    expect(body.multipart).toBeTruthy();
+    return respond(200, {
+      id: uploadId(52, 1),
       filename,
-      { type: "text/plain" },
-    );
-    const expectedType = invalidSuffix
-      ? "text/plain"
-      : "text/plain; charset=utf-8";
-    const parts: ArrayBuffer[] = [];
-    const headers: (string | null)[] = [];
-    context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
-      expect(body.contentType).toBe(expectedType);
-      expect(body.multipart).toBeTruthy();
-      return respond(200, {
-        id: uploadId(52, 1),
-        filename,
-        contentType: body.contentType,
-        size: body.size,
-        url: "https://cdn.vm7.io/large.txt",
-        multipart: {
-          uploadId: "text-upload",
-          partSize,
-          parts: [1, 2].map((partNumber) => {
-            return {
-              partNumber,
-              uploadUrl: `https://uploads.vm7.test/52/${partNumber}`,
-            };
-          }),
-        },
-      });
-    });
-    context.mocks.http.put(
-      "https://uploads.vm7.test/52/*",
-      async ({ request }) => {
-        parts.push(await request.arrayBuffer());
-        headers.push(request.headers.get("content-type"));
-        return new HttpResponse(null, { status: 200 });
+      contentType: expectedType,
+      size: body.size,
+      url: "https://cdn.vm7.io/large.txt",
+      multipart: {
+        uploadId: "text-upload",
+        partSize,
+        parts: [1, 2].map((partNumber) => {
+          return {
+            partNumber,
+            uploadUrl: `https://uploads.vm7.test/52/${partNumber}`,
+          };
+        }),
       },
-    );
-    context.mocks.api(
-      uploadsContract.completeMultipart,
-      ({ body, respond }) => {
-        return respond(200, {
-          id: body.id,
-          url: "https://cdn.vm7.io/large.txt",
-        });
-      },
-    );
-    await setupPage({
-      context,
-      path: `/chats/${thread.id}`,
-      ...workspace.pageOptions,
     });
-    await messageComposer();
-    await userEvent.upload(composerFileInput(), file);
-    await waitFor(() => {
-      expect(fastButton(`Remove ${filename}`)).toBeVisible();
+  });
+  context.mocks.http.put(
+    "https://uploads.vm7.test/52/*",
+    async ({ request }) => {
+      parts.push(await request.arrayBuffer());
+      headers.push(request.headers.get("content-type"));
+      return new HttpResponse(null, { status: 200 });
+    },
+  );
+  context.mocks.api(uploadsContract.completeMultipart, ({ body, respond }) => {
+    return respond(200, {
+      id: body.id,
+      url: "https://cdn.vm7.io/large.txt",
     });
-    expect(headers).toStrictEqual([expectedType, expectedType]);
-    await expect(
-      crypto.subtle.digest("SHA-256", await new Blob(parts).arrayBuffer()),
-    ).resolves.toStrictEqual(
-      await crypto.subtle.digest("SHA-256", await file.arrayBuffer()),
-    );
-  },
-);
+  });
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    ...workspace.pageOptions,
+  });
+  await messageComposer();
+  await userEvent.upload(composerFileInput(), file);
+  await waitFor(() => {
+    expect(fastButton(`Remove ${filename}`)).toBeVisible();
+  });
+  expect(headers).toStrictEqual([expectedType, expectedType]);
+  await expect(
+    crypto.subtle.digest("SHA-256", await new Blob(parts).arrayBuffer()),
+  ).resolves.toStrictEqual(
+    await crypto.subtle.digest("SHA-256", await file.arrayBuffer()),
+  );
+});

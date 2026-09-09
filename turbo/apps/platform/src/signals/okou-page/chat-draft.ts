@@ -1,5 +1,4 @@
 import { fetchResource } from "../../lib/resource-fetch.ts";
-import { textUploadContentType } from "../../lib/text-upload.ts";
 import {
   command,
   computed,
@@ -188,14 +187,33 @@ function uploadContentTypeByExtension(ext: string): string | undefined {
 }
 
 function inferUploadContentType(file: File): string {
-  const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
-  if (explicitType && explicitType !== "application/octet-stream") {
-    return file.type.trim();
-  }
+  const explicitType = file.type.trim();
   const ext = file.name.split(".").pop()?.toLowerCase();
-  return ext
-    ? (uploadContentTypeByExtension(ext) ?? "application/octet-stream")
-    : "application/octet-stream";
+  const contentType =
+    explicitType && explicitType.toLowerCase() !== "application/octet-stream"
+      ? explicitType
+      : ext
+        ? (uploadContentTypeByExtension(ext) ?? "application/octet-stream")
+        : "application/octet-stream";
+
+  // Default bare text types to UTF-8, matching text previews. Keep supplied
+  // MIME parameters and formats with document-level encoding declarations.
+  switch (contentType.toLowerCase()) {
+    case "text/plain":
+    case "text/markdown":
+    case "text/csv":
+    case "text/tab-separated-values":
+    case "text/yaml":
+    case "text/x-yaml":
+    case "application/json":
+    case "application/yaml":
+    case "application/x-yaml": {
+      return `${contentType}; charset=utf-8`;
+    }
+    default: {
+      return contentType;
+    }
+  }
 }
 
 async function uploadPartWithRetry(
@@ -257,12 +275,7 @@ const uploadFileToStorage$ = command(
   async ({ get, set }, file: File, signal: AbortSignal): Promise<FileInfo> => {
     const createClient = get(apiClient$);
     const client = createClient(uploadsContract);
-    const contentType = await textUploadContentType(
-      file,
-      inferUploadContentType(file),
-      signal,
-    );
-    signal.throwIfAborted();
+    const contentType = inferUploadContentType(file);
 
     // Step 1: ask the server to sign either one PUT URL or retryable R2
     // multipart URLs. The file body never travels through the app runtime.
