@@ -24,7 +24,7 @@ const context = testContext();
 const agentId = "c0000000-0000-4000-8000-000000000001";
 
 test.each([0, 2])(
-  "SSH with %i hosts remains visible in shelves and respects category selection",
+  "SSH with %i hosts remains visible in the directory and respects its category filter",
   async (configuredCount) => {
     mockCatalog();
     mockPublicConnectorStatus(
@@ -56,21 +56,28 @@ test.each([0, 2])(
       "href",
       configuredCount === 0 ? "/connectors/ssh?add=1" : "/connectors/ssh",
     );
-    const communication = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.startsWith("Communication");
+    click(getConnectorAction("button", "Filter connectors"));
+    const menu = await screen.findByRole("menu");
+    const communication = queryAllByRoleFast("menuitem", menu).find((item) => {
+      return item.textContent?.startsWith("Communication");
     });
     if (!communication) {
-      throw new Error("Expected the Communication category chip");
+      throw new Error("Expected the Communication category option");
     }
     click(communication);
     await screen.findByTestId("connector-category-communication-collaboration");
     expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
-    click(getConnectorAction("button", "Remote access1"));
+    click(getConnectorAction("button", "Filter connectors"));
+    const categoryMenu = await screen.findByRole("menu");
+    click(getConnectorAction("menuitem", "Remote access1", categoryMenu));
     await screen.findByRole("heading", { name: "Remote access" });
     expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
     expect(
       screen.queryByTestId("connector-category-communication-collaboration"),
     ).toBeNull();
+    click(getConnectorAction("button", "Connectors"));
+    await screen.findByTestId("connector-shelf-communication-collaboration");
+    expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();
   },
 );
 

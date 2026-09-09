@@ -1261,6 +1261,38 @@ function sshSummaryData(summary: Loadable<{ configuredCount: number } | null>) {
   return summary.state === "hasData" ? summary.data : null;
 }
 
+function buildConnectorPresentation(
+  connectors: readonly PlatformConnectorCatalogStatusItem[],
+  sshSummary: Loadable<{ configuredCount: number } | null>,
+  sshLabel: string,
+) {
+  const items: ConnectorPresentation[] = connectors.map((connector) => {
+    return {
+      kind: "catalog",
+      connector,
+      category: connector.category,
+      popularityRank: connector.popularityRank,
+      label: connector.label,
+      connected: connector.connected,
+    };
+  });
+  const ssh = sshSummaryData(sshSummary);
+  if (ssh) {
+    items.push({
+      kind: "ssh",
+      category: REMOTE_ACCESS_CATEGORY,
+      label: sshLabel,
+      connected: ssh.configuredCount > 0,
+      configuredCount: ssh.configuredCount,
+    });
+  }
+  return {
+    items,
+    // A pending SSH read must not display the empty-catalog message.
+    filteredCount: items.length + (sshSummary.state === "loading" ? 1 : 0),
+  };
+}
+
 function SshShelfCategory({
   enabled,
   groups,
@@ -1462,35 +1494,18 @@ export function ConnectorsPage() {
   const otherCategoryLabel = t(($) => {
     return $.connectors.catalog.otherCategory;
   });
-  const presentationItems: ConnectorPresentation[] = filteredConnectors.map(
-    (connector) => {
-      return {
-        kind: "catalog",
-        connector,
-        category: connector.category,
-        popularityRank: connector.popularityRank,
-        label: connector.label,
-        connected: connector.connected,
-      };
-    },
+  const presentation = buildConnectorPresentation(
+    filteredConnectors,
+    filteredSshSummary,
+    t(($) => {
+      return $.ssh.label;
+    }),
   );
-  const visibleSsh = sshSummaryData(filteredSshSummary);
-  if (visibleSsh) {
-    presentationItems.push({
-      kind: "ssh",
-      category: REMOTE_ACCESS_CATEGORY,
-      label: t(($) => {
-        return $.ssh.label;
-      }),
-      connected: visibleSsh.configuredCount > 0,
-      configuredCount: visibleSsh.configuredCount,
-    });
-  }
   const remoteAccessLabel = t(($) => {
     return $.connectors.catalog.remoteAccess;
   });
   const grouped = groupConnectorsByCategory(
-    presentationItems,
+    presentation.items,
     withRemoteAccessCategory(categoryMetadata, remoteAccessLabel),
     otherCategoryLabel,
   );
@@ -1521,13 +1536,27 @@ export function ConnectorsPage() {
   const builtinList = renderBuiltinList({
     loadingState: filteredCatalogItemsLoadable.state,
     grouped,
-    filteredCount:
-      presentationItems.length +
-      (filteredSshSummary.state === "loading" ? 1 : 0),
+    filteredCount: presentation.filteredCount,
     renderCard: renderPresentationCard,
     search,
     connectionFilter,
   });
+  const builtinPanel = (
+    <>
+      <ConnectorsBuiltinPanel
+        browse={browse}
+        renderCard={renderCard}
+        fallback={builtinList}
+        customPanel={<CustomConnectorsPanel />}
+      />
+      <SshDirectoryLoadError />
+      <SshShelfCategory
+        enabled={browse.showShelves}
+        groups={grouped}
+        renderCard={renderPresentationCard}
+      />
+    </>
+  );
   return (
     <div
       ref={scrollContainerRef}
@@ -1598,26 +1627,11 @@ export function ConnectorsPage() {
             )}
 
             {shelfEnabled ? (
-              <ConnectorsBuiltinPanel
-                browse={browse}
-                renderCard={renderCard}
-                fallback={builtinList}
-                customPanel={<CustomConnectorsPanel />}
-              />
+              builtinPanel
             ) : (
               <>
-                {activeTab === "builtin" && builtinList}
+                {activeTab === "builtin" && builtinPanel}
                 {activeTab === "custom" && <CustomConnectorsPanel />}
-              </>
-            )}
-            {(shelfEnabled || activeTab === "builtin") && (
-              <>
-                <SshDirectoryLoadError />
-                <SshShelfCategory
-                  enabled={browse.showShelves}
-                  groups={grouped}
-                  renderCard={renderPresentationCard}
-                />
               </>
             )}
           </div>
