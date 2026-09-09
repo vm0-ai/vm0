@@ -164,8 +164,15 @@
         "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx"
       ],
       "cases": ["preferences-light", "preferences-dark", "preferences-mobile"],
-      "status": "planned",
-      "evidence": []
+      "status": "baselined",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay",
+          "url": "https://a.okou.io/e9ie0v6p2c.zip",
+          "sha256": "338b88df3d7de430118f2a30069d4d6b6fe31741a622839ab12986fa7dc6a4ef",
+          "commit": "f8d34d5f68b6c40223b64b0124ce85826c5aada2"
+        }
+      ]
     }
   ]
 }
