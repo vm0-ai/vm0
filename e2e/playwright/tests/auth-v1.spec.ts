@@ -94,6 +94,24 @@ async function expectPasswordControlFits(
     .toBeGreaterThanOrEqual(0);
 }
 
+async function expectAuthBackgroundCoversViewport(page: Page): Promise<void> {
+  const background = page.getByTestId("app-auth-background");
+  await expect(background).toBeVisible();
+  await expect
+    .poll(async () => {
+      return background.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return (
+          box.top <= 0 &&
+          box.right >= window.innerWidth &&
+          box.bottom >= window.innerHeight &&
+          box.left <= 0
+        );
+      });
+    })
+    .toBe(true);
+}
+
 /**
  * Clerk prepares the verification after the code card mounts. A code entered
  * before that response lands is rejected with a card-level error instead of
@@ -274,6 +292,19 @@ for (const device of [
       await page.setViewportSize({ width: 375, height: 812 });
       await expectSeparated(password, error);
       await expectSeparated(error, legalConsent);
+
+      await page.setViewportSize({ width: 375, height: 568 });
+      await page
+        .getByRole("link", { exact: true, name: "Sign in" })
+        .scrollIntoViewIfNeeded();
+      await expect
+        .poll(() => {
+          return page
+            .getByTestId("app-auth-layout")
+            .evaluate((element) => element.scrollTop);
+        })
+        .toBeGreaterThan(0);
+      await expectAuthBackgroundCoversViewport(page);
 
       const longPassword = "A-Long-Password-For-Reveal-Layout!2026";
       await password.fill(longPassword);
