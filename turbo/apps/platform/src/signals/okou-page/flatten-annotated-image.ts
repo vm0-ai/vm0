@@ -275,8 +275,15 @@ function drawNote(
   context.textAlign = "left";
   context.textBaseline = "top";
 
-  const boxWidth = note.box.width * scale.width;
-  const lines = wrapNote(context, note.text, boxWidth - padding * 2);
+  // The ground is measured from the text, exactly like the label on screen: the
+  // note's box is a ceiling to wrap at, not a width to fill, so a three-word
+  // note under a wide mark no longer prints a strip of empty white.
+  const maxWidth = note.box.maxWidth * scale.width;
+  const lines = wrapNote(context, note.text, maxWidth - padding * 2);
+  const textWidth = lines.reduce((widest, line) => {
+    return Math.max(widest, context.measureText(line).width);
+  }, 0);
+  const boxWidth = Math.min(maxWidth, textWidth + padding * 2);
   const boxHeight = lines.length * lineHeight + padding * 2;
   const x = note.box.x * scale.width;
   // The box is clamped in normalized space before it gets here, but the height
@@ -288,12 +295,9 @@ function drawNote(
   );
 
   context.fillStyle = NOTE_GROUND;
-  context.strokeStyle = note.ink;
-  context.lineWidth = px(scale, HALO_WIDTH_UNITS);
   context.beginPath();
   context.roundRect(x, y, boxWidth, boxHeight, px(scale, CORNER_RADIUS_UNITS));
   context.fill();
-  context.stroke();
 
   context.fillStyle = note.ink;
   for (const [index, line] of lines.entries()) {

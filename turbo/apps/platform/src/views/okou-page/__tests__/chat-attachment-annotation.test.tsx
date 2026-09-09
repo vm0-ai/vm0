@@ -1,5 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -109,9 +109,7 @@ test("A user can click an annotation note, edit it, and close only the note", as
   await openAnnotationEditor("annotated-plan.png");
   await user.click(screen.getByTestId("annotation-note-label-editable-note"));
 
-  const note = await screen.findByPlaceholderText(
-    "Say what should change here",
-  );
+  const note = await screen.findByPlaceholderText("What should change?");
   await waitFor(() => {
     expect(note).toHaveFocus();
   });
@@ -120,9 +118,91 @@ test("A user can click an annotation note, edit it, and close only the note", as
 
   expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
   expect(screen.getByTestId("image-annotation-editor")).toBeVisible();
-  expect(
-    screen.getByTestId("annotation-note-label-editable-note"),
-  ).toHaveTextContent("Align the total with the heading");
+  const label = screen.getByTestId("annotation-note-label-editable-note");
+  expect(label).toHaveTextContent("Align the total with the heading");
+  // The printed note hugs its sentence: a note drawn as wide as its mark left
+  // short sentences sitting in a strip of empty white. Only a wrap ceiling is
+  // set now, never a width.
+  expect(label.style.width).toBe("");
+  expect(label).toHaveStyle({ maxWidth: "50%" });
+});
+
+/** Clicks the surface once, which is how a text mark is placed. */
+function clickSurface(surface: HTMLElement, pointerId: number): void {
+  fireEvent.pointerDown(surface, { clientX: 320, clientY: 200, pointerId });
+  fireEvent.pointerUp(surface, { clientX: 320, clientY: 200, pointerId });
+}
+
+/**
+ * The editor advertises a letter on every tool, and the letters only reach it
+ * while nothing is being typed into. It opens over a composer whose message box
+ * normally holds the caret, so the keys went into the message underneath and the
+ * tooltips promised shortcuts that did nothing — bingjie: *"图2 的快捷键我这不好
+ * 使"*. Typing then happens on the image itself rather than in a field below it.
+ */
+test("A tool shortcut works on open and text is typed onto the image", async () => {
+  const user = userEvent.setup();
+  const image = draftAttachment("typed-label.png");
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("typed-label.png");
+  expect(screen.getByTestId("image-annotation-panel")).toHaveFocus();
+
+  await user.keyboard("t");
+  clickSurface(surface, 7);
+
+  const field = await screen.findByTestId("annotation-text-editor");
+  const input = within(field).getByRole("textbox");
+  await waitFor(() => {
+    expect(input).toHaveFocus();
+  });
+  // The label used to be typed into a popover below the picture while the words
+  // appeared on it, so one string was shown in two places.
+  expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+
+  await user.keyboard("Raise this");
+  await user.keyboard("{Enter}");
+
+  expect(screen.queryByTestId("annotation-text-editor")).toBeNull();
+  expect(screen.getByTestId("annotation-mark-1")).toHaveTextContent(
+    "Raise this",
+  );
+});
+
+/**
+ * A text mark exists from the moment the canvas is clicked, so backing out of
+ * one left an invisible empty mark that still counted in the header and still
+ * made the draft attachable.
+ */
+test("A text mark nobody typed into is discarded on Escape", async () => {
+  const user = userEvent.setup();
+  const image = draftAttachment("abandoned-label.png");
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("abandoned-label.png");
+  await user.keyboard("t");
+  clickSurface(surface, 8);
+
+  await screen.findByTestId("annotation-text-editor");
+  await expect(findNamedButton("Attach marks")).resolves.toBeEnabled();
+
+  await user.keyboard("{Escape}");
+
+  expect(screen.queryByTestId("annotation-text-editor")).toBeNull();
+  expect(screen.getByTestId("image-annotation-editor")).toBeVisible();
+  await expect(findNamedButton("Attach marks")).resolves.toBeDisabled();
 });
 
 test("A confirmed annotation blocks sending while its image uploads", async () => {
@@ -476,9 +556,7 @@ test("Enter confirms a note and one drag is a single undo step", async () => {
   const surface = await openAnnotationEditor("keyboard-plan.png");
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
 
-  const note = await screen.findByPlaceholderText(
-    "Say what should change here",
-  );
+  const note = await screen.findByPlaceholderText("What should change?");
   await fill(note, "Raise this panel");
   // Enter had no binding at all: the only way out of the field was Escape or
   // clicking off it.

@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed, type State } from "ccstate";
 import { onRef } from "../utils.ts";
 import type {
   ImageAnnotation,
@@ -212,7 +212,12 @@ export interface AnnotationDrag {
 
 /** A note narrower than this wraps every other word and reads as a column. */
 const MIN_NOTE_WIDTH = 0.18;
-const MAX_NOTE_WIDTH = 1;
+/**
+ * Where a note starts wrapping. Half the image: past that a single sentence
+ * spans so much of the screenshot that it stops reading as a label on one
+ * region and starts reading as a caption for the whole picture.
+ */
+const MAX_NOTE_WIDTH = 0.5;
 /** Clear of the mark's own outline and its ordinal pin. */
 const NOTE_GAP = 0.015;
 
@@ -307,47 +312,41 @@ function offsetMark(
 }
 
 /**
- * Where a note lands the first time it is written: directly under its mark and
- * at least as wide, so the sentence reads as belonging to that region without
- * the user having to place it.
+ * Where a note lands: directly under the mark it belongs to, starting at the
+ * mark's left edge.
+ *
+ * `maxWidth` is a ceiling, not a width. The note used to be drawn *as wide as
+ * its mark*, so three words under a wide box became a mostly empty strip —
+ * bingjie: *"评论是定宽，宽度不好算的话干脆直接不要框可能会更好些？"*. The box
+ * now hugs whatever was typed and only wraps once it reaches this ceiling, so
+ * there is no width left to compute and nothing to leave empty.
  */
 function defaultNoteBox(mark: ImageAnnotationMark): {
   x: number;
   y: number;
-  width: number;
+  maxWidth: number;
 } {
   const bounds = markBounds(mark);
-  const width = Math.min(
-    MAX_NOTE_WIDTH,
-    Math.max(MIN_NOTE_WIDTH, bounds.width),
-  );
+  // Held off the right edge by the narrowest note worth wrapping to: a mark in
+  // the far corner would otherwise leave its note a two-character column.
+  const x = Math.min(Math.max(0, bounds.x), Math.max(0, 1 - MIN_NOTE_WIDTH));
   const below = bounds.y + bounds.height + NOTE_GAP;
   const y = below > 1 - NOTE_ROOM ? bounds.y - NOTE_GAP - NOTE_ROOM : below;
-  return clampNoteBox({ x: bounds.x, y, width });
+  return {
+    x,
+    y: Math.min(Math.max(0, y), Math.max(0, 1 - NOTE_ROOM)),
+    maxWidth: Math.min(MAX_NOTE_WIDTH, 1 - x),
+  };
 }
 
 /** Roughly one line of note plus its padding, in normalized units. */
 const NOTE_ROOM = 0.06;
 
-/** Keeps a note inside the image, so the flatten cannot crop it away. */
-function clampNoteBox(box: { x: number; y: number; width: number }): {
-  x: number;
-  y: number;
-  width: number;
-} {
-  const width = Math.min(MAX_NOTE_WIDTH, Math.max(MIN_NOTE_WIDTH, box.width));
-  return {
-    x: Math.min(Math.max(0, box.x), Math.max(0, 1 - width)),
-    y: Math.min(Math.max(0, box.y), Math.max(0, 1 - NOTE_ROOM)),
-    width,
-  };
-}
-
 /** The note text of a mark that can carry one drawn on the image. */
 export function noteOnImage(mark: ImageAnnotationMark): {
   text: string;
   ink: string;
-  box: { x: number; y: number; width: number };
+  box: { x: number; y: number; maxWidth: number };
 } | null {
   if (
     mark.shape === "text" ||
@@ -469,6 +468,33 @@ function createAnnotationViewportSignals() {
       );
     }),
   );
+  /**
+   * The editor panel, which takes the caret whenever no field wants it.
+   *
+   * Every bare shortcut — the tool letters, the ink digits, the arrow keys —
+   * steps aside while something is being typed into, and the editor opens over
+   * a composer whose message box normally holds focus. So the tooltips
+   * advertised keys that silently did nothing and typed into the message
+   * underneath instead. Focusing the panel on open, and again whenever a note
+   * is dismissed, is what makes the advertised key the working key.
+   */
+  const panel$ = state<HTMLElement | null>(null);
+  const bindAnnotationPanel$ = onRef<HTMLElement>(
+    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+      set(panel$, element);
+      element.focus({ preventScroll: true });
+      signal.addEventListener(
+        "abort",
+        () => {
+          set(panel$, null);
+        },
+        { once: true },
+      );
+    }),
+  );
+  const focusAnnotationPanel$ = command(({ get }) => {
+    get(panel$)?.focus({ preventScroll: true });
+  });
   return {
     internal: { drag$, dragPushed$, zoom$, stroke$ },
     signals: {
@@ -478,6 +504,8 @@ function createAnnotationViewportSignals() {
       annotationZoom$,
       bindAnnotationNoteField$,
       focusAnnotationNoteField$,
+      bindAnnotationPanel$,
+      focusAnnotationPanel$,
       setAnnotationDrag$,
       zoomAnnotation$,
       resetAnnotationZoom$,
@@ -488,6 +516,62 @@ function createAnnotationViewportSignals() {
 }
 
 type AnnotationViewport = ReturnType<typeof createAnnotationViewportSignals>;
+
+/**
+ * Drops the open text mark when it never got any words.
+ *
+ * A text mark exists from the moment the canvas is clicked, so leaving it —
+ * Escape, another tool, a click anywhere else — used to leave an invisible
+ * empty mark behind: it counted in the header, it kept "Attach marks" enabled,
+ * and nothing on the image showed it was there. The step the mark arrived in is
+ * unwound rather than a removal recorded, because a label nobody typed is not
+ * an edit anyone should have to take back.
+ */
+function createDiscardEmptyTextMark(
+  session$: State<AnnotationSession | null>,
+  openMarkId$: Computed<string | null>,
+) {
+  return command(({ get, set }, nextId: string | null) => {
+    const current = get(session$);
+    const openId = get(openMarkId$);
+    if (!current || openId === null || openId === nextId) {
+      return;
+    }
+    const open = current.present.marks.find((mark) => {
+      return mark.id === openId;
+    });
+    if (!open || open.shape !== "text" || open.text.trim() !== "") {
+      return;
+    }
+    const previous = current.past.at(-1);
+    // The creation step is only the last one while nothing has been done to
+    // the mark since — recolouring or nudging it pushes an entry of its own,
+    // and that entry still carries the mark. Then the removal is all that can
+    // be applied, and it becomes an edit like any other.
+    if (
+      previous &&
+      !previous.marks.some((mark) => {
+        return mark.id === openId;
+      })
+    ) {
+      set(session$, {
+        ...current,
+        past: current.past.slice(0, -1),
+        present: previous,
+      });
+      return;
+    }
+    set(session$, {
+      ...current,
+      present: {
+        ...current.present,
+        marks: current.present.marks.filter((mark) => {
+          return mark.id !== openId;
+        }),
+      },
+    });
+  });
+}
 
 function createAnnotationSessionSignals(viewport: AnnotationViewport) {
   const session$ = state<AnnotationSession | null>(null);
@@ -534,16 +618,23 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
   const annotationCanRedo$ = computed((get) => {
     return (get(session$)?.future.length ?? 0) > 0;
   });
+  const discardEmptyOpenTextMark$ = createDiscardEmptyTextMark(
+    session$,
+    annotationOpenMarkId$,
+  );
   const selectAnnotationNote$ = command(({ set }, id: string | null) => {
+    set(discardEmptyOpenTextMark$, id);
     set(selection$, id === null ? null : { kind: "note", id });
     if (id !== null) {
       set(viewport.signals.focusAnnotationNoteField$);
     }
   });
   const selectAnnotationMark$ = command(({ set }, id: string | null) => {
+    set(discardEmptyOpenTextMark$, id);
     set(selection$, id === null ? null : { kind: "mark", id });
   });
   const setAnnotationTool$ = command(({ set }, tool: AnnotationTool) => {
+    set(discardEmptyOpenTextMark$, null);
     set(tool$, tool);
     set(selection$, null);
   });
@@ -569,7 +660,7 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
     set(viewport.internal.zoom$, ZOOM_MIN);
   });
   return {
-    internal: { session$, ink$, selection$ },
+    internal: { session$, ink$, selection$, discardEmptyOpenTextMark$ },
     signals: {
       annotationSessionTarget$,
       annotationSessionActive$,
@@ -744,6 +835,9 @@ function createAnnotationGeometrySignals(
     },
   );
   const addAnnotationMark$ = command(({ set }, mark: ImageAnnotationMark) => {
+    // Placing a second text mark leaves the first one, and an untyped one has
+    // to go before its creation step stops being the last thing in history.
+    set(session.internal.discardEmptyOpenTextMark$, mark.id);
     set(history.pushAnnotation$, (current) => {
       return {
         ...current,
@@ -870,6 +964,8 @@ function createAnnotationGeometrySignals(
 
 function createCommitAnnotationSignal(session: AnnotationSessionSignals) {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    // Attaching straight from an open, empty text mark must not ship it.
+    set(session.internal.discardEmptyOpenTextMark$, null);
     const current = get(session.internal.session$);
     if (!current) {
       return;

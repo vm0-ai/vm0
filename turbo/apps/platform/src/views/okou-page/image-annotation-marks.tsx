@@ -1,4 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { cn } from "@okouai/ui";
 import type {
   ImageAnnotation,
   ImageAnnotationMark,
@@ -299,28 +300,33 @@ export function MarkNoteLabel({
         onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
           event.stopPropagation();
         },
-        className: "absolute cursor-text",
+        className: "cursor-text",
         "data-testid": `annotation-note-label-${mark.id}`,
       }
-    : { className: "pointer-events-none absolute" };
+    : { className: "pointer-events-none" };
 
   return (
     <span
       {...interaction}
+      className={cn(
+        interaction.className,
+        "absolute whitespace-pre-wrap break-words rounded-md px-1.5 py-1 text-[11px] font-semibold leading-snug",
+      )}
       style={{
         left: percent(note.box.x),
         top: percent(note.box.y),
-        width: percent(note.box.width),
+        // Content-sized, with the ceiling as the only width anyone sets. A note
+        // drawn as wide as its mark left short sentences in a mostly empty
+        // strip, and the outline around that emptiness is what made a caption
+        // read as an input box.
+        maxWidth: percent(note.box.maxWidth),
         color: note.ink,
         // An image can be any colour under the text, so the label carries its
         // own ground rather than relying on a halo to separate it.
         background: NOTE_GROUND,
-        borderColor: note.ink,
       }}
     >
-      <span className="block whitespace-pre-wrap break-words rounded-md border px-1.5 py-1 text-[11px] font-semibold leading-snug">
-        {note.text}
-      </span>
+      {note.text}
     </span>
   );
 }
