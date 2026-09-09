@@ -112,7 +112,8 @@ export function WelcomeTeamDiagram() {
   const { t } = useTranslation();
 
   return (
-    <figure
+    <div
+      role="img"
       className={PANEL_CLASS}
       data-testid="welcome-team-diagram"
       aria-label={t(($) => {
@@ -176,7 +177,7 @@ export function WelcomeTeamDiagram() {
           />
         </DiagramColumn>
       </div>
-    </figure>
+    </div>
   );
 }
 
@@ -248,7 +249,8 @@ export function WelcomeSlackDiagram() {
   const { t } = useTranslation();
 
   return (
-    <figure
+    <div
+      role="img"
       className={PANEL_CLASS}
       data-testid="welcome-slack-diagram"
       aria-label={t(($) => {
@@ -313,6 +315,6 @@ export function WelcomeSlackDiagram() {
           </p>
         </div>
       </div>
-    </figure>
+    </div>
   );
 }
