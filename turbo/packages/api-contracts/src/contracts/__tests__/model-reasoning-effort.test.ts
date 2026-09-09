@@ -22,7 +22,7 @@ describe("chat reasoning effort capabilities", () => {
       "low",
       "medium",
       "high",
-      "xhigh",
+      "extra",
       "max",
       "ultracode",
     ]);
@@ -36,7 +36,11 @@ describe("chat reasoning effort capabilities", () => {
   it("resets incompatible choices on a model change", () => {
     expect(compatibleReasoningEffort("gpt-6-astra", "ultracode")).toBeNull();
     expect(compatibleReasoningEffort("gpt-5.5", "max")).toBeNull();
-    expect(compatibleReasoningEffort("claude-sonnet-4-6", "xhigh")).toBeNull();
+    expect(compatibleReasoningEffort("claude-sonnet-4-6", "extra")).toBeNull();
+    expect(compatibleReasoningEffort("claude-sonnet-5", "xhigh")).toBeNull();
+    expect(compatibleReasoningEffort("gpt-6-astra", "extra")).toBeNull();
+    expect(compatibleReasoningEffort("claude-sonnet-5", "extra")).toBe("extra");
+    expect(compatibleReasoningEffort("gpt-6-astra", "xhigh")).toBe("xhigh");
     expect(compatibleReasoningEffort("claude-sonnet-5", "high")).toBe("high");
     expect(compatibleReasoningEffort("deepseek-v4-flash", "high")).toBeNull();
   });

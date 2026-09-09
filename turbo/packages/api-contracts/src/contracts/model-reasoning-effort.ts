@@ -13,7 +13,7 @@ const CLAUDE_CODE_EFFORTS = [
   "low",
   "medium",
   "high",
-  "xhigh",
+  "extra",
   "max",
   "ultracode",
 ] as const;

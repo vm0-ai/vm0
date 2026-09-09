@@ -131,27 +131,34 @@ describe("POST /api/chat-threads/:id/model-selection", () => {
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
     });
-    const unsupported = await chat.requestUpdateThreadModelSelection(
-      fixture.actor,
-      fixture.threadId,
-      "claude-sonnet-4-6",
-      [400],
-      { reasoningEffort: "xhigh" },
-    );
-    expect(unsupported.body).toMatchObject({
-      error: {
-        message: "Reasoning effort is not supported by the selected model",
-      },
-    });
-    await chat.updateThreadModelSelection(
-      fixture.actor,
-      fixture.threadId,
-      "claude-sonnet-5",
-      { reasoningEffort: "ultracode" },
-    );
-    await expect(
-      chat.readThreadMetadata(fixture.actor, fixture.threadId),
-    ).resolves.toMatchObject({ reasoningEffort: "ultracode" });
+    for (const [model, reasoningEffort] of [
+      ["claude-sonnet-4-6", "extra"],
+      ["claude-sonnet-5", "xhigh"],
+    ] as const) {
+      const unsupported = await chat.requestUpdateThreadModelSelection(
+        fixture.actor,
+        fixture.threadId,
+        model,
+        [400],
+        { reasoningEffort },
+      );
+      expect(unsupported.body).toMatchObject({
+        error: {
+          message: "Reasoning effort is not supported by the selected model",
+        },
+      });
+    }
+    for (const reasoningEffort of ["extra", "ultracode"] as const) {
+      await chat.updateThreadModelSelection(
+        fixture.actor,
+        fixture.threadId,
+        "claude-sonnet-5",
+        { reasoningEffort },
+      );
+      await expect(
+        chat.readThreadMetadata(fixture.actor, fixture.threadId),
+      ).resolves.toMatchObject({ reasoningEffort });
+    }
     await chat.updateThreadModelSelection(
       fixture.actor,
       fixture.threadId,
@@ -245,7 +252,7 @@ describe("POST /api/chat-threads/:id/model-selection", () => {
       fixture.actor,
       fixture.threadId,
       "claude-sonnet-5",
-      { reasoningEffort: "xhigh" },
+      { reasoningEffort: "extra" },
     );
     await chat.updateThreadModelSelection(
       fixture.actor,
