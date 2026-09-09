@@ -398,17 +398,6 @@ export default [
                 "Use DialogContent from @okouai/ui so dialogs retain their safe-area boundary.",
             },
             {
-              name: "ably",
-              allowTypeImports: true,
-              message:
-                "Use src/lib/ably-realtime.ts for the modular runtime; direct imports are type-only.",
-            },
-            {
-              name: "@clerk/clerk-js",
-              message:
-                "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
-            },
-            {
               name: "@clerk/ui",
               allowTypeImports: true,
               message:
