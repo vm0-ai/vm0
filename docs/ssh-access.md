@@ -67,8 +67,15 @@ chat-triggered Runs.
 Chat's services popover shows SSH alongside configured Connectors, with the
 same authorization switch and an enabled trigger icon, without a host-management
 action. Manage hosts through the global SSH card.
+Both the service list and trigger icons order built-in Connectors before SSH,
+then custom Connectors. The trigger keeps its three-icon limit and existing
+computer/browser slots; SSH no longer displaces built-in Connector icons.
 It always uses that composer's Agent, including split-pane chats. No hosts hides
 the SSH row; **Add connectors** offers the same zero-host setup entry.
+Opening the popover refreshes SSH reads without dropping the last confirmed
+display for the same user/workspace. Its switch waits for the refreshed result.
+Changing owner discards that retained display, and each composer selects only
+its own Agent's grant.
 
 Owner API business errors use stable `SSH_*` codes. Platform translates them,
 including recovery guidance for invalid input, duplicate endpoints, stale

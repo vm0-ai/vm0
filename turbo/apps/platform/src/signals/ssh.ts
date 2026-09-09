@@ -98,7 +98,7 @@ export const importSshPrivateKeyFile$ = command(
   },
 );
 
-const sshIdentity$ = computed(async (get) => {
+export const sshIdentity$ = computed(async (get) => {
   const enabled = get(featureSwitch$)[FeatureSwitchKey.SshAccess];
   if (!enabled) {
     return null;
@@ -439,6 +439,15 @@ export const sshAgentAccessRows$ = computed(async (get) => {
   return rows.filter((row) => {
     return row !== null;
   });
+});
+
+// Keep the owner attached when views retain this read during a background refresh.
+export const sshAgentAccessSnapshot$ = computed(async (get) => {
+  const [identity, rows] = await Promise.all([
+    get(sshIdentity$),
+    get(sshAgentAccessRows$),
+  ]);
+  return { identity, rows };
 });
 
 const accessManagementIdentity$ = state<string | null>(null);
