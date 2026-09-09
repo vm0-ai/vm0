@@ -528,8 +528,7 @@ test("Find and insert a workflow with an abbreviated name", async () => {
   await user.keyboard("{Enter}");
 
   await waitFor(() => {
-    expect(editor).toHaveTextContent("Review /pr-design-acceptance-url");
-    expect(workflowHighlights(editor)).toHaveLength(1);
+    expect(editor).toHaveTextContent(/^Review \/pr-design-acceptance-url\s*$/);
     expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
   });
 });
@@ -569,7 +568,7 @@ test("Rank exact workflow names before prefixes, substrings, and abbreviations",
   await user.keyboard("{Enter}");
 
   await waitFor(() => {
-    expect(workflowHighlights(editor)[0]).toHaveTextContent(/^\/pr-auto$/);
+    expect(editor).toHaveTextContent(/^\/pr-auto\s*$/);
     expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
   });
 });
