@@ -4012,7 +4012,7 @@ function RecommendedFollowupList({
               // this branch never runs on. Rest already sits on the hover layer,
               // so hover and press each take the next step up the ladder.
               showFollowupCards
-                ? "w-auto max-w-[min(17rem,72%)] shrink-0 self-stretch items-start gap-1.5 rounded-[var(--okou-card-radius)] bg-state-hover px-4 py-3 hover:bg-state-selected active:bg-state-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                ? "max-w-[min(17rem,72%)] shrink-0 items-start gap-1.5 rounded-surface bg-state-hover px-4 py-3 hover:bg-state-selected active:bg-state-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 : "min-h-8 w-full items-center gap-0 rounded-lg px-2 py-1 hover:bg-state-hover",
             )}
             onClick={() => {
