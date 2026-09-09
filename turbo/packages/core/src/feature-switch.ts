@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ThreadActivitySummary]: {
+    maintainer: "lancy@okou.ai",
+    description:
+      "Generate short public activity summaries on visible-thread demand.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerCreateCommands]: {
     maintainer: "bingjie@okou.ai",
     description: "Create commands and mode-specific composer controls",

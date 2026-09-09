@@ -1,3 +1,4 @@
+import { now } from "../../lib/time";
 import { optionalEnv } from "../../lib/env";
 import {
   onRejection,
@@ -86,6 +87,7 @@ export class OpenRouterRequestError extends Error {
   readonly errorType: string | undefined;
   readonly errorCode: string | number | undefined;
   readonly errorParam: string | undefined;
+  readonly retryAfterMs: number | undefined;
 
   constructor(args: {
     readonly message: string;
@@ -93,6 +95,7 @@ export class OpenRouterRequestError extends Error {
     readonly errorType?: string;
     readonly errorCode?: string | number;
     readonly errorParam?: string;
+    readonly retryAfterMs?: number;
   }) {
     const errorType = args.errorType ? ` (${args.errorType})` : "";
     super(`${args.message}: ${String(args.status)}${errorType}`);
@@ -101,6 +104,7 @@ export class OpenRouterRequestError extends Error {
     this.errorType = args.errorType;
     this.errorCode = args.errorCode;
     this.errorParam = args.errorParam;
+    this.retryAfterMs = args.retryAfterMs;
   }
 }
 
@@ -160,6 +164,7 @@ function openRouterRequestError(args: {
   readonly status: number;
   readonly value: unknown;
   readonly origin: "http" | "completion";
+  readonly retryAfterMs?: number;
 }): OpenRouterRequestError {
   const error = objectProperty(args.value, "error") ?? args.value;
   const metadata = objectProperty(error, "metadata");
@@ -194,6 +199,9 @@ function openRouterRequestError(args: {
   const requestError = new OpenRouterRequestError({
     message: args.message,
     status: args.status,
+    ...(args.retryAfterMs === undefined
+      ? {}
+      : { retryAfterMs: args.retryAfterMs }),
     ...(errorType === undefined ? {} : { errorType }),
     ...(errorCode === undefined ? {} : { errorCode }),
     ...(errorParam === undefined ? {} : { errorParam }),
@@ -205,6 +213,19 @@ function openRouterRequestError(args: {
     args.value,
   );
   return requestError;
+}
+
+function retryAfterDelay(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const seconds = Number(value);
+  const delay = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Date.parse(value) - now();
+  return Number.isFinite(delay)
+    ? Math.min(300_000, Math.max(0, delay))
+    : undefined;
 }
 
 async function ensureOpenRouterResponseOk(response: Response): Promise<void> {
@@ -222,6 +243,7 @@ async function ensureOpenRouterResponseOk(response: Response): Promise<void> {
     status: response.status,
     origin: "http",
     value: errorValue,
+    retryAfterMs: retryAfterDelay(response.headers.get("retry-after")),
   });
 }
 
