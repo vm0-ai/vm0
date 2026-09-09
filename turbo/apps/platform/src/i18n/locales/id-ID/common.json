@@ -2487,100 +2487,100 @@
         },
         "workflow": {
           "brandMentions": {
-            "label": "Kumpulkan penyebutan merek saya",
-            "prompt": "Kumpulkan secara berkala penyebutan baru merek saya dari sumber yang disepakati. Rangkum konteksnya dan tandai yang mungkin memerlukan tanggapan. Konfirmasikan istilah merek dan frekuensinya."
+            "label": "Sebutan merek → antrean tanggapan",
+            "prompt": "Buat alur kerja yang mencari sebutan publik baru tentang merek saya setiap hari, mengelompokkan duplikat, dan mencatat sebutan relevan di antrean tanggapan Notion dengan tautan sumber. Beri tahu saya jika perlu menanggapi. Tanyakan kata pencarian, sumber, database Notion, dan tujuan peringatannya."
           },
           "chatDigest": {
-            "label": "Rangkum pesan penting dari tim",
-            "prompt": "Rangkum secara berkala pesan penting, keputusan, dan pertanyaan dari kanal tim yang saya pilih. Konfirmasikan kanal dan frekuensi pengiriman ringkasan."
+            "label": "Diskusi tim → catatan keputusan",
+            "prompt": "Buat alur kerja yang meninjau pesan baru di kanal Slack pilihan setiap hari, mengambil keputusan yang telah disepakati dan pertanyaan terbuka, lalu memperbarui catatan keputusan bersama di Notion beserta tautan sumber. Tanyakan kanal, halaman Notion, waktu, dan zona waktu."
           },
           "competitorChanges": {
-            "label": "Pantau perubahan situs pesaing",
-            "prompt": "Periksa situs pesaing yang saya pilih untuk perubahan harga, produk, atau pengumuman. Konfirmasikan halaman dan frekuensinya, lalu sertakan tautan sumber di setiap pembaruan."
+            "label": "Perubahan pesaing → peringatan Slack",
+            "prompt": "Buat alur kerja yang memeriksa halaman pesaing pilihan setiap hari, membandingkan harga dan detail produk dengan pemeriksaan sebelumnya, lalu memposting hanya perubahan bermakna di Slack dengan tautan sumber. Tanyakan halaman, kanal, waktu, dan zona waktu yang digunakan."
           },
           "contentIdeas": {
-            "label": "Cari ide untuk postingan saya berikutnya",
-            "prompt": "Kumpulkan secara berkala ide terkini untuk postingan saya berikutnya, beserta tautan sumber dan sudut pandang yang sesuai untuk audiens saya. Konfirmasikan topik, audiens, dan frekuensinya."
-          },
-          "dailyPlan": {
-            "label": "Rencanakan hari saya setiap pagi",
-            "prompt": "Setiap pagi, ubah kalender dan tugas saya yang belum selesai menjadi rencana harian yang realistis. Konfirmasikan sumber, zona waktu, dan waktu pengiriman."
+            "label": "Tren mingguan → daftar ide konten",
+            "prompt": "Buat alur kerja yang meninjau artikel tersimpan dan kabar industri setiap minggu, mengubah tren relevan menjadi ide postingan untuk audiens saya, lalu menambahkannya ke daftar konten Notion dengan sudut pembahasan dan tautan sumber. Tanyakan sumber, audiens, database Notion, dan jadwal mingguan."
           },
           "deadlineReminder": {
-            "label": "Ingatkan saya sebelum tenggat",
-            "prompt": "Ingatkan saya sebelum tenggat tugas penting atau tonggak proyek. Konfirmasikan sumber tugas, tenggat yang penting, dan seberapa awal pengingat diperlukan."
-          },
-          "emailBrief": {
-            "label": "Dapatkan ringkasan email setiap pagi",
-            "prompt": "Ringkas email penting, balasan yang perlu dibuat, dan tugas setiap pagi. Konfirmasi kotak masuk dan waktu penerimaan terlebih dahulu."
+            "label": "Tugas terlambat → pengingat penanggung jawab",
+            "prompt": "Buat alur kerja yang memeriksa pengelola tugas setiap hari kerja, menemukan pekerjaan yang lewat tenggat, dan mengingatkan penanggung jawab di Slack beserta tautan tugas. Kelompokkan pengingat per orang dan hentikan setelah tugas selesai. Tanyakan proyek, tujuan Slack, waktu, dan zona waktu."
           },
           "feedbackThemes": {
-            "label": "Temukan pola dalam masukan pelanggan",
-            "prompt": "Setiap minggu, kelompokkan masukan pelanggan berdasarkan tema yang berulang dan soroti contohnya. Konfirmasikan sumber masukan, rentang waktu, dan hari pengiriman."
+            "label": "Masukan baru → pelacakan isu terkelompok",
+            "prompt": "Buat alur kerja yang memeriksa masukan pelanggan setiap hari, mengelompokkan permintaan serupa, dan menambahkan bukti baru ke isu terkait di Notion tanpa membuat duplikat. Kirim ringkasan mingguan tentang tema yang makin sering muncul. Tanyakan sumber, database Notion, dan tujuan ringkasannya."
           },
-          "fileOrganization": {
-            "label": "Atur file yang baru masuk",
-            "prompt": "Atur file baru dengan aturan penamaan dan pengarsipan yang disepakati. Konfirmasi sumber, folder tujuan, dan kategori."
+          "flaggedEmailTasks": {
+            "label": "Email berlabel → daftar tugas",
+            "prompt": "Buat alur kerja yang mengubah setiap email yang saya beri label Gmail tertentu menjadi tugas Todoist dengan langkah berikutnya, tautan email asli, dan tenggat jika disebutkan. Tanyakan label dan proyek yang digunakan, serta hindari tugas duplikat."
+          },
+          "inboxTriage": {
+            "label": "Email baru → label + draf balasan",
+            "prompt": "Buat alur kerja yang membaca email masuk baru, memberi label berdasarkan urgensi, dan menyiapkan draf untuk email yang perlu dibalas. Tanyakan kotak masuk dan aturan pelabelan yang digunakan; biarkan saya meninjau draf sebelum dikirim."
+          },
+          "invoiceFiling": {
+            "label": "Email faktur → pencatatan pengeluaran",
+            "prompt": "Buat alur kerja yang menyimpan lampiran faktur baru di Google Drive, mengambil nama pemasok, jumlah, dan tanggal jatuh tempo, lalu mencatat setiap faktur sekali saja di Google Sheets. Tanyakan email, folder, dan spreadsheet yang digunakan."
           },
           "invoiceFollowUps": {
-            "label": "Tindak lanjuti faktur yang lewat jatuh tempo",
-            "prompt": "Rangkum secara berkala faktur yang lewat jatuh tempo dan buat draf pengingat pembayaran yang sopan untuk saya tinjau. Konfirmasikan sumber faktur, aturan keterlambatan, dan frekuensinya."
+            "label": "Faktur lewat tempo → draf pengingat",
+            "prompt": "Buat alur kerja yang memeriksa faktur belum dibayar setiap hari kerja, menemukan saldo lewat jatuh tempo, dan menyiapkan draf pengingat pembayaran untuk saya tinjau. Perbarui catatan pengingat agar tidak berulang dan hentikan saat pembayaran tercatat. Tanyakan sumber faktur, akun email, dan catatan yang digunakan."
           },
           "jobMatches": {
-            "label": "Cari lowongan baru sesuai tujuan saya",
-            "prompt": "Cari lowongan kerja terbaru yang sesuai dengan tujuan saya dan rangkum pilihan terbaik beserta tautannya. Konfirmasikan posisi, lokasi, tingkat pengalaman, dan frekuensi pembaruan."
+            "label": "Lowongan baru → pelacakan lamaran",
+            "prompt": "Buat alur kerja yang mencari lowongan baru yang sesuai setiap hari, menjelaskan kecocokannya, dan menambahkannya dengan tautan sumber ke catatan lamaran saya di Google Sheets. Tanyakan posisi target, lokasi, pengalaman, sumber lowongan, dan spreadsheet. Lewati lowongan yang sudah tercatat."
           },
           "leadBrief": {
-            "label": "Riset prospek baru sebelum saya menghubungi",
-            "prompt": "Saat ada prospek baru, teliti bisnis mereka dan siapkan ringkasan singkat sebelum saya menghubungi. Konfirmasikan sumber prospek dan informasi yang saya perlukan."
+            "label": "Prospek baru → CRM + draf balasan",
+            "prompt": "Buat alur kerja yang memeriksa pertanyaan dari prospek baru, meneliti setiap perusahaan, menambahkan atau memperbarui prospek di CRM saya, lalu menyiapkan draf balasan personal untuk saya tinjau. Tanyakan kotak masuk, CRM, dan frekuensi pemeriksaan yang digunakan."
           },
           "meetingActions": {
-            "label": "Ubah catatan rapat menjadi tugas",
-            "prompt": "Saat catatan rapat baru tersedia, ambil tugas, penanggung jawab, dan tenggat. Tandai informasi yang belum ada dan konfirmasi lokasi catatan."
+            "label": "Catatan rapat → tugas dengan penanggung jawab",
+            "prompt": "Buat alur kerja yang memeriksa catatan rapat baru, mengambil keputusan dan tindak lanjut, lalu membuat tugas dengan penanggung jawab dan tenggat yang disebutkan dalam catatan. Tanyakan lokasi catatan, tujuan penyimpanan tugas, dan frekuensi pemeriksaan."
           },
           "meetingPrep": {
-            "label": "Bantu persiapkan rapat saya",
-            "prompt": "Sebelum rapat, siapkan informasi peserta, latar belakang, dan topik diskusi. Konfirmasi kalender, sumber materi, dan waktu pengingat."
+            "label": "Rapat baru → ringkasan peserta",
+            "prompt": "Buat alur kerja yang berjalan saat rapat ditambahkan ke kalender saya, meneliti peserta dan perusahaan mereka, lalu mengirimkan ringkasan dengan tautan sumber dan saran topik pembicaraan. Tanyakan kalender, jenis rapat, dan tujuan pengirimannya."
           },
           "numbersBrief": {
-            "label": "Dapatkan ringkasan angka harian",
-            "prompt": "Rangkum angka yang saya pantau beserta perubahan sejak pembaruan terakhir setiap hari. Konfirmasi sumber data, metrik, dan waktu pengiriman."
+            "label": "Metrik harian → catatan + peringatan",
+            "prompt": "Buat alur kerja yang mengumpulkan metrik bisnis utama setiap pagi, menambahkannya ke Google Sheets, membandingkannya dengan periode sebelumnya, dan memberi peringatan di Slack saat ambang yang disepakati terlewati. Tanyakan metrik, sumber, spreadsheet, ambang, kanal, waktu, dan zona waktu."
           },
           "orderDigest": {
-            "label": "Rangkum pesanan baru dan retur",
-            "prompt": "Kirim ringkasan berkala tentang pesanan baru, retur, dan pesanan yang perlu perhatian. Konfirmasikan toko atau sumber pesanan, periode laporan, dan waktu pengiriman."
+            "label": "Pesanan harian → catatan + pengecualian",
+            "prompt": "Buat alur kerja yang memeriksa pesanan dan retur toko setiap hari, memperbarui catatan di Google Sheets, dan mengirimkan ringkasan keterlambatan, pengembalian dana, serta pesanan yang perlu ditangani. Tanyakan toko, spreadsheet, tujuan pengiriman, waktu, dan zona waktu."
           },
           "pendingReplies": {
-            "label": "Ingatkan email saya yang belum dibalas",
-            "prompt": "Ingatkan saya saat email yang saya kirim belum mendapat balasan setelah jangka waktu tertentu. Konfirmasikan percakapan yang dipantau dan berapa lama harus menunggu."
+            "label": "3 hari tanpa balasan → draf tindak lanjut",
+            "prompt": "Buat alur kerja yang memeriksa utas email pilihan setiap hari dan menyiapkan draf tindak lanjut setelah tiga hari tanpa balasan. Beri tahu saya sekali per utas yang belum dibalas dan hentikan tindak lanjut saat balasan masuk. Tanyakan utas dan tujuan notifikasinya."
           },
           "progressRecap": {
-            "label": "Rangkum progres dan langkah berikutnya",
-            "prompt": "Rangkum pekerjaan selesai, tugas tertunda, dan prioritas berikutnya secara rutin. Konfirmasi sumber catatan serta jadwal harian atau mingguan."
+            "label": "Setiap Jumat → laporan mingguan tim",
+            "prompt": "Buat alur kerja yang setiap Jumat mengumpulkan pekerjaan selesai dan hambatan yang belum teratasi dari pengelola tugas tim, lalu memposting laporan mingguan singkat di Slack beserta tautan sumber. Tanyakan proyek, kanal, waktu, dan zona waktu yang digunakan."
           },
           "renewalReminder": {
-            "label": "Ingatkan saya sebelum perpanjangan",
-            "prompt": "Ingatkan saya sebelum langganan atau kontrak diperpanjang agar saya sempat meninjaunya. Konfirmasikan sumber tanggal perpanjangan dan seberapa awal pengingat diperlukan."
+            "label": "Perpanjangan mendatang → tugas peninjauan",
+            "prompt": "Buat alur kerja yang memeriksa catatan langganan dan kontrak setiap minggu, lalu membuat tugas peninjauan untuk setiap perpanjangan dalam 30 hari mendatang, termasuk biaya, penanggung jawab, dan tenggat pembatalan. Tanyakan catatan dan tujuan tugas yang digunakan, serta hindari membuat tugas yang sama dua kali."
           },
           "replyWatch": {
-            "label": "Beri tahu saat email mendapat balasan",
-            "prompt": "Pantau balasan untuk satu email, lalu beri tahu saya dan rangkum isinya. Konfirmasi email yang perlu diikuti terlebih dahulu."
+            "label": "Balasan pelanggan → pembaruan CRM",
+            "prompt": "Buat alur kerja yang memantau email balasan pelanggan, mencocokkannya dengan kontak CRM, dan mencatat informasi terbaru serta langkah berikutnya yang disepakati. Beri tahu saya saat perlu membalas. Tanyakan kotak masuk, CRM, dan tujuan notifikasinya."
           },
           "salesFollowUps": {
-            "label": "Buat draf tindak lanjut setelah panggilan penjualan",
-            "prompt": "Setelah panggilan penjualan, gunakan catatan saya untuk membuat draf tindak lanjut kepada pelanggan beserta langkah berikutnya yang disepakati. Konfirmasikan lokasi catatan dan simpan setiap draf untuk saya tinjau."
+            "label": "Panggilan penjualan → CRM + draf",
+            "prompt": "Buat alur kerja yang memeriksa catatan panggilan penjualan baru, mencatat langkah berikutnya yang disepakati di CRM, dan membuat draf email tindak lanjut pelanggan untuk saya tinjau. Tanyakan lokasi catatan, CRM, kotak masuk, dan frekuensi pemeriksaan."
           },
           "spreadsheetChecks": {
-            "label": "Temukan data yang kurang di spreadsheet saya",
-            "prompt": "Periksa spreadsheet secara berkala untuk data wajib yang belum diisi dan catatan duplikat. Laporkan baris yang perlu ditinjau. Konfirmasikan spreadsheet, kolom, aturan, dan frekuensinya."
+            "label": "Baris baru → pemeriksaan data",
+            "prompt": "Buat alur kerja yang memeriksa baris spreadsheet baru setiap hari untuk menemukan detail wajib yang kosong dan data duplikat, lalu mencatat baris yang perlu diperbaiki di tab tinjauan terpisah serta memberi tahu penanggung jawab. Tanyakan spreadsheet, aturan validasi, dan tujuan notifikasinya."
           },
           "supportTriage": {
-            "label": "Prioritaskan permintaan baru dari pelanggan",
-            "prompt": "Tinjau permintaan baru dari pelanggan secara berkala dan rangkum yang mendesak terlebih dahulu. Konfirmasikan kotak masuk, aturan urgensi, dan waktu ringkasan yang saya inginkan."
+            "label": "Email dukungan → tiket berprioritas",
+            "prompt": "Buat alur kerja yang memeriksa email dukungan baru, mengelompokkan permintaan berdasarkan masalah dan urgensi, lalu membuat atau memperbarui tiket terkait. Beri peringatan kepada tim di Slack untuk kasus mendesak. Tanyakan kotak masuk, sistem tiket, aturan urgensi, dan kanal yang digunakan."
           },
           "topicUpdates": {
-            "label": "Ikuti kabar terbaru tentang suatu topik",
-            "prompt": "Ikuti topik yang saya minati dan rangkum informasi baru yang penting beserta sumbernya. Tanyakan topik dan frekuensi pembaruan."
+            "label": "Berita industri harian → ringkasan Slack",
+            "prompt": "Buat alur kerja yang mengumpulkan artikel baru tentang industri saya setiap pagi, menghapus duplikat, merangkum perkembangan penting dengan tautan sumber, dan memposting ringkasannya di Slack. Tanyakan topik, sumber, kanal, waktu, dan zona waktu yang digunakan."
           }
         }
       },

@@ -2495,100 +2495,100 @@
         },
         "workflow": {
           "brandMentions": {
-            "label": "Collect mentions of my brand",
-            "prompt": "Regularly collect new mentions of my brand from the sources we agree on. Summarize the context and flag mentions that may need a response. Confirm the brand terms and cadence."
+            "label": "Brand mentions → response queue",
+            "prompt": "Create a workflow that checks for new public mentions of my brand each day, groups duplicates, and logs relevant mentions in a Notion response queue with source links. Alert me to mentions needing a response. Ask which brand terms, sources, Notion database, and alert destination to use."
           },
           "chatDigest": {
-            "label": "Catch up on important team messages",
-            "prompt": "Regularly summarize important messages, decisions, and questions from the team channels I choose. Confirm the channels and how often to send the summary."
+            "label": "Team discussions → decision log",
+            "prompt": "Create a workflow that reviews new messages in selected Slack channels each day, extracts confirmed decisions and unresolved questions, and updates a shared Notion decision log with source links. Ask which channels, Notion page, time, and time zone to use."
           },
           "competitorChanges": {
-            "label": "Track changes on competitor websites",
-            "prompt": "Check the competitor websites I choose for changes to pricing, products, or announcements. Confirm the pages and cadence, and include source links in each update."
+            "label": "Competitor changes → Slack alerts",
+            "prompt": "Create a workflow that checks selected competitor pages daily, compares pricing and product details with the previous check, and posts only meaningful changes to Slack with source links. Ask which pages, channel, time, and time zone to use."
           },
           "contentIdeas": {
-            "label": "Find ideas for my next post",
-            "prompt": "Regularly collect timely ideas for my next posts, with source links and an angle for my audience. Confirm the topics, audience, and cadence."
-          },
-          "dailyPlan": {
-            "label": "Plan my day each morning",
-            "prompt": "Each morning, turn my calendar and open tasks into a realistic plan for the day. Confirm the sources, time zone, and delivery time."
+            "label": "Weekly trends → content backlog",
+            "prompt": "Create a workflow that reviews my saved articles and industry updates each week, turns relevant trends into post ideas for my audience, and adds them to a Notion content backlog with angles and source links. Ask which sources, audience, Notion database, and weekly schedule to use."
           },
           "deadlineReminder": {
-            "label": "Remind me before deadlines",
-            "prompt": "Remind me before important tasks or project milestones are due. Confirm the task source, which deadlines matter, and how much notice I need."
-          },
-          "emailBrief": {
-            "label": "Get my morning email brief",
-            "prompt": "Give me a morning brief of the emails I need to pay attention to, including replies and action items. First confirm which inbox to use and when I want to receive it."
+            "label": "Overdue tasks → owner reminders",
+            "prompt": "Create a workflow that checks our task tracker each weekday, finds overdue work, and reminds the assigned owners in Slack with task links. Group reminders per person and stop once a task is completed. Ask which projects, Slack destination, time, and time zone to use."
           },
           "feedbackThemes": {
-            "label": "Find patterns in customer feedback",
-            "prompt": "Each week, group customer feedback into recurring themes and highlight examples. Confirm the feedback sources, time period, and delivery day."
+            "label": "New feedback → grouped issue tracker",
+            "prompt": "Create a workflow that checks customer feedback each day, groups similar requests, and adds new evidence to the matching issue in Notion instead of creating duplicates. Send a weekly summary of growing themes. Ask which sources, Notion database, and summary destination to use."
           },
-          "fileOrganization": {
-            "label": "Organize incoming files",
-            "prompt": "Organize new files as they arrive, using agreed naming and filing rules. First confirm the source, destination folder, and categories."
+          "flaggedEmailTasks": {
+            "label": "Flagged emails → to-do list",
+            "prompt": "Create a workflow that turns each email I mark with a chosen Gmail label into a Todoist task with a clear next step, the original email link, and any stated due date. Ask which label and project to use, and avoid duplicate tasks."
+          },
+          "inboxTriage": {
+            "label": "New emails → labels + reply drafts",
+            "prompt": "Create a workflow that reads new incoming emails, labels them by urgency, and prepares reply drafts for those that need a response. Ask which inbox and labeling rules to use; let me review drafts before sending."
+          },
+          "invoiceFiling": {
+            "label": "Invoice emails → expense tracker",
+            "prompt": "Create a workflow that files newly received invoice attachments in Google Drive, extracts vendor, amount, and due date, and adds each invoice once to Google Sheets. Ask which emails, folder, and spreadsheet to use."
           },
           "invoiceFollowUps": {
-            "label": "Follow up on overdue invoices",
-            "prompt": "Regularly summarize overdue invoices and draft polite payment reminders for my review. Confirm the invoice source, overdue rules, and cadence."
+            "label": "Overdue invoices → reminder drafts",
+            "prompt": "Create a workflow that checks unpaid invoices each weekday, identifies overdue balances, and prepares payment reminder drafts for my review. Update a reminder log to avoid duplicates and stop when payment is recorded. Ask which invoice source, email account, and log to use."
           },
           "jobMatches": {
-            "label": "Find new jobs that fit my goals",
-            "prompt": "Find newly posted jobs that fit my goals and summarize the strongest matches with links. Confirm roles, location, experience level, and how often I want updates."
+            "label": "New job matches → application tracker",
+            "prompt": "Create a workflow that searches for new matching jobs each day, explains why each fits, and adds new matches with source links to my application tracker in Google Sheets. Ask for my target roles, location, experience, job sources, and spreadsheet. Skip jobs already recorded."
           },
           "leadBrief": {
-            "label": "Research new leads before I reach out",
-            "prompt": "When a new lead appears, research their business and prepare a short brief before I reach out. Confirm the lead source and the information I need."
+            "label": "New leads → CRM + reply draft",
+            "prompt": "Create a workflow that checks for new lead inquiries, researches each company, adds or updates the lead in my CRM, and prepares a personalized reply draft for me to review. Ask which inbox and CRM to use and how often to check."
           },
           "meetingActions": {
-            "label": "Turn meeting notes into action items",
-            "prompt": "When new meeting notes arrive, extract action items, owners, and due dates. Flag missing details. First confirm where to find my meeting notes."
+            "label": "Meeting notes → assigned tasks",
+            "prompt": "Create a workflow that checks for new meeting notes, extracts decisions and action items, and creates tasks with the owners and due dates stated in the notes. Ask where notes arrive, where tasks should go, and how often to check."
           },
           "meetingPrep": {
-            "label": "Help me prepare for meetings",
-            "prompt": "Before meetings, prepare the people, background, and discussion points I need. First confirm my calendar, source material, and how far ahead to remind me."
+            "label": "New meetings → attendee brief",
+            "prompt": "Create a workflow that runs when a meeting is added to my calendar, researches the attendees and their companies, and sends me a brief with source links and suggested talking points. Ask which calendar, meeting types, and delivery destination to use."
           },
           "numbersBrief": {
-            "label": "Get a daily numbers summary",
-            "prompt": "Give me a daily summary of the numbers I track and how they changed since the last update. First confirm the data source, the numbers to include, and when to send it."
+            "label": "Daily metrics → tracker + alerts",
+            "prompt": "Create a workflow that collects my key business metrics each morning, adds them to Google Sheets, compares them with the previous period, and alerts Slack when an agreed threshold is crossed. Ask which metrics, sources, spreadsheet, thresholds, channel, time, and time zone to use."
           },
           "orderDigest": {
-            "label": "Summarize new orders and returns",
-            "prompt": "Send me a regular summary of new orders, returns, and orders that need attention. Confirm the store or order source, reporting period, and delivery time."
+            "label": "Daily orders → tracker + exceptions",
+            "prompt": "Create a workflow that checks store orders and returns each day, updates a Google Sheets tracker, and sends me a summary highlighting delays, refunds, and orders needing attention. Ask which store, spreadsheet, delivery destination, time, and time zone to use."
           },
           "pendingReplies": {
-            "label": "Remind me about unanswered emails",
-            "prompt": "Remind me when an email I sent has gone unanswered for a set time. Confirm which conversations to track and how long to wait."
+            "label": "No reply in 3 days → follow-up draft",
+            "prompt": "Create a workflow that checks selected email threads daily and prepares a follow-up draft when there has been no reply for three days. Notify me once per unanswered thread and stop following up when a reply arrives. Ask which threads and notification destination to use."
           },
           "progressRecap": {
-            "label": "Recap my progress and next steps",
-            "prompt": "Regularly recap my completed work, unfinished items, and next priorities. First confirm where to find my work records and whether I want a daily or weekly recap."
+            "label": "Every Friday → team weekly update",
+            "prompt": "Create a workflow that runs every Friday, gathers completed work and open blockers from my team's task tracker, and posts a concise weekly update to Slack with source links. Ask which projects, channel, time, and time zone to use."
           },
           "renewalReminder": {
-            "label": "Remind me before renewals",
-            "prompt": "Remind me before subscriptions or contracts renew so I have time to review them. Confirm the source of renewal dates and how much notice I need."
+            "label": "Upcoming renewals → review checklist",
+            "prompt": "Create a workflow that checks a subscription and contract tracker each week and creates a review task for each renewal due in the next 30 days, including the cost, owner, and cancellation deadline. Ask which tracker and task destination to use, and avoid creating the same task twice."
           },
           "replyWatch": {
-            "label": "Tell me when an email gets a reply",
-            "prompt": "Watch one email for a reply, then notify me and summarize it. First confirm which email to follow."
+            "label": "Customer replies → CRM updates",
+            "prompt": "Create a workflow that watches customer reply emails, matches each reply to its CRM contact, and logs the latest update and agreed next step. Notify me when I need to respond. Ask which inbox, CRM, and notification destination to use."
           },
           "salesFollowUps": {
-            "label": "Draft follow-ups after sales calls",
-            "prompt": "After a sales call, use my notes to draft a customer follow-up with agreed next steps. Confirm where to find the notes and keep each draft for my review."
+            "label": "Sales calls → CRM + follow-up draft",
+            "prompt": "Create a workflow that checks for new sales-call notes, records the agreed next steps in my CRM, and drafts a customer follow-up email for my review. Ask where notes arrive, which CRM and inbox to use, and how often to check."
           },
           "spreadsheetChecks": {
-            "label": "Find missing details in my spreadsheet",
-            "prompt": "Regularly check a spreadsheet for missing required details and duplicate records. Report the rows that need review. Confirm the sheet, columns, rules, and cadence."
+            "label": "New spreadsheet rows → data checks",
+            "prompt": "Create a workflow that checks newly added spreadsheet rows each day for missing required details and duplicate records, then logs the rows needing correction in a separate review tab and notifies the owner. Ask which spreadsheet, validation rules, and notification destination to use."
           },
           "supportTriage": {
-            "label": "Prioritize new customer requests",
-            "prompt": "Regularly review new customer requests and summarize the urgent ones first. Confirm the inbox, urgency rules, and when I want the summary."
+            "label": "Support emails → prioritized tickets",
+            "prompt": "Create a workflow that checks new support emails, classifies each request by issue and urgency, and creates or updates the matching support ticket. Alert the team in Slack about urgent cases. Ask which inbox, ticket system, urgency rules, and channel to use."
           },
           "topicUpdates": {
-            "label": "Follow updates on a topic",
-            "prompt": "Follow a topic I care about and summarize important new information with source links. Ask what I want to follow and how often I want an update."
+            "label": "Daily industry news → Slack brief",
+            "prompt": "Create a workflow that gathers new articles on my industry each morning, removes duplicates, summarizes the important developments with source links, and posts the brief to Slack. Ask which topics, sources, channel, time, and time zone to use."
           }
         }
       },

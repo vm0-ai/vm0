@@ -2540,100 +2540,100 @@
         },
         "workflow": {
           "brandMentions": {
-            "label": "Raccogliere le menzioni del mio brand",
-            "prompt": "Raccogli regolarmente le nuove menzioni del mio brand dalle fonti concordate. Riassumi il contesto e segnala quelle che potrebbero richiedere una risposta. Conferma i termini di ricerca e la frequenza."
+            "label": "Menzioni del brand → coda risposte",
+            "prompt": "Crea un workflow che cerchi ogni giorno nuove menzioni pubbliche del mio brand, raggruppi i duplicati e registri quelle rilevanti in una coda risposte in Notion con link alle fonti. Avvisami delle menzioni a cui rispondere. Chiedi termini, fonti, database Notion e destinazione degli avvisi."
           },
           "chatDigest": {
-            "label": "Riassumere i messaggi importanti del team",
-            "prompt": "Riassumi regolarmente messaggi importanti, decisioni e domande dai canali del team che scelgo. Conferma i canali e la frequenza del riepilogo."
+            "label": "Discussioni del team → registro decisioni",
+            "prompt": "Crea un workflow che esamini ogni giorno i nuovi messaggi nei canali Slack selezionati, estragga decisioni confermate e domande aperte e aggiorni un registro condiviso delle decisioni in Notion con link alle fonti. Chiedi quali canali, pagina Notion, orario e fuso orario usare."
           },
           "competitorChanges": {
-            "label": "Seguire i cambiamenti sui siti dei concorrenti",
-            "prompt": "Controlla i siti dei concorrenti che scelgo per individuare cambiamenti a prezzi, prodotti o annunci. Conferma le pagine e la frequenza e includi i link alle fonti in ogni aggiornamento."
+            "label": "Novità dei concorrenti → avvisi Slack",
+            "prompt": "Crea un workflow che controlli ogni giorno le pagine dei concorrenti selezionate, confronti prezzi e dettagli dei prodotti con il controllo precedente e pubblichi su Slack solo le modifiche rilevanti con link alle fonti. Chiedi quali pagine, canale, orario e fuso orario usare."
           },
           "contentIdeas": {
-            "label": "Trovare idee per il mio prossimo post",
-            "prompt": "Raccogli regolarmente idee attuali per i miei prossimi post, con link alle fonti e un taglio adatto al mio pubblico. Conferma gli argomenti, il pubblico e la frequenza."
-          },
-          "dailyPlan": {
-            "label": "Pianificare la mia giornata ogni mattina",
-            "prompt": "Ogni mattina, trasforma il mio calendario e le attività aperte in un piano realistico per la giornata. Conferma le fonti, il fuso orario e l’orario di invio."
+            "label": "Trend settimanali → idee di contenuto",
+            "prompt": "Crea un workflow che esamini ogni settimana i miei articoli salvati e le novità del settore, trasformi i trend rilevanti in idee di post per il mio pubblico e le aggiunga a una lista di contenuti in Notion con tagli editoriali e link alle fonti. Chiedi fonti, pubblico, database Notion e cadenza settimanale."
           },
           "deadlineReminder": {
-            "label": "Ricordarmi le scadenze in anticipo",
-            "prompt": "Avvisami prima delle scadenze di attività importanti o delle tappe di progetto. Conferma la fonte delle attività, le scadenze rilevanti e l’anticipo desiderato."
-          },
-          "emailBrief": {
-            "label": "Ricevere il riepilogo mattutino delle email",
-            "prompt": "Ogni mattina riassumi le email importanti, le risposte da preparare e le azioni necessarie. Conferma la casella da usare e l'orario."
+            "label": "Attività scadute → promemoria ai responsabili",
+            "prompt": "Crea un workflow che controlli il nostro gestore di attività ogni giorno lavorativo, trovi il lavoro scaduto e ricordi ai responsabili di occuparsene su Slack con i link alle attività. Raggruppa i promemoria per persona e interrompili al completamento. Chiedi progetti, destinazione Slack, orario e fuso orario."
           },
           "feedbackThemes": {
-            "label": "Trovare temi ricorrenti nei feedback dei clienti",
-            "prompt": "Ogni settimana, raggruppa i feedback dei clienti per temi ricorrenti ed evidenzia degli esempi. Conferma le fonti, il periodo e il giorno di invio."
+            "label": "Nuovi feedback → richieste raggruppate",
+            "prompt": "Crea un workflow che esamini ogni giorno i feedback dei clienti, raggruppi le richieste simili e aggiunga nuovi riscontri al problema corrispondente in Notion senza creare duplicati. Invia un riepilogo settimanale dei temi in crescita. Chiedi quali fonti, database Notion e destinazione del riepilogo usare."
           },
-          "fileOrganization": {
-            "label": "Organizzare i file in arrivo",
-            "prompt": "Organizza i nuovi file secondo regole concordate di denominazione e archiviazione. Conferma origine, cartella di destinazione e categorie."
+          "flaggedEmailTasks": {
+            "label": "Email contrassegnate → lista attività",
+            "prompt": "Crea un workflow che trasformi ogni email a cui applico un'etichetta Gmail scelta in un'attività Todoist con il passo successivo, il link all'email originale e l'eventuale scadenza indicata. Chiedi quale etichetta e progetto usare ed evita attività duplicate."
+          },
+          "inboxTriage": {
+            "label": "Nuove email → etichette + bozze",
+            "prompt": "Crea un workflow che legga le nuove email, le etichetti per urgenza e prepari bozze per quelle che richiedono una risposta. Chiedi quale casella email e quali regole di etichettatura usare; lasciami rivedere le bozze prima dell'invio."
+          },
+          "invoiceFiling": {
+            "label": "Fatture via email → registro spese",
+            "prompt": "Crea un workflow che archivi in Google Drive gli allegati delle nuove fatture ricevute, estragga fornitore, importo e scadenza e registri ogni fattura una sola volta in Google Sheets. Chiedi quali email, cartella e foglio usare."
           },
           "invoiceFollowUps": {
-            "label": "Sollecitare le fatture scadute",
-            "prompt": "Riassumi regolarmente le fatture scadute e prepara solleciti di pagamento cortesi da sottopormi. Conferma la fonte delle fatture, le regole sulle scadenze e la frequenza."
+            "label": "Fatture scadute → bozze di promemoria",
+            "prompt": "Crea un workflow che controlli le fatture non pagate ogni giorno lavorativo, identifichi gli importi scaduti e prepari bozze di promemoria di pagamento da rivedere. Aggiorna un registro dei promemoria per evitare duplicati e interrompili quando il pagamento viene registrato. Chiedi fonte delle fatture, account email e registro."
           },
           "jobMatches": {
-            "label": "Trovare lavori adatti ai miei obiettivi",
-            "prompt": "Trova nuovi annunci di lavoro adatti ai miei obiettivi e riassumi i più pertinenti con i relativi link. Conferma i ruoli, la località, il livello di esperienza e la frequenza degli aggiornamenti."
+            "label": "Nuove offerte → registro candidature",
+            "prompt": "Crea un workflow che cerchi ogni giorno nuove offerte di lavoro adatte, spieghi perché corrispondono al mio profilo e le aggiunga con link alle fonti al registro candidature in Google Sheets. Chiedi ruoli desiderati, luogo, esperienza, fonti delle offerte e foglio. Salta le offerte già registrate."
           },
           "leadBrief": {
-            "label": "Informarmi sui nuovi lead prima di contattarli",
-            "prompt": "Quando arriva un nuovo lead, cerca informazioni sulla sua attività e prepara un breve riepilogo prima che lo contatti. Conferma la fonte dei lead e le informazioni necessarie."
+            "label": "Nuovi lead → CRM + bozza di risposta",
+            "prompt": "Crea un workflow che rilevi nuove richieste di potenziali clienti, ricerchi ogni azienda, aggiunga o aggiorni il lead nel mio CRM e prepari una bozza di risposta personalizzata da rivedere. Chiedi quale casella email e CRM usare e con quale frequenza controllare."
           },
           "meetingActions": {
-            "label": "Trasformare gli appunti di riunione in attività",
-            "prompt": "Quando arrivano nuovi appunti, estrai attività, responsabili e scadenze. Segnala i dettagli mancanti e conferma dove trovare gli appunti."
+            "label": "Note di riunione → attività assegnate",
+            "prompt": "Crea un workflow che cerchi nuove note di riunione, estragga decisioni e azioni e crei attività con i responsabili e le scadenze indicati nelle note. Chiedi dove arrivano le note, dove creare le attività e con quale frequenza controllare."
           },
           "meetingPrep": {
-            "label": "Preparare le mie riunioni",
-            "prompt": "Prima delle riunioni, prepara informazioni sui partecipanti, contesto e punti da discutere. Conferma calendario, materiali e anticipo del promemoria."
+            "label": "Nuove riunioni → scheda partecipanti",
+            "prompt": "Crea un workflow che, quando viene aggiunta una riunione al mio calendario, ricerchi i partecipanti e le loro aziende e mi invii una scheda con link alle fonti e argomenti di conversazione suggeriti. Chiedi quale calendario, tipi di riunione e destinazione usare."
           },
           "numbersBrief": {
-            "label": "Ricevere il riepilogo giornaliero dei numeri",
-            "prompt": "Riassumi ogni giorno i numeri che seguo e le variazioni dall'ultimo aggiornamento. Conferma la fonte, gli indicatori e l'orario."
+            "label": "Metriche giornaliere → registro + avvisi",
+            "prompt": "Crea un workflow che raccolga ogni mattina le mie metriche aziendali chiave, le aggiunga a Google Sheets, le confronti con il periodo precedente e avvisi Slack quando viene superata una soglia concordata. Chiedi metriche, fonti, foglio, soglie, canale, orario e fuso orario."
           },
           "orderDigest": {
-            "label": "Riassumere nuovi ordini e resi",
-            "prompt": "Inviami regolarmente un riepilogo dei nuovi ordini, dei resi e degli ordini che richiedono attenzione. Conferma il negozio o la fonte degli ordini, il periodo e l’orario di invio."
+            "label": "Ordini giornalieri → registro + anomalie",
+            "prompt": "Crea un workflow che controlli ogni giorno ordini e resi del negozio, aggiorni un registro in Google Sheets e mi invii un riepilogo di ritardi, rimborsi e ordini che richiedono attenzione. Chiedi quale negozio, foglio, destinazione, orario e fuso orario usare."
           },
           "pendingReplies": {
-            "label": "Ricordarmi le e-mail senza risposta",
-            "prompt": "Avvisami quando un’e-mail che ho inviato rimane senza risposta per un periodo stabilito. Conferma quali conversazioni seguire e quanto aspettare."
+            "label": "3 giorni senza risposta → bozza di sollecito",
+            "prompt": "Crea un workflow che controlli ogni giorno le conversazioni email selezionate e prepari una bozza di sollecito dopo tre giorni senza risposta. Avvisami una volta per conversazione senza risposta e interrompi i solleciti quando ne arriva una. Chiedi quali conversazioni e destinazione delle notifiche usare."
           },
           "progressRecap": {
-            "label": "Riepilogare progressi e prossimi passi",
-            "prompt": "Riepiloga regolarmente il lavoro completato, le attività aperte e le priorità. Conferma la fonte dei resoconti e la frequenza giornaliera o settimanale."
+            "label": "Ogni venerdì → aggiornamento del team",
+            "prompt": "Crea un workflow che ogni venerdì raccolga il lavoro completato e gli ostacoli aperti dal gestore delle attività del mio team e pubblichi su Slack un breve aggiornamento settimanale con link alle fonti. Chiedi quali progetti, canale, orario e fuso orario usare."
           },
           "renewalReminder": {
-            "label": "Avvisarmi prima dei rinnovi",
-            "prompt": "Avvisami prima del rinnovo di abbonamenti o contratti, così posso valutarli per tempo. Conferma la fonte delle date di rinnovo e il preavviso necessario."
+            "label": "Rinnovi imminenti → attività di revisione",
+            "prompt": "Crea un workflow che controlli ogni settimana un registro di abbonamenti e contratti e crei un'attività di revisione per ogni rinnovo previsto nei prossimi 30 giorni, includendo costo, responsabile e termine di disdetta. Chiedi quale registro e destinazione delle attività usare ed evita di creare la stessa attività due volte."
           },
           "replyWatch": {
-            "label": "Avvisarmi quando arriva una risposta email",
-            "prompt": "Segui una specifica email in attesa di risposta, poi avvisami e riassumi il contenuto. Conferma prima quale email seguire."
+            "label": "Risposte dei clienti → aggiornamenti CRM",
+            "prompt": "Crea un workflow che monitori le risposte email dei clienti, le associ al contatto nel CRM e registri gli aggiornamenti e il passo successivo concordato. Avvisami quando devo rispondere. Chiedi quale casella email, CRM e destinazione delle notifiche usare."
           },
           "salesFollowUps": {
-            "label": "Preparare follow-up dopo le chiamate di vendita",
-            "prompt": "Dopo una chiamata di vendita, usa i miei appunti per preparare un messaggio di follow-up al cliente con i prossimi passi concordati. Conferma dove trovare gli appunti e conserva ogni bozza per la mia revisione."
+            "label": "Chiamate di vendita → CRM + bozza",
+            "prompt": "Crea un workflow che cerchi nuove note delle chiamate di vendita, registri nel mio CRM i passi successivi concordati e prepari una bozza di email di follow-up al cliente da rivedere. Chiedi dove arrivano le note, quale CRM e casella email usare e con quale frequenza controllare."
           },
           "spreadsheetChecks": {
-            "label": "Trovare dati mancanti nel mio foglio di calcolo",
-            "prompt": "Controlla regolarmente un foglio di calcolo per trovare dati obbligatori mancanti e record duplicati. Segnala le righe da rivedere. Conferma il foglio, le colonne, le regole e la frequenza."
+            "label": "Nuove righe → controllo dei dati",
+            "prompt": "Crea un workflow che controlli ogni giorno le nuove righe di un foglio per individuare dati obbligatori mancanti e record duplicati, registri le righe da correggere in una scheda di revisione separata e avvisi il responsabile. Chiedi quale foglio, regole di convalida e destinazione delle notifiche usare."
           },
           "supportTriage": {
-            "label": "Dare priorità alle nuove richieste dei clienti",
-            "prompt": "Esamina regolarmente le nuove richieste dei clienti e riassumi prima quelle urgenti. Conferma la casella di posta, i criteri di urgenza e quando desidero il riepilogo."
+            "label": "Email di assistenza → ticket prioritari",
+            "prompt": "Crea un workflow che esamini le nuove email di assistenza, classifichi ogni richiesta per problema e urgenza e crei o aggiorni il ticket corrispondente. Avvisa il team su Slack dei casi urgenti. Chiedi quale casella email, sistema di ticket, regole di urgenza e canale usare."
           },
           "topicUpdates": {
-            "label": "Seguire le novità su un argomento",
-            "prompt": "Segui un argomento che mi interessa e riassumi le nuove informazioni importanti con le fonti. Chiedi l'argomento e la frequenza desiderata."
+            "label": "Notizie del settore → brief Slack quotidiano",
+            "prompt": "Crea un workflow che raccolga ogni mattina nuovi articoli del mio settore, rimuova i duplicati, riassuma gli sviluppi importanti con link alle fonti e pubblichi il brief su Slack. Chiedi quali argomenti, fonti, canale, orario e fuso orario usare."
           }
         }
       },

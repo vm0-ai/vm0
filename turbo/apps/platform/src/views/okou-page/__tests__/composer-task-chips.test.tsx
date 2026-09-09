@@ -137,16 +137,16 @@ test("Task changes preserve uploaded files and the draft, and toggling off resto
 test.each([
   {
     task: "Workflow",
-    first: "Get my morning email brief",
-    next: "Help me prepare for meetings",
-    prompt: "Give me a morning brief",
+    first: "Invoice emails → expense tracker",
+    next: "New emails → labels + reply drafts",
+    prompt: "Create a workflow that files newly received invoice attachments",
     cycle: [
-      "Help me prepare for meetings",
-      "Plan my day each morning",
-      "Research new leads before I reach out",
-      "Track changes on competitor websites",
-      "Follow up on overdue invoices",
-      "Get my morning email brief",
+      "New emails → labels + reply drafts",
+      "New meetings → attendee brief",
+      "Support emails → prioritized tickets",
+      "Competitor changes → Slack alerts",
+      "Overdue invoices → reminder drafts",
+      "Invoice emails → expense tracker",
     ],
   },
   {
@@ -391,9 +391,10 @@ test("Starting ideas use the active app language", async () => {
     featureSwitches: { [FeatureSwitchKey.ComposerTaskChips]: true },
   });
   const editor = await findComposerEditor();
-  const idea = "毎朝、重要なメールをまとめる";
+  const idea = "請求書メール → 経費台帳";
   click(button(idea));
   await waitFor(() => {
-    expect(editor).toHaveTextContent("毎朝、注目すべきメール");
+    expect(editor).toHaveTextContent("ワークフローを作成してください");
+    expect(editor).toHaveTextContent("Google Sheets に一度だけ記録");
   });
 });

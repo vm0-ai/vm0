@@ -2495,100 +2495,100 @@
         },
         "workflow": {
           "brandMentions": {
-            "label": "Erwähnungen meiner Marke sammeln",
-            "prompt": "Sammle regelmäßig neue Erwähnungen meiner Marke aus den vereinbarten Quellen. Fasse den Kontext zusammen und markiere Erwähnungen, die eine Antwort erfordern könnten. Kläre die Suchbegriffe und den Rhythmus."
+            "label": "Markenerwähnungen → Antwortliste",
+            "prompt": "Erstelle einen Workflow, der täglich neue öffentliche Erwähnungen meiner Marke prüft, Duplikate bündelt und relevante Erwähnungen mit Quellenlinks in einer Antwortliste in Notion erfasst. Benachrichtige mich, wenn eine Reaktion nötig ist. Frage nach Suchbegriffen, Quellen, Notion-Datenbank und Benachrichtigungsziel."
           },
           "chatDigest": {
-            "label": "Wichtige Teamnachrichten zusammenfassen",
-            "prompt": "Fasse regelmäßig wichtige Nachrichten, Entscheidungen und Fragen aus meinen ausgewählten Teamkanälen zusammen. Kläre die Kanäle und wie oft ich die Zusammenfassung erhalten möchte."
+            "label": "Team-Diskussionen → Entscheidungsprotokoll",
+            "prompt": "Erstelle einen Workflow, der täglich neue Nachrichten in ausgewählten Slack-Kanälen prüft, bestätigte Entscheidungen und offene Fragen herausarbeitet und ein gemeinsames Entscheidungsprotokoll in Notion mit Quellenlinks aktualisiert. Frage nach Kanälen, Notion-Seite, Uhrzeit und Zeitzone."
           },
           "competitorChanges": {
-            "label": "Änderungen auf Wettbewerber-Websites verfolgen",
-            "prompt": "Prüfe ausgewählte Wettbewerber-Websites auf Änderungen bei Preisen, Produkten oder Ankündigungen. Kläre die Seiten und den Rhythmus und füge jedem Update Quellenlinks bei."
+            "label": "Wettbewerber-Änderungen → Slack-Hinweise",
+            "prompt": "Erstelle einen Workflow, der täglich ausgewählte Wettbewerberseiten prüft, Preise und Produktdetails mit der vorherigen Prüfung vergleicht und nur relevante Änderungen mit Quellenlinks in Slack veröffentlicht. Frage nach Seiten, Kanal, Uhrzeit und Zeitzone."
           },
           "contentIdeas": {
-            "label": "Ideen für meinen nächsten Beitrag finden",
-            "prompt": "Sammle regelmäßig aktuelle Ideen für meine nächsten Beiträge, mit Quellenlinks und einem passenden Ansatz für meine Zielgruppe. Kläre die Themen, die Zielgruppe und den Rhythmus."
-          },
-          "dailyPlan": {
-            "label": "Jeden Morgen meinen Tag planen",
-            "prompt": "Erstelle jeden Morgen aus meinem Kalender und meinen offenen Aufgaben einen realistischen Tagesplan. Kläre die Quellen, die Zeitzone und die gewünschte Uhrzeit."
+            "label": "Wöchentliche Trends → Themenvorrat",
+            "prompt": "Erstelle einen Workflow, der wöchentlich gespeicherte Artikel und Branchenneuigkeiten prüft, passende Trends in Beitragsideen für meine Zielgruppe übersetzt und sie mit Blickwinkeln und Quellenlinks in einer Notion-Themenliste ergänzt. Frage nach Quellen, Zielgruppe, Notion-Datenbank und Wochenplan."
           },
           "deadlineReminder": {
-            "label": "Mich vor Fristen erinnern",
-            "prompt": "Erinnere mich vor den Fristen wichtiger Aufgaben oder Projektmeilensteine. Kläre die Aufgabenquelle, die relevanten Fristen und den gewünschten Vorlauf."
-          },
-          "emailBrief": {
-            "label": "Meine morgendliche E-Mail-Übersicht erhalten",
-            "prompt": "Fasse morgens wichtige E-Mails, nötige Antworten und Aufgaben zusammen. Kläre zuerst das Postfach und die gewünschte Uhrzeit."
+            "label": "Überfällige Aufgaben → Zuständige erinnern",
+            "prompt": "Erstelle einen Workflow, der werktäglich unsere Aufgabenverwaltung auf überfällige Arbeit prüft und die Zuständigen in Slack mit Aufgabenlinks erinnert. Bündele Erinnerungen pro Person und beende sie bei erledigten Aufgaben. Frage nach Projekten, Slack-Ziel, Uhrzeit und Zeitzone."
           },
           "feedbackThemes": {
-            "label": "Muster im Kundenfeedback erkennen",
-            "prompt": "Gruppiere Kundenfeedback jede Woche nach wiederkehrenden Themen und zeige Beispiele. Kläre die Feedbackquellen, den Zeitraum und den gewünschten Wochentag."
+            "label": "Neues Feedback → gebündelte Anliegen",
+            "prompt": "Erstelle einen Workflow, der täglich Kundenfeedback prüft, ähnliche Anfragen bündelt und neue Belege dem passenden Anliegen in Notion hinzufügt, statt Duplikate anzulegen. Sende wöchentlich eine Zusammenfassung zunehmend häufiger Themen. Frage nach Quellen, Notion-Datenbank und Ziel der Zusammenfassung."
           },
-          "fileOrganization": {
-            "label": "Eingehende Dateien organisieren",
-            "prompt": "Organisiere neue Dateien nach vereinbarten Benennungs- und Ablageregeln. Kläre Quelle, Zielordner und Kategorien."
+          "flaggedEmailTasks": {
+            "label": "Markierte E-Mails → Aufgabenliste",
+            "prompt": "Erstelle einen Workflow, der jede E-Mail, die ich mit einem bestimmten Gmail-Label versehe, in eine Todoist-Aufgabe umwandelt, einschließlich nächstem Schritt, Link zur E-Mail und gegebenenfalls genannter Frist. Frage nach Label und Projekt und vermeide doppelte Aufgaben."
+          },
+          "inboxTriage": {
+            "label": "Neue E-Mails → Labels + Antwortentwürfe",
+            "prompt": "Erstelle einen Workflow, der neue E-Mails liest, nach Dringlichkeit mit Labels versieht und Antwortentwürfe für Nachrichten vorbereitet, die eine Antwort benötigen. Frage nach Postfach und Label-Regeln; lass mich die Entwürfe vor dem Senden prüfen."
+          },
+          "invoiceFiling": {
+            "label": "Rechnungs-E-Mails → Ausgabenliste",
+            "prompt": "Erstelle einen Workflow, der neu eingegangene Rechnungsanhänge in Google Drive ablegt, Lieferant, Betrag und Fälligkeitsdatum ausliest und jede Rechnung einmal in Google Sheets erfasst. Frage nach den E-Mails, dem Ordner und der Tabelle."
           },
           "invoiceFollowUps": {
-            "label": "Überfällige Rechnungen nachverfolgen",
-            "prompt": "Fasse regelmäßig überfällige Rechnungen zusammen und entwirf höfliche Zahlungserinnerungen zur Prüfung. Kläre die Rechnungsquelle, die Regeln für Überfälligkeit und den Rhythmus."
+            "label": "Überfällige Rechnungen → Erinnerungsentwürfe",
+            "prompt": "Erstelle einen Workflow, der werktäglich unbezahlte Rechnungen prüft, überfällige Beträge erkennt und Zahlungserinnerungen zur Prüfung entwirft. Aktualisiere ein Erinnerungsprotokoll, um Duplikate zu vermeiden, und stoppe, sobald die Zahlung erfasst ist. Frage nach Rechnungsquelle, E-Mail-Konto und Protokoll."
           },
           "jobMatches": {
-            "label": "Neue Jobs passend zu meinen Zielen finden",
-            "prompt": "Finde neue Stellenanzeigen, die zu meinen Zielen passen, und fasse die besten Treffer mit Links zusammen. Kläre die Rollen, den Standort, das Erfahrungsniveau und den gewünschten Rhythmus."
+            "label": "Neue passende Jobs → Bewerbungsliste",
+            "prompt": "Erstelle einen Workflow, der täglich neue passende Stellen sucht, die Eignung erklärt und neue Treffer mit Quellenlinks in meine Bewerbungsliste in Google Sheets einträgt. Frage nach Zielrollen, Standort, Erfahrung, Stellenquellen und Tabelle. Überspringe bereits erfasste Stellen."
           },
           "leadBrief": {
-            "label": "Neue Leads vor dem Erstkontakt recherchieren",
-            "prompt": "Recherchiere bei einem neuen Lead dessen Unternehmen und bereite vor meinem Erstkontakt eine kurze Übersicht vor. Kläre die Lead-Quelle und welche Informationen ich benötige."
+            "label": "Neue Leads → CRM + Antwortentwurf",
+            "prompt": "Erstelle einen Workflow, der neue Interessentenanfragen prüft, das jeweilige Unternehmen recherchiert, den Lead im CRM anlegt oder aktualisiert und einen persönlichen Antwortentwurf zur Prüfung vorbereitet. Frage nach Postfach, CRM und Prüfintervall."
           },
           "meetingActions": {
-            "label": "Aus Besprechungsnotizen Aufgaben ableiten",
-            "prompt": "Leite aus neuen Besprechungsnotizen Aufgaben, Zuständige und Fristen ab. Markiere fehlende Angaben und kläre den Speicherort der Notizen."
+            "label": "Besprechungsnotizen → zugewiesene Aufgaben",
+            "prompt": "Erstelle einen Workflow, der neue Besprechungsnotizen prüft, Entscheidungen und nächste Schritte herausarbeitet und Aufgaben mit den darin genannten Zuständigen und Fristen anlegt. Frage nach der Quelle der Notizen, dem Ziel für die Aufgaben und dem Prüfintervall."
           },
           "meetingPrep": {
-            "label": "Meine Besprechungen vorbereiten",
-            "prompt": "Bereite vor Besprechungen Informationen zu Personen, Hintergründen und Themen vor. Kläre Kalender, Unterlagen und den Zeitpunkt der Erinnerung."
+            "label": "Neue Termine → Teilnehmerbriefing",
+            "prompt": "Erstelle einen Workflow, der bei einem neuen Besprechungstermin im Kalender die Teilnehmenden und ihre Unternehmen recherchiert und mir ein Briefing mit Quellenlinks und Gesprächsthemen schickt. Frage nach Kalender, Besprechungsarten und Zustellungsziel."
           },
           "numbersBrief": {
-            "label": "Meine tägliche Zahlenübersicht erhalten",
-            "prompt": "Fasse täglich die Zahlen zusammen, die ich verfolge, und zeige Veränderungen zum letzten Stand. Kläre Quelle, Kennzahlen und Uhrzeit."
+            "label": "Tägliche Kennzahlen → Verlauf + Warnungen",
+            "prompt": "Erstelle einen Workflow, der jeden Morgen wichtige Geschäftskennzahlen sammelt, in Google Sheets einträgt, mit dem vorherigen Zeitraum vergleicht und Slack bei Überschreiten vereinbarter Schwellenwerte benachrichtigt. Frage nach Kennzahlen, Quellen, Tabelle, Schwellenwerten, Kanal, Uhrzeit und Zeitzone."
           },
           "orderDigest": {
-            "label": "Neue Bestellungen und Retouren zusammenfassen",
-            "prompt": "Sende mir regelmäßig eine Übersicht über neue Bestellungen, Retouren und Bestellungen mit Handlungsbedarf. Kläre den Shop oder die Bestellquelle, den Berichtszeitraum und die gewünschte Uhrzeit."
+            "label": "Tägliche Bestellungen → Liste + Ausnahmen",
+            "prompt": "Erstelle einen Workflow, der täglich Bestellungen und Retouren des Shops prüft, eine Übersicht in Google Sheets aktualisiert und mir Verzögerungen, Erstattungen und Bestellungen mit Handlungsbedarf zusammenfasst. Frage nach Shop, Tabelle, Zustellungsziel, Uhrzeit und Zeitzone."
           },
           "pendingReplies": {
-            "label": "An unbeantwortete E-Mails erinnern",
-            "prompt": "Erinnere mich, wenn eine von mir gesendete E-Mail nach einer bestimmten Zeit noch unbeantwortet ist. Kläre, welche Unterhaltungen du verfolgen und wie lange du warten sollst."
+            "label": "3 Tage ohne Antwort → Nachfrageentwurf",
+            "prompt": "Erstelle einen Workflow, der ausgewählte E-Mail-Verläufe täglich prüft und nach drei Tagen ohne Antwort eine Nachfrage als Entwurf vorbereitet. Benachrichtige mich einmal pro unbeantwortetem Verlauf und beende das Nachfassen, sobald eine Antwort eintrifft. Frage nach den Verläufen und dem Benachrichtigungsziel."
           },
           "progressRecap": {
-            "label": "Fortschritte und nächste Schritte zusammenfassen",
-            "prompt": "Fasse erledigte Arbeit, offene Aufgaben und nächste Prioritäten regelmäßig zusammen. Kläre die Quelle der Aufzeichnungen und ob täglich oder wöchentlich."
+            "label": "Jeden Freitag → Team-Wochenbericht",
+            "prompt": "Erstelle einen Workflow, der jeden Freitag erledigte Arbeit und offene Hindernisse aus der Aufgabenverwaltung meines Teams sammelt und einen kurzen Wochenbericht mit Quellenlinks in Slack veröffentlicht. Frage nach Projekten, Kanal, Uhrzeit und Zeitzone."
           },
           "renewalReminder": {
-            "label": "Mich vor Vertragsverlängerungen erinnern",
-            "prompt": "Erinnere mich vor der Verlängerung von Abonnements oder Verträgen, damit ich sie rechtzeitig prüfen kann. Kläre die Quelle der Verlängerungstermine und den gewünschten Vorlauf."
+            "label": "Anstehende Verlängerungen → Prüfaufgaben",
+            "prompt": "Erstelle einen Workflow, der wöchentlich eine Abo- und Vertragsübersicht prüft und für jede in den nächsten 30 Tagen anstehende Verlängerung eine Prüfaufgabe mit Kosten, zuständiger Person und Kündigungsfrist anlegt. Frage nach Übersicht und Aufgabenziel und vermeide doppelte Aufgaben."
           },
           "replyWatch": {
-            "label": "Bei einer E-Mail-Antwort Bescheid geben",
-            "prompt": "Achte auf eine Antwort auf eine bestimmte E-Mail, benachrichtige mich und fasse sie zusammen. Kläre zuerst, welche E-Mail gemeint ist."
+            "label": "Kundenantworten → CRM-Updates",
+            "prompt": "Erstelle einen Workflow, der Antwort-E-Mails von Kunden beobachtet, sie dem CRM-Kontakt zuordnet und den aktuellen Stand sowie den vereinbarten nächsten Schritt erfasst. Benachrichtige mich, wenn ich antworten muss. Frage nach Postfach, CRM und Benachrichtigungsziel."
           },
           "salesFollowUps": {
-            "label": "Nachfass-E-Mails nach Verkaufsgesprächen entwerfen",
-            "prompt": "Erstelle nach einem Verkaufsgespräch anhand meiner Notizen einen E-Mail-Entwurf für den Kunden mit den vereinbarten nächsten Schritten. Kläre, wo die Notizen liegen, und lege mir jeden Entwurf zur Prüfung vor."
+            "label": "Vertriebsgespräche → CRM + Mailentwurf",
+            "prompt": "Erstelle einen Workflow, der neue Notizen zu Vertriebsgesprächen prüft, vereinbarte nächste Schritte in meinem CRM festhält und eine Folge-E-Mail an den Kunden zur Prüfung entwirft. Frage nach der Notizquelle, CRM, Postfach und Prüfintervall."
           },
           "spreadsheetChecks": {
-            "label": "Fehlende Angaben in meiner Tabelle finden",
-            "prompt": "Prüfe eine Tabelle regelmäßig auf fehlende Pflichtangaben und doppelte Datensätze. Melde die Zeilen, die geprüft werden müssen. Kläre die Tabelle, Spalten, Regeln und den Rhythmus."
+            "label": "Neue Tabellenzeilen → Datenprüfung",
+            "prompt": "Erstelle einen Workflow, der täglich neue Tabellenzeilen auf fehlende Pflichtangaben und doppelte Datensätze prüft, korrekturbedürftige Zeilen in einem separaten Prüftab protokolliert und die zuständige Person benachrichtigt. Frage nach Tabelle, Prüfregeln und Benachrichtigungsziel."
           },
           "supportTriage": {
-            "label": "Neue Kundenanfragen priorisieren",
-            "prompt": "Sichte regelmäßig neue Kundenanfragen und fasse die dringenden zuerst zusammen. Kläre das Postfach, die Dringlichkeitsregeln und die gewünschte Uhrzeit."
+            "label": "Support-E-Mails → priorisierte Tickets",
+            "prompt": "Erstelle einen Workflow, der neue Support-E-Mails prüft, Anfragen nach Problem und Dringlichkeit einordnet und passende Tickets anlegt oder aktualisiert. Benachrichtige das Team bei dringenden Fällen in Slack. Frage nach Postfach, Ticketsystem, Dringlichkeitsregeln und Kanal."
           },
           "topicUpdates": {
-            "label": "Neuigkeiten zu einem Thema verfolgen",
-            "prompt": "Verfolge ein Thema und fasse wichtige neue Informationen mit Quellen zusammen. Frage nach dem Thema und der gewünschten Häufigkeit."
+            "label": "Tägliche Branchennachrichten → Slack-Briefing",
+            "prompt": "Erstelle einen Workflow, der jeden Morgen neue Artikel aus meiner Branche sammelt, Duplikate entfernt, wichtige Entwicklungen mit Quellenlinks zusammenfasst und das Briefing in Slack veröffentlicht. Frage nach Themen, Quellen, Kanal, Uhrzeit und Zeitzone."
           }
         }
       },

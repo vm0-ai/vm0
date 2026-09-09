@@ -2540,100 +2540,100 @@
         },
         "workflow": {
           "brandMentions": {
-            "label": "Recopilar menciones de mi marca",
-            "prompt": "Recopila periódicamente nuevas menciones de mi marca en las fuentes acordadas. Resume el contexto y señala las que podrían necesitar respuesta. Confirma los términos de búsqueda y la frecuencia."
+            "label": "Menciones de marca → cola de respuestas",
+            "prompt": "Crea un flujo de trabajo que busque cada día nuevas menciones públicas de mi marca, agrupe duplicados y registre las relevantes en una cola de respuestas en Notion con enlaces a las fuentes. Avísame de las que necesiten respuesta. Pregunta qué términos, fuentes, base de datos y destino de alertas usar."
           },
           "chatDigest": {
-            "label": "Resumir los mensajes importantes del equipo",
-            "prompt": "Resume periódicamente los mensajes importantes, decisiones y preguntas de los canales del equipo que elija. Confirma los canales y la frecuencia del resumen."
+            "label": "Conversaciones del equipo → registro de decisiones",
+            "prompt": "Crea un flujo de trabajo que revise cada día los mensajes nuevos de los canales de Slack seleccionados, extraiga decisiones confirmadas y preguntas pendientes y actualice un registro compartido en Notion con enlaces a las fuentes. Pregunta qué canales, página de Notion, hora y zona horaria usar."
           },
           "competitorChanges": {
-            "label": "Seguir cambios en las webs de competidores",
-            "prompt": "Revisa las webs de competidores que elija para detectar cambios en precios, productos o anuncios. Confirma las páginas y la frecuencia e incluye enlaces a las fuentes en cada actualización."
+            "label": "Cambios de competidores → alertas en Slack",
+            "prompt": "Crea un flujo de trabajo que revise a diario las páginas de competidores elegidas, compare precios y detalles de productos con la revisión anterior y publique solo cambios relevantes en Slack con enlaces a las fuentes. Pregunta qué páginas, canal, hora y zona horaria usar."
           },
           "contentIdeas": {
-            "label": "Encontrar ideas para mi próxima publicación",
-            "prompt": "Recopila periódicamente ideas de actualidad para mis próximas publicaciones, con enlaces a las fuentes y un enfoque para mi audiencia. Confirma los temas, la audiencia y la frecuencia."
-          },
-          "dailyPlan": {
-            "label": "Planificar mi día cada mañana",
-            "prompt": "Cada mañana, convierte mi calendario y mis tareas pendientes en un plan realista para el día. Confirma las fuentes, la zona horaria y la hora de entrega."
+            "label": "Tendencias semanales → ideas de contenido",
+            "prompt": "Crea un flujo de trabajo que revise semanalmente mis artículos guardados y novedades del sector, convierta tendencias relevantes en ideas para mi audiencia y las añada a una lista de contenidos en Notion con enfoques y enlaces a las fuentes. Pregunta qué fuentes, audiencia, base de datos y horario semanal usar."
           },
           "deadlineReminder": {
-            "label": "Recordarme los plazos con antelación",
-            "prompt": "Avísame antes de los vencimientos de tareas importantes o hitos de proyectos. Confirma la fuente de las tareas, los plazos relevantes y la antelación que necesito."
-          },
-          "emailBrief": {
-            "label": "Recibir mi resumen de correos cada mañana",
-            "prompt": "Resume cada mañana los correos importantes, las respuestas pendientes y las tareas. Confirma primero qué bandeja usar y a qué hora recibirlo."
+            "label": "Tareas vencidas → avisos a responsables",
+            "prompt": "Crea un flujo de trabajo que revise nuestro gestor de tareas cada día laborable, encuentre trabajo vencido y avise a sus responsables en Slack con enlaces a las tareas. Agrupa los avisos por persona y detenlos al completarse la tarea. Pregunta qué proyectos, destino de Slack, hora y zona horaria usar."
           },
           "feedbackThemes": {
-            "label": "Detectar patrones en opiniones de clientes",
-            "prompt": "Cada semana, agrupa los comentarios de clientes por temas recurrentes y destaca ejemplos. Confirma las fuentes, el periodo y el día de entrega."
+            "label": "Nuevos comentarios → solicitudes agrupadas",
+            "prompt": "Crea un flujo de trabajo que revise los comentarios de clientes a diario, agrupe solicitudes similares y añada nuevas pruebas al asunto correspondiente en Notion sin crear duplicados. Envía un resumen semanal de los temas que aumentan. Pregunta qué fuentes, base de datos de Notion y destino del resumen usar."
           },
-          "fileOrganization": {
-            "label": "Organizar los archivos que llegan",
-            "prompt": "Organiza los archivos nuevos con reglas acordadas de nombres y clasificación. Confirma origen, carpeta de destino y categorías."
+          "flaggedEmailTasks": {
+            "label": "Correos marcados → lista de tareas",
+            "prompt": "Crea un flujo de trabajo que convierta cada correo al que aplique una etiqueta elegida de Gmail en una tarea de Todoist con el siguiente paso, el enlace al correo original y el plazo, si se indica. Pregunta qué etiqueta y proyecto usar y evita tareas duplicadas."
+          },
+          "inboxTriage": {
+            "label": "Nuevos correos → etiquetas + borradores",
+            "prompt": "Crea un flujo de trabajo que lea los correos entrantes, los etiquete según su urgencia y prepare borradores para los que necesiten respuesta. Pregunta qué bandeja de entrada y reglas de etiquetado usar; déjame revisar los borradores antes de enviarlos."
+          },
+          "invoiceFiling": {
+            "label": "Facturas por correo → registro de gastos",
+            "prompt": "Crea un flujo de trabajo que archive los adjuntos de las facturas recién recibidas en Google Drive, extraiga proveedor, importe y vencimiento, y registre cada factura una sola vez en Google Sheets. Pregunta qué correos, carpeta y hoja de cálculo usar."
           },
           "invoiceFollowUps": {
-            "label": "Hacer seguimiento de facturas vencidas",
-            "prompt": "Resume periódicamente las facturas vencidas y redacta recordatorios de pago amables para que los revise. Confirma la fuente de las facturas, los criterios de vencimiento y la frecuencia."
+            "label": "Facturas vencidas → borradores de cobro",
+            "prompt": "Crea un flujo de trabajo que revise las facturas impagadas cada día laborable, detecte saldos vencidos y prepare borradores de recordatorios de pago para que los revise. Actualiza un registro de recordatorios para evitar duplicados y detenlos al registrarse el pago. Pregunta qué fuente de facturas, cuenta de correo y registro usar."
           },
           "jobMatches": {
-            "label": "Encontrar empleos que encajen con mis objetivos",
-            "prompt": "Busca ofertas de empleo nuevas que encajen con mis objetivos y resume las mejores con enlaces. Confirma los puestos, la ubicación, el nivel de experiencia y la frecuencia de las actualizaciones."
+            "label": "Nuevas ofertas → registro de candidaturas",
+            "prompt": "Crea un flujo de trabajo que busque a diario nuevas ofertas adecuadas, explique por qué encajan y añada las nuevas coincidencias con enlaces a las fuentes a mi registro de candidaturas en Google Sheets. Pregunta por puestos, ubicación, experiencia, fuentes de empleo y hoja. Omite las ofertas ya registradas."
           },
           "leadBrief": {
-            "label": "Investigar nuevos contactos antes de escribirles",
-            "prompt": "Cuando aparezca un nuevo cliente potencial, investiga su negocio y prepara un breve resumen antes de que lo contacte. Confirma la fuente de los contactos y la información que necesito."
+            "label": "Nuevos contactos → CRM + borrador",
+            "prompt": "Crea un flujo de trabajo que detecte consultas de nuevos clientes potenciales, investigue cada empresa, añada o actualice el contacto en mi CRM y prepare un borrador de respuesta personalizado para que lo revise. Pregunta qué bandeja de entrada y CRM usar y con qué frecuencia comprobarlos."
           },
           "meetingActions": {
-            "label": "Convertir notas de reunión en tareas",
-            "prompt": "Cuando lleguen nuevas notas de reunión, extrae tareas, responsables y fechas límite. Señala lo que falte y confirma dónde encontrar las notas."
+            "label": "Notas de reunión → tareas asignadas",
+            "prompt": "Crea un flujo de trabajo que busque nuevas notas de reunión, extraiga decisiones y acciones, y cree tareas con los responsables y plazos indicados en las notas. Pregunta dónde llegan las notas, dónde crear las tareas y con qué frecuencia comprobarlas."
           },
           "meetingPrep": {
-            "label": "Preparar mis reuniones",
-            "prompt": "Antes de las reuniones, prepara información sobre los participantes, el contexto y los temas. Confirma calendario, materiales y antelación del aviso."
+            "label": "Nuevas reuniones → informe de asistentes",
+            "prompt": "Crea un flujo de trabajo que, al añadirse una reunión a mi calendario, investigue a los asistentes y sus empresas y me envíe un informe con enlaces a las fuentes y temas de conversación sugeridos. Pregunta qué calendario, tipos de reunión y destino de entrega usar."
           },
           "numbersBrief": {
-            "label": "Recibir un resumen diario de mis cifras",
-            "prompt": "Resume a diario las cifras que sigo y sus cambios desde la última actualización. Confirma la fuente, los indicadores y la hora."
+            "label": "Métricas diarias → registro + alertas",
+            "prompt": "Crea un flujo de trabajo que recopile mis métricas clave cada mañana, las añada a Google Sheets, las compare con el periodo anterior y avise en Slack al superar un umbral acordado. Pregunta qué métricas, fuentes, hoja, umbrales, canal, hora y zona horaria usar."
           },
           "orderDigest": {
-            "label": "Resumir nuevos pedidos y devoluciones",
-            "prompt": "Envíame periódicamente un resumen de nuevos pedidos, devoluciones y pedidos que requieran atención. Confirma la tienda o la fuente de los pedidos, el periodo y la hora de entrega."
+            "label": "Pedidos diarios → registro + incidencias",
+            "prompt": "Crea un flujo de trabajo que revise los pedidos y devoluciones de la tienda a diario, actualice un registro en Google Sheets y me envíe un resumen de retrasos, reembolsos y pedidos que requieren atención. Pregunta qué tienda, hoja, destino de entrega, hora y zona horaria usar."
           },
           "pendingReplies": {
-            "label": "Recordarme los correos sin respuesta",
-            "prompt": "Avísame cuando un correo que envié lleve un tiempo determinado sin respuesta. Confirma qué conversaciones seguir y cuánto tiempo esperar."
+            "label": "3 días sin respuesta → borrador de seguimiento",
+            "prompt": "Crea un flujo de trabajo que revise a diario los hilos de correo seleccionados y prepare un borrador de seguimiento tras tres días sin respuesta. Avísame una vez por hilo sin respuesta y detén el seguimiento cuando llegue una. Pregunta qué hilos y destino de avisos usar."
           },
           "progressRecap": {
-            "label": "Resumir mis avances y próximos pasos",
-            "prompt": "Resume periódicamente el trabajo terminado, lo pendiente y las próximas prioridades. Confirma la fuente y si quiero un resumen diario o semanal."
+            "label": "Cada viernes → informe semanal del equipo",
+            "prompt": "Crea un flujo de trabajo que cada viernes recopile el trabajo terminado y los bloqueos pendientes del gestor de tareas de mi equipo y publique un informe semanal breve en Slack con enlaces a las fuentes. Pregunta qué proyectos, canal, hora y zona horaria usar."
           },
           "renewalReminder": {
-            "label": "Avisarme antes de las renovaciones",
-            "prompt": "Avísame antes de que se renueven suscripciones o contratos para que tenga tiempo de revisarlos. Confirma la fuente de las fechas de renovación y la antelación necesaria."
+            "label": "Próximas renovaciones → tareas de revisión",
+            "prompt": "Crea un flujo de trabajo que revise semanalmente un registro de suscripciones y contratos y cree una tarea de revisión para cada renovación prevista en los próximos 30 días, con coste, responsable y fecha límite de cancelación. Pregunta qué registro y destino de tareas usar y evita crear la misma tarea dos veces."
           },
           "replyWatch": {
-            "label": "Avisarme cuando respondan a un correo",
-            "prompt": "Vigila la respuesta a un correo concreto, avísame y resúmela. Confirma primero qué correo debo seguir."
+            "label": "Respuestas de clientes → CRM actualizado",
+            "prompt": "Crea un flujo de trabajo que vigile las respuestas de clientes por correo, las vincule con su contacto del CRM y registre las novedades y el siguiente paso acordado. Avísame cuando tenga que responder. Pregunta qué bandeja de entrada, CRM y destino de avisos usar."
           },
           "salesFollowUps": {
-            "label": "Redactar seguimientos tras llamadas de ventas",
-            "prompt": "Después de una llamada de ventas, usa mis notas para redactar un mensaje de seguimiento al cliente con los próximos pasos acordados. Confirma dónde encontrar las notas y guarda cada borrador para que lo revise."
+            "label": "Llamadas de ventas → CRM + borrador",
+            "prompt": "Crea un flujo de trabajo que busque nuevas notas de llamadas de ventas, registre los siguientes pasos acordados en mi CRM y redacte un correo de seguimiento al cliente para que lo revise. Pregunta dónde llegan las notas, qué CRM y bandeja de entrada usar y con qué frecuencia comprobarlas."
           },
           "spreadsheetChecks": {
-            "label": "Encontrar datos que faltan en mi hoja de cálculo",
-            "prompt": "Revisa periódicamente una hoja de cálculo para detectar datos obligatorios que faltan y registros duplicados. Indica qué filas requieren revisión. Confirma la hoja, las columnas, las reglas y la frecuencia."
+            "label": "Nuevas filas → revisión de datos",
+            "prompt": "Crea un flujo de trabajo que revise a diario las nuevas filas de una hoja para detectar datos obligatorios ausentes y registros duplicados, anote las filas que requieren corrección en otra pestaña de revisión y avise al responsable. Pregunta qué hoja, reglas de validación y destino de avisos usar."
           },
           "supportTriage": {
-            "label": "Priorizar nuevas solicitudes de clientes",
-            "prompt": "Revisa periódicamente las nuevas solicitudes de clientes y resume primero las urgentes. Confirma el buzón, los criterios de urgencia y cuándo quiero el resumen."
+            "label": "Correos de soporte → tickets priorizados",
+            "prompt": "Crea un flujo de trabajo que revise los correos nuevos de soporte, clasifique cada solicitud por problema y urgencia y cree o actualice el ticket correspondiente. Alerta al equipo en Slack de los casos urgentes. Pregunta qué bandeja, sistema de tickets, reglas de urgencia y canal usar."
           },
           "topicUpdates": {
-            "label": "Seguir las novedades de un tema",
-            "prompt": "Sigue un tema que me interese y resume la información nueva importante con fuentes. Pregunta qué tema y con qué frecuencia quiero novedades."
+            "label": "Noticias diarias del sector → resumen en Slack",
+            "prompt": "Crea un flujo de trabajo que cada mañana reúna nuevos artículos de mi sector, elimine duplicados, resuma las novedades importantes con enlaces a las fuentes y publique el resumen en Slack. Pregunta qué temas, fuentes, canal, hora y zona horaria usar."
           }
         }
       },
