@@ -5072,7 +5072,7 @@ function AssistantRecoveryActions({
   };
 
   return (
-    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+    <div className="col-start-2 row-start-2 flex max-w-full flex-wrap items-center gap-2 sm:col-start-3 sm:row-start-1 sm:ml-auto sm:shrink-0 sm:justify-end sm:self-center">
       {hasResetAction && (
         <Button
           type="button"
@@ -5193,22 +5193,26 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 px-3.5 py-3 text-foreground sm:flex-row sm:items-center sm:justify-between"
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
     >
-      <div className="flex min-w-0 flex-1 items-start gap-2.5">
-        {recovery.kind === "usage-limit" ||
-        recovery.kind === "execution-timeout" ? (
-          <Clock size={16} className="mt-1 shrink-0 text-brand-text" />
-        ) : (
-          <Coffee size={16} className="mt-1 shrink-0 text-brand-text" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
-          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
-            {description}
-            {resetText ? ` ${resetText}` : null}
-          </p>
-        </div>
+      {recovery.kind === "usage-limit" ||
+      recovery.kind === "execution-timeout" ? (
+        <Clock
+          size={16}
+          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
+        />
+      ) : (
+        <Coffee
+          size={16}
+          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
+        />
+      )}
+      <div className="col-start-2 row-start-1 min-w-0">
+        <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
+        <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
+          {description}
+          {resetText ? ` ${resetText}` : null}
+        </p>
       </div>
       <AssistantRecoveryActions recovery={recovery} thread={thread} />
     </div>
