@@ -1,3 +1,5 @@
+import { chatThreadActivitySummaryContract } from "@okouai/api-contracts/contracts/chat-thread-activity-summary";
+import { chatThreadActivitySummaryRoutes } from "../chat-threads-activity-summary";
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
@@ -1676,6 +1678,80 @@ function chatThreadConnectorSelectionsClient() {
   return setupApp({ context, routes: chatThreadRoutes })(
     chatThreadConnectorSelectionContract,
   );
+}
+
+async function expectPiActivitySummaryBeforeGuestReplay(
+  actor: ApiTestUser,
+  run: { readonly threadId: string; readonly runId: string },
+  activityEnabled: boolean,
+): Promise<void> {
+  const orgId = requireOrgId(actor);
+  // The API-first projection must capture tools before any guest replay/result.
+  await flushWaitUntilForTest();
+  mockOptionalEnv("OPENROUTER_API_KEY", "activity-summary-key");
+  let activityInput = "";
+  server.use(
+    http.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      async ({ request }) => {
+        const body = openRouterBodySchema.parse(await request.json());
+        activityInput = body.messages
+          .map((message) => {
+            return message.content;
+          })
+          .join("\n");
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "Checking the CLI and preparing the note" },
+            },
+          ],
+        });
+      },
+    ),
+  );
+  if (!activityEnabled) {
+    await accept(
+      setupApp({ context, routes: chatThreadActivitySummaryRoutes })(
+        chatThreadActivitySummaryContract,
+      ).summarize({
+        headers: sessionHeaders(actor),
+        params: { id: run.threadId },
+        body: { runId: run.runId },
+      }),
+      [403],
+    );
+    expect(activityInput).toBe("");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.ThreadActivitySummary]: true },
+    );
+  }
+  const activity = await accept(
+    setupApp({ context, routes: chatThreadActivitySummaryRoutes })(
+      chatThreadActivitySummaryContract,
+    ).summarize({
+      headers: sessionHeaders(actor),
+      params: { id: run.threadId },
+      body: { runId: run.runId },
+    }),
+    [200],
+  );
+  expect(activity.body).toMatchObject({
+    status: "fresh",
+    sourceSequence: activityEnabled ? 3 : null,
+    summarySequence: activityEnabled ? 3 : null,
+  });
+  if (activityEnabled) {
+    expect(activityInput).toContain("okou --help");
+    expect(activityInput).toContain("add_ad_hoc_note");
+  }
+  expect(activityInput).not.toContain(
+    "API-first reasoning preserved for Sandbox resume",
+  );
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
 }
 
 describe("CHAT-02: thread run admission invariant", () => {
@@ -15291,7 +15367,7 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it("publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes", async () => {
+  async function piActivityScenario(enabled: boolean): Promise<void> {
     if (await runInIsolatedProcess(import.meta.url)) {
       return;
     }
@@ -15307,6 +15383,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.ThreadActivitySummary]: enabled,
         [FeatureSwitchKey.CodexFastMode]: true,
       },
     );
@@ -15577,6 +15654,8 @@ describe("CHAT-02: model-first provider policies", () => {
       },
       { type: "text", text: "after parallel tools" },
     ]);
+    await expectPiActivitySummaryBeforeGuestReplay(actor, run, enabled);
+
     await webhooks.requestAgentEvents(
       {
         runId: run.runId,
@@ -16281,7 +16360,13 @@ describe("CHAT-02: model-first provider policies", () => {
       [200],
     );
     expect(repeatedCombinedH2.body).toStrictEqual(combinedH2.body);
-  }, 150_000);
+  }
+
+  it.each([false, true])(
+    "publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes (activity: %s)",
+    piActivityScenario,
+    150_000,
+  );
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

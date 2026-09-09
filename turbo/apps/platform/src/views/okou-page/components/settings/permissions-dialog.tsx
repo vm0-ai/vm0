@@ -1673,7 +1673,11 @@ export function PermissionsDialog(props: PermissionsDrawerProps) {
         return !open && handleClose();
       }}
     >
-      <DialogContent className="!flex h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[760px] !flex-col !overflow-hidden">
+      <DialogContent
+        maxWidth={760}
+        height={720}
+        contentClassName="flex flex-col overflow-hidden"
+      >
         <PermissionsContent
           props={props}
           surface="dialog"

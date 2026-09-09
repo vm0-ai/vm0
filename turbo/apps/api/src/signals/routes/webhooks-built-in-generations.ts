@@ -313,6 +313,7 @@ const FAL_INVALID_ASPECT_RATIO_MESSAGE =
 const FAL_MISSING_FIELD_MESSAGE = "Field required";
 const FAL_PROMPT_TOO_SHORT_MESSAGE = "String should have at least 3 characters";
 const FAL_DOWNSTREAM_UNAVAILABLE_MESSAGE = "Downstream service unavailable";
+const FAL_DOWNSTREAM_ERROR_MESSAGE = "Downstream service error";
 
 type FalGenerationFailureKind =
   | "output_safety_blocked"
@@ -528,6 +529,19 @@ const FAL_STRUCTURED_FAILURE_RULES: readonly FalStructuredFailureRule[] = [
   {
     providerErrorType: "downstream_service_unavailable",
     message: FAL_DOWNSTREAM_UNAVAILABLE_MESSAGE,
+    locations: ["body"],
+    kind: "provider_unavailable",
+    stage: "provider",
+    retryPolicy: "retry_once",
+    error: {
+      message: "The image generation provider is temporarily unavailable.",
+      code: "GENERATION_PROVIDER_UNAVAILABLE",
+    },
+    expected: false,
+  },
+  {
+    providerErrorType: "downstream_service_error",
+    message: FAL_DOWNSTREAM_ERROR_MESSAGE,
     locations: ["body"],
     kind: "provider_unavailable",
     stage: "provider",

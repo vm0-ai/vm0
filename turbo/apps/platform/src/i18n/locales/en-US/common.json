@@ -2753,7 +2753,6 @@
       "authorized": "Authorized",
       "connectAria": "Connect {{connector}}",
       "connected": "Connected",
-      "connecting": "Connecting…",
       "connectionExpired": "Connection expired",
       "connectToContinue": "Connect this account to continue",
       "managePermissions": "Manage permissions",

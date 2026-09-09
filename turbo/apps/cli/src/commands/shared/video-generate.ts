@@ -1,3 +1,4 @@
+import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact-references";
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
@@ -271,14 +272,12 @@ async function fetchImageDimensions(
   optionName: string,
   imageUrl: string,
 ): Promise<ImageDimensions> {
-  let url: URL;
-  try {
-    url = new URL(imageUrl);
-  } catch {
-    throw new Error(`${optionName} must be an absolute URL`);
+  if (!parseArtifactReference(imageUrl) && !URL.canParse(imageUrl)) {
+    throw new Error(
+      `${optionName} must be an absolute URL or /artifacts/<hash> reference`,
+    );
   }
-
-  const response = await fetchGenerationReference(url);
+  const response = await fetchGenerationReference(imageUrl);
   if (!response.ok) {
     throw new Error(
       `Could not validate ${optionName}: failed to fetch image (HTTP ${response.status})`,

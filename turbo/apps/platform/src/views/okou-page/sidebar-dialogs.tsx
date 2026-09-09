@@ -1334,7 +1334,9 @@ export function ThreeColumnSearchDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="okou-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
+      smMaxWidth={820}
+      showCloseButton={false}
+      contentClassName="okou-app gap-0"
       commandClassName="gap-0"
       commandProps={{
         shouldFilter: false,
@@ -1468,7 +1470,8 @@ export function PinAgentDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="okou-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
+      smMaxWidth="xl"
+      contentClassName="okou-app gap-0"
       commandClassName="gap-0"
       commandProps={{
         shouldFilter: false,

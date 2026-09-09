@@ -6,6 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { normalizeWebUploadContentType } from "../../lib/uploads-constants";
 import { uploadedArtifactObject } from "../services/uploaded-artifact.service";
+import { registerLegacyArtifactFile$ } from "../services/artifact-delivery.service";
 import { completePrivateArtifact$ } from "../services/private-artifact-storage.service";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
@@ -59,6 +60,17 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if (s3Object.isPrivate) {
     await set(completePrivateArtifact$, { id, url, contentType, size }, signal);
+  } else {
+    await set(
+      registerLegacyArtifactFile$,
+      {
+        key: s3Object.key,
+        filename,
+        contentType,
+        publicBrand: s3Object.publicBrand,
+      },
+      signal,
+    );
   }
   const runId = "runId" in auth ? auth.runId : undefined;
 

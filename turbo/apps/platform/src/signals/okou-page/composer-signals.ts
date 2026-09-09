@@ -891,7 +891,11 @@ function createSubmitCurrentInput(
       signal.throwIfAborted();
       // Keep the new persisted part within the existing Create rollout.
       const additionalInfo = get(create.enabled$)
-        ? buildComposerAdditionalInfo(mode, videoRunOptions)
+        ? buildComposerAdditionalInfo(
+            mode,
+            videoRunOptions,
+            get(create.presentationSlideCount$),
+          )
         : undefined;
       const editorDocument = additionalInfo
         ? createEditorDocumentSnapshot(

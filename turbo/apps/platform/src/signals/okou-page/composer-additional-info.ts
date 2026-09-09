@@ -1,15 +1,31 @@
 import type { ChatRunVideoOptionsRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import { buildVideoRunOptionsPrompt } from "@okouai/core/video-run-options-prompt";
-import type { ComposerCreateMode } from "./composer-create.ts";
+import type {
+  ComposerCreateMode,
+  PresentationSlideCount,
+} from "./composer-create.ts";
 
 /** Freeze the composer's selections as agent-only context for this message. */
 export function buildComposerAdditionalInfo(
   mode: ComposerCreateMode | null,
   videoRunOptions: ChatRunVideoOptionsRequest | undefined,
+  presentationSlideCount: PresentationSlideCount,
 ): string | undefined {
   const text = [
     buildVideoRunOptionsPrompt(videoRunOptions ?? null),
     mode ? `Create ${mode === "image" ? "an" : "a"} ${mode}.` : "",
+    mode === "presentation"
+      ? [
+          "# Presentation Generation Defaults",
+          "The user set these for presentations generated in this run:",
+          `- Slide count: ${
+            presentationSlideCount === "auto"
+              ? "Auto (choose the number of slides based on the content)"
+              : presentationSlideCount
+          }`,
+          "Where this run's message asks for a different slide count, the message wins.",
+        ].join("\n")
+      : "",
   ]
     .filter((part) => {
       return part.length > 0;

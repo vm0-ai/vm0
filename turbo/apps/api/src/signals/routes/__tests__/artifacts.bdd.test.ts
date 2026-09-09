@@ -391,7 +391,7 @@ describe("video Artifact previews", () => {
       "Artifacts API concurrent video preview agent",
     );
     mockCloudflareVideoFrame(owner.actor.userId);
-    owner.objectStore.rejectNextImmutablePutAsExisting();
+    owner.objectStore.rejectNextImmutablePutAsExisting("image/jpeg");
 
     await createRunUploadedFile({
       owner,
@@ -405,6 +405,13 @@ describe("video Artifact previews", () => {
       owner.actor,
       "concurrent-poster.mp4",
     );
+    expect(owner.objectStore.rejectedPuts).toStrictEqual([
+      expect.objectContaining({
+        bucket: "test-user-artifacts",
+        contentType: "image/jpeg",
+        key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.jpg$/u),
+      }),
+    ]);
     expect(previewedArtifact?.thumbnail?.url).toMatch(
       /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
     );

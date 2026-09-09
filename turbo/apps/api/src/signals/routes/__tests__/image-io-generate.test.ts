@@ -2088,6 +2088,21 @@ describe("POST /api/image-io/generate", () => {
       },
       expected: false,
     },
+    {
+      caseName: "downstream provider error",
+      providerErrorType: "downstream_service_error",
+      providerMessage: "Downstream service error",
+      location: ["body"],
+      providerHttpStatus: 500,
+      failureKind: "provider_unavailable",
+      failureStage: "provider",
+      retryPolicy: "retry_once",
+      publicError: {
+        message: "The image generation provider is temporarily unavailable.",
+        code: "GENERATION_PROVIDER_UNAVAILABLE",
+      },
+      expected: false,
+    },
   ])(
     "maps Fal $caseName through realtime and status without recording artifacts or usage",
     async ({
@@ -2283,6 +2298,32 @@ describe("POST /api/image-io/generate", () => {
       },
       providerErrorType: "file_download_error",
       providerHttpStatus: 422,
+    },
+    {
+      caseName: "downstream error with changed message",
+      status: "ERROR",
+      wrapper: "payload",
+      error: "Invalid status code: 500",
+      detail: {
+        type: "downstream_service_error",
+        loc: ["body"],
+        msg: "private-provider-message",
+      },
+      providerErrorType: "downstream_service_error",
+      providerHttpStatus: 500,
+    },
+    {
+      caseName: "downstream error at an unrecognized location",
+      status: "ERROR",
+      wrapper: "payload",
+      error: "Invalid status code: 500",
+      detail: {
+        type: "downstream_service_error",
+        loc: ["body", "private-provider-location"],
+        msg: "Downstream service error",
+      },
+      providerErrorType: "downstream_service_error",
+      providerHttpStatus: 500,
     },
     {
       caseName: "missing messages and an unknown first type",

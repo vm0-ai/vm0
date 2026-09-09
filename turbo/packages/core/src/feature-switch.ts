@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ThreadActivitySummary]: {
+    maintainer: "lancy@okou.ai",
+    description:
+      "Generate short public activity summaries on visible-thread demand.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerTaskChips]: {
     maintainer: "bingjie@okou.ai",
     description: "Lightweight chat task chips and contextual starting ideas",
@@ -325,12 +331,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ChatDesktopSelection]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Offer desktop passage actions for selections anywhere within one assistant reply.",
-    enabled: true,
   },
   [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@okou.ai",

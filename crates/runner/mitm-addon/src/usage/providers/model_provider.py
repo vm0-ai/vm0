@@ -146,8 +146,8 @@ def report_model_provider_usage(
     - ``run_id`` is non-empty.
     - ``firewall_billable`` is truthy.
     - At least one billable event is built from the available model-provider
-      usage sources, including a positive integer quantity in
-      ``MODEL_USAGE_CATEGORIES``.
+      usage sources, with a resolvable billing tier and a positive integer
+      quantity in ``MODEL_USAGE_CATEGORIES``.
     - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
     It returns ``True`` when all gates pass, at least one event is built, and
@@ -163,9 +163,24 @@ def report_model_provider_usage(
     is consumed by ``terminal_usage.report_model_provider_usage_once``
     separately from those per-call admission keys.
 
-    All failed gates are silent by design except missing sandbox token or API
-    URL, which writes an underbilling signal because billable usage cannot be
-    reported.
+    Terminal reporting classifies each source independently. Models in
+    ``MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS`` require a valid non-negative
+    integer ``tokens.input`` quantity to resolve the billing tier. A source
+    without a resolvable tier is skipped; if it contains positive usage in
+    ``MODEL_USAGE_CATEGORIES``, it emits an error-level ``usage_underbilling``
+    diagnostic with reason ``model_long_context_tier_unresolved`` and
+    ``underbilling_class="risk"``, even with complete reporting context. If no
+    billable events remain across all sources, this function returns ``False``.
+    Unlike ``report_model_provider_usage_source`` for incremental WebSocket
+    reporting, this path does not recover a remembered tier or use a
+    conservative fallback. See
+    ``test_output_without_input_skips_unclassifiable_terminal_billing`` in
+    ``tests/test_model_provider_usage.py`` for the output-only regression.
+
+    Failed firewall/run eligibility gates and sources without positive
+    supported usage are silent. When billable events exist, missing sandbox
+    token or API URL emits a ``missing_reporting_context`` underbilling signal
+    because that usage cannot be reported.
     """
     if not run_id:
         return False

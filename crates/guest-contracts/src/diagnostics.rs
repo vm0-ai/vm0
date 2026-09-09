@@ -232,7 +232,14 @@ impl HeartbeatAttemptFailureKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkloadResourceLimitDiagnostic {
-    /// Number of workload allocations rejected by `memory.max`.
+    /// Number of times the workload cgroup's memory usage was about to exceed
+    /// `memory.max` (the `max` counter in `memory.events`).
+    ///
+    /// Direct reclaim may allow the allocation to succeed. This is not a count
+    /// of failed allocations and does not by itself imply an OOM event or kill.
+    /// See the [kernel definition] for details.
+    ///
+    /// [kernel definition]: https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
     pub memory_max_events: u64,
     /// Number of workload OOM events.
     pub memory_oom_events: u64,

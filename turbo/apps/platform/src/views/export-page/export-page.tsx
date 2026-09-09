@@ -10,7 +10,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { UserExportStatusResponse } from "@okouai/api-contracts/contracts/user-export";
-import { Button } from "@okouai/ui";
+import { surfaceVariants, Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { now } from "../../lib/time.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -433,7 +433,11 @@ export function ExportPage() {
   return (
     <div className="okou-app okou-viewport-shell flex w-full bg-background okou-workspace-bg">
       <main className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-4 py-8">
-        <section className="okou-card w-full max-w-[440px] p-5 sm:p-7">
+        <section
+          className={surfaceVariants({
+            className: "w-full max-w-[440px] p-5 sm:p-7",
+          })}
+        >
           <div className="mb-6 flex items-center justify-between gap-4">
             <Link
               pathname="/"

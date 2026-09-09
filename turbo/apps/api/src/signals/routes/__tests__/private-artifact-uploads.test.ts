@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import {
@@ -124,7 +125,7 @@ describe("private artifact uploads", () => {
       [200],
     );
     expect(artifact.body.url).toBe(
-      `https://api.okou.ai/api/web/download-file?file_id=${artifact.body.id}&filename=report.html`,
+      artifactReferencePath(artifact.body.id, "report.html"),
     );
   });
 

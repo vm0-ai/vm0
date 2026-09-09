@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -201,7 +202,7 @@ describe("okou generate image-batch command", () => {
     const stateDirectory = join(root, "state");
     await writeFile(manifestPath, "hero\tA private landscape\n", "utf8");
     await mkdir(stateDirectory);
-    const reference = `http://localhost:3000/api/web/download-file?file_id=${IMAGE_GENERATION_ID}&filename=image.png`;
+    const reference = artifactReferencePath(IMAGE_GENERATION_ID, "image.png");
     let authorization: string | null = null;
     server.use(
       http.post(IMAGE_URL, () => {

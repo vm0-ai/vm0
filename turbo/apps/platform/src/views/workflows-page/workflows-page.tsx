@@ -20,6 +20,7 @@ import {
   Globe,
 } from "lucide-react";
 import {
+  surfaceVariants,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -743,7 +744,11 @@ function WorkflowRowList({
   if (!framed) {
     return <div>{rows}</div>;
   }
-  return <div className="okou-card overflow-hidden">{rows}</div>;
+  return (
+    <div className={surfaceVariants({ className: "overflow-hidden" })}>
+      {rows}
+    </div>
+  );
 }
 
 function WorkflowNextRunGroups({
@@ -773,7 +778,7 @@ function WorkflowNextRunGroups({
   });
 
   return (
-    <div className="okou-card overflow-hidden">
+    <div className={surfaceVariants({ className: "overflow-hidden" })}>
       {visibleSections.map(({ section, sectionWorkflows }, index) => {
         return (
           <section key={section.key}>
@@ -830,7 +835,12 @@ function WorkflowListPanel({
           />
         )
       ) : (
-        <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+        <div
+          className={surfaceVariants({
+            className:
+              "flex min-h-[20rem] flex-col items-center justify-center px-6 text-center",
+          })}
+        >
           <img
             src={emptyWorkflowImg}
             alt={i18n.t(($) => {
@@ -1258,7 +1268,10 @@ export function WorkflowsPage() {
 
 function WorkflowIndexSkeleton() {
   return (
-    <div className="okou-card overflow-hidden" data-testid="workflows-loading">
+    <div
+      className={surfaceVariants({ className: "overflow-hidden" })}
+      data-testid="workflows-loading"
+    >
       {[0, 1, 2, 3].map((rowIndex) => {
         return (
           <div key={rowIndex}>

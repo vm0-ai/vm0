@@ -1,4 +1,5 @@
 import { resolveApiBase } from "../api-base.ts";
+import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact-references";
 import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import {
   parseConnectorAuthorizeUrl,
@@ -129,7 +130,11 @@ const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
 // CDN and short links are both durable public artifact contracts. Only the
 // short origin uses the flat path, so keep its recognition origin-exact.
 const OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/[0-9a-z]{10}\.[^/]+$/;
-const OKOU_SHORT_ARTIFACT_ORIGIN = "https://a.okou.io";
+const OKOU_SHORT_ARTIFACT_ORIGINS: readonly string[] = Object.freeze([
+  "https://a.okou.io",
+  "https://f.okou.io",
+  "https://files.sites.vm7.io",
+]);
 const PLATFORM_FILE_CDN_HOSTS = [
   "cdn.vm0.io",
   "cdn.okou.io",
@@ -440,10 +445,12 @@ function isPlatformFileUrl(url: string): boolean {
     parsed.pathname,
   );
   const isOkouShortArtifactPath =
-    parsed.origin === OKOU_SHORT_ARTIFACT_ORIGIN &&
+    OKOU_SHORT_ARTIFACT_ORIGINS.includes(parsed.origin) &&
     parsed.username === "" &&
     parsed.password === "" &&
-    OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN.test(parsed.pathname);
+    (OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN.test(parsed.pathname) ||
+      (parsed.origin !== "https://a.okou.io" &&
+        /^\/[a-f0-9]{24}\.[a-z0-9]{1,12}$/u.test(parsed.pathname)));
   if (!isLegacyPath && !isShortArtifactPath && !isOkouShortArtifactPath) {
     return false;
   }
@@ -459,6 +466,9 @@ function isPlatformFileUrl(url: string): boolean {
 
 function hostedSitePublicSlug(hostname: string): string | null {
   const normalizedHostname = hostname.toLowerCase();
+  if (normalizedHostname === "files.sites.vm7.io") {
+    return null;
+  }
   for (const domain of resolveHostedSiteDomains()) {
     const suffix = `.${domain}`;
     if (!normalizedHostname.endsWith(suffix)) {
@@ -523,6 +533,12 @@ function hostedSiteAttachment(
 
 export function isPreviewableChatUrl(url: string): boolean {
   return (
+    Boolean(
+      parseArtifactReference(
+        url,
+        typeof location === "undefined" ? undefined : location.origin,
+      ),
+    ) ||
     Boolean(privateHostedDeploymentId(url, resolveApiBase())) ||
     isPlatformFileUrl(url) ||
     isHostedSiteUrl(url)

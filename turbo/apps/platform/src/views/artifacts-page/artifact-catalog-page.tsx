@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { cn } from "@okouai/ui";
+import { surfaceVariants, cn } from "@okouai/ui";
 import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
 
@@ -249,7 +249,11 @@ function ArtifactSharedConversationList({
   const { t } = useTranslation();
   const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
   return (
-    <ul className="okou-card divide-y divide-border overflow-hidden">
+    <ul
+      className={surfaceVariants({
+        className: "divide-y divide-border overflow-hidden",
+      })}
+    >
       {artifacts.map((artifact) => {
         return (
           <li key={artifact.id}>
@@ -337,7 +341,9 @@ export function ArtifactCatalogSkeleton({
   if (layout === "list") {
     return (
       <div
-        className="okou-card divide-y divide-border overflow-hidden"
+        className={surfaceVariants({
+          className: "divide-y divide-border overflow-hidden",
+        })}
         aria-label={loadingLabel}
       >
         {Array.from({ length: 8 }, (_, index) => {

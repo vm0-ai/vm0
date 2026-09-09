@@ -2749,7 +2749,6 @@
       "authorized": "認可された",
       "connectAria": "{{connector}} を接続します",
       "connected": "接続済み",
-      "connecting": "接続中…",
       "connectionExpired": "接続が期限切れになりました",
       "connectToContinue": "続行するにはこのアカウントを接続してください",
       "managePermissions": "権限の管理",

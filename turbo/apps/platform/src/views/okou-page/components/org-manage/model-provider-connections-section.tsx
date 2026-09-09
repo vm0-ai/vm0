@@ -222,7 +222,7 @@ function DeleteConnectionDialog() {
         }
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent maxWidth="md">
         <DialogHeader>
           <DialogTitle>
             {t(($) => {
@@ -462,7 +462,7 @@ function ConnectionDialog() {
         }
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent maxWidth="3xl" contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {draft.editingId

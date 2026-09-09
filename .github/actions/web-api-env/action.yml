@@ -245,6 +245,11 @@ runs:
         add_env R2_USER_ARTIFACTS_SECRET_ACCESS_KEY "$user_artifacts_secret_access_key"
         add_env PUBLIC_ARTIFACTS_BASE_URL "$public_artifacts_base_url"
         add_var OKOU_PUBLIC_ARTIFACTS_BASE_URL OKOU_PUBLIC_ARTIFACTS_BASE_URL
+        if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
+          add_env PUBLIC_ARTIFACT_SHARES_BASE_URL "https://f.okou.io"
+        else
+          add_env PUBLIC_ARTIFACT_SHARES_BASE_URL "https://files.sites.vm7.io"
+        fi
         add_env STATIC_ASSETS_BASE_URL "$static_assets_base_url"
         if [[ "$INPUT_APP" == "web" ]]; then
           add_env NEXT_PUBLIC_STATIC_ASSETS_BASE_URL "$static_assets_base_url"

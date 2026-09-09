@@ -2810,7 +2810,6 @@
       "authorized": "Autorizado",
       "connectAria": "Conectar {{connector}}",
       "connected": "Conectado",
-      "connecting": "Conectando…",
       "connectionExpired": "Conexión expirada",
       "connectToContinue": "Conecta esta cuenta para continuar",
       "managePermissions": "Gestionar permisos",

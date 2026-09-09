@@ -5,6 +5,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  surfaceVariants,
   Button,
   Card,
   CardContent,
@@ -383,7 +384,7 @@ export function SettingsTab({
   return (
     <>
       <div className="mx-auto max-w-[900px]">
-        <Card className="okou-card overflow-hidden">
+        <Card className={surfaceVariants({ className: "overflow-hidden" })}>
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow
               label={t(($) => {

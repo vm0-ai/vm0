@@ -46,6 +46,7 @@ R2_USER_ARTIFACTS_ACCESS_KEY_ID=op://Development/cloudflare/R2_USER_ARTIFACTS_AC
 R2_USER_ARTIFACTS_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_USER_ARTIFACTS_SECRET_ACCESS_KEY
 PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
 OKOU_PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
+PUBLIC_ARTIFACT_SHARES_BASE_URL=https://files.sites.vm7.io
 
 # Optional: Hosted static sites (use a separate R2 token scoped to this bucket)
 R2_HOSTED_SITES_BUCKET_NAME=op://Development/cloudflare/R2_HOSTED_SITES_BUCKET_NAME

@@ -248,6 +248,13 @@ test("A queued Create message keeps its intent separate from user-authored text"
     `${prompt} /create presentation`,
     "Create presentation",
   );
+  click(screen.getByRole("combobox", { name: "Slide count" }));
+  click(await screen.findByRole("option", { name: "20–24 slides" }));
+  await waitFor(() => {
+    expect(
+      screen.getByRole("combobox", { name: "Slide count" }),
+    ).toHaveTextContent("20–24 slides");
+  });
   await waitFor(() => {
     expect(button("Send")).toBeEnabled();
   });
@@ -257,7 +264,11 @@ test("A queued Create message keeps its intent separate from user-authored text"
   });
   expect(queued[0]?.parts).toContainEqual({
     type: "additional_info",
-    text: "Create a presentation.",
+    text: expect.stringContaining("Create a presentation."),
+  });
+  expect(queued[0]?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining("- Slide count: 20-24"),
   });
   expect(
     queued[0]?.parts
@@ -271,6 +282,27 @@ test("A queued Create message keeps its intent separate from user-authored text"
       .trim(),
   ).toBe(prompt);
   await expect(screen.findByText(prompt)).resolves.toBeVisible();
+  click(screen.getByRole("combobox", { name: "Slide count" }));
+  click(await screen.findByRole("option", { name: "4–8 slides" }));
+  await waitFor(() => {
+    expect(
+      screen.getByRole("combobox", { name: "Slide count" }),
+    ).toHaveTextContent("4–8 slides");
+  });
+  await fill(await findComposerEditor(), "A shorter follow-up");
+  click(button("Send"));
+  await waitFor(() => {
+    expect(queued).toHaveLength(2);
+  });
+  expect(queued[1]?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining("- Slide count: 4-8"),
+  });
+  expect(queued[0]?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining("- Slide count: 20-24"),
+  });
+  await expect(screen.findByText("A shorter follow-up")).resolves.toBeVisible();
 });
 
 test("Image mode combines styles and image models while preserving the prompt", async () => {
@@ -420,7 +452,9 @@ test.each([
     const parts = submissions[0]?.parts;
     expect(parts).toContainEqual({
       type: "additional_info",
-      text: `Create ${mode === "image" ? "an" : "a"} ${mode}.`,
+      text: expect.stringContaining(
+        `Create ${mode === "image" ? "an" : "a"} ${mode}.`,
+      ),
     });
     expect(
       parts?.flatMap((part) => {

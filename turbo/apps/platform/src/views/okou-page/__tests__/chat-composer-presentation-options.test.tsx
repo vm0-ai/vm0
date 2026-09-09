@@ -81,7 +81,7 @@ function visibleText(message: SubmittedMessage | undefined): string {
   );
 }
 
-test("Presentation offers six lengths without changing the submitted message", async () => {
+test("Presentation sends Auto as hidden additional info while keeping the message unchanged", async () => {
   setupModels();
   const submissions: SubmittedMessage[] = [];
   mockChatLifecycle(context, {
@@ -121,12 +121,62 @@ test("Presentation offers six lengths without changing the submitted message", a
     expect(submissions).toHaveLength(1);
   });
   expect(submissions[0]?.runOptions).toBeUndefined();
-  expect(visibleText(submissions[0])).toBe("Our launch");
   expect(submissions[0]?.userMessage?.parts).toContainEqual({
     type: "additional_info",
-    text: "Create a presentation.",
+    text: expect.stringContaining("Create a presentation."),
   });
-  await expect(screen.findByText("Our launch")).resolves.toBeVisible();
+  expect(submissions[0]?.userMessage?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining(
+      "- Slide count: Auto (choose the number of slides based on the content)",
+    ),
+  });
+  expect(visibleText(submissions[0])).toBe("Our launch");
+  const text = await screen.findByText("Our launch");
+  const message = text.closest<HTMLElement>('[data-role="user"]');
+  expect(message).toBeVisible();
+  expect(message).not.toHaveTextContent("Slide count");
+  expect(message).not.toHaveTextContent("Create a presentation.");
+});
+
+test.each([
+  ["8–12 slides", "8-12"],
+  ["4–8 slides", "4-8"],
+  ["12–16 slides", "12-16"],
+  ["16–20 slides", "16-20"],
+  ["20–24 slides", "20-24"],
+])("Presentation sends %s in additional info", async (label, range) => {
+  setupModels();
+  const submissions: SubmittedMessage[] = [];
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      submissions.push(body);
+    },
+  });
+  const editor = await setupComposer();
+  const picker = await enterPresentation(editor);
+  if (range !== "8-12") {
+    click(picker);
+    click(await screen.findByRole("option", { name: label }));
+  }
+  await waitFor(() => {
+    expect(picker).toHaveTextContent(label);
+  });
+  click(button("Send"));
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+  });
+  expect(submissions[0]?.userMessage?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining(`- Slide count: ${range}`),
+  });
+  expect(submissions[0]?.userMessage?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining(
+      "Where this run's message asks for a different slide count, the message wins.",
+    ),
+  });
+  expect(visibleText(submissions[0])).toBe("Our launch");
 });
 
 test("Leaving presentation hides its picker and resets its length", async () => {
@@ -163,5 +213,8 @@ test("Leaving presentation hides its picker and resets its length", async () => 
     expect(submissions).toHaveLength(1);
   });
   expect(submissions[0]?.runOptions).toBeUndefined();
+  expect(submissions[0]?.userMessage?.parts).not.toContainEqual(
+    expect.objectContaining({ type: "additional_info" }),
+  );
   expect(visibleText(submissions[0])).toBe("Our launch");
 });

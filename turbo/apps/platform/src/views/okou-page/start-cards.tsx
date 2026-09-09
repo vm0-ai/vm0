@@ -3,7 +3,7 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Play } from "lucide-react";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
-import { Button } from "@okouai/ui";
+import { surfaceVariants, Button } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
@@ -323,7 +323,11 @@ function StartCard({
   // breakpoint yields a 292px card with the sidebar open and a wider one
   // without it.
   return (
-    <div className="okou-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
+    <div
+      className={surfaceVariants({
+        className: "group @container relative flex flex-col justify-center p-4",
+      })}
+    >
       {/* Stretched hit area so the whole card opens the template picker, kept as
           a real button so the hover actions stay focusable siblings. */}
       <button

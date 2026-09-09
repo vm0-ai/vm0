@@ -1,3 +1,4 @@
+import { cleanupExpiredRunActivity$ } from "./run-activity-snapshot.service";
 import { command } from "ccstate";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -700,22 +701,26 @@ const cleanupGlobalMaintenance$ = command(
       L.error("Failed to retry Feishu connect welcomes", { error });
     });
     signal.throwIfAborted();
+    await set(cleanupExpiredRunActivity$, null, signal);
+    signal.throwIfAborted();
     await set(cleanupExpiredPiApiFirstTurnData$, signal);
     signal.throwIfAborted();
   },
 );
 
-const cleanupFixtureChatThreadQueues$ = command(
+const cleanupFixtureMaintenance$ = command(
   async (
     { set },
-    chatThreadIds: readonly string[],
+    scope: Extract<CleanupSandboxesScope, { kind: "fixtures" }>,
     signal: AbortSignal,
   ): Promise<void> => {
+    await set(cleanupExpiredRunActivity$, scope.runIds, signal);
+    signal.throwIfAborted();
     await set(
       drainStaleChatThreadQueues$,
       {
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        chatThreadIds,
+        chatThreadIds: scope.chatThreadIds,
       },
       signal,
     );
@@ -804,7 +809,7 @@ export const cleanupSandboxes$ = command(
     if (scope.kind === "global") {
       await set(cleanupGlobalMaintenance$, signal);
     } else {
-      await set(cleanupFixtureChatThreadQueues$, scope.chatThreadIds, signal);
+      await set(cleanupFixtureMaintenance$, scope, signal);
     }
     signal.throwIfAborted();
     const queuedTerminalRuns = [
