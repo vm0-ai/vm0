@@ -26,7 +26,6 @@ import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import {
-  billingStatusAsync$,
   reloadBillingStatus$,
   reloadUsagePackManagement$,
   memberUsagePackOptionsAsync$,
@@ -348,12 +347,7 @@ export const invitationUsagePackConfiguration$ = computed((get) => {
     return null;
   }
   return (async () => {
-    const billing = await get(billingStatusAsync$);
-    // Older APIs require payment for invitations and cannot send showUsagePack.
-    // Keep their paid flow until the API rollback gate in #32575 advances.
-    const showUsagePack =
-      billing.showUsagePack ?? billing.memberInviteUsagePackRequired ?? false;
-    if (!showUsagePack || !(await get(isOrgAdmin$))) {
+    if (!(await get(showMemberUsagePack$))) {
       return null;
     }
     const [options, management] = await Promise.all([

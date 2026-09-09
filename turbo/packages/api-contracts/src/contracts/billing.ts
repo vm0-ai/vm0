@@ -88,9 +88,6 @@ const billingStatusResponseSchema = z.object({
   concurrencyUnitAmountCents: z.number().int().positive().optional(),
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
-  // Read-only compatibility for Apps talking to a pre-showUsagePack API.
-  // Current APIs omit it. Remove after the API rollback gate in #32575.
-  memberInviteUsagePackRequired: z.boolean().optional(),
   showUsagePack: z.boolean(),
   // Outgoing Apps still consume this derived status alias. Current Apps ignore
   // it; there is no independent invitation capability. Cleanup: #32575.

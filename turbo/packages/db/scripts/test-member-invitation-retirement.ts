@@ -10,7 +10,7 @@ import {
   legacyOrgPlanEntitlements,
   legacyOrgPlanEntitlementValues,
   upsertLegacyOrgPlanEntitlement,
-} from "./fixtures/show-usage-pack-legacy-api";
+} from "./fixtures/member-invitation-legacy-api";
 
 const databaseUrl = process.env.DATABASE_URL;
 assert.ok(databaseUrl, "DATABASE_URL is required");
@@ -68,6 +68,15 @@ try {
       "utf8",
     ),
   );
+  await client.query(
+    await readFile(
+      new URL(
+        "../src/migrations/1092_retire_show_usage_pack_compatibility.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
 
   const states = [
     ["active", true],
@@ -94,7 +103,7 @@ try {
   }
   const migration = await readFile(
     new URL(
-      "../src/migrations/1092_retire_member_invitation_capability.sql",
+      "../src/migrations/1098_retire_member_invitation_capability.sql",
       import.meta.url,
     ),
     "utf8",

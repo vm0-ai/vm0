@@ -803,10 +803,9 @@ function MemberUsageConfiguration({
   );
 }
 
-/* One price, expressed as a floor. A workspace pays the plan plus one package
-   for every member, and packages run from $20 to $200 -- so a single figure
-   would only ever be right for a one-member workspace on the cheapest package.
-   The line under the figure prints what makes it up. */
+/* One price, expressed as a floor. A workspace pays the plan plus at least one
+   paid package, and paid packages run from $20 to $200. The line under the
+   figure prints what makes it up. */
 function PlanPrice({
   basePriceUsd,
   catalog,
@@ -814,9 +813,13 @@ function PlanPrice({
   readonly basePriceUsd: number;
   readonly catalog: readonly MemberUsagePackOption[];
 }) {
-  const packagePrices = catalog.map((item) => {
-    return item.priceUsd;
-  });
+  const packagePrices = catalog
+    .filter((item) => {
+      return item.usagePackUsd !== 0;
+    })
+    .map((item) => {
+      return item.priceUsd;
+    });
   const lowestPackageUsd = Math.min(...packagePrices);
   const highestPackageUsd = Math.max(...packagePrices);
   return (

@@ -105,8 +105,8 @@ export async function upsertOrgPlanEntitlement(
     baseConcurrencyLimit: limits.baseConcurrencyLimit,
     canBuyConcurrency: limits.canBuyConcurrency,
     canBuyCredits: limits.canBuyCredits,
-    // Mirror for legacy API readers and the showUsagePack rollout trigger.
-    // Retire this write before dropping the legacy column; rollout gates: #32575.
+    // Mirror for outgoing and rollback API readers. Retire this write with the
+    // legacy column after the serving and rollback gates in #32575 pass.
     legacyMemberInviteUsagePackRequired: showUsagePack,
     showUsagePack,
     autoRechargeAllowed: limits.autoRechargeAllowed,

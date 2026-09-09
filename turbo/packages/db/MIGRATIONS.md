@@ -33,7 +33,7 @@ expired transition validator must be deleted.
 ### Active transition validators
 
 - `scripts/test-member-invitation-retirement.ts` protects migration
-  `1092_retire_member_invitation_capability` (#32573). It checks removal of
+  `1098_retire_member_invitation_capability` (#32573). It checks removal of
   manual invitation overrides, legacy INSERT/UPSERT/RETURNING statements, and
   current status-only writes observed by old API readers. The physical column
   and derived-status trigger remain only for serving and rollback compatibility;

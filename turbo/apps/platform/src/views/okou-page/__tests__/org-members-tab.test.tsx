@@ -229,7 +229,7 @@ function mockMembersStory(
 }
 
 function mockMemberInviteEntitlement(
-  showUsagePack?: boolean,
+  showUsagePack: boolean,
   invitation?: {
     readonly tier: string;
     readonly status?: "active" | "suspended";
@@ -238,8 +238,8 @@ function mockMemberInviteEntitlement(
 ): void {
   const response: BillingStatusResponse = {
     tier: invitation?.tier ?? "pro",
-    ...(showUsagePack === undefined ? {} : { showUsagePack }),
-    ...(invitation === undefined ? {} : { status: invitation.status }),
+    showUsagePack,
+    ...(invitation?.status === undefined ? {} : { status: invitation.status }),
     credits: 0,
     onboardingPaymentPending: false,
     subscriptionStatus: "active",
@@ -496,7 +496,7 @@ test("Keep People package controls restricted to administrators", async () => {
 });
 
 test.each(["free", "limited-free-1", "pro", "team"])(
-  "Hide invitation package configuration on free or legacy %s plans",
+  "Use explicit active status instead of a legacy invitation denial on %s",
   async (tier) => {
     mockMembersStory();
     mockMemberInviteEntitlement(
@@ -504,7 +504,6 @@ test.each(["free", "limited-free-1", "pro", "team"])(
       { tier, status: "active" },
       {
         hasSubscription: tier === "pro" || tier === "team",
-        memberInviteUsagePackRequired: true,
         memberInvitationAllowed: false,
       },
     );
@@ -541,6 +540,43 @@ test.each(["free", "limited-free-1", "pro", "team"])(
         screen.getByText("legacy.invitee@example.com"),
       ).toBeInTheDocument();
     });
+  },
+);
+
+test.each(["free", "limited-free-1"])(
+  "Preserve the older API invitation restriction on %s",
+  async (tier) => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(
+      false,
+      { tier },
+      {
+        memberInvitationAllowed: false,
+      },
+    );
+    mockUsagePackCatalog();
+
+    await setupPage({ context, path: "/?settings=people" });
+    await screen.findByRole("heading", { name: "People" });
+    click(buttonByText("Add member"));
+
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Upgrade to invite members",
+    });
+    expect(
+      within(inviteDialog).getByText(
+        /Member invitations are available on the Pro plan/u,
+      ),
+    ).toBeVisible();
+    expect(
+      within(inviteDialog).queryByPlaceholderText("email@example.com"),
+    ).not.toBeInTheDocument();
+    expect(within(inviteDialog).queryByText("Role")).not.toBeInTheDocument();
+    click(buttonByText("Upgrade to Pro", inviteDialog));
+
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
   },
 );
 
@@ -708,20 +744,15 @@ test("Use the default $20 package when inviting a member", async () => {
 });
 
 test.each([
-  { tier: "pro", supportsFreeMembers: true, hasVisibilityCapability: true },
-  { tier: "team", supportsFreeMembers: true, hasVisibilityCapability: true },
-  { tier: "pro", supportsFreeMembers: false, hasVisibilityCapability: true },
-  { tier: "team", supportsFreeMembers: false, hasVisibilityCapability: true },
-  { tier: "pro", supportsFreeMembers: false, hasVisibilityCapability: false },
+  { tier: "pro", supportsFreeMembers: true },
+  { tier: "team", supportsFreeMembers: true },
+  { tier: "pro", supportsFreeMembers: false },
+  { tier: "team", supportsFreeMembers: false },
 ] as const)(
-  "Buy an invitation package on $tier (no package: $supportsFreeMembers, visibility: $hasVisibilityCapability)",
-  async ({ tier, supportsFreeMembers, hasVisibilityCapability }) => {
+  "Buy an invitation package on $tier (no package: $supportsFreeMembers)",
+  async ({ tier, supportsFreeMembers }) => {
     const story = mockMembersStory();
-    mockMemberInviteEntitlement(
-      hasVisibilityCapability ? true : undefined,
-      { tier, status: "active" },
-      { memberInviteUsagePackRequired: !supportsFreeMembers },
-    );
+    mockMemberInviteEntitlement(true, { tier, status: "active" });
     mockUsagePackManagement({ tier });
     mockUsagePackCatalog(supportsFreeMembers ? true : undefined);
     const purchaseId = "67d0ac76-170e-4a99-a5b6-ecc74c1179df";
@@ -802,10 +833,8 @@ test.each([
       expect(rowByEmail("paid.invitee@example.com")).toBeVisible();
     });
     expect(
-      within(rowByEmail("paid.invitee@example.com")).queryByText(
-        "$50/month",
-      ) !== null,
-    ).toBe(hasVisibilityCapability);
+      within(rowByEmail("paid.invitee@example.com")).getByText("$50/month"),
+    ).toBeVisible();
 
     click(buttonByText("Add member"));
     const nextInvite = await screen.findByRole("dialog", {

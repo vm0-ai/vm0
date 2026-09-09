@@ -360,11 +360,13 @@ type InviteDialogMode =
   | "loading"
   | "packages"
   | "setup"
-  | "suspended";
+  | "suspended"
+  | "upgrade";
 
 function resolveInviteDialogMode(args: {
   readonly capabilities:
     | {
+        readonly legacyMemberInvitationAllowed: boolean | null;
         readonly status: "active" | "suspended";
       }
     | undefined;
@@ -378,6 +380,9 @@ function resolveInviteDialogMode(args: {
   }
   if (args.capabilities.status === "suspended") {
     return "suspended";
+  }
+  if (args.capabilities.legacyMemberInvitationAllowed === false) {
+    return "upgrade";
   }
   if (args.catalogLoading) {
     return "loading";
@@ -539,6 +544,24 @@ function InviteDialogContent({
       </>
     );
   }
+  if (mode === "upgrade") {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.upgrade.title;
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogDescription className="py-2 leading-6">
+          {t(($) => {
+            return $.settings.workspace.members.invite.upgrade.description;
+          })}
+        </DialogDescription>
+      </>
+    );
+  }
   if (mode === "loading" || mode === "error") {
     return (
       <>
@@ -596,6 +619,11 @@ function InvitePrimaryActionLabel({
   if (mode === "suspended") {
     return t(($) => {
       return $.settings.workspace.members.invite.suspended.action;
+    });
+  }
+  if (mode === "upgrade") {
+    return t(($) => {
+      return $.settings.workspace.members.invite.upgrade.action;
     });
   }
   if (mode === "loading") {
@@ -730,7 +758,7 @@ function InviteDialog() {
   };
 
   const handlePrimary = () => {
-    if (mode === "setup" || mode === "suspended") {
+    if (mode === "setup" || mode === "suspended" || mode === "upgrade") {
       openPackageConfiguration();
       return;
     }

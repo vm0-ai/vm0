@@ -442,7 +442,7 @@ async function selectMemberUsagePack(
 }
 
 test("Compare usage-pack plans before choosing one", async () => {
-  mockInitialUsagePackPurchase();
+  mockInitialUsagePackPurchase(true);
   const { choosePlanHeading, proPlan, teamPlan } =
     await openUsagePackPlanSelection();
   expect(choosePlanHeading).toBeInTheDocument();
@@ -450,7 +450,7 @@ test("Compare usage-pack plans before choosing one", async () => {
   // replaces it, so the plan the workspace is deciding against stays visible.
   expect(screen.getByText("No active plan")).toBeInTheDocument();
   // The figure is a floor, not a fixed total: a workspace pays the plan plus
-  // one package for every member, and packages run $20 to $200.
+  // at least one paid package, and paid packages run $20 to $200.
   expect(proPlan).toHaveTextContent("from $20/month");
   expect(
     within(proPlan).getByText("Plan $0 · member packages $20–$200 each"),
