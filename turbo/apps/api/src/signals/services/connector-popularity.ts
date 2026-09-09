@@ -18,7 +18,7 @@ export const CONNECTOR_SEARCH_LIMIT = 100;
  * shopping for, and ranking by connection frequency floats them to the top of
  * discovery. Excluded from discovery and search; still connectable by slug.
  */
-export const INTERNAL_CONNECTOR_SLUGS = [
+const INTERNAL_CONNECTOR_SLUGS = [
   "maskdb",
   "db9",
   "drive9",
@@ -41,7 +41,7 @@ export const INTERNAL_CONNECTOR_SLUGS = [
  * Anything absent from this list is still discoverable. Unranked connectors
  * sort after ranked ones, alphabetically, inside their own category.
  */
-export const CONNECTOR_POPULARITY_RANKING = [
+const CONNECTOR_POPULARITY_RANKING = [
   // Mail, calendar, and the files people work out of every day.
   "gmail",
   "google-drive",
