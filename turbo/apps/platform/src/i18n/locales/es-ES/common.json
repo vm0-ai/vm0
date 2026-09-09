@@ -2904,6 +2904,15 @@
       "noConnectorsAlt": "Sin conectores",
       "otherCategory": "Otro",
       "search": "Buscar conectores",
+      "shelf": {
+        "browseAll": "Todos",
+        "moreCategories": "Más categorías",
+        "popular": "Populares",
+        "seeMore_one": "Ver {{names}} y {{count}} más",
+        "seeMore_many": "Ver {{names}} y {{count}} más",
+        "seeMore_other": "Ver {{names}} y {{count}} más",
+        "yours": "Tus conectores"
+      },
       "tabs": {
         "builtin": "Integrados",
         "custom": "Personalizado"

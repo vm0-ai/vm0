@@ -2843,6 +2843,14 @@
       "noConnectorsAlt": "커넥터 없음",
       "otherCategory": "기타",
       "search": "커넥터 찾기",
+      "shelf": {
+        "browseAll": "전체",
+        "moreCategories": "다른 카테고리",
+        "popular": "인기",
+        "seeMore_one": "{{names}} 외 {{count}}개 보기",
+        "seeMore_other": "{{names}} 외 {{count}}개 보기",
+        "yours": "내 커넥터"
+      },
       "tabs": {
         "builtin": "내장",
         "custom": "사용자 지정"

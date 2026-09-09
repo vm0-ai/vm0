@@ -2855,6 +2855,14 @@
       "noConnectorsAlt": "Keine Integrationen",
       "otherCategory": "Andere",
       "search": "Finden Sie Integrationen",
+      "shelf": {
+        "browseAll": "Alle",
+        "moreCategories": "Weitere Kategorien",
+        "popular": "Beliebt",
+        "seeMore_one": "{{names}} und {{count}} weiteren ansehen",
+        "seeMore_other": "{{names}} und {{count}} weitere ansehen",
+        "yours": "Deine Konnektoren"
+      },
       "tabs": {
         "builtin": "Eingebaut",
         "custom": "Benutzerdefiniert"

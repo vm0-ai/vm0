@@ -2843,6 +2843,14 @@
       "noConnectorsAlt": "Tidak ada konektor",
       "otherCategory": "Lainnya",
       "search": "Cari konektor",
+      "shelf": {
+        "browseAll": "Semua",
+        "moreCategories": "Kategori lainnya",
+        "popular": "Populer",
+        "seeMore_one": "Lihat {{names}} dan {{count}} lainnya",
+        "seeMore_other": "Lihat {{names}} dan {{count}} lainnya",
+        "yours": "Konektor Anda"
+      },
       "tabs": {
         "builtin": "Bawaan",
         "custom": "Kustom"

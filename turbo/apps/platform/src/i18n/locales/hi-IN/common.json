@@ -2855,6 +2855,14 @@
       "noConnectorsAlt": "कोई कनेक्टर नहीं",
       "otherCategory": "अन्य",
       "search": "कनेक्टर खोजें",
+      "shelf": {
+        "browseAll": "सभी",
+        "moreCategories": "और श्रेणियाँ",
+        "popular": "लोकप्रिय",
+        "seeMore_one": "{{names}} और {{count}} अन्य देखें",
+        "seeMore_other": "{{names}} और {{count}} अन्य देखें",
+        "yours": "आपके कनेक्टर"
+      },
       "tabs": {
         "builtin": "बिल्ट-इन",
         "custom": "कस्टम"

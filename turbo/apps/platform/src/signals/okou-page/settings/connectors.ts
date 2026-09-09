@@ -446,6 +446,7 @@ export function matchesConnectorDirectorySearch(
 
 const CONNECTORS_SEARCH_PARAM = "keywords";
 const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
+const CONNECTORS_CATEGORY_PARAM = "category";
 const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
 
 // A single, mutually-exclusive connector filter: all connectors, a connection
@@ -479,6 +480,27 @@ export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
+/**
+ * The category being browsed, or null for the shelf view. Category is the only
+ * dimension that organises four thousand connectors, so it lives in the URL
+ * next to the search keyword rather than in component state.
+ */
+export const connectorsCategoryFilter$ = computed((get): string | null => {
+  return get(searchParams$).get(CONNECTORS_CATEGORY_PARAM) ?? null;
+});
+
+export const setConnectorsCategoryFilter$ = command(
+  ({ get, set }, value: string | null) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (value) {
+      params.set(CONNECTORS_CATEGORY_PARAM, value);
+    } else {
+      params.delete(CONNECTORS_CATEGORY_PARAM);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
+
 export const connectorCatalogDiscovery$ =
   relatedConnectorCatalog(connectorsSearch$);
 
@@ -500,6 +522,7 @@ export const relatedCatalogItems$ = computed(async (get) => {
 export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const effectiveFilter = get(connectorsConnectionFilter$);
+  const category = get(connectorsCategoryFilter$);
 
   const agentEnabledSlugs =
     effectiveFilter.kind === "agent"
@@ -513,6 +536,9 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const relatedCatalogItems = await get(relatedCatalogItems$);
   return relatedCatalogItems.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
+      return false;
+    }
+    if (category !== null && connector.category !== category) {
       return false;
     }
     if (effectiveFilter.kind === "connected") {

@@ -2843,6 +2843,14 @@
       "noConnectorsAlt": "コネクターなし",
       "otherCategory": "その他",
       "search": "コネクターを検索",
+      "shelf": {
+        "browseAll": "すべて",
+        "moreCategories": "その他のカテゴリ",
+        "popular": "人気",
+        "seeMore_one": "{{names}} ほか {{count}} 件を見る",
+        "seeMore_other": "{{names}} ほか {{count}} 件を見る",
+        "yours": "あなたのコネクタ"
+      },
       "tabs": {
         "builtin": "内蔵",
         "custom": "カスタム"

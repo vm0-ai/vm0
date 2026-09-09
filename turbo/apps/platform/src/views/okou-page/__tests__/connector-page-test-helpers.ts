@@ -176,10 +176,14 @@ export function publicStatusItem(args: {
   readonly authMethodSupportsRefresh?: boolean;
   readonly tokenExpiresAt?: string | null;
   readonly permissionSummary?: PublicConnectorCatalogStatusItem["permissionSummary"];
+  readonly popularityRank?: number;
 }): PublicConnectorCatalogStatusItem {
   return {
     slug: args.connectorSlug,
     label: args.label,
+    ...(args.popularityRank === undefined
+      ? {}
+      : { popularityRank: args.popularityRank }),
     description: args.description ?? `${args.label} public description`,
     icon: args.icon ?? {
       url: `https://icons.example.test/${args.connectorSlug}.svg`,
@@ -210,6 +214,7 @@ export function mockPublicConnectorStatus(
   context: TestContext,
   connectors: readonly PublicConnectorCatalogStatusItem[],
   categoryMetadata?: PublicConnectorCatalogCategoryMetadata,
+  categoryConnectorCounts?: Readonly<Record<string, number>>,
 ): void {
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
@@ -222,6 +227,7 @@ export function mockPublicConnectorStatus(
       connectors: [...connectors],
       totalConnectorCount: connectors.length,
       ...(categoryMetadata ? { categoryMetadata } : {}),
+      ...(categoryConnectorCounts ? { categoryConnectorCounts } : {}),
     });
   });
 }
