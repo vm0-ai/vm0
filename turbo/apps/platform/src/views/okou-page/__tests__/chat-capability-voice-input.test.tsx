@@ -107,6 +107,11 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
     screen.getByText(/^\d{2}:\d{2}$/u, { selector: "time" }),
   ).toBeVisible();
   expect(queryButton("Attach")).toBeNull();
+  expect(stop.closest("[data-composer-voice-tray]")).toHaveClass(
+    "bg-gray-50",
+    "px-3",
+    "py-2",
+  );
   return stop;
 }
 
@@ -244,7 +249,11 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
   });
 
   await requested.promise;
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
+  expect(screen.getByText("Text is taking shape")).toHaveClass("text-right");
+  expect(
+    document.querySelector("[data-composer-voice-transcription-skeleton]"),
+  ).not.toBeNull();
   expect(queryButton("Stop recording")).toBeNull();
   fireEvent.keyDown(currentComposer(), {
     key: "e",
@@ -252,7 +261,7 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
     ctrlKey: true,
     shiftKey: true,
   });
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
   response.resolve();
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Shortcut voice note");
@@ -324,7 +333,10 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   click(stop);
   await transcriptionStarted.promise;
 
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
+  expect(
+    document.querySelector("[data-composer-voice-transcription-skeleton]"),
+  ).toBeNull();
   expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   placeCaret(currentComposer(), "Opening  closing", 8);
@@ -704,7 +716,8 @@ test.each([
 
   click(await findEnabledButton("Retry"));
   await retryRequest.promise;
-  await screen.findByText("Transcribing...");
+  await screen.findByText("Transcribing");
+  expect(screen.getByText("Retrying saved audio")).toHaveClass("text-right");
   retryResponse.resolve();
   await findEnabledButton("Retry");
   expect(normalizedComposerText()).toBe("Keep these notes.");
@@ -786,7 +799,7 @@ test.each([
     await firstRequest.promise;
     const pendingRecording = failed
       ? findButton("Retry")
-      : screen.findByText("Transcribing...");
+      : screen.findByText("Transcribing");
     await expect(pendingRecording).resolves.toBeVisible();
 
     click(await findLink("Agents"));

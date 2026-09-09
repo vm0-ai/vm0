@@ -2633,10 +2633,13 @@
       "removeDraft": "Hapus draf suara",
       "restoreFailed": "Draf suara Anda tidak dapat dimuat. Coba lagi.",
       "retry": "Coba lagi",
+      "retryingSavedAudio": "Mencoba ulang audio tersimpan",
       "retryReady": "Rekaman Anda tetap tersimpan. Coba transkripsi lagi.",
+      "returningToComposer": "Kembali ke kolom pesan",
       "starting": "Memulai input suara",
       "stopRecording": "Berhenti merekam",
       "storageFailed": "Audio tidak dapat disimpan. Coba lagi hanya memulihkan audio yang sudah tersimpan di perangkat ini.",
+      "textTakingShape": "Teks sedang terbentuk",
       "transcribing": "Mentranskripsi",
       "transcribingProgress": "Mentranskripsi...",
       "transcriptionFailed": "Transkripsi suara gagal. Coba lagi."

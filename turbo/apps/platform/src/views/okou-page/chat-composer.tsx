@@ -8794,6 +8794,9 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
   return `${minutes}:${seconds}`;
 }
 
+const VOICE_DRAFT_TRAY_CLASS =
+  "min-h-12 rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-100";
+
 function VoiceDraftFooter({
   signals,
   actions,
@@ -8818,7 +8821,10 @@ function VoiceDraftFooter({
 
   if (status === "failed") {
     return (
-      <div className="flex min-h-8 w-full items-center gap-3">
+      <div
+        className={cn("flex w-full items-center gap-3", VOICE_DRAFT_TRAY_CLASS)}
+        data-composer-voice-tray
+      >
         <span
           role="status"
           className="min-w-0 flex-1 text-sm text-muted-foreground"
@@ -8866,20 +8872,44 @@ function VoiceDraftFooter({
   }
 
   if (status !== "recording") {
+    const statusText =
+      status === "discarding"
+        ? t(($) => {
+            return $.chat.voice.discarding;
+          })
+        : t(($) => {
+            return $.chat.voice.transcribing;
+          });
+    const outcomeText =
+      status === "discarding"
+        ? t(($) => {
+            return $.chat.voice.returningToComposer;
+          })
+        : actions.voiceAction === "retry"
+          ? t(($) => {
+              return $.chat.voice.retryingSavedAudio;
+            })
+          : t(($) => {
+              return $.chat.voice.textTakingShape;
+            });
     return (
       <div
-        className="flex min-h-8 w-full items-center justify-center gap-2.5 text-sm text-muted-foreground"
+        className={cn(
+          "grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 text-sm",
+          VOICE_DRAFT_TRAY_CLASS,
+        )}
         role="status"
+        data-composer-voice-tray
       >
-        <Loader2 size={16} className="animate-spin text-[#2E9E9F]" />
-        <span>
-          {status === "discarding"
-            ? t(($) => {
-                return $.chat.voice.discarding;
-              })
-            : t(($) => {
-                return $.chat.voice.transcribingProgress;
-              })}
+        <span className="flex min-w-0 items-center gap-2.5 font-medium text-foreground">
+          <Loader2
+            size={16}
+            className="shrink-0 animate-spin text-[#2E9E9F] motion-reduce:animate-none"
+          />
+          <span className="truncate">{statusText}</span>
+        </span>
+        <span className="min-w-0 max-w-full justify-self-end truncate text-right text-xs text-muted-foreground">
+          {outcomeText}
         </span>
       </div>
     );
@@ -8889,7 +8919,10 @@ function VoiceDraftFooter({
     return $.chat.voice.stopRecording;
   });
   return (
-    <div className="flex min-h-8 w-full items-center gap-3">
+    <div
+      className={cn("flex w-full items-center gap-3", VOICE_DRAFT_TRAY_CLASS)}
+      data-composer-voice-tray
+    >
       <span
         className="size-2 shrink-0 rounded-full bg-destructive"
         aria-hidden="true"
@@ -9164,6 +9197,12 @@ function ComposerInputSlot({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
+  const hasInput = useGet(signals.editor.hasInput$);
+  const showVoiceTranscriptionSkeleton =
+    voiceInputV2Enabled &&
+    !hasInput &&
+    (actions.voiceAction === "finish" || actions.voiceAction === "retry");
 
   const handlePaste = (event: ComposerPasteEvent) => {
     if (
@@ -9255,13 +9294,25 @@ function ComposerInputSlot({
   };
 
   return (
-    <TiptapWorkflowComposer
-      signals={signals}
-      onDraftChange={notifyDraftChanged}
-      sending={sending}
-      onKeyDown={handleKeyDown}
-      onPaste={handlePaste}
-    />
+    <div className="relative">
+      <TiptapWorkflowComposer
+        signals={signals}
+        onDraftChange={notifyDraftChanged}
+        sending={sending}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+      />
+      {showVoiceTranscriptionSkeleton ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 flex h-24 flex-col justify-center gap-2 bg-card px-6"
+          data-composer-voice-transcription-skeleton
+          aria-hidden="true"
+        >
+          <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />
+          <span className="h-2 w-[44%] animate-pulse rounded-full bg-muted/50 [animation-delay:-350ms] motion-reduce:animate-none" />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -10627,22 +10678,30 @@ function ComposerFooter({
           : capture
             ? "recording"
             : voiceDraft?.status;
+  const activeVoiceDraftStatus: Exclude<
+    ComposerVoiceInputStatus,
+    "idle"
+  > | null =
+    voiceInputV2Enabled &&
+    status !== undefined &&
+    status !== "idle" &&
+    (status !== "recording" || capture !== null)
+      ? status
+      : null;
   return withChatScrollLayout(
     <div
       className={cn(
-        "flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2",
+        "flex items-center justify-between gap-1 sm:gap-2",
+        activeVoiceDraftStatus ? "px-3 pb-3 pt-3" : "px-4 pb-4 pt-1",
         narrowVideoGap,
         createMode === "video" && "@max-[344px]/composer:px-3",
       )}
     >
-      {voiceInputV2Enabled &&
-      status &&
-      status !== "idle" &&
-      (status !== "recording" || capture) ? (
+      {activeVoiceDraftStatus ? (
         <VoiceDraftFooter
           signals={signals}
           actions={actions}
-          status={status}
+          status={activeVoiceDraftStatus}
           recordingAvailable={Boolean(voiceDraft?.recording)}
           voiceMessage={voiceDraft?.message}
         />
@@ -10728,9 +10787,9 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
-          {/* Edge inset is 16px on all four sides so it matches the editor's
-              `px-4 pt-4` above and stays concentric with the 24px shell: a
-              control 16px in from a 24px corner needs exactly an 8px radius. */}
+          {/* The standard footer keeps a 16px edge inset. Active voice states
+              use a 12px outer tray plus 12px inner padding, placing their
+              content 24px from the composer edge. */}
           <ComposerFooter
             signals={signals}
             actions={actions}

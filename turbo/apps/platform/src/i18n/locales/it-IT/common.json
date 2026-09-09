@@ -2686,10 +2686,13 @@
       "removeDraft": "Rimuovi bozza vocale",
       "restoreFailed": "Impossibile caricare la bozza vocale. Riprova.",
       "retry": "Riprova",
+      "retryingSavedAudio": "Nuovo tentativo con l’audio salvato",
       "retryReady": "La registrazione è conservata. Riprova la trascrizione.",
+      "returningToComposer": "Ritorno al campo di testo",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",
       "storageFailed": "Impossibile salvare l’audio. Riprova recupera solo l’audio già salvato su questo dispositivo.",
+      "textTakingShape": "Il testo sta prendendo forma",
       "transcribing": "Trascrizione",
       "transcribingProgress": "Trascrizione...",
       "transcriptionFailed": "La trascrizione vocale non è riuscita. Riprova."

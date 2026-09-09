@@ -2686,10 +2686,13 @@
       "removeDraft": "Remover rascunho de voz",
       "restoreFailed": "Não foi possível carregar seu rascunho de voz. Tente novamente.",
       "retry": "Tentar novamente",
+      "retryingSavedAudio": "Tentando novamente o áudio salvo",
       "retryReady": "Sua gravação foi mantida. Tente transcrever novamente.",
+      "returningToComposer": "Voltando ao campo de texto",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Parar gravação",
       "storageFailed": "Não foi possível salvar o áudio. Tentar novamente recupera apenas o áudio já salvo neste dispositivo.",
+      "textTakingShape": "O texto está tomando forma",
       "transcribing": "Transcrevendo",
       "transcribingProgress": "Transcrevendo...",
       "transcriptionFailed": "Falha na transcrição de voz. Tente novamente."

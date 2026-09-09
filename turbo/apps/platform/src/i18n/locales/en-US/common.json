@@ -2641,10 +2641,13 @@
       "removeDraft": "Remove voice draft",
       "restoreFailed": "Couldn’t load your voice draft. Try again.",
       "retry": "Retry",
+      "retryingSavedAudio": "Retrying saved audio",
       "retryReady": "Your recording is kept. Retry transcription.",
+      "returningToComposer": "Returning to composer",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
       "storageFailed": "Audio could not be saved. Retry can recover only audio already saved on this device.",
+      "textTakingShape": "Text is taking shape",
       "transcribing": "Transcribing",
       "transcribingProgress": "Transcribing...",
       "transcriptionFailed": "Voice transcription failed. Try again."

@@ -2686,10 +2686,13 @@
       "removeDraft": "Supprimer le brouillon vocal",
       "restoreFailed": "Impossible de charger votre brouillon vocal. Réessayez.",
       "retry": "Réessayer",
+      "retryingSavedAudio": "Nouvelle tentative avec l’audio enregistré",
       "retryReady": "Votre enregistrement est conservé. Réessayez la transcription.",
+      "returningToComposer": "Retour à la zone de saisie",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
       "storageFailed": "Impossible de sauvegarder le son. Réessayer ne récupère que le son déjà enregistré sur cet appareil.",
+      "textTakingShape": "Le texte prend forme",
       "transcribing": "Transcription",
       "transcribingProgress": "Transcription en cours...",
       "transcriptionFailed": "Échec de la transcription vocale. Réessayez."

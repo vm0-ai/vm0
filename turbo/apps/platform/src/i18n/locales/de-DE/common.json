@@ -2641,10 +2641,13 @@
       "removeDraft": "Sprachentwurf entfernen",
       "restoreFailed": "Ihr Sprachentwurf konnte nicht geladen werden. Versuchen Sie es erneut.",
       "retry": "Erneut versuchen",
+      "retryingSavedAudio": "Gespeichertes Audio wird erneut verarbeitet",
       "retryReady": "Ihre Aufnahme bleibt erhalten. Versuchen Sie die Transkription erneut.",
+      "returningToComposer": "Zurück zum Eingabefeld",
       "starting": "Spracheingabe starten",
       "stopRecording": "Aufnahme stoppen",
       "storageFailed": "Audio konnte nicht gespeichert werden. Erneut versuchen stellt nur bereits auf diesem Gerät gespeichertes Audio wieder her.",
+      "textTakingShape": "Der Text nimmt Form an",
       "transcribing": "Transkribieren",
       "transcribingProgress": "Transkribieren...",
       "transcriptionFailed": "Die Sprachtranskription ist fehlgeschlagen. Versuchen Sie es erneut."
