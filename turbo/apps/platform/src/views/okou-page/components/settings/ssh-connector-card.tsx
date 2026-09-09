@@ -1,7 +1,8 @@
-import { Terminal } from "lucide-react";
+import { Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../../../signals/route-paths.ts";
 import { Link } from "../../../router/link.tsx";
+import { ConnectorEntryCard } from "./connector-entry-card.tsx";
 
 export function SshConnectorCard({
   configuredCount,
@@ -10,34 +11,51 @@ export function SshConnectorCard({
 }) {
   const { t } = useTranslation();
   return (
-    <Link
-      pathname={ROUTES.settingsSsh}
-      aria-label={t(($) => {
-        return $.ssh.manage;
+    <ConnectorEntryCard
+      icon={<Terminal size={20} aria-hidden="true" />}
+      label={t(($) => {
+        return $.ssh.label;
       })}
-      className="flex flex-col rounded-2xl border bg-card text-card-foreground transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <div className="flex items-center gap-2.5 px-5 pt-4">
-        <Terminal className="size-5 shrink-0" aria-hidden="true" />
-        <span className="font-medium">
-          {t(($) => {
-            return $.ssh.label;
+      description={t(($) => {
+        return $.ssh.description;
+      })}
+      showDescription={configuredCount === 0}
+      interactive
+      action={
+        <Link
+          pathname={ROUTES.settingsSsh}
+          aria-label={t(($) => {
+            return $.ssh.manage;
           })}
+          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        />
+      }
+      indicator={
+        configuredCount === 0 ? (
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
+            aria-hidden="true"
+          >
+            <Plus size={14} />
+          </span>
+        ) : null
+      }
+      status={
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+            aria-hidden="true"
+          />
+          <span className="truncate">
+            {t(
+              ($) => {
+                return $.ssh.summary;
+              },
+              { count: configuredCount },
+            )}
+          </span>
         </span>
-      </div>
-      <p className="line-clamp-2 px-5 pb-4 pt-2 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.ssh.description;
-        })}
-      </p>
-      <p className="mt-auto border-t px-5 py-3 text-xs text-muted-foreground">
-        {t(
-          ($) => {
-            return $.ssh.summary;
-          },
-          { count: configuredCount },
-        )}
-      </p>
-    </Link>
+      }
+    />
   );
 }

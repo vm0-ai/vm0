@@ -123,6 +123,21 @@ import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import { sshSummary$ } from "../../signals/ssh.ts";
 import { filteredSshSummary$ } from "../../signals/okou-page/settings/ssh-connector.ts";
 
+const REMOTE_ACCESS_CATEGORY = "remote-access";
+
+function withRemoteAccessCategory(
+  metadata: PublicConnectorCatalogCategoryMetadata | undefined,
+  label: string,
+): PublicConnectorCatalogCategoryMetadata {
+  return {
+    categories: [
+      ...(metadata?.categories ?? []),
+      { id: REMOTE_ACCESS_CATEGORY, label, menuLabel: label, groupId: null },
+    ],
+    groups: metadata?.groups ?? [],
+  };
+}
+
 type ConnectorPresentation =
   | {
       readonly kind: "catalog";
@@ -1399,7 +1414,7 @@ export function ConnectorsPage() {
   if (filteredSshSummary.state === "hasData" && filteredSshSummary.data) {
     presentationItems.push({
       kind: "ssh",
-      category: "SSH",
+      category: REMOTE_ACCESS_CATEGORY,
       label: t(($) => {
         return $.ssh.label;
       }),
@@ -1407,9 +1422,12 @@ export function ConnectorsPage() {
       configuredCount: filteredSshSummary.data.configuredCount,
     });
   }
+  const remoteAccessLabel = t(($) => {
+    return $.connectors.catalog.remoteAccess;
+  });
   const grouped = groupConnectorsByCategory(
     presentationItems,
-    categoryMetadata,
+    withRemoteAccessCategory(categoryMetadata, remoteAccessLabel),
     otherCategoryLabel,
   );
   const browse = buildConnectorsBrowseModel({

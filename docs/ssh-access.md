@@ -9,9 +9,11 @@ accounts nor connector permissions.
 
 ## Owner setup
 
-Open **Connectors -> SSH** (`/settings/ssh`) to manage up to 64 hosts for your
+Open **Connectors -> Remote access -> SSH** (`/settings/ssh`) to manage up to 64 hosts for your
 current organization and user, without selecting or creating an Agent. The SSH
-card shows configured host count, not tested connectivity. It participates in
+card uses the same presentation as connector cards: no hosts shows the service
+description and add affordance; configured hosts show a compact host-count
+footer instead. The count is configuration, not tested connectivity. It participates in
 search and category navigation. Connection-status filters mean configured or
 not configured for SSH; an Agent filter uses its independent SSH grant, even
 when no hosts are configured. SSH never opens generic connector account or
@@ -30,8 +32,10 @@ metadata edits leave credentials unchanged. Host/port changes clear the learned
 host identity. A stale generation is not retried: refresh and reopen the host
 to review the current settings.
 
-Enable **SSH access** in **Agent -> Authorization** separately, not in Profile.
-The management shortcut opens the same global host page; adding a host does not
+Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
+with the same search and loading switch, not in Profile. The information tooltip
+explains the all-host grant and accepted Run-lifetime cache window.
+The management button opens the same global host page; adding a host does not
 grant an Agent access. The grant covers
 all current and future hosts belonging to that owner in that organization.
 Another user, an organization admin who is not the Agent owner, and the Agent
