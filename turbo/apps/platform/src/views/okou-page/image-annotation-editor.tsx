@@ -1211,6 +1211,16 @@ function useGrabEndpoint(
   };
 }
 
+/**
+ * Makes the scrolling stage a size query container, so the image can be bounded
+ * by the box it is actually in.
+ *
+ * The fit used to be written as fractions of the *viewport* — `min(880px, 88vw)`
+ * by `min(520px, 62vh)` — which is a guess at the stage that stops being true
+ * the moment anything around it changes size. `100cqw`/`100cqh` are that box.
+ */
+const STAGE_QUERY_CONTAINER = { containerType: "size" } as const;
+
 function EditorStage({
   filename,
   signals,
@@ -1289,7 +1299,10 @@ function EditorStage({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/30">
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-5">
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-5"
+        style={STAGE_QUERY_CONTAINER}
+      >
         <div
           ref={bindSurface}
           onPointerDown={handlers.onPointerDown}
@@ -1308,8 +1321,8 @@ function EditorStage({
             // The fit bounds are the stage's own box, so 100% zoom shows the
             // whole image and zooming grows the layout box the stage scrolls.
             style={{
-              maxWidth: `calc(min(880px, 88vw) * ${zoom})`,
-              maxHeight: `calc(min(520px, 62vh) * ${zoom})`,
+              maxWidth: `calc(100cqw * ${zoom})`,
+              maxHeight: `calc(100cqh * ${zoom})`,
             }}
             className="block rounded-lg object-contain"
           />
@@ -1385,7 +1398,11 @@ function AnnotationSurface({
       >
         <KeyboardShortcuts signals={signals} />
         <div
-          className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
+          // The same envelope the preview dialog uses (`DialogContent`
+          // maxWidth={1440} height={1000}, 1.5rem of viewport padding). Edit
+          // replaces that window in place, so anything narrower reads as the
+          // picture shrinking the moment the pencil is pressed.
+          className="flex h-[1000px] max-h-full w-full max-w-[1440px] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
           data-testid="image-annotation-panel"
         >
           <EditorHeader filename={target.filename} signals={signals} />

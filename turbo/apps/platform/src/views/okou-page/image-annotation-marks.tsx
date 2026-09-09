@@ -8,6 +8,8 @@ import {
   markOrdinal,
   NOTE_GROUND,
   noteOnImage,
+  PIN_INSET_PX,
+  PIN_RADIUS_PX,
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "../../signals/okou-page/image-annotation.ts";
@@ -257,9 +259,18 @@ export function MarkShape({
       }}
     >
       {mark.shape === "box" && (
+        // Inside the corner, not on it — the selection grip owns the corner
+        // itself. `flatten-annotated-image` prints the same disc at the same
+        // offset, so what is picked here is what gets sent.
         <span
-          style={{ background: mark.ink }}
-          className="absolute -left-[11px] -top-[11px] flex h-[22px] w-[22px] items-center justify-center rounded-full border-[1.5px] border-on-filled text-[11px] font-bold text-on-filled"
+          style={{
+            background: mark.ink,
+            left: PIN_INSET_PX - PIN_RADIUS_PX,
+            top: PIN_INSET_PX - PIN_RADIUS_PX,
+            height: PIN_RADIUS_PX * 2,
+            width: PIN_RADIUS_PX * 2,
+          }}
+          className="absolute flex items-center justify-center rounded-full border-[1.5px] border-on-filled text-[11px] font-bold text-on-filled"
         >
           {ordinal}
         </span>
