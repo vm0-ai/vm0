@@ -154,7 +154,17 @@ test("artifact dialogs keep their panel and fullscreen controls inside safe area
           box.x >= scenario.left + 23 &&
           box.y >= scenario.top + 23 &&
           box.x + box.width <= scenario.width - scenario.right - 23 &&
-          box.y + box.height <= scenario.height - scenario.bottom - 23
+          box.y + box.height <= scenario.height - scenario.bottom - 23 &&
+          Math.abs(
+            box.x +
+              box.width / 2 -
+              (scenario.width + scenario.left - scenario.right) / 2,
+          ) < 0.5 &&
+          Math.abs(
+            box.y +
+              box.height / 2 -
+              (scenario.height + scenario.top - scenario.bottom) / 2,
+          ) < 0.5
         );
       })
       .toBe(true);

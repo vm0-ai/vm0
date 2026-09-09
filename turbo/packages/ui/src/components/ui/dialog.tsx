@@ -117,6 +117,7 @@ const dialogMaxWidthClasses = {
 const dialogHeightClasses = {
   content: "h-auto",
   fill: "h-full",
+  600: "h-[600px]",
   688: "h-[688px]",
   720: "h-[720px]",
   760: "h-[760px]",
