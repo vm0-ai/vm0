@@ -25,7 +25,7 @@ export function ConnectorEntryCard({
 }) {
   return (
     <div
-      data-slot="connector-entry-card"
+      data-slot="connector-card"
       className={cn(
         surfaceVariants({ interactive }),
         "relative flex flex-col text-left",

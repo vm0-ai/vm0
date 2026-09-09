@@ -20,7 +20,6 @@ export function ConnectorPermissionRow({
   loading,
   disabled = false,
   showManage,
-  manageLabel,
   isLast,
   onManage,
   onToggle,
@@ -33,7 +32,6 @@ export function ConnectorPermissionRow({
   readonly loading: boolean;
   readonly disabled?: boolean;
   readonly showManage: boolean;
-  readonly manageLabel?: string;
   readonly isLast: boolean;
   readonly onManage?: () => void;
   readonly onToggle: (checked: boolean) => void;
@@ -69,25 +67,21 @@ export function ConnectorPermissionRow({
                     onClick={onManage}
                     variant="quiet"
                     size="icon-xs"
-                    aria-label={
-                      manageLabel ??
-                      t(
-                        ($) => {
-                          return $.connectors.card.managePermissionsFor;
-                        },
-                        { connector: label },
-                      )
-                    }
+                    aria-label={t(
+                      ($) => {
+                        return $.connectors.card.managePermissionsFor;
+                      },
+                      { connector: label },
+                    )}
                   >
                     <SlidersHorizontal size={15} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
                   <p className="text-xs">
-                    {manageLabel ??
-                      t(($) => {
-                        return $.connectors.card.managePermissions;
-                      })}
+                    {t(($) => {
+                      return $.connectors.card.managePermissions;
+                    })}
                   </p>
                 </TooltipContent>
               </Tooltip>
