@@ -74,7 +74,7 @@ describe("okou web upload-file command", () => {
     ])(
       "delivers %s with UTF-8 metadata and original bytes",
       async (filename, contentType) => {
-        const filePath = join(tmpDir, filename);
+        const filePath = join(tmpDir, basename(filename));
         const bytes = Buffer.from("中文 / 日本語 / 한글 / emoji 😀\n", "utf8");
         writeFileSync(filePath, bytes);
         const file = {
