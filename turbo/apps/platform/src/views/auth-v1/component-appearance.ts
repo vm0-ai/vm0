@@ -95,6 +95,9 @@ export function getAuthV1ComponentAppearance(
       button: "okou-clerk-button",
       cardBox: cn(cardClassName, "w-full shadow-none"),
       card: "m-0 w-full rounded-none border-0 bg-card px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)] shadow-none",
+      // Match AuthV2Shell's compact wordmark and logo-to-title spacing.
+      logoBox: "mb-5",
+      logoImage: "h-auto w-[76px]",
       header: "grid w-full grid-cols-1 items-center gap-0 p-0 text-center",
       headerTitle:
         "w-full max-w-none text-lg font-medium leading-7 text-foreground",
