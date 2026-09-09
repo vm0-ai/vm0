@@ -8,6 +8,31 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.577.1](https://github.com/vm0-ai/vm0/compare/api-v1.577.0...api-v1.577.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** keep auxiliary generations from starving on a shared token budget ([#32979](https://github.com/vm0-ai/vm0/issues/32979)) ([44ff946](https://github.com/vm0-ai/vm0/commit/44ff946309d9cf9c35c22f4c4c41af314b29ff0d))
+* **api:** retain activity diagnostics in production ([#32996](https://github.com/vm0-ai/vm0/issues/32996)) ([9221064](https://github.com/vm0-ai/vm0/commit/92210646cd7ac23e97607ca8920df8ddfcdbd024))
+* **api:** skip intro video session polling after video id assignment ([#32989](https://github.com/vm0-ai/vm0/issues/32989)) ([aba3bd9](https://github.com/vm0-ai/vm0/commit/aba3bd9692db398472b6033432d802f94d0579cc))
+
+
+### Refactoring
+
+* **db:** stop reading and writing computer use host client product ([#32987](https://github.com/vm0-ai/vm0/issues/32987)) ([c501560](https://github.com/vm0-ai/vm0/commit/c5015603f16a7e601dc156f8bd6a24f1e261a846)), closes [#32966](https://github.com/vm0-ai/vm0/issues/32966)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.1
+    * @okouai/connectors bumped to 3.8.8
+    * @okouai/core bumped to 8.646.0
+    * @okouai/db bumped to 1.249.1
+    * @okouai/pi-agent-runtime bumped to 1.24.6
+
 ## [1.577.0](https://github.com/vm0-ai/vm0/compare/api-v1.576.0...api-v1.577.0) (2026-09-09)
 
 

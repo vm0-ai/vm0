@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.646.0](https://github.com/vm0-ai/vm0/compare/core-v8.645.0...core-v8.646.0) (2026-09-09)
+
+
+### Features
+
+* **app:** browse connectors as shelves in the directory and the connectors page ([#32997](https://github.com/vm0-ai/vm0/issues/32997)) ([f4556fb](https://github.com/vm0-ai/vm0/commit/f4556fb19e9ed6678259d7e7a333d047cf19c567))
+* **platform:** add built-in welcome thread ([#30147](https://github.com/vm0-ai/vm0/issues/30147)) ([85ca994](https://github.com/vm0-ai/vm0/commit/85ca9949a4589e12b48f0d9fda565c3748c998ba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.1
+
 ## [8.645.0](https://github.com/vm0-ai/vm0/compare/core-v8.644.0...core-v8.645.0) (2026-09-09)
 
 
