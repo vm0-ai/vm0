@@ -776,7 +776,11 @@ export function CustomConnectorAccessManagementDialog({
         onManage={openAgentPermissions}
       />
       <CustomConnectorAccessPermissionsDrawer
-        draft={activePermissionDraft}
+        draft={
+          activePermissionDraft?.initiallyAuthorized || allowAccessIncrease
+            ? activePermissionDraft
+            : null
+        }
         agent={permissionAgent}
         connector={connector}
         bundle={

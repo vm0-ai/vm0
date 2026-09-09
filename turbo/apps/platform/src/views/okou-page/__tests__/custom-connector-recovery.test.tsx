@@ -516,6 +516,98 @@ test.each(["deleted", "ambiguous"] as const)(
   },
 );
 
+test.each([
+  { accountCount: 0, authorized: false },
+  { accountCount: 1, authorized: false },
+  { accountCount: 0, authorized: true },
+])(
+  "Respect account availability for a permission link with $accountCount accounts and authorized=$authorized",
+  async ({ accountCount, authorized }) => {
+    const connector = customConnector({
+      connected: accountCount > 0,
+      connectedAccountId: accountCount > 0 ? DEFAULT_ACCOUNT_ID : undefined,
+      missingRequiredFields: accountCount > 0 ? [] : ["secret"],
+      configuredFieldKeys: accountCount > 0 ? ["secret"] : [],
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    mockDefinition(connector);
+    context.mocks.api(
+      agentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(200, {
+          grants:
+            authorized && params.id === AGENT_ID
+              ? [{ customConnectorId: connector.id, permissionNames: [] }]
+              : [],
+        });
+      },
+    );
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "custom", customConnectorId: connector.id },
+            accountCount,
+            attentionCount: 0,
+            defaultConnection:
+              accountCount > 0
+                ? {
+                    ...account(connector),
+                    id: DEFAULT_ACCOUNT_ID,
+                    isDefault: true,
+                    connectionStatus: "connected",
+                    reconnectReason: null,
+                  }
+                : null,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      customConnectorByIdContract.permissions,
+      ({ respond }) => {
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [
+            { name: "messages:send-as-user", description: "Send as user" },
+          ],
+          defaultPolicies: { "messages:send-as-user": "deny" },
+        });
+      },
+    );
+    await setupPage({
+      context,
+      path: `/connectors?tab=custom&customConnectorId=${connector.id}&view=access&permission=messages%3Asend-as-user&agentId=${AGENT_ID}`,
+    });
+    await screen.findByDisplayValue("Research");
+
+    const shouldOpen = authorized || accountCount > 0;
+    const expected = {
+      permissionReviewOpen: shouldOpen,
+      applyEnabled: shouldOpen ? !authorized : null,
+      authorizationEnabled: shouldOpen ? null : false,
+    };
+    await waitFor(() => {
+      const drawer = screen.queryByRole("dialog", {
+        name: `${connector.displayName} permissions for Research`,
+      });
+      const apply = drawer
+        ? queryConnectorAction("button", "Apply", drawer)
+        : null;
+      const authorizationSwitch = screen.queryByRole("switch", {
+        name: /Research/,
+      });
+      expect({
+        permissionReviewOpen: drawer !== null,
+        applyEnabled: apply ? !apply.hasAttribute("disabled") : null,
+        authorizationEnabled: authorizationSwitch
+          ? authorizationSwitch.getAttribute("aria-disabled") !== "true"
+          : null,
+      }).toStrictEqual(expected);
+    });
+  },
+);
+
 test("Keep a closed custom access review closed when Agent grants arrive", async () => {
   const connector = customConnector({
     connected: true,

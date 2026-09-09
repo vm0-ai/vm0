@@ -288,6 +288,69 @@ describe("custom connector URL diagnostics", () => {
     });
   });
 
+  it.each([
+    customConnector({ id: CUSTOM_ID }),
+    customMcpConnector({ id: CUSTOM_ID }),
+  ])(
+    "offers the directed $kind connect flow outside a run in text output",
+    async (connector) => {
+      vi.stubEnv("OKOU_AGENT_ID", "");
+      vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+      vi.stubEnv("OKOU_APP_URL", "https://preview-app.example.com");
+      stubDiagnostic({
+        ...resolvedCustom({
+          kind: "unknown-endpoint",
+          policy: { outcome: "unavailable", basis: "not-run-scoped" },
+        }),
+        run: { status: "not-scoped" },
+      });
+      server.use(
+        http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+          return HttpResponse.json(connector);
+        }),
+      );
+
+      await check();
+
+      expect(output()).toContain(
+        "Current organization connection: not connected.",
+      );
+      expect(output()).toContain(
+        `[Connect ${connector.displayName}](https://preview-app.example.com/connectors/${connector.slug}/connect)`,
+      );
+      expect(output()).not.toMatch(
+        /Account used by this run|\/reconnect\/|callbackPrompt=/,
+      );
+    },
+  );
+
+  it("ignores leftover run accounts when reporting a current custom connection in text", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
+    stubDiagnostic({
+      ...resolvedCustom({
+        kind: "unknown-endpoint",
+        policy: { outcome: "unavailable", basis: "not-run-scoped" },
+      }),
+      run: { status: "not-scoped" },
+    });
+    server.use(
+      http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+        return HttpResponse.json(
+          customConnector({ connected: true, missingRequiredFields: [] }),
+        );
+      }),
+      stubRunConnectorAccountInspection([account("reconnect-required")]),
+    );
+
+    await check();
+
+    expect(output()).toContain("Current organization connection: connected.");
+    expect(output()).not.toContain(ACCOUNT_ID);
+    expect(output()).not.toMatch(
+      /Account used by this run|\/reconnect\/|callbackPrompt=/,
+    );
+  });
+
   it("reports unavailable definition metadata explicitly without replacing its account", async () => {
     server.use(
       http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
