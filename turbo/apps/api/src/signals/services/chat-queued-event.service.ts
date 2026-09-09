@@ -753,7 +753,7 @@ export async function discardUnclaimedUserMessage(
  * assistant replacements that explain a permanent integration admission
  * failure.
  */
-export interface FailQueuedUserMessageArgs {
+interface FailQueuedUserMessageArgs {
   readonly threadId: string;
   readonly eventId: string;
   readonly assistantContent: string;
