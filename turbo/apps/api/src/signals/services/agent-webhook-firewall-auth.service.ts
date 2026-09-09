@@ -949,7 +949,7 @@ function isReconnectRequiredRefreshErrorCode(
   );
 }
 
-function isTerminalChatgptRefreshErrorCode(
+export function isTerminalChatgptRefreshErrorCode(
   errorCode: string | null | undefined,
 ): boolean {
   return (
@@ -2554,7 +2554,12 @@ async function markAndReturnRefreshFailure(
 ): Promise<RefreshAccessTokenResult> {
   const message = error instanceof Error ? error.message : "Unknown error";
   const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
-  if (shouldLogWarning) {
+  const terminalCodexFailure =
+    args.sourceType === "model-provider" &&
+    args.accessSourceKey === "codex-oauth-token" &&
+    failureReason === "reconnect_required" &&
+    isTerminalChatgptRefreshErrorCode(errorCode);
+  if (shouldLogWarning && !terminalCodexFailure) {
     const logMessage =
       args.accessSourceKey === "codex-oauth-token"
         ? `${args.accessSourceKey} token refresh failed`
