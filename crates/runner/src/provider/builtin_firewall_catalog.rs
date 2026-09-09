@@ -28,7 +28,9 @@
 //! next scheduled refresh gets one opportunity to recover; a failed observation
 //! at least one refresh interval later warns once per episode. Only a complete
 //! successful refresh clears the episode, including an unchanged catalog. Other
-//! failures remain warnings. This reports refresh health, not cache expiry.
+//! failures remain warnings. Cache usability includes the consumer's Unix owner
+//! and write-permission checks, so an untrusted file is not an unchanged-payload
+//! success. This reports refresh health, not cache expiry.
 //!
 //! # Cross-language compatibility
 //!
@@ -590,7 +592,7 @@ async fn read_catalog_cache(
     let Some(content) = crate::state_file::read_to_string(
         cache_path,
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
-        crate::state_file::OwnerCheck::CurrentEuid,
+        crate::state_file::OwnerCheck::CurrentEuidNoUntrustedWrites,
     )
     .await?
     else {
@@ -982,6 +984,73 @@ mod tests {
             tokio::fs::read(&fixture.cache_path).await.unwrap(),
             original
         );
+        cancel.cancel();
+        refresh.await;
+        server.assert_finished().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn periodic_refresh_rejects_untrusted_cache_and_repairs_unchanged_payload() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated_response("application/json")),
+            RawHttpAction::Respond(truncated_response("application/json")),
+            RawHttpAction::Respond(catalog_response()),
+        ])
+        .await;
+        let fixture = RefreshFixture::new(&server).await;
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let cancel = CancellationToken::new();
+        let refresh = run_periodic_refresh(
+            fixture.api,
+            fixture.cache_path.clone(),
+            fixture.lock_path,
+            cancel.clone(),
+            BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+        )
+        .with_subscriber(subscriber);
+        tokio::pin!(refresh);
+
+        assert_eq!(
+            next_refresh_event(refresh.as_mut(), &captured).await.level,
+            Level::INFO
+        );
+        tokio::fs::set_permissions(&fixture.cache_path, std::fs::Permissions::from_mode(0o666))
+            .await
+            .unwrap();
+        let failure = next_refresh_event(refresh.as_mut(), &captured).await;
+        assert_eq!(failure.level, Level::WARN);
+        assert_eq!(
+            failure.fields["message"],
+            "periodic builtin firewall catalog refresh failed; cache is unusable"
+        );
+        assert!(failure.fields["cache_error"].contains("group or other users"));
+
+        let recovery = next_refresh_event(refresh.as_mut(), &captured).await;
+        assert_eq!(recovery.level, Level::INFO);
+        assert_eq!(
+            recovery.fields["message"],
+            "builtin firewall catalog refresh recovered"
+        );
+        assert_eq!(recovery.fields["recovered_after_failures"], "1");
+        assert_eq!(
+            tokio::fs::metadata(&fixture.cache_path)
+                .await
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        let cache = read_catalog_cache(&fixture.cache_path)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cache.firewalls, catalog("github").firewalls);
         cancel.cancel();
         refresh.await;
         server.assert_finished().await;
