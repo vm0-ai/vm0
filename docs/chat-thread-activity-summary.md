@@ -1,8 +1,12 @@
 # Thread activity summaries
 
-`threadActivitySummary` is disabled by default, with no rollout audience. Both
-accepted-event capture and direct summary requests resolve the canonical
-owner's organization/user database overrides. The same switch hands off the
+`threadActivitySummary` remains globally disabled (`enabled: false`). Once the
+staff-cohort configuration is deployed, its registry default enables only the
+existing staff organization through `STAFF_ORG_ID_HASHES`. Explicit database
+overrides still take precedence: a staff user's `false` override opts out, and
+the existing non-staff `true` opt-in remains available. Both accepted-event
+capture and direct summary requests resolve the canonical owner's
+organization/user database overrides. The same switch hands off the
 initial-thinking producer to demand from the visible main thread. Disabled
 accounts retain the existing producer, display and historical behavior.
 
@@ -119,13 +123,27 @@ The migration only creates an empty table and index; it changes no existing
 persisted contract and backfills no historical rows. Existing API/Runner/App
 versions continue their current paths. Apply the additive migration before
 activating readers/writers; normal API production promotion already enforces
-that ordering. This PR does not perform a release or enable production users.
+that ordering. The staff-cohort configuration adds no migration, backfill or
+production override mutation.
+
+The staff default takes effect only after a subsequent release containing this
+registry change is deployed. Merging the configuration does not establish
+production activation. General availability remains off; no additional user,
+email or organization exceptions are added, and the shared staff identity list
+and override scope are unchanged.
 
 New App against an older API without this endpoint receives 404 and retains the
 generic indicator without repeated requests. Older Apps against a new API retain
 their generic indicator for enabled runs because opening-copy generation is
 suppressed. Switch rollback restores the legacy path for subsequent runs; it
-does not backfill opening copy into an already-created run. The feature has no
-GA audience and stays default-off with no production allowlist. Epic #32819 owns
-release, controlled activation, production billing verification and the removal
-of the mixed-version fallback once older API rollback targets are retired.
+does not backfill opening copy into an already-created run. A staff user's
+explicit `false` override provides an individual opt-out. Removing
+`enabledOrgIdHashes` from this registry entry restores the no-cohort source
+default without changing the shared staff identity list or stored overrides.
+
+The Epic #32819 controller owns independent acceptance of the merged change,
+subsequent release coordination, and production behavior and billing
+verification. Visible/hidden/never-viewed demand, the shared 15-second attempt
+bound, provider cooldown/fallback/recovery, and measured model-call traffic and
+costs remain pending production acceptance. The Epic also owns removal of the
+mixed-version fallback once older API rollback targets are retired.
