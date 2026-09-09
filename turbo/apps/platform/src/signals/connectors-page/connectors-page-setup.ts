@@ -7,6 +7,7 @@ import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-account-dialogs.ts";
 import { refreshSsh$ } from "../ssh.ts";
+import { setupCustomConnectorRecovery$ } from "./custom-connector-recovery.ts";
 
 export const setupConnectorsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -20,5 +21,6 @@ export const setupConnectorsPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
+    await set(setupCustomConnectorRecovery$, signal);
   },
 );

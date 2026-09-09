@@ -417,6 +417,7 @@ ${callbackPromptNotes}  - Builtin permission requests update the current user's 
               customConnectorId,
               await getPlatformOrigin(),
               opts.permission,
+              agentId,
             ),
           );
         }

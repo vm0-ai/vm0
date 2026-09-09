@@ -388,6 +388,7 @@ Examples:
               return runConnectorSearchAction(
                 connector,
                 runAccountForConnector(connector),
+                agentContext,
               );
             },
             origin,

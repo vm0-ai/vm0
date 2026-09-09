@@ -18,6 +18,8 @@ import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { resetManualGrantForm$ } from "../okou-page/settings/connectors.ts";
+import { customConnectors$ } from "../okou-page/settings/custom-connectors.ts";
+import { customConnectorMcpEnabled$ } from "../external/feature-switch.ts";
 
 /**
  * Connector slug extracted from `/connectors/:connectorSlug/connect` route params.
@@ -64,14 +66,33 @@ export const directedConnectExactAccount$ = computed(
   async (get): Promise<ConnectorAccountConnection | null> => {
     const target = get(directedConnectAccountTarget$);
     const connectorSlug = get(directedConnectSlug$);
-    if (target.kind !== "exact" || !connectorSlug) {
+    const customSlug = get(directedConnectCustomSlug$);
+    if (target.kind !== "exact" || (!connectorSlug && !customSlug)) {
       return null;
     }
     const signal = get(pageSignal$);
+    const mcpEnabled = get(customConnectorMcpEnabled$);
+    const customConnector = customSlug
+      ? (await get(customConnectors$)).find((connector) => {
+          return (
+            connector.slug === customSlug &&
+            (connector.kind === "http" || mcpEnabled)
+          );
+        })
+      : undefined;
+    signal.throwIfAborted();
+    const query = connectorSlug
+      ? { kind: "builtin" as const, connectorSlug }
+      : customConnector
+        ? { kind: "custom" as const, customConnectorId: customConnector.id }
+        : null;
+    if (!query) {
+      return null;
+    }
     const result = await accept(
       get(apiClient$)(connectorAccountsContract).connection({
         params: { connectionId: target.connectionId },
-        query: { kind: "builtin", connectorSlug },
+        query,
         fetchOptions: { signal },
       }),
       [200, 404],

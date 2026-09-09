@@ -1,4 +1,9 @@
 import { getCustomConnector } from "../../lib/api/domains/connectors";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
+import {
+  connectorActionUrl,
+  printCallbackActionUrlExample,
+} from "./action-url";
 import {
   resolveRunConnectorAccountLookups,
   runConnectorAccountUnavailableMessage,
@@ -9,7 +14,7 @@ import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
 interface CustomConnectorCheckContext {
   readonly id: string;
   readonly label: string;
-  readonly definitionAvailable: boolean;
+  readonly definition: CustomConnectorResponse | null;
   readonly account: RunConnectorAccountLookup;
 }
 
@@ -27,7 +32,7 @@ export async function loadCustomConnectorCheckContext(
   return {
     id: customConnectorId,
     label: definition?.displayName ?? customConnectorId,
-    definitionAvailable: definition !== null,
+    definition,
     account,
   };
 }
@@ -35,10 +40,11 @@ export async function loadCustomConnectorCheckContext(
 export function printCustomConnectorCheckStatus(
   context: CustomConnectorCheckContext,
   platformOrigin: string,
+  agentId: string | undefined,
 ): void {
   console.log("## Step 2: Custom connector configuration");
   console.log("");
-  if (!context.definitionAvailable) {
+  if (!context.definition) {
     console.log("Current custom connector metadata is unavailable or deleted.");
   }
   const account = context.account;
@@ -69,14 +75,51 @@ export function printCustomConnectorCheckStatus(
       break;
   }
   if (
-    !context.definitionAvailable ||
+    !context.definition ||
     account.state !== "available" ||
     account.metadata.connectionStatus === "reconnect-required"
   ) {
-    console.log(customConnectorSettingsGuidance(context.id, platformOrigin));
+    printCustomConnectorRecovery(context, platformOrigin, agentId);
   }
   console.log(
     "Routing and permission diagnostics describe current intended state; they do not confirm that the runner has applied the latest update.",
   );
   console.log("");
+}
+
+function printCustomConnectorRecovery(
+  context: CustomConnectorCheckContext,
+  platformOrigin: string,
+  agentId: string | undefined,
+): void {
+  const { definition, account } = context;
+  if (!definition) {
+    console.log(
+      `Open [Custom connectors](${connectorActionUrl({ origin: platformOrigin, path: "/connectors?tab=custom", agentId })}) and select an available connector manually. Changes apply to future runs; settings review does not support callbacks.`,
+    );
+    return;
+  }
+  const path =
+    account.state === "available" &&
+    account.metadata.connectionStatus === "reconnect-required"
+      ? `/connectors/${definition.slug}/reconnect/${account.connectionId}`
+      : account.state === "not-admitted" && !definition.connected
+        ? `/connectors/${definition.slug}/connect`
+        : null;
+  if (path === null) {
+    console.log(
+      customConnectorSettingsGuidance(
+        context.id,
+        platformOrigin,
+        undefined,
+        agentId,
+      ),
+    );
+    return;
+  }
+  const url = connectorActionUrl({ origin: platformOrigin, path, agentId });
+  console.log(
+    `Open [${account.state === "available" ? "Reconnect" : "Connect"} ${context.label}](${url}). Changes apply to future runs.`,
+  );
+  printCallbackActionUrlExample(url, agentId);
 }

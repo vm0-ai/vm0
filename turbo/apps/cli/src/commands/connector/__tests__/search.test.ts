@@ -16,6 +16,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { searchCommand } from "../search";
 import chalk from "chalk";
+import { customConnectorMcpResponseSchema } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   authCodeMethod,
   catalogItem,
@@ -1087,17 +1088,130 @@ describe("okou connector search command", () => {
       );
     });
 
-    it("uses connector settings for custom connector setup", async () => {
-      const connector = customConnector();
-      server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));
+    it.each(["http", "mcp"] as const)(
+      "offers a confirmed-action callback for custom %s connection",
+      async (kind) => {
+        const { prefixTemplates: _prefixTemplates, ...common } =
+          customConnector();
+        const connector =
+          kind === "http"
+            ? customConnector()
+            : customConnectorMcpResponseSchema.parse({
+                ...common,
+                kind: "mcp",
+                prefixTemplates: [],
+                endpoint: "https://mcp.acme.test/mcp",
+                transport: "streamable-http",
+              });
+        server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));
 
-      await searchCommand.parseAsync(["node", "cli", connector.slug]);
+        await searchCommand.parseAsync([
+          "node",
+          "cli",
+          connector.slug,
+          "--callback-prompt",
+          "Continue the original task",
+        ]);
 
+        const output = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(output).toContain(
+          `/connectors/${connector.slug}/connect?agentId=${AGENT_UUID}&threadId=${THREAD_UUID}&callbackPrompt=Continue+the+original+task`,
+        );
+        expect(output).not.toContain(`/connectors/${connector.slug}/authorize`);
+        expect(output).toContain("changes apply to future runs");
+      },
+    );
+
+    it("targets the reconnect-required custom run account instead of a connected default", async () => {
+      const connector = customConnector({
+        connected: true,
+        connectedAccountId: "55555555-5555-4555-8555-555555555555",
+      });
+      const target = {
+        kind: "custom",
+        customConnectorId: connector.id,
+      } as const;
+      writeRunConnectorAccountContext(contextPath, [
+        { ...target, connectionId: RUN_CONNECTION_ID },
+      ]);
+      server.use(
+        stubConnectorCatalog([]),
+        stubCustomConnectors([connector]),
+        stubRunConnectorAccountInspection([
+          {
+            kind: "available",
+            target,
+            connectionId: RUN_CONNECTION_ID,
+            authMethod: "manual",
+            displayName: "Selected Acme account",
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            connectionStatus: "reconnect-required",
+            reconnectReason: "authorization_expired_or_revoked",
+          },
+        ]),
+      );
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        connector.slug,
+        "--callback-prompt",
+        "Continue after reconnect",
+      ]);
       const output = mockConsoleLog.mock.calls.flat().join("\n");
       expect(output).toContain(
-        `[Review ${connector.displayName} accounts and agent access](http://localhost:3000/connectors?agentId=${AGENT_UUID})`,
+        `/connectors/${connector.slug}/reconnect/${RUN_CONNECTION_ID}?agentId=${AGENT_UUID}&threadId=${THREAD_UUID}&callbackPrompt=Continue+after+reconnect`,
       );
-      expect(output).not.toContain(`/connectors/${connector.slug}/authorize`);
+      expect(output).not.toContain(connector.connectedAccountId);
+    });
+
+    it("targets custom Agent access review without claiming a callback", async () => {
+      const connector = customConnector({ connected: true });
+      server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));
+      await searchCommand.parseAsync(["node", "cli", connector.slug]);
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `/connectors?tab=custom&customConnectorId=${connector.id}&view=access&agentId=${AGENT_UUID}`,
+      );
+      mockConsoleLog.mockClear();
+      await expect(
+        searchCommand.parseAsync([
+          "node",
+          "cli",
+          connector.slug,
+          "--callback-prompt",
+          "Continue after review",
+        ]),
+      ).rejects.toThrow("process.exit called");
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        "does not support --callback-prompt",
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+        "callbackPrompt=",
+      );
+    });
+
+    it("keeps unavailable custom account recovery in manual account selection", async () => {
+      const connector = customConnector({ connected: true });
+      writeRunConnectorAccountContext(contextPath, [
+        {
+          kind: "custom",
+          customConnectorId: connector.id,
+          connectionId: RUN_CONNECTION_ID,
+        },
+      ]);
+      server.use(
+        stubConnectorCatalog([]),
+        stubCustomConnectors([connector]),
+        stubRunConnectorAccountInspection([]),
+      );
+      await searchCommand.parseAsync(["node", "cli", connector.slug]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(
+        `/connectors?tab=custom&customConnectorId=${connector.id}&view=accounts&agentId=${AGENT_UUID}`,
+      );
+      expect(output).toContain("metadata unavailable or deleted");
+      expect(output).not.toMatch(/\/reconnect\/|callbackPrompt=/);
     });
 
     it("offers authorization for a connected service when inspecting an agent outside a run", async () => {

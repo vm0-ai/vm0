@@ -352,7 +352,7 @@ describe("custom connector URL diagnostics", () => {
     expect(output()).toContain("current intended state");
     expect(output()).toContain('"items:write" is in the deny list');
     expect(output()).toContain(
-      "[Connectors](http://localhost:3000/connectors)",
+      `[Custom connector settings](http://localhost:3000/connectors?tab=custom&customConnectorId=${CUSTOM_ID}&view=access&permission=items%3Awrite&agentId=agent-1)`,
     );
     expect(output()).toContain("review Permissions");
     expect(output()).toContain(`--connector 'custom:${CUSTOM_ID}'`);
@@ -391,6 +391,11 @@ describe("custom connector URL diagnostics", () => {
     expect(output()).toContain(
       "account selected for this run needs to be reconnected",
     );
+    expect(output()).toContain(
+      `/connectors/_acme-search/reconnect/${ACCOUNT_ID}?agentId=agent-1`,
+    );
+    expect(output()).toContain("threadId=thread-1&callbackPrompt=");
+    expect(output()).not.toContain(DEFAULT_ACCOUNT_ID);
     expect(output()).not.toContain(
       "account selected for this run is connected",
     );
@@ -567,6 +572,10 @@ describe("custom connector URL diagnostics", () => {
     expect(output()).not.toMatch(
       /Default sibling|\/connectors\/[^\s]+\/connect|is connected/,
     );
+    expect(output()).toContain(
+      `customConnectorId=${CUSTOM_ID}&view=accounts&agentId=agent-1`,
+    );
+    expect(output()).not.toContain("callbackPrompt=");
   });
 
   it("does not infer an account when run account context is missing", async () => {
@@ -591,6 +600,9 @@ describe("custom connector URL diagnostics", () => {
       "Current custom connector metadata is unavailable or deleted",
     );
     expect(output()).not.toContain("Earlier display name");
+    expect(output()).toContain("/connectors?tab=custom&agentId=agent-1");
+    expect(output()).toContain("select an available connector manually");
+    expect(output()).not.toMatch(/\/reconnect\/|callbackPrompt=/);
   });
 
   it("propagates metadata read failures rather than reporting the connector as deleted", async () => {

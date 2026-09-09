@@ -452,6 +452,7 @@ function printPermissionRequestCommands(
         target.customConnectorId,
         platformOrigin,
         permission,
+        agentId,
       ),
     );
     return;
@@ -754,7 +755,11 @@ Permission recovery:
             })
           : null;
       if (custom) {
-        printCustomConnectorCheckStatus(custom, ctx.platformOrigin);
+        printCustomConnectorCheckStatus(
+          custom,
+          ctx.platformOrigin,
+          ctx.agentId,
+        );
       }
       const configuredForRun = checkConnectorDomains(ctx);
 

@@ -1,4 +1,4 @@
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { Button } from "@okouai/ui";
 import {
   connectorSlugSchema,
@@ -86,11 +86,12 @@ import { CustomConnectorIcon } from "./components/settings/custom-connector-icon
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switch.ts";
+import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
+import { Link } from "../router/link.tsx";
 import {
   defaultBuiltinConnectorAccountOptions,
   defaultCustomConnectorAccountOptions,
   type ConnectorAccountMutationOptions,
-  type DefaultConnectorAccountMutationOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 function runDirectedConnect(
@@ -582,7 +583,7 @@ type DirectedConnectAccountState =
 
 function useDirectedConnectAccountState(): DirectedConnectAccountState {
   const target = useGet(directedConnectAccountTarget$);
-  const accountLoadable = useLastLoadable(directedConnectExactAccount$);
+  const accountLoadable = useLoadable(directedConnectExactAccount$);
   if (target.kind === "default") {
     return target;
   }
@@ -892,14 +893,30 @@ function customConnectorForSlug(
 
 interface CustomConnectorConnection {
   readonly connector: CustomConnectorResponse;
-  readonly accountOptions: DefaultConnectorAccountMutationOptions;
+  readonly accountOptions: ConnectorAccountMutationOptions;
 }
 
 function customConnectorConnection(
   connector: CustomConnectorResponse | undefined,
+  accountState: DirectedConnectAccountState,
 ): CustomConnectorConnection | null {
+  if (
+    !connector ||
+    accountState.kind === "unavailable" ||
+    accountState.kind === "loading"
+  ) {
+    return null;
+  }
+  if (accountState.kind === "exact") {
+    return {
+      connector,
+      accountOptions: {
+        account: { intent: "reconnect", connectionId: accountState.account.id },
+      },
+    };
+  }
   const accountOptions = defaultCustomConnectorAccountOptions(connector);
-  return connector && accountOptions ? { connector, accountOptions } : null;
+  return accountOptions ? { connector, accountOptions } : null;
 }
 
 function CustomDirectedConnectorDialog({
@@ -929,15 +946,67 @@ function CustomDirectedConnectorDialog({
   );
 }
 
+function CustomDirectedConnectCardContent({
+  connector,
+  connectorSlug,
+  accountState,
+  agentName,
+  isLoading,
+  canConnect,
+  onConnect,
+}: {
+  readonly connector: CustomConnectorResponse | undefined;
+  readonly connectorSlug: CustomConnectorSlug;
+  readonly accountState: DirectedConnectAccountState;
+  readonly agentName: string;
+  readonly isLoading: boolean;
+  readonly canConnect: boolean;
+  readonly onConnect: () => void;
+}) {
+  const accountLabel = useConnectorAccountLabel();
+  return (
+    <DirectedConnectCardContent
+      icon={
+        connector ? (
+          <CustomConnectorIcon
+            id={connector.id}
+            displayName={connector.displayName}
+            size={20}
+          />
+        ) : null
+      }
+      connectorLabel={connector?.displayName ?? connectorSlug}
+      connectorDescription={
+        accountState.kind === "exact"
+          ? accountLabel(accountState.account)
+          : connector
+            ? customConnectorTarget(connector)
+            : ""
+      }
+      agentName={agentName}
+      isLoading={isLoading || accountState.kind === "loading"}
+      isConnected={
+        accountState.kind === "exact" ||
+        (accountState.kind === "default" && (connector?.connected ?? false))
+      }
+      isConnecting={false}
+      canConnect={canConnect}
+      onConnect={onConnect}
+    />
+  );
+}
+
 function CustomDirectedConnectCard({
   connectorSlug,
 }: {
   readonly connectorSlug: CustomConnectorSlug;
 }) {
+  const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const connectorsLoadable = useLastLoadable(customConnectors$);
+  const accountState = useDirectedConnectAccountState();
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const dialogKey = useGet(directedConnectCustomDialogKey$);
   const setDialogKey = useSet(setDirectedConnectCustomDialogKey$);
@@ -952,14 +1021,35 @@ function CustomDirectedConnectCard({
     connectorSlug,
     mcpEnabled,
   );
-  const connection = customConnectorConnection(connector);
+  const connection = customConnectorConnection(connector, accountState);
   const dialogOpen =
     dialogKey?.connectorSlug === connectorSlug &&
     dialogKey.agentId === agentId &&
     dialogKey.signal === signal;
 
-  if (connectorsLoadable.state === "hasData" && !connector) {
-    return null;
+  if (
+    (connectorsLoadable.state === "hasData" && !connector) ||
+    accountState.kind === "unavailable"
+  ) {
+    return (
+      <DirectedCardShell
+        icon={null}
+        title={connector?.displayName ?? connectorSlug}
+        description={t(($) => {
+          return $.connectors.accounts.accountsUnavailable;
+        })}
+        isLoading={false}
+      >
+        <Link
+          pathname="/connectors"
+          options={{ searchParams: new URLSearchParams({ tab: "custom" }) }}
+        >
+          {t(($) => {
+            return $.connectors.catalog.title;
+          })}
+        </Link>
+      </DirectedCardShell>
+    );
   }
 
   const agentName =
@@ -986,22 +1076,12 @@ function CustomDirectedConnectCard({
 
   return (
     <>
-      <DirectedConnectCardContent
-        icon={
-          connector ? (
-            <CustomConnectorIcon
-              id={connector.id}
-              displayName={connector.displayName}
-              size={20}
-            />
-          ) : null
-        }
-        connectorLabel={connector?.displayName ?? connectorSlug}
-        connectorDescription={connector ? customConnectorTarget(connector) : ""}
+      <CustomDirectedConnectCardContent
+        connector={connector}
+        connectorSlug={connectorSlug}
+        accountState={accountState}
         agentName={agentName}
         isLoading={connectorsLoadable.state === "loading"}
-        isConnected={connector?.connected ?? false}
-        isConnecting={false}
         canConnect={connection !== null}
         onConnect={() => {
           if (!connection) {
@@ -1026,10 +1106,6 @@ function CustomDirectedConnectCard({
 
 export function DirectedConnectPage() {
   const customConnectorSlug = useGet(directedConnectCustomSlug$);
-  const accountTarget = useGet(directedConnectAccountTarget$);
-  if (customConnectorSlug && accountTarget.kind !== "default") {
-    return null;
-  }
   return customConnectorSlug ? (
     <CustomDirectedConnectCard connectorSlug={customConnectorSlug} />
   ) : (

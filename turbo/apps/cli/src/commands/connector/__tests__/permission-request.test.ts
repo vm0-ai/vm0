@@ -180,8 +180,11 @@ describe("okou connector permission-request command", () => {
 
       const message = mockConsoleError.mock.calls.flat().join("\n");
       expect(message).toContain(customId);
-      expect(message).toContain("[Connectors](https://app.okou.ai/connectors)");
+      expect(message).toContain(
+        `[Custom connector settings](https://app.okou.ai/connectors?tab=custom&customConnectorId=${customId}&view=access&permission=items%3Awrite&agentId=agent-1)`,
+      );
       expect(message).toContain("review Permissions");
+      expect(message).toContain("Settings review does not support callbacks");
       expect(message).not.toMatch(
         /connectorSlug=|action=allow|callbackPrompt=/,
       );

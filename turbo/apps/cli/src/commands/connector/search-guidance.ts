@@ -10,6 +10,7 @@ import {
   type ConnectorDiscoveryItem,
 } from "./discovery";
 import type { RunConnectorAccountLookup } from "./run-account-context";
+import { customConnectorSettingsPath } from "./custom-connector-guidance";
 
 export interface ConnectorSearchAction {
   readonly label: string;
@@ -22,7 +23,10 @@ function accountSettingsAction(
 ): ConnectorSearchAction {
   return {
     label: `Review ${connector.label} accounts and agent access`,
-    path: "/connectors",
+    path:
+      connector.kind === "custom"
+        ? customConnectorSettingsPath(connector.customConnector.id, "accounts")
+        : "/connectors",
     supportsCallback: false,
   };
 }
@@ -30,32 +34,49 @@ function accountSettingsAction(
 function connectAction(
   connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
 ): ConnectorSearchAction {
-  return connector.kind === "custom"
-    ? accountSettingsAction(connector)
-    : {
-        label: `Connect or authorize ${connector.label}`,
-        path: `/connectors/${connector.slug}/connect`,
-        supportsCallback: true,
-      };
+  return {
+    label: `Connect or authorize ${connector.label}`,
+    path: `/connectors/${connector.slug}/connect`,
+    supportsCallback: true,
+  };
+}
+
+function customAccessAction(
+  connector: Extract<ConnectorDiscoveryDefinition, { kind: "custom" }>,
+): ConnectorSearchAction {
+  return {
+    label: `Review ${connector.label} agent access`,
+    path: customConnectorSettingsPath(connector.customConnector.id, "access"),
+    supportsCallback: false,
+  };
 }
 
 export function runConnectorSearchAction(
   connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
   lookup: RunConnectorAccountLookup,
+  agentContext: ConnectorDiscoveryAgentContext | null,
 ): ConnectorSearchAction | null {
   switch (lookup.state) {
     case "available":
       if (lookup.metadata.connectionStatus !== "reconnect-required") {
-        return null;
+        return connector.kind === "custom" &&
+          agentContext &&
+          !isConnectorDiscoveryAuthorized(connector, agentContext)
+          ? customAccessAction(connector)
+          : null;
       }
-      return connector.kind === "custom"
-        ? accountSettingsAction(connector)
-        : {
-            label: `Reconnect ${connector.label} (${lookup.label})`,
-            path: `/connectors/${connector.slug}/reconnect/${lookup.connectionId}`,
-            supportsCallback: true,
-          };
+      return {
+        label: `Reconnect ${connector.label} (${lookup.label})`,
+        path: `/connectors/${connector.slug}/reconnect/${lookup.connectionId}`,
+        supportsCallback: true,
+      };
     case "not-admitted":
+      if (connector.kind === "custom" && connector.customConnector.connected) {
+        return agentContext &&
+          !isConnectorDiscoveryAuthorized(connector, agentContext)
+          ? customAccessAction(connector)
+          : accountSettingsAction(connector);
+      }
       return connectAction(connector);
     case "metadata-unavailable":
     case "context-unavailable":
@@ -70,9 +91,10 @@ export function currentConnectorSearchAction(
   const authorized =
     !agentContext || isConnectorDiscoveryAuthorized(connector, agentContext);
   if (connector.kind === "custom") {
-    return connector.customConnector.connected && authorized
-      ? null
-      : accountSettingsAction(connector);
+    if (!connector.customConnector.connected) {
+      return connectAction(connector);
+    }
+    return authorized ? null : customAccessAction(connector);
   }
   if (connector.catalogConnector.connectionStatus === "reconnect-required") {
     return accountSettingsAction(connector);
