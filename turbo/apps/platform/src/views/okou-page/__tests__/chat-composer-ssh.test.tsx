@@ -3,8 +3,9 @@ import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-conn
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { act, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { click, setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import {
   context,
   findFastControl,
@@ -247,12 +248,21 @@ test.each([SCOUT_AGENT_ID, OTHER_AGENT_ID])(
   },
 );
 
-test.each([true, false])(
-  "Chat hides unconfigured SSH and exposes the zero-host setup entry only when enabled (%s)",
-  async (enabled) => {
+test.each([
+  { enabled: true, directory: false, configuredCount: 0 },
+  { enabled: false, directory: false, configuredCount: 0 },
+  { enabled: true, directory: true, configuredCount: 0 },
+  { enabled: false, directory: true, configuredCount: 0 },
+  { enabled: true, directory: true, configuredCount: 1 },
+])(
+  "Chat SSH setup respects SSH=$enabled, directory=$directory and hosts=$configuredCount",
+  async ({ enabled, directory, configuredCount }) => {
     installComposerConnectorFixture();
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
-      return respond(200, { configuredCount: 0 });
+      return respond(200, { configuredCount });
+    });
+    context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+      return respond(200, { enabled: false });
     });
     context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
       return respond(200, { connections: [] });
@@ -260,7 +270,10 @@ test.each([true, false])(
     await setupPage({
       context,
       path: `/agents/${SCOUT_AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.SshAccess]: enabled },
+      featureSwitches: {
+        [FeatureSwitchKey.SshAccess]: enabled,
+        [FeatureSwitchKey.ConnectorDirectory]: directory,
+      },
     });
     click(await findFastControl("button", "Connectors"));
     click(await findFastControl("button", "Add connectors"));
@@ -270,17 +283,73 @@ test.each([true, false])(
     if (!(dialog instanceof HTMLElement)) {
       throw new Error("Missing connector dialog");
     }
-    const entry = queryFastControl("link", "Manage SSH hosts", dialog);
-    expect(entry !== null).toBe(enabled);
-    if (enabled) {
-      click(entry!);
+    const showEntry = enabled && configuredCount === 0;
+    const initialEntry = showEntry
+      ? await findFastControl("link", "Manage SSH hosts", dialog)
+      : queryFastControl("link", "Manage SSH hosts", dialog);
+    expect(initialEntry !== null).toBe(showEntry);
+    if (showEntry) {
+      await fill(search, "ssh");
+      const entry = await findFastControl("link", "Manage SSH hosts", dialog);
+      click(entry);
       await screen.findByRole("dialog", { name: "Add host" });
     }
     await waitFor(() => {
       return expect(window.location.pathname).toBe(
-        enabled ? "/connectors/ssh" : `/agents/${SCOUT_AGENT_ID}/chat`,
+        showEntry ? "/connectors/ssh" : `/agents/${SCOUT_AGENT_ID}/chat`,
       );
     });
     expect(window.location.search).toBe("");
   },
 );
+
+test("Directory SSH setup follows shelves and categories and supports keyboard navigation", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({
+    catalog: ["GitHub", "Slack", "Gmail", "Notion", "Jira"].map(
+      (label, popularityRank) => {
+        return builtinConnector({
+          slug: connectorSlugSchema.parse(label.toLowerCase()),
+          label,
+          connected: false,
+          popularityRank,
+        });
+      },
+    ),
+    categoryConnectorCounts: { productivity: 5 },
+  });
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 0 });
+  });
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [] });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.SshAccess]: true,
+      [FeatureSwitchKey.ConnectorDirectory]: true,
+    },
+  });
+  click(await findFastControl("button", "Connectors"));
+  click(await findFastControl("button", "Add connectors"));
+  const dialog = await screen.findByRole("dialog", { name: "Connectors" });
+  await within(dialog).findByTestId("connector-shelf-head");
+  await findFastControl("link", "Manage SSH hosts", dialog);
+  click(await findFastControl("button", "Remote access1", dialog));
+  await within(dialog).findByText("1 match");
+  expect(within(dialog).queryByText("GitHub")).toBeNull();
+  click(within(dialog).getByText("Custom", { exact: true }));
+  await within(dialog).findByText("No custom connectors yet");
+  expect(queryFastControl("link", "Manage SSH hosts", dialog)).toBeNull();
+  click(within(dialog).getByText("Discover", { exact: true }));
+  await findFastControl("link", "Manage SSH hosts", dialog);
+  click(await findFastControl("button", "All", dialog));
+  await within(dialog).findByTestId("connector-shelf-head");
+  const entry = await findFastControl("link", "Manage SSH hosts", dialog);
+  entry.focus();
+  await user.keyboard("{Enter}");
+  await screen.findByRole("dialog", { name: "Add host" });
+  expect(window.location.pathname).toBe("/connectors/ssh");
+});
