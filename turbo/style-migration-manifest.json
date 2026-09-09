@@ -187,8 +187,28 @@
       "tokens": ["okou-chip"],
       "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
       "cases": ["tone-light", "tone-dark", "tone-mobile"],
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay",
+          "url": "https://a.okou.io/cwffgb0gk5.zip",
+          "sha256": "b478f34dbc11a4b437f30fd6a96061f79009257ce1e9bf053f28cdb208faec11",
+          "commit": "8207962cbb710165210f6c8a1282d77adda7ae0d"
+        },
+        {
+          "kind": "superseded-before-and-unchanged-replay",
+          "url": "https://a.okou.io/d8rr777pqa.zip",
+          "sha256": "c63955589a6069bf8741f1ce71a5d116822c78d9a7508fa877cad18a582deff5",
+          "commit": "b628dd86f0a37205ba3b74cc200dace9890f649f"
+        },
+        {
+          "kind": "preserved-calibration-and-interrupted-attempt",
+          "url": "https://a.okou.io/4cyraibt44.zip",
+          "sha256": "0c1e3b64c1fecc7c6794728fcef94681c33e07efbd2f9a8ac0fe544e115ffebb",
+          "commit": "b628dd86f0a37205ba3b74cc200dace9890f649f"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873"
     }
   ],
   "caseFiles": [

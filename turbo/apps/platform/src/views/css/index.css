@@ -573,19 +573,6 @@ body {
   background-color: hsl(var(--gray-0));
 }
 
-/* Chip-style gray (tone options, skill tags, Add skill) */
-.okou-app .okou-chip {
-  background-color: hsl(var(--gray-50));
-  border: 0.7px solid hsl(var(--gray-400));
-}
-.okou-app .okou-chip:hover {
-  background-image: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
-  border-color: hsl(var(--gray-400));
-}
-
 /* Left nav */
 .okou-nav {
   --color-sidebar-border: hsl(var(--gray-200));
