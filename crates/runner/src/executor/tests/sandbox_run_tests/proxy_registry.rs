@@ -214,8 +214,15 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     let task = tokio::spawn(async move {
         let mut telemetry = test_telemetry(&config, &ctx);
         let outcome = execute_reused_sandbox(
-            sandbox,
-            &source_ip,
+            ReusedSandboxRun {
+                sandbox_id: sandbox.id().parse().unwrap(),
+                factory: &MockSandboxFactory::new(),
+                params: &default_params(),
+                sandbox,
+                source_ip,
+                workspace_image: None,
+                kind: crate::idle_pool::IdleSandboxKind::Exact,
+            },
             &ctx,
             &config,
             RunStart {

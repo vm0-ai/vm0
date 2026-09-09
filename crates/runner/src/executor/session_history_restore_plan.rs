@@ -157,6 +157,20 @@ pub(crate) enum SessionHistoryRestorePlan {
     SkipVerified(RestoredSessionIdentity),
 }
 
+impl SessionHistoryRestorePlan {
+    pub(super) async fn cancel_and_drain(self) {
+        match self {
+            Self::Prestarted { materializer, .. } => {
+                let cancel = CancellationToken::new();
+                cancel.cancel();
+                let _ = materializer.finish(&cancel).await;
+            }
+            Self::LocalSidecar { materializer, .. } => materializer.cancel().await,
+            Self::Default | Self::DeferredHashBacked { .. } | Self::SkipVerified(_) => {}
+        }
+    }
+}
+
 /// Inputs available at the post-reuse restore-planning boundary.
 ///
 /// The caller has already resolved resume validity, sandbox reuse, and any
