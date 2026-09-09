@@ -498,14 +498,14 @@ describe("custom connector URL diagnostics", () => {
       const message = error.mock.calls.flat().join("\n");
       expect(message).toContain(
         scenario === "unknown"
-          ? "Unknown or unavailable custom connector selector"
+          ? "Unknown or unavailable connector selector"
           : "Ambiguous connector selector",
       );
       if (scenario === "ambiguous") {
         expect(message).toContain(`custom:${CUSTOM_ID}`);
         expect(message).toContain(`custom:${DEFAULT_ACCOUNT_ID}`);
       } else {
-        expect(message).toContain("okou connector custom list");
+        expect(message).toContain("okou connector list");
       }
     },
   );
@@ -652,6 +652,47 @@ describe("custom connector URL diagnostics", () => {
     );
     expect(message).toContain("--connector 'github' --method 'POST'");
     expect(message).not.toContain("connectorSlug=");
+  });
+
+  it("resolves a unique builtin name beginning with an underscore", async () => {
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({ connectorSlug: "server-only", label: "_service-name" }),
+      ]),
+      stubCustomConnectors([]),
+    );
+    stubDiagnostic({ outcome: "unknown-connector" });
+    await expect(check("--connector", "_service-name")).rejects.toThrow(
+      "process.exit called",
+    );
+    expect(requests).toStrictEqual([
+      {
+        mode: "url",
+        method: "POST",
+        url: REQUEST_URL,
+        connectorSlug: "server-only",
+      },
+    ]);
+    expect(error.mock.calls.flat().join("\n")).toContain(
+      "Unknown connector slug: server-only",
+    );
+  });
+
+  it("rejects an underscore-prefixed name shared by builtin and custom connectors", async () => {
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({ connectorSlug: "server-only", label: "_service-name" }),
+      ]),
+      stubCustomConnectors([customConnector({ displayName: "_service-name" })]),
+    );
+    await expect(check("--connector", "_service-name")).rejects.toThrow(
+      "process.exit called",
+    );
+    expect(requests).toStrictEqual([]);
+    const message = error.mock.calls.flat().join("\n");
+    expect(message).toContain("Ambiguous connector selector");
+    expect(message).toContain("builtin:server-only");
+    expect(message).toContain(`custom:${CUSTOM_ID}`);
   });
 
   it("rejects a UUID shared by a builtin slug and custom ID before diagnosis", async () => {

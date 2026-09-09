@@ -15,7 +15,7 @@ export async function resolveDiagnosticConnectorSelector(
   selector: string,
 ): Promise<string> {
   const { kind, value } = parseConnectorSelector(selector);
-  if (kind === "custom" || (kind === undefined && value.startsWith("_"))) {
+  if (kind === "custom") {
     return `custom:${await resolveCustomConnectorId(selector)}`;
   }
   const catalog = await listConnectorCatalog();
