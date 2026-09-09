@@ -18,7 +18,7 @@ use crate::contained_command::{
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
-use crate::process::{extract_exit_code, kill_and_reap_child};
+use crate::process::{ChildProcess, extract_exit_code, kill_and_reap_child};
 use crate::process_containment::{
     ExecProcessContainment, ProcessContainmentCleanupMode, ProcessContainmentError,
     ProcessContainmentMode,
@@ -45,6 +45,11 @@ pub(crate) enum GuestStorageManifestProgram {
         program: PathBuf,
         resource_path: PathBuf,
     },
+    TestTimeout {
+        program: PathBuf,
+        resource_path: Option<PathBuf>,
+        timeout_gate: mpsc::SyncSender<u32>,
+    },
 }
 
 impl GuestStorageManifestProgram {
@@ -63,11 +68,31 @@ impl GuestStorageManifestProgram {
         }
     }
 
+    pub(crate) fn for_test_timeout(
+        program: PathBuf,
+        resource_path: Option<PathBuf>,
+        timeout_gate: mpsc::SyncSender<u32>,
+    ) -> Self {
+        Self::TestTimeout {
+            program,
+            resource_path,
+            timeout_gate,
+        }
+    }
+
     fn path(&self) -> &Path {
         match self {
             Self::Production => Path::new(guest_contracts::guest_binary::STORAGE_APPLY_PATH),
             Self::Test(path) => path,
-            Self::TestResources { program, .. } => program,
+            Self::TestResources { program, .. } | Self::TestTimeout { program, .. } => program,
+        }
+    }
+
+    fn await_test_timeout_gate(&self, child_id: u32) {
+        if let Self::TestTimeout { timeout_gate, .. } = self {
+            // The test receives on a zero-capacity channel after helper readiness.
+            // If it panics and drops the receiver, continue into normal cleanup.
+            let _ = timeout_gate.send(child_id);
         }
     }
 
@@ -77,7 +102,12 @@ impl GuestStorageManifestProgram {
         mode: ProcessContainmentMode,
         run_id: &str,
     ) -> Result<ExecProcessContainment, ProcessContainmentError> {
-        if let Self::TestResources { resource_path, .. } = self {
+        if let Self::TestResources { resource_path, .. }
+        | Self::TestTimeout {
+            resource_path: Some(resource_path),
+            ..
+        } = self
+        {
             return Ok(ExecProcessContainment::for_test_storage_resources(
                 resource_path.clone(),
                 run_id,
@@ -425,6 +455,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
     };
     drop(drain_done_tx);
 
+    program.await_test_timeout_gate(child.id());
     let outcome = wait_with_kill_timeout_or_connection_cancelled(
         child,
         timeout_ms,

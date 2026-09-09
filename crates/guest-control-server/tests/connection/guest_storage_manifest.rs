@@ -1,6 +1,10 @@
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use guest_control_proto::{
     ExecCapturedOutput, ExecTermination, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES,
@@ -78,9 +82,34 @@ fn captured(output: ExecCapturedOutput<'_>) -> (Vec<u8>, bool) {
 
 fn slow_program(pid_path: &Path) -> String {
     format!(
-        "printf '%s' \"$$\" > '{}'; cat >/dev/null; sleep 60",
+        "cat >/dev/null; sleep 60 & printf '%s' \"$$\" > '{}'; wait",
         pid_path.display()
     )
+}
+
+fn start_with_timeout_gate(
+    program: PathBuf,
+    resource_path: Option<PathBuf>,
+) -> (
+    thread::JoinHandle<std::io::Result<()>>,
+    UnixStream,
+    mpsc::Receiver<u32>,
+) {
+    // The protocol cannot order helper readiness before its timeout. Gate only
+    // the test executable; assertions still exercise the real timed wait and RPC.
+    let (timeout_tx, timeout_rx) = mpsc::sync_channel(0);
+    let (guest, mut host) = UnixStream::pair().unwrap();
+    host.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let handle = thread::spawn(move || {
+        guest_control_server::handle_connection_with_test_storage_manifest_timeout_gate(
+            guest,
+            program,
+            resource_path,
+            timeout_tx,
+        )
+    });
+    read_guest_ready(&mut host);
+    (handle, host, timeout_rx)
 }
 
 #[test]
@@ -169,16 +198,58 @@ fn guest_storage_manifest_timeout_kills_and_reaps_process_group() {
     let pid_path = unique_pid_path("storage-manifest-timeout");
     let mut process_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (_directory, program) = create_program(&slow_program(Path::new(pid_path.as_str())));
-    let (handle, mut host_stream) = start_guest_connection_with_storage_manifest_program(program);
+    let (handle, mut host_stream, timeout_gate) = start_with_timeout_gate(program, None);
 
     send_request(&mut host_stream, 403, 20, "run", "/run", b"{}");
     let pid = process_guard.read_pid();
+    assert_eq!(
+        timeout_gate.recv_timeout(Duration::from_secs(3)).unwrap(),
+        pid
+    );
     let result = read_result(&mut host_stream, 403);
 
     assert_eq!(result.termination, ExecTermination::TimedOut);
     wait_for_pid_exit(pid, "guest storage manifest timeout");
     process_guard.disarm();
     finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn guest_storage_manifest_can_timeout_before_helper_readiness() {
+    let fifo = unique_tmp_path("storage-manifest-not-ready", ".fifo");
+    let (_directory, program) = create_program(&format!(
+        "mkfifo '{}'; read -r ready < '{}'; printf ready",
+        fifo.as_str(),
+        fifo.as_str(),
+    ));
+    let (handle, mut host, timeout_gate) = start_with_timeout_gate(program, None);
+
+    send_request(&mut host, 412, 20, "run", "/run", b"{}");
+    // No FIFO writer exists: readiness is impossible even if the shell starts.
+    // Observe the server-owned identity without relying on a helper PID file.
+    let pid = timeout_gate.recv_timeout(Duration::from_secs(3)).unwrap();
+    let result = read_result(&mut host, 412);
+    wait_for_pid_exit(pid, "storage timeout before helper readiness");
+    assert_eq!(result.termination, ExecTermination::TimedOut);
+    assert!(result.stdout.is_empty());
+    finish_guest_connection(handle, host);
+}
+
+#[test]
+fn guest_storage_manifest_abandoned_timeout_gate_allows_connection_cleanup() {
+    let pid_path = unique_pid_path("storage-manifest-abandoned-gate");
+    let mut process_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let (_directory, program) = create_program(&slow_program(Path::new(pid_path.as_str())));
+    let (handle, mut host, timeout_gate) = start_with_timeout_gate(program, None);
+
+    send_request(&mut host, 413, 60_000, "run", "/run", b"{}");
+    let pid = process_guard.read_pid();
+    drop(timeout_gate);
+    drop(host);
+    join_guest_connection(handle);
+
+    wait_for_pid_exit(pid, "abandoned storage timeout gate");
+    process_guard.disarm();
 }
 
 #[test]
