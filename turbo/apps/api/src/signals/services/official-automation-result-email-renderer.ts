@@ -5,36 +5,36 @@ import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { safeSync, safeUrlParse } from "../utils";
 
 const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
-const OKOU_AUTOMATION_EMAIL_AVATAR_URL =
-  "https://static.okou.io/public/okou-agent-email-avatar-5c997967b68e.png";
+const OKOU_AUTOMATION_EMAIL_HERO_URL =
+  "https://clever-flame-3d70727f81.media.strapiapp.com/okou_onboarding_banner_2x_6b7c3904fd.png";
 
 const SAFE_LINK_INFO = "official-email-safe-link";
 const UNSAFE_LINK_INFO = "official-email-unsafe-link";
 const LINK_STYLE =
-  "color:#d94801;text-decoration:underline;text-underline-offset:2px";
-const FOOTER_LINK_STYLE = "color:#6f7378;text-decoration:underline";
+  "color:#242121;font-weight:600;text-decoration:none;border-bottom:2px solid #f9e840";
+const FOOTER_LINK_STYLE = "color:#242121;font-weight:600;text-decoration:none";
 const BODY_WRAP_STYLE =
-  "margin:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0;max-width:100%;color:#242121;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:23px;overflow-wrap:anywhere;word-break:break-word";
 const PARAGRAPH_STYLE =
   "margin:0 0 14px;overflow-wrap:anywhere;word-break:break-word";
 const LIST_STYLE =
-  "margin:0 0 16px;padding-left:22px;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0 0 22px;padding-left:20px;overflow-wrap:anywhere;word-break:break-word";
 const LIST_ITEM_STYLE =
-  "margin:0 0 8px;padding-left:1px;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0 0 6px;overflow-wrap:anywhere;word-break:break-word";
 const INLINE_CODE_STYLE =
-  "padding:1px 4px;border-radius:4px;background-color:#f3f4f6;font-family:SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:0.92em;white-space:normal;overflow-wrap:anywhere;word-break:break-word";
+  "padding:1px 5px;border-radius:4px;background-color:#faf5f3;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:13px;white-space:normal;overflow-wrap:anywhere;word-break:break-word";
 const CODE_BLOCK_STYLE =
-  "margin:0 0 16px;padding:12px 14px;border:1px solid #e4e6e8;border-radius:6px;background-color:#f7f7f8;font-family:SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0 0 22px;padding:12px 14px;border:1px solid #d8cbc4;border-radius:4px;background-color:#faf5f3;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word";
 const TABLE_CELL_STYLE =
-  "padding:8px 10px;border:1px solid #d9dde1;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word";
+  "padding:8px 10px;border:1px solid #d8cbc4;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word";
 
 const HEADING_STYLES: Readonly<Record<string, string>> = {
-  h1: "margin:0 0 25px;font-size:23px;line-height:1.3;letter-spacing:-0.025em",
-  h2: "margin:24px 0 9px;font-size:16px;line-height:1.35;letter-spacing:-0.01em",
-  h3: "margin:20px 0 8px;font-size:15px;line-height:1.4",
-  h4: "margin:18px 0 8px;font-size:14px;line-height:1.4",
-  h5: "margin:16px 0 8px;font-size:13px;line-height:1.45",
-  h6: "margin:16px 0 8px;font-size:12px;line-height:1.45",
+  h1: "margin:0 0 20px;font-size:38px;line-height:46px;font-weight:700;color:#242121;letter-spacing:-0.8px",
+  h2: "margin:28px 0 12px;font-size:15px;line-height:19px;font-weight:700;color:#242121",
+  h3: "margin:24px 0 10px;font-size:15px;line-height:19px;font-weight:700;color:#242121",
+  h4: "margin:22px 0 10px;font-size:14px;line-height:19px;font-weight:700;color:#242121",
+  h5: "margin:20px 0 8px;font-size:13px;line-height:19px;font-weight:700;color:#242121",
+  h6: "margin:20px 0 8px;font-size:12px;line-height:19px;font-weight:700;color:#242121",
 };
 
 interface OfficialAutomationResultEmailRenderProps {
@@ -138,7 +138,8 @@ function createMarkdownRenderer(): MarkdownIt {
   markdown.renderer.rules.heading_open = (tokens, index) => {
     const token = tokens[index]!;
     const style = HEADING_STYLES[token.tag] ?? HEADING_STYLES.h6;
-    return `<${token.tag} style="${style}">`;
+    const className = token.tag === "h1" ? ' class="ok-h1"' : "";
+    return `<${token.tag}${className} style="${style}">`;
   };
   markdown.renderer.rules.paragraph_open = () => {
     return `<p style="${PARAGRAPH_STYLE}">`;
@@ -164,7 +165,7 @@ function createMarkdownRenderer(): MarkdownIt {
     return '<s style="text-decoration:line-through">';
   };
   markdown.renderer.rules.blockquote_open = () => {
-    return '<blockquote style="margin:0 0 16px;padding:2px 0 2px 14px;border-left:3px solid #d0d4d8;color:#4b5563;overflow-wrap:anywhere;word-break:break-word">';
+    return '<blockquote style="margin:0 0 22px;padding:2px 0 2px 14px;border-left:3px solid #d8cbc4;color:#8c8685;overflow-wrap:anywhere;word-break:break-word">';
   };
   markdown.renderer.rules.code_inline = (tokens, index) => {
     return `<code style="${INLINE_CODE_STYLE}">${escapeHtml(tokens[index]!.content)}</code>`;
@@ -178,13 +179,13 @@ function createMarkdownRenderer(): MarkdownIt {
   markdown.renderer.rules.fence = renderCodeBlock;
   markdown.renderer.rules.code_block = renderCodeBlock;
   markdown.renderer.rules.hr = () => {
-    return '<hr style="height:1px;margin:20px 0;border:0;background-color:#e4e6e8">\n';
+    return '<hr style="height:1px;margin:22px 0;border:0;background-color:#d8cbc4">\n';
   };
   markdown.renderer.rules.table_open = () => {
     return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;margin:0 0 16px">';
   };
   markdown.renderer.rules.thead_open = () => {
-    return '<thead style="background-color:#f3f4f6">';
+    return '<thead style="background-color:#faf5f3">';
   };
   markdown.renderer.rules.th_open = () => {
     return `<th style="${TABLE_CELL_STYLE};font-weight:700">`;
@@ -218,7 +219,6 @@ function officialAutomationResultEmailHtml(
   unsubscribeUrl: string,
 ): string {
   const presentation = PUBLIC_BRAND_PRESENTATION;
-  const assistantIdentity = `<td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;line-height:0;mso-line-height-rule:exactly"><img src="${OKOU_AUTOMATION_EMAIL_AVATAR_URL}" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none"></td>`;
   const footer = `Sent by an ${escapeHtml(
     presentation.assistantName,
   )} automation &middot; <a href="${escapeHtml(
@@ -227,19 +227,20 @@ function officialAutomationResultEmailHtml(
     unsubscribeUrl,
   )}" style="${FOOTER_LINK_STYLE}">Unsubscribe</a>`;
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(
+  return `<!doctype html><html dir="ltr" lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="x-apple-disable-message-reformatting"><meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(
     props.title,
-  )}</title></head><body style="margin:0;padding:0;background-color:#f7f7f5;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.58;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f7f5" style="width:100%;border-collapse:collapse;background-color:#f7f7f5"><tr><td align="center" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:650px;border:1px solid #e5e6e4;border-radius:16px;border-collapse:separate;background-color:#ffffff;text-align:left"><tr><td style="padding:30px 38px 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 18px"><tr>${assistantIdentity}<td valign="middle" style="padding-left:10px;color:#303235;font-size:13px;font-weight:600;line-height:1.4">${escapeHtml(
-    presentation.assistantName,
-  )}</td></tr></table><div style="${BODY_WRAP_STYLE}">${resultBodyHtml}</div><p style="margin:24px 0 22px;font-size:13px;line-height:1.5"><a href="${escapeHtml(
+  )}</title><style type="text/css">body{margin:0!important;padding:0!important;width:100%!important;background-color:#ffffff}table{border-collapse:collapse}img{-ms-interpolation-mode:bicubic}a{text-decoration:none}@media only screen and (max-width:640px){.ok-shell{padding-left:20px!important;padding-right:20px!important}.ok-h1{font-size:30px!important;line-height:36px!important}}</style></head><body style="margin:0;padding:0;background-color:#ffffff;color:#242121;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:23px;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td class="ok-shell" align="center" style="padding:24px 16px 48px;background-color:#ffffff"><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#ffffff;text-align:left"><tr><td align="center" style="padding:0 0 37px;font-size:0;line-height:0"><img src="${OKOU_AUTOMATION_EMAIL_HERO_URL}" width="600" height="225" alt="" role="presentation" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:18px;outline:none;text-decoration:none"></td></tr><tr><td><div style="${BODY_WRAP_STYLE}">${resultBodyHtml}</div><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:24px 0 36px"><tr><td align="center" bgcolor="#3363d3" style="background-color:#3363d3;border-radius:19px"><a href="${escapeHtml(
     props.runUrl,
-  )}" style="${LINK_STYLE};font-weight:600">Open in ${escapeHtml(
+  )}" style="display:inline-block;padding:11px 40px;border-radius:19px;color:#ffffff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:16px;font-weight:700;text-decoration:none">Open in ${escapeHtml(
     presentation.assistantName,
-  )} &rarr;</a></p><p style="margin:0;padding-top:17px;border-top:1px solid #e5e6e4;color:#8c9094;font-size:11px;line-height:1.5">${footer}</p></td></tr></table></td></tr></table></body></html>`;
+  )} &rarr;</a></td></tr></table><p style="border-top:solid 1px #d8cbc4;font-size:1px;margin:0;width:100%;line-height:1px">&nbsp;</p><p style="margin:0;padding:24px 0 0;color:#8c8685;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:19px">${footer}</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 function plainTextFromHtml(html: string): string {
-  return convert(html, { wordwrap: false }).trim();
+  return convert(html, {
+    wordwrap: false,
+    selectors: [{ selector: "img", format: "skip" }],
+  }).trim();
 }
 
 export function renderOfficialAutomationResultEmail(
@@ -281,7 +282,7 @@ export function renderOfficialAutomationResultEmail(
 
   const fallbackHtml = officialAutomationResultEmailHtml(
     props,
-    `<pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.58;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(
+    `<pre style="margin:0;font-family:inherit;font-size:15px;line-height:23px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(
       props.resultText,
     )}</pre>`,
     unsubscribeUrl,

@@ -397,8 +397,18 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).toContain(
-      '<img src="https://static.okou.io/public/okou-agent-email-avatar-5c997967b68e.png" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none">',
+      '<img src="https://clever-flame-3d70727f81.media.strapiapp.com/okou_onboarding_banner_2x_6b7c3904fd.png" width="600" height="225" alt="" role="presentation" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:18px;outline:none;text-decoration:none">',
     );
+    expect(html).toContain(
+      "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif",
+    );
+    expect(html).toContain(
+      'width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:600px',
+    );
+    expect(html).toContain('bgcolor="#3363d3"');
+    expect(html).toContain("border-top:solid 1px #d8cbc4");
+    expect(html).not.toContain("okou-agent-email-avatar");
+    expect(html).not.toContain("#d94801");
     expect(html).toContain(
       'href="https://app.okou.ai/agents?settings=preference&amp;focus=morning-brief"',
     );
@@ -638,6 +648,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(text).toContain(longPlainText);
     expect(text).toContain("[Result truncated]");
     expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
+    expect(text).not.toContain("okou_onboarding_banner_2x_6b7c3904fd.png");
     expect(text).not.toContain('Result from Official <script> & " result');
     expect(text).toContain(
       `Sent by an Okou automation · Manage [${automationUrl}] · Unsubscribe [${accountUnsubscribeUrl}]`,
