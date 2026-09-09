@@ -51,10 +51,14 @@ workflow files. Verify it live before dispatching a production migration.
    backup, proves synthetic forward and rollback reads, and authenticates all
    stored ciphertext using the target runtime user. It creates no role and
    writes no database rows.
-2. Verify the deployed API's secret create/read/update and legacy-read business
-   flows before approving a mutation. The runtime canary and database scan do
-   not by themselves certify deployed application behavior. Retain the evidence
-   and exact deployment ID with the operational record.
+2. Run **KMS Production Business Verification** for that deployment, with the
+   approving operator's Clerk user ID, the internal `vm0` organization ID, and
+   an existing visible agent ID. Review the production environment gate before
+   it starts. This requires the operator to be an admin of that organization.
+   Retain both `operation.json` and `business-verification.json`: the operation,
+   all five business checks, and cleanup must pass against the same deployment
+   before approving historical migration. The runtime canary and database scan
+   alone do not certify deployed application behavior.
 3. Run **KMS Production Migrate** with that deployment ID, initially with the
    default 1,000-field limit. Each dispatch repeats the full target-runtime
    scan, then obtains a temporary operator session using GitHub OIDC. It
@@ -72,7 +76,7 @@ workflow files. Verify it live before dispatching a production migration.
    final database certificate. A successful bounded migration is not that
    certificate.
 
-The two workflows share a concurrency group and require manual production
+The three workflows share a concurrency group and require manual production
 approval. Each dispatch uses the existing GitHub production Neon credentials,
 the exact `production` branch of `hidden-lab-39609750`, an unpooled connection,
 and TLS certificate verification. No agent-side Neon connection is necessary.
@@ -87,3 +91,38 @@ it does not automatically undo completed rows. Keep both keys and both runtime
 users' cross-account read access throughout the rollout. These workflows do
 not modify deployments, restore stale database snapshots, touch shared staging,
 or retire keys, users, retained sandbox state, or backup recovery access.
+
+### Business verification scope
+
+The business workflow first assumes the existing GitHub migration role and
+checks synthetic forward/reverse `ReEncrypt` for both envelope and direct legacy
+ciphertext. It then uses the existing production Clerk secret to create a
+60-second sign-in ticket for the approving operator, exchanges it through the
+normal Clerk Frontend API, and obtains a 15-minute session token. No existing
+session is reused or revoked, and no development authentication bypass is used.
+
+The deployed API creates a private, uniquely named workflow and an explicitly
+disabled webhook automation. The verifier checks both ciphertext key ARNs and
+the actual secret-reveal response. It then connects and reconnects one temporary
+manual connector using synthetic values and reads only that connection's stored
+ciphertext. Because connector GETs mask secrets, the verifier copies each of
+these two ciphertexts into the disabled webhook fixture and checks the deployed
+shared reader's exact plaintext response. It repeats that reader check for the
+synthetic source-key envelope and direct legacy ciphertext. This certifies
+deployed secret writes, updates, and shared decryption; it does not claim to
+exercise an external connector request, a webhook delivery, or an agent run.
+
+The only direct database mutations are four compare-and-swap updates to the
+new webhook's secret field. Each write is bound to its random workflow name,
+agent, organization, owner, exact automation ID, disabled state, unchanged token
+and prior ciphertext, and absence of any delivery or run. The database session
+is read-only outside these fixture transactions. No historical row is rewritten.
+
+Cleanup deletes the temporary automation, thread, workflow, and connector through
+the API, independently verifies their database removal, and ends only the new
+Clerk login. Lost create responses are recovered by the random name and ownership
+scope. Cleanup failures fail certification. A hard-killed runner can interrupt
+cleanup; the sanitized checkpoint records fixture IDs and the random name for
+an operator to inspect and remove through another approved Action. Do not start
+historical migration until that cleanup is verified. Neither synthetic plaintext
+nor credentials, session JWTs, cookies, or ciphertext enter the uploaded reports.

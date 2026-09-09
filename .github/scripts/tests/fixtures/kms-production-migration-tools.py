@@ -18,6 +18,28 @@ source = "arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f9
 target = "arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947"
 
 if name == "pnpm":
+    if arguments[2].endswith("/verify-business.ts"):
+        # The business verifier has its own HTTP + real-Postgres integration
+        # suite. Here exercise the workflow driver's child-process boundary.
+        assert not any(name.startswith("AWS_") for name in os.environ)
+        assert "NEON_API_KEY" not in os.environ
+        assert "VERCEL_TOKEN" not in os.environ
+        assert os.environ["CLERK_SECRET_KEY"] == "synthetic-clerk-secret"
+        assert arguments[5:] == ["user_fixture", "org_fixture", "agent_fixture"]
+        business = {
+            "result": "passed", "cleanup": "passed", "cleanupFailures": [],
+            "historicalCiphertextWrites": 0, "fixtureWrites": 4,
+            "checks": [
+                "deployed_webhook_create_and_reveal_target_key",
+                "deployed_connector_add_and_shared_reader",
+                "deployed_connector_reconnect_and_shared_reader",
+                "deployed_source_envelope_read", "deployed_source_legacy_read",
+            ],
+        }
+        if scenario == "business-incomplete":
+            business["cleanup"] = "failed"
+        Path(arguments[4]).write_text(json.dumps(business))
+        sys.exit(0)
     # Delegate to the actual migration and canary TypeScript entry points.
     # Only the external KMS endpoint and database connection are redirected.
     env = {**os.environ, "AWS_ENDPOINT_URL_KMS": state["kmsEndpoint"]}

@@ -47,7 +47,7 @@
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
     "test:migration-consistency": "pnpm test:migration-runner && pnpm test:kms-rotation && pnpm test:pi-memory-checkpoint-settlement && pnpm test:pi-memory-citations && pnpm test:show-usage-pack-migration && pnpm test:member-invitation-retirement && pnpm test:goal-retirement-migration && tsx scripts/test-migration-consistency-schema.ts",
-    "test:kms-rotation": "tsx scripts/migrations/013-kms-account-rotation/test.ts",
+    "test:kms-rotation": "tsx scripts/migrations/013-kms-account-rotation/test.ts && tsx scripts/migrations/013-kms-account-rotation/test-business.ts",
     "test:show-usage-pack-migration": "tsx scripts/test-show-usage-pack-migration.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts",
