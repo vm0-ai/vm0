@@ -65,6 +65,29 @@ test("A visitor can continue a shared idea in Platform", async () => {
   );
 });
 
+test("A signed-in user does not see authentication actions", async () => {
+  context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+    return respond(200, sharedThread());
+  });
+
+  await setupSharedThreadPage(context, {
+    auth: {
+      user: {
+        id: "signed-in-user",
+        fullName: "Signed-in user",
+      },
+    },
+    host: "app.okou.ai",
+  });
+
+  await expect(
+    screen.findByText("Make this conversation yours"),
+  ).resolves.toBeInTheDocument();
+  expect(linksByName("Sign in")).toHaveLength(0);
+  expect(linksByName("Sign up")).toHaveLength(0);
+  expect(linksByName("Try it yourself")).toHaveLength(1);
+});
+
 test("A visitor can copy complete public message content", async () => {
   const clipboard = context.mocks.browser.clipboardWriteText();
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {

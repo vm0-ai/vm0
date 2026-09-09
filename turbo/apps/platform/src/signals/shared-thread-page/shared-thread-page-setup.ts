@@ -11,6 +11,7 @@ import {
 } from "../../views/shared-thread-page/shared-thread-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { apiClient$ } from "../api-client.ts";
+import { clerk$ } from "../auth.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -34,6 +35,8 @@ export const setupSharedThreadPage$ = command(
       signal,
     );
     await featureSwitchHydration;
+    signal.throwIfAborted();
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
     let sharedThread: SharedDisplayThread | null = null;
     const mathEnabled = get(agentMessageMathEnabled$);
@@ -75,7 +78,13 @@ export const setupSharedThreadPage$ = command(
           return $.sharedThread.notFoundTitle;
         }),
     );
-    set(updatePage$, createElement(SharedThreadPage, { sharedThread }));
+    set(
+      updatePage$,
+      createElement(SharedThreadPage, {
+        isSignedIn: Boolean(clerk.user),
+        sharedThread,
+      }),
+    );
     const richContentLoad = sharedThread?.richContent
       ? set(sharedThread.richContent.load$, signal)
       : undefined;

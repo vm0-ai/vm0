@@ -274,10 +274,12 @@ function SharedRichMessageBody({
 function SharedThreadHandoff({
   assistantName,
   handoffUrl,
+  isSignedIn,
   signInUrl,
 }: {
   readonly assistantName: string;
   readonly handoffUrl: string;
+  readonly isSignedIn: boolean;
   readonly signInUrl: string;
 }) {
   const { t } = useTranslation();
@@ -311,13 +313,15 @@ function SharedThreadHandoff({
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-                  <Button variant="quiet" size="sm" asChild>
-                    <a href={signInUrl}>
-                      {t(($) => {
-                        return $.sharedThread.signIn;
-                      })}
-                    </a>
-                  </Button>
+                  {isSignedIn ? null : (
+                    <Button variant="quiet" size="sm" asChild>
+                      <a href={signInUrl}>
+                        {t(($) => {
+                          return $.sharedThread.signIn;
+                        })}
+                      </a>
+                    </Button>
+                  )}
                   <Button size="sm" asChild>
                     <a href={handoffUrl}>
                       {t(($) => {
@@ -338,6 +342,7 @@ function SharedThreadHandoff({
 function SharedThreadHeader({
   brandName,
   homeUrl,
+  isSignedIn,
   shareUrl,
   signInUrl,
   signUpUrl,
@@ -345,6 +350,7 @@ function SharedThreadHeader({
 }: {
   readonly brandName: BrandName;
   readonly homeUrl: string;
+  readonly isSignedIn: boolean;
   readonly shareUrl: string | null;
   readonly signInUrl: string;
   readonly signUpUrl: string;
@@ -405,25 +411,29 @@ function SharedThreadHeader({
             <Share2 size={18} />
           </Button>
         ) : null}
-        <Button
-          variant="quiet"
-          size="sm"
-          className="hidden sm:inline-flex"
-          asChild
-        >
-          <a href={signInUrl}>
-            {t(($) => {
-              return $.sharedThread.signIn;
-            })}
-          </a>
-        </Button>
-        <Button size="sm" asChild>
-          <a href={signUpUrl}>
-            {t(($) => {
-              return $.sharedThread.signUp;
-            })}
-          </a>
-        </Button>
+        {isSignedIn ? null : (
+          <>
+            <Button
+              variant="quiet"
+              size="sm"
+              className="hidden sm:inline-flex"
+              asChild
+            >
+              <a href={signInUrl}>
+                {t(($) => {
+                  return $.sharedThread.signIn;
+                })}
+              </a>
+            </Button>
+            <Button size="sm" asChild>
+              <a href={signUpUrl}>
+                {t(($) => {
+                  return $.sharedThread.signUp;
+                })}
+              </a>
+            </Button>
+          </>
+        )}
       </div>
     </header>
   );
@@ -483,8 +493,10 @@ function SharedThreadNotFound() {
 }
 
 export function SharedThreadPage({
+  isSignedIn,
   sharedThread,
 }: {
+  readonly isSignedIn: boolean;
   readonly sharedThread: SharedDisplayThread | null;
 }) {
   const { t } = useTranslation();
@@ -517,6 +529,7 @@ export function SharedThreadPage({
       <SharedThreadHeader
         brandName={BRAND_NAME}
         homeUrl={homeUrl}
+        isSignedIn={isSignedIn}
         shareUrl={shareUrl}
         signInUrl={signInUrl.toString()}
         signUpUrl={signUpUrl.toString()}
@@ -532,6 +545,7 @@ export function SharedThreadPage({
           <SharedThreadHandoff
             assistantName={ASSISTANT_NAME}
             handoffUrl={handoffUrl.toString()}
+            isSignedIn={isSignedIn}
             signInUrl={signInUrl.toString()}
           />
         </>

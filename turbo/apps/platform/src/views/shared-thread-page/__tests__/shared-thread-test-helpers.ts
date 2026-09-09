@@ -3,6 +3,7 @@ import type { SharedThreadResponse } from "@okouai/api-contracts/contracts/share
 import {
   queryAllByRoleFast,
   setupPage,
+  type SetupPageAuth,
 } from "../../../__tests__/page-helper.ts";
 import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -22,13 +23,16 @@ export function sharedThread(
 
 export function setupSharedThreadPage(
   context: TestContext,
-  options: { readonly host?: string } = {},
+  options: {
+    readonly auth?: SetupPageAuth;
+    readonly host?: string;
+  } = {},
 ): Promise<void> {
   return setupPage({
     context,
     path: `/share/threads/${SHARED_THREAD_ID}`,
     host: options.host,
-    auth: null,
+    auth: options.auth ?? null,
   });
 }
 
