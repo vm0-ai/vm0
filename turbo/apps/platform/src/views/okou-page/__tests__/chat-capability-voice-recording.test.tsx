@@ -155,7 +155,7 @@ test.each([
       const action = retry === retries[0] ? "Stop recording" : "Retry";
       click(await findEnabledButton(action));
       await retry.requested.promise;
-      await screen.findByText("Transcribing...");
+      await screen.findByText("Transcribing");
       retry.response.resolve();
       await findEnabledButton("Retry");
     }

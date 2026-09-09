@@ -8795,7 +8795,7 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 }
 
 const VOICE_DRAFT_TRAY_CLASS =
-  "min-h-12 rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-100";
+  "min-h-10 rounded-xl bg-neutral-50 px-1 py-1 dark:bg-neutral-900";
 
 function VoiceDraftFooter({
   signals,
@@ -10787,9 +10787,9 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
-          {/* The standard footer keeps a 16px edge inset. Active voice states
-              use a 12px outer tray plus 12px inner padding, placing their
-              content 24px from the composer edge. */}
+          {/* The standard footer keeps a 16px content inset. Active voice
+              states keep the tray 12px from the inner edge and add a 4px
+              neutral cushion, aligning their controls to the same inset. */}
           <ComposerFooter
             signals={signals}
             actions={actions}
