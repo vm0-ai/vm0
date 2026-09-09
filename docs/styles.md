@@ -41,6 +41,17 @@ Token and variant changes are reviewed at their owning layer together with affec
 
 Large editable surfaces use `border-surface-focus` to emphasize their existing border on focus: neutral gray in light themes and muted amber in dark themes. Keep the border width constant across interaction states. A shadow-only focus overlay may fade through opacity, but must not duplicate the surface border or depend on a negative inset to align its edge. The chat composer uses the default `border` width for its surface and connector circles; intentional badge overlap remains independent of border geometry. `data-slot="chat-composer-card"` identifies the editable card for keyboard positioning and page tests.
 
+Standalone selectable controls use the shared `ChoiceButton` and its required
+`selected` prop. It retains native button/ref behavior and owns `aria-pressed`,
+the selected primary treatment, focus ring, and disabled appearance. The shared
+`control-surface` and `control-border` colors map to the runtime gray-50 and
+gray-400 ramps in both light and dark themes, including palette overrides.
+`bg-state-hover-overlay` layers the existing hover state over an opaque fill.
+The choice variant keeps this overlay's unconditional `:hover` behavior for
+touch compatibility; it preserves the existing media-aware text hover utility.
+Migrate consumers individually and retain the legacy definition until its last
+consumer is removed.
+
 ## Exception boundary
 
 Only two exception kinds exist:

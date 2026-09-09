@@ -95,6 +95,9 @@
   --color-border: hsl(var(--border));
   --color-surface-focus: hsl(var(--surface-focus));
   --color-input: hsl(var(--input));
+  /* Neutral standalone controls follow the runtime palette in both themes. */
+  --color-control-surface: hsl(var(--gray-50));
+  --color-control-border: hsl(var(--gray-400));
   --color-ring: hsl(var(--ring));
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -183,6 +186,11 @@
    * gets its own pre-mixed pair below.
    * =================================== */
   --color-state-hover: hsl(var(--state-layer) / var(--state-hover-alpha));
+  /* Layer hover over an opaque control fill without replacing that fill. */
+  --background-image-state-hover-overlay: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   --color-state-selected: hsl(var(--state-layer) / var(--state-selected-alpha));
   --color-state-selected-hover: hsl(
     var(--state-layer) / var(--state-selected-hover-alpha)
