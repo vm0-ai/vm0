@@ -42,11 +42,9 @@ function computerHost(args: {
   readonly id: string;
   readonly displayName: string;
   readonly status: "online" | "offline";
-  readonly product?: "zero" | "okou";
 }): ComputerUseHost {
   return {
     id: args.id,
-    product: args.product ?? "zero",
     hostName: `${args.displayName.toLowerCase().replaceAll(" ", "-")}.local`,
     displayName: args.displayName,
     appVersion: "1.4.0",
@@ -281,7 +279,6 @@ test("Discover computers that are available for Computer Use", async () => {
       id: SECONDARY_HOST_ID,
       displayName: "Travel Mac",
       status: "offline",
-      product: "okou",
     }),
   ];
   installRunChat();
@@ -318,7 +315,6 @@ test("Discover computers that are available for Computer Use", async () => {
       id: SECONDARY_HOST_ID,
       displayName: "Travel Mac",
       status: "offline",
-      product: "okou",
     }),
   ];
   context.mocks.ably.trigger("computerUseHostsChanged");
@@ -338,7 +334,6 @@ test("Discover computers that are available for Computer Use", async () => {
       id: SECONDARY_HOST_ID,
       displayName: "Travel Mac",
       status: "online",
-      product: "okou",
     }),
   ];
   context.mocks.ably.trigger("computerUseHostsChanged");

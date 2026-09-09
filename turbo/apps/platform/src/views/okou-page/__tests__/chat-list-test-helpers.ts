@@ -326,7 +326,6 @@ export function onlineComputerUseHost(
 ): ComputerUseHost {
   return {
     id,
-    product: "zero",
     hostName: "studio-mac.local",
     displayName,
     appVersion: "1.0.0",

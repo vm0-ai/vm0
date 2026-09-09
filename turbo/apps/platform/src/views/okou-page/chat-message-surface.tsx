@@ -23,9 +23,22 @@ export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "h-auto min-h-9 py-[calc((2.25rem-1lh)/2)] leading-[1.59375rem]";
 
-// Bare response icons share the 28px action-button rail.
+// Rows without a leading icon stay flush with the response column. Icon rows
+// put their canonical 16px glyph on that same left edge, then reserve 8px
+// before the label.
+export const CHAT_THREAD_RESPONSE_FLUSH_CLASS = "min-w-0 pl-0";
 export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
-  "inline-flex w-7 shrink-0 items-center justify-center";
+  "inline-flex w-6 shrink-0 items-center justify-start [&_svg]:size-4";
+
+// Supporting rows should read as one quiet unit: the 14px regular label sits
+// behind its 16px line icon instead of competing with the final response.
+export const CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS =
+  "text-sm font-normal leading-5 text-muted-foreground/80";
+
+// Work-history commentary is supporting context, not the final response.
+export const CHAT_THREAD_WORK_HISTORY_TEXT_CLASS =
+  "text-sm leading-5 text-muted-foreground";
+export const CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS = "!text-muted-foreground";
 
 // Keep the entry animation, but do not let its duration also animate the
 // responsive margin: that would continue changing layout after resize.
@@ -38,6 +51,13 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS =
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS =
   "flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
+// In the stacked mobile layout, inset the response by 6px so the centre of its
+// canonical 16px leading icons lines up with the centre of the 28px avatar
+// above it. The desktop grid already owns that alignment, so reset the inset
+// at that breakpoint.
+export const CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS =
+  "pl-1.5 @[900px]:pl-0";
+
 export const CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS =
   "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:h-9 @[900px]:w-9";
 
@@ -48,7 +68,7 @@ export const CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS =
   "flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS =
-  "@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]";
+  "pl-1.5 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:pl-0";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS =
   "flex items-center justify-between gap-2";

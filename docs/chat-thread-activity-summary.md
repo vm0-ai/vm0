@@ -79,9 +79,42 @@ credential-shaped argument keys are additionally redacted.
   one cleanup batch of at most 500 rows with `FOR UPDATE SKIP LOCKED`, attached
   to existing sandbox maintenance and available with the switch off.
 
-Debug diagnostics record capture outcomes, cache states, attempt/completion
-counts, latency, cooldown, and cleanup counts. They never contain prompts,
-arguments, results, or provider response bodies.
+## Production diagnostics
+
+The existing activity records use `info` for normal outcomes and `warn` for
+failed operations so they survive the default Axiom transport's `info` threshold.
+The shared logger and unrelated debug filtering are unchanged. Axiom events
+retain `source: api`, the stable message, and the following nested `fields`:
+
+| Message                        | Context                | Level                                             | Safe fields besides context                                                                                |
+| ------------------------------ | ---------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Activity summary cache`       | `api:activity-summary` | info                                              | `runId`, `outcome` (existing response status)                                                              |
+| `Activity summary attempt`     | `api:activity-summary` | info                                              | `runId`                                                                                                    |
+| `Activity summary completion`  | `api:activity-summary` | info on success; warn otherwise                   | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` only for `OpenRouterRequestError` |
+| `Activity summary unavailable` | `api:activity-summary` | warn                                              | `runId`, `outcome: storage_failed`                                                                         |
+| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged; warn for write_failed | `runId`, `outcome`, `eventCount`                                                                           |
+| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                  | `outcome`, `removed`, `retentionMs`                                                                        |
+
+Completion outcomes remain `success`, `timeout`, `provider_failure`, and
+`invalid_or_unconfigured`. A provider HTTP 429 is distinguishable by
+`fields.providerStatus: 429`; no error object or provider body is attached.
+
+Granularity is unchanged: one cache record for a request resolved without a
+claim, one attempt/completion pair per generation attempt, one unavailable
+record for an optional summary storage failure, one capture record per relevant
+batch (including unchanged duplicates), and one cleanup record per maintenance
+operation (including zero removals). Disabled, irrelevant, and ineligible
+captures remain silent. `eventCount` counts the submitted batch, not new retained
+entries. Failed cleanup reports `removed: 0` with `outcome: failed`; that is not a
+successful empty cleanup.
+
+These records never contain prompts, phrases, messages, arguments, evidence,
+credentials, database-driver errors, or provider response bodies. The tests call
+real endpoints and exercise the production logger and real Axiom SDK/transport,
+with ingestion captured by MSW and unrelated debug records verified as filtered.
+No test logs go to production. Attempt records measure this service's generation
+attempts; they do not establish provider billing, token usage, or cost savings.
+Production verification remains controller-owned after release.
 
 ## Visible viewer lifecycle
 

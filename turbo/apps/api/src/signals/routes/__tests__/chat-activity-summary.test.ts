@@ -12,6 +12,11 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
+  flushLogs,
+  logger,
+  __resetForTest as resetLogs,
+} from "../../../lib/log";
+import {
   advanceRunActivityClockFixture,
   holdRunActivityFixture,
 } from "../../../test-fixtures/run-activity";
@@ -197,13 +202,77 @@ async function deliver(
   await flushWaitUntilForTest();
 }
 
+// Exercise the production logger and both real SDK constructors. Only the
+// outbound ingestion HTTP request is captured; no application logger is spied on.
+function captureDiagnostics() {
+  const eventSchema = z
+    .object({
+      level: z.string(),
+      message: z.string(),
+      source: z.literal("api"),
+      fields: z.record(z.string(), z.unknown()),
+    })
+    .passthrough();
+  const events: z.infer<typeof eventSchema>[] = [];
+  context.mocks.axiomLogging.useRealTransport.mockReturnValue(true);
+  mockEnv("AXIOM_TOKEN_TELEMETRY", "xaat-activity-logging-test");
+  mockEnv("AXIOM_DATASET_SUFFIX", "dev");
+  mockEnv("OKOU_DEBUG", "");
+  resetLogs();
+  server.use(
+    http.post(
+      "https://api.axiom.co/v1/datasets/vm0-web-logs-dev/ingest",
+      async ({ request: ingestion }) => {
+        expect(ingestion.headers.get("content-type")).toBe(
+          "application/x-ndjson",
+        );
+        const body = await ingestion.text();
+        const batch = body
+          .trim()
+          .split("\n")
+          .map((line) => {
+            return eventSchema.parse(JSON.parse(line));
+          });
+        events.push(...batch);
+        return HttpResponse.json({
+          ingested: batch.length,
+          failed: 0,
+          failures: [],
+          processedBytes: body.length,
+          blocksCreated: 1,
+          walLength: 0,
+        });
+      },
+    ),
+  );
+  onTestFinished(async () => {
+    await flushLogs();
+    resetLogs();
+  });
+  logger("api:unrelated").debug("Unrelated activity transport debug");
+  return async () => {
+    await flushLogs();
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ level: "debug" }),
+    );
+    return events.filter((event) => {
+      return (
+        event.fields.context === "api:activity-summary" ||
+        event.fields.context === "api:run-activity"
+      );
+    });
+  };
+}
+
 describe("thread activity summary", () => {
   it("enforces feature availability and ownership before cache or model exposure", async () => {
     const f = await fixture(false);
+    const diagnostics = captureDiagnostics();
     const inputs = provider();
     await deliver(f, [tool(0, "must not be captured")]);
     await accept(request(f.actor, f.run), [403]);
     expect(inputs).toHaveLength(0);
+    await expect(diagnostics()).resolves.toStrictEqual([]);
     await enable(f.actor);
     const first = await summarize(f.actor, f.run);
     expect(first).toMatchObject({
@@ -220,6 +289,85 @@ describe("thread activity summary", () => {
     await accept(request(f.actor, { ...f.run, runId: randomUUID() }), [404]);
     await enable(f.actor, false);
     await accept(request(f.actor, f.run), [403]);
+    expect(inputs).toHaveLength(1);
+  });
+
+  it("ingests content-free activity records through the default production transport at operation granularity", async () => {
+    const f = await fixture(true, "PRIVATE_PROMPT");
+    const diagnostics = captureDiagnostics();
+    const inputs = provider(() => {
+      return "PRIVATE PHRASE";
+    });
+    const batch = [tool(0, "PRIVATE_ARGUMENT"), tool(1, "PRIVATE_EVIDENCE")];
+    await deliver(f, batch);
+    expect(inputs).toHaveLength(0);
+    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
+      status: "fresh",
+      phrase: "PRIVATE PHRASE",
+    });
+    await summarize(f.actor, f.run);
+    await deliver(f, batch);
+    await deliver(f, [
+      { type: "usage", sequenceNumber: 2, usage: { input_tokens: 300 } },
+    ]);
+    expect(inputs).toHaveLength(1);
+    const logs = await diagnostics();
+    expect(logs).toStrictEqual([
+      expect.objectContaining({
+        level: "info",
+        message: "Activity snapshot capture",
+        fields: {
+          context: "api:run-activity",
+          runId: f.run.runId,
+          outcome: "written",
+          eventCount: 2,
+        },
+      }),
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary attempt",
+        fields: { context: "api:activity-summary", runId: f.run.runId },
+      }),
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "success",
+          durationMs: expect.any(Number),
+          cooldownMs: 0,
+        },
+      }),
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary cache",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "fresh",
+        },
+      }),
+      expect.objectContaining({
+        level: "info",
+        message: "Activity snapshot capture",
+        fields: {
+          context: "api:run-activity",
+          runId: f.run.runId,
+          outcome: "unchanged",
+          eventCount: 2,
+        },
+      }),
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("PRIVATE");
+    await webhooks.requestAgentComplete(
+      { runId: f.run.runId, exitCode: 0 },
+      f.headers,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await deliver(f, [tool(3, "PRIVATE_TERMINAL_ARGUMENT")]);
+    await expect(diagnostics()).resolves.toStrictEqual(logs);
     expect(inputs).toHaveLength(1);
   });
 
@@ -716,11 +864,12 @@ describe("thread activity summary", () => {
 
   it("honors bounded Retry-After and keeps the last known summary", async () => {
     const f = await fixture();
+    const diagnostics = captureDiagnostics();
     const inputs = provider((_input, index) => {
       return index === 1
         ? "Preparing the launch checklist"
         : HttpResponse.json(
-            { error: { code: 429 } },
+            { error: { code: 429, message: "PRIVATE_PROVIDER_BODY" } },
             { status: 429, headers: { "Retry-After": "120" } },
           );
     });
@@ -734,12 +883,45 @@ describe("thread activity summary", () => {
     expect(failed.retryAfterMs).toBeLessThanOrEqual(120_000);
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(2);
+    const logs = await diagnostics();
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "warn",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "provider_failure",
+          providerStatus: 429,
+          durationMs: expect.any(Number),
+          cooldownMs: 120_000,
+        },
+      }),
+    );
+    expect(
+      logs.filter((event) => {
+        return event.message === "Activity summary attempt";
+      }),
+    ).toHaveLength(2);
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary cache",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "cooldown",
+        },
+      }),
+    );
+    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
   it("keeps normal publication working when snapshot writes fail and excludes expired evidence", async () => {
     const f = await fixture();
     const inputs = provider();
     await summarize(f.actor, f.run);
+    const diagnostics = captureDiagnostics();
     // A stalled Postgres writer is an infrastructure condition, not a user API.
     const held = await holdRunActivityFixture(f.run.runId, context.signal);
     onTestFinished(async () => {
@@ -760,6 +942,31 @@ describe("thread activity summary", () => {
         },
       },
     ]);
+    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
+      status: "unavailable",
+      phrase: null,
+    });
+    await expect(diagnostics()).resolves.toStrictEqual([
+      expect.objectContaining({
+        level: "warn",
+        message: "Activity snapshot capture",
+        fields: {
+          context: "api:run-activity",
+          runId: f.run.runId,
+          outcome: "write_failed",
+          eventCount: 1,
+        },
+      }),
+      expect.objectContaining({
+        level: "warn",
+        message: "Activity summary unavailable",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "storage_failed",
+        },
+      }),
+    ]);
     held.release();
     await held.done;
     const page = await chat.listThreadEvents(f.actor, f.run.threadId);
@@ -774,6 +981,7 @@ describe("thread activity summary", () => {
   });
   it("cleans expired snapshots through scoped maintenance even while disabled", async () => {
     const f = await fixture();
+    const diagnostics = captureDiagnostics();
     const inputs = provider();
     await deliver(f, [tool(0, "old evidence")]);
     await summarize(f.actor, f.run);
@@ -803,5 +1011,17 @@ describe("thread activity summary", () => {
       sourceSequence: null,
     });
     expect(inputs[1]!.activity).toStrictEqual([]);
+    await expect(diagnostics()).resolves.toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity snapshot cleanup",
+        fields: {
+          context: "api:run-activity",
+          outcome: "success",
+          removed: 1,
+          retentionMs: 86_400_000,
+        },
+      }),
+    );
   });
 });

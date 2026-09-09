@@ -309,13 +309,18 @@ import {
   CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS,
+  CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS,
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_RESPONSE_FLUSH_CLASS,
   CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
+  CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
   CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
   CHAT_THREAD_RESPONSE_STACK_CLASS,
+  CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS,
+  CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "./chat-message-surface.tsx";
@@ -3410,16 +3415,18 @@ function formatCompactDuration(totalSeconds: number): string {
 }
 
 const RUN_SECTION_LABEL_CLASS =
-  "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
+  "min-w-0 max-w-full shrink-0 break-words font-serif text-sm leading-5 italic text-muted-foreground/50";
 const RUN_SECTION_ROW_CLASS =
   "@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
 function RunSectionDivider({
   label,
   labelPosition = "left",
+  className,
 }: {
   label: string;
   labelPosition?: "left" | "right";
+  className?: string;
 }) {
   return (
     <div
@@ -3427,6 +3434,7 @@ function RunSectionDivider({
         "flex min-h-5 items-center gap-2",
         CHAT_THREAD_RESPONSE_LINE_CLASS,
         labelPosition === "right" && "flex-row-reverse",
+        className,
       )}
     >
       <p
@@ -3519,7 +3527,12 @@ function RunWorkSectionRow({
       <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
         <Hourglass aria-hidden />
       </span>
-      <span className="inline-flex min-w-0 items-center gap-1">
+      <span
+        className={cn(
+          "inline-flex min-w-0 items-center gap-1",
+          CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
+        )}
+      >
         <ElapsedTime startTime={startTime} endTime={endTime}>
           {(elapsedTime) => {
             const duration = formatCompactDuration(
@@ -3560,6 +3573,7 @@ function RunWorkSectionRow({
       {collapsible ? (
         <ChevronRight
           aria-hidden
+          size={16}
           className={cn(
             "ml-1 shrink-0 text-muted-foreground/70 transition-transform",
             expanded && "rotate-90",
@@ -3569,7 +3583,7 @@ function RunWorkSectionRow({
     </>
   );
   const className = cn(
-    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal text-muted-foreground [&_svg]:size-3.5",
+    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 font-normal text-muted-foreground",
     CHAT_THREAD_RESPONSE_LINE_CLASS,
   );
   return (
@@ -3888,22 +3902,22 @@ function RecommendedFollowupIcon({
   followup: RecommendedFollowup;
 }) {
   if (followup.kind !== "generate") {
-    return <MessageCircle size={14} />;
+    return <MessageCircle size={16} />;
   }
 
   if (followup.generationType === "image") {
-    return <Image size={14} />;
+    return <Image size={16} />;
   }
   if (followup.generationType === "video") {
-    return <Video size={14} />;
+    return <Video size={16} />;
   }
   if (followup.generationType === "presentation") {
-    return <ChartLine size={14} />;
+    return <ChartLine size={16} />;
   }
   if (followup.generationType === "website") {
-    return <LinkIcon size={14} />;
+    return <LinkIcon size={16} />;
   }
-  return <Package size={14} />;
+  return <Package size={16} />;
 }
 
 function recommendedFollowupShownKey(
@@ -4001,7 +4015,7 @@ function RecommendedFollowupList({
             type="button"
             title={followup.prompt}
             className={cn(
-              "group flex text-left transition-colors",
+              "group relative flex text-left transition-colors",
               // A quick reply sizes to its own text, so a short suggestion
               // stays small and more than one fits on screen. The rail equalises
               // their heights, which is why the contents align to the top: a
@@ -4022,7 +4036,7 @@ function RecommendedFollowupList({
           >
             <span
               className={cn(
-                "text-muted-foreground/70 transition-colors group-hover:text-foreground",
+                "text-muted-foreground transition-colors group-hover:text-foreground",
                 // A quick reply drops the 28px response rail, but keeps the
                 // icon for `generate`: mispicking one there costs a real
                 // generation rather than another message. `h-6` is one line
@@ -4038,7 +4052,8 @@ function RecommendedFollowupList({
             </span>
             <span
               className={cn(
-                "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground",
+                "min-w-0 flex-1 break-words group-hover:text-foreground",
+                CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
                 // Prompt length is unbounded server-side, so a runaway
                 // suggestion is clamped rather than allowed to grow the rail.
                 // Two lines is also the rail's ceiling: every card matches the
@@ -4049,9 +4064,10 @@ function RecommendedFollowupList({
               {followup.prompt}
             </span>
             <ArrowUpRight
-              size={14}
+              aria-hidden
+              size={16}
               className={cn(
-                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100 ml-2",
+                "pointer-events-none absolute right-2 top-1/2 box-content -translate-y-1/2 bg-state-hover pl-3 text-muted-foreground/60 opacity-0 transition-[color,opacity] group-hover:text-foreground group-hover:opacity-100",
                 showFollowupCards && "hidden",
               )}
             />
@@ -4290,12 +4306,12 @@ function ThinkingLoader({
       <span
         aria-hidden
         data-thinking-loader="spinner"
-        className="okou-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
+        className="okou-thinking-spinner-frame inline-flex size-4 shrink-0 items-center justify-center"
       >
         <img
           src={thinkingSpinnerImg}
           alt=""
-          className="okou-thinking-spinner size-3.5 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+          className="okou-thinking-spinner size-4 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
         />
       </span>
     );
@@ -4304,7 +4320,7 @@ function ThinkingLoader({
   return (
     <span
       data-thinking-loader="blocks"
-      className="okou-blocks shrink-0"
+      className="okou-blocks size-4 shrink-0 place-content-center"
       style={blockStyle}
     >
       <span />
@@ -4381,7 +4397,10 @@ function FinishedRunRow({
 
   return (
     <div className={CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS}>
-      <RunSectionDivider label={label} />
+      <RunSectionDivider
+        label={label}
+        className={CHAT_THREAD_RESPONSE_FLUSH_CLASS}
+      />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
       ) : null}
@@ -4436,7 +4455,12 @@ function WaitingForAssistantResponse({
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
-        <div className="relative flex min-w-0 flex-col gap-2">
+        <div
+          className={cn(
+            "relative flex min-w-0 flex-col gap-2",
+            CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS,
+          )}
+        >
           <ChatAssistantMessageBody>
             <InlineThinkingRow
               blockStyle={blockStyle}
@@ -5007,7 +5031,7 @@ function assistantRecoveryResetText(
 }
 
 function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
-  return loading ? <Loader2 size={14} className="animate-spin" /> : null;
+  return loading ? <Loader2 size={16} className="animate-spin" /> : null;
 }
 
 function AssistantRecoveryActions({
@@ -5223,7 +5247,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
           borderRadius: "12px",
         }}
       >
-        <Hand size={14} className="shrink-0" />
+        <Hand size={16} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.errors.runCancelled;
@@ -5857,7 +5881,7 @@ function UserMessageActions({
         type="button"
         variant="quiet"
         size="icon-xs"
-        iconSize="md"
+        iconSize="sm"
         showTooltip
         onClick={onCopy}
         className="text-muted-foreground/60"
@@ -6990,10 +7014,12 @@ function PagedAssistantTimeline({
   items,
   thread,
   mainActions,
+  workHistory = false,
 }: {
   items: readonly PagedAssistantTimelineItem[];
   thread: ChatPanelSignals;
   mainActions?: ReactNode;
+  workHistory?: boolean;
 }) {
   return items.map((item) => {
     if (item.kind === "model-change") {
@@ -7020,13 +7046,14 @@ function PagedAssistantTimeline({
             <div
               data-chat-run-work-history-list
               className={cn(
-                "ml-3.5 w-[calc(100%-0.875rem)] border-l border-border/70 pl-[13px]",
+                "ml-2 w-[calc(100%-0.5rem)] border-l border-border/70 pl-[15px]",
                 CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
               )}
             >
               <PagedAssistantTimeline
                 items={item.historyItems}
                 thread={thread}
+                workHistory
               />
             </div>
           )}
@@ -7050,6 +7077,7 @@ function PagedAssistantTimeline({
         key={item.event.id}
         event={item.event}
         thread={thread}
+        workHistory={workHistory}
       />
     );
   });
@@ -7170,7 +7198,13 @@ function PagedAssistantGroup({
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
-        <div className={cn("relative", CHAT_THREAD_RESPONSE_STACK_CLASS)}>
+        <div
+          className={cn(
+            "relative",
+            CHAT_THREAD_RESPONSE_STACK_CLASS,
+            CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS,
+          )}
+        >
           {usesRunWorkPresentation ? (
             <PagedRunWorkAssistantContent
               group={group}
@@ -7206,9 +7240,11 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
+  workHistory = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  workHistory?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7216,6 +7252,7 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
+        className={cn(workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS)}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7234,11 +7271,18 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
+        className={cn(
+          CHAT_THREAD_RESPONSE_LINE_CLASS,
+          CHAT_THREAD_RESPONSE_FLUSH_CLASS,
+          workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
         <MarkdownEventBody
+          className={
+            workHistory ? CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS : undefined
+          }
           tree={event.tree}
           mediaPreview
           onRetry={
@@ -7346,7 +7390,7 @@ function UsageChip({
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-state-hover hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
-          <Coins size={17} />
+          <Coins size={16} />
           <span>{total}</span>
         </button>
       </PopoverTrigger>
@@ -7510,7 +7554,7 @@ function RelatedArtifactsDialog({
                 type="button"
                 variant="quiet"
                 size="xs"
-                iconSize="md"
+                iconSize="sm"
                 className="gap-1.5 px-2 text-xs text-muted-foreground/60 tabular-nums"
                 aria-label={triggerLabel}
                 data-testid="chat-run-related-artifacts-trigger"
@@ -7564,8 +7608,20 @@ function PagedGroupPrimaryActions({
 }) {
   const { t } = useTranslation();
   const showActivityLogs = useGet(featureSwitch$)[FeatureSwitchKey.OkouDebug];
+  const hasLeadingIconAction = Boolean(
+    (showActivityLogs && firstRunId) || hasContent,
+  );
   return (
-    <div className="flex items-center gap-1" data-testid="chat-event-actions">
+    <div
+      className={cn(
+        "flex items-center gap-1",
+        // Icon buttons keep their 28px hit target centered around the 16px
+        // glyph. Let the target overhang so the visible glyph, not its box,
+        // starts on the response column.
+        hasLeadingIconAction && "-ml-1.5",
+      )}
+      data-testid="chat-event-actions"
+    >
       {showActivityLogs && firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
@@ -7574,7 +7630,7 @@ function PagedGroupPrimaryActions({
                 asChild
                 variant="quiet"
                 size="icon-xs"
-                iconSize="md"
+                iconSize="sm"
                 className="text-muted-foreground/60"
               >
                 <Link
@@ -7606,7 +7662,7 @@ function PagedGroupPrimaryActions({
                 type="button"
                 variant="quiet"
                 size="icon-xs"
-                iconSize="md"
+                iconSize="sm"
                 onClick={onCopy}
                 className="text-muted-foreground/60"
                 aria-label={t(($) => {

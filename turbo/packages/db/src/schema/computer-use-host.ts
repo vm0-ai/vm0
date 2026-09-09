@@ -30,7 +30,9 @@ export const computerUseHosts = pgTable(
     installationId: uuid("installation_id"),
     displayName: text("display_name").notNull(),
     tokenHash: text("token_hash").notNull(),
-    clientProduct: text("client_product").$type<DesktopProduct>().notNull(),
+    // Retired product distinction: no longer read or written. The column and
+    // its check constraint stay declared until the contract step in #32967.
+    clientProduct: text("client_product").$type<DesktopProduct>(),
     appVersion: text("app_version").notNull(),
     osVersion: text("os_version").notNull(),
     supportedCapabilities: jsonb("supported_capabilities")

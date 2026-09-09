@@ -51,6 +51,7 @@ import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-
 import { setupOfficialWorkflowsPage$ } from "./workflows-page/official-workflows-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupAgentChatPage$ } from "./okou-page/agent-chat-page-setup.ts";
+import { setupWelcomeThreadPage$ } from "./okou-page/welcome-thread-page-setup.ts";
 import { setupHomePage$ } from "./okou-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
 import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
@@ -221,6 +222,10 @@ const ROUTE_CONFIG = [
   },
 
   // --- New routes ---
+  {
+    path: ROUTES.welcomeThread,
+    setup: setupAuthSidebarPageWrapper(setupWelcomeThreadPage$),
+  },
   {
     path: ROUTES.chat,
     setup: setupAuthSidebarPageWrapper(setupChatPage$),

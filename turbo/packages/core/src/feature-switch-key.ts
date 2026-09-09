@@ -57,6 +57,7 @@ export enum FeatureSwitchKey {
   MarkdownTime = "markdownTime",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
+  OnboardingChat = "onboarding-chat",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   StableChatThreadNavigation = "stableChatThreadNavigation",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",

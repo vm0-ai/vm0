@@ -33,11 +33,35 @@ const secret = "private-provider-payload";
 function completion(
   content: unknown = "A usable summary",
   finishReason = "stop",
+  usage?: Readonly<Record<string, unknown>>,
 ) {
   return HttpResponse.json({
-    choices: [{ finish_reason: finishReason, message: { content } }],
+    choices: [
+      {
+        finish_reason: finishReason,
+        ...(finishReason === "length"
+          ? { native_finish_reason: "MAX_TOKENS" }
+          : {}),
+        message: { content },
+      },
+    ],
+    ...(usage === undefined ? {} : { usage }),
   });
 }
+
+const successUsage = Object.freeze({
+  prompt_tokens: 640,
+  completion_tokens: 118,
+  completion_tokens_details: { reasoning_tokens: 96 },
+});
+
+// The provider reports usage on a truncated completion too, and the reasoning
+// count is the only direct evidence of how the combined budget was spent.
+const exhaustedUsage = Object.freeze({
+  prompt_tokens: 640,
+  completion_tokens: 2048,
+  completion_tokens_details: { reasoning_tokens: 2041 },
+});
 
 function responseFailure(code?: string) {
   return HttpResponse.json({
@@ -60,12 +84,12 @@ function brokenBody(error: Error) {
   );
 }
 
-function summaryCancellationRequest(signal: AbortSignal) {
+function saveRunSummaryRequest(signal: AbortSignal) {
   // Infrastructure-only exception: a public callback acknowledges before its
   // background work finishes and cannot inject an independently owned task
-  // AbortSignal. The existing runtime harness lets cancellation reach the real
-  // summary boundary; every case aborts before persistence. Normal output and
-  // fallback cases below use the production chat API and readback instead.
+  // AbortSignal. The existing runtime harness lets cancellation and the real
+  // persistence attempt reach the summary boundary. Normal output and fallback
+  // cases below use the production chat API and readback instead.
   return setupApp({
     context,
     routes: testRuntimeStateRoutes,
@@ -302,17 +326,33 @@ const cases = Object.freeze([
     reason: "invalid_output",
   },
   {
-    name: "length terminal outcome",
+    name: "token budget exhausted with partial text",
     response: () => {
       return completion(secret, "length");
     },
-    outcome: "error",
-    reason: "invalid_output",
+    outcome: "degraded",
+    reason: "output_truncated",
+  },
+  {
+    name: "token budget exhausted with empty text",
+    response: () => {
+      return completion("", "length");
+    },
+    outcome: "degraded",
+    reason: "output_truncated",
   },
   {
     name: "tool terminal outcome",
     response: () => {
       return completion(secret, "tool_calls");
+    },
+    outcome: "degraded",
+    reason: "unexpected_tool_calls",
+  },
+  {
+    name: "content filtered outcome",
+    response: () => {
+      return completion(secret, "content_filter");
     },
     outcome: "error",
     reason: "invalid_output",
@@ -323,7 +363,7 @@ const cases = Object.freeze([
       return completion("---");
     },
     outcome: "error",
-    reason: "invalid_output",
+    reason: "unusable_output",
   },
   {
     name: "success",
@@ -364,6 +404,7 @@ describe("auxiliary generation outcomes", () => {
         outcome === "error" ? 1 : 0,
       );
       expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(secret);
+      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(secret);
       expect(
         context.mocks.axiomLogging.warn.mock.calls.map(([message]) => {
           return message;
@@ -374,6 +415,81 @@ describe("auxiliary generation outcomes", () => {
       expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
     },
   );
+
+  it.each([
+    {
+      name: "success",
+      response: () => {
+        return completion("A usable summary", "stop", successUsage);
+      },
+      expected: {
+        outcome: "success",
+        reason: "none",
+        completion_tokens: 118,
+        reasoning_tokens: 96,
+      },
+    },
+    {
+      name: "an exhausted token budget",
+      response: () => {
+        return completion(secret, "length", exhaustedUsage);
+      },
+      expected: {
+        outcome: "degraded",
+        reason: "output_truncated",
+        completion_tokens: 2048,
+        reasoning_tokens: 2041,
+      },
+    },
+  ])(
+    "records provider token counts on $name",
+    async ({ response, expected }) => {
+      const title = await prepareChatTitle();
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
+      createChatCallbacksApi(context).mockOpenRouterCompletions((body) => {
+        return body.messages[0]?.content.includes(
+          "Generate a short, descriptive title",
+        )
+          ? response()
+          : "Thinking";
+      });
+      await title.create();
+      await flushWaitUntilForTest();
+      expect(auxiliaryResults(context)).toStrictEqual([
+        expect.objectContaining({ feature: "chat_title", ...expected }),
+      ]);
+      expect(auxiliaryWarnings(context)).toStrictEqual([]);
+    },
+  );
+
+  it("keeps shortened summary text for a caller that can use it", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
+    server.use(
+      http.post(endpoint, () => {
+        // PostgreSQL rejects NUL in text, so a persistence attempt is
+        // observable. A rejected generation returns nothing and never writes,
+        // which makes the storage warning the proof the text was accepted.
+        return completion("Unstorable\u0000summary", "length", exhaustedUsage);
+      }),
+    );
+    await saveRunSummaryRequest(context.signal);
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.map(([message]) => {
+        return message;
+      }),
+    ).toStrictEqual(["Failed to save run summary"]);
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context)).toStrictEqual([
+      expect.objectContaining({
+        feature: "run_summary",
+        outcome: "degraded",
+        reason: "output_truncated",
+        completion_tokens: 2048,
+        reasoning_tokens: 2041,
+      }),
+    ]);
+  });
 
   it("skips optional title generation when configuration is missing", async () => {
     const title = await prepareChatTitle();
@@ -453,7 +569,7 @@ describe("auxiliary generation outcomes", () => {
           return completion();
         }),
       );
-      const request = summaryCancellationRequest(controller.signal);
+      const request = saveRunSummaryRequest(controller.signal);
       const outcome = (async () => {
         await expect(request).rejects.toBe(reason);
       })();
@@ -495,7 +611,7 @@ describe("auxiliary generation outcomes", () => {
         );
       }),
     );
-    const request = summaryCancellationRequest(controller.signal);
+    const request = saveRunSummaryRequest(controller.signal);
     const rejected = (async () => {
       await expect(request).rejects.toMatchObject({ name: "AbortError" });
     })();

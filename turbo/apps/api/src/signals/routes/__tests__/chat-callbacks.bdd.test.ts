@@ -1736,30 +1736,19 @@ describe("CHAT-02: completed chat callback", () => {
     ]);
 
     // Reasoning tokens are drawn from the same budget as the answer, so a
-    // budget sized for a non-reasoning model starves the answer entirely.
-    expect(requestsBySite.get("title")).toStrictEqual({
-      model: "google/gemini-3.8-flash",
-      max_tokens: 512,
-      reasoning: { effort: "low" },
-    });
-    expect(requestsBySite.get("followups")).toStrictEqual({
-      model: "google/gemini-3.8-flash",
-      max_tokens: 1024,
-      reasoning: { effort: "low" },
-    });
-    expect(requestsBySite.get("notification")).toStrictEqual({
-      model: "google/gemini-3.8-flash",
-      max_tokens: 512,
-      reasoning: { effort: "low" },
-    });
-    expect(requestsBySite.get("runSummary")).toStrictEqual({
-      model: "google/gemini-3.8-flash",
-      max_tokens: 768,
-      reasoning: { effort: "low" },
-    });
+    // budget sized for a non-reasoning model starves the answer entirely. This
+    // model cannot disable thinking and "low" is already its floor, so the
+    // shared ceiling is the only lever that keeps the answer from being lost.
+    for (const site of ["title", "followups", "notification", "runSummary"]) {
+      expect(requestsBySite.get(site)).toStrictEqual({
+        model: "google/gemini-3.8-flash",
+        max_tokens: 2048,
+        reasoning: { effort: "low" },
+      });
+    }
   });
 
-  it("discards a token-limited notification summary instead of pushing truncated text", async () => {
+  it("pushes a token-limited notification summary instead of discarding it", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1796,6 +1785,68 @@ describe("CHAT-02: completed chat callback", () => {
     await flushWaitUntilForTest();
 
     expect(notificationRequests).toBe(1);
+    // A shortened sentence still tells the user what finished, and the only
+    // alternative is the generic fallback, so this caller keeps the text.
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.some(
+          (call) => {
+            const payload = pushPayload(call) as Record<string, unknown>;
+            return (
+              payload.title === prompt.slice(0, 60) &&
+              payload.body === truncatedSummary
+            );
+          },
+        );
+      })
+      .toBe(true);
+    // An exhausted shared budget is expected and non-actionable: counted, and
+    // never a production warning.
+    expect(auxiliaryResults(context)).toContainEqual(
+      expect.objectContaining({
+        feature: "notification_summary",
+        outcome: "degraded",
+        reason: "output_truncated",
+      }),
+    );
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+  });
+
+  it("falls back to the fixed notification copy when the token-limited summary strips to nothing", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("one short notification sentence")) {
+        // Non-empty for the provider, nothing once the Markdown rule is
+        // stripped. Accepting truncated text made this state reachable.
+        return { content: "---", finishReason: "length" };
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Emptied Notification";
+      }
+      if (systemContent.includes("recommended follow-up messages")) {
+        return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
+      }
+      return "Generated summary";
+    });
+
+    const prompt = "Summarize the emptied notification";
+    const run = await startChatRun(actor, { agentId, prompt });
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
     await expect
       .poll(() => {
         return context.mocks.webpush.sendNotification.mock.calls.some(
@@ -1810,11 +1861,11 @@ describe("CHAT-02: completed chat callback", () => {
       })
       .toBe(true);
     expect(
-      context.mocks.webpush.sendNotification.mock.calls.some((call) => {
+      context.mocks.webpush.sendNotification.mock.calls.every((call) => {
         const payload = pushPayload(call) as Record<string, unknown>;
-        return payload.body === truncatedSummary;
+        return payload.body !== "";
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
   });
 
   it("leaves the thread untitled when the title completion is token-limited", async () => {
@@ -1847,6 +1898,14 @@ describe("CHAT-02: completed chat callback", () => {
     await expect(
       readThreadTitleFromEvents(actor, run.threadId),
     ).resolves.toBeNull();
+    expect(auxiliaryResults(context)).toContainEqual(
+      expect.objectContaining({
+        feature: "chat_title",
+        outcome: "degraded",
+        reason: "output_truncated",
+      }),
+    );
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await waitForRunStatus(actor, run.runId, "cancelled");
@@ -1895,6 +1954,14 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker).not.toHaveProperty("recommendedFollowups");
+    expect(auxiliaryResults(context)).toContainEqual(
+      expect.objectContaining({
+        feature: "recommended_followups",
+        outcome: "degraded",
+        reason: "output_truncated",
+      }),
+    );
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {

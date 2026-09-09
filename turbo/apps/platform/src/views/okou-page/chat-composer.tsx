@@ -21,7 +21,6 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
 } from "react";
-import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -347,7 +346,6 @@ interface ChatComposerProps {
 
 interface ComposerComputerUseHost {
   id: string;
-  product: DesktopProduct;
   hostName: string;
   displayName: string;
   status: "online" | "offline";

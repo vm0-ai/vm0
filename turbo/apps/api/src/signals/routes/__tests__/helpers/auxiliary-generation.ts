@@ -24,11 +24,27 @@ const resultSchema = z
       "caller_cancelled",
       "invalid_request",
       "auth",
+      "output_truncated",
+      "unexpected_tool_calls",
+      "unusable_output",
       "invalid_output",
       "unknown",
       "not_applicable",
     ]),
     duration_ms: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    // Present only when the provider reported usage. Integers, never payload.
+    completion_tokens: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+    reasoning_tokens: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
   })
   .strict();
 
