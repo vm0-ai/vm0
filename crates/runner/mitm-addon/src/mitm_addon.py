@@ -51,6 +51,7 @@ import addon_process_logging
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
 import aws_sigv4_body_admission
+import aws_sigv4_hash_executor
 import body_capture
 import builtin_host_policy
 import codex_model_catalog_cache
@@ -2007,7 +2008,8 @@ def done():
     pending. After joining the usage executor, retained billing and diagnostic
     work is drained through synchronous delivery. Model-provider
     failure delivery stops admission and receives one bounded drain window.
-    Catalog validation closes admission and joins its bounded off-loop work.
+    Catalog validation and SigV4 hashing close admission and join their bounded
+    off-loop work.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
@@ -2025,7 +2027,10 @@ def done():
                 try:
                     codex_model_catalog_cache.shutdown()
                 finally:
-                    shutdown_log_writer()
+                    try:
+                        aws_sigv4_hash_executor.shutdown()
+                    finally:
+                        shutdown_log_writer()
 
 
 # ============================================================================
