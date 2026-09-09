@@ -7,7 +7,9 @@ use std::time::Duration;
 use guest_control_proto::{ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
 use super::super::forward::forward_control_request;
-use super::super::sink::{ControlSinkInner, ControlSinkState, ControlStreamLockError};
+use super::super::sink::{
+    ControlSinkFailure, ControlSinkInner, ControlSinkState, ControlStreamLockError,
+};
 use super::super::{EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, request_deadline};
 use super::support::{
     connected_sink, connected_stream_handle, guest_writer_pair, owned_control_request,
@@ -54,7 +56,7 @@ fn fail_does_not_wait_for_busy_control_stream_lock() {
     let worker = std::thread::spawn({
         let sink = Arc::clone(&sink);
         move || {
-            sink.fail("failed".to_owned());
+            sink.fail(ControlSinkFailure::Other("failed".to_owned()));
             done_tx.send(()).unwrap();
         }
     });
@@ -78,7 +80,7 @@ fn failed_control_sink_rejects_existing_connected_stream_handle() {
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
 
-    sink.fail("failed".to_owned());
+    sink.fail(ControlSinkFailure::Other("failed".to_owned()));
 
     let error = match stream.lock_until(request_deadline(5000), &sink.active) {
         Ok(_) => panic!("failed sink should reject existing connected stream handles"),
@@ -86,7 +88,7 @@ fn failed_control_sink_rejects_existing_connected_stream_handle() {
     };
     assert!(matches!(
         error,
-        ControlStreamLockError::SinkError(message) if message == "failed"
+        ControlStreamLockError::SinkError(ControlSinkFailure::Other(message)) if message == "failed"
     ));
     drop(stream_guard);
 }
@@ -95,8 +97,8 @@ fn control_sink_failure_preserves_first_diagnostic() {
     let (sink, _peer) = connected_sink();
     let stream = connected_stream_handle(&sink);
 
-    sink.fail("first failure".to_owned());
-    sink.fail("second failure".to_owned());
+    sink.fail(ControlSinkFailure::Other("first failure".to_owned()));
+    sink.fail(ControlSinkFailure::Other("second failure".to_owned()));
 
     let error = match sink.wait_for_stream(request_deadline(5000)) {
         Ok(_) => panic!("failed sink should reject future stream lookups"),
@@ -113,7 +115,7 @@ fn control_sink_failure_preserves_first_diagnostic() {
     };
     assert!(matches!(
         error,
-        ControlStreamLockError::SinkError(message) if message == "first failure"
+        ControlStreamLockError::SinkError(ControlSinkFailure::Other(message)) if message == "first failure"
     ));
 }
 #[test]
@@ -180,7 +182,7 @@ fn queued_control_request_is_not_delivered_after_fail() {
         }
     });
 
-    sink.fail("failed".to_owned());
+    sink.fail(ControlSinkFailure::Other("failed".to_owned()));
 
     let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);

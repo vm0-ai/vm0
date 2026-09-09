@@ -9,6 +9,9 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
+use tracing::Level;
+use tracing_subscriber::prelude::*;
+use tracing_test_support::CapturedEvents;
 
 use super::support::{
     final_identity_metadata_bytes, final_identity_runtime_paths, local_sidecar_restore_plan,
@@ -33,6 +36,72 @@ use crate::types::{
 use crate::workspace_image_cache::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
 };
+
+#[tokio::test]
+async fn closed_cooperative_control_remains_warning_when_terminal_grace_expires() {
+    let captured = CapturedEvents::default();
+    let _subscriber =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(captured.clone()));
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_process_cancel_releases_wait_gate(false);
+    overrides.push_process_control_outcome(sandbox::ProcessControlOutcome::GuestStatus {
+        status: sandbox::ProcessControlGuestStatus::SinkClosed,
+        diagnostic: "closed control peer".into(),
+    });
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        minimal_context(),
+        config,
+        cancellation.signals(),
+        ProcessCancelTimeouts {
+            terminal_grace: Duration::ZERO,
+            ..PROCESS_CANCEL_TIMEOUTS
+        },
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .unwrap();
+    cancellation.request_cooperative_user_cancellation().await;
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.failure.unwrap().exit_code, EXIT_SIGKILL);
+    assert_eq!(
+        result.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation)
+    );
+    let events = captured.entries();
+    for message in [
+        "timed out waiting for cancelled guest process",
+        "failed to send cooperative user cancellation",
+    ] {
+        let event = events
+            .iter()
+            .find(|event| event.fields.get("message").map(String::as_str) == Some(message))
+            .unwrap();
+        assert_eq!(event.level, Level::WARN);
+    }
+    let event = events
+        .iter()
+        .find(|event| event.fields.contains_key("recovered_after_cancellation"))
+        .unwrap();
+    assert_eq!(
+        event
+            .fields
+            .get("recovered_after_cancellation")
+            .map(String::as_str),
+        Some("false")
+    );
+}
 
 #[tokio::test]
 async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {

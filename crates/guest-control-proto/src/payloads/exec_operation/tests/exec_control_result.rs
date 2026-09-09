@@ -107,6 +107,7 @@ fn exec_control_result_status_wire_values_are_stable() {
         (ExecControlStatus::SinkTimeout, 0x06),
         (ExecControlStatus::QueueFull, 0x07),
         (ExecControlStatus::SinkError, 0x08),
+        (ExecControlStatus::SinkClosed, 0x09),
     ];
     let layout = ExecControlResultLayout::new(MESSAGE_ID, DIAGNOSTIC);
 
