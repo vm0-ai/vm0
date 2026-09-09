@@ -7323,9 +7323,10 @@ mod tests {
 
         // If a stale v1 tarball exists, it's under a different cache key and
         // is unreachable via (name, v2).
+        let v1_bytes = b"STALE-V1-BYTES";
         let v1_dir = home.storage_cache_dir(name, "v1");
         std::fs::create_dir_all(&v1_dir).unwrap();
-        std::fs::write(v1_dir.join("archive.tar.gz"), b"STALE-V1-BYTES").unwrap();
+        std::fs::write(v1_dir.join("archive.tar.gz"), v1_bytes).unwrap();
 
         let mut manifest =
             fresh_storage_plan("https://r2.example.com/ignored.tar.gz".into(), name, "v2");
@@ -7338,9 +7339,21 @@ mod tests {
             storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, "v2")).as_str())
         );
+        let writes = sandbox.write_file_calls();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].path, guest_archive_path(name, "v2"));
+        assert_eq!(writes[0].content, v2_bytes);
+        assert_ne!(writes[0].content, v1_bytes);
+
         // v2 cache retained; v1 cache untouched (only a GC branch would evict it).
-        assert!(v2_dir.join("archive.tar.gz").exists());
-        assert!(v1_dir.join("archive.tar.gz").exists());
+        assert_eq!(
+            std::fs::read(v2_dir.join("archive.tar.gz")).unwrap(),
+            v2_bytes
+        );
+        assert_eq!(
+            std::fs::read(v1_dir.join("archive.tar.gz")).unwrap(),
+            v1_bytes
+        );
     }
 
     #[tokio::test]
