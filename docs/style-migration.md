@@ -95,6 +95,24 @@ When baseline code itself is unstable, fix the fixture or create a separately
 reviewed protocol version before implementation; never widen limits for an
 implementation that has already failed.
 
+## Pilot evidence and remaining reproducibility work
+
+[PR #32843](https://github.com/vm0-ai/vm0/pull/32843) independently migrates the
+two settings choice consumers from main. The manifest links its immutable
+before and after archives. All 21 final states passed the frozen protocol with
+identical control observations; light images had two one-level rounding pixels,
+and dark/narrow images had no changed pixels. The source head is `a4a1c66` and
+the actual tested App merge is `beee416`; full SHAs and deployment identities
+are in the archive. The required source-head CI gates passed.
+
+The after archive also retains an earlier attempt where the Light theme
+precondition timed out before any light capture, while the other 14 states
+passed. The next invocation used identical source, runner, cases, storage-state
+input and limits. Its initialization failure trigger remains unconfirmed.
+Investigate that finding before using this runner as an unattended gate;
+`verified` records the successful bounded acceptance, not flake-free automation
+or completion of the issue-wide migration.
+
 ## Evidence and merge gate
 
 Before changing styles, upload the frozen baseline archive to Okou file storage

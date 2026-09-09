@@ -164,15 +164,22 @@
         "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx"
       ],
       "cases": ["preferences-light", "preferences-dark", "preferences-mobile"],
-      "status": "baselined",
+      "status": "verified",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay",
           "url": "https://a.okou.io/e9ie0v6p2c.zip",
           "sha256": "338b88df3d7de430118f2a30069d4d6b6fe31741a622839ab12986fa7dc6a4ef",
           "commit": "f8d34d5f68b6c40223b64b0124ce85826c5aada2"
+        },
+        {
+          "kind": "after-and-raw-diffs-with-failed-attempt",
+          "url": "https://a.okou.io/rp0lazp7gc.zip",
+          "sha256": "1b059f559c0c1b5bab01d7413149a330a087002b5ffa4bdfbb681a5d19379115",
+          "commit": "beee41651324fb0563ecdfa635cbffdf68a07a5e"
         }
-      ]
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843"
     }
   ]
 }
