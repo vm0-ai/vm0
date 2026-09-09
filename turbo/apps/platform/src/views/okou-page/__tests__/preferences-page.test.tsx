@@ -264,7 +264,7 @@ test("Chat settings fall back to Preference while the capability is disabled", a
 test("Chat settings keep the agreed row order and save chat defaults", async () => {
   const updates = mockPreferences({ cloudBrowserEnabledByDefault: false });
   context.mocks.data.userModelPreference({
-    selectedModel: "gpt-5.6-sol",
+    selectedModel: "gpt-6-astra",
     serviceTier: null,
     selectedVideoModel: null,
     selectedImageModel: null,
@@ -313,18 +313,18 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
 
-  click(await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }));
-  click(await screen.findByRole("option", { name: "GPT 5.6 Sol Fast" }));
+  click(await within(dialog).findByRole("combobox", { name: "GPT 6 Astra" }));
+  click(await screen.findByRole("option", { name: "GPT 6 Astra Fast" }));
   await waitFor(() => {
     expect(modelUpdates).toContainEqual({
-      selectedModel: "gpt-5.6-sol",
+      selectedModel: "gpt-6-astra",
       serviceTier: "priority",
     });
     expect(
-      within(dialog).getByRole("combobox", { name: "GPT 5.6 Sol Fast" }),
+      within(dialog).getByRole("combobox", { name: "GPT 6 Astra Fast" }),
     ).toBeVisible();
   });
-  click(within(dialog).getByRole("combobox", { name: "GPT 5.6 Sol Fast" }));
+  click(within(dialog).getByRole("combobox", { name: "GPT 6 Astra Fast" }));
   click(
     await screen.findByRole("option", { name: "Inherit from org default" }),
   );
