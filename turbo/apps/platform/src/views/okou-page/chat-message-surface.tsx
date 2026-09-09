@@ -23,11 +23,15 @@ export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "h-auto min-h-9 py-[calc((2.25rem-1lh)/2)] leading-[1.59375rem]";
 
-// Response text starts after the 28px action-button rail. Bare icons use the
-// canonical 16px glyph size and stay centered on that same rail.
-export const CHAT_THREAD_RESPONSE_CONTENT_CLASS = "min-w-0 pl-7";
+// Rows without a leading icon stay flush with the response column. Icon rows
+// reserve a 28px rail and keep their canonical 16px glyph centered inside it.
+export const CHAT_THREAD_RESPONSE_FLUSH_CLASS = "min-w-0 pl-0";
 export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
   "inline-flex w-7 shrink-0 items-center justify-center [&_svg]:size-4";
+
+// Work-history commentary is supporting context, not the final response.
+export const CHAT_THREAD_WORK_HISTORY_TEXT_CLASS =
+  "[&_.okou-chat-bubble-assistant]:text-sm [&_.okou-chat-bubble-assistant]:leading-5 [&_.wmde-markdown]:!text-muted-foreground";
 
 // Keep the entry animation, but do not let its duration also animate the
 // responsive margin: that would continue changing layout after resize.

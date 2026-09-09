@@ -184,7 +184,16 @@ test("Expose an artifact referenced only by history from the main result actions
     ).toBeNull();
   });
   click(await findWorkHistoryToggle("collapsed"));
-  expect(screen.getByText("Generated supporting evidence.")).toBeVisible();
+  const history = screen.getByText("Generated supporting evidence.");
+  expect(history).toBeVisible();
+  const historyList = history.closest<HTMLElement>(
+    "[data-chat-run-work-history-list]",
+  );
+  expect(historyList).toHaveClass(
+    "[&_.okou-chat-bubble-assistant]:text-sm",
+    "[&_.okou-chat-bubble-assistant]:leading-5",
+    "[&_.wmde-markdown]:!text-muted-foreground",
+  );
   await expect(
     findNamedLink("Open pdf preview for supporting-report.pdf"),
   ).resolves.toBeVisible();
@@ -430,8 +439,12 @@ test("Keep completed result actions before recommended followups", async () => {
     throw new Error("Expected the completed result action bar");
   }
   const keepGoing = await screen.findByRole("group", { name: "Keep going" });
+  const mainBody = main.closest<HTMLElement>(".okou-chat-bubble-assistant");
+  const divider = keepGoing.previousElementSibling;
 
   expect(actions).toBeVisible();
+  expect(mainBody).toHaveClass("pl-0");
+  expect(divider).toHaveClass("pl-0");
   expect(mainMessage).toContainElement(actions);
   expect(mainMessage).not.toContainElement(keepGoing);
   expect(assistantGroupFor(main)).toContainElement(keepGoing);

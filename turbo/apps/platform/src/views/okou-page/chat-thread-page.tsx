@@ -312,11 +312,12 @@ import {
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
-  CHAT_THREAD_RESPONSE_CONTENT_CLASS,
+  CHAT_THREAD_RESPONSE_FLUSH_CLASS,
   CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
   CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
   CHAT_THREAD_RESPONSE_STACK_CLASS,
+  CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "./chat-message-surface.tsx";
@@ -4388,7 +4389,7 @@ function FinishedRunRow({
     <div className={CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS}>
       <RunSectionDivider
         label={label}
-        className={CHAT_THREAD_RESPONSE_CONTENT_CLASS}
+        className={CHAT_THREAD_RESPONSE_FLUSH_CLASS}
       />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
@@ -7037,6 +7038,7 @@ function PagedAssistantTimeline({
               className={cn(
                 "ml-3.5 w-[calc(100%-0.875rem)] border-l border-border/70 pl-[13px]",
                 CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
+                CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
               )}
             >
               <PagedAssistantTimeline
@@ -7055,11 +7057,7 @@ function PagedAssistantTimeline({
           data-chat-run-work-main
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
         >
-          <PagedAssistantEventItem
-            event={item.event}
-            thread={thread}
-            reserveLeadingIconRail
-          />
+          <PagedAssistantEventItem event={item.event} thread={thread} />
           {mainActions}
         </div>
       );
@@ -7225,11 +7223,9 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
-  reserveLeadingIconRail = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
-  reserveLeadingIconRail?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7257,7 +7253,7 @@ function PagedAssistantEventItem({
       <ChatAssistantMessageBody
         className={cn(
           CHAT_THREAD_RESPONSE_LINE_CLASS,
-          reserveLeadingIconRail && CHAT_THREAD_RESPONSE_CONTENT_CLASS,
+          CHAT_THREAD_RESPONSE_FLUSH_CLASS,
         )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
