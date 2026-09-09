@@ -87,8 +87,10 @@ interface ProviderState {
   voiceCatalogType: "public" | "private";
   submitStatus: number;
   sessionStatus: string;
+  sessionRequests: number;
   videoId: string | null;
   videoStatus: string;
+  videoRequests: number;
   videoContentType: string | null;
   videoDownloads: number;
   beforeDownload?: () => Promise<void>;
@@ -197,8 +199,10 @@ function mockProvider(): ProviderState {
     voiceCatalogType: "public",
     submitStatus: 200,
     sessionStatus: "thinking",
+    sessionRequests: 0,
     videoId: null,
     videoStatus: "processing",
+    videoRequests: 0,
     videoContentType: "video/mp4",
     videoDownloads: 0,
     submissions: [],
@@ -311,6 +315,7 @@ function mockProvider(): ProviderState {
       });
     }),
     http.get(`${HEYGEN_CREATE_URL}/${SESSION_ID}`, () => {
+      state.sessionRequests += 1;
       return HttpResponse.json({
         data: {
           session_id: SESSION_ID,
@@ -320,6 +325,7 @@ function mockProvider(): ProviderState {
       });
     }),
     http.get(`${HEYGEN_BASE}/videos/${VIDEO_ID}`, () => {
+      state.videoRequests += 1;
       return HttpResponse.json({
         data: {
           id: VIDEO_ID,
@@ -726,6 +732,8 @@ describe("Managed Intro Video Agent", () => {
       videoId: VIDEO_ID,
       contentType: "video/mp4",
     });
+    expect(provider.sessionRequests).toBe(0);
+    expect(provider.videoRequests).toBe(1);
     expect(provider.submissions).toHaveLength(1);
     await expect(credits(f)).resolves.toBe(9390);
   });
@@ -751,30 +759,39 @@ describe("Managed Intro Video Agent", () => {
     expect(provider.submissions).toHaveLength(1);
   });
 
-  it.each(["missing", "network error"])(
-    "recovers a completed video with one charge when its session has a %s response",
-    async (sessionFailure) => {
+  it.each(["submission", "session"])(
+    "polls only the recorded video after its ID arrives from the %s",
+    async (identitySource) => {
       const f = await fixture();
       const provider = mockProvider();
-      provider.videoId = VIDEO_ID;
+      provider.videoId = identitySource === "submission" ? VIDEO_ID : null;
       const body = request();
       expect((await submit(f, body)).status).toBe(202);
-      server.use(
-        http.get(`${HEYGEN_CREATE_URL}/${SESSION_ID}`, () => {
-          return sessionFailure === "missing"
-            ? HttpResponse.json(
-                { error: { message: "Session not found" } },
-                { status: 404 },
-              )
-            : HttpResponse.error();
-        }),
-      );
+      if (identitySource === "session") {
+        await expect(status(f, body.requestId)).resolves.toMatchObject({
+          status: "running",
+          videoId: null,
+        });
+        expect(provider.sessionRequests).toBe(1);
+        expect(provider.videoRequests).toBe(0);
+        provider.sessionStatus = "generating";
+        provider.videoId = VIDEO_ID;
+      }
 
       await expect(status(f, body.requestId)).resolves.toMatchObject({
         status: "running",
         sessionId: SESSION_ID,
         videoId: VIDEO_ID,
-        notice: expect.stringContaining("Resume this generation"),
+      });
+      expect(provider.sessionRequests).toBe(
+        identitySource === "session" ? 2 : 0,
+      );
+      expect(provider.videoRequests).toBe(1);
+      provider.sessionStatus = "failed";
+      provider.videoId = "different-video";
+      await expect(status(f, body.requestId)).resolves.toMatchObject({
+        status: "running",
+        videoId: VIDEO_ID,
       });
       await expect(credits(f)).resolves.toBe(10_000);
 
@@ -793,25 +810,22 @@ describe("Managed Intro Video Agent", () => {
       expect(completed.url).toBeDefined();
       expect(completed.url).not.toBe(VIDEO_URL);
       await expect(status(f, body.requestId)).resolves.toStrictEqual(completed);
+      expect(provider.sessionRequests).toBe(
+        identitySource === "session" ? 2 : 0,
+      );
+      expect(provider.videoRequests).toBe(3);
       expect(provider.submissions).toHaveLength(1);
+      expect(provider.videoDownloads).toBe(1);
       await expect(credits(f)).resolves.toBe(9390);
     },
   );
 
-  it("reports a failed video when its session is missing", async () => {
+  it("reports a recorded video's render failure without querying its session", async () => {
     const f = await fixture();
     const provider = mockProvider();
     provider.videoId = VIDEO_ID;
     const body = request();
     expect((await submit(f, body)).status).toBe(202);
-    server.use(
-      http.get(`${HEYGEN_CREATE_URL}/${SESSION_ID}`, () => {
-        return HttpResponse.json(
-          { error: { message: "Session not found" } },
-          { status: 404 },
-        );
-      }),
-    );
     provider.videoStatus = "failed";
 
     await expect(status(f, body.requestId)).resolves.toMatchObject({
@@ -821,64 +835,77 @@ describe("Managed Intro Video Agent", () => {
       providerStatus: "failed",
       error: { code: "HEYGEN_GENERATION_FAILED" },
     });
+    expect(provider.sessionRequests).toBe(0);
+    expect(provider.videoRequests).toBe(1);
     expect(provider.submissions).toHaveLength(1);
     await expect(credits(f)).resolves.toBe(10_000);
   });
 
-  it("keeps a missing session resumable until a video ID becomes available", async () => {
+  it.each(["missing", "network error"])(
+    "resumes a session with a %s response until a video ID is available",
+    async (sessionFailure) => {
+      const f = await fixture();
+      const provider = mockProvider();
+      const body = request();
+      expect((await submit(f, body)).status).toBe(202);
+      server.use(
+        http.get(
+          `${HEYGEN_CREATE_URL}/${SESSION_ID}`,
+          () => {
+            provider.sessionRequests += 1;
+            return sessionFailure === "missing"
+              ? HttpResponse.json(
+                  { error: { message: "Session not found" } },
+                  { status: 404 },
+                )
+              : HttpResponse.error();
+          },
+          { once: true },
+        ),
+      );
+
+      await expect(status(f, body.requestId)).resolves.toMatchObject({
+        status: "running",
+        sessionId: SESSION_ID,
+        videoId: null,
+        notice: expect.stringContaining("Resume this generation"),
+      });
+      expect(provider.sessionRequests).toBe(1);
+      expect(provider.videoRequests).toBe(0);
+      await expect(credits(f)).resolves.toBe(10_000);
+
+      provider.sessionStatus = "completed";
+      provider.videoId = VIDEO_ID;
+      provider.videoStatus = "completed";
+      await expect(status(f, body.requestId)).resolves.toMatchObject({
+        status: "completed",
+        videoId: VIDEO_ID,
+        creditsCharged: 610,
+      });
+      expect(provider.sessionRequests).toBe(2);
+      expect(provider.videoRequests).toBe(1);
+      expect(provider.submissions).toHaveLength(1);
+      await expect(credits(f)).resolves.toBe(9390);
+    },
+  );
+
+  it("keeps a conflicting video response blocked until its identity matches", async () => {
     const f = await fixture();
     const provider = mockProvider();
-    const body = request();
-    expect((await submit(f, body)).status).toBe(202);
-    server.use(
-      http.get(
-        `${HEYGEN_CREATE_URL}/${SESSION_ID}`,
-        () => {
-          return HttpResponse.json(
-            { error: { message: "Session not found" } },
-            { status: 404 },
-          );
-        },
-        { once: true },
-      ),
-    );
-
-    await expect(status(f, body.requestId)).resolves.toMatchObject({
-      status: "running",
-      sessionId: SESSION_ID,
-      videoId: null,
-      notice: expect.stringContaining("Session not found"),
-    });
-    await expect(credits(f)).resolves.toBe(10_000);
-
-    provider.sessionStatus = "completed";
-    provider.videoId = VIDEO_ID;
-    provider.videoStatus = "completed";
-    await expect(status(f, body.requestId)).resolves.toMatchObject({
-      status: "completed",
-      videoId: VIDEO_ID,
-      creditsCharged: 610,
-    });
-    expect(provider.submissions).toHaveLength(1);
-    await expect(credits(f)).resolves.toBe(9390);
-  });
-
-  it("keeps a conflicting session video blocked until its identity matches", async () => {
-    const f = await fixture();
-    const provider = mockProvider();
     provider.videoId = VIDEO_ID;
     const body = request();
     expect((await submit(f, body)).status).toBe(202);
     provider.videoStatus = "completed";
     server.use(
       http.get(
-        `${HEYGEN_CREATE_URL}/${SESSION_ID}`,
+        `${HEYGEN_BASE}/videos/${VIDEO_ID}`,
         () => {
           return HttpResponse.json({
             data: {
-              session_id: SESSION_ID,
+              id: "different-video",
               status: "completed",
-              video_id: "different-video",
+              video_url: VIDEO_URL,
+              duration: 61,
             },
           });
         },
@@ -890,7 +917,7 @@ describe("Managed Intro Video Agent", () => {
       status: "running",
       sessionId: SESSION_ID,
       videoId: VIDEO_ID,
-      notice: expect.stringContaining("different video"),
+      notice: expect.stringContaining("invalid video response"),
     });
     await expect(credits(f)).resolves.toBe(10_000);
 
@@ -899,6 +926,7 @@ describe("Managed Intro Video Agent", () => {
       videoId: VIDEO_ID,
       creditsCharged: 610,
     });
+    expect(provider.sessionRequests).toBe(0);
     expect(provider.submissions).toHaveLength(1);
     await expect(credits(f)).resolves.toBe(9390);
   });
