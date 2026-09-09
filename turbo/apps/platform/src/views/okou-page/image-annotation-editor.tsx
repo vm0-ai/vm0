@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
+import { Dialog, DialogContent } from "@okouai/ui/components/ui/dialog";
 import { Input } from "@okouai/ui/components/ui/input";
 import {
   Tooltip,
@@ -1377,6 +1378,18 @@ export function ImageAnnotationEditor({
   return <AnnotationSurface signals={signals} target={target} />;
 }
 
+/**
+ * The editor is the same window as the preview it replaces.
+ *
+ * It used to be a hand-rolled `fixed z-50` overlay, which lost twice. Its size
+ * was a second set of numbers that had to be kept level with the preview's by
+ * hand, and it drifted — `min(980px, 94vw)` against the preview's 1440, so the
+ * picture shrank the moment the pencil was pressed. And `z-50` only orders it
+ * inside the app's own stacking context, so anything portalled to `body` after
+ * it — the composer's slash-command menu, left open behind the preview — kept
+ * painting on top of the editor and stayed clickable. Both are the dialog
+ * primitive's job, and the preview next door was already using it.
+ */
 function AnnotationSurface({
   signals,
   target,
@@ -1384,6 +1397,8 @@ function AnnotationSurface({
   readonly signals: ImageAnnotationSignals;
   readonly target: AnnotationTarget;
 }) {
+  const { t } = useTranslation();
+  const close = useSet(signals.closeAnnotationEditor$);
   const resolvedUrl = useResolvedAttachmentUrl(target.url);
 
   if (resolvedUrl === null) {
@@ -1392,28 +1407,48 @@ function AnnotationSurface({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div
-        className="okou-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
-        data-testid="image-annotation-editor"
+      <Dialog
+        open
+        // A press outside must not throw the session away: the marks live
+        // nowhere else until "Attach marks", so a stray click on the backdrop
+        // would discard every one of them with no undo.
+        disablePointerDismissal
+        onOpenChange={(next, details) => {
+          // Escape belongs to `KeyboardShortcuts`, which backs out one layer at
+          // a time — the open note, then the selection, then the session.
+          // Closing here as well would collapse all three into the first press.
+          if (!next && details.reason !== "escape-key") {
+            close();
+          }
+        }}
       >
-        <KeyboardShortcuts signals={signals} />
-        <div
-          // The same envelope the preview dialog uses (`DialogContent`
-          // maxWidth={1440} height={1000}, 1.5rem of viewport padding). Edit
-          // replaces that window in place, so anything narrower reads as the
-          // picture shrinking the moment the pencil is pressed.
-          className="flex h-[1000px] max-h-full w-full max-w-[1440px] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
-          data-testid="image-annotation-panel"
+        <DialogContent
+          showCloseButton={false}
+          maxWidth={1440}
+          height={1000}
+          surface="canvas"
+          overlayClassName="bg-gray-900/45 dark:bg-gray-900/45"
+          contentClassName="okou-app flex flex-col gap-0 overflow-hidden bg-background p-0"
+          aria-label={t(($) => {
+            return $.artifacts.annotation.open;
+          })}
+          data-testid="image-annotation-editor"
         >
-          <EditorHeader filename={target.filename} signals={signals} />
-          <EditorStage
-            filename={target.filename}
-            signals={signals}
-            url={resolvedUrl}
-          />
-          <EditorFooter signals={signals} />
-        </div>
-      </div>
+          <KeyboardShortcuts signals={signals} />
+          <div
+            className="relative flex min-h-0 flex-1 flex-col overflow-hidden text-foreground"
+            data-testid="image-annotation-panel"
+          >
+            <EditorHeader filename={target.filename} signals={signals} />
+            <EditorStage
+              filename={target.filename}
+              signals={signals}
+              url={resolvedUrl}
+            />
+            <EditorFooter signals={signals} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }
