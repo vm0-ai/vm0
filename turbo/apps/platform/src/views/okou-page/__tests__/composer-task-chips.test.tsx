@@ -140,7 +140,14 @@ test.each([
     first: "Get my morning email brief",
     next: "Help me prepare for meetings",
     prompt: "Give me a morning brief",
-    cycle: ["Help me prepare for meetings", "Get my morning email brief"],
+    cycle: [
+      "Help me prepare for meetings",
+      "Plan my day each morning",
+      "Research new leads before I reach out",
+      "Track changes on competitor websites",
+      "Follow up on overdue invoices",
+      "Get my morning email brief",
+    ],
   },
   {
     task: "Image",

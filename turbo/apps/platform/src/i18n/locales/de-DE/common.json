@@ -2494,13 +2494,53 @@
           }
         },
         "workflow": {
+          "brandMentions": {
+            "label": "Erwähnungen meiner Marke sammeln",
+            "prompt": "Sammle regelmäßig neue Erwähnungen meiner Marke aus den vereinbarten Quellen. Fasse den Kontext zusammen und markiere Erwähnungen, die eine Antwort erfordern könnten. Kläre die Suchbegriffe und den Rhythmus."
+          },
+          "chatDigest": {
+            "label": "Wichtige Teamnachrichten zusammenfassen",
+            "prompt": "Fasse regelmäßig wichtige Nachrichten, Entscheidungen und Fragen aus meinen ausgewählten Teamkanälen zusammen. Kläre die Kanäle und wie oft ich die Zusammenfassung erhalten möchte."
+          },
+          "competitorChanges": {
+            "label": "Änderungen auf Wettbewerber-Websites verfolgen",
+            "prompt": "Prüfe ausgewählte Wettbewerber-Websites auf Änderungen bei Preisen, Produkten oder Ankündigungen. Kläre die Seiten und den Rhythmus und füge jedem Update Quellenlinks bei."
+          },
+          "contentIdeas": {
+            "label": "Ideen für meinen nächsten Beitrag finden",
+            "prompt": "Sammle regelmäßig aktuelle Ideen für meine nächsten Beiträge, mit Quellenlinks und einem passenden Ansatz für meine Zielgruppe. Kläre die Themen, die Zielgruppe und den Rhythmus."
+          },
+          "dailyPlan": {
+            "label": "Jeden Morgen meinen Tag planen",
+            "prompt": "Erstelle jeden Morgen aus meinem Kalender und meinen offenen Aufgaben einen realistischen Tagesplan. Kläre die Quellen, die Zeitzone und die gewünschte Uhrzeit."
+          },
+          "deadlineReminder": {
+            "label": "Mich vor Fristen erinnern",
+            "prompt": "Erinnere mich vor den Fristen wichtiger Aufgaben oder Projektmeilensteine. Kläre die Aufgabenquelle, die relevanten Fristen und den gewünschten Vorlauf."
+          },
           "emailBrief": {
             "label": "Meine morgendliche E-Mail-Übersicht erhalten",
             "prompt": "Fasse morgens wichtige E-Mails, nötige Antworten und Aufgaben zusammen. Kläre zuerst das Postfach und die gewünschte Uhrzeit."
           },
+          "feedbackThemes": {
+            "label": "Muster im Kundenfeedback erkennen",
+            "prompt": "Gruppiere Kundenfeedback jede Woche nach wiederkehrenden Themen und zeige Beispiele. Kläre die Feedbackquellen, den Zeitraum und den gewünschten Wochentag."
+          },
           "fileOrganization": {
             "label": "Eingehende Dateien organisieren",
             "prompt": "Organisiere neue Dateien nach vereinbarten Benennungs- und Ablageregeln. Kläre Quelle, Zielordner und Kategorien."
+          },
+          "invoiceFollowUps": {
+            "label": "Überfällige Rechnungen nachverfolgen",
+            "prompt": "Fasse regelmäßig überfällige Rechnungen zusammen und entwirf höfliche Zahlungserinnerungen zur Prüfung. Kläre die Rechnungsquelle, die Regeln für Überfälligkeit und den Rhythmus."
+          },
+          "jobMatches": {
+            "label": "Neue Jobs passend zu meinen Zielen finden",
+            "prompt": "Finde neue Stellenanzeigen, die zu meinen Zielen passen, und fasse die besten Treffer mit Links zusammen. Kläre die Rollen, den Standort, das Erfahrungsniveau und den gewünschten Rhythmus."
+          },
+          "leadBrief": {
+            "label": "Neue Leads vor dem Erstkontakt recherchieren",
+            "prompt": "Recherchiere bei einem neuen Lead dessen Unternehmen und bereite vor meinem Erstkontakt eine kurze Übersicht vor. Kläre die Lead-Quelle und welche Informationen ich benötige."
           },
           "meetingActions": {
             "label": "Aus Besprechungsnotizen Aufgaben ableiten",
@@ -2514,13 +2554,37 @@
             "label": "Meine tägliche Zahlenübersicht erhalten",
             "prompt": "Fasse täglich die Zahlen zusammen, die ich verfolge, und zeige Veränderungen zum letzten Stand. Kläre Quelle, Kennzahlen und Uhrzeit."
           },
+          "orderDigest": {
+            "label": "Neue Bestellungen und Retouren zusammenfassen",
+            "prompt": "Sende mir regelmäßig eine Übersicht über neue Bestellungen, Retouren und Bestellungen mit Handlungsbedarf. Kläre den Shop oder die Bestellquelle, den Berichtszeitraum und die gewünschte Uhrzeit."
+          },
+          "pendingReplies": {
+            "label": "An unbeantwortete E-Mails erinnern",
+            "prompt": "Erinnere mich, wenn eine von mir gesendete E-Mail nach einer bestimmten Zeit noch unbeantwortet ist. Kläre, welche Unterhaltungen du verfolgen und wie lange du warten sollst."
+          },
           "progressRecap": {
             "label": "Fortschritte und nächste Schritte zusammenfassen",
             "prompt": "Fasse erledigte Arbeit, offene Aufgaben und nächste Prioritäten regelmäßig zusammen. Kläre die Quelle der Aufzeichnungen und ob täglich oder wöchentlich."
           },
+          "renewalReminder": {
+            "label": "Mich vor Vertragsverlängerungen erinnern",
+            "prompt": "Erinnere mich vor der Verlängerung von Abonnements oder Verträgen, damit ich sie rechtzeitig prüfen kann. Kläre die Quelle der Verlängerungstermine und den gewünschten Vorlauf."
+          },
           "replyWatch": {
             "label": "Bei einer E-Mail-Antwort Bescheid geben",
             "prompt": "Achte auf eine Antwort auf eine bestimmte E-Mail, benachrichtige mich und fasse sie zusammen. Kläre zuerst, welche E-Mail gemeint ist."
+          },
+          "salesFollowUps": {
+            "label": "Nachfass-E-Mails nach Verkaufsgesprächen entwerfen",
+            "prompt": "Erstelle nach einem Verkaufsgespräch anhand meiner Notizen einen E-Mail-Entwurf für den Kunden mit den vereinbarten nächsten Schritten. Kläre, wo die Notizen liegen, und lege mir jeden Entwurf zur Prüfung vor."
+          },
+          "spreadsheetChecks": {
+            "label": "Fehlende Angaben in meiner Tabelle finden",
+            "prompt": "Prüfe eine Tabelle regelmäßig auf fehlende Pflichtangaben und doppelte Datensätze. Melde die Zeilen, die geprüft werden müssen. Kläre die Tabelle, Spalten, Regeln und den Rhythmus."
+          },
+          "supportTriage": {
+            "label": "Neue Kundenanfragen priorisieren",
+            "prompt": "Sichte regelmäßig neue Kundenanfragen und fasse die dringenden zuerst zusammen. Kläre das Postfach, die Dringlichkeitsregeln und die gewünschte Uhrzeit."
           },
           "topicUpdates": {
             "label": "Neuigkeiten zu einem Thema verfolgen",

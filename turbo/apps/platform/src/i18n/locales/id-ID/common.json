@@ -2486,13 +2486,53 @@
           }
         },
         "workflow": {
+          "brandMentions": {
+            "label": "Kumpulkan penyebutan merek saya",
+            "prompt": "Kumpulkan secara berkala penyebutan baru merek saya dari sumber yang disepakati. Rangkum konteksnya dan tandai yang mungkin memerlukan tanggapan. Konfirmasikan istilah merek dan frekuensinya."
+          },
+          "chatDigest": {
+            "label": "Rangkum pesan penting dari tim",
+            "prompt": "Rangkum secara berkala pesan penting, keputusan, dan pertanyaan dari kanal tim yang saya pilih. Konfirmasikan kanal dan frekuensi pengiriman ringkasan."
+          },
+          "competitorChanges": {
+            "label": "Pantau perubahan situs pesaing",
+            "prompt": "Periksa situs pesaing yang saya pilih untuk perubahan harga, produk, atau pengumuman. Konfirmasikan halaman dan frekuensinya, lalu sertakan tautan sumber di setiap pembaruan."
+          },
+          "contentIdeas": {
+            "label": "Cari ide untuk postingan saya berikutnya",
+            "prompt": "Kumpulkan secara berkala ide terkini untuk postingan saya berikutnya, beserta tautan sumber dan sudut pandang yang sesuai untuk audiens saya. Konfirmasikan topik, audiens, dan frekuensinya."
+          },
+          "dailyPlan": {
+            "label": "Rencanakan hari saya setiap pagi",
+            "prompt": "Setiap pagi, ubah kalender dan tugas saya yang belum selesai menjadi rencana harian yang realistis. Konfirmasikan sumber, zona waktu, dan waktu pengiriman."
+          },
+          "deadlineReminder": {
+            "label": "Ingatkan saya sebelum tenggat",
+            "prompt": "Ingatkan saya sebelum tenggat tugas penting atau tonggak proyek. Konfirmasikan sumber tugas, tenggat yang penting, dan seberapa awal pengingat diperlukan."
+          },
           "emailBrief": {
             "label": "Dapatkan ringkasan email setiap pagi",
             "prompt": "Ringkas email penting, balasan yang perlu dibuat, dan tugas setiap pagi. Konfirmasi kotak masuk dan waktu penerimaan terlebih dahulu."
           },
+          "feedbackThemes": {
+            "label": "Temukan pola dalam masukan pelanggan",
+            "prompt": "Setiap minggu, kelompokkan masukan pelanggan berdasarkan tema yang berulang dan soroti contohnya. Konfirmasikan sumber masukan, rentang waktu, dan hari pengiriman."
+          },
           "fileOrganization": {
             "label": "Atur file yang baru masuk",
             "prompt": "Atur file baru dengan aturan penamaan dan pengarsipan yang disepakati. Konfirmasi sumber, folder tujuan, dan kategori."
+          },
+          "invoiceFollowUps": {
+            "label": "Tindak lanjuti faktur yang lewat jatuh tempo",
+            "prompt": "Rangkum secara berkala faktur yang lewat jatuh tempo dan buat draf pengingat pembayaran yang sopan untuk saya tinjau. Konfirmasikan sumber faktur, aturan keterlambatan, dan frekuensinya."
+          },
+          "jobMatches": {
+            "label": "Cari lowongan baru sesuai tujuan saya",
+            "prompt": "Cari lowongan kerja terbaru yang sesuai dengan tujuan saya dan rangkum pilihan terbaik beserta tautannya. Konfirmasikan posisi, lokasi, tingkat pengalaman, dan frekuensi pembaruan."
+          },
+          "leadBrief": {
+            "label": "Riset prospek baru sebelum saya menghubungi",
+            "prompt": "Saat ada prospek baru, teliti bisnis mereka dan siapkan ringkasan singkat sebelum saya menghubungi. Konfirmasikan sumber prospek dan informasi yang saya perlukan."
           },
           "meetingActions": {
             "label": "Ubah catatan rapat menjadi tugas",
@@ -2506,13 +2546,37 @@
             "label": "Dapatkan ringkasan angka harian",
             "prompt": "Rangkum angka yang saya pantau beserta perubahan sejak pembaruan terakhir setiap hari. Konfirmasi sumber data, metrik, dan waktu pengiriman."
           },
+          "orderDigest": {
+            "label": "Rangkum pesanan baru dan retur",
+            "prompt": "Kirim ringkasan berkala tentang pesanan baru, retur, dan pesanan yang perlu perhatian. Konfirmasikan toko atau sumber pesanan, periode laporan, dan waktu pengiriman."
+          },
+          "pendingReplies": {
+            "label": "Ingatkan email saya yang belum dibalas",
+            "prompt": "Ingatkan saya saat email yang saya kirim belum mendapat balasan setelah jangka waktu tertentu. Konfirmasikan percakapan yang dipantau dan berapa lama harus menunggu."
+          },
           "progressRecap": {
             "label": "Rangkum progres dan langkah berikutnya",
             "prompt": "Rangkum pekerjaan selesai, tugas tertunda, dan prioritas berikutnya secara rutin. Konfirmasi sumber catatan serta jadwal harian atau mingguan."
           },
+          "renewalReminder": {
+            "label": "Ingatkan saya sebelum perpanjangan",
+            "prompt": "Ingatkan saya sebelum langganan atau kontrak diperpanjang agar saya sempat meninjaunya. Konfirmasikan sumber tanggal perpanjangan dan seberapa awal pengingat diperlukan."
+          },
           "replyWatch": {
             "label": "Beri tahu saat email mendapat balasan",
             "prompt": "Pantau balasan untuk satu email, lalu beri tahu saya dan rangkum isinya. Konfirmasi email yang perlu diikuti terlebih dahulu."
+          },
+          "salesFollowUps": {
+            "label": "Buat draf tindak lanjut setelah panggilan penjualan",
+            "prompt": "Setelah panggilan penjualan, gunakan catatan saya untuk membuat draf tindak lanjut kepada pelanggan beserta langkah berikutnya yang disepakati. Konfirmasikan lokasi catatan dan simpan setiap draf untuk saya tinjau."
+          },
+          "spreadsheetChecks": {
+            "label": "Temukan data yang kurang di spreadsheet saya",
+            "prompt": "Periksa spreadsheet secara berkala untuk data wajib yang belum diisi dan catatan duplikat. Laporkan baris yang perlu ditinjau. Konfirmasikan spreadsheet, kolom, aturan, dan frekuensinya."
+          },
+          "supportTriage": {
+            "label": "Prioritaskan permintaan baru dari pelanggan",
+            "prompt": "Tinjau permintaan baru dari pelanggan secara berkala dan rangkum yang mendesak terlebih dahulu. Konfirmasikan kotak masuk, aturan urgensi, dan waktu ringkasan yang saya inginkan."
           },
           "topicUpdates": {
             "label": "Ikuti kabar terbaru tentang suatu topik",

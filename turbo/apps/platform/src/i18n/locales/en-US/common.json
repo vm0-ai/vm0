@@ -2494,13 +2494,53 @@
           }
         },
         "workflow": {
+          "brandMentions": {
+            "label": "Collect mentions of my brand",
+            "prompt": "Regularly collect new mentions of my brand from the sources we agree on. Summarize the context and flag mentions that may need a response. Confirm the brand terms and cadence."
+          },
+          "chatDigest": {
+            "label": "Catch up on important team messages",
+            "prompt": "Regularly summarize important messages, decisions, and questions from the team channels I choose. Confirm the channels and how often to send the summary."
+          },
+          "competitorChanges": {
+            "label": "Track changes on competitor websites",
+            "prompt": "Check the competitor websites I choose for changes to pricing, products, or announcements. Confirm the pages and cadence, and include source links in each update."
+          },
+          "contentIdeas": {
+            "label": "Find ideas for my next post",
+            "prompt": "Regularly collect timely ideas for my next posts, with source links and an angle for my audience. Confirm the topics, audience, and cadence."
+          },
+          "dailyPlan": {
+            "label": "Plan my day each morning",
+            "prompt": "Each morning, turn my calendar and open tasks into a realistic plan for the day. Confirm the sources, time zone, and delivery time."
+          },
+          "deadlineReminder": {
+            "label": "Remind me before deadlines",
+            "prompt": "Remind me before important tasks or project milestones are due. Confirm the task source, which deadlines matter, and how much notice I need."
+          },
           "emailBrief": {
             "label": "Get my morning email brief",
             "prompt": "Give me a morning brief of the emails I need to pay attention to, including replies and action items. First confirm which inbox to use and when I want to receive it."
           },
+          "feedbackThemes": {
+            "label": "Find patterns in customer feedback",
+            "prompt": "Each week, group customer feedback into recurring themes and highlight examples. Confirm the feedback sources, time period, and delivery day."
+          },
           "fileOrganization": {
             "label": "Organize incoming files",
             "prompt": "Organize new files as they arrive, using agreed naming and filing rules. First confirm the source, destination folder, and categories."
+          },
+          "invoiceFollowUps": {
+            "label": "Follow up on overdue invoices",
+            "prompt": "Regularly summarize overdue invoices and draft polite payment reminders for my review. Confirm the invoice source, overdue rules, and cadence."
+          },
+          "jobMatches": {
+            "label": "Find new jobs that fit my goals",
+            "prompt": "Find newly posted jobs that fit my goals and summarize the strongest matches with links. Confirm roles, location, experience level, and how often I want updates."
+          },
+          "leadBrief": {
+            "label": "Research new leads before I reach out",
+            "prompt": "When a new lead appears, research their business and prepare a short brief before I reach out. Confirm the lead source and the information I need."
           },
           "meetingActions": {
             "label": "Turn meeting notes into action items",
@@ -2514,13 +2554,37 @@
             "label": "Get a daily numbers summary",
             "prompt": "Give me a daily summary of the numbers I track and how they changed since the last update. First confirm the data source, the numbers to include, and when to send it."
           },
+          "orderDigest": {
+            "label": "Summarize new orders and returns",
+            "prompt": "Send me a regular summary of new orders, returns, and orders that need attention. Confirm the store or order source, reporting period, and delivery time."
+          },
+          "pendingReplies": {
+            "label": "Remind me about unanswered emails",
+            "prompt": "Remind me when an email I sent has gone unanswered for a set time. Confirm which conversations to track and how long to wait."
+          },
           "progressRecap": {
             "label": "Recap my progress and next steps",
             "prompt": "Regularly recap my completed work, unfinished items, and next priorities. First confirm where to find my work records and whether I want a daily or weekly recap."
           },
+          "renewalReminder": {
+            "label": "Remind me before renewals",
+            "prompt": "Remind me before subscriptions or contracts renew so I have time to review them. Confirm the source of renewal dates and how much notice I need."
+          },
           "replyWatch": {
             "label": "Tell me when an email gets a reply",
             "prompt": "Watch one email for a reply, then notify me and summarize it. First confirm which email to follow."
+          },
+          "salesFollowUps": {
+            "label": "Draft follow-ups after sales calls",
+            "prompt": "After a sales call, use my notes to draft a customer follow-up with agreed next steps. Confirm where to find the notes and keep each draft for my review."
+          },
+          "spreadsheetChecks": {
+            "label": "Find missing details in my spreadsheet",
+            "prompt": "Regularly check a spreadsheet for missing required details and duplicate records. Report the rows that need review. Confirm the sheet, columns, rules, and cadence."
+          },
+          "supportTriage": {
+            "label": "Prioritize new customer requests",
+            "prompt": "Regularly review new customer requests and summarize the urgent ones first. Confirm the inbox, urgency rules, and when I want the summary."
           },
           "topicUpdates": {
             "label": "Follow updates on a topic",

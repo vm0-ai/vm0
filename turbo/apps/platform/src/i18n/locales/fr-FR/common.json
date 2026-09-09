@@ -2539,13 +2539,53 @@
           }
         },
         "workflow": {
+          "brandMentions": {
+            "label": "Recueillir les mentions de ma marque",
+            "prompt": "Recueille régulièrement les nouvelles mentions de ma marque dans les sources convenues. Résume le contexte et signale celles qui pourraient nécessiter une réponse. Confirme les termes de recherche et la fréquence."
+          },
+          "chatDigest": {
+            "label": "Résumer les messages importants de l’équipe",
+            "prompt": "Résume régulièrement les messages importants, les décisions et les questions des canaux d’équipe que je choisis. Confirme les canaux et la fréquence du résumé."
+          },
+          "competitorChanges": {
+            "label": "Suivre les changements des sites concurrents",
+            "prompt": "Vérifie les sites concurrents que je choisis pour repérer les changements de tarifs, de produits ou d’annonces. Confirme les pages et la fréquence, et joins les liens sources à chaque mise à jour."
+          },
+          "contentIdeas": {
+            "label": "Trouver des idées pour ma prochaine publication",
+            "prompt": "Recueille régulièrement des idées d’actualité pour mes prochaines publications, avec des liens sources et un angle adapté à mon public. Confirme les sujets, le public et la fréquence."
+          },
+          "dailyPlan": {
+            "label": "Planifier ma journée chaque matin",
+            "prompt": "Chaque matin, transforme mon calendrier et mes tâches en cours en un programme réaliste pour la journée. Confirme les sources, le fuseau horaire et l’heure d’envoi."
+          },
+          "deadlineReminder": {
+            "label": "Me rappeler les échéances à l’avance",
+            "prompt": "Préviens-moi avant les échéances des tâches importantes ou des jalons de projet. Confirme la source des tâches, les échéances concernées et le délai de préavis souhaité."
+          },
           "emailBrief": {
             "label": "Recevoir mon résumé matinal des e-mails",
             "prompt": "Chaque matin, résume les e-mails importants, les réponses à préparer et les actions à mener. Confirme la boîte à utiliser et l'heure souhaitée."
           },
+          "feedbackThemes": {
+            "label": "Repérer les tendances dans les retours clients",
+            "prompt": "Chaque semaine, regroupe les retours clients par thèmes récurrents et présente des exemples. Confirme les sources, la période et le jour d’envoi."
+          },
           "fileOrganization": {
             "label": "Organiser les nouveaux fichiers",
             "prompt": "Classe les nouveaux fichiers selon les règles de nommage convenues. Confirme la source, le dossier de destination et les catégories."
+          },
+          "invoiceFollowUps": {
+            "label": "Faire le suivi des factures en retard",
+            "prompt": "Résume régulièrement les factures impayées à échéance et prépare des rappels de paiement courtois pour ma validation. Confirme la source des factures, les règles de retard et la fréquence."
+          },
+          "jobMatches": {
+            "label": "Trouver des offres adaptées à mes objectifs",
+            "prompt": "Trouve de nouvelles offres d’emploi correspondant à mes objectifs et résume les meilleures avec leurs liens. Confirme les postes, le lieu, le niveau d’expérience et la fréquence des mises à jour."
+          },
+          "leadBrief": {
+            "label": "Rechercher de nouveaux prospects avant contact",
+            "prompt": "Lorsqu’un nouveau prospect apparaît, renseigne-toi sur son entreprise et prépare une courte synthèse avant ma prise de contact. Confirme la source des prospects et les informations nécessaires."
           },
           "meetingActions": {
             "label": "Transformer les notes de réunion en actions",
@@ -2559,13 +2599,37 @@
             "label": "Recevoir mon résumé quotidien des chiffres",
             "prompt": "Résume chaque jour les chiffres que je suis et leur évolution depuis le dernier point. Confirme la source, les indicateurs et l'heure."
           },
+          "orderDigest": {
+            "label": "Résumer les nouvelles commandes et les retours",
+            "prompt": "Envoie-moi régulièrement un résumé des nouvelles commandes, des retours et des commandes nécessitant une attention particulière. Confirme la boutique ou la source des commandes, la période et l’heure d’envoi."
+          },
+          "pendingReplies": {
+            "label": "Me rappeler les e-mails sans réponse",
+            "prompt": "Préviens-moi lorsqu’un e-mail que j’ai envoyé reste sans réponse pendant une durée définie. Confirme les conversations à suivre et le délai d’attente."
+          },
           "progressRecap": {
             "label": "Résumer mes progrès et prochaines étapes",
             "prompt": "Résume régulièrement le travail terminé, les tâches restantes et les priorités. Confirme la source des notes et une fréquence quotidienne ou hebdomadaire."
           },
+          "renewalReminder": {
+            "label": "Me prévenir avant les renouvellements",
+            "prompt": "Préviens-moi avant le renouvellement des abonnements ou contrats pour me laisser le temps de les examiner. Confirme la source des dates de renouvellement et le préavis souhaité."
+          },
           "replyWatch": {
             "label": "M'avertir d'une réponse à un e-mail",
             "prompt": "Surveille la réponse à un e-mail précis, puis préviens-moi et résume-la. Confirme d'abord l'e-mail à suivre."
+          },
+          "salesFollowUps": {
+            "label": "Rédiger des suivis après mes appels de vente",
+            "prompt": "Après un appel de vente, utilise mes notes pour rédiger un suivi client avec les prochaines étapes convenues. Confirme où trouver les notes et garde chaque brouillon pour ma validation."
+          },
+          "spreadsheetChecks": {
+            "label": "Repérer les données manquantes de mon tableur",
+            "prompt": "Vérifie régulièrement un tableur pour repérer les informations obligatoires manquantes et les doublons. Signale les lignes à examiner. Confirme le fichier, les colonnes, les règles et la fréquence."
+          },
+          "supportTriage": {
+            "label": "Prioriser les nouvelles demandes clients",
+            "prompt": "Examine régulièrement les nouvelles demandes clients et résume d’abord les plus urgentes. Confirme la boîte de réception, les critères d’urgence et l’heure souhaitée du résumé."
           },
           "topicUpdates": {
             "label": "Suivre les nouveautés d'un sujet",

@@ -2539,13 +2539,53 @@
           }
         },
         "workflow": {
+          "brandMentions": {
+            "label": "Raccogliere le menzioni del mio brand",
+            "prompt": "Raccogli regolarmente le nuove menzioni del mio brand dalle fonti concordate. Riassumi il contesto e segnala quelle che potrebbero richiedere una risposta. Conferma i termini di ricerca e la frequenza."
+          },
+          "chatDigest": {
+            "label": "Riassumere i messaggi importanti del team",
+            "prompt": "Riassumi regolarmente messaggi importanti, decisioni e domande dai canali del team che scelgo. Conferma i canali e la frequenza del riepilogo."
+          },
+          "competitorChanges": {
+            "label": "Seguire i cambiamenti sui siti dei concorrenti",
+            "prompt": "Controlla i siti dei concorrenti che scelgo per individuare cambiamenti a prezzi, prodotti o annunci. Conferma le pagine e la frequenza e includi i link alle fonti in ogni aggiornamento."
+          },
+          "contentIdeas": {
+            "label": "Trovare idee per il mio prossimo post",
+            "prompt": "Raccogli regolarmente idee attuali per i miei prossimi post, con link alle fonti e un taglio adatto al mio pubblico. Conferma gli argomenti, il pubblico e la frequenza."
+          },
+          "dailyPlan": {
+            "label": "Pianificare la mia giornata ogni mattina",
+            "prompt": "Ogni mattina, trasforma il mio calendario e le attività aperte in un piano realistico per la giornata. Conferma le fonti, il fuso orario e l’orario di invio."
+          },
+          "deadlineReminder": {
+            "label": "Ricordarmi le scadenze in anticipo",
+            "prompt": "Avvisami prima delle scadenze di attività importanti o delle tappe di progetto. Conferma la fonte delle attività, le scadenze rilevanti e l’anticipo desiderato."
+          },
           "emailBrief": {
             "label": "Ricevere il riepilogo mattutino delle email",
             "prompt": "Ogni mattina riassumi le email importanti, le risposte da preparare e le azioni necessarie. Conferma la casella da usare e l'orario."
           },
+          "feedbackThemes": {
+            "label": "Trovare temi ricorrenti nei feedback dei clienti",
+            "prompt": "Ogni settimana, raggruppa i feedback dei clienti per temi ricorrenti ed evidenzia degli esempi. Conferma le fonti, il periodo e il giorno di invio."
+          },
           "fileOrganization": {
             "label": "Organizzare i file in arrivo",
             "prompt": "Organizza i nuovi file secondo regole concordate di denominazione e archiviazione. Conferma origine, cartella di destinazione e categorie."
+          },
+          "invoiceFollowUps": {
+            "label": "Sollecitare le fatture scadute",
+            "prompt": "Riassumi regolarmente le fatture scadute e prepara solleciti di pagamento cortesi da sottopormi. Conferma la fonte delle fatture, le regole sulle scadenze e la frequenza."
+          },
+          "jobMatches": {
+            "label": "Trovare lavori adatti ai miei obiettivi",
+            "prompt": "Trova nuovi annunci di lavoro adatti ai miei obiettivi e riassumi i più pertinenti con i relativi link. Conferma i ruoli, la località, il livello di esperienza e la frequenza degli aggiornamenti."
+          },
+          "leadBrief": {
+            "label": "Informarmi sui nuovi lead prima di contattarli",
+            "prompt": "Quando arriva un nuovo lead, cerca informazioni sulla sua attività e prepara un breve riepilogo prima che lo contatti. Conferma la fonte dei lead e le informazioni necessarie."
           },
           "meetingActions": {
             "label": "Trasformare gli appunti di riunione in attività",
@@ -2559,13 +2599,37 @@
             "label": "Ricevere il riepilogo giornaliero dei numeri",
             "prompt": "Riassumi ogni giorno i numeri che seguo e le variazioni dall'ultimo aggiornamento. Conferma la fonte, gli indicatori e l'orario."
           },
+          "orderDigest": {
+            "label": "Riassumere nuovi ordini e resi",
+            "prompt": "Inviami regolarmente un riepilogo dei nuovi ordini, dei resi e degli ordini che richiedono attenzione. Conferma il negozio o la fonte degli ordini, il periodo e l’orario di invio."
+          },
+          "pendingReplies": {
+            "label": "Ricordarmi le e-mail senza risposta",
+            "prompt": "Avvisami quando un’e-mail che ho inviato rimane senza risposta per un periodo stabilito. Conferma quali conversazioni seguire e quanto aspettare."
+          },
           "progressRecap": {
             "label": "Riepilogare progressi e prossimi passi",
             "prompt": "Riepiloga regolarmente il lavoro completato, le attività aperte e le priorità. Conferma la fonte dei resoconti e la frequenza giornaliera o settimanale."
           },
+          "renewalReminder": {
+            "label": "Avvisarmi prima dei rinnovi",
+            "prompt": "Avvisami prima del rinnovo di abbonamenti o contratti, così posso valutarli per tempo. Conferma la fonte delle date di rinnovo e il preavviso necessario."
+          },
           "replyWatch": {
             "label": "Avvisarmi quando arriva una risposta email",
             "prompt": "Segui una specifica email in attesa di risposta, poi avvisami e riassumi il contenuto. Conferma prima quale email seguire."
+          },
+          "salesFollowUps": {
+            "label": "Preparare follow-up dopo le chiamate di vendita",
+            "prompt": "Dopo una chiamata di vendita, usa i miei appunti per preparare un messaggio di follow-up al cliente con i prossimi passi concordati. Conferma dove trovare gli appunti e conserva ogni bozza per la mia revisione."
+          },
+          "spreadsheetChecks": {
+            "label": "Trovare dati mancanti nel mio foglio di calcolo",
+            "prompt": "Controlla regolarmente un foglio di calcolo per trovare dati obbligatori mancanti e record duplicati. Segnala le righe da rivedere. Conferma il foglio, le colonne, le regole e la frequenza."
+          },
+          "supportTriage": {
+            "label": "Dare priorità alle nuove richieste dei clienti",
+            "prompt": "Esamina regolarmente le nuove richieste dei clienti e riassumi prima quelle urgenti. Conferma la casella di posta, i criteri di urgenza e quando desidero il riepilogo."
           },
           "topicUpdates": {
             "label": "Seguire le novità su un argomento",
