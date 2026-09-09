@@ -10,7 +10,6 @@ export const katexBrowserRuntime$ = computed(async (get) => {
   signal.throwIfAborted();
   // Formula rendering is an explicit optional boundary: this import runs only
   // after a parsed math node reaches the view, not during App startup.
-  // eslint-disable-next-line no-restricted-syntax
   const { default: runtime } = await import("katex");
   signal.throwIfAborted();
   return runtime;
