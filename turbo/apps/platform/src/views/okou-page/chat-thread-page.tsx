@@ -7049,7 +7049,7 @@ function PagedAssistantTimeline({
             <div
               data-chat-run-work-history-list
               className={cn(
-                "ml-3.5 w-[calc(100%-0.875rem)] border-l border-border/70 pl-[13px]",
+                "ml-2 w-[calc(100%-0.5rem)] border-l border-border/70 pl-[15px]",
                 CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
               )}
             >
@@ -7607,8 +7607,20 @@ function PagedGroupPrimaryActions({
 }) {
   const { t } = useTranslation();
   const showActivityLogs = useGet(featureSwitch$)[FeatureSwitchKey.OkouDebug];
+  const hasLeadingIconAction = Boolean(
+    (showActivityLogs && firstRunId) || hasContent,
+  );
   return (
-    <div className="flex items-center gap-1" data-testid="chat-event-actions">
+    <div
+      className={cn(
+        "flex items-center gap-1",
+        // Icon buttons keep their 28px hit target centered around the 16px
+        // glyph. Let the target overhang so the visible glyph, not its box,
+        // starts on the response column.
+        hasLeadingIconAction && "-ml-1.5",
+      )}
+      data-testid="chat-event-actions"
+    >
       {showActivityLogs && firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>

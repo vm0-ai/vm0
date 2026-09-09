@@ -24,10 +24,11 @@ export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "h-auto min-h-9 py-[calc((2.25rem-1lh)/2)] leading-[1.59375rem]";
 
 // Rows without a leading icon stay flush with the response column. Icon rows
-// reserve a 28px rail and keep their canonical 16px glyph centered inside it.
+// put their canonical 16px glyph on that same left edge, then reserve 8px
+// before the label.
 export const CHAT_THREAD_RESPONSE_FLUSH_CLASS = "min-w-0 pl-0";
 export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
-  "inline-flex w-7 shrink-0 items-center justify-center [&_svg]:size-4";
+  "inline-flex w-6 shrink-0 items-center justify-start [&_svg]:size-4";
 
 // Supporting rows should read as one quiet unit: the 14px regular label sits
 // behind its 16px line icon instead of competing with the final response.

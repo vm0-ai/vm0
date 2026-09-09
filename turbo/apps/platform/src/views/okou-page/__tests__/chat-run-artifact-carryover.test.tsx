@@ -177,6 +177,9 @@ test("Expose an artifact referenced only by history from the main result actions
   expect(relatedArtifactRow(dialog, reportUrl)).toHaveTextContent("Report");
   const workToggle = queryWorkHistoryToggle("collapsed");
   expect(workToggle).toBeVisible();
+  const workIconRail = workToggle?.querySelector("svg")?.parentElement;
+  expect(workIconRail).toHaveClass("w-6", "justify-start");
+  expect(workIconRail).not.toHaveClass("w-7", "justify-center");
   expect(workToggle?.querySelector("[data-chat-run-work-label]")).toHaveClass(
     "text-sm",
     "font-normal",
@@ -195,6 +198,11 @@ test("Expose an artifact referenced only by history from the main result actions
   expect(history).toBeVisible();
   const historyBody = history.closest<HTMLElement>(
     "[data-chat-run-work-history-item]",
+  );
+  expect(history.closest("[data-chat-run-work-history-list]")).toHaveClass(
+    "ml-2",
+    "w-[calc(100%-0.5rem)]",
+    "pl-[15px]",
   );
   expect(historyBody).toHaveClass(
     "text-sm",
@@ -456,13 +464,18 @@ test("Keep completed result actions before recommended followups", async () => {
   const followupHoverIcon = followupButton.querySelector(
     "[data-chat-followup-hover-icon]",
   );
+  const followupIconRail =
+    followupButton.querySelector("span > svg")?.parentElement;
   const mainBody = main.closest<HTMLElement>(
     "[data-chat-scroll-anchor-event-id]",
   );
   const divider = keepGoing.previousElementSibling;
 
   expect(actions).toBeVisible();
+  expect(actions).toHaveClass("-ml-1.5");
   expect(followupButton).toHaveClass("relative");
+  expect(followupIconRail).toHaveClass("w-6", "justify-start");
+  expect(followupIconRail).not.toHaveClass("w-7", "justify-center");
   expect(followupLabel).toHaveClass(
     "text-sm",
     "font-normal",
