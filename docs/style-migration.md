@@ -244,3 +244,21 @@ browser: its owner identity controls whether visibility settings render. Tone
 also freezes that Agent's empty user-connectors and permission-grants GET
 responses, so preview database resets cannot invalidate ancillary reads.
 Geometry assertions run against the same settled paint that is archived.
+
+The [AFTER archive](https://a.okou.io/2ylnq5pvv1.zip) and
+[quick comparison](https://a.okou.io/eirvvzcyr7.png) record all 54 states with
+zero changed pixels and identical control observations on App/API build
+`7da162302e3de54931c8c9c66e49f4c1d3211960`, from source
+`92f0e94405a15b7c5f94fdd05660ab698a22f7af`. Real API Save, reload, Discard
+and restoration of the original tone passed. The 15 shared UI tests, 27 page
+tests, relevant types/lint/Knip checks and all source-head CI gates passed.
+The legacy inventory remains 94 tokens, 534 declarations, 309 production uses
+and two injections.
+
+The archive retains the first AFTER invocation: two initial Light frames
+captured the sidebar promo before it appeared, while control observations and
+all other states matched. After confirming the live promo had loaded, a new
+invocation with identical source, runner, cases, fixture and limits passed.
+No expected image, mask or threshold changed. This is bounded Chromium
+acceptance; explicit sidebar readiness remains necessary before using the
+runner as an unattended gate.
