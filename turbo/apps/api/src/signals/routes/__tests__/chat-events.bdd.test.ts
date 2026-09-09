@@ -219,10 +219,7 @@ import {
   readCustomConnectorCredentialStorageParent,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
-import {
-  updateFeatureSwitchesForUser,
-  deleteFeatureSwitchesForUser,
-} from "./helpers/feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   commitMemoryVersion,
   seedReadyMemorySummaryProjection,
@@ -21463,105 +21460,95 @@ describe("CHAT-02: generation templates and attachments", () => {
     },
   };
 
-  it.each(["override", "email allowlist"] as const)(
-    "gates explainer template sends with %s while preserving ordinary video",
-    async (access) => {
-      const { actor, agentId } = await entitledChatActor(
-        access === "email allowlist" ? { email: "bingjie@vm0.ai" } : {},
-      );
-      const scopedActor = { ...actor, orgId: requireOrgId(actor) };
-      await updateFeatureSwitchesForUser(context, scopedActor, {
-        [FeatureSwitchKey.IntroVideo]: false,
-      });
-      const ordinary = VIDEO_TEMPLATE_ITEMS[0]!;
-      const ordinaryTemplate: GenerationTemplateRequest = {
-        type: "video",
-        selection: { stylePresetId: ordinary.id },
-      };
-      for (const templates of [
-        [explainerTemplate],
-        [ordinaryTemplate, explainerTemplate],
-      ]) {
-        const rejected = await chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            prompt: "Explain the product",
-            userMessage: {
-              version: 1,
-              parts: [
-                { type: "text", text: "Explain the product" },
-                ...templates.map((template) => {
-                  return {
-                    type: "template" as const,
-                    titleSnapshot: "Selected video",
-                    template,
-                  };
-                }),
-              ],
-            },
-          },
-          [400],
-        );
-        expectApiError(rejected.body);
-        expect(rejected.body.error.message).toBe(
-          "Explainer video is not available",
-        );
-      }
-      const events = await chat.requestThreadEvents(actor, {}, [200]);
-      if (events.status !== 200) {
-        throw new Error("Expected thread events to load");
-      }
-      expect(events.body.events).toStrictEqual([]);
-      const video = await sendChatRun(actor, {
-        agentId,
-        prompt: "Make a creative scene",
-        template: ordinaryTemplate,
-      });
-      expect(
-        (await api.readRun(actor, video.runId)).appendSystemPrompt,
-      ).toContain(ordinary.id);
-      await cancelChatRun(actor, video.runId);
-
-      if (access === "email allowlist") {
-        await deleteFeatureSwitchesForUser(context, scopedActor);
-      } else {
-        await updateFeatureSwitchesForUser(context, scopedActor, {
-          [FeatureSwitchKey.IntroVideo]: true,
-        });
-      }
-
-      const malformed = await chat.requestSendEvent(
+  it("gates explainer template sends with the rollout override while preserving ordinary video", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const scopedActor = { ...actor, orgId: requireOrgId(actor) };
+    await updateFeatureSwitchesForUser(context, scopedActor, {
+      [FeatureSwitchKey.IntroVideo]: false,
+    });
+    const ordinary = VIDEO_TEMPLATE_ITEMS[0]!;
+    const ordinaryTemplate: GenerationTemplateRequest = {
+      type: "video",
+      selection: { stylePresetId: ordinary.id },
+    };
+    for (const templates of [
+      [explainerTemplate],
+      [ordinaryTemplate, explainerTemplate],
+    ]) {
+      const rejected = await chat.requestSendEvent(
         actor,
         {
           agentId,
-          prompt: "Explain it",
-          userMessage: userMessageWithTemplate("Explain it", {
-            type: "video",
-            selection: { stylePresetId: "explainer-video" },
-          }),
+          prompt: "Explain the product",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Explain the product" },
+              ...templates.map((template) => {
+                return {
+                  type: "template" as const,
+                  titleSnapshot: "Selected video",
+                  template,
+                };
+              }),
+            ],
+          },
         },
         [400],
       );
-      expectApiError(malformed.body);
-      expect(malformed.body.error.message).toBe(
-        "Explainer video settings are missing",
+      expectApiError(rejected.body);
+      expect(rejected.body.error.message).toBe(
+        "Explainer video is not available",
       );
-      const explained = await sendChatRun(actor, {
+    }
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    if (events.status !== 200) {
+      throw new Error("Expected thread events to load");
+    }
+    expect(events.body.events).toStrictEqual([]);
+    const video = await sendChatRun(actor, {
+      agentId,
+      prompt: "Make a creative scene",
+      template: ordinaryTemplate,
+    });
+    expect(
+      (await api.readRun(actor, video.runId)).appendSystemPrompt,
+    ).toContain(ordinary.id);
+    await cancelChatRun(actor, video.runId);
+
+    await updateFeatureSwitchesForUser(context, scopedActor, {
+      [FeatureSwitchKey.IntroVideo]: true,
+    });
+
+    const malformed = await chat.requestSendEvent(
+      actor,
+      {
         agentId,
-        prompt: "Explain the product",
-        template: explainerTemplate,
-      });
-      const prompt = (await api.readRun(actor, explained.runId))
-        .appendSystemPrompt;
-      expect(prompt).toContain("Use the $intro-video skill");
-      expect(prompt).toContain("Minimalism");
-      expect(prompt).toContain("No avatar. Do not add a presenter.");
-      expect(prompt).toContain("No voiceover. Do not add narration.");
-      await cancelChatRun(actor, explained.runId);
-    },
-    90_000,
-  );
+        prompt: "Explain it",
+        userMessage: userMessageWithTemplate("Explain it", {
+          type: "video",
+          selection: { stylePresetId: "explainer-video" },
+        }),
+      },
+      [400],
+    );
+    expectApiError(malformed.body);
+    expect(malformed.body.error.message).toBe(
+      "Explainer video settings are missing",
+    );
+    const explained = await sendChatRun(actor, {
+      agentId,
+      prompt: "Explain the product",
+      template: explainerTemplate,
+    });
+    const prompt = (await api.readRun(actor, explained.runId))
+      .appendSystemPrompt;
+    expect(prompt).toContain("Use the $intro-video skill");
+    expect(prompt).toContain("Minimalism");
+    expect(prompt).toContain("No avatar. Do not add a presenter.");
+    expect(prompt).toContain("No voiceover. Do not add narration.");
+    await cancelChatRun(actor, explained.runId);
+  }, 90_000);
 
   it.each(["queued dispatch", "active input"] as const)(
     "rechecks explainer access before %s",

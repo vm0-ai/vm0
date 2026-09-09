@@ -1828,28 +1828,33 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [INTRO_VIDEO_SKILL_NAME]: storageName,
     });
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor({
-      email: "BINGJIE@VM0.AI",
-    });
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
     const skillHint = "read and follow the `intro-video` skill";
     const toolHint = "Click-driven intro-video camera moves:";
     await bdd.readMe(actor);
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.IntroVideo]: true,
+    });
 
-    const enabledByEmail = await api.createRun(actor, {
+    const enabledByOverride = await api.createRun(actor, {
       agentId,
       prompt: "Create a polished video from the attached source.",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const enabledByEmailClaim = await api.claimRunnerJob(enabledByEmail.runId);
-    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(skillHint);
-    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(toolHint);
-    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(
+    const enabledByOverrideClaim = await api.claimRunnerJob(
+      enabledByOverride.runId,
+    );
+    expect(enabledByOverrideClaim.appendSystemPrompt ?? "").toContain(
+      skillHint,
+    );
+    expect(enabledByOverrideClaim.appendSystemPrompt ?? "").toContain(toolHint);
+    expect(enabledByOverrideClaim.appendSystemPrompt ?? "").toContain(
       "okou video camera --help",
     );
     expect(
       expectCanonicalStorageManifest(
-        enabledByEmailClaim.storageManifest,
+        enabledByOverrideClaim.storageManifest,
       )?.storageMounts.map((mount) => {
         return mount.mountPath;
       }),

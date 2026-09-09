@@ -1,4 +1,3 @@
-import type { ClerkClient } from "../external/clerk";
 import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
@@ -181,7 +180,6 @@ export interface MaterializedActiveInputPrompt {
 
 export async function materializePendingActiveInputPrompts(
   db: Db,
-  clerk: ClerkClient,
   candidates: readonly PendingActiveInputRow[],
   auth: { readonly orgId: string; readonly userId: string },
   signal: AbortSignal,
@@ -205,7 +203,7 @@ export async function materializePendingActiveInputPrompts(
     }
     prompts.set(
       event.id,
-      await materializeActiveInputPrompt(db, clerk, {
+      await materializeActiveInputPrompt(db, {
         event: {
           id: event.id,
           chatThreadId: event.chatThreadId,
@@ -278,7 +276,6 @@ function unreachableActiveInputContextType(contextType: never): never {
 /** Materialize one claimed input prompt into the same text capability as a run prompt. */
 async function materializeActiveInputPrompt(
   db: Db,
-  clerk: ClerkClient,
   args: {
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
@@ -301,10 +298,7 @@ async function materializeActiveInputPrompt(
     );
   }
   const generationTemplates = resolveThreadGenerationTemplatePrompt({
-    introVideoEnabled: await loadIntroVideoTemplateAccess(
-      db,
-      clerk,
-      args.userId,
+    introVideoEnabled: loadIntroVideoTemplateAccess(
       projection.templates,
       args.featureSwitchContext,
     ),
