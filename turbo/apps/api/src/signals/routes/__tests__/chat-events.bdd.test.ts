@@ -20703,6 +20703,108 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
+  it.each([
+    { enabled: false, existingThread: false },
+    { enabled: true, existingThread: false },
+    { enabled: false, existingThread: true },
+    { enabled: true, existingThread: true },
+  ])(
+    "hands opening copy to visible demand only when enabled=$enabled (existing thread=$existingThread)",
+    async ({ enabled, existingThread }) => {
+      const { actor, agentId } = await entitledChatActor();
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: requireOrgId(actor) },
+        { [FeatureSwitchKey.ThreadActivitySummary]: enabled },
+      );
+      const thread = existingThread
+        ? await chat.createThread(actor, { agentId })
+        : null;
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-handover-key");
+      const indicatorCalls: string[] = [];
+      let titleCalls = 0;
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            const system = payload.messages[0]?.content ?? "";
+            const isInitial = system.includes(
+              "Write user-visible progress copy",
+            );
+            const isSummary = system.includes("Write one short");
+            if (isInitial || isSummary) {
+              indicatorCalls.push(isInitial ? "initial" : "summary");
+            } else if (system.includes("Generate a short, descriptive title")) {
+              titleCalls++;
+            }
+            return HttpResponse.json({
+              choices: [
+                {
+                  finish_reason: "stop",
+                  message: {
+                    content: isInitial
+                      ? "Preparing the original checklist"
+                      : isSummary
+                        ? "Preparing the visible checklist"
+                        : "Launch Checklist",
+                  },
+                },
+              ],
+            });
+          },
+        ),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare the launch checklist",
+        ...(thread ? { threadId: thread.id } : {}),
+      });
+      await flushWaitUntilForTest();
+      const beforeDemand = await chat.listThreadEvents(actor, run.threadId);
+      const initial = beforeDemand.events.filter((event) => {
+        return event.runEventId === "thinking:initial";
+      });
+      expect(indicatorCalls).toStrictEqual(enabled ? [] : ["initial"]);
+      expect(initial).toHaveLength(enabled ? 0 : 1);
+      if (!enabled) {
+        expect(initial[0]).toMatchObject({
+          eventType: "output.thinking",
+          thinking: "Preparing the original checklist",
+          runId: run.runId,
+        });
+      }
+      expect(titleCalls).toBeGreaterThan(0);
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+
+      const requested = await accept(
+        setupApp({ context, routes: chatThreadActivitySummaryRoutes })(
+          chatThreadActivitySummaryContract,
+        ).summarize({
+          headers: sessionHeaders(actor),
+          params: { id: run.threadId },
+          body: { runId: run.runId },
+        }),
+        [200, 403],
+      );
+      if (enabled) {
+        expect(requested.status).toBe(200);
+        expect(requested.body).toMatchObject({
+          phrase: "Preparing the visible checklist",
+          status: "fresh",
+          runId: run.runId,
+        });
+        expect(indicatorCalls).toStrictEqual(["summary"]);
+      } else {
+        expect(requested.status).toBe(403);
+        expect(indicatorCalls).toStrictEqual(["initial"]);
+      }
+      const afterDemand = await chat.listThreadEvents(actor, run.threadId);
+      expect(afterDemand.events).toStrictEqual(beforeDemand.events);
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
   it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

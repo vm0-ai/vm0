@@ -2813,8 +2813,9 @@ function ChatThread({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
+  const mainContainerRef = useGet(thread.mainContainerRef$);
   const setContainerRef = useSet(
-    isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
+    isMain ? mainContainerRef : thread.setContainerRef$,
   );
 
   return (
