@@ -1,0 +1,283 @@
+diff --git a/crates/guest-control-client/src/connection/request.rs b/crates/guest-control-client/src/connection/request.rs
+index a2a2c65500..fc2cb42c8f 100644
+--- a/crates/guest-control-client/src/connection/request.rs
++++ b/crates/guest-control-client/src/connection/request.rs
+@@ -186,12 +186,22 @@ async fn write_request_frame_with_builder_and_progress(
+     before_write: impl FnOnce() -> io::Result<()>,
+     progress: &RequestWriteProgress,
+ ) -> io::Result<()> {
++    let profile_started = Instant::now();
+     let frame_builder_guard = shared.frame_builder.lock().await;
++    let profile_locked = Instant::now();
+     let mut frame = Vec::new();
+     build_frame(seq, &mut frame)?;
++    let profile_built = Instant::now();
+     let result = write_request_frame(shared, &frame, before_write, progress).await;
++    let profile_written = Instant::now();
+     drop(frame);
+     drop(frame_builder_guard);
++    eprintln!(
++        "PROFILE_DETAIL {{\"phase\":\"host_frame\",\"seq\":{seq},\"builder_wait_ns\":{},\"encode_ns\":{},\"write_with_lock_ns\":{}}}",
++        profile_locked.duration_since(profile_started).as_nanos(),
++        profile_built.duration_since(profile_locked).as_nanos(),
++        profile_written.duration_since(profile_built).as_nanos()
++    );
+     result
+ }
+
+@@ -275,7 +285,13 @@ async fn write_registered_request_and_wait_with_frame_builder(
+     .await
+     .map_err(|_| request_timeout_error(progress.timeout_stage(), timeout))??;
+
+-    await_pending_response(rx, deadline, timeout).await
++    let profile_started = Instant::now();
++    let result = await_pending_response(rx, deadline, timeout).await;
++    eprintln!(
++        "PROFILE_DETAIL {{\"phase\":\"host_reply\",\"seq\":{seq},\"duration_ns\":{}}}",
++        profile_started.elapsed().as_nanos()
++    );
++    result
+ }
+
+ async fn await_pending_response(
+diff --git a/crates/guest-control-client/src/file/write.rs b/crates/guest-control-client/src/file/write.rs
+index 57734536f0..23f0dea93c 100644
+--- a/crates/guest-control-client/src/file/write.rs
++++ b/crates/guest-control-client/src/file/write.rs
+@@ -605,11 +605,16 @@ impl GuestControlClient {
+         write_observer: FrameWriteObserver,
+         chunk_limit: usize,
+     ) -> io::Result<()> {
++        let profile_path_started = std::time::Instant::now();
+         validate_guest_file_path(path)?;
+         if content.len() <= chunk_limit {
+             let request = WriteFileChunkRequest::standard(path, content, sudo, false);
+             validate_write_file_chunk_request(request)?;
+             let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
++            eprintln!(
++                "PROFILE_DETAIL {{\"phase\":\"host_path\",\"duration_ns\":{}}}",
++                profile_path_started.elapsed().as_nanos()
++            );
+             return self
+                 .write_file_chunk(request, WriteFileChunkTracking::Tracked, write_observer)
+                 .await;
+@@ -617,6 +622,10 @@ impl GuestControlClient {
+
+         validate_write_file_chunk_request(WriteFileChunkRequest::standard(path, &[], sudo, false))?;
+         let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
++        eprintln!(
++            "PROFILE_DETAIL {{\"phase\":\"host_path\",\"duration_ns\":{}}}",
++            profile_path_started.elapsed().as_nanos()
++        );
+         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
+
+         // Write chunks to a bounded per-call sibling, then atomic rename. The UUID
+@@ -662,6 +671,7 @@ impl GuestControlClient {
+
+         // `-T` keeps directory targets from being treated as destination directories.
+         let mv_cmd = format!("mv -fT -- {quoted_tmp} {}", quote_shell_arg(path));
++        let profile_publish_started = std::time::Instant::now();
+         let rename_result =
+             exec_operation::exec_operation_capture_with_composite_on_shared_and_observer(
+                 &self.shared,
+@@ -682,6 +692,10 @@ impl GuestControlClient {
+             )
+             .await
+             .and_then(|result| validate_rename_result(path, result));
++        eprintln!(
++            "PROFILE_DETAIL {{\"phase\":\"host_publish\",\"duration_ns\":{}}}",
++            profile_publish_started.elapsed().as_nanos()
++        );
+         match rename_result {
+             ExecOperationWaitOutcome::Terminal(Ok(())) => {
+                 cleanup_guard.disarm();
+@@ -865,7 +879,9 @@ impl GuestControlClient {
+     ) -> io::Result<()> {
+         validate_write_file_chunk_request(request)?;
+
++        let profile_gate_started = std::time::Instant::now();
+         let _file_write_guard = self.shared.file_write_gate.lock().await;
++        let profile_gate_ns = profile_gate_started.elapsed().as_nanos();
+         let timeout = WRITE_FILE_REQUEST_DEADLINE;
+         let sequence = AtomicU32::new(0);
+         let write_sequence = &sequence;
+@@ -914,6 +930,13 @@ impl GuestControlClient {
+         let (success, error) = guest_control_proto::decode_write_file_result(&resp.payload)
+             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
++        eprintln!(
++            "PROFILE_DETAIL {{\"phase\":\"host_chunk\",\"seq\":{},\"gate_ns\":{profile_gate_ns},\"duration_ns\":{},\"bytes\":{}}}",
++            sequence.load(Ordering::Relaxed),
++            profile_gate_started.elapsed().as_nanos(),
++            request.content.len()
++        );
++
+         if !success {
+             return Err(write_file_guest_error(error));
+         }
+diff --git a/crates/guest-control-server/src/file_write_worker.rs b/crates/guest-control-server/src/file_write_worker.rs
+index 7453b9bd76..bf71ca59fe 100644
+--- a/crates/guest-control-server/src/file_write_worker.rs
++++ b/crates/guest-control-server/src/file_write_worker.rs
+@@ -54,6 +54,7 @@ pub(crate) enum FileWriteSubmitError {
+ }
+
+ struct FileWriteRequest {
++    profile_submitted: std::time::Instant,
+     kind: FileWriteKind,
+     seq: u32,
+     payload: Vec<u8>,
+@@ -121,6 +122,7 @@ impl FileWriteWorker {
+         admission: SingleActivePermit,
+     ) -> Result<(), FileWriteSubmitError> {
+         let request = FileWriteRequest {
++            profile_submitted: std::time::Instant::now(),
+             kind,
+             seq,
+             payload: payload.to_vec(),
+@@ -159,6 +161,7 @@ fn handle_request(
+     connection_cancel: &AtomicBool,
+ ) -> io::Result<()> {
+     let FileWriteRequest {
++        profile_submitted,
+         kind,
+         seq,
+         payload,
+@@ -167,6 +170,11 @@ fn handle_request(
+         progress,
+     } = request;
+
++    let profile_started = std::time::Instant::now();
++    eprintln!(
++        "PROFILE_DETAIL {{\"phase\":\"guest_begin\",\"seq\":{seq},\"queue_and_copy_ns\":{}}}",
++        profile_started.duration_since(profile_submitted).as_nanos()
++    );
+     let response = match kind {
+         FileWriteKind::File => decode_write_file_message(&payload)
+             .map_err(protocol_error)
+@@ -192,6 +200,11 @@ fn handle_request(
+     };
+     // Admission may be released at the writer boundary, but do not retain the
+     // completed request's large payload while the result frame is being sent.
++    let profile_handled = std::time::Instant::now();
++    eprintln!(
++        "PROFILE_DETAIL {{\"phase\":\"guest_handler\",\"seq\":{seq},\"duration_ns\":{}}}",
++        profile_handled.duration_since(profile_started).as_nanos()
++    );
+     drop(payload);
+     progress.mark(FileWriteStage::WaitingForWriter);
+
+diff --git a/crates/guest-control-server/src/handlers.rs b/crates/guest-control-server/src/handlers.rs
+index a3d5b146f9..24f8b2bcc6 100644
+--- a/crates/guest-control-server/src/handlers.rs
++++ b/crates/guest-control-server/src/handlers.rs
+@@ -72,11 +72,16 @@ fn handle_write_file(
+         ),
+     );
+
++    let profile_spawn_started = std::time::Instant::now();
+     let child = match spawn_write_file_command(path, use_sudo, append, private) {
+         Ok(c) => c,
+         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
+     };
+
++    eprintln!(
++        "PROFILE_DETAIL {{\"phase\":\"guest_spawn\",\"duration_ns\":{}}}",
++        profile_spawn_started.elapsed().as_nanos()
++    );
+     wait_write_file_child(
+         child,
+         content,
+@@ -150,6 +155,7 @@ fn wait_write_file_child_with_timeout<S>(
+ where
+     S: ThreadSpawner,
+ {
++    let profile_wait_started = std::time::Instant::now();
+     progress.mark(FileWriteStage::WaitingForHelper);
+     let cancel = match DrainCancellation::new() {
+         Ok(cancel) => Arc::new(cancel),
+@@ -209,7 +215,12 @@ where
+         let (stdin_done_tx, stdin_done_rx) = std::sync::mpsc::channel::<()>();
+         let stdin_handle = match spawn_scoped_named(scope, THREAD_WRITE_STDIN, move || {
+             let mut stdin = stdin_pipe;
++            let profile_feed_started = std::time::Instant::now();
+             let result = stdin.write_all(content);
++            eprintln!(
++                "PROFILE_DETAIL {{\"phase\":\"guest_stdin\",\"duration_ns\":{}}}",
++                profile_feed_started.elapsed().as_nanos()
++            );
+             let _ = stdin_done_tx.send(());
+             result
+         }) {
+@@ -234,15 +245,38 @@ where
+                 )
+             },
+         );
++        let profile_child_finished = std::time::Instant::now();
+         progress.mark(FileWriteStage::JoiningStdin);
+         let stdin_result = match stdin_handle.join() {
+             Ok(result) => result,
+             Err(panic) => std::panic::resume_unwind(panic),
+         };
+
++        let profile_stdin_joined = std::time::Instant::now();
+         progress.mark(FileWriteStage::DrainingStderr);
+         let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
+         let stderr = stderr_handle.join().unwrap_or_default();
++        let profile_drained = std::time::Instant::now();
++        eprintln!(
++            "PROFILE_DETAIL {{\"phase\":\"guest_wait\",\"child_and_setup_ns\":{},\"stdin_join_ns\":{},\"stderr_drain_ns\":{}}}",
++            profile_child_finished
++                .duration_since(profile_wait_started)
++                .as_nanos(),
++            profile_stdin_joined
++                .duration_since(profile_child_finished)
++                .as_nanos(),
++            profile_drained
++                .duration_since(profile_stdin_joined)
++                .as_nanos()
++        );
++        if let Ok(text) = std::str::from_utf8(&stderr) {
++            for line in text
++                .lines()
++                .filter(|line| line.starts_with("PROFILE_DETAIL "))
++            {
++                eprintln!("{line}");
++            }
++        }
+
+         match outcome {
+             WaitOutcome::TimedOut => (false, "write timed out".to_string()),
+diff --git a/crates/guest-write-file/src/lib.rs b/crates/guest-write-file/src/lib.rs
+index 26a0b8d4eb..fa62a5b224 100644
+--- a/crates/guest-write-file/src/lib.rs
++++ b/crates/guest-write-file/src/lib.rs
+@@ -110,6 +110,7 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
+         return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing path"));
+     };
+
++    let profile_open_started = std::time::Instant::now();
+     let mut file = if args.private {
+         open_private_output_file(&path, args.append)?
+     } else {
+@@ -122,8 +123,19 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
+         open_output_file(&path, args.append)?
+     };
+
++    let profile_opened = std::time::Instant::now();
+     io::copy(&mut stdin, &mut file)?;
+-    file.flush()
++    let profile_copied = std::time::Instant::now();
++    let result = file.flush();
++    eprintln!(
++        "PROFILE_DETAIL {{\"phase\":\"guest_io\",\"open_ns\":{},\"copy_with_stdin_ns\":{},\"flush_ns\":{}}}",
++        profile_opened
++            .duration_since(profile_open_started)
++            .as_nanos(),
++        profile_copied.duration_since(profile_opened).as_nanos(),
++        profile_copied.elapsed().as_nanos()
++    );
++    result
+ }
+
+ fn run_batch(mut stdin: impl Read, private: bool) -> io::Result<()> {

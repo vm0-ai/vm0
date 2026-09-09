@@ -1,0 +1,10 @@
+{
+  "baseline": {
+    "rootfs": "467c9c595295cf6ce8d0cd5bd353fd21446d471b7e6282c78f2f79eab2e77f37",
+    "snapshot": "147bd98e69822b0f313aa59649e89a4a39090bb2abbaa9697aa87fbc252d446b"
+  },
+  "observed": {
+    "rootfs": "5b423acf99bab91bd9dcb3455f0bc5c0dca286b3a85b3b7ed95d9f42806ba723",
+    "snapshot": "719f055c1c3964d065aa337e09be896e4d2f76d97172b4d3eb703be0fd645bb0"
+  }
+}

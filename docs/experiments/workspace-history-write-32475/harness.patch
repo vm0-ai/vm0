@@ -1,0 +1,183 @@
+diff --git a/crates/runner/src/cmd/benchmark.rs b/crates/runner/src/cmd/benchmark.rs
+index 0e1f87a266..52849a2d0e 100644
+--- a/crates/runner/src/cmd/benchmark.rs
++++ b/crates/runner/src/cmd/benchmark.rs
+@@ -136,6 +136,15 @@ pub struct BenchmarkArgs {
+     /// Profile to benchmark
+     #[arg(long)]
+     profile: String,
++    /// Source-pinned experiment only: host materialized history fixture.
++    #[arg(long)]
++    history_file: Option<PathBuf>,
++    #[arg(long, default_value = "claude-code")]
++    history_framework: String,
++    #[arg(long)]
++    history_zstd: bool,
++    #[arg(long, default_value_t = 1)]
++    history_repeat: usize,
+ }
+
+ pub async fn run_benchmark(
+@@ -511,6 +520,19 @@ async fn run_in_sandbox(
+         return (Err(e), timing);
+     }
+
++    if let Some(file) = &args.history_file
++        && let Err(error) = executor::profile_history_write(
++            sandbox,
++            file,
++            &args.history_framework,
++            args.history_zstd,
++            args.history_repeat,
++        )
++        .await
++    {
++        return (Err(error), timing);
++    }
++
+     let env_refs: Vec<(&str, &str)> = env_pairs
+         .iter()
+         .map(|(k, v)| (k.as_str(), v.as_str()))
+@@ -902,6 +924,10 @@ mod tests {
+             timezone: DEFAULT_BENCHMARK_TIMEZONE.to_string(),
+             sudo: false,
+             profile: "vm0/test".to_string(),
++            history_file: None,
++            history_framework: "claude-code".into(),
++            history_zstd: false,
++            history_repeat: 1,
+         }
+     }
+
+diff --git a/crates/runner/src/executor/mod.rs b/crates/runner/src/executor/mod.rs
+index 7c0f051618..5c7deaa99a 100644
+--- a/crates/runner/src/executor/mod.rs
++++ b/crates/runner/src/executor/mod.rs
+@@ -33,6 +33,7 @@ mod codex_model_catalog_prefetch;
+ mod diagnostics;
+ mod env;
+ mod guest_state;
++mod history_write_profile;
+ mod sandbox_run;
+ mod session_history_cpu;
+ mod session_history_download;
+@@ -50,6 +51,7 @@ pub(crate) use guest_state::{
+     GuestTimezoneSyncOutcome, is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
+     restore_guest_state_with_timezone, try_sync_guest_timezone_intent,
+ };
++pub(crate) use history_write_profile::profile_history_write;
+ pub(crate) use session_history_cpu::SessionHistoryCpuPool;
+ pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
+ pub(crate) use session_history_restore_plan::{
+diff --git a/crates/runner/src/executor/history_write_profile.rs b/crates/runner/src/executor/history_write_profile.rs
+new file mode 100644
+index 0000000000..0949110880
+--- /dev/null
++++ b/crates/runner/src/executor/history_write_profile.rs
+@@ -0,0 +1,106 @@
++//! Source-pinned, synthetic-only experiment harness; not shipped in production.
++
++use std::path::Path;
++use std::time::{Duration, Instant};
++
++use sandbox::{CopyFileOptions, Sandbox};
++
++use super::session_restore::{MaterializedResumeSession, restore_session};
++use crate::error::{RunnerError, RunnerResult};
++use crate::types::{ExecutionContext, SandboxReuseResult, SessionHistorySizeBucket};
++
++pub(crate) async fn profile_history_write(
++    sandbox: &dyn Sandbox,
++    file: &Path,
++    framework: &str,
++    native_zstd: bool,
++    repeat: usize,
++) -> RunnerResult<()> {
++    if !matches!(framework, "claude-code" | "codex" | "pi")
++        || (native_zstd && framework != "codex")
++        || !(1..=100).contains(&repeat)
++    {
++        return Err(RunnerError::Config(
++            "invalid history profile arguments".into(),
++        ));
++    }
++    let bytes = std::fs::read(file).map_err(|e| RunnerError::Internal(e.to_string()))?;
++    if bytes.is_empty() || bytes.len() > 128 * 1024 * 1024 {
++        return Err(RunnerError::Config("invalid history profile size".into()));
++    }
++    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
++    let context: ExecutionContext = serde_json::from_value(serde_json::json!({
++        "runId": uuid::Uuid::new_v4().to_string(),
++        "prompt": "synthetic history attribution",
++        "sandboxToken": "synthetic-no-api",
++        "platformEnvironment": {},
++        "connectorRuntimeTargets": [],
++        "cliAgentType": framework
++    }))
++    .map_err(|e| RunnerError::Internal(e.to_string()))?;
++    let timestamp = chrono::DateTime::parse_from_rfc3339("2026-09-09T00:00:00Z")
++        .map_err(|e| RunnerError::Internal(e.to_string()))?
++        .with_timezone(&chrono::Utc);
++    let session = if native_zstd {
++        MaterializedResumeSession::new_codex_zstd(session_id.into(), bytes.clone(), Some(timestamp))
++    } else {
++        MaterializedResumeSession::new(session_id.into(), bytes.clone(), Some(timestamp))
++    };
++    let path = match framework {
++        "codex" => format!(
++            "/home/user/.codex/sessions/2026/09/09/rollout-2026-09-09T00-00-00-{session_id}.jsonl{}",
++            if native_zstd { ".zst" } else { "" }
++        ),
++        "pi" => format!(
++            "{}/restored-{session_id}.jsonl",
++            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR
++        ),
++        _ => format!(
++            "{}/projects/-home-user-workspace/{session_id}.jsonl",
++            api_contracts::generated::constants::runners::paths::CANONICAL_CLAUDE_CONFIG_DIR
++        ),
++    };
++    let verify_dir = tempfile::tempdir().map_err(|e| RunnerError::Internal(e.to_string()))?;
++    for iteration in 0..repeat {
++        eprintln!("PROFILE_BEGIN iteration={iteration}");
++        let started = Instant::now();
++        let result =
++            restore_session(sandbox, &context, &session, SandboxReuseResult::PoolMiss).await;
++        let elapsed = started.elapsed();
++        eprintln!(
++            "PROFILE_RESULT {}",
++            serde_json::json!({
++                "iteration": iteration,
++                "framework": framework,
++                "source": "materialized_fixture",
++                "representation": if native_zstd { "native_zstd" } else { "raw" },
++                "transfer_bytes": bytes.len(),
++                "size_bucket": SessionHistorySizeBucket::from_size(bytes.len() as u64).as_str(),
++                "chunks": bytes.len().div_ceil(15 * 1024 * 1024),
++                "duration_ns": elapsed.as_nanos(),
++                "success": result.is_ok()
++            })
++        );
++        result?;
++        let verify = verify_dir.path().join("history");
++        sandbox
++            .copy_file(
++                &path,
++                &verify,
++                CopyFileOptions {
++                    max_bytes: bytes.len() as u64 + 1,
++                    timeout: Duration::from_secs(60),
++                    missing_ok: false,
++                },
++            )
++            .await?;
++        let actual = tokio::fs::read(&verify)
++            .await
++            .map_err(|e| RunnerError::Internal(e.to_string()))?;
++        if actual != bytes {
++            return Err(RunnerError::Internal("restored bytes differ".into()));
++        }
++        eprintln!("PROFILE_VERIFIED iteration={iteration}");
++    }
++    Ok(())
++}
