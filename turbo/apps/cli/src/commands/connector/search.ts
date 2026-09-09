@@ -272,6 +272,28 @@ export const searchCommand = new Command()
     "Maximum number of results to display (default: all matches)",
     parseLimit,
   )
+  .addHelpText(
+    "after",
+    `
+Scope:
+  Searches the builtin catalog and org custom HTTP/MCP definitions.
+  Inside a run, availability and account identity describe the accounts admitted
+  to that run. A supported connector can still be unavailable in this run.
+  Outside a run, connection status describes the current member's accounts.
+  Omit --agent inside a run to use the current Agent's authorization context;
+  an explicit --agent must match that Agent and cannot change admitted accounts.
+
+Callbacks:
+  Use --callback-prompt only in the current web chat for its current Agent,
+  when the task needs exactly one connector action; use --limit 1.
+  Only direct connection, reconnect, or Agent authorization actions support it.
+  Custom connectors and other actions that open Connectors settings do not.
+  Keep the prompt free of secrets because it is included in the action URL.
+
+Examples:
+  okou connector search github --limit 1
+  okou connector search notion`,
+  )
   .action(
     withErrorHandler(
       async (
