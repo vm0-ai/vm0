@@ -121,7 +121,12 @@ test("Presentation offers six lengths without changing the submitted message", a
     expect(submissions).toHaveLength(1);
   });
   expect(submissions[0]?.runOptions).toBeUndefined();
-  expect(visibleText(submissions[0])).toBe("Create a presentation. Our launch");
+  expect(visibleText(submissions[0])).toBe("Our launch");
+  expect(submissions[0]?.userMessage?.parts).toContainEqual({
+    type: "additional_info",
+    text: "Create a presentation.",
+  });
+  await expect(screen.findByText("Our launch")).resolves.toBeVisible();
 });
 
 test("Leaving presentation hides its picker and resets its length", async () => {
