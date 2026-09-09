@@ -6,6 +6,7 @@ import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/a
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   customConnectorByIdContract,
+  customConnectorOAuth2Contract,
   customConnectorsContract,
   customConnectorValuesContract,
   type CustomConnectorResponse,
@@ -19,6 +20,8 @@ import {
   customConnector,
   mcpCustomConnector,
   getConnectorAction,
+  getConnectorCard,
+  queryConnectorAction,
   listAgent,
 } from "./connector-page-test-helpers.ts";
 
@@ -197,6 +200,132 @@ test.each(["missing", "invalid"] as const)(
     await expect(
       screen.findByText(connector.displayName),
     ).resolves.toBeInTheDocument();
+  },
+);
+
+test.each(["completed", "cancelled"] as const)(
+  "Confirm a %s custom OAuth reconnect from the exact account's update",
+  async (outcome) => {
+    const connector = customConnector({
+      slug: "_acme-oauth",
+      authMode: "oauth",
+      connected: true,
+      connectedAccountId: DEFAULT_ACCOUNT_ID,
+      connectedAccountUpdatedAt: "2026-01-01T00:00:00Z",
+      fields: [],
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "client-id",
+        authorizationUrl: "https://acme.test/oauth/authorize",
+        tokenUrl: "https://acme.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    mockDefinition(connector);
+    let reconnected = false;
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(ACCOUNT_ID);
+        expect(query).toStrictEqual({
+          kind: "custom",
+          customConnectorId: connector.id,
+        });
+        return respond(200, {
+          ...account(connector),
+          authMethod: "oauth",
+          connectionStatus: reconnected ? "connected" : "reconnect-required",
+          reconnectReason: reconnected
+            ? null
+            : "authorization_expired_or_revoked",
+          updatedAt: reconnected
+            ? "2026-01-02T00:00:00Z"
+            : "2026-01-01T00:00:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, respond }) => {
+        expect(body.account).toStrictEqual({
+          intent: "reconnect",
+          connectionId: ACCOUNT_ID,
+        });
+        reconnected = outcome === "completed";
+        return respond(200, {
+          result: "authorization",
+          authorizationUrl: "https://acme.test/oauth/reconnect",
+          connectionId: ACCOUNT_ID,
+        });
+      },
+    );
+    context.mocks.api(
+      agentCustomConnectorsContract.update,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        return respond(200, { grants: body.grants });
+      },
+    );
+    const prompts: string[] = [];
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
+      if ("prompt" in body && body.prompt) {
+        prompts.push(body.prompt);
+      }
+      return respond(201, {
+        threadId: THREAD_ID,
+        runId: "66666666-6666-4666-8666-666666666666",
+      });
+    });
+    const authWindow = context.mocks.browser.authWindow();
+    authWindow.closed = true;
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    await setupPage({
+      context,
+      path: `/connectors/${connector.slug}/reconnect/${ACCOUNT_ID}?agentId=${AGENT_ID}&threadId=${THREAD_ID}&callbackPrompt=Continue+after+OAuth`,
+    });
+    await screen.findByText("Run-selected account");
+    click(getConnectorAction("button", "Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    click(getConnectorAction("button", "Continue", dialog));
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://acme.test/oauth/reconnect",
+      );
+    });
+    const expected =
+      outcome === "completed"
+        ? { prompts: ["Continue after OAuth"], canContinue: false }
+        : { prompts: [], canContinue: true };
+    await waitFor(() => {
+      const currentDialog = screen.queryByRole("dialog", {
+        name: `Connect ${connector.displayName}`,
+      });
+      const continueAction = currentDialog
+        ? queryConnectorAction("button", "Continue", currentDialog)
+        : null;
+      expect({
+        prompts,
+        canContinue:
+          continueAction !== null && !continueAction.hasAttribute("disabled"),
+      }).toStrictEqual(expected);
+    });
   },
 );
 
@@ -386,3 +515,65 @@ test.each(["deleted", "ambiguous"] as const)(
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   },
 );
+
+test("Keep a closed custom access review closed when Agent grants arrive", async () => {
+  const connector = customConnector({
+    connected: true,
+    permissionBundleRef: "builtin:feishu@1",
+    missingRequiredFields: [],
+  });
+  mockDefinition(connector);
+  const requested = context.mocks.deferred<void>();
+  const release = context.mocks.deferred<void>();
+  context.mocks.api(
+    agentCustomConnectorsContract.get,
+    async ({ params, respond }) => {
+      if (!requested.settled()) {
+        requested.resolve();
+      }
+      await release.promise;
+      return respond(200, {
+        grants:
+          params.id === AGENT_ID
+            ? [
+                {
+                  customConnectorId: connector.id,
+                  permissionNames: ["standard:use"],
+                },
+              ]
+            : [],
+      });
+    },
+  );
+  context.mocks.api(customConnectorByIdContract.permissions, ({ respond }) => {
+    return respond(200, {
+      ref: "builtin:feishu@1",
+      permissions: [
+        { name: "standard:use", description: "Read data" },
+        { name: "messages:send-as-user", description: "Send as user" },
+      ],
+      defaultPolicies: {
+        "standard:use": "allow",
+        "messages:send-as-user": "deny",
+      },
+    });
+  });
+  await setupPage({
+    context,
+    path: `/connectors?tab=custom&customConnectorId=${connector.id}&view=access&permission=messages%3Asend-as-user&agentId=${AGENT_ID}`,
+  });
+  await requested.promise;
+  const dialog = await screen.findByRole("dialog", {
+    name: `Manage ${connector.displayName} access`,
+  });
+  click(getConnectorAction("button", "Close", dialog));
+  release.resolve();
+  await waitFor(() => {
+    expect(
+      within(getConnectorCard(connector.displayName)).getByTestId(
+        "connector-card-agent-access",
+      ),
+    ).toHaveTextContent("Used by Research");
+  });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
