@@ -248,6 +248,9 @@ describe("built-in welcome thread", () => {
     await setupPage({
       context,
       path: "/chats/welcome",
+      cachedFeatureSwitches: {
+        [FeatureSwitchKey.OnboardingChat]: true,
+      },
       featureSwitches: {
         [FeatureSwitchKey.OnboardingChat]: false,
       },
