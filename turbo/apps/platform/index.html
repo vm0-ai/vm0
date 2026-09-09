@@ -4,6 +4,36 @@
     <script>
       window.__appBootstrapStart = performance.now();
     </script>
+    <script data-okou-lifecycle="">
+      (function () {
+        const controller = new AbortController();
+        window._okou = {
+          rootSignal: controller.signal,
+          async switchClerkSession(sessionId) {
+            if (controller.signal.aborted) {
+              return;
+            }
+            controller.abort();
+            try {
+              let destination = "/";
+              await window.Clerk.setActive({
+                session: sessionId,
+                navigate: ({ session, decorateUrl }) => {
+                  destination = decorateUrl(
+                    session.currentTask
+                      ? `/sign-in/tasks/${session.currentTask.key}`
+                      : "/",
+                  );
+                },
+              });
+              window.location.replace(destination);
+            } catch {
+              window.location.reload();
+            }
+          },
+        };
+      })();
+    </script>
     <title>AI Teammate for Real Work — More Done, Same Team | Okou</title>
     <meta charset="UTF-8" />
     <link

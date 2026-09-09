@@ -1232,62 +1232,114 @@ test("Restore page interaction after closing Settings", async () => {
   await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
 });
 
-test("Switch to another signed-in account", async () => {
-  prepareDefaultAgent();
+test.each(["success", "failure", "pending task"])(
+  "Switch accounts: %s",
+  async (outcome) => {
+    prepareDefaultAgent();
 
-  await setupPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    auth: {
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-        imageUrl: "https://cdn.vm0.test/users/alex.png",
-        clientSessions: [
-          {
-            id: "test-session-id",
-            status: "active",
-            user: {
-              fullName: "Alex Rivera",
-              imageUrl: "https://cdn.vm0.test/users/alex.png",
-              primaryEmailAddress: {
-                emailAddress: "alex.rivera@example.test",
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      auth: {
+        user: {
+          id: "test-user-123",
+          fullName: "Alex Rivera",
+          email: "alex.rivera@example.test",
+          imageUrl: "https://cdn.vm0.test/users/alex.png",
+          clientSessions: [
+            {
+              id: "test-session-id",
+              status: "active",
+              user: {
+                fullName: "Alex Rivera",
+                imageUrl: "https://cdn.vm0.test/users/alex.png",
+                primaryEmailAddress: {
+                  emailAddress: "alex.rivera@example.test",
+                },
               },
             },
-          },
-          {
-            id: "session-jamie",
-            status: "active",
-            user: {
-              fullName: "Jamie Chen",
-              imageUrl: "https://cdn.vm0.test/users/jamie.png",
-              primaryEmailAddress: {
-                emailAddress: "jamie.chen@example.test",
+            {
+              id: "session-jamie",
+              status: "active",
+              ...(outcome === "pending task"
+                ? { currentTask: { key: "choose-organization" } }
+                : {}),
+              user: {
+                fullName: "Jamie Chen",
+                imageUrl: "https://cdn.vm0.test/users/jamie.png",
+                primaryEmailAddress: {
+                  emailAddress: "jamie.chen@example.test",
+                },
               },
             },
-          },
-        ],
+          ],
+        },
       },
-    },
-  });
+    });
 
-  const menu = await openAccountMenu();
-  click(within(menu).getByText("Switch account"));
+    const finishSwitch = context.mocks.deferred<void>();
+    const setActive = mockedClerk.setActive.getMockImplementation();
+    if (!setActive) {
+      throw new Error("Expected the Clerk setActive mock");
+    }
+    let appWasUnmounted = false;
+    mockedClerk.setActive.mockImplementation(async (params) => {
+      appWasUnmounted = document.querySelector(".okou-app") === null;
+      await finishSwitch.promise;
+      await setActive(params);
+    });
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {});
+    const reloadedUrls: string[] = [];
+    const reload = vi
+      .spyOn(window.location, "reload")
+      .mockImplementation(() => {
+        reloadedUrls.push(window.location.href);
+      });
+    const originalUrl = window.location.href;
+    const lifecycle = window._okou;
+    expect(document.querySelector(".okou-app")).toBeInTheDocument();
 
-  await waitFor(() => {
-    expect(screen.getByText("Jamie Chen")).toBeInTheDocument();
-    expect(screen.getByText("jamie.chen@example.test")).toBeInTheDocument();
-  });
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Switch account"));
 
-  click(await screen.findByText("Jamie Chen"));
+    await waitFor(() => {
+      expect(screen.getByText("Jamie Chen")).toBeInTheDocument();
+      expect(screen.getByText("jamie.chen@example.test")).toBeInTheDocument();
+    });
 
-  await waitFor(() => {
-    expect(mockedClerk.setActive).toHaveBeenCalledWith(
-      expect.objectContaining({ session: "session-jamie" }),
-    );
-  });
-});
+    click(await screen.findByText("Jamie Chen"));
+
+    await waitFor(() => {
+      expect(mockedClerk.setActive).toHaveBeenCalledWith(
+        expect.objectContaining({ session: "session-jamie" }),
+      );
+    });
+    expect(appWasUnmounted).toBeTruthy();
+    expect(lifecycle?.rootSignal.aborted).toBeTruthy();
+    expect(window._okou).toBe(lifecycle);
+    expect(context.signal.aborted).toBeFalsy();
+    expect(replace).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+
+    if (outcome === "failure") {
+      finishSwitch.reject(new Error("Session switch failed"));
+    } else {
+      finishSwitch.resolve();
+    }
+    const destination =
+      outcome === "pending task" ? "/sign-in/tasks/choose-organization" : "/";
+    await waitFor(() => {
+      expect(replace.mock.calls).toStrictEqual(
+        outcome === "failure" ? [] : [[destination]],
+      );
+      expect(reloadedUrls).toStrictEqual(
+        outcome === "failure" ? [originalUrl] : [],
+      );
+    });
+  },
+);
 
 test("Open Add account without leaving the current page", async () => {
   await setupAddAccountPage();

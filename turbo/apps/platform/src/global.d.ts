@@ -18,10 +18,12 @@ interface OkouClerkBootstrap {
 }
 
 interface OkouGlobal {
-  loggers: DebugLoggers;
-  inspectLogs: () => void;
-  getBuildCommitSha: () => string | null;
-  getBuildVersion: () => string | null;
+  readonly rootSignal: AbortSignal;
+  readonly switchClerkSession: (sessionId: string) => Promise<void>;
+  loggers?: DebugLoggers;
+  inspectLogs?: () => void;
+  getBuildCommitSha?: () => string | null;
+  getBuildVersion?: () => string | null;
 }
 
 declare global {

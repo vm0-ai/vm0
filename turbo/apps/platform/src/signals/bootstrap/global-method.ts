@@ -13,6 +13,10 @@ export const setupGlobalMethod$ = command(
   ({ get, set }, signal: AbortSignal) => {
     L.debug("Setting up global method _okou");
     const appVersion = get(appVersion$);
+    const okou = window._okou;
+    if (!okou) {
+      throw new Error("Platform lifecycle was not initialized");
+    }
 
     window.addEventListener(
       ENABLE_DEBUG_LOGGER_EVENT,
@@ -28,26 +32,31 @@ export const setupGlobalMethod$ = command(
       { signal },
     );
 
-    window._okou = {
-      get loggers() {
+    Object.defineProperty(okou, "loggers", {
+      configurable: true,
+      enumerable: true,
+      get() {
         return createDebugLoggers((name) => {
           window.dispatchEvent(
             new CustomEvent(ENABLE_DEBUG_LOGGER_EVENT, { detail: name }),
           );
         });
       },
-      inspectLogs() {
-        get(inspectLogInput$)?.click();
-      },
-      getBuildCommitSha,
-      getBuildVersion: () => {
-        return appVersion;
-      },
+    });
+    okou.inspectLogs = () => {
+      get(inspectLogInput$)?.click();
+    };
+    okou.getBuildCommitSha = getBuildCommitSha;
+    okou.getBuildVersion = () => {
+      return appVersion;
     };
 
     signal.addEventListener("abort", () => {
-      L.debug("Cleaning up global method _okou");
-      delete window._okou;
+      L.debug("Cleaning up global debug methods");
+      delete okou.loggers;
+      delete okou.inspectLogs;
+      delete okou.getBuildCommitSha;
+      delete okou.getBuildVersion;
     });
   },
 );

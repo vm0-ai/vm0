@@ -40,7 +40,10 @@ const sharedDatabaseErrorSchema = z
 type SerializedSharedDatabaseError = z.infer<typeof sharedDatabaseErrorSchema>;
 
 const registerTabMessageSchema = z
-  .object({ type: z.literal("register-tab") })
+  .object({
+    type: z.literal("register-tab"),
+    lockName: z.string().startsWith("okou:shared-database:"),
+  })
   .strict();
 
 const queryRequestSchema = z

@@ -264,8 +264,13 @@ async function setupPageAsync(
   }
   const initialUrl = initialPageUrl(options.path, options.host ?? "localhost");
   mocks.browser.url(initialUrl.toString());
-  createPushStateMock(signal, initialUrl);
-  installClerkBootstrap(initialUrl, options.clerkBootstrap, signal);
+  // Browser navigation and Clerk outlive the app during an account switch.
+  createPushStateMock(options.context.signal, initialUrl);
+  installClerkBootstrap(
+    initialUrl,
+    options.clerkBootstrap,
+    options.context.signal,
+  );
 
   if (options.debugLoggers) {
     store.set(
@@ -420,7 +425,11 @@ export async function startPage(
 ): Promise<StartedPage> {
   // testContext rotates its signal at teardown; async startup belongs to the
   // lifetime that initiated it, never the next test's context.
-  const signal = options.context.signal;
+  const rootSignal = window._okou?.rootSignal;
+  if (!rootSignal) {
+    throw new Error("Platform lifecycle was not initialized");
+  }
+  const signal = AbortSignal.any([options.context.signal, rootSignal]);
   signal.throwIfAborted();
   const content = waitForFirstPageContent(signal);
   await setupPageAsync(options, signal, content.pageRendered);

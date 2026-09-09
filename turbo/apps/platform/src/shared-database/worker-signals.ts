@@ -458,7 +458,7 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: "threadListChanged",
             loopCommand$: reloadWorkerChatIndicatorsFromRealtime$,
             options: {
-              runOnForegroundCatchUp: false,
+              runOnReconnect: false,
               runOnSubscribe: true,
             },
           },
@@ -470,7 +470,7 @@ const runSharedDatabaseWorkerDaemons$ = command(
             scope: "credential",
             topic: "chatThreadReadCursorUpdated",
             loopCommand$: reloadWorkerChatIndicatorsFromReadCursor$,
-            options: { runOnForegroundCatchUp: false },
+            options: { runOnReconnect: false },
           },
           signal,
         ),
@@ -481,7 +481,7 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: "computerUseHostsChanged",
             loopCommand$: reloadWorkerComputerUseHostsFromRealtime$,
             options: {
-              runOnForegroundCatchUp: false,
+              runOnReconnect: false,
               runOnSubscribe: true,
             },
           },
@@ -494,7 +494,7 @@ const runSharedDatabaseWorkerDaemons$ = command(
             topic: "billing:changed",
             loopCommand$: reloadWorkerQueueDataFromRealtime$,
             options: {
-              runOnForegroundCatchUp: false,
+              runOnReconnect: false,
               runOnSubscribe: true,
             },
           },

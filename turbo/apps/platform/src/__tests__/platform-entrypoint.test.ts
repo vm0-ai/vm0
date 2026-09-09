@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { startPlatformEntrypoint } from "../lib/platform-entrypoint.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
@@ -17,13 +17,6 @@ async function waitForApplicationStart(): Promise<void> {
   });
 }
 
-async function stopApplication(): Promise<void> {
-  window.dispatchEvent(new Event("pagehide"));
-  await waitFor(() => {
-    expect(document.querySelector(".okou-app")).toBeNull();
-  });
-}
-
 describe("platform entrypoint", () => {
   beforeEach(() => {
     googleAdsRequestedAfterApplicationStart = false;
@@ -35,7 +28,6 @@ describe("platform entrypoint", () => {
     root.id = "root";
     document.body.replaceChildren(root);
 
-    const addEventListener = vi.spyOn(window, "addEventListener");
     const appendChild = document.head.appendChild.bind(document.head);
     vi.spyOn(document.head, "appendChild").mockImplementation(
       <T extends Node>(node: T): T => {
@@ -44,16 +36,37 @@ describe("platform entrypoint", () => {
           node.src === GOOGLE_TAG_SCRIPT_URL
         ) {
           googleAdsRequestedAfterApplicationStart =
-            addEventListener.mock.calls.some(([eventName]) => {
-              return eventName === "pagehide";
-            });
+            context.mocks.sentry().initializations.length > 0;
         }
         return appendChild(node);
       },
     );
   });
 
-  afterEach(stopApplication);
+  it("does not start without the inline lifecycle", () => {
+    vi.stubGlobal("SharedWorker", class extends EventTarget {});
+    delete window._okou;
+
+    expect(startPlatformEntrypoint).toThrow(
+      "Platform lifecycle was not initialized",
+    );
+    expect(context.mocks.sentry().initializations).toHaveLength(0);
+    expect(document.getElementById("root")).toBeEmptyDOMElement();
+  });
+
+  it("does not start with an aborted root signal", () => {
+    vi.stubGlobal("SharedWorker", class extends EventTarget {});
+    const okou = window._okou;
+    if (!okou) {
+      throw new Error("Expected the inline lifecycle");
+    }
+    const reason = new DOMException("Page stopped", "AbortError");
+    window._okou = { ...okou, rootSignal: AbortSignal.abort(reason) };
+
+    expect(startPlatformEntrypoint).toThrow(reason);
+    expect(context.mocks.sentry().initializations).toHaveLength(0);
+    expect(document.getElementById("root")).toBeEmptyDOMElement();
+  });
 
   it("starts the application before requesting Google Ads", async () => {
     context.mocks.browser.userAgent(

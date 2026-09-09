@@ -176,7 +176,7 @@ export class SharedDatabaseMessagePortServer {
     }
   }
 
-  private registerTab(): void {
+  private registerTab(lockName: string): void {
     if (this.registeredSignal) {
       throw new Error("Shared database tab is already registered");
     }
@@ -191,6 +191,13 @@ export class SharedDatabaseMessagePortServer {
     signal.addEventListener("abort", this.handleRegisteredConnectionAbort, {
       once: true,
     });
+    detach(
+      navigator.locks.request(lockName, { signal }, () => {
+        this.disconnect("tab-lock-released");
+      }),
+      Reason.Daemon,
+      "shared database tab connection",
+    );
     const daemon = this.store.set(startSharedDatabaseWorkerDaemons$);
     if (daemon) {
       detach(daemon, Reason.Daemon, "shared database Worker daemons");
@@ -323,7 +330,7 @@ export class SharedDatabaseMessagePortServer {
         return;
       }
       if (message.type === "register-tab") {
-        this.registerTab();
+        this.registerTab(message.lockName);
         return;
       }
       const registeredSignal = this.registeredSignal;

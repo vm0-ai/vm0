@@ -14,7 +14,6 @@ import {
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
-import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
@@ -532,32 +531,13 @@ export const resolveThreadMeta$ = command(
 
     const remoteStartedAt = performance.now();
     const initialRemoteSync = get(initialRemoteChatThreadEventsSyncedDeferred$);
-    const foregroundReady = get(foregroundReady$);
-    const foregroundSyncBarrier = get(chatThreadEventSyncBarrier$);
-    const foregroundSync =
-      initialRemoteSync.settled() &&
-      (foregroundReady.pending || foregroundSyncBarrier.inFlight)
-        ? foregroundSyncBarrier.next.promise
-        : null;
-    if (foregroundSync) {
-      await waitForSharedWork(foregroundReady.promise, signal);
-      await waitForSharedWork(foregroundSync, signal);
-      signal.throwIfAborted();
-      meta = get(meta$);
-      if (meta) {
-        return {
-          localDurationMs,
-          meta,
-          remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
-          source: "remote",
-        };
-      }
-    }
-
     const syncBarrier = get(chatThreadEventSyncBarrier$);
+    // Refresh missing threads against current server state after initial sync.
     const canonicalSync = syncBarrier.inFlight
       ? syncBarrier.next.promise
-      : initialRemoteSync.promise;
+      : initialRemoteSync.settled()
+        ? set(syncSharedEventDrivenChatThreads$, get(rootSignal$))
+        : initialRemoteSync.promise;
     const syncVersion = get(chatThreadEventSyncVersion$);
     const resolution = await set(
       resolveColdThreadMeta$,

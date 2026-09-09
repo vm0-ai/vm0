@@ -517,8 +517,8 @@ test("A stale remembered thread is replaced by its current availability", async 
   ).not.toBeInTheDocument();
 });
 
-test("A notification-opened thread waits until the foreground tab is current", async () => {
-  const identity = cacheIdentity("notification-foreground");
+test("A notification opens a thread missing from the current tab snapshot", async () => {
+  const identity = cacheIdentity("notification-new-thread");
   const currentThread = threadSnapshot(
     "b0000000-0000-4000-a000-000000000916",
     "Background tab conversation",
@@ -531,9 +531,17 @@ test("A notification-opened thread waits until the foreground tab is current", a
   const currentMessage = "The background tab is still on this conversation.";
   const notificationMessage = "This notification thread is now current.";
   const serviceWorker = context.mocks.browser.serviceWorker();
-  const visibility = context.mocks.browser.visibilityState("hidden");
+
   let currentThreads: readonly ChatThreadSnapshotProjection[] = [currentThread];
   mockNoBrowserSession();
+  context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {
+    return respond(
+      200,
+      threadMetadata(
+        params.id === currentThread.id ? currentThread : notificationThread,
+      ),
+    );
+  });
   mockThreadSnapshot(() => {
     return currentThreads;
   });
@@ -571,6 +579,7 @@ test("A notification-opened thread waits until the foreground tab is current", a
   const visibleCurrentMessage = await screen.findByText(currentMessage);
   expect(visibleCurrentMessage).toBeVisible();
 
+  currentThreads = [notificationThread, currentThread];
   serviceWorker.dispatchMessage({
     type: "NOTIFICATION_CLICK",
     url: `https://app.okou.ai/chats/${notificationThread.id}`,
@@ -580,9 +589,6 @@ test("A notification-opened thread waits until the foreground tab is current", a
   expect(
     screen.queryByRole("heading", { name: "Chat thread not found" }),
   ).not.toBeInTheDocument();
-
-  currentThreads = [notificationThread, currentThread];
-  visibility.changeTo("visible");
 
   const visibleNotificationTitle = await screen.findByText(notificationTitle, {
     selector: '[data-testid="chat-thread-header-title"]',

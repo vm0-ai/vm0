@@ -95,8 +95,17 @@ export function renderUnsupportedBrowserPage(
   rootElement: HTMLElement,
   assistantName: AssistantName,
   upgrade: BrowserUpgrade,
+  signal: AbortSignal,
 ): void {
+  signal.throwIfAborted();
   const root = createRoot(rootElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      root.unmount();
+    },
+    { once: true },
+  );
   root.render(
     <UnsupportedBrowserPage assistantName={assistantName} upgrade={upgrade} />,
   );
@@ -105,12 +114,4 @@ export function renderUnsupportedBrowserPage(
     Reason.Entrance,
     "unsupported browser bootstrap skeleton",
   );
-  function unmountOnFinalPageHide(event: PageTransitionEvent): void {
-    if (event.persisted) {
-      return;
-    }
-    root.unmount();
-    window.removeEventListener("pagehide", unmountOnFinalPageHide);
-  }
-  window.addEventListener("pagehide", unmountOnFinalPageHide);
 }

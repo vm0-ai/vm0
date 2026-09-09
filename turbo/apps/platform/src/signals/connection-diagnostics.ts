@@ -9,11 +9,6 @@ const CONNECTION_DIAGNOSTIC_EVENT = "vm0:connection-diagnostic";
 // The Worker publishes its own capture over the shared database bridge, so the
 // diagnostics shape is a wire format and Zod owns it.
 const connectionDiagnosticEventNameSchema = z.enum([
-  "foreground.catch-up",
-  "foreground.request",
-  "foreground.skipped",
-  "foreground.subscriber-catch-up",
-  "foreground.visibility-wait",
   "lifecycle.blur",
   "lifecycle.focus",
   "lifecycle.network",
@@ -21,9 +16,7 @@ const connectionDiagnosticEventNameSchema = z.enum([
   "lifecycle.visibility",
   "realtime.auth-callback",
   "realtime.channel",
-  "realtime.channel-replace",
   "realtime.client",
-  "realtime.client-rebuild",
   "realtime.connection",
   "realtime.initial-connection",
   "realtime.pending-subscribers",
