@@ -893,13 +893,11 @@ function buildConnectorsBrowseModel({
  */
 function ConnectorsBuiltinPanel({
   browse,
-  categoryFilter,
   renderCard,
   fallback,
   customPanel,
 }: {
   readonly browse: ConnectorsBrowseModel;
-  readonly categoryFilter: string | null;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
@@ -918,10 +916,11 @@ function ConnectorsBuiltinPanel({
         fallback
       )}
       {/* Custom connectors used to be a tab. They are one more thing the
-          directory offers, so they sit at the end of the directory rather
-          than behind a switch of surfaces -- but a chosen category is a
-          filtered view of the built-in catalog and does not include them. */}
-      {categoryFilter === null && customPanel}
+          directory offers, so they sit at the end of it rather than behind a
+          switch of surfaces. They belong to the directory view only: the
+          panel does not read the page's keyword, so under a search or inside
+          a category it would answer a question nobody asked. */}
+      {browse.showShelves && customPanel}
     </>
   );
 }
@@ -1460,7 +1459,6 @@ export function ConnectorsPage() {
             {shelfEnabled ? (
               <ConnectorsBuiltinPanel
                 browse={browse}
-                categoryFilter={categoryFilter}
                 renderCard={renderCard}
                 fallback={builtinList}
                 customPanel={<CustomConnectorsPanel />}
