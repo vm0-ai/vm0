@@ -35,7 +35,9 @@ const TEAM_DIAGRAM_SLOT = "okou://welcome-diagram/team";
 const SLACK_DIAGRAM_SLOT = "okou://welcome-diagram/slack";
 const VIDEO_PREVIEW_SLOT = "okou://welcome-video/preview";
 
-const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS.find(({ slug }) => {
+  return slug === "shadow-pop";
+})!;
 const welcomePresentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 const welcomeVideo = VIDEO_TEMPLATE_ITEMS[0]!;
 

@@ -55,11 +55,13 @@ describe("built-in welcome thread", () => {
     expect(
       within(page).getByRole("heading", { name: "Hi, I'm Okou" }),
     ).toBeInTheDocument();
-    expect(
-      within(content).getByRole("img", {
-        name: "Campaign visual delivered by Okou",
-      }),
-    ).toBeInTheDocument();
+    const campaignVisual = within(content).getByRole("img", {
+      name: "Campaign visual delivered by Okou",
+    });
+    expect(campaignVisual).toBeInTheDocument();
+    expect(campaignVisual.getAttribute("src")).toContain(
+      "/ref-default-mail-l2.png",
+    );
     expect(
       within(content).getByRole("img", {
         name: "Presentation delivered by Okou",
