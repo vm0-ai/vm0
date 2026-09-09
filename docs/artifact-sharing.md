@@ -8,11 +8,13 @@ an existing share do not depend on the rollout switch.
 
 ## User flow
 
-The owner opens an artifact's existing Share menu, sees its original organization
-and current audience, and explicitly chooses **Share to organization** or
-**Share to Public** for the displayed version. Opening the menu and copying a
-link are read-only. Upload, generation, hosting and thread sharing create no
-artifact grants. Recipients cannot edit or reshare.
+The owner opens an artifact's existing Share menu, which contains only
+**Share to organization** and **Share to Public**. Choosing either option shares
+the displayed version and copies its link. If that version already has the
+chosen audience, the action only copies the existing link without updating
+permissions or republishing. Opening the menu is read-only. Upload, generation,
+hosting and thread sharing create no artifact grants. Recipients cannot edit
+or reshare.
 
 - Organization: `https://app.okou.ai/share/artifacts/<shareId>` (the configured
   `APP_URL` in other environments). The app uses existing login with a same-origin
@@ -24,16 +26,18 @@ artifact grants. Recipients cannot edit or reshare.
 - Public: `https://sh-<compactShareId>-<publicationToken>.okou.app/`, using the
   configured branded hosted domain. Anonymous requests go through the host
   Worker and never require an API or primary database round trip.
-- Copy existing link never changes its audience. Stop sharing revokes the grant.
-  Changing Public to organization clears the public token before acknowledging
+- The menu has no separate copy or stop-sharing action. The API retains its
+  stop-sharing operation for revocation and rollback. Changing Public to
+  organization clears the public token before acknowledging
   organization-only scope. Republishing rotates that token, so an earlier
   revoked public URL stays revoked.
 
 A file ID is one version. A hosted site's share ID spans its versions, but its
 policy pins one explicitly selected deployment. A new generation or another
-`--site` upload does not update the share. Opening a newer version shows both
-its candidate version and the currently shared version. Choosing an audience
-there explicitly updates the selected version; the organization link stays stable.
+`--site` upload does not update the share. Choosing an audience on a newer,
+not-yet-shared version explicitly updates the selected version and copies the
+link; the organization link stays stable. Repeating the action for the already
+shared version only copies that link.
 CLI/model URLs continue to be stable authenticated API references.
 
 ## Storage authority and immutable bytes

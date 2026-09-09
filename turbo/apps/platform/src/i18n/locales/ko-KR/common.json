@@ -578,17 +578,8 @@
       "videoLabel": "{{filename}} 비디오 미리보기"
     },
     "sharing": {
-      "copy": "기존 링크 복사",
-      "expiry": "이전에 열린 사본은 최대 15분 동안 계속 액세스할 수 있습니다.",
-      "loading": "공유 설정을 불러오는 중…",
-      "organization": "{{name}}의 멤버",
-      "private": "나만",
-      "public": "링크가 있는 모든 사용자",
-      "selectedVersion": "선택한 버전 {{version}} 공유",
-      "sharedVersion": "공유된 버전 {{version}}",
       "shareOrganization": "조직에 공유",
       "sharePublic": "공개적으로 공유",
-      "stop": "공유 중지",
       "unavailable": "이 아티팩트를 사용할 수 없거나 액세스 권한이 없습니다."
     },
     "sidebar": {

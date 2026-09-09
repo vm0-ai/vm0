@@ -578,17 +578,8 @@
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
     "sharing": {
-      "copy": "Salin tautan yang ada",
-      "expiry": "Salinan yang sebelumnya dibuka mungkin tetap dapat diakses hingga 15 menit.",
-      "loading": "Memuat pengaturan berbagi…",
-      "organization": "Anggota {{name}}",
-      "private": "Hanya Anda",
-      "public": "Siapa saja yang memiliki tautan",
-      "selectedVersion": "Bagikan versi terpilih {{version}}",
-      "sharedVersion": "Versi yang dibagikan {{version}}",
       "shareOrganization": "Bagikan ke organisasi",
       "sharePublic": "Bagikan ke publik",
-      "stop": "Berhenti berbagi",
       "unavailable": "Artefak ini tidak tersedia atau Anda tidak memiliki akses."
     },
     "sidebar": {

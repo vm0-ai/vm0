@@ -54,18 +54,28 @@ export const loadArtifactShare$ = command(
   },
 );
 
-export const changeArtifactShare$ = command(
+export const shareArtifact$ = command(
   async (
     { get, set },
     args: {
       readonly url: string;
-      readonly audience: ArtifactShareStatus["audience"];
+      readonly audience: Exclude<ArtifactShareStatus["audience"], "private">;
     },
     signal: AbortSignal,
   ) => {
+    signal.throwIfAborted();
     const target = artifactSharingTarget(args.url);
     if (!target) {
-      return;
+      return null;
+    }
+    const status = get(artifactShareStatuses$)[args.url];
+    if (
+      status?.url &&
+      status.audience === args.audience &&
+      status.selectedTarget?.kind === target.kind &&
+      status.selectedTarget.id === target.id
+    ) {
+      return status.url;
     }
     const response = await accept(
       get(apiClient$)(artifactSharesContract).update({
@@ -75,11 +85,13 @@ export const changeArtifactShare$ = command(
       [200],
       signal,
     );
+    signal.throwIfAborted();
     set(get(pageStatusState$), (previous) => {
       return {
         ...previous,
         [args.url]: response.body,
       };
     });
+    return response.body.url;
   },
 );

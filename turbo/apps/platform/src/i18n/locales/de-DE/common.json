@@ -579,17 +579,8 @@
       "videoLabel": "Videovorschau für {{filename}}"
     },
     "sharing": {
-      "copy": "Vorhandenen Link kopieren",
-      "expiry": "Zuvor geöffnete Kopien können noch bis zu 15 Minuten zugänglich bleiben.",
-      "loading": "Freigabeeinstellungen werden geladen…",
-      "organization": "Mitglieder von {{name}}",
-      "private": "Nur du",
-      "public": "Alle mit dem Link",
-      "selectedVersion": "Ausgewählte Version {{version}} teilen",
-      "sharedVersion": "Geteilte Version {{version}}",
       "shareOrganization": "Mit der Organisation teilen",
       "sharePublic": "Öffentlich teilen",
-      "stop": "Freigabe beenden",
       "unavailable": "Dieses Artefakt ist nicht verfügbar oder du hast keinen Zugriff."
     },
     "sidebar": {

@@ -79,7 +79,19 @@ async function openArtifact(enabled = true) {
   await screen.findByTestId("artifact-dialog-site-frame");
 }
 
-test("Share menu only publishes on explicit actions and can copy, change audience and stop", async () => {
+async function openShareMenu() {
+  await waitFor(() => {
+    return expect(queryAction("button", "Share")).toBeDefined();
+  });
+  click(action("button", "Share"));
+  await waitFor(() => {
+    return expect(
+      action("menuitem", "Share to organization"),
+    ).not.toHaveAttribute("aria-disabled", "true");
+  });
+}
+
+test("the two share actions create and copy links, then only copy the existing audience", async () => {
   let status: ArtifactShareStatus = {
     shareId: null,
     audience: "private",
@@ -116,44 +128,89 @@ test("Share menu only publishes on explicit actions and can copy, change audienc
   const clipboard = context.mocks.browser.clipboardWriteText();
   await openArtifact();
   expect(reads).toBe(0);
-  const open = async () => {
-    await waitFor(() => {
-      return expect(queryAction("button", "Share")).toBeDefined();
-    });
-    click(action("button", "Share"));
-    await screen.findByText("Original organization");
-    await waitFor(() => {
-      return expect(
-        action("menuitem", "Share to organization"),
-      ).not.toHaveAttribute("aria-disabled", "true");
-    });
-  };
-  await open();
+  await openShareMenu();
   expect(changes).toStrictEqual([]);
-  expect(action("menuitem", "Copy existing link")).toHaveAttribute(
-    "aria-disabled",
-    "true",
-  );
+  expect(clipboard.writes).toStrictEqual([]);
+  expect(
+    queryAllByRoleFast("menuitem").map((element) => {
+      return element.textContent?.trim();
+    }),
+  ).toStrictEqual(["Share to organization", "Share to Public"]);
+  expect(screen.queryByText("Original organization")).not.toBeInTheDocument();
   click(action("menuitem", "Share to organization"));
-  await waitFor(() => {
-    return expect(changes).toStrictEqual(["organization"]);
-  });
-  await open();
-  click(action("menuitem", "Copy existing link"));
   await waitFor(() => {
     return expect(clipboard.writes).toStrictEqual([organizationUrl]);
   });
   expect(changes).toStrictEqual(["organization"]);
-  await open();
+  await openShareMenu();
+  click(action("menuitem", "Share to organization"));
+  await waitFor(() => {
+    return expect(clipboard.writes).toStrictEqual([
+      organizationUrl,
+      organizationUrl,
+    ]);
+  });
+  expect(changes).toStrictEqual(["organization"]);
+  await openShareMenu();
   click(action("menuitem", "Share to Public"));
   await waitFor(() => {
-    return expect(changes).toStrictEqual(["organization", "public"]);
+    return expect(clipboard.writes).toStrictEqual([
+      organizationUrl,
+      organizationUrl,
+      publicUrl,
+    ]);
   });
-  await open();
-  click(action("menuitem", "Stop sharing"));
+  expect(changes).toStrictEqual(["organization", "public"]);
+  await openShareMenu();
+  click(action("menuitem", "Share to Public"));
   await waitFor(() => {
-    return expect(changes).toStrictEqual(["organization", "public", "private"]);
+    return expect(clipboard.writes).toStrictEqual([
+      organizationUrl,
+      organizationUrl,
+      publicUrl,
+      publicUrl,
+    ]);
   });
+  expect(changes).toStrictEqual(["organization", "public"]);
+});
+
+test("sharing a newer HTML version publishes that version before copying its link", async () => {
+  const publications: string[] = [];
+  const status: ArtifactShareStatus = {
+    shareId,
+    audience: "public",
+    organization: { id: "original-org", name: "Original organization" },
+    selectedTarget: {
+      kind: "html",
+      id: "00000000-0000-4000-8000-000000000011",
+    },
+    selectedVersion: 1,
+    candidateVersion: 2,
+    url: publicUrl,
+  };
+  context.mocks.api(artifactSharesContract.status, ({ respond }) => {
+    return respond(200, status);
+  });
+  context.mocks.api(artifactSharesContract.update, ({ body, respond }) => {
+    expect(body).toStrictEqual({
+      target: { kind: "html", id: deploymentId },
+      audience: "public",
+    });
+    publications.push(body.target.id);
+    return respond(200, {
+      ...status,
+      selectedTarget: body.target,
+      selectedVersion: 2,
+    });
+  });
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  await openArtifact();
+  await openShareMenu();
+  click(action("menuitem", "Share to Public"));
+  await waitFor(() => {
+    return expect(clipboard.writes).toStrictEqual([publicUrl]);
+  });
+  expect(publications).toStrictEqual([deploymentId]);
 });
 
 test("the shared rollout switch keeps the private share menu hidden", async () => {
