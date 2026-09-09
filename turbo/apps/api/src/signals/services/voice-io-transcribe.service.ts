@@ -31,6 +31,7 @@ import {
   VoiceTranscriptionRequestError,
 } from "../external/voice-input-transcription";
 import { settle } from "../utils";
+import { VoiceProviderUnavailableError } from "../external/voice-provider-request";
 
 // Character rate is noisy for short clips, so only context-sized output can
 // trigger the conservative upper bound for human speech.
@@ -70,6 +71,13 @@ function transcriptionError<Status extends number>(
 }
 
 function providerError(error: unknown) {
+  if (error instanceof VoiceProviderUnavailableError) {
+    return transcriptionError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Speech recognition is temporarily busy. Please retry in a moment.",
+    );
+  }
   if (
     (error instanceof OpenRouterRequestError ||
       error instanceof VoiceTranscriptionRequestError) &&
@@ -288,8 +296,9 @@ export const transcribeVoiceSegment$ = command(
     const startedAt = performance.now();
     const generated = await settle(
       transcribeIncrementalVoice(input, requestSignal),
+      signal,
     );
-    signal.throwIfAborted();
+    requestSignal.throwIfAborted();
     if (!generated.ok) {
       return providerError(generated.error);
     }

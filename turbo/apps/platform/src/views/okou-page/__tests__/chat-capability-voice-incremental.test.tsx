@@ -5,6 +5,7 @@ import { expect, test, vi } from "vitest";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createChildAbortController } from "../../../signals/utils.ts";
+import { initSentry } from "../../../lib/sentry.ts";
 import {
   context,
   findEnabledButton,
@@ -15,6 +16,37 @@ import {
 const refreshedContext = testContext();
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 const endpoint = "*/api/voice-io/transcribe/segment";
+
+test("Keep transcription pending until server recovery succeeds without reporting an error", async () => {
+  const sentry = context.mocks.sentry();
+  initSentry();
+  const started = context.mocks.deferred<void>();
+  const recovered = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({ rms: 0.1 });
+  installRunChat();
+  // The contract mock only parses JSON; voice segments use multipart bodies.
+  context.mocks.http.post(endpoint, async () => {
+    started.resolve();
+    await recovered.promise;
+    return HttpResponse.json({
+      transcript: "Recovered speech.",
+      polishedText: "Recovered speech.",
+      language: "en",
+    });
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  click(await findEnabledButton("Stop recording"));
+  await started.promise;
+  await expect(screen.findByText("Transcribing...")).resolves.toBeVisible();
+  recovered.resolve();
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "Recovered speech.",
+    );
+  });
+  expect(sentry.reports).toStrictEqual([]);
+});
 
 test("Keep recording after an incremental segment fails and finish in order", async () => {
   const capture = context.mocks.deferred<(samples: Float32Array) => void>();
@@ -195,7 +227,11 @@ test("Stop during transcription and finalize the saved prefix without retranscri
   });
 });
 
-test("Preserve audio through a failed transcription request and retry the same audio", async () => {
+test("Preserve audio and actionable reporting after provider recovery is exhausted", async () => {
+  const sentry = context.mocks.sentry();
+  initSentry();
+  const message =
+    "Speech recognition is temporarily busy. Please retry in a moment.";
   context.mocks.browser.voiceInput({ rms: 0.1 });
   installRunChat();
   let available = false;
@@ -212,7 +248,7 @@ test("Preserve audio through a failed transcription request and retry the same a
         {
           error: {
             code: "PROVIDER_UNAVAILABLE",
-            message: "Transcription unavailable",
+            message,
           },
         },
         { status: 503 },
@@ -228,6 +264,19 @@ test("Preserve audio through a failed transcription request and retry the same a
   click(await findEnabledButton("Voice input"));
   click(await findEnabledButton("Stop recording"));
   await findEnabledButton("Retry");
+  await expect(screen.findByText(message)).resolves.toBeVisible();
+  expect(
+    screen.getByText("Your recording is kept. Retry transcription."),
+  ).toBeVisible();
+  expect(sentry.reports).toContainEqual(
+    expect.objectContaining({
+      type: "exception",
+      error: expect.objectContaining({
+        code: "PROVIDER_UNAVAILABLE",
+        status: 503,
+      }),
+    }),
+  );
   available = true;
   click(await findEnabledButton("Retry"));
   await waitFor(() => {

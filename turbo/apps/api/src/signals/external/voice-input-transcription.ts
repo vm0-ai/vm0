@@ -5,6 +5,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { readBoundedResponseText, safeJsonParse } from "../utils";
 import type { OpenRouterVoiceAudio } from "./openrouter-voice";
+import { requestVoiceProvider } from "./voice-provider-request";
 
 type TranscriptionModel = Extract<VoiceInputModel, { kind: "transcription" }>;
 const ELEVENLABS_MODEL = "fal-ai/elevenlabs/speech-to-text/scribe-v2";
@@ -38,36 +39,48 @@ export async function transcribeVoiceInputAudio(
   if (!key) {
     throw new Error("Voice transcription provider is not configured");
   }
-  const response = await fetch(
-    elevenLabs
-      ? `https://fal.run/${ELEVENLABS_MODEL}`
-      : "https://openrouter.ai/api/v1/audio/transcriptions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `${elevenLabs ? "Key" : "Bearer"} ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
+  return await requestVoiceProvider(
+    (requestSignal) => {
+      return fetch(
         elevenLabs
-          ? {
-              audio_url: `data:audio/wav;base64,${audio.data}`,
-              tag_audio_events: false,
-              diarize: false,
-            }
-          : { model: model.id, input_audio: audio, response_format: "json" },
-      ),
-      signal,
+          ? `https://fal.run/${ELEVENLABS_MODEL}`
+          : "https://openrouter.ai/api/v1/audio/transcriptions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `${elevenLabs ? "Key" : "Bearer"} ${key}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            elevenLabs
+              ? {
+                  audio_url: `data:audio/wav;base64,${audio.data}`,
+                  tag_audio_events: false,
+                  diarize: false,
+                }
+              : {
+                  model: model.id,
+                  input_audio: audio,
+                  response_format: "json",
+                },
+          ),
+          signal: requestSignal,
+        },
+      );
     },
+    async (response) => {
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new VoiceTranscriptionRequestError(response.status);
+      }
+      const body = await readBoundedResponseText(response, MAX_RESPONSE_BYTES);
+      signal.throwIfAborted();
+      if (body.kind !== "text") {
+        throw new Error("Voice transcription response exceeds the size limit");
+      }
+      return transcriptionSchema.parse(safeJsonParse(body.text)).text;
+    },
+    { provider: elevenLabs ? "fal" : "openrouter", model: model.id },
+    signal,
   );
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new VoiceTranscriptionRequestError(response.status);
-  }
-  const body = await readBoundedResponseText(response, MAX_RESPONSE_BYTES);
-  signal.throwIfAborted();
-  if (body.kind !== "text") {
-    throw new Error("Voice transcription response exceeds the size limit");
-  }
-  return transcriptionSchema.parse(safeJsonParse(body.text)).text;
 }
