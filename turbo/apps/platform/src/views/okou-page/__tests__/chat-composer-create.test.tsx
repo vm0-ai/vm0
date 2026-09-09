@@ -18,10 +18,15 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  readClipboardItemText,
+  readSingleRichClipboardWrite,
+} from "./chat-lifecycle-test-helpers.ts";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
 import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 import {
   AGENT_ID,
+  THREAD_ID,
   composerInlineTemplates,
   context,
   findComposerEditor,
@@ -141,14 +146,131 @@ test("Choose a video through the consolidated Create entry with the keyboard and
     expect.arrayContaining([
       expect.objectContaining({
         type: "text",
-        text: expect.stringContaining("Create a video."),
+        text: expect.stringMatching(/^A train crossing the mountains\s*$/),
       }),
+      {
+        type: "additional_info",
+        text: expect.stringContaining("Create a video."),
+      },
     ]),
   );
   expect(JSON.stringify(sent?.userMessage)).toContain(
     "A train crossing the mountains",
   );
-  expect(sent?.runOptions?.video).toMatchObject({ aspectRatio: "9:16" });
+  expect(sent?.userMessage?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining("- Aspect ratio: 9:16"),
+  });
+  expect(sent?.runOptions).toBeUndefined();
+  await expect(
+    screen.findByText("A train crossing the mountains"),
+  ).resolves.toBeVisible();
+});
+
+test.each(["presentation", "video", "image"] as const)(
+  "Persisted %s additional info stays out of the message and copied text",
+  async (mode) => {
+    setupModels();
+    const clipboard = context.mocks.browser.clipboardWrite();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "additional_info",
+                text: `Create ${mode === "image" ? "an" : "a"} ${mode}.\nAdditional generation settings.`,
+              },
+              { type: "text", text: "Our launch brief" },
+            ],
+          },
+          createdAt: "2026-09-07T00:00:00.000Z",
+        },
+      ],
+    });
+    await setupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: true },
+    });
+    const text = await screen.findByText("Our launch brief");
+    const message = text.closest<HTMLElement>('[data-role="user"]');
+    if (!message) {
+      throw new Error("Expected the user message");
+    }
+    expect(message).toBeVisible();
+    expect(message).not.toHaveTextContent("Create");
+    expect(message).not.toHaveTextContent("Additional generation settings");
+    click(button("Copy message", message));
+    const item = await readSingleRichClipboardWrite(clipboard);
+    await expect(readClipboardItemText(item, "text/plain")).resolves.toBe(
+      "Our launch brief",
+    );
+  },
+);
+
+test("A queued Create message keeps its intent separate from user-authored text", async () => {
+  setupModels();
+  const queued: UserMessageDocument[] = [];
+  const runId = crypto.randomUUID();
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    activeRunIds: [runId],
+    chatEvents: [
+      {
+        role: "user",
+        content: "Review the launch brief",
+        runId,
+        createdAt: "2026-09-07T00:00:00.000Z",
+      },
+    ],
+    onQueuedEventAppend: (body) => {
+      if (body.userMessage) {
+        queued.push(body.userMessage);
+      }
+    },
+  });
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: true },
+  });
+  await screen.findByText("Review the launch brief");
+
+  const followupEditor = await findComposerEditor();
+  const prompt = "Create a presentation. Keep these words in my message.";
+  await chooseCommand(
+    followupEditor,
+    `${prompt} /create presentation`,
+    "Create presentation",
+  );
+  await waitFor(() => {
+    expect(button("Send")).toBeEnabled();
+  });
+  click(button("Send"));
+  await waitFor(() => {
+    expect(queued).toHaveLength(1);
+  });
+  expect(queued[0]?.parts).toContainEqual({
+    type: "additional_info",
+    text: "Create a presentation.",
+  });
+  expect(
+    queued[0]?.parts
+      .filter((part) => {
+        return part.type === "text";
+      })
+      .map((part) => {
+        return part.text;
+      })
+      .join("")
+      .trim(),
+  ).toBe(prompt);
+  await expect(screen.findByText(prompt)).resolves.toBeVisible();
 });
 
 test("Image mode combines styles and image models while preserving the prompt", async () => {
@@ -296,6 +418,10 @@ test.each([
       expect(submissions).toHaveLength(1);
     });
     const parts = submissions[0]?.parts;
+    expect(parts).toContainEqual({
+      type: "additional_info",
+      text: `Create ${mode === "image" ? "an" : "a"} ${mode}.`,
+    });
     expect(
       parts?.flatMap((part) => {
         return part.type === "template" ? [part.titleSnapshot] : [];
@@ -470,8 +596,8 @@ test("Canceling and switching Create preserve slash text and template references
     expect(submissions).toHaveLength(1);
   });
   expect(JSON.stringify(submissions[0])).toContain("Our launch");
-  expect(JSON.stringify(submissions[0])).not.toContain(
-    "Create a presentation.",
+  expect(submissions[0]?.parts).not.toContainEqual(
+    expect.objectContaining({ type: "additional_info" }),
   );
   expect(submissions[0]?.parts).toContainEqual(
     expect.objectContaining({

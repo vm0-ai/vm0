@@ -1167,7 +1167,7 @@ interface UserMessagePartRegistries {
 const registerUserMessageRenderPart$ = command(
   (
     { set },
-    part: UserMessagePart,
+    part: Exclude<UserMessagePart, { type: "additional_info" }>,
     registries: UserMessagePartRegistries,
   ): UserMessageRenderPart => {
     const { artifactCardSignals, agentReferenceSignals } = registries;
@@ -1262,8 +1262,10 @@ const registerUserMessageRenderDocument$ = command(
     }
     return {
       document,
-      parts: document.parts.map((part) => {
-        return set(registerUserMessageRenderPart$, part, registries);
+      parts: document.parts.flatMap((part) => {
+        return part.type === "additional_info"
+          ? []
+          : [set(registerUserMessageRenderPart$, part, registries)];
       }),
     };
   },

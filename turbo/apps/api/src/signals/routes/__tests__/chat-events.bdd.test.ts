@@ -3754,6 +3754,10 @@ describe("CHAT-02: queueing and recalling messages", () => {
           version: 1,
           parts: [
             {
+              type: "additional_info",
+              text: "Create a video.\nDuration: 6s.",
+            },
+            {
               type: "file",
               fileId,
               filenameSnapshot: "delivery-notes.txt",
@@ -3840,6 +3844,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     expect(secondReservation.eventIds).toStrictEqual([secondEventId]);
     expect(secondReservation.prompt).toBe(
       [
+        "Create a video.\nDuration: 6s.",
         `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
         "second durable steer",
       ].join("\n\n"),
@@ -21938,6 +21943,42 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
+  it.each([
+    "Create a presentation.\nNumber of slides: 10.",
+    "Create a video.\nDuration: 6s.\nAudio: off.",
+    "Create an image.\nAspect ratio: 1:1.",
+  ])(
+    "preserves client-authored additional info in the agent prompt: %s",
+    async (additionalInfo) => {
+      const { actor, agentId } = await entitledChatActor();
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      const prompt = "Our launch brief";
+      const userMessage: UserMessageInputDocument = {
+        version: 1,
+        parts: [
+          { type: "additional_info", text: additionalInfo },
+          { type: "text", text: prompt },
+        ],
+      };
+      const sent = await sendChatRun(actor, { agentId, prompt, userMessage });
+      const run = await api.readRun(actor, sent.runId);
+      expect(run.prompt).toBe(`${additionalInfo}\n\n${prompt}`);
+      const messages = await chat.listThreadEvents(actor, sent.threadId);
+      const message = userMessages(messages.events).find((event) => {
+        return event.eventType === "input.prompt" && event.runId === sent.runId;
+      });
+      if (!message) {
+        throw new Error("Expected the sent message to be persisted");
+      }
+      expect(message).toMatchObject({
+        userMessage: { parts: expect.arrayContaining(userMessage.parts) },
+      });
+      expect(chatEventDisplayText(message)).toBe(prompt);
+      await cancelChatRun(actor, sent.runId);
+    },
+    90_000,
+  );
+
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -25298,7 +25339,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, mockRunId);
   }, 90_000);
 
-  it("projects inline templates into queued web launch material", async () => {
+  it("projects additional info and inline templates into queued web launch material", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -25316,6 +25357,10 @@ describe("CHAT-02: shared user message queue", () => {
     const queuedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
+        {
+          type: "additional_info",
+          text: "Create an image.\nAspect ratio: 1:1.",
+        },
         { type: "text", text: "Restyle with " },
         {
           type: "template",
@@ -25375,7 +25420,9 @@ describe("CHAT-02: shared user message queue", () => {
 
     const run = await api.readRun(actor, queuedRunId);
     const inlineMarker = `[Template #1: ${style.title} (illustration)]`;
-    expect(run.prompt).toBe(`Restyle with ${inlineMarker} at claim`);
+    expect(run.prompt).toBe(
+      `Create an image.\nAspect ratio: 1:1.\n\nRestyle with ${inlineMarker} at claim`,
+    );
     const webPrompt = [
       "# Current Integration\nYou are currently running inside: Web",
       "You are communicating with the user through the web chat UI.",

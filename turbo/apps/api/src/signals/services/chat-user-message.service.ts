@@ -378,6 +378,7 @@ function formatFeedbackParts(
 export function projectUserMessage(
   document: UserMessageDocument,
 ): UserMessageProjection {
+  const additionalInfo: string[] = [];
   const promptBlocks: string[] = [];
   const displayBlocks: string[] = [];
   let inlinePrompt = "";
@@ -419,6 +420,10 @@ export function projectUserMessage(
   };
 
   for (const part of document.parts) {
+    if (part.type === "additional_info") {
+      additionalInfo.push(part.text);
+      continue;
+    }
     if (part.type === "feedback") {
       flushInlinePrompt();
       feedbackParts.push(part);
@@ -469,7 +474,7 @@ export function projectUserMessage(
   flushInlinePrompt();
 
   return {
-    agentPrompt: promptBlocks.join("\n\n"),
+    agentPrompt: [...additionalInfo, ...promptBlocks].join("\n\n"),
     displayText: displayBlocks.join("\n\n"),
     primaryTemplate,
     templates,

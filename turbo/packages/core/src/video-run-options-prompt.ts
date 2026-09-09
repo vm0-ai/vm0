@@ -1,7 +1,9 @@
-import type { ChatRunVideoOptionsRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ResolvedVideoGenerationOptions } from "./video-model-catalog";
+
+type VideoRunOptions = Partial<Omit<ResolvedVideoGenerationOptions, "model">>;
 
 function selectedVideoParameterLabels(
-  options: ChatRunVideoOptionsRequest,
+  options: VideoRunOptions,
 ): readonly string[] {
   const labels: string[] = [];
   if (options.aspectRatio !== undefined) {
@@ -44,7 +46,7 @@ function selectedVideoParameterLabels(
  * endpoint pins that snapshot regardless of what the prompt says.
  */
 export function buildVideoRunOptionsPrompt(
-  options: ChatRunVideoOptionsRequest | null,
+  options: VideoRunOptions | null,
 ): string {
   if (!options) {
     return "";
