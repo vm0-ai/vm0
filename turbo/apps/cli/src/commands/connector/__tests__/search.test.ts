@@ -1166,6 +1166,79 @@ describe("okou connector search command", () => {
       expect(output).not.toContain(connector.connectedAccountId);
     });
 
+    it.each(["run", "current"] as const)(
+      "declines a callback requiring separate Agent permission review in %s context",
+      async (mode) => {
+        const connector = customConnector({
+          permissionBundleRef: "builtin:feishu@1",
+        });
+        server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));
+        if (mode === "current") {
+          vi.stubEnv("OKOU_AGENT_ID", "");
+        }
+        const args = ["node", "cli", connector.slug, "--agent", AGENT_UUID];
+
+        await searchCommand.parseAsync(args);
+
+        expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+          `/connectors/${connector.slug}/connect?agentId=${AGENT_UUID}`,
+        );
+        expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+          "separate Agent permission review",
+        );
+        mockConsoleLog.mockClear();
+
+        await expect(
+          searchCommand.parseAsync([
+            ...args,
+            "--callback-prompt",
+            "Continue after connecting",
+          ]),
+        ).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+          "does not support --callback-prompt",
+        );
+        expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+          "callbackPrompt=",
+        );
+      },
+    );
+
+    it("keeps permission-bundled connection callbacks for an authorized Agent", async () => {
+      const connector = customConnector({
+        permissionBundleRef: "builtin:feishu@1",
+      });
+      server.use(
+        stubConnectorCatalog([]),
+        stubCustomConnectors([connector]),
+        stubAgentCustomConnectors([
+          { customConnectorId: connector.id, permissionNames: [] },
+        ]),
+      );
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        connector.slug,
+        "--json",
+        "--callback-prompt",
+        "Continue after connecting",
+      ]);
+
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        actions: [
+          {
+            url: `http://localhost:3000/connectors/${connector.slug}/connect?agentId=${AGENT_UUID}&threadId=${THREAD_UUID}&callbackPrompt=Continue+after+connecting`,
+            supportsCallback: true,
+          },
+        ],
+      });
+    });
+
     it("targets custom Agent access review without claiming a callback", async () => {
       const connector = customConnector({ connected: true });
       server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));

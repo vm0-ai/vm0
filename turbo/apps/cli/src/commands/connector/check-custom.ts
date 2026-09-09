@@ -11,7 +11,10 @@ import {
   runConnectorAccountUnavailableMessage,
   type RunConnectorAccountLookup,
 } from "./run-account-context";
-import { runConnectorSearchAction } from "./search-guidance";
+import {
+  connectorConnectAction,
+  runConnectorSearchAction,
+} from "./search-guidance";
 
 interface CustomConnectorCheckContext {
   readonly label: string;
@@ -132,11 +135,15 @@ function printCustomConnectorRecovery(
           authorized,
         )
       : !definition.connected
-        ? {
-            label: `Connect ${context.label}`,
-            path: `/connectors/${definition.slug}/connect`,
-            supportsCallback: true,
-          }
+        ? connectorConnectAction(
+            {
+              kind: "custom",
+              slug: definition.slug,
+              label: context.label,
+              customConnector: definition,
+            },
+            authorized,
+          )
         : null;
   if (action === null) {
     return;
@@ -149,7 +156,8 @@ function printCustomConnectorRecovery(
   if (!action.supportsCallback) {
     console.log(`Open [${action.label}](${url}).`);
     console.log(
-      "Settings review does not support callbacks. Opening this link does not grant access or select an account. Connection and selection changes apply to future runs.",
+      action.guidance ??
+        "Settings review does not support callbacks. Opening this link does not grant access or select an account. Connection and selection changes apply to future runs.",
     );
     return;
   }

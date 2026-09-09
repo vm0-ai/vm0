@@ -16,6 +16,7 @@ export interface ConnectorSearchAction {
   readonly label: string;
   readonly path: string;
   readonly supportsCallback: boolean;
+  readonly guidance?: string;
 }
 
 type ConnectorSearchTarget =
@@ -41,14 +42,37 @@ function accountSettingsAction(
   };
 }
 
-function connectAction(
-  connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
+function connectionAction(
+  connector: ConnectorSearchTarget,
+  authorized: boolean | null,
+  action: Pick<ConnectorSearchAction, "label" | "path">,
 ): ConnectorSearchAction {
+  if (
+    connector.kind === "custom" &&
+    connector.customConnector.permissionBundleRef &&
+    authorized !== true
+  ) {
+    return {
+      ...action,
+      supportsCallback: false,
+      guidance:
+        "This connector requires a separate Agent permission review, so this connection does not support --callback-prompt. Connect or reconnect the account, then review Agent access in Connectors settings and continue manually. Changes apply to future runs.",
+    };
+  }
   return {
-    label: `Connect or authorize ${connector.label}`,
-    path: `/connectors/${connector.slug}/connect`,
+    ...action,
     supportsCallback: true,
   };
+}
+
+export function connectorConnectAction(
+  connector: ConnectorSearchTarget,
+  authorized: boolean | null,
+): ConnectorSearchAction {
+  return connectionAction(connector, authorized, {
+    label: `Connect or authorize ${connector.label}`,
+    path: `/connectors/${connector.slug}/connect`,
+  });
 }
 
 function customAccessAction(
@@ -73,18 +97,17 @@ export function runConnectorSearchAction(
           ? customAccessAction(connector)
           : null;
       }
-      return {
+      return connectionAction(connector, authorized, {
         label: `Reconnect ${connector.label} (${lookup.label})`,
         path: `/connectors/${connector.slug}/reconnect/${lookup.connectionId}`,
-        supportsCallback: true,
-      };
+      });
     case "not-admitted":
       if (connector.kind === "custom" && connector.customConnector.connected) {
         return authorized === false
           ? customAccessAction(connector)
           : accountSettingsAction(connector);
       }
-      return connectAction(connector);
+      return connectorConnectAction(connector, authorized);
     case "metadata-unavailable":
     case "context-unavailable":
       return accountSettingsAction(connector);
@@ -95,21 +118,22 @@ export function currentConnectorSearchAction(
   connector: ConnectorDiscoveryItem,
   agentContext: ConnectorDiscoveryAgentContext | null,
 ): ConnectorSearchAction | null {
-  const authorized =
-    !agentContext || isConnectorDiscoveryAuthorized(connector, agentContext);
+  const authorized = agentContext
+    ? isConnectorDiscoveryAuthorized(connector, agentContext)
+    : null;
   if (connector.kind === "custom") {
     if (!connector.customConnector.connected) {
-      return connectAction(connector);
+      return connectorConnectAction(connector, authorized);
     }
-    return authorized ? null : customAccessAction(connector);
+    return authorized === false ? customAccessAction(connector) : null;
   }
   if (connector.catalogConnector.connectionStatus === "reconnect-required") {
     return accountSettingsAction(connector);
   }
   if (!connector.catalogConnector.connected) {
-    return connectAction(connector);
+    return connectorConnectAction(connector, authorized);
   }
-  return authorized
+  return authorized !== false
     ? null
     : {
         label: `Authorize ${connector.label}`,
@@ -127,7 +151,8 @@ export function connectorSearchActionLinks(args: {
   return args.actions.map((action) => {
     if (args.callbackPrompt !== undefined && !action.supportsCallback) {
       throw new Error(
-        "This connector needs an account or access review in Connectors settings, which does not support --callback-prompt.",
+        action.guidance ??
+          "This connector needs an account or access review in Connectors settings, which does not support --callback-prompt.",
       );
     }
     const url = connectorActionUrl({
@@ -139,6 +164,7 @@ export function connectorSearchActionLinks(args: {
       label: action.label,
       url: finalizeActionUrl(new URL(url), args.callbackPrompt, args.agentId),
       supportsCallback: action.supportsCallback,
+      ...(action.guidance ? { guidance: action.guidance } : {}),
     };
   });
 }
@@ -167,6 +193,9 @@ export function printConnectorSearchGuidance(args: {
   }
   for (const link of links) {
     console.log(`  [${link.label}](${link.url})`);
+    if (link.guidance) {
+      console.log(`  ${link.guidance}`);
+    }
   }
 
   if (args.callbackPrompt !== undefined) {

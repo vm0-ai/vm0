@@ -73,6 +73,12 @@ including all query parameters.
 Recovery URLs use `OKOU_APP_URL` when configured; otherwise the CLI derives the
 app origin from the API URL. Custom connection actions use the connector's
 directed Connect flow or the exact run-selected account's reconnect flow.
+For a custom HTTP connector with a permission bundle, connection alone cannot
+grant Agent access. When the Agent is not already authorized, the connection
+action retains its exact destination but sets `supportsCallback: false` and
+includes `guidance` for the separate permission review. Passing
+`--callback-prompt` is rejected for that action. Already-authorized Agents retain
+confirmed connection callbacks.
 
 Check emits the validated diagnostic without collapsing `deny`, `ask`,
 `unavailable`, unknown endpoints, ambiguous targets, or missing run context.

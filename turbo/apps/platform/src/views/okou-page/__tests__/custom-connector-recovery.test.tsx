@@ -172,6 +172,66 @@ test.each(["http", "mcp"] as const)(
   },
 );
 
+test.each([false, true])(
+  "Continue a permission-bundled reconnect only with existing Agent access: %s",
+  async (authorized) => {
+    const connector = customConnector({
+      slug: "_acme-search",
+      connected: true,
+      connectedAccountId: DEFAULT_ACCOUNT_ID,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    mockDefinition(connector);
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return respond(200, account(connector));
+    });
+    context.mocks.api(customConnectorValuesContract.set, ({ respond }) => {
+      return respond(200, { ...connector, connectedAccountId: ACCOUNT_ID });
+    });
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        grants: authorized
+          ? [{ customConnectorId: connector.id, permissionNames: [] }]
+          : [],
+      });
+    });
+    context.mocks.api(agentCustomConnectorsContract.update, () => {
+      throw new Error(
+        "Connecting must not implicitly grant bundled permissions",
+      );
+    });
+    const prompts: string[] = [];
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
+      if ("prompt" in body && body.prompt) {
+        prompts.push(body.prompt);
+      }
+      return respond(201, {
+        threadId: THREAD_ID,
+        runId: "66666666-6666-4666-8666-666666666666",
+      });
+    });
+    await setupPage({
+      context,
+      path: `/connectors/${connector.slug}/reconnect/${ACCOUNT_ID}?agentId=${AGENT_ID}&threadId=${THREAD_ID}&callbackPrompt=Continue+after+reconnect`,
+    });
+    await screen.findByText("Run-selected account");
+    click(getConnectorAction("button", "Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    await fill(within(dialog).getByLabelText("Secret"), "replacement-secret");
+    click(getConnectorAction("button", "Save", dialog));
+    await waitFor(() => {
+      expect(dialog).not.toBeInTheDocument();
+    });
+    expect(prompts).toStrictEqual(
+      authorized ? ["Continue after reconnect"] : [],
+    );
+  },
+);
+
 test.each(["missing", "invalid"] as const)(
   "Keep a %s exact custom account unavailable despite a healthy default",
   async (state) => {

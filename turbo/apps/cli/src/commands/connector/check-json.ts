@@ -37,6 +37,7 @@ import {
   resolveRunConnectorAccountLookups,
 } from "./run-account-context";
 import {
+  connectorConnectAction,
   connectorSearchActionLinks,
   runConnectorSearchAction,
   type ConnectorSearchAction,
@@ -207,11 +208,15 @@ function customCheckConnectionActions(
   }
   if (!definition.connected) {
     return [
-      {
-        label: `Connect or authorize ${label}`,
-        path: `/connectors/${definition.slug}/connect`,
-        supportsCallback: true,
-      },
+      connectorConnectAction(
+        {
+          kind: "custom",
+          slug: definition.slug,
+          label,
+          customConnector: definition,
+        },
+        authorized,
+      ),
     ];
   }
   return authorized === false

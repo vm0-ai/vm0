@@ -322,6 +322,105 @@ describe("custom connector URL diagnostics", () => {
     },
   );
 
+  it.each([false, true])(
+    "requires separate Agent permission review for custom recovery with reconnect=%s in JSON",
+    async (reconnect) => {
+      const connector = customConnector({
+        permissionBundleRef: "builtin:feishu@1",
+      });
+      writeRunConnectorAccountContext(
+        contextPath,
+        reconnect ? [{ ...TARGET, connectionId: ACCOUNT_ID }] : [],
+      );
+      server.use(
+        stubRunConnectorAccountInspection([account("reconnect-required")]),
+        http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+          return HttpResponse.json(connector);
+        }),
+      );
+
+      await check("--json");
+
+      const json: unknown = JSON.parse(output());
+      expect(json).toMatchObject({
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "link",
+            url: `${ORIGIN}/connectors/${connector.slug}/${reconnect ? `reconnect/${ACCOUNT_ID}` : "connect"}?agentId=agent-1`,
+            supportsCallback: false,
+            guidance: expect.stringContaining(
+              "separate Agent permission review",
+            ),
+          }),
+        ]),
+      });
+      expect(output()).not.toContain("callbackPrompt=");
+    },
+  );
+
+  it.each([false, true])(
+    "explains separate Agent permission review for custom recovery with reconnect=%s in text",
+    async (reconnect) => {
+      const connector = customConnector({
+        permissionBundleRef: "builtin:feishu@1",
+      });
+      writeRunConnectorAccountContext(
+        contextPath,
+        reconnect ? [{ ...TARGET, connectionId: ACCOUNT_ID }] : [],
+      );
+      server.use(
+        stubRunConnectorAccountInspection([account("reconnect-required")]),
+        http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+          return HttpResponse.json(connector);
+        }),
+      );
+
+      await check();
+
+      expect(output()).toContain(
+        `/connectors/${connector.slug}/${reconnect ? `reconnect/${ACCOUNT_ID}` : "connect"}?agentId=agent-1`,
+      );
+      expect(output()).toContain("separate Agent permission review");
+      expect(output()).not.toContain("callbackPrompt=");
+    },
+  );
+
+  it.each([false, true])(
+    "retains permission-bundled recovery callbacks for authorized Agents with reconnect=%s",
+    async (reconnect) => {
+      const connector = customConnector({
+        permissionBundleRef: "builtin:feishu@1",
+      });
+      writeRunConnectorAccountContext(
+        contextPath,
+        reconnect ? [{ ...TARGET, connectionId: ACCOUNT_ID }] : [],
+      );
+      server.use(
+        stubAgentCustomConnectors([
+          { customConnectorId: CUSTOM_ID, permissionNames: [] },
+        ]),
+        stubRunConnectorAccountInspection([account("reconnect-required")]),
+        http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+          return HttpResponse.json(connector);
+        }),
+      );
+
+      await check("--json");
+
+      const json: unknown = JSON.parse(output());
+      expect(json).toMatchObject({
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "link",
+            url: `${ORIGIN}/connectors/${connector.slug}/${reconnect ? `reconnect/${ACCOUNT_ID}` : "connect"}?agentId=agent-1`,
+            supportsCallback: true,
+          }),
+        ]),
+      });
+      expect(output()).not.toContain("separate Agent permission review");
+    },
+  );
+
   it("keeps an authorized connected custom account out of text recovery", async () => {
     stubDiagnostic(
       resolvedCustom({
