@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.88.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.87.1...guest-agent-v0.88.0) (2026-09-09)
+
+
+### Features
+
+* **guest-agent:** prepare native chat effort consumers ([#32999](https://github.com/vm0-ai/vm0/issues/32999)) ([4a1e9e1](https://github.com/vm0-ai/vm0/commit/4a1e9e1a7c67de3d47ef0de86601f26819003d71))
+
 ## [0.87.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.87.0...guest-agent-v0.87.1) (2026-09-09)
 
 

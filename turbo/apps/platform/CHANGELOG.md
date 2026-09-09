@@ -11,6 +11,32 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.879.0](https://github.com/vm0-ai/vm0/compare/app-v0.878.0...app-v0.879.0) (2026-09-09)
+
+
+### Features
+
+* **app:** make the connectors page a directory with a category filter ([#33020](https://github.com/vm0-ai/vm0/issues/33020)) ([35ebec4](https://github.com/vm0-ai/vm0/commit/35ebec41dd725706b66bd057ae146a5123b83206))
+* enable intro video for the team ([#32984](https://github.com/vm0-ai/vm0/issues/32984)) ([a6ddc2c](https://github.com/vm0-ai/vm0/commit/a6ddc2c48d050ab204d37dcb7515f2ee8722a4bd))
+* **ssh:** add owner controls and agent ssh commands ([#32722](https://github.com/vm0-ai/vm0/issues/32722)) ([0c27252](https://github.com/vm0-ai/vm0/commit/0c27252592810ab55baa97169773056a7453ab30))
+
+
+### Bug Fixes
+
+* **app:** keep the image annotation editor the size of the preview it replaces ([#32975](https://github.com/vm0-ai/vm0/issues/32975)) ([1780b61](https://github.com/vm0-ai/vm0/commit/1780b61b36fc478bd3ca123f5167db471841919a))
+* **app:** name and count connector category chips from discovery ([#33015](https://github.com/vm0-ai/vm0/issues/33015)) ([1957bea](https://github.com/vm0-ai/vm0/commit/1957bea6fecf1c66f2e7b64f50c9bd6661919171))
+* **app:** simplify error recovery card layout ([#32993](https://github.com/vm0-ai/vm0/issues/32993)) ([fe357e0](https://github.com/vm0-ai/vm0/commit/fe357e0069f51375b9632b9b2283ca4ee982ff63))
+* **platform:** refine voice input footer ([#32925](https://github.com/vm0-ai/vm0/issues/32925)) ([dfc4f6e](https://github.com/vm0-ai/vm0/commit/dfc4f6e4d6c03490b1c5882c7c353cf85c81d2d7))
+* **platform:** use the popover surface and keep the flyout panel on screen ([#33018](https://github.com/vm0-ai/vm0/issues/33018)) ([19187de](https://github.com/vm0-ai/vm0/commit/19187deea42dd6a3f6e86d7c1f241cc463faccad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.423.0
+    * @okouai/core bumped to 8.647.0
+
 ## [0.878.0](https://github.com/vm0-ai/vm0/compare/app-v0.877.0...app-v0.878.0) (2026-09-09)
 
 

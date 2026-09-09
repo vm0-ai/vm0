@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.578.0](https://github.com/vm0-ai/vm0/compare/api-v1.577.2...api-v1.578.0) (2026-09-09)
+
+
+### Features
+
+* **guest-agent:** prepare native chat effort consumers ([#32999](https://github.com/vm0-ai/vm0/issues/32999)) ([4a1e9e1](https://github.com/vm0-ai/vm0/commit/4a1e9e1a7c67de3d47ef0de86601f26819003d71))
+* **ssh:** add owner controls and agent ssh commands ([#32722](https://github.com/vm0-ai/vm0/issues/32722)) ([0c27252](https://github.com/vm0-ai/vm0/commit/0c27252592810ab55baa97169773056a7453ab30))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.423.0
+    * @okouai/core bumped to 8.647.0
+    * @okouai/db bumped to 1.250.0
+    * @okouai/pi-agent-runtime bumped to 1.24.8
+
 ## [1.577.2](https://github.com/vm0-ai/vm0/compare/api-v1.577.1...api-v1.577.2) (2026-09-09)
 
 
