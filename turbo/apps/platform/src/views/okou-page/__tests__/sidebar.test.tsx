@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { compile } from "tailwindcss";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -449,15 +450,21 @@ function commandItemByText(container: HTMLElement, text: string): HTMLElement {
  * jsdom does not implement DataTransfer, so drag events need a stub that keeps
  * the payload the pinned grid writes on drag start.
  */
+interface DragImageSnapshot {
+  readonly width: string;
+  readonly height: string;
+  readonly renderedImageLayerCount: number;
+}
+
 interface DataTransferStub extends DataTransfer {
-  readonly dragImage: Element | null;
+  readonly dragImage: DragImageSnapshot | null;
 }
 
 function createDataTransferStub(
   initialValues: Readonly<Record<string, string>> = {},
 ): DataTransferStub {
   let values = new Map<string, string>(Object.entries(initialValues));
-  let dragImage: Element | null = null;
+  let dragImage: DragImageSnapshot | null = null;
   return {
     get dragImage() {
       return dragImage;
@@ -478,9 +485,63 @@ function createDataTransferStub(
       return values.get(format) ?? "";
     },
     setDragImage: (image: Element) => {
-      dragImage = image;
+      if (!(image instanceof HTMLElement)) {
+        throw new Error("Drag image must be an HTML element");
+      }
+      const style = getComputedStyle(image);
+      const renderedImageLayerCount = Array.from(
+        image.querySelectorAll("img"),
+      ).filter((layer) => {
+        const layerStyle = getComputedStyle(layer);
+        return (
+          layerStyle.display !== "none" &&
+          layerStyle.visibility !== "hidden" &&
+          layerStyle.opacity !== "0"
+        );
+      }).length;
+      dragImage = {
+        width: style.width,
+        height: style.height,
+        renderedImageLayerCount,
+      };
     },
   } as unknown as DataTransferStub;
+}
+
+async function renderTailwindUtilities(
+  signal: AbortSignal,
+  ...elements: readonly HTMLElement[]
+): Promise<void> {
+  const compiler = await compile(`
+    @theme {
+      --spacing: 0.25rem;
+    }
+    @tailwind utilities;
+  `);
+  const classNames = new Set<string>();
+  for (const element of elements) {
+    for (const candidate of [
+      element,
+      ...element.querySelectorAll<HTMLElement>("[class]"),
+    ]) {
+      for (const className of candidate.classList) {
+        classNames.add(className);
+      }
+    }
+  }
+  const styleElement = document.createElement("style");
+  styleElement.textContent = compiler
+    .build([...classNames])
+    .replaceAll("calc(var(--spacing) * 9)", "36px")
+    .replaceAll("calc(infinity * 1px)", "9999px");
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
 }
 
 const SIDEBAR_TITLE_BOX_WIDTH = 160;
@@ -2471,10 +2532,11 @@ test("Keep the default Okou sweater outside a circular mask", async () => {
   if (!(avatar instanceof HTMLImageElement)) {
     throw new Error("Default Okou avatar not found");
   }
-  expect(avatar).not.toHaveClass("rounded-full");
+  await renderTailwindUtilities(context.signal, avatar);
+  expect(getComputedStyle(avatar).borderRadius).toBe("");
 });
 
-test("Use the complete layered avatar without a drag handle", async () => {
+test("Render the complete layered drag image with grab feedback", async () => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents(
     context,
     LAYERED_AVATAR_URL,
@@ -2504,20 +2566,19 @@ test("Use the complete layered avatar without a drag handle", async () => {
   if (!(topAvatarLayer instanceof HTMLImageElement)) {
     throw new Error("Layered pinned-agent avatar not found");
   }
+  await renderTailwindUtilities(context.signal, dragged, avatar);
   const dataTransfer = createDataTransferStub();
 
-  expect(
-    within(grid).queryByTestId("pinned-agent-drag-handle"),
-  ).not.toBeInTheDocument();
+  expect(getComputedStyle(dragged).cursor).toBe("grab");
 
   fireEvent.dragStart(topAvatarLayer, { dataTransfer });
 
-  // jsdom cannot paint native drag feedback, so DataTransfer is the browser
-  // boundary that proves the complete composite was selected as its image.
-  expect(dataTransfer.dragImage).toBe(avatar);
-  expect(
-    within(grid).queryByTestId("pinned-agent-drag-handle"),
-  ).not.toBeInTheDocument();
+  expect(dataTransfer.dragImage).toStrictEqual({
+    width: "36px",
+    height: "36px",
+    renderedImageLayerCount: avatarLayers.length,
+  });
+  expect(dataTransfer.dragImage?.renderedImageLayerCount).toBeGreaterThan(1);
 });
 
 test("Search, pin, and open an agent from the pin manager", async () => {
