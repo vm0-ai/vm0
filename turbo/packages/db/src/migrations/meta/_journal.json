@@ -106,6 +106,20 @@
       "when": 1788921101962,
       "tag": "1092_retire_show_usage_pack_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 1093,
+      "version": "7",
+      "when": 1788925770488,
+      "tag": "1093_goal_retirement_receipt",
+      "breakpoints": true
+    },
+    {
+      "idx": 1094,
+      "version": "7",
+      "when": 1788925772586,
+      "tag": "1094_archive_retired_goals",
+      "breakpoints": true
     }
   ]
 }
