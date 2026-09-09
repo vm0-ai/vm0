@@ -23,9 +23,11 @@ export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "h-auto min-h-9 py-[calc((2.25rem-1lh)/2)] leading-[1.59375rem]";
 
-// Bare response icons share the 28px action-button rail.
+// Response text starts after the 28px action-button rail. Bare icons use the
+// canonical 16px glyph size and stay centered on that same rail.
+export const CHAT_THREAD_RESPONSE_CONTENT_CLASS = "min-w-0 pl-7";
 export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
-  "inline-flex w-7 shrink-0 items-center justify-center";
+  "inline-flex w-7 shrink-0 items-center justify-center [&_svg]:size-4";
 
 // Keep the entry animation, but do not let its duration also animate the
 // responsive margin: that would continue changing layout after resize.

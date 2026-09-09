@@ -312,6 +312,7 @@ import {
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_RESPONSE_CONTENT_CLASS,
   CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
   CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
@@ -3417,9 +3418,11 @@ const RUN_SECTION_ROW_CLASS =
 function RunSectionDivider({
   label,
   labelPosition = "left",
+  className,
 }: {
   label: string;
   labelPosition?: "left" | "right";
+  className?: string;
 }) {
   return (
     <div
@@ -3427,6 +3430,7 @@ function RunSectionDivider({
         "flex min-h-5 items-center gap-2",
         CHAT_THREAD_RESPONSE_LINE_CLASS,
         labelPosition === "right" && "flex-row-reverse",
+        className,
       )}
     >
       <p
@@ -3560,6 +3564,7 @@ function RunWorkSectionRow({
       {collapsible ? (
         <ChevronRight
           aria-hidden
+          size={16}
           className={cn(
             "ml-1 shrink-0 text-muted-foreground/70 transition-transform",
             expanded && "rotate-90",
@@ -3569,7 +3574,7 @@ function RunWorkSectionRow({
     </>
   );
   const className = cn(
-    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal text-muted-foreground [&_svg]:size-3.5",
+    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal text-muted-foreground",
     CHAT_THREAD_RESPONSE_LINE_CLASS,
   );
   return (
@@ -3888,22 +3893,22 @@ function RecommendedFollowupIcon({
   followup: RecommendedFollowup;
 }) {
   if (followup.kind !== "generate") {
-    return <MessageCircle size={14} />;
+    return <MessageCircle size={16} />;
   }
 
   if (followup.generationType === "image") {
-    return <Image size={14} />;
+    return <Image size={16} />;
   }
   if (followup.generationType === "video") {
-    return <Video size={14} />;
+    return <Video size={16} />;
   }
   if (followup.generationType === "presentation") {
-    return <ChartLine size={14} />;
+    return <ChartLine size={16} />;
   }
   if (followup.generationType === "website") {
-    return <LinkIcon size={14} />;
+    return <LinkIcon size={16} />;
   }
-  return <Package size={14} />;
+  return <Package size={16} />;
 }
 
 function recommendedFollowupShownKey(
@@ -4049,7 +4054,7 @@ function RecommendedFollowupList({
               {followup.prompt}
             </span>
             <ArrowUpRight
-              size={14}
+              size={16}
               className={cn(
                 "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100 ml-2",
                 showFollowupCards && "hidden",
@@ -4290,12 +4295,12 @@ function ThinkingLoader({
       <span
         aria-hidden
         data-thinking-loader="spinner"
-        className="okou-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
+        className="okou-thinking-spinner-frame inline-flex size-4 shrink-0 items-center justify-center"
       >
         <img
           src={thinkingSpinnerImg}
           alt=""
-          className="okou-thinking-spinner size-3.5 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+          className="okou-thinking-spinner size-4 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
         />
       </span>
     );
@@ -4304,7 +4309,7 @@ function ThinkingLoader({
   return (
     <span
       data-thinking-loader="blocks"
-      className="okou-blocks shrink-0"
+      className="okou-blocks size-4 shrink-0 place-content-center"
       style={blockStyle}
     >
       <span />
@@ -4381,7 +4386,10 @@ function FinishedRunRow({
 
   return (
     <div className={CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS}>
-      <RunSectionDivider label={label} />
+      <RunSectionDivider
+        label={label}
+        className={CHAT_THREAD_RESPONSE_CONTENT_CLASS}
+      />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
       ) : null}
@@ -5007,7 +5015,7 @@ function assistantRecoveryResetText(
 }
 
 function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
-  return loading ? <Loader2 size={14} className="animate-spin" /> : null;
+  return loading ? <Loader2 size={16} className="animate-spin" /> : null;
 }
 
 function AssistantRecoveryActions({
@@ -5188,7 +5196,7 @@ function AssistantErrorRecoveryCard({
         </span>
         {resetText && (
           <span className="hidden shrink-0 items-center gap-1.5 text-sm font-medium text-foreground sm:inline-flex">
-            <Clock size={14} className="text-muted-foreground" />
+            <Clock size={16} className="text-muted-foreground" />
             {resetText}
           </span>
         )}
@@ -5230,7 +5238,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
           borderRadius: "12px",
         }}
       >
-        <Hand size={14} className="shrink-0" />
+        <Hand size={16} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.errors.runCancelled;
@@ -5864,7 +5872,7 @@ function UserMessageActions({
         type="button"
         variant="quiet"
         size="icon-xs"
-        iconSize="md"
+        iconSize="sm"
         showTooltip
         onClick={onCopy}
         className="text-muted-foreground/60"
@@ -7047,7 +7055,11 @@ function PagedAssistantTimeline({
           data-chat-run-work-main
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
         >
-          <PagedAssistantEventItem event={item.event} thread={thread} />
+          <PagedAssistantEventItem
+            event={item.event}
+            thread={thread}
+            reserveLeadingIconRail
+          />
           {mainActions}
         </div>
       );
@@ -7213,9 +7225,11 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
+  reserveLeadingIconRail = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  reserveLeadingIconRail?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7241,7 +7255,10 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
+        className={cn(
+          CHAT_THREAD_RESPONSE_LINE_CLASS,
+          reserveLeadingIconRail && CHAT_THREAD_RESPONSE_CONTENT_CLASS,
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7353,7 +7370,7 @@ function UsageChip({
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-state-hover hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
-          <Coins size={17} />
+          <Coins size={16} />
           <span>{total}</span>
         </button>
       </PopoverTrigger>
@@ -7517,7 +7534,7 @@ function RelatedArtifactsDialog({
                 type="button"
                 variant="quiet"
                 size="xs"
-                iconSize="md"
+                iconSize="sm"
                 className="gap-1.5 px-2 text-xs text-muted-foreground/60 tabular-nums"
                 aria-label={triggerLabel}
                 data-testid="chat-run-related-artifacts-trigger"
@@ -7581,7 +7598,7 @@ function PagedGroupPrimaryActions({
                 asChild
                 variant="quiet"
                 size="icon-xs"
-                iconSize="md"
+                iconSize="sm"
                 className="text-muted-foreground/60"
               >
                 <Link
@@ -7613,7 +7630,7 @@ function PagedGroupPrimaryActions({
                 type="button"
                 variant="quiet"
                 size="icon-xs"
-                iconSize="md"
+                iconSize="sm"
                 onClick={onCopy}
                 className="text-muted-foreground/60"
                 aria-label={t(($) => {
