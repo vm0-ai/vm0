@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.868.0](https://github.com/vm0-ai/vm0/compare/app-v0.867.1...app-v0.868.0) (2026-09-09)
+
+
+### Features
+
+* **app:** add the connector directory behind a feature switch ([#32703](https://github.com/vm0-ai/vm0/issues/32703)) ([b671bb4](https://github.com/vm0-ai/vm0/commit/b671bb4ad7e3fba6e154a66b2cce71323a4c4d82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.639.0
+
 ## [0.867.1](https://github.com/vm0-ai/vm0/compare/app-v0.867.0...app-v0.867.1) (2026-09-09)
 
 

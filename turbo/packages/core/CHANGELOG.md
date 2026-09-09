@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.639.0](https://github.com/vm0-ai/vm0/compare/core-v8.638.1...core-v8.639.0) (2026-09-09)
+
+
+### Features
+
+* **app:** add the connector directory behind a feature switch ([#32703](https://github.com/vm0-ai/vm0/issues/32703)) ([b671bb4](https://github.com/vm0-ai/vm0/commit/b671bb4ad7e3fba6e154a66b2cce71323a4c4d82))
+
 ## [8.638.1](https://github.com/vm0-ai/vm0/compare/core-v8.638.0...core-v8.638.1) (2026-09-09)
 
 
