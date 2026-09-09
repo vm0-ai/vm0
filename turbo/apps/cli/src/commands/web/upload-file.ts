@@ -1,10 +1,7 @@
 import { Command } from "commander";
 import { uploadWebFile } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import {
-  createArtifactMarkdownOutput,
-  formatArtifactPresentationContext,
-} from "../shared/artifact-return";
+import { createArtifactPresentation } from "../shared/artifact-return";
 
 interface UploadFileOptions {
   readonly file: string;
@@ -28,7 +25,7 @@ Examples:
 
 Output:
   By default, prints artifact presentation context with inline-link and rich-preview Markdown forms.
-  With --json, prints metadata plus inlineMarkdownLink and previewMarkdownBlock.
+  With --json, prints metadata plus inlineMarkdownLink, previewMarkdownBlock, and artifactPresentationContext.
 
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
@@ -49,19 +46,19 @@ Notes:
         contentType: options.contentType,
         purpose: "artifact",
       });
-      const markdown = createArtifactMarkdownOutput(
+      const presentation = createArtifactPresentation(
         result.filename,
         result.url,
       );
       if (options.json) {
-        console.log(JSON.stringify({ ...result, ...markdown }));
+        console.log(JSON.stringify({ ...result, ...presentation.json }));
         return;
       }
       console.log(
         [
           "The artifact upload completed successfully.",
           "",
-          formatArtifactPresentationContext(markdown),
+          presentation.text,
         ].join("\n"),
       );
     }),

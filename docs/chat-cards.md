@@ -106,6 +106,20 @@ can appear as a link and a preview in one event while sharing its resource URL
 and load state. Artifacts carried out of folded work history retain their
 original nodes, so folding does not change links into cards.
 
+CLI artifact producers return `inlineMarkdownLink`, `previewMarkdownBlock`, and
+`artifactPresentationContext` alongside successful JSON results. Text output
+shows the same forms and explains their presentation. This applies to file
+uploads, hosting, built-in image/video/voice/avatar generation, completed social
+downloads, and internal Intro Video media. The forms use the stable artifact
+reference; an image's HTML embed URL has a separate authoring purpose. Pending
+Intro Video jobs return continuation guidance until a completed artifact exists.
+
+Image batches keep their authoring assets in `results.tsv` and record stable
+chat references plus both Markdown forms in `artifacts.json`, outside the
+authored bundle. `okou generate image-batch wait --json` returns this metadata.
+Persisted batches without that optional metadata remain readable through their
+TSV and provide upload guidance for selected local files.
+
 A path such as `/chats/:threadId` can use the same design when a chat-thread
 card is introduced: add an exact parser for the path, derive a canonical
 resource key, define the card's signals and registry, and add its render case.
