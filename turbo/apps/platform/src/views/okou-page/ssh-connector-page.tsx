@@ -1,6 +1,7 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { Plug, Plus, Terminal } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -31,6 +32,14 @@ import {
 } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
+import { Link } from "../router/link.tsx";
+import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
 
 function EndpointFields({
   connection,
@@ -341,7 +350,7 @@ function HostCard({
   );
 }
 
-export function SshSettingsPage() {
+function SshHosts() {
   const { t } = useTranslation();
   const hosts = useLoadable(sshConnections$);
   const conflict = useGet(sshConflict$);
@@ -350,7 +359,7 @@ export function SshSettingsPage() {
   const signal = useGet(pageSignal$);
   if (hosts.state === "loading") {
     return (
-      <p className="p-6">
+      <p className="text-sm text-muted-foreground">
         {t(($) => {
           return $.ssh.loading;
         })}
@@ -359,7 +368,7 @@ export function SshSettingsPage() {
   }
   if (hosts.state !== "hasData" || !hosts.data) {
     return (
-      <p className="p-6">
+      <p className="text-sm text-muted-foreground">
         {t(($) => {
           return $.ssh.unavailable;
         })}
@@ -367,13 +376,8 @@ export function SshSettingsPage() {
     );
   }
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto grid w-full max-w-3xl gap-5 p-6 pb-[max(4rem,var(--sab))]">
-        <h1 className="text-xl font-semibold">
-          {t(($) => {
-            return $.ssh.title;
-          })}
-        </h1>
+    <div className="grid gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {t(
             ($) => {
@@ -385,23 +389,6 @@ export function SshSettingsPage() {
             },
           )}
         </p>
-        <p className="text-sm text-muted-foreground">
-          {t(($) => {
-            return $.ssh.cache;
-          })}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {t(($) => {
-            return $.ssh.tofu;
-          })}
-        </p>
-        {conflict && (
-          <p role="alert" className="text-sm">
-            {t(($) => {
-              return $.ssh.conflict;
-            })}
-          </p>
-        )}
         <div className="flex gap-2">
           <Button
             disabled={hosts.data.length >= SSH_CONNECTION_LIMIT}
@@ -409,6 +396,7 @@ export function SshSettingsPage() {
               return detach(open("create", null, signal), Reason.DomCallback);
             }}
           >
+            <Plus size={16} aria-hidden="true" />
             {t(($) => {
               return $.ssh.add;
             })}
@@ -424,18 +412,87 @@ export function SshSettingsPage() {
             })}
           </Button>
         </div>
-        {hosts.data.length === 0 && (
-          <p>
-            {t(($) => {
-              return $.ssh.empty;
-            })}
-          </p>
-        )}
-        {hosts.data.map((connection) => {
-          return <HostCard key={connection.id} connection={connection} />;
-        })}
-        <SshDialog />
       </div>
-    </main>
+      <div className="space-y-2 rounded-xl border p-4 text-sm text-muted-foreground">
+        <p>
+          {t(($) => {
+            return $.ssh.cache;
+          })}
+        </p>
+        <p>
+          {t(($) => {
+            return $.ssh.tofu;
+          })}
+        </p>
+      </div>
+      {conflict && (
+        <p role="alert" className="text-sm">
+          {t(($) => {
+            return $.ssh.conflict;
+          })}
+        </p>
+      )}
+      {hosts.data.length === 0 && (
+        <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {t(($) => {
+            return $.ssh.empty;
+          })}
+        </p>
+      )}
+      {hosts.data.map((connection) => {
+        return <HostCard key={connection.id} connection={connection} />;
+      })}
+      <SshDialog />
+    </div>
+  );
+}
+
+export function SshConnectorPage() {
+  const { t } = useTranslation();
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Link
+          pathname={ROUTES.connectors}
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-state-hover hover:text-foreground"
+        >
+          <Plug size={14} className="shrink-0" aria-hidden="true" />
+          {t(($) => {
+            return $.appShell.sidebar.navigation.connectors;
+          })}
+        </Link>
+        <span className="select-none text-muted-foreground/40">/</span>
+        <span
+          aria-current="page"
+          className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground"
+        >
+          {t(($) => {
+            return $.ssh.label;
+          })}
+        </span>
+      </DetailPageBreadcrumbBar>
+      <DetailPageHeader>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-muted-foreground sm:h-16 sm:w-16">
+            <Terminal size={28} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+              {t(($) => {
+                return $.ssh.title;
+              })}
+            </h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {t(($) => {
+                return $.ssh.description;
+              })}
+            </p>
+          </div>
+        </div>
+      </DetailPageHeader>
+      <DetailPageMain constrainContent>
+        <SshHosts />
+      </DetailPageMain>
+    </DetailPageShell>
   );
 }

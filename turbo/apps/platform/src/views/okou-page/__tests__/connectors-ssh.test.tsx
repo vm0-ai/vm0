@@ -74,7 +74,7 @@ test.each([0, 1, 2])(
         : `${count} ${count === 1 ? "host" : "hosts"} configured`;
     await screen.findByText(label);
     const entry = getConnectorAction("link", "Manage SSH hosts");
-    expect(entry).toHaveAttribute("href", "/settings/ssh");
+    expect(entry).toHaveAttribute("href", "/connectors/ssh");
     expect(
       screen.getByRole("heading", { name: "Remote access" }),
     ).toBeInTheDocument();

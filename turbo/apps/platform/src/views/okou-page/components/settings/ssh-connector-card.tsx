@@ -23,7 +23,7 @@ export function SshConnectorCard({
       interactive
       action={
         <Link
-          pathname={ROUTES.settingsSsh}
+          pathname={ROUTES.connectorSsh}
           aria-label={t(($) => {
             return $.ssh.manage;
           })}

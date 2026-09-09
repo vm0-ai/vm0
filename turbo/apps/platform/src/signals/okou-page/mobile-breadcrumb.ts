@@ -172,6 +172,18 @@ export const mobileBreadcrumb$ = computed(
       return await get(activityDetailBreadcrumb$);
     }
 
+    if (route === "connectorSsh") {
+      return {
+        section: i18n.t(($) => {
+          return $.appShell.sidebar.navigation.connectors;
+        }),
+        sectionPath: ROUTES.connectors,
+        name: i18n.t(($) => {
+          return $.ssh.label;
+        }),
+      };
+    }
+
     if (route === "works") {
       const displayName = await get(currentChatAgentDisplayName$);
       return {

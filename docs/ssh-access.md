@@ -9,7 +9,7 @@ accounts nor connector permissions.
 
 ## Owner setup
 
-Open **Connectors -> Remote access -> SSH** (`/settings/ssh`) to manage up to 64 hosts for your
+Open **Connectors -> Remote access -> SSH** (`/connectors/ssh`) to manage up to 64 hosts for your
 current organization and user, without selecting or creating an Agent. The SSH
 card uses the same presentation as connector cards: no hosts shows the service
 description and add affordance; configured hosts show a compact host-count
@@ -18,6 +18,11 @@ search and category navigation. Connection-status filters mean configured or
 not configured for SSH; an Agent filter uses its independent SSH grant, even
 when no hosts are configured. SSH never opens generic connector account or
 permission dialogs.
+
+The management page follows the Agent and Workflow detail-page layout, with
+**Connectors / SSH** breadcrumbs on desktop and mobile. Use the Connectors
+breadcrumb to return to the directory. Host management remains independent of
+Agent grants.
 
 Supply a display name, public hostname or IP, port, SSH username, and
 private key with an optional passphrase. Credentials are write-only and stay

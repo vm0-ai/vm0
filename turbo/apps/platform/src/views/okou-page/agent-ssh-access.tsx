@@ -74,7 +74,7 @@ export function AgentSshAccess({
       })}
       isLast
       onManage={() => {
-        return navigate(ROUTES.settingsSsh);
+        return navigate(ROUTES.connectorSsh);
       }}
       onToggle={(checked) => {
         return detach(update(agentId, checked, signal), Reason.DomCallback);

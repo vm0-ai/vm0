@@ -15,6 +15,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname } from "../../../signals/location.ts";
 import { catalogConnectorFixture } from "../../team-page/__tests__/team-page-test-helpers.ts";
 import {
   getAction,
@@ -43,7 +44,7 @@ const base: SshConnectionResponse = Object.freeze({
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
-async function page(path = "/settings/ssh", enabled = true) {
+async function page(path = "/connectors/ssh", enabled = true) {
   await setupPage({
     context,
     path,
@@ -51,6 +52,48 @@ async function page(path = "/settings/ssh", enabled = true) {
     featureSwitches: { [FeatureSwitchKey.SshAccess]: enabled },
   });
 }
+
+test("SSH is a Connectors detail page with a working return breadcrumb", async () => {
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [] });
+  });
+  await page();
+  await screen.findByText("0 / 64 hosts configured");
+  expect(pathname()).toBe("/connectors/ssh");
+  const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+  expect(within(breadcrumb).getByText("SSH")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(
+    getAction(
+      "link",
+      "Connectors",
+      screen.getByRole("navigation", { name: "Sidebar" }),
+    ),
+  ).toHaveAttribute("aria-current", "page");
+  click(getAction("link", "Connectors", breadcrumb));
+  await screen.findByPlaceholderText("Find connectors");
+  expect(pathname()).toBe("/connectors");
+});
+
+test("Mobile SSH management retains its Connectors section and return navigation", async () => {
+  context.mocks.browser.matchMedia(false);
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [] });
+  });
+  await page();
+  await screen.findByText("0 / 64 hosts configured");
+  const name = await screen.findByTestId("breadcrumb-name");
+  expect(name).toHaveTextContent("SSH");
+  const section = name.parentElement;
+  if (!section) {
+    throw new Error("Mobile breadcrumb section is missing");
+  }
+  click(getAction("link", "Connectors", section));
+  await screen.findByPlaceholderText("Find connectors");
+  expect(pathname()).toBe("/connectors");
+});
 
 test.each([
   { count: 0, label: "0 / 64 hosts configured" },
@@ -270,7 +313,7 @@ test("Disabled SSH has no management fetches or controls", async () => {
     requests++;
     return respond(200, { connections: [] });
   });
-  await page("/settings/ssh", false);
+  await page("/connectors/ssh", false);
   await screen.findByText("SSH access is not available for this account.");
   expect(requests).toBe(0);
   expect(queryAction("button", "Add host")).not.toBeInTheDocument();
@@ -282,7 +325,7 @@ test("An ordinary owner can manage SSH when the feature flag is enabled", async 
   });
   await setupPage({
     context,
-    path: "/settings/ssh",
+    path: "/connectors/ssh",
     featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
   });
   await screen.findByText("Configured · connectivity not tested");
@@ -407,6 +450,7 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
   });
   click(getAction("button", "Manage SSH hosts"));
   await screen.findByRole("heading", { name: "SSH hosts" });
+  expect(pathname()).toBe("/connectors/ssh");
 });
 
 test.each([false, true])(
