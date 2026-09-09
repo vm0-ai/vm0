@@ -11,6 +11,35 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.877.0](https://github.com/vm0-ai/vm0/compare/app-v0.876.0...app-v0.877.0) (2026-09-09)
+
+
+### Features
+
+* **app:** browse connectors as shelves in the directory and the connectors page ([#32997](https://github.com/vm0-ai/vm0/issues/32997)) ([f4556fb](https://github.com/vm0-ai/vm0/commit/f4556fb19e9ed6678259d7e7a333d047cf19c567))
+* **platform:** add built-in welcome thread ([#30147](https://github.com/vm0-ai/vm0/issues/30147)) ([85ca994](https://github.com/vm0-ai/vm0/commit/85ca9949a4589e12b48f0d9fda565c3748c998ba))
+
+
+### Bug Fixes
+
+* **app:** use one thinking fallback for activity summaries ([#33000](https://github.com/vm0-ai/vm0/issues/33000)) ([bf1f9eb](https://github.com/vm0-ai/vm0/commit/bf1f9ebcd4c3fc98da52961d546b3a7672aedec1)), closes [#32998](https://github.com/vm0-ai/vm0/issues/32998) [#32819](https://github.com/vm0-ai/vm0/issues/32819)
+* **platform:** align assistant response layout ([#32879](https://github.com/vm0-ai/vm0/issues/32879)) ([b148b3b](https://github.com/vm0-ai/vm0/commit/b148b3ba3d78190b7c79b9668b3edc1ca0da3a38))
+* **platform:** preserve pinned agent drag feedback ([#32938](https://github.com/vm0-ai/vm0/issues/32938)) ([45affe8](https://github.com/vm0-ai/vm0/commit/45affe86370781e7b202e4998923eaf3fb57cbf5))
+
+
+### Refactoring
+
+* **db:** stop reading and writing computer use host client product ([#32987](https://github.com/vm0-ai/vm0/issues/32987)) ([c501560](https://github.com/vm0-ai/vm0/commit/c5015603f16a7e601dc156f8bd6a24f1e261a846)), closes [#32966](https://github.com/vm0-ai/vm0/issues/32966)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.1
+    * @okouai/connectors bumped to 3.8.8
+    * @okouai/core bumped to 8.646.0
+
 ## [0.876.0](https://github.com/vm0-ai/vm0/compare/app-v0.875.0...app-v0.876.0) (2026-09-09)
 
 
