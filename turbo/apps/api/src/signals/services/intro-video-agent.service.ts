@@ -752,7 +752,8 @@ const reconcileAgentSession$ = command(
         },
         signal,
       );
-      return null;
+      // A recorded video can still finish when its session is unavailable.
+      return videoId ?? null;
     }
     const session = sessionResult.value;
     if (session.videoId && videoId && session.videoId !== videoId) {
