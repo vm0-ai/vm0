@@ -1,5 +1,8 @@
 name: Public Artifact Registration
 
+env:
+  npm_config_audit: "false"
+
 on:
   workflow_dispatch:
     inputs:
