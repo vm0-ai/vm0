@@ -9534,7 +9534,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     expect(loadSnapshotEvent).toStrictEqual(
       expect.objectContaining({
-        connector_scope_source: "zero_agent",
+        connector_scope_source: "stored_agent",
         stored_connector_candidate_count_bucket: "1",
       }),
     );
@@ -9544,7 +9544,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     expect(materializeSnapshotEvent).toStrictEqual(
       expect.objectContaining({
-        connector_scope_source: "zero_agent",
+        connector_scope_source: "stored_agent",
         stored_connector_candidate_count_bucket: "1",
         stored_connector_count_bucket: "1",
         stored_connector_secret_count_bucket: "1",

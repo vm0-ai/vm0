@@ -1020,7 +1020,7 @@ function buildCreateAgentRunArgs(args: {
       allowedConnectorSlugs: args.allowedConnectorSlugs,
       allowedCustomConnectorIds: args.allowedCustomConnectorIds,
       customConnectorGrants: args.customConnectorGrants,
-      source: "zero_agent",
+      source: "stored_agent",
     },
     validateEnvironmentReferences: false,
     agentRunMetadata: {

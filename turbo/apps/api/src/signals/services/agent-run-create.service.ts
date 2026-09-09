@@ -634,7 +634,7 @@ type TestOnlyDirectRunResolver = (args: {
   readonly timing?: ApiDispatchTimingCollector;
 }) => Promise<ResolvedAgentExecution | CreateRunErrorResult>;
 
-type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
+type ConnectorScopeSource = "explicit" | "stored_agent" | "empty";
 
 interface EffectiveConnectorScope {
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
