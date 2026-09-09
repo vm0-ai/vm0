@@ -1,37 +1,31 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
-import { withCleanup } from "../utils.ts";
-import { pinChatThread$, unpinChatThread$ } from "./chat-event.ts";
+import { setChatThreadPinned$ } from "./chat-event.ts";
 
 export function createChatThreadPinSignals(
   threadId: string,
   meta$: Computed<ThreadMeta | null>,
 ) {
-  const pending$ = state(false);
+  const lastMutation$ = state<Promise<void> | null>(null);
   const pinned$ = computed((get) => {
     const pinnedAt = get(meta$)?.pinnedAt;
     return pinnedAt !== null && pinnedAt !== undefined;
   });
   return {
     pinned$,
-    pending$: computed((get) => {
-      return get(pending$);
-    }),
     setPinned$: command(
       async ({ get, set }, pinned: boolean, signal: AbortSignal) => {
         signal.throwIfAborted();
-        if (get(pending$) || get(pinned$) === pinned) {
-          return false;
+        if (get(pinned$) === pinned) {
+          return;
         }
-        set(pending$, true);
-        await withCleanup(
-          set(pinned ? pinChatThread$ : unpinChatThread$, threadId, signal),
-          () => {
-            set(pending$, false);
-          },
+        const mutation = set(
+          setChatThreadPinned$,
+          { threadId, pinned, after: get(lastMutation$) },
+          signal,
         );
-        signal.throwIfAborted();
-        return true;
+        set(lastMutation$, mutation);
+        await mutation;
       },
     ),
   };

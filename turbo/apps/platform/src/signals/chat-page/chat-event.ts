@@ -16,6 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { settle } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
 import { firstChatThreadPinOrder } from "@okouai/core/chat-thread-pin-order";
 import {
@@ -198,72 +199,84 @@ export const deleteChatThread$ = command(
 // Pin / unpin thread
 // ---------------------------------------------------------------------------
 
-export const pinChatThread$ = command(
-  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+export const setChatThreadPinned$ = command(
+  async (
+    { get, set },
+    {
+      threadId,
+      pinned,
+      after,
+    }: {
+      readonly threadId: string;
+      readonly pinned: boolean;
+      readonly after?: Promise<void> | null;
+    },
+    signal: AbortSignal,
+  ) => {
     const threads = get(eventDrivenChatThreads$);
     signal.throwIfAborted();
     const eventId = crypto.randomUUID();
     const existingThread = threads.find((thread) => {
       return thread.id === threadId;
     });
-    const pinOrder = existingThread
-      ? firstChatThreadPinOrder(
-          threads.filter((thread) => {
-            return (
-              thread.agentId === existingThread.agentId &&
-              thread.id !== threadId
-            );
-          }),
-        )
-      : undefined;
+    const pinOrder =
+      pinned && existingThread
+        ? firstChatThreadPinOrder(
+            threads.filter((thread) => {
+              return (
+                thread.agentId === existingThread.agentId &&
+                thread.id !== threadId
+              );
+            }),
+          )
+        : undefined;
     if (existingThread) {
       set(registerOptimisticChatThreadEvent$, {
         id: eventId,
         pinOrder,
-        kind: "pinned",
+        kind: pinned ? "pinned" : "unpinned",
         chatThreadId: threadId,
         agentId: existingThread.agentId,
       });
     }
-    const client = get(apiClient$)(chatThreadPinContract);
-    await accept(
-      client.pin({
-        params: { id: threadId },
-        query: { eventId, pinOrder },
-        fetchOptions: { signal },
-      }),
-      [204],
-    );
+    // Render every click immediately, but preserve the order of header saves.
+    if (after) {
+      await settle(after, signal);
+    }
     signal.throwIfAborted();
+    if (pinned) {
+      const client = get(apiClient$)(chatThreadPinContract);
+      await accept(
+        client.pin({
+          params: { id: threadId },
+          query: { eventId, pinOrder },
+          fetchOptions: { signal },
+        }),
+        [204],
+      );
+    } else {
+      const client = get(apiClient$)(chatThreadUnpinContract);
+      await accept(
+        client.unpin({
+          params: { id: threadId },
+          query: { eventId },
+          fetchOptions: { signal },
+        }),
+        [204],
+      );
+    }
+  },
+);
+
+export const pinChatThread$ = command(
+  ({ set }, threadId: string, signal: AbortSignal) => {
+    return set(setChatThreadPinned$, { threadId, pinned: true }, signal);
   },
 );
 
 export const unpinChatThread$ = command(
-  async ({ get, set }, threadId: string, signal: AbortSignal) => {
-    const threads = await get(chatThreads$);
-    signal.throwIfAborted();
-    const eventId = crypto.randomUUID();
-    const existingThread = threads.find((thread) => {
-      return thread.id === threadId;
-    });
-    if (existingThread) {
-      set(registerOptimisticChatThreadEvent$, {
-        id: eventId,
-        kind: "unpinned",
-        chatThreadId: threadId,
-        agentId: existingThread.agentId,
-      });
-    }
-    const client = get(apiClient$)(chatThreadUnpinContract);
-    await accept(
-      client.unpin({
-        params: { id: threadId },
-        query: { eventId },
-        fetchOptions: { signal },
-      }),
-      [204],
-    );
-    signal.throwIfAborted();
+  ({ set }, threadId: string, signal: AbortSignal) => {
+    return set(setChatThreadPinned$, { threadId, pinned: false }, signal);
   },
 );
 
