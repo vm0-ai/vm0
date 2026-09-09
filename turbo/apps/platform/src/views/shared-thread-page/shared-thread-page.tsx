@@ -224,7 +224,7 @@ function SharedAssistantGroup({
                     richContent={richContent}
                   />
                 ) : (
-                  <MarkdownEventBody tree={message.tree} mediaPreview />
+                  <MarkdownEventBody tree={message.tree} mediaPreview="link" />
                 )}
               </ChatAssistantMessageBody>
             );
@@ -266,7 +266,9 @@ function SharedRichMessageBody({
           );
         }
       : undefined;
-  return <MarkdownEventBody tree={tree} mediaPreview onRetry={onRetry} />;
+  return (
+    <MarkdownEventBody tree={tree} mediaPreview="link" onRetry={onRetry} />
+  );
 }
 
 function SharedThreadHandoff({
