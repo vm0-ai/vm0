@@ -12,6 +12,7 @@ import {
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -39,6 +40,16 @@ function getArtifactPreviewFrame(): HTMLIFrameElement {
     throw new Error("Expected the artifact dialog to contain a preview frame");
   }
   return frame;
+}
+
+function buttonNamed(name: string, container: ParentNode = document.body) {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === name;
+  });
+  if (!button) {
+    throw new Error(`Expected button named "${name}"`);
+  }
+  return button;
 }
 
 describe("built-in welcome thread", () => {
@@ -132,7 +143,7 @@ describe("built-in welcome thread", () => {
       within(page).getByRole("textbox", { name: "Message" }),
     ).toBeInTheDocument();
     await waitFor(() => {
-      expect(content.querySelector(".mermaid-block")).toBeInTheDocument();
+      expect(buttonNamed("Expand diagram", content)).toBeEnabled();
     });
     expect(
       within(content).getByTestId("welcome-team-diagram"),
@@ -176,6 +187,61 @@ describe("built-in welcome thread", () => {
       screen.findByLabelText("Video preview for product-launch-film.mp4"),
     ).resolves.toBeVisible();
     await closeArtifactPreview();
+  });
+
+  it("uses the authoritative switch when a direct route has a stale disabled cache", async () => {
+    await setupPage({
+      context,
+      path: "/chats/welcome",
+      cachedFeatureSwitches: {
+        [FeatureSwitchKey.OnboardingChat]: false,
+      },
+      featureSwitches: {
+        [FeatureSwitchKey.OnboardingChat]: true,
+      },
+    });
+
+    await expect(
+      screen.findByTestId("welcome-thread-page"),
+    ).resolves.toBeInTheDocument();
+    expect(pathname()).toBe("/chats/welcome");
+  });
+
+  it("starts a normal persisted chat from the welcome composer", async () => {
+    const message = "Plan a customer launch campaign";
+    let createdThreadId: string | undefined;
+    let sentThreadId: string | undefined;
+    mockChatLifecycle(context, {
+      onThreadCreate: ({ clientThreadId }) => {
+        createdThreadId = clientThreadId;
+      },
+      onSendRequest: ({ threadId }) => {
+        sentThreadId = threadId;
+      },
+    });
+    await setupPage({
+      context,
+      path: "/chats/welcome",
+      featureSwitches: {
+        [FeatureSwitchKey.OnboardingChat]: true,
+      },
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    await fillComposer(composer, message);
+    await waitFor(() => {
+      expect(buttonNamed("Send")).toBeEnabled();
+    });
+    click(buttonNamed("Send"));
+
+    await waitFor(() => {
+      expect(createdThreadId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+      );
+      expect(sentThreadId).toBe(createdThreadId);
+      expect(pathname()).toBe(`/chats/${createdThreadId}`);
+      expect(screen.getByText(message)).toBeInTheDocument();
+    });
   });
 
   it("hides the entry and redirects the built-in route while the feature is disabled", async () => {

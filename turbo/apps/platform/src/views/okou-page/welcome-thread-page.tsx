@@ -1,32 +1,10 @@
 import { useGet, useLastResolved } from "ccstate-react";
-import type { Element, Root } from "hast";
 import { useTranslation } from "react-i18next";
-import { SKIP, visit } from "unist-util-visit";
 
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
-import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
-import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
-import {
-  markdownCardKey,
-  parseMarkdownTree,
-} from "../../lib/markdown/pipeline.ts";
-import { createAttachmentResourceUrlResolver } from "../../signals/attachment-resource-url.ts";
-import {
-  createArtifactPreviewImageUrls$,
-  createArtifactSignals,
-  type ArtifactDescriptor,
-} from "../../signals/chat-page/artifact-card-signals.ts";
-import type { MarkdownCardRef } from "../../signals/chat-page/markdown-card-ref.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { assistantName$ } from "../../signals/branding.ts";
-import {
-  createMermaidDiagramSignals,
-  embedMermaidSignals,
-} from "../../signals/mermaid-diagram.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
+import type { WelcomeThreadContentSignals } from "../../signals/okou-page/welcome-thread-content.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
 import { ChatAssistantMessageBody } from "./chat-message-surface.tsx";
@@ -34,106 +12,6 @@ import { ChatComposer } from "./chat-composer.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
-
-/**
- * Slot URLs the welcome copy stands its two schematics on. They never leave this
- * document, so the scheme only has to be distinct from a real destination.
- */
-const TEAM_DIAGRAM_SLOT = "okou://welcome-diagram/team";
-const SLACK_DIAGRAM_SLOT = "okou://welcome-diagram/slack";
-const WELCOME_THREAD_ID = "welcome";
-
-const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS.find(({ slug }) => {
-  return slug === "sunlit-gouache";
-})!;
-const welcomeImageUrl =
-  welcomeImage.previewImages[0] ?? welcomeImage.previewImage;
-const welcomePresentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-const welcomeVideo = VIDEO_TEMPLATE_ITEMS[0]!;
-
-const welcomeArtifactPreviewImages$ = createArtifactPreviewImageUrls$([
-  [welcomePresentation.embedUrl, welcomePresentation.previewImage],
-  [welcomeVideo.previewVideo, welcomeVideo.previewImage],
-]);
-const resolveWelcomeArtifactResourceUrl = createAttachmentResourceUrlResolver();
-
-function welcomeArtifactCard(
-  descriptor: ArtifactDescriptor,
-): Extract<MarkdownCardRef, { kind: "artifact" }> {
-  return {
-    kind: "artifact",
-    signals: createArtifactSignals(
-      descriptor,
-      welcomeArtifactPreviewImages$,
-      resolveWelcomeArtifactResourceUrl,
-    ),
-    threadId: WELCOME_THREAD_ID,
-  };
-}
-
-const WELCOME_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map<
-  string,
-  MarkdownCardRef
->([
-  [
-    markdownCardKey(welcomeImageUrl),
-    welcomeArtifactCard({
-      filename: "campaign-visual.jpg",
-      kind: "image",
-      url: welcomeImageUrl,
-    }),
-  ],
-  [
-    markdownCardKey(welcomePresentation.embedUrl),
-    welcomeArtifactCard({
-      filename: "sproutpop-launch-deck.html",
-      kind: "html",
-      url: welcomePresentation.embedUrl,
-    }),
-  ],
-  [
-    markdownCardKey(welcomeVideo.previewVideo),
-    welcomeArtifactCard({
-      filename: "product-launch-film.mp4",
-      kind: "video",
-      url: welcomeVideo.previewVideo,
-    }),
-  ],
-  [
-    markdownCardKey(TEAM_DIAGRAM_SLOT),
-    { kind: "welcome-diagram", diagram: "team" } satisfies MarkdownCardRef,
-  ],
-  [
-    markdownCardKey(SLACK_DIAGRAM_SLOT),
-    { kind: "welcome-diagram", diagram: "slack" } satisfies MarkdownCardRef,
-  ],
-]);
-
-function markdownResourceUrl(node: Element): string | undefined {
-  const value =
-    node.tagName === "a"
-      ? node.properties.href
-      : node.tagName === "img"
-        ? node.properties.src
-        : undefined;
-  return typeof value === "string" ? value : undefined;
-}
-
-/** Inline image and text links keep their Markdown shape while using the same
- * artifact signals and preview interactions as a regular chat message. */
-function embedWelcomeArtifactCards(tree: Root): void {
-  visit(tree, "element", (node) => {
-    if (node.data?.card) {
-      return SKIP;
-    }
-    const url = markdownResourceUrl(node);
-    const card = url ? WELCOME_CARDS.get(markdownCardKey(url)) : undefined;
-    if (card?.kind === "artifact") {
-      node.data = { ...node.data, card };
-    }
-    return undefined;
-  });
-}
 
 function WelcomeThreadAvatar() {
   const { t } = useTranslation();
@@ -164,39 +42,12 @@ function WelcomeThreadAvatar() {
   );
 }
 
-function WelcomeThreadMessage() {
-  const { t } = useTranslation();
-  const assistantName = useGet(assistantName$);
-  const pageSignal = useGet(pageSignal$);
-  const docsUrl = `${derivePlatformServiceOrigin(window.location.origin, "www")}/docs`;
-  const inviteUrl = `${window.location.origin}/?settings=people`;
-  const worksUrl = `${window.location.origin}${ROUTES.works}`;
-  const source = t(
-    ($) => {
-      return $.chat.welcomeThread.content;
-    },
-    {
-      assistantName,
-      docsUrl,
-      imageUrl: welcomeImageUrl,
-      inviteUrl,
-      presentationPreviewUrl: welcomePresentation.embedUrl,
-      presentationUrl: welcomePresentation.embedUrl,
-      slackDiagramUrl: SLACK_DIAGRAM_SLOT,
-      slideCount: welcomePresentation.slideCount ?? 15,
-      teamDiagramUrl: TEAM_DIAGRAM_SLOT,
-      videoUrl: welcomeVideo.previewVideo,
-      worksUrl,
-    },
-  );
-  const tree = parseMarkdownTree(source, {
-    cards: WELCOME_CARDS,
-    mermaid: true,
-  });
-  embedWelcomeArtifactCards(tree);
-  embedMermaidSignals(tree, (code) => {
-    return createMermaidDiagramSignals(code, pageSignal);
-  });
+function WelcomeThreadMessage({
+  content,
+}: {
+  readonly content: WelcomeThreadContentSignals;
+}) {
+  const tree = useGet(content.tree$);
 
   return (
     <div data-role="assistant" className="flex flex-col gap-1">
@@ -233,7 +84,11 @@ function WelcomeThreadComposer() {
   );
 }
 
-export function WelcomeThreadPage() {
+export function WelcomeThreadPage({
+  content,
+}: {
+  readonly content: WelcomeThreadContentSignals;
+}) {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const title = t(
@@ -274,7 +129,7 @@ export function WelcomeThreadPage() {
                   data-message-container
                   className="mx-auto flex w-full max-w-[900px] flex-col gap-6 overflow-visible pb-4"
                 >
-                  <WelcomeThreadMessage />
+                  <WelcomeThreadMessage content={content} />
                 </div>
               </main>
             </div>

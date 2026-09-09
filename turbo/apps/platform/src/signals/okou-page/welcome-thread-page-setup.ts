@@ -9,7 +9,10 @@ import { setChatAgentId$ } from "../agent-chat.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { assistantName$ } from "../branding.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  initialFeatureSwitchHydration$,
+} from "../external/feature-switch.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
@@ -17,6 +20,7 @@ import { ensureAgentDraft$ } from "./agent-draft.ts";
 import { setAgentComposerContext$ } from "./agent-composer-signals.ts";
 import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
 import { setTalkDraft$ } from "./chat-draft.ts";
+import { createWelcomeThreadContentSignals$ } from "./welcome-thread-content.ts";
 import {
   resetChatPageImageModelSelection$,
   resetChatPageModelSelection$,
@@ -25,6 +29,8 @@ import {
 
 export const setupWelcomeThreadPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    await get(initialFeatureSwitchHydration$);
+    signal.throwIfAborted();
     if (!get(featureSwitch$)[FeatureSwitchKey.OnboardingChat]) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
       return;
@@ -54,7 +60,8 @@ export const setupWelcomeThreadPage$ = command(
     set(resetChatPageImageModelSelection$);
     set(resetChatPageModelSelection$);
     set(resetChatPageVideoModelSelection$);
-    set(updatePage$, createElement(WelcomeThreadPage), "sidebar");
+    const content = set(createWelcomeThreadContentSignals$, signal);
+    set(updatePage$, createElement(WelcomeThreadPage, { content }), "sidebar");
 
     await set(hideAppSkeleton$, signal);
     await set(agentDraft.load$, signal);
