@@ -1670,6 +1670,7 @@
       "saving": "Saving...",
       "send": "Send",
       "stop": "Stop",
+      "undo": "Undo",
       "view": "View"
     },
     "actionUnavailable": {
@@ -2408,7 +2409,10 @@
     },
     "toasts": {
       "copied": "Copied",
-      "deleted": "Chat deleted"
+      "deleted": "Chat deleted",
+      "pinned": "Chat pinned",
+      "pinUpdateFailed": "Couldn’t confirm the pin change. Refresh to check its saved status.",
+      "unpinned": "Chat unpinned"
     },
     "translation": {
       "action": "Translate",

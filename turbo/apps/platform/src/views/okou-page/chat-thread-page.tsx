@@ -115,6 +115,7 @@ import type {
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { emptyChatImg, thinkingSpinnerImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { ChatThreadPinButton } from "./chat-thread-header-actions.tsx";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
 import { hasChatEventBodyContent } from "../../signals/chat-page/chat-event-body-blocks.ts";
@@ -671,6 +672,8 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
 
 function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
+  const headerActionsEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatThreadHeaderActions];
   const pageSignal = useGet(pageSignal$);
   const sharingPhase = useGet(thread.sharing.phase$);
   const selectedCount = useGet(thread.sharing.selectedCount$);
@@ -708,8 +711,15 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
 
   return (
     <header className={CHAT_THREAD_HEADER_CLASS}>
-      <ChatThreadHeaderTitle thread={thread} />
-      <div className="flex items-center gap-0.5">
+      {headerActionsEnabled ? (
+        <div className="flex min-w-0 items-center gap-2 pr-3">
+          <ChatThreadHeaderTitle thread={thread} />
+          <ChatThreadPinButton thread={thread} />
+        </div>
+      ) : (
+        <ChatThreadHeaderTitle thread={thread} />
+      )}
+      <div className="flex shrink-0 items-center gap-0.5">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>

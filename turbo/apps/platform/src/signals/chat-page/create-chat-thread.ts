@@ -223,6 +223,7 @@ import {
 } from "../okou-page/composer-signals.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import { createChatThreadPinSignals } from "./chat-thread-pin.ts";
 import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 import type {
   ChatEventSignals,
@@ -4373,6 +4374,7 @@ function createChatPanelSignalsWithDraft(
     composer,
     feedback,
     sharing,
+    pin: createChatThreadPinSignals(threadId, threadMeta$),
     locator,
     ...threadOwned,
     sidebar: messages.sidebar,

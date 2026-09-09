@@ -1694,6 +1694,7 @@
       "saving": "Enregistrement...",
       "send": "Envoyer",
       "stop": "Arrêter",
+      "undo": "Annuler",
       "view": "Afficher"
     },
     "actionUnavailable": {
@@ -2453,7 +2454,10 @@
     },
     "toasts": {
       "copied": "Copié",
-      "deleted": "Chat supprimé"
+      "deleted": "Chat supprimé",
+      "pinned": "Discussion épinglée",
+      "pinUpdateFailed": "Impossible de confirmer la modification. Actualisez la page pour vérifier l’état enregistré.",
+      "unpinned": "Discussion désépinglée"
     },
     "translation": {
       "action": "Traduire",

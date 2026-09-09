@@ -73,4 +73,5 @@ export enum FeatureSwitchKey {
   AvatarNeckSweater = "avatarNeckSweater",
   AvatarFraming = "avatarFraming",
   ConnectorDirectory = "connectorDirectory",
+  ChatThreadHeaderActions = "chatThreadHeaderActions",
 }

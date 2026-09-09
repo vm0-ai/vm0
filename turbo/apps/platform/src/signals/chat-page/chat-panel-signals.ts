@@ -26,6 +26,7 @@ import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 import type { ComposerSignals } from "../okou-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import type { ChatThreadPinSignals } from "./chat-thread-pin.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
 import type { ChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 
@@ -189,6 +190,7 @@ export interface ChatPanelSignals {
   readonly composer: ComposerSignals;
   readonly feedback: ChatThreadFeedbackSignals;
   readonly sharing: ChatThreadSharingSignals;
+  readonly pin: ChatThreadPinSignals;
   readonly locator: ChatConversationLocatorSignals;
   // -- Thread-owned automation resources -----------------------------------
   readonly headerAutomations: HeaderAutomationSignals;
