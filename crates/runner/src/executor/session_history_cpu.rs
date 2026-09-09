@@ -1177,6 +1177,10 @@ fn scan_valid_utf8_history(
 ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
     for line in history.split('\n') {
         check_cancelled(cancel)?;
+        // Match the streaming scanner: count CR and whitespace before trimming.
+        if line.len() > hooks.codex_timestamp_record_max_bytes() {
+            continue;
+        }
         let line = line.strip_suffix('\r').unwrap_or(line);
         if let Some(timestamp) = parse_valid_utf8_codex_timestamp_line(line, cancel, hooks)? {
             return Ok(Some(timestamp));
@@ -1500,6 +1504,7 @@ impl<R: Read> Read for CancellationReader<R> {
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::io::Write;
 
     use tokio::sync::oneshot;
 
@@ -1541,6 +1546,98 @@ mod tests {
         record.resize(record_len - suffix.len(), b'x');
         record.extend_from_slice(suffix);
         record
+    }
+
+    async fn assert_codex_timestamp_for_all_job_kinds(
+        history: &[u8],
+        expected_timestamp: Option<&str>,
+    ) {
+        let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gzip.write_all(history).unwrap();
+        let jobs = [
+            (
+                "identity",
+                raw_job(history.to_vec(), EffectiveCliFramework::Codex),
+            ),
+            (
+                "gzip",
+                SessionHistoryCpuJob::gzip(
+                    "sess-123".into(),
+                    gzip.finish().unwrap(),
+                    history.len() as u64,
+                    hex::encode(Sha256::digest(history)),
+                    EffectiveCliFramework::Codex,
+                ),
+            ),
+            (
+                "inline",
+                SessionHistoryCpuJob::inline_codex(
+                    "sess-123".into(),
+                    Arc::new(String::from_utf8(history.to_vec()).unwrap()),
+                ),
+            ),
+            ("zstd", codex_zstd_job(history)),
+        ];
+        let pool = SessionHistoryCpuPool::with_capacity(1);
+        for (kind, job) in jobs {
+            let session = pool
+                .materialize(job, &CancellationToken::new())
+                .await
+                .unwrap()
+                .result
+                .unwrap()
+                .session;
+            assert_eq!(
+                session
+                    .codex_timestamp()
+                    .map(|timestamp| timestamp.to_rfc3339())
+                    .as_deref(),
+                expected_timestamp,
+                "{kind}: timestamp for {} history bytes",
+                history.len(),
+            );
+            if let Some(encoded) = session.codex_zstd_history() {
+                assert_eq!(zstd::decode_all(encoded).unwrap(), history, "{kind}");
+            } else {
+                assert_eq!(session.history_bytes(), history, "{kind}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_timestamp_jobs_enforce_record_byte_limit() {
+        let limit = CODEX_TIMESTAMP_RECORD_MAX_BYTES;
+        let timestamp = Some("2026-07-13T01:02:03+00:00");
+        for (record_len, suffix, expected) in [
+            (limit, "", timestamp),
+            (limit, "\n", timestamp),
+            (limit + 1, "", None),
+            (limit + 1, "\n", None),
+            (limit - 1, "\r\n", timestamp),
+            (limit, "\r\n", None),
+            (limit - 3, "\u{2003}\n", timestamp),
+            (limit - 2, "\u{2003}\n", None),
+        ] {
+            let mut history = padded_codex_timestamp_record(record_len);
+            history.extend_from_slice(suffix.as_bytes());
+            assert_codex_timestamp_for_all_job_kinds(&history, expected).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_timestamp_jobs_recover_after_oversized_metadata() {
+        let oversized = padded_codex_timestamp_record(CODEX_TIMESTAMP_RECORD_MAX_BYTES + 1);
+        let mut whitespace_padded = padded_codex_timestamp_record(128);
+        whitespace_padded.resize(CODEX_TIMESTAMP_RECORD_MAX_BYTES + 1, b' ');
+        for mut history in [oversized, whitespace_padded] {
+            history.extend_from_slice(b"\r\n");
+            history.extend_from_slice(
+                "\u{2003}{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-14T04:05:06Z\"}}\u{2003}"
+                    .as_bytes(),
+            );
+            assert_codex_timestamp_for_all_job_kinds(&history, Some("2026-07-14T04:05:06+00:00"))
+                .await;
+        }
     }
 
     #[test]
