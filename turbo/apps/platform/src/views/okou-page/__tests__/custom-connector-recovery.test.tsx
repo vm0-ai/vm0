@@ -164,6 +164,7 @@ test.each(["http", "mcp"] as const)(
     const dialog = await screen.findByRole("dialog", {
       name: `Connect ${connector.displayName}`,
     });
+    expect(dialog).not.toHaveTextContent("Configured");
     expect(prompts).toStrictEqual([]);
     await fill(within(dialog).getByLabelText("Secret"), "replacement-secret");
     click(getConnectorAction("button", "Save", dialog));
@@ -177,11 +178,25 @@ test.each(["http", "mcp"] as const)(
 );
 
 test.each(["http", "mcp"] as const)(
-  "Continue a recovered custom %s account while its default remains outdated",
+  "Update selected custom %s credentials while its default remains outdated",
   async (kind) => {
     const overrides = {
       connected: false,
-      missingRequiredFields: ["secret"],
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret" as const,
+          required: true,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable" as const,
+          required: true,
+        },
+      ],
+      missingRequiredFields: ["secret", "region"],
       configuredFieldKeys: [],
     };
     const connector =
@@ -189,7 +204,11 @@ test.each(["http", "mcp"] as const)(
         ? customConnector({ ...overrides, slug: "_acme-search" })
         : mcpCustomConnector(overrides);
     mockDefinition(connector);
-    let selected = account(connector);
+    const selected = {
+      ...account(connector),
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+    };
     context.mocks.api(
       connectorAccountsContract.connection,
       ({ params, query, respond }) => {
@@ -208,16 +227,14 @@ test.each(["http", "mcp"] as const)(
           intent: "reconnect",
           connectionId: ACCOUNT_ID,
         });
-        selected = {
-          ...selected,
-          connectionStatus: "connected",
-          reconnectReason: null,
-        };
+        expect(body.values).toStrictEqual([
+          { key: "secret", kind: "secret", value: "replacement-secret" },
+        ]);
         return respond(200, {
           ...connector,
           connected: true,
           connectedAccountId: ACCOUNT_ID,
-          configuredFieldKeys: ["secret"],
+          configuredFieldKeys: ["region", "secret"],
           missingRequiredFields: [],
         });
       },
@@ -250,6 +267,8 @@ test.each(["http", "mcp"] as const)(
       name: `Connect ${connector.displayName}`,
     });
     await fill(within(dialog).getByLabelText("Secret"), "replacement-secret");
+    expect(within(dialog).getByLabelText("Region")).toHaveValue("");
+    expect(getConnectorAction("button", "Save", dialog)).toBeEnabled();
     click(getConnectorAction("button", "Save", dialog));
 
     await waitFor(() => {

@@ -286,6 +286,7 @@ interface CustomConnectorConnectDialogProps {
 function CustomConnectorConnectForm({
   connector,
   accountMode,
+  accountOptions,
   values,
   setField,
   submitting,
@@ -295,6 +296,7 @@ function CustomConnectorConnectForm({
 }: {
   readonly connector: CustomConnectorResponse;
   readonly accountMode: ConnectorAccountConnectMode | undefined;
+  readonly accountOptions: ConnectorAccountMutationOptions;
   readonly values: Readonly<Record<string, string>>;
   readonly setField: (args: {
     readonly key: string;
@@ -322,7 +324,11 @@ function CustomConnectorConnectForm({
       ) : (
         <CredentialFields
           connector={connector}
-          configuredFieldKeys={accountMode ? [] : connector.configuredFieldKeys}
+          configuredFieldKeys={
+            accountOptions.useDefaultConnectorProjection && !accountMode
+              ? connector.configuredFieldKeys
+              : []
+          }
           values={values}
           setField={setField}
         />
@@ -381,12 +387,15 @@ export function CustomConnectorConnectDialog({
       return value.key;
     }),
   );
+  // Exact reconnects can preserve stored values; the API owns their completeness.
   const requiredFieldKeys =
-    accountMode?.kind === "add"
+    accountOptions.account.intent === "add"
       ? connector.fields.flatMap((field) => {
           return field.required ? [field.key] : [];
         })
-      : connector.missingRequiredFields;
+      : accountOptions.useDefaultConnectorProjection
+        ? connector.missingRequiredFields
+        : [];
   const hasRequiredValues = requiredFieldKeys.every((key) => {
     return submittedKeys.has(key);
   });
@@ -465,6 +474,7 @@ export function CustomConnectorConnectDialog({
           <CustomConnectorConnectForm
             connector={connector}
             accountMode={accountMode}
+            accountOptions={accountOptions}
             values={form.values}
             setField={setField}
             submitting={submitting}

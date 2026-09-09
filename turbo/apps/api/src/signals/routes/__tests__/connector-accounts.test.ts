@@ -1282,6 +1282,23 @@ describe("connector account lifecycle routes", () => {
         [200],
       );
 
+      const incomplete = await accept(
+        customConnectorValuesClient().set({
+          headers: authHeaders(),
+          params: { id: definition.body.id },
+          body: {
+            account: { intent: "reconnect", connectionId: selectedId },
+            values: [
+              { key: "secret", kind: "secret", value: "replacement-token" },
+            ],
+          },
+        }),
+        [400],
+      );
+      expect(incomplete.body).toMatchObject({
+        error: { message: expect.stringContaining("region") },
+      });
+
       const recovered = await accept(
         customConnectorValuesClient().set({
           headers: authHeaders(),
@@ -1297,6 +1314,24 @@ describe("connector account lifecycle routes", () => {
         [200],
       );
       expect(recovered.body).toMatchObject({
+        connected: true,
+        connectedAccountId: selectedId,
+        configuredFieldKeys: ["region", "secret"],
+        missingRequiredFields: [],
+      });
+
+      const rotated = await accept(
+        customConnectorValuesClient().set({
+          headers: authHeaders(),
+          params: { id: definition.body.id },
+          body: {
+            account: { intent: "reconnect", connectionId: selectedId },
+            values: [{ key: "secret", kind: "secret", value: "rotated-token" }],
+          },
+        }),
+        [200],
+      );
+      expect(rotated.body).toMatchObject({
         connected: true,
         connectedAccountId: selectedId,
         configuredFieldKeys: ["region", "secret"],
