@@ -25,13 +25,13 @@ function orgPlanEntitlementColumnsBeforeModelRestriction() {
       .default(0),
     canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
     canBuyCredits: boolean("can_buy_credits").notNull().default(false),
-    memberInviteUsagePackRequired: boolean("member_invite_usage_pack_required")
+    // Rollout compatibility only; remove after the serving/rollback gate in #32575.
+    legacyMemberInviteUsagePackRequired: boolean(
+      "member_invite_usage_pack_required",
+    )
       .notNull()
       .default(false),
     showUsagePack: boolean("show_usage_pack").notNull().default(false),
-    memberInvitationAllowed: boolean("member_invitation_allowed")
-      .notNull()
-      .default(false),
     autoRechargeAllowed: boolean("auto_recharge_allowed")
       .notNull()
       .default(false),
@@ -100,6 +100,11 @@ export const orgPlanEntitlements = pgTable(
     ...orgPlanEntitlementColumnsBeforeModelRestriction(),
     ...orgPlanEntitlementColumnsAfterModelRestriction(),
     restrictedBuiltInModels: canonicalModelRestrictionColumn(),
+    // Physical compatibility for outgoing API statements only. Current readers
+    // use status and canonical inserts omit this column. Cleanup: #32575.
+    legacyMemberInvitationAllowed: boolean("member_invitation_allowed")
+      .notNull()
+      .default(false),
   },
   (table) => {
     return [

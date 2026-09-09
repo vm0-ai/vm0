@@ -1502,7 +1502,7 @@
           "scheduledFor": "{{date}}に変更予定",
           "today": "本日"
         },
-        "memberExclusive": "メンバー1人につき1パッケージです。超過分には従量課金クレジットが使用されます。",
+        "memberExclusive": "メンバーパッケージは任意です。超過分には従量課金クレジットが使用されます。",
         "memberPackages": "メンバーパッケージ",
         "memberUsage": "メンバーの利用設定",
         "migration": {
@@ -1513,7 +1513,7 @@
           "error": "このサブスクリプションを移行できませんでした。ページを更新してもう一度お試しください。",
           "invoice": "請求書を表示",
           "processing": "Stripe で切り替えを予約しています。",
-          "ready": "各メンバーと保留中の招待に必須の月額パッケージを選択してください。",
+          "ready": "各メンバーと招待中のユーザーに月額パッケージを選択するか、「パッケージなし」を選択してください。",
           "review": "切り替え内容を確認",
           "reviewDescription": "切り替えを予約する前に、現在の旧プランと新しい月額プランを比較します。",
           "reviewTitle": "プラン切り替えを確認",
@@ -1522,11 +1522,13 @@
           "title": "旧プランを切り替える"
         },
         "monthlyTotal": "月額合計",
+        "noPackage": "パッケージなし",
         "orderSummary": "注文内容",
-        "packagePerMemberNote": "メンバーごとにパッケージが必要です。次のステップで各メンバーのパッケージを選びます。",
+        "packagePerMemberNote": "次のステップで、各メンバーに有料パッケージを選択するか、「パッケージなし」を選択してください。",
         "packCredits": "{{credits}} クレジット",
         "packCreditsDiscount": "{{credits}} クレジット · {{discount}}% オフ",
         "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
+        "paidPackageRequired": "続行するには、少なくとも1人のメンバーに有料パッケージを選択してください。",
         "planChangeError": "サブスクリプションの変更を準備できませんでした。もう一度お試しください。",
         "planPlusPackages": "プラン {{plan}} · メンバーパッケージ 各 {{lowest}}〜{{highest}}",
         "planStep": "プラン",
@@ -2052,6 +2054,8 @@
       "placeholder": "これについて何を変える必要がありますか?",
       "quote": "引用",
       "remove": "フィードバックを削除する",
+      "selectionEnd": "選択範囲の終了位置を調整",
+      "selectionStart": "選択範囲の開始位置を調整",
       "sentEmailDescription": "送信されたメール (メール ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": "、送信された ID: {{sentId}}",
       "sourcePartHeading": "{{description}} のこの部分に関するフィードバック:",
@@ -5543,6 +5547,11 @@
           },
           "roleLabel": "役割",
           "send": "招待状を送信する",
+          "suspended": {
+            "action": "プランを見る",
+            "description": "メンバーを招待するには、ワークスペースのプランを再開してください。",
+            "title": "メンバーを招待するにはプランを再開"
+          },
           "title": "メンバーを招待する",
           "upgrade": {
             "action": "Proにアップグレード",

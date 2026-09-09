@@ -427,7 +427,7 @@ def _normalize_label(label: str) -> str:
 
 
 def normalize_idna_label(label: str) -> str:
-    """Normalize one hostname label with vm0's shared IDNA policy.
+    """Normalize one hostname label with the platform's shared IDNA policy.
 
     Returns a lowercase ASCII label under this policy. Accepted non-ASCII input
     is returned as a canonical ``xn--`` A-label. The function accepts exactly
@@ -444,7 +444,7 @@ def normalize_idna_label(label: str) -> str:
 
 
 def normalize_idna_hostname(host: str) -> str:
-    """Normalize one hostname with vm0's shared IDNA policy.
+    """Normalize one hostname with the platform's shared IDNA policy.
 
     Returns a dot-separated lowercase ASCII host identity. Accepted Unicode
     labels are returned as canonical ``xn--`` A-labels. For non-IPv4 hostnames,

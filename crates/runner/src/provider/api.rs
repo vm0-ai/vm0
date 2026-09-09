@@ -1320,7 +1320,7 @@ fn log_heartbeat_recovery(state: &HeartbeatState, recovery: DegradationRecovery)
 // ApiClient (HTTP transport)
 // ---------------------------------------------------------------------------
 
-/// Low-level HTTP client for the vm0 runner API endpoints.
+/// Low-level HTTP client for the runner API endpoints.
 #[derive(Clone)]
 pub(crate) struct ApiClient {
     http: HttpClient,

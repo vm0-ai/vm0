@@ -66,24 +66,24 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
         assert mitm_addon.requestheaders(flow) is None
         await mitm_addon.request(flow)
 
-    initial_api_url = "HTTPS://API.VM0.AI"
+    initial_api_url = "HTTPS://API.OKOU.AI"
     with mitm_ctx(registry_path=str(reg_path), api_url=initial_api_url):
         initial_flows = [
-            api_flow(host="api.vm0.ai"),
-            api_flow(host="jobs.api.vm0.ai"),
+            api_flow(host="api.okou.ai"),
+            api_flow(host="jobs.api.okou.ai"),
         ]
         for flow in initial_flows:
             await drive_request(flow)
             assert flow.response is None
 
         assert parsed_api_urls == [initial_api_url]
-        assert parsed_api_hosts == ["api.vm0.ai"]
+        assert parsed_api_hosts == ["api.okou.ai"]
 
-        updated_api_url = "http://API.PREVIEW.VM0.AI:8080"
+        updated_api_url = "http://API.PREVIEW.OKOU.AI:8080"
         mitm_addon.ctx.options.vm0_api_url = updated_api_url
         mitm_addon.configure({"vm0_api_url"})
         updated_flow = api_flow(
-            host="jobs.api.preview.vm0.ai",
+            host="jobs.api.preview.okou.ai",
             scheme="http",
             port=8080,
         )
@@ -93,18 +93,18 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
         updated_binding = upstream_destination_binding.binding_snapshot_for_tests()[
             updated_flow.server_conn.id
         ]
-        assert updated_binding.host == "jobs.api.preview.vm0.ai"
+        assert updated_binding.host == "jobs.api.preview.okou.ai"
         assert updated_binding.port == 8080
         assert updated_binding.kinds == frozenset(("api_allow",))
         assert parsed_api_urls == [initial_api_url, updated_api_url]
-        assert parsed_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
+        assert parsed_api_hosts == ["api.okou.ai", "api.preview.okou.ai"]
 
-        invalid_api_url = "ftp://api.invalid.vm0.ai"
+        invalid_api_url = "ftp://api.invalid.okou.ai"
         mitm_addon.ctx.options.vm0_api_url = invalid_api_url
         mitm_addon.configure({"vm0_api_url"})
         invalid_flows = [
-            api_flow(host="api.invalid.vm0.ai"),
-            api_flow(host="jobs.api.invalid.vm0.ai"),
+            api_flow(host="api.invalid.okou.ai"),
+            api_flow(host="jobs.api.invalid.okou.ai"),
         ]
         for flow in invalid_flows:
             await drive_request(flow)
@@ -113,7 +113,7 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
     bindings = upstream_destination_binding.binding_snapshot_for_tests()
     assert all(flow.server_conn.id not in bindings for flow in invalid_flows)
     assert parsed_api_urls == [initial_api_url, updated_api_url, invalid_api_url]
-    assert parsed_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
+    assert parsed_api_hosts == ["api.okou.ai", "api.preview.okou.ai"]
 
 
 async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
@@ -124,20 +124,20 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
         assert callable(flow.request.stream)
-        assert flow.server_conn.address == ("api.vm0.ai", 443)
+        assert flow.server_conn.address == ("api.okou.ai", 443)
 
         await mitm_addon.request(flow)
 
@@ -145,7 +145,7 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -330,18 +330,18 @@ async def test_capture_enabled_api_allow_blocks_connected_unbound_edge_upstream(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
     flow.server_conn.peername = ("203.0.113.10", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         _assert_no_request_stream(flow)
 
@@ -361,23 +361,23 @@ async def test_capture_enabled_api_allow_uses_authenticated_connected_edge_upstr
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
             ("Authorization", "Bearer tok-conn"),
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         server_address=("203.0.113.10", 443),
         peername=("203.0.113.10", 443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         assert callable(flow.request.stream)
 
@@ -385,7 +385,7 @@ async def test_capture_enabled_api_allow_uses_authenticated_connected_edge_upstr
 
     assert flow.response is None
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -398,33 +398,33 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_tl
         with_response=False,
         client_ip="10.200.0.5",
         host="198.18.20.34",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
-        server_address=("api.vm0.ai", 443),
+        sni="api.okou.ai",
+        server_address=("api.okou.ai", 443),
         peername=None,
         client_sockname=("198.18.20.34", 443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
         assert callable(flow.request.stream)
-        assert flow.server_conn.address == ("api.vm0.ai", 443)
+        assert flow.server_conn.address == ("api.okou.ai", 443)
 
         await mitm_addon.request(flow)
 
     assert flow.response is None
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("198.18.20.34", 443)
 
@@ -437,17 +437,17 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
         with_response=False,
         client_ip="10.200.0.5",
         host="127.0.0.1",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         server_address=("127.0.0.1", 443),
         peername=None,
         client_sockname=("198.18.20.34", 443),
@@ -457,13 +457,13 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
     seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow",)),
         original_address=("198.18.20.34", 443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         assert callable(flow.request.stream)
 
@@ -471,7 +471,7 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
 
     assert flow.response is None
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("198.18.20.34", 443)
 
@@ -484,11 +484,11 @@ async def test_api_allow_prior_client_binding_endpoint_mismatch_blocks(
         with_response=False,
         client_ip="10.200.0.5",
         host="127.0.0.1",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
@@ -499,13 +499,13 @@ async def test_api_allow_prior_client_binding_endpoint_mismatch_blocks(
     seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow",)),
         original_address=("198.18.20.34", 443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         _assert_no_request_stream(flow)
 
@@ -530,11 +530,11 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
         with_response=False,
         client_ip="10.200.0.5",
         host="127.0.0.1",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
@@ -544,7 +544,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
     seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow",)),
         original_address=("198.18.20.34", 443),
@@ -558,7 +558,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
         original_address=("203.0.113.10", 443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         _assert_no_request_stream(flow)
 
@@ -577,24 +577,24 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", "4"),
         ),
     )
     validated_flows = track_trusted_authority_validations(monkeypatch)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
 
         assert validated_flows == [flow]
         _assert_no_request_stream(flow)
         assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
-        assert flow.server_conn.address == ("api.vm0.ai", 443)
+        assert flow.server_conn.address == ("api.okou.ai", 443)
 
         await mitm_addon.request(flow)
 
@@ -602,7 +602,7 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -615,26 +615,26 @@ async def test_api_allow_unknown_body_length_retargets_unconnected_upstream(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
-        request_headers=headers(("Host", "api.vm0.ai")),
+        request_headers=headers(("Host", "api.okou.ai")),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
 
         _assert_no_request_stream(flow)
         assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
-        assert flow.server_conn.address == ("api.vm0.ai", 443)
+        assert flow.server_conn.address == ("api.okou.ai", 443)
 
         await mitm_addon.request(flow)
 
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -646,16 +646,16 @@ def test_api_allow_bounded_prebind_ignores_unregistered_client(
         with_response=False,
         client_ip="192.168.99.99",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("Content-Length", "4"),
         ),
     )
 
-    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
 
     _assert_no_request_stream(flow)

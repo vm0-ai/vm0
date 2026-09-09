@@ -1,4 +1,4 @@
-//! Prepare a host to run vm0 sandboxes.
+//! Prepare a host to run Okou sandboxes.
 //!
 //! The setup command validates host prerequisites, creates the runner home
 //! layout, and installs the pinned Firecracker, kernel, and mitmdump artifacts

@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.642.1](https://github.com/vm0-ai/vm0/compare/core-v8.642.0...core-v8.642.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **platform:** add opt-in custom touch selection in chat ([#32045](https://github.com/vm0-ai/vm0/issues/32045)) ([4d4f6b7](https://github.com/vm0-ai/vm0/commit/4d4f6b78893a82caa720a150b5416eed105e709b))
+
+
+### Refactoring
+
+* remove chat desktop selection feature switch ([#32894](https://github.com/vm0-ai/vm0/issues/32894)) ([2bd3fc5](https://github.com/vm0-ai/vm0/commit/2bd3fc51412b398b1214c31b4a45d190aa375ac3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.2
+
 ## [8.642.0](https://github.com/vm0-ai/vm0/compare/core-v8.641.1...core-v8.642.0) (2026-09-09)
 
 

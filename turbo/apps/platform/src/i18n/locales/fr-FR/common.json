@@ -1526,7 +1526,7 @@
           "scheduledFor": "Prévu pour le {{date}}",
           "today": "Aujourd’hui"
         },
-        "memberExclusive": "Un forfait par membre. Tout dépassement utilise des crédits à l’usage.",
+        "memberExclusive": "Les forfaits des membres sont facultatifs. Tout dépassement utilise des crédits à la consommation.",
         "memberPackages": "Forfaits des membres",
         "memberUsage": "Utilisation du membre",
         "migration": {
@@ -1537,7 +1537,7 @@
           "error": "Impossible de migrer cet abonnement. Actualisez la page et réessayez.",
           "invoice": "Voir la facture",
           "processing": "Planification de la conversion avec Stripe.",
-          "ready": "Choisissez un forfait mensuel obligatoire pour chaque membre et chaque invitation en attente.",
+          "ready": "Choisissez un forfait mensuel pour chaque membre et chaque invitation en attente, ou sélectionnez Aucun forfait.",
           "review": "Vérifier la conversion",
           "reviewDescription": "Comparez le forfait historique actuel au nouveau forfait récurrent avant de planifier la conversion.",
           "reviewTitle": "Vérifier la conversion du forfait",
@@ -1546,11 +1546,13 @@
           "title": "Convertir le forfait historique"
         },
         "monthlyTotal": "Total mensuel",
+        "noPackage": "Aucun forfait",
         "orderSummary": "Récapitulatif de la commande",
-        "packagePerMemberNote": "Chaque membre a besoin d'un pack. Vous les choisissez à l'étape suivante.",
+        "packagePerMemberNote": "À la prochaine étape, choisissez un forfait payant pour chaque membre ou sélectionnez Aucun forfait.",
         "packCredits": "{{credits}} crédits",
         "packCreditsDiscount": "{{credits}} crédits · {{discount}} % de remise",
         "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
+        "paidPackageRequired": "Sélectionnez un forfait payant pour au moins un membre afin de continuer.",
         "planChangeError": "Impossible de préparer la modification de l’abonnement. Réessayez.",
         "planPlusPackages": "Forfait {{plan}} · packs par membre de {{lowest}} à {{highest}}",
         "planStep": "Forfait",
@@ -2094,6 +2096,8 @@
       "placeholder": "Que devrait-on changer à ce sujet ?",
       "quote": "Citer",
       "remove": "Supprimer les retours",
+      "selectionEnd": "Ajuster la fin de la sélection",
+      "selectionStart": "Ajuster le début de la sélection",
       "sentEmailDescription": "un email envoyé (ID de l'email : {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID envoyé : {{sentId}}",
       "sourcePartHeading": "Commentaires sur cette partie de {{description}} :",
@@ -5615,6 +5619,11 @@
           },
           "roleLabel": "Rôle",
           "send": "Envoyer l'invitation",
+          "suspended": {
+            "action": "Voir les offres",
+            "description": "Réactivez l’offre de votre espace de travail pour inviter des membres.",
+            "title": "Réactivez votre offre pour inviter des membres"
+          },
           "title": "Inviter un membre",
           "upgrade": {
             "action": "Passer à Pro",

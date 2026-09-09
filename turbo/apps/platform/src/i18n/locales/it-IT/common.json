@@ -1526,7 +1526,7 @@
           "scheduledFor": "Programmato per il {{date}}",
           "today": "Oggi"
         },
-        "memberExclusive": "Un pacchetto per membro. Ogni utilizzo extra usa crediti a consumo.",
+        "memberExclusive": "I pacchetti dei membri sono facoltativi. Il consumo aggiuntivo utilizza crediti a consumo.",
         "memberPackages": "Pacchetti dei membri",
         "memberUsage": "Utilizzo del membro",
         "migration": {
@@ -1537,7 +1537,7 @@
           "error": "Impossibile migrare questo abbonamento. Aggiorna la pagina e riprova.",
           "invoice": "Visualizza fattura",
           "processing": "Pianificazione della conversione con Stripe.",
-          "ready": "Scegli un pacchetto mensile obbligatorio per ogni membro e invito in sospeso.",
+          "ready": "Scegli un pacchetto mensile per ogni membro e invito in sospeso oppure seleziona Nessun pacchetto.",
           "review": "Rivedi conversione",
           "reviewDescription": "Confronta il piano precedente attuale con il nuovo piano ricorrente prima di pianificare la conversione.",
           "reviewTitle": "Rivedi conversione del piano",
@@ -1546,11 +1546,13 @@
           "title": "Converti piano precedente"
         },
         "monthlyTotal": "Totale mensile",
+        "noPackage": "Nessun pacchetto",
         "orderSummary": "Riepilogo dell’ordine",
-        "packagePerMemberNote": "Ogni membro ha bisogno di un pacchetto. Li scegli nel passaggio successivo.",
+        "packagePerMemberNote": "Nel passaggio successivo, scegli un pacchetto a pagamento per ogni membro oppure seleziona Nessun pacchetto.",
         "packCredits": "{{credits}} crediti",
         "packCreditsDiscount": "{{credits}} crediti · {{discount}}% di sconto",
         "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
+        "paidPackageRequired": "Seleziona un pacchetto a pagamento per almeno un membro per continuare.",
         "planChangeError": "Impossibile preparare la modifica dell’abbonamento. Riprova.",
         "planPlusPackages": "Piano {{plan}} · pacchetti per membro da {{lowest}} a {{highest}}",
         "planStep": "Piano",
@@ -2094,6 +2096,8 @@
       "placeholder": "Cosa dovrebbe cambiare in questo senso?",
       "quote": "Cita",
       "remove": "Rimuovi feedback",
+      "selectionEnd": "Regola fine selezione",
+      "selectionStart": "Regola inizio selezione",
       "sentEmailDescription": "un'e-mail inviata (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", inviato ID: {{sentId}}",
       "sourcePartHeading": "Feedback su questa parte di {{description}}:",
@@ -5615,6 +5619,11 @@
           },
           "roleLabel": "Ruolo",
           "send": "Invia invito",
+          "suspended": {
+            "action": "Visualizza piani",
+            "description": "Riattiva il piano della tua area di lavoro per invitare membri.",
+            "title": "Riattiva il piano per invitare membri"
+          },
           "title": "Invita membro",
           "upgrade": {
             "action": "Passa a Pro",

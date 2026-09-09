@@ -26,6 +26,7 @@ import {
   listAgent,
   mcpCustomConnector,
   mockConnectors,
+  mockOAuthCompletions,
   mockPublicConnectorStatus,
   publicStatusItem,
 } from "./connector-page-test-helpers.ts";
@@ -128,6 +129,8 @@ test.each([
     const permissionRequest = context.mocks.deferred<void>();
     const details = context.mocks.deferred<void>();
     const detailRequest = context.mocks.deferred<void>();
+    const completedAttempts = mockOAuthCompletions(context);
+    const oauthAttemptId = crypto.randomUUID();
     let authorized = false;
     let granting = false;
     mockConnectors(context, []);
@@ -165,6 +168,7 @@ test.each([
     const popup = authorizationWindow();
     const start = {
       authorizationUrl: "https://oauth.test/stripe/authorize",
+      oauthAttemptId,
       connectionId: account.id,
     };
     context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
@@ -227,6 +231,7 @@ test.each([
     expect(connect).toBeDisabled();
 
     authorized = true;
+    completedAttempts.set(oauthAttemptId, account.id);
     context.mocks.data.connectors([{ ...account, slug: "stripe" }]);
     popup.close();
     await permissionRequest.promise;
@@ -272,6 +277,8 @@ test.each([false, true])(
       kind: "builtin",
       connectorSlug: "stripe",
     });
+    const completedAttempts = mockOAuthCompletions(context);
+    const oauthAttemptId = crypto.randomUUID();
     let authorized = false;
     const existingAccounts = mockConnectors(context, [
       { connectorSlug: "axiom", authMethod: "api-token" },
@@ -322,7 +329,11 @@ test.each([false, true])(
     const popup = authorizationWindow();
     const authorizationUrl = "https://oauth.test/stripe/authorize";
     context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
-      return respond(200, { authorizationUrl, connectionId: account.id });
+      return respond(200, {
+        authorizationUrl,
+        connectionId: account.id,
+        oauthAttemptId,
+      });
     });
     context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
       return authorized
@@ -360,6 +371,7 @@ test.each([false, true])(
     expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
 
     authorized = true;
+    completedAttempts.set(oauthAttemptId, account.id);
     context.mocks.data.connectors([
       ...existingAccounts,
       { ...account, slug: "stripe" },
@@ -467,6 +479,16 @@ test.each([
     const confirmRequest = context.mocks.deferred<void>();
     const details = context.mocks.deferred<void>();
     const detailRequest = context.mocks.deferred<void>();
+    const oauthAttemptId = crypto.randomUUID();
+    context.mocks.api(
+      connectorAccountsContract.oauthCompletion,
+      async ({ params, respond }) => {
+        expect(params.attemptId).toBe(oauthAttemptId);
+        confirmRequest.resolve();
+        await confirmation.promise;
+        return respond(200, { connectionId: account.id });
+      },
+    );
     let authorized = false;
     let granting = false;
     context.mocks.data.agents([listAgent(AGENT_ID, "Research")]);
@@ -508,9 +530,6 @@ test.each([
         if (granting) {
           detailRequest.resolve();
           await details.promise;
-        } else {
-          confirmRequest.resolve();
-          await confirmation.promise;
         }
         return respond(200, account);
       },
@@ -519,6 +538,7 @@ test.each([
     const start = {
       result: "authorization" as const,
       authorizationUrl: "https://oauth.test/custom/authorize",
+      oauthAttemptId,
       connectionId: account.id,
     };
     context.mocks.api(customConnectorOAuth2Contract.start, ({ respond }) => {
@@ -590,6 +610,8 @@ test("Finish custom OAuth without covering a new connector draft", async () => {
     kind: "custom",
     customConnectorId: connector.id,
   });
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   let authorized = false;
   context.mocks.data.org({ id: "org_1", name: "Test Org", role: "admin" });
   context.mocks.api(customConnectorsContract.list, ({ respond }) => {
@@ -622,6 +644,7 @@ test("Finish custom OAuth without covering a new connector draft", async () => {
     return respond(200, {
       result: "authorization",
       authorizationUrl,
+      oauthAttemptId,
       connectionId: account.id,
     });
   });
@@ -642,6 +665,7 @@ test("Finish custom OAuth without covering a new connector draft", async () => {
   await fill(within(draft).getByLabelText("Display name"), "Another API");
 
   authorized = true;
+  completedAttempts.set(oauthAttemptId, account.id);
   connector = {
     ...connector,
     connected: true,

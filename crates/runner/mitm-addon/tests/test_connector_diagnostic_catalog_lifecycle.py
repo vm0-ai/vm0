@@ -386,7 +386,7 @@ async def test_registry_classification_from_a_cannot_race_into_diagnostic_b(
         classification = request_classification.classify_request(
             first_flow,
             registry_path=str(registry_path),
-            api_url="https://api.vm0.ai",
+            api_url="https://api.okou.ai",
             tls_admission=None,
         )
         assert classification.kind == "firewall_allow"

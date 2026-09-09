@@ -1,3 +1,4 @@
+import { bestEffort } from "../utils.ts";
 import { command, type Command } from "ccstate";
 import { createElement, type ComponentType } from "react";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
@@ -158,8 +159,11 @@ function createOnboardingPageSetup(
     const title = config.title(get(brandName$));
     set(updatePage$, createElement(config.Page), "none");
     set(updateDocumentTitle$, title);
-    set(capturePaidOnboardingStepViewed$, config.step);
     await set(hideAppSkeleton$, signal);
+    await bestEffort(
+      set(capturePaidOnboardingStepViewed$, config.step, signal),
+      signal,
+    );
   });
 }
 

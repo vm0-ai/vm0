@@ -725,7 +725,7 @@ export async function createBrowserUseProfile(
     {
       method: "POST",
       body: JSON.stringify({
-        name: `vm0-browser-profile-${chatThreadId}`,
+        name: `okou-browser-profile-${chatThreadId}`,
       }),
     },
     signal,

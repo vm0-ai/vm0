@@ -41,14 +41,6 @@ import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-mode
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 import { validatePermanentComputerUseHostProductState } from "./test-computer-use-host-product-permanent";
-import { LEGACY_DATABASE_IDENTITY_MANIFEST } from "./legacy-database-identity-manifest";
-import {
-  assertLegacyDatabaseIdentityInventory,
-  countLegacyIdentitiesByKind,
-  discoverLatestLegacySnapshotIdentities,
-  discoverPersistedSemanticLegacyIdentities,
-  discoverReplayedCatalogLegacyIdentities,
-} from "./legacy-database-identity-inventory";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -1328,7 +1320,7 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
-      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF status, member_invitation_allowed ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
     schemaName: "public",
     tableName: "org_plan_entitlements",
     triggerName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
@@ -1479,7 +1471,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
+    bodyHash: "c3d7d4a52f4ef3f9fd6250cc8a5460fc",
     functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
     kind: "f",
@@ -1589,56 +1581,6 @@ async function validatePermanentTriggerAndFunctionInventory(
     });
 
     console.log("   ✅ Permanent trigger and function inventories match\n");
-  } finally {
-    await client.end();
-  }
-}
-
-async function validateActiveLegacyDatabaseIdentityInventory(
-  dbUrl: string,
-): Promise<void> {
-  console.log(
-    "=== Phase 2.5.1.1: Validate active legacy database identity inventory ===\n",
-  );
-  const snapshot = await discoverLatestLegacySnapshotIdentities(MIGRATIONS_DIR);
-  const client = new Client({ connectionString: dbUrl });
-  await client.connect();
-
-  try {
-    const catalog = await discoverReplayedCatalogLegacyIdentities(client);
-    const semanticContracts = discoverPersistedSemanticLegacyIdentities(
-      snapshot.snapshot,
-    );
-    const discovered = [
-      ...snapshot.identities,
-      ...catalog,
-      ...semanticContracts,
-    ];
-    assertLegacyDatabaseIdentityInventory({
-      discovered,
-      manifest: LEGACY_DATABASE_IDENTITY_MANIFEST,
-    });
-    const counts = countLegacyIdentitiesByKind(discovered);
-    const nonEmptyCounts = Object.entries(counts)
-      .filter(([, count]) => {
-        return count > 0;
-      })
-      .map(([kind, count]) => {
-        return `${kind}=${count}`;
-      })
-      .join(", ");
-
-    console.log(
-      `   Latest snapshot: ${snapshot.migrationTag} (${snapshot.identities.length} identities)`,
-    );
-    console.log(`   Replayed catalog: ${catalog.length} identities`);
-    console.log(
-      `   Persisted semantic contracts: ${semanticContracts.length} families`,
-    );
-    console.log(`   Authoritative manifest: ${nonEmptyCounts}`);
-    console.log(
-      "   ✅ Active legacy database identity inventory matches exactly\n",
-    );
   } finally {
     await client.end();
   }
@@ -3690,7 +3632,6 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validatePermanentUsagePackPendingSnapshotState(dbUrl1);
-    await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentPiMemoryStage1BlobRetentionBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);

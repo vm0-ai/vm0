@@ -1,3 +1,4 @@
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import {
@@ -9,6 +10,7 @@ import {
 import {
   billingCheckoutContract,
   billingUsagePackCheckoutContract,
+  type MemberUsagePack,
 } from "@okouai/api-contracts/contracts/billing";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
@@ -1186,10 +1188,7 @@ test("Video onboarding offers Pro with an initial usage pack", async () => {
   let usagePackCheckoutBody:
     | {
         readonly tier: "pro" | "team";
-        readonly memberUsagePacks: readonly {
-          readonly memberId: string;
-          readonly usagePackUsd: 20 | 50 | 100 | 200;
-        }[];
+        readonly memberUsagePacks: readonly MemberUsagePack[];
       }
     | undefined;
   context.mocks.api(
@@ -1253,6 +1252,7 @@ test("A completed video checkout resumes onboarding and the run", async () => {
         ? {
             completed: true,
             googleAdsConversion: {
+              googleAdsAccountId: "7935750692",
               transactionId: "in_onboarding_paid",
               valueUsd: 49,
             },
@@ -1326,53 +1326,69 @@ test("An invalid template link returns to the matching picker", async () => {
   expect(pathname()).toBe("/onboarding/image-template");
 });
 
-test("Onboarding and checkout starts report their conversions", async () => {
-  const gtag = installGtagMock();
-  const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-  mockChatLifecycle(context);
-  context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
-    return respond(200, {
-      url: "https://checkout.stripe.com/test/onboarding-video",
+test.each([
+  {
+    accountId: "1001302527",
+    onboarding: [ONBOARDING_START_SEND_TO],
+    checkout: [CHECKOUT_START_SEND_TO],
+  },
+  {
+    accountId: "7935750692",
+    onboarding: [ADSMARCH_ONBOARDING_START_SEND_TO],
+    checkout: [ADSMARCH_CHECKOUT_START_SEND_TO],
+  },
+  { accountId: null, onboarding: [], checkout: [] },
+])(
+  "Onboarding and checkout route only to $accountId",
+  async ({ accountId, onboarding, checkout }) => {
+    context.mocks.api(
+      acquisitionAttributionContract.resolveGoogleAdsAccount,
+      ({ respond }) => {
+        return respond(200, { googleAdsAccountId: accountId });
+      },
+    );
+    const gtag = installGtagMock();
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    mockChatLifecycle(context);
+    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/onboarding-video",
+      });
     });
-  });
 
-  mockOnboardingNeeded();
-  await setupPage({
-    context,
-    path: "/onboarding/video-template?choice=video",
-  });
+    mockOnboardingNeeded();
+    await setupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
+    });
 
-  await expect(
-    screen.findByRole("heading", {
-      name: "Pick a video template to start from",
-    }),
-  ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", {
+        name: "Pick a video template to start from",
+      }),
+    ).resolves.toBeInTheDocument();
 
-  expect(sentConversions(gtag)).toStrictEqual([
-    ONBOARDING_START_SEND_TO,
-    ADSMARCH_ONBOARDING_START_SEND_TO,
-  ]);
-  chooseTemplate(template.title, "video");
-
-  await expect(
-    screen.findByRole("heading", { name: "Customize your video" }),
-  ).resolves.toBeInTheDocument();
-  await fill(
-    screen.getByLabelText("Custom video prompt"),
-    "A 20-second launch teaser for a habit-tracking app.",
-  );
-  click(
     await waitFor(() => {
-      return buttonByText("Upgrade Pro to run");
-    }),
-  );
+      return expect(sentConversions(gtag)).toStrictEqual(onboarding);
+    });
+    chooseTemplate(template.title, "video");
 
-  await waitFor(() => {
-    expect(sentConversions(gtag)).toStrictEqual([
-      ONBOARDING_START_SEND_TO,
-      ADSMARCH_ONBOARDING_START_SEND_TO,
-      CHECKOUT_START_SEND_TO,
-      ADSMARCH_CHECKOUT_START_SEND_TO,
-    ]);
-  });
-});
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    await fill(
+      screen.getByLabelText("Custom video prompt"),
+      "A 20-second launch teaser for a habit-tracking app.",
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Upgrade Pro to run");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(window.location.href).toContain("checkout.stripe.com");
+      expect(sentConversions(gtag)).toStrictEqual([...onboarding, ...checkout]);
+    });
+  },
+);

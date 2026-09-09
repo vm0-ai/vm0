@@ -21,6 +21,7 @@ import {
   type ConnectorDiscoveryItem,
 } from "../discovery";
 import { resolveConnectorDiscoveryAgentContext } from "../agent-context";
+import { findConnectorBySelector } from "../connector-selector";
 
 interface SwitchConnectorAccountRequestOptions {
   readonly connectionId: string;
@@ -75,7 +76,10 @@ export const switchConnectorAccountRequestCommand = new Command()
   .description(
     "Ask the user to use one exact connector account for future runs in this chat",
   )
-  .argument("<slug>", "Connector slug")
+  .argument(
+    "<selector>",
+    "Connector slug, custom UUID, or unique display name; builtin:/custom: prefixes accepted",
+  )
   .addOption(
     new Option(
       "--connection-id <uuid>",
@@ -131,9 +135,20 @@ Notes:
           connectors,
           customConnectors,
         );
-        const connector = discoveredConnectors.find((item) => {
-          return item.slug === slug;
-        });
+        const connector = findConnectorBySelector(
+          discoveredConnectors,
+          slug,
+          (item) => {
+            return item.kind === "custom"
+              ? {
+                  kind: "custom",
+                  id: item.customConnector.id,
+                  slug: item.slug,
+                  label: item.label,
+                }
+              : { kind: "builtin", slug: item.slug, label: item.label };
+          },
+        );
         if (!connector) {
           throw new Error(`Unknown or unavailable connector: ${slug}`, {
             cause: new Error(

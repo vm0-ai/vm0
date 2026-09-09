@@ -48,14 +48,14 @@ Design:
   - ``GET /2/users/{id}/pinned_lists``
 
   This endpoint-specific provider documentation does not define how a
-  qualifying request maps to one of vm0's ordinary pricing buckets.
+  qualifying request maps to one of the platform's ordinary pricing buckets.
 
-- **Current vm0 treatment**: ``classify_bucket`` receives only the firewall
+- **Current platform treatment**: ``classify_bucket`` receives only the firewall
   permission, HTTP method, and query-free request path.  It has no
   authenticated-user or developer-app ownership input and no separate
   ``Owned Reads`` category.  The listed paths therefore continue through
   the existing permission defaults and path overrides; this documentation
-  must not be read as saying that vm0 applies the provider's conditional
+  must not be read as saying that the platform applies the provider's conditional
   ``$0.001`` rate.
 
 - **Semantic inferences**: For the current path-to-bucket mapping beyond

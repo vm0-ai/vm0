@@ -1502,7 +1502,7 @@
           "scheduledFor": "Dijadwalkan untuk {{date}}",
           "today": "Hari ini"
         },
-        "memberExclusive": "Satu paket per anggota. Penggunaan berlebih memakai kredit bayar sesuai pemakaian.",
+        "memberExclusive": "Paket anggota bersifat opsional. Pemakaian tambahan menggunakan kredit bayar sesuai pemakaian.",
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
         "migration": {
@@ -1513,7 +1513,7 @@
           "error": "Langganan ini tidak dapat dimigrasikan. Muat ulang halaman dan coba lagi.",
           "invoice": "Lihat faktur",
           "processing": "Menjadwalkan konversi dengan Stripe.",
-          "ready": "Pilih satu paket bulanan wajib untuk setiap anggota dan undangan yang tertunda.",
+          "ready": "Pilih paket bulanan untuk setiap anggota dan undangan tertunda, atau pilih Tanpa paket.",
           "review": "Tinjau konversi",
           "reviewDescription": "Bandingkan paket lama saat ini dengan paket berulang baru sebelum menjadwalkan konversi.",
           "reviewTitle": "Tinjau konversi paket",
@@ -1522,11 +1522,13 @@
           "title": "Konversi paket lama"
         },
         "monthlyTotal": "Total bulanan",
+        "noPackage": "Tanpa paket",
         "orderSummary": "Ringkasan pesanan",
-        "packagePerMemberNote": "Setiap anggota memerlukan paket. Anda memilihnya pada langkah berikutnya.",
+        "packagePerMemberNote": "Pada langkah berikutnya, pilih paket berbayar untuk setiap anggota, atau pilih Tanpa paket.",
         "packCredits": "{{credits}} kredit",
         "packCreditsDiscount": "{{credits}} kredit · diskon {{discount}}%",
         "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
+        "paidPackageRequired": "Pilih paket berbayar untuk setidaknya satu anggota agar dapat melanjutkan.",
         "planChangeError": "Perubahan langganan tidak dapat disiapkan. Coba lagi.",
         "planPlusPackages": "Paket {{plan}} · paket anggota {{lowest}}–{{highest}} per orang",
         "planStep": "Paket",
@@ -2052,6 +2054,8 @@
       "placeholder": "Apa yang harus diubah dari ini?",
       "quote": "Kutip",
       "remove": "Hapus masukan",
+      "selectionEnd": "Sesuaikan akhir pilihan",
+      "selectionStart": "Sesuaikan awal pilihan",
       "sentEmailDescription": "email yang telah dikirim (ID mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID terkirim: {{sentId}}",
       "sourcePartHeading": "Masukan untuk bagian {{description}} ini:",
@@ -5543,6 +5547,11 @@
           },
           "roleLabel": "Peran",
           "send": "Kirim undangan",
+          "suspended": {
+            "action": "Lihat paket",
+            "description": "Aktifkan kembali paket ruang kerja Anda untuk mengundang anggota.",
+            "title": "Aktifkan kembali untuk mengundang anggota"
+          },
           "title": "Undang anggota",
           "upgrade": {
             "action": "Upgrade ke Pro",

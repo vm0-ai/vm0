@@ -18,6 +18,10 @@ import {
   writeRunConnectorAccountContext,
 } from "../../__tests__/helpers/run-connector-accounts";
 import { server } from "../../../mocks/server";
+import {
+  catalogItem,
+  stubConnectorCatalog,
+} from "../../__tests__/helpers/connector-catalog";
 import { checkConnectorCommand } from "../check";
 
 const API_BASE_URL = "https://app.okou.ai";
@@ -168,6 +172,27 @@ function stubDiagnostic(
   onRequest?: (body: unknown) => void,
   baseUrl = API_BASE_URL,
 ): void {
+  if (result.outcome === "unknown-connector") {
+    server.use(
+      stubConnectorCatalog(
+        [catalogItem({ connectorSlug: "missing-connector" })],
+        baseUrl,
+      ),
+    );
+  }
+  if ("connector" in result) {
+    server.use(
+      stubConnectorCatalog(
+        [
+          catalogItem(result.connector),
+          ...(result.connector.connectorSlug === "slack"
+            ? []
+            : [catalogItem({ connectorSlug: "slack", label: "Slack" })]),
+        ],
+        baseUrl,
+      ),
+    );
+  }
   server.use(
     http.post(diagnosticEndpoint(baseUrl), async ({ request }) => {
       const body: unknown = await request.json();
@@ -1476,7 +1501,7 @@ describe("okou connector check command", () => {
           "--url",
           "https://service.example.com/path",
           "--connector",
-          "missing-connector",
+          "builtin:missing-connector",
         ],
         result: { outcome: "unknown-connector" },
         expected: "Unknown connector slug: missing-connector",

@@ -95,7 +95,7 @@ def test_server_connect_retargets_credentialed_connector_host(tmp_path, mitm_ctx
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data()
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("api.github.com", 443)
@@ -129,7 +129,7 @@ def test_server_connect_does_not_bind_parameterized_connector_to_undeclared_port
     )
     data = _data(sni="api.example", address=("203.0.113.10", 8443))
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 8443)
@@ -150,7 +150,7 @@ def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
     )
     data = _ServerConnectData(client=tls_data.context.client, server=_Server())
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         mitm_addon.server_connect(data)
 
@@ -173,7 +173,7 @@ def test_server_connect_preserves_clienthello_original_address(
     )
     data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         mitm_addon.server_connect(data)
 
@@ -198,7 +198,7 @@ def test_server_connect_reuses_clienthello_binding_without_rechecking_authority(
     data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
     authority_checks = _record_authority_checks(monkeypatch)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         mitm_addon.server_connect(data)
 
@@ -230,7 +230,7 @@ def test_server_connect_wrong_kind_binding_still_checks_current_authority(
     api_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert api_binding.kinds == frozenset(("api_allow",))
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     connector_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
@@ -253,7 +253,7 @@ def test_server_connect_does_not_overwrite_clienthello_binding_after_address_cha
     data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
     authority_checks = _record_authority_checks(monkeypatch)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         data.server.address = ("203.0.113.99", 443)
         mitm_addon.server_connect(data)
@@ -272,9 +272,9 @@ def test_server_connect_does_not_overwrite_clienthello_binding_after_address_cha
 @pytest.mark.parametrize(
     ("api_url", "port"),
     [
-        pytest.param("https://api.vm0.ai", 443, id="implicit-default-port"),
+        pytest.param("https://api.okou.ai", 443, id="implicit-default-port"),
         pytest.param(
-            "https://api.vm0.ai:8443",
+            "https://api.okou.ai:8443",
             8443,
             id="explicit-non-default-port",
         ),
@@ -283,16 +283,16 @@ def test_server_connect_does_not_overwrite_clienthello_binding_after_address_cha
 def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx, api_url, port):
     data = _data(
         client_ip="10.200.0.1",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         address=("203.0.113.10", port),
     )
 
     with mitm_ctx(registry_path=str(registry_file), api_url=api_url):
         mitm_addon.server_connect(data)
 
-    assert data.server.address == ("api.vm0.ai", port)
+    assert data.server.address == ("api.okou.ai", port)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.port == port
     assert binding.kinds == frozenset(("api_allow",))
 
@@ -304,7 +304,7 @@ def test_server_connect_does_not_bind_malformed_platform_api_url(
 ):
     data = _data(
         client_ip="10.200.0.1",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
     )
 
     with mitm_ctx(
@@ -323,19 +323,19 @@ def test_server_connect_treats_api_hostname_on_other_port_as_connector(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        base="https://api.vm0.ai:8443",
+        base="https://api.okou.ai:8443",
     )
     data = _data(
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         address=("203.0.113.10", 8443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
-    assert data.server.address == ("api.vm0.ai", 8443)
+    assert data.server.address == ("api.okou.ai", 8443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.port == 8443
     assert binding.kinds == frozenset(("connector_auth",))
 
@@ -346,19 +346,19 @@ def test_server_connect_treats_api_origin_on_other_scheme_as_connector(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        base="https://api.vm0.ai:443",
+        base="https://api.okou.ai:443",
     )
     data = _data(
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         address=("203.0.113.10", 443),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="http://api.vm0.ai:443"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="http://api.okou.ai:443"):
         mitm_addon.server_connect(data)
 
-    assert data.server.address == ("api.vm0.ai", 443)
+    assert data.server.address == ("api.okou.ai", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.port == 443
     assert binding.kinds == frozenset(("connector_auth",))
 
@@ -370,19 +370,19 @@ def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path, mitm_
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
-                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "base": "https://api.okou.ai/api/test/oauth-provider",
                 "auth": {"headers": {"Authorization": "Bearer x"}},
                 "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
             },
             network_policy={"allow": ["echo"], "deny": [], "ask": [], "unknownPolicy": "deny"},
         ),
     )
-    data = _data(sni="api.vm0.ai")
+    data = _data(sni="api.okou.ai")
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
-    assert data.server.address == ("api.vm0.ai", 443)
+    assert data.server.address == ("api.okou.ai", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert binding.kinds == frozenset(("api_allow",))
 
@@ -412,7 +412,7 @@ def test_server_connect_does_not_bind_connected_connector_from_sni_only(tmp_path
         server_connected=True,
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("140.82.112.5", 443)
@@ -435,7 +435,7 @@ async def test_server_connect_waits_for_tls_before_binding_connector_on_shared_i
     data = _ServerConnectData(client=flow.client_conn, server=flow.server_conn)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(
             headers={"Authorization": "Bearer resolved-github-token"}
         ) as auth_fetch,
@@ -483,7 +483,7 @@ def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mit
     )
     data = _data(sni="placeholder.example.com")
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
@@ -493,7 +493,7 @@ def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mit
 def test_server_connect_ignores_unregistered_sandbox(registry_file, mitm_ctx):
     data = _data(client_ip="192.168.99.99")
 
-    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
@@ -506,7 +506,7 @@ def test_server_connect_ignores_non_string_client_peer_host(tmp_path, mitm_ctx):
     client.peername = cast(tuple[str, int], (10, 12345))
     data = _ServerConnectData(client=client, server=_Server())
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
@@ -517,7 +517,7 @@ def test_server_connect_ignores_invalid_sni(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data(sni="api.github.com..")
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
@@ -528,14 +528,14 @@ def test_server_disconnect_and_connect_error_clear_binding(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data()
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
     mitm_addon.server_disconnected(data)
     assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
@@ -562,7 +562,7 @@ def test_client_disconnect_preserves_binding_reassociated_by_server_connect(
     first_data = _ServerConnectData(client=first_client, server=server)
     second_data = _ServerConnectData(client=second_client, server=server)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.server_connect(first_data)
         mitm_addon.server_connect(second_data)
 

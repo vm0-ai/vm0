@@ -350,7 +350,7 @@ function exactOwnerIds(
   );
 }
 
-function exactStoredOwnerIds(
+function paidOwnersStillPresent(
   selections: readonly MigrationSelectionRow[],
   ownerIds: readonly string[],
 ): boolean {
@@ -359,7 +359,6 @@ function exactStoredOwnerIds(
   return (
     stored.size === selections.length &&
     current.size === ownerIds.length &&
-    stored.size === current.size &&
     [...stored].every((ownerId) => {
       return current.has(ownerId);
     })
@@ -692,9 +691,6 @@ function migrationConfiguration(
     .sort((left, right) => {
       return left.memberId.localeCompare(right.memberId);
     });
-  if (memberUsagePacks.length === 0) {
-    throw new Error(`Usage pack migration ${migration.id} has no selections`);
-  }
   return {
     tier: migration.targetTier,
     memberUsagePacks,
@@ -803,41 +799,49 @@ async function prepareMigrationSelections(
       return [migrationOwnerId(owner), owner] as const;
     }),
   );
-  return requested.map((requestedSelection) => {
-    const owner = ownersById.get(requestedSelection.memberId);
-    const catalogItem = catalog.find((item) => {
-      return item.usagePackUsd === requestedSelection.usagePackUsd;
-    });
-    const stripePriceId = activeUsagePackPriceId(
-      requestedSelection.usagePackUsd,
-    );
-    const unitAmountCents = catalogItem
-      ? Math.round(catalogItem.priceUsd * 100)
-      : 0;
-    if (
-      !owner ||
-      !catalogItem ||
-      !stripePriceId ||
-      !Number.isSafeInteger(unitAmountCents) ||
-      unitAmountCents <= 0
-    ) {
-      throw new Error(
-        `Usage pack $${requestedSelection.usagePackUsd} is not configured`,
+  return requested.flatMap(
+    (requestedSelection): readonly PreparedMigrationSelection[] => {
+      if (requestedSelection.usagePackUsd === 0) {
+        return [];
+      }
+      const owner = ownersById.get(requestedSelection.memberId);
+      const catalogItem = catalog.find((item) => {
+        return item.usagePackUsd === requestedSelection.usagePackUsd;
+      });
+      const stripePriceId = activeUsagePackPriceId(
+        requestedSelection.usagePackUsd,
       );
-    }
-    return {
-      userId: "userId" in owner ? owner.userId : null,
-      invitationId: "invitationId" in owner ? owner.invitationId : null,
-      normalizedEmail: "invitationId" in owner ? owner.normalizedEmail : null,
-      role: "invitationId" in owner ? owner.role : null,
-      inviterUserId: "invitationId" in owner ? owner.inviterUserId : null,
-      usagePackUsd: requestedSelection.usagePackUsd,
-      stripePriceId,
-      unitAmountCents,
-      purchasedCredits: catalogItem.purchasedCredits,
-      bonusCredits: catalogItem.bonusCredits,
-    };
-  });
+      const unitAmountCents = catalogItem
+        ? Math.round(catalogItem.priceUsd * 100)
+        : 0;
+      if (
+        !owner ||
+        !catalogItem ||
+        !stripePriceId ||
+        !Number.isSafeInteger(unitAmountCents) ||
+        unitAmountCents <= 0
+      ) {
+        throw new Error(
+          `Usage pack $${requestedSelection.usagePackUsd} is not configured`,
+        );
+      }
+      return [
+        {
+          userId: "userId" in owner ? owner.userId : null,
+          invitationId: "invitationId" in owner ? owner.invitationId : null,
+          normalizedEmail:
+            "invitationId" in owner ? owner.normalizedEmail : null,
+          role: "invitationId" in owner ? owner.role : null,
+          inviterUserId: "invitationId" in owner ? owner.inviterUserId : null,
+          usagePackUsd: requestedSelection.usagePackUsd,
+          stripePriceId,
+          unitAmountCents,
+          purchasedCredits: catalogItem.purchasedCredits,
+          bonusCredits: catalogItem.bonusCredits,
+        },
+      ];
+    },
+  );
 }
 
 async function persistMigrationPreview(
@@ -913,11 +917,13 @@ async function persistMigrationPreview(
     if (!migration) {
       throw new Error("Failed to create usage pack migration preview");
     }
-    await tx.insert(usagePackSubscriptionMigrationSelections).values(
-      selections.map((selection) => {
-        return { migrationId: migration.id, ...selection };
-      }),
-    );
+    if (selections.length > 0) {
+      await tx.insert(usagePackSubscriptionMigrationSelections).values(
+        selections.map((selection) => {
+          return { migrationId: migration.id, ...selection };
+        }),
+      );
+    }
     return migration;
   });
 }
@@ -1355,11 +1361,13 @@ async function persistMigrationRevisionIntent(
       .where(
         eq(usagePackSubscriptionMigrationSelections.migrationId, migration.id),
       );
-    await tx.insert(usagePackSubscriptionMigrationSelections).values(
-      args.prepared.desiredSelections.map((selection) => {
-        return { migrationId: migration.id, ...selection };
-      }),
-    );
+    if (args.prepared.desiredSelections.length > 0) {
+      await tx.insert(usagePackSubscriptionMigrationSelections).values(
+        args.prepared.desiredSelections.map((selection) => {
+          return { migrationId: migration.id, ...selection };
+        }),
+      );
+    }
     return { status: "ready" as const, migration: revising };
   });
 }
@@ -1663,19 +1671,21 @@ async function materializeUsagePackSnapshot(
         subscriptionStatus: subscription.status,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
       });
-      await tx.insert(usagePackAllocations).values(
-        selections.map((selection) => {
-          return {
-            usagePackSubscriptionId: migration.id,
-            orgId: migration.orgId,
-            userId: selection.userId,
-            invitationId: selection.invitationId,
-            usagePackUsd: selection.usagePackUsd,
-            stripePriceId: selection.stripePriceId,
-            status: "pending_payment" as const,
-          };
-        }),
-      );
+      if (selections.length > 0) {
+        await tx.insert(usagePackAllocations).values(
+          selections.map((selection) => {
+            return {
+              usagePackSubscriptionId: migration.id,
+              orgId: migration.orgId,
+              userId: selection.userId,
+              invitationId: selection.invitationId,
+              usagePackUsd: selection.usagePackUsd,
+              stripePriceId: selection.stripePriceId,
+              status: "pending_payment" as const,
+            };
+          }),
+        );
+      }
       return;
     }
     if (
@@ -1854,6 +1864,9 @@ function paidAmountsBySelection(
     amountPaidCents < 0
   ) {
     throw new Error("Migration invoice has an invalid paid amount");
+  }
+  if (selections.length === 0) {
+    return new Map();
   }
   const totalWeight = selections.reduce((total, selection) => {
     return total + (credits.get(selection.id)?.weight ?? 0);
@@ -2307,9 +2320,6 @@ async function reconcileMigration(
   eventInvoice?: StripeInvoice,
 ): Promise<AppliedMigrationResult> {
   const selections = await loadMigrationSelections(db, migration.id);
-  if (selections.length === 0) {
-    throw new Error(`Usage pack migration ${migration.id} has no selections`);
-  }
   const subscription = await getStripeClient().subscriptions.retrieve(
     migration.stripeSubscriptionId,
   );
@@ -2411,7 +2421,7 @@ async function claimMigrationConfirmation(
     }
     if (migration.status === "previewed") {
       const selections = await loadMigrationSelections(tx, migration.id);
-      if (!exactStoredOwnerIds(selections, args.ownerIds)) {
+      if (!paidOwnersStillPresent(selections, args.ownerIds)) {
         const completedAt = nowDate();
         await tx
           .update(usagePackSubscriptionMigrations)

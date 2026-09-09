@@ -63,6 +63,12 @@ function rawUrlAuthorityHasUserinfo(url: string): boolean {
   return url.slice(authorityStart, authorityEnd).includes("@");
 }
 
+export function validateDiagnosticUrl(url: string): void {
+  if (rawUrlAuthorityHasUserinfo(url)) {
+    throw unsafeInputError("invalid-url");
+  }
+}
+
 function shellQuoteArg(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
@@ -111,8 +117,8 @@ export function validateCheckConnectorOptions(
 ): asserts opts is ValidatedCheckConnectorOptions {
   const hasUrl = opts.url !== undefined;
   // Reject embedded credentials before the diagnostic request leaves the client.
-  if (opts.url !== undefined && rawUrlAuthorityHasUserinfo(opts.url)) {
-    throw unsafeInputError("invalid-url");
+  if (opts.url !== undefined) {
+    validateDiagnosticUrl(opts.url);
   }
   if (opts.connector !== undefined && !hasUrl) {
     throw new Error(
@@ -145,9 +151,7 @@ export function buildConnectorUrlDiagnosticRequest(args: {
   readonly connector?: string;
   readonly environmentName?: string;
 }): UrlDiagnosticRequest {
-  if (rawUrlAuthorityHasUserinfo(args.url)) {
-    throw unsafeInputError("invalid-url");
-  }
+  validateDiagnosticUrl(args.url);
   const customConnectorId = customConnectorIdFromSelector(args.connector);
   const selection =
     customConnectorId !== undefined

@@ -18,6 +18,7 @@ import {
   encrypt,
   encryptionContext,
   object,
+  rewrap,
   string,
 } from "./kms";
 
@@ -32,16 +33,33 @@ const plaintext = Buffer.from("kms-32264-production-synthetic-only");
 async function main(): Promise<void> {
   const phase = string(process.argv[2]);
   const directory = string(process.argv[3]);
-  assert.ok(["prepare-old", "verify-new", "verify-rollback"].includes(phase));
-  const account = phase === "verify-new" ? "251964670836" : "072707626411";
+  assert.ok(
+    [
+      "prepare-old",
+      "verify-new",
+      "verify-rollback",
+      "verify-operator",
+    ].includes(phase),
+  );
+  const account =
+    phase === "verify-new" || phase === "verify-operator"
+      ? "251964670836"
+      : "072707626411";
   const identity = object(
     JSON.parse(await readFile(join(directory, "identity.json"), "utf8")),
   );
   assert.equal(identity.Account, account);
-  assert.equal(identity.Arn, `arn:aws:iam::${account}:user/vm0-kms-prod`);
+  if (phase === "verify-operator") {
+    assert.match(
+      string(identity.Arn),
+      /^arn:aws:sts::251964670836:assumed-role\/vm0-kms-migration-github-32264\/github-kms-[0-9]+$/u,
+    );
+  } else {
+    assert.equal(identity.Arn, `arn:aws:iam::${account}:user/vm0-kms-prod`);
+  }
   const configuredKey = process.env.SECRETS_KMS_KEY_ID;
   assert.ok(
-    phase === "verify-new"
+    phase === "verify-new" || phase === "verify-operator"
       ? configuredKey === target
       : [
           source,
@@ -123,12 +141,32 @@ async function main(): Promise<void> {
           },
         );
       }
-    } else {
+    } else if (phase === "verify-rollback") {
       const fresh = object(
         JSON.parse(await readFile(join(directory, "new.json"), "utf8")),
       );
       assert.equal(decode(string(fresh.envelope)).kms.keyId, target);
       await verify(string(fresh.envelope));
+    } else {
+      const old = object(
+        JSON.parse(await readFile(join(directory, "old.json"), "utf8")),
+      );
+      for (const value of [old.envelope, old.legacy]) {
+        const original = decode(string(value));
+        const moved = await rewrap(kms, original, source, target);
+        assert.equal(moved.kms.keyId, target);
+        await verify(encode(moved));
+        const restored = await rewrap(kms, moved, target, source);
+        assert.equal(restored.kms.keyId, source);
+        await verify(encode(restored));
+        if (original.kms.encryptedDataKey) {
+          for (const envelope of [moved, restored]) {
+            assert.equal(envelope.kms.ciphertext, original.kms.ciphertext);
+            assert.equal(envelope.kms.iv, original.kms.iv);
+            assert.equal(envelope.kms.authTag, original.kms.authTag);
+          }
+        }
+      }
     }
     process.stdout.write(
       JSON.stringify({

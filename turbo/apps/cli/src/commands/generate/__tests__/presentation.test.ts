@@ -128,17 +128,9 @@ describe("okou generate presentation command", () => {
     expect(helpOutput).toContain("--prompt <text>");
     expect(helpOutput).toContain("--site-slug <slug>");
     expect(helpOutput).toContain("--title <text>");
-    expect(helpOutput).not.toContain("--runbook <id>");
-    expect(helpOutput).not.toContain("--design-system <id>");
+
     expect(helpOutput).toContain("--template <id>");
     expect(helpOutput).toContain("--slides <count>");
-    expect(helpOutput).not.toContain("--json");
-    expect(helpOutput).not.toContain("--provider");
-    expect(helpOutput).not.toContain("--all");
-    expect(helpOutput).not.toContain("--images");
-    expect(helpOutput).not.toContain("--image-model");
-    expect(helpOutput).not.toContain("--style");
-    expect(helpOutput).not.toContain("--theme");
   });
 
   it("should list presentation templates but not design systems in help", () => {

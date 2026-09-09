@@ -8,11 +8,12 @@ import {
 } from "./billing.ts";
 
 export interface OrgPlanCapabilities {
+  readonly status: "active" | "suspended";
+  /** Remove after APIs without billing status are below the rollback floor. */
+  readonly legacyMemberInvitationAllowed: boolean | null;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
-  readonly memberInviteUsagePackRequired: boolean;
   readonly showUsagePack: boolean;
-  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -26,8 +27,8 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   free: {
     canBuyConcurrency: false,
     canBuyCredits: true,
-    memberInviteUsagePackRequired: false,
-    memberInvitationAllowed: false,
+    status: "active",
+    legacyMemberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: true,
     restrictedVm0Models: false,
@@ -37,8 +38,8 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   "limited-free-1": {
     canBuyConcurrency: false,
     canBuyCredits: false,
-    memberInviteUsagePackRequired: false,
-    memberInvitationAllowed: false,
+    status: "active",
+    legacyMemberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
@@ -48,8 +49,8 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   "pro-suspend": {
     canBuyConcurrency: false,
     canBuyCredits: false,
-    memberInviteUsagePackRequired: false,
-    memberInvitationAllowed: false,
+    status: "suspended",
+    legacyMemberInvitationAllowed: false,
     autoRechargeAllowed: false,
     // Preserve the model picker behavior of browsers talking to an older API.
     // New APIs always return these two capabilities explicitly.
@@ -61,8 +62,8 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   pro: {
     canBuyConcurrency: false,
     canBuyCredits: true,
-    memberInviteUsagePackRequired: false,
-    memberInvitationAllowed: true,
+    status: "active",
+    legacyMemberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -72,8 +73,8 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   team: {
     canBuyConcurrency: true,
     canBuyCredits: true,
-    memberInviteUsagePackRequired: false,
-    memberInvitationAllowed: true,
+    status: "active",
+    legacyMemberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -83,8 +84,8 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   custom: {
     canBuyConcurrency: true,
     canBuyCredits: true,
-    memberInviteUsagePackRequired: false,
-    memberInvitationAllowed: true,
+    status: "active",
+    legacyMemberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -97,15 +98,16 @@ export function orgPlanCapabilitiesFromBilling(
   billing: BillingStatusResponse,
 ): OrgPlanCapabilities {
   const fallback = LEGACY_TIER_CAPABILITIES[apiTierToBillingTier(billing.tier)];
+  const hasCurrentStatus = billing.status !== undefined;
   return {
     canBuyConcurrency: billing.canBuyConcurrency ?? fallback.canBuyConcurrency,
     canBuyCredits: billing.canBuyCredits ?? fallback.canBuyCredits,
-    memberInviteUsagePackRequired:
-      billing.memberInviteUsagePackRequired ??
-      fallback.memberInviteUsagePackRequired,
     showUsagePack: billing.showUsagePack,
-    memberInvitationAllowed:
-      billing.memberInvitationAllowed ?? fallback.memberInvitationAllowed,
+    status: billing.status ?? fallback.status,
+    legacyMemberInvitationAllowed: hasCurrentStatus
+      ? null
+      : (billing.memberInvitationAllowed ??
+        fallback.legacyMemberInvitationAllowed),
     autoRechargeAllowed:
       billing.autoRechargeAllowed ?? fallback.autoRechargeAllowed,
     supportByok: billing.supportByok ?? fallback.supportByok,

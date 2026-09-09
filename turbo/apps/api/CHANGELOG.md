@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.575.2](https://github.com/vm0-ai/vm0/compare/api-v1.575.1...api-v1.575.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** classify fal downstream service errors ([#32890](https://github.com/vm0-ai/vm0/issues/32890)) ([7a72b4e](https://github.com/vm0-ai/vm0/commit/7a72b4ea2a67fdf1826505f44231829b2e92af51))
+* **connectors:** verify browser oauth completion by attempt ([#32880](https://github.com/vm0-ai/vm0/issues/32880)) ([b328433](https://github.com/vm0-ai/vm0/commit/b328433c0c4c17f3bd7e0a4dee9f349e9d6d6b1a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.2
+    * @okouai/core bumped to 8.642.1
+    * @okouai/db bumped to 1.248.3
+    * @okouai/pi-agent-runtime bumped to 1.24.2
+
 ## [1.575.1](https://github.com/vm0-ai/vm0/compare/api-v1.575.0...api-v1.575.1) (2026-09-09)
 
 

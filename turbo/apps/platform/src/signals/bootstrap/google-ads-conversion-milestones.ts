@@ -1,3 +1,4 @@
+import { GOOGLE_ADS_ADSMARCH_ACCOUNT_ID } from "@okouai/core/google-ads-account";
 import { command, state } from "ccstate";
 import {
   acquisitionAttributionContract,
@@ -103,11 +104,11 @@ function writeUserMilestoneState(
 }
 
 export const syncGoogleAdsConversionMilestones$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
     const user = await get(user$);
     signal.throwIfAborted();
     if (!user) {
-      return;
+      return false;
     }
 
     const client = get(apiClient$)(acquisitionAttributionContract);
@@ -116,6 +117,12 @@ export const syncGoogleAdsConversionMilestones$ = command(
       [200],
     );
     signal.throwIfAborted();
+
+    // Old-account milestones use UPLOAD_CLICKS, not these website actions.
+    // Unresolved ownership must not initialize or advance the delivery state.
+    if (response.body.googleAdsAccountId !== GOOGLE_ADS_ADSMARCH_ACCOUNT_ID) {
+      return false;
+    }
 
     const stored = storedMilestonesByUser(get(milestoneStorage.get$));
     const previous = stored[user.id];
@@ -130,7 +137,7 @@ export const syncGoogleAdsConversionMilestones$ = command(
           }),
         ),
       );
-      return;
+      return true;
     }
 
     const deliveredTransactionIds = new Set(previous.transactionIds);
@@ -141,6 +148,7 @@ export const syncGoogleAdsConversionMilestones$ = command(
       }
       const config = MILESTONE_CONFIG[item.kind];
       const fired = fireGoogleAdsConversion({
+        accountId: response.body.googleAdsAccountId,
         sendTo: config.sendTo,
         dedupeValue: item.transactionId,
         value: config.value,
@@ -158,6 +166,7 @@ export const syncGoogleAdsConversionMilestones$ = command(
         writeUserMilestoneState(stored, user.id, deliveredTransactionIds),
       );
     }
+    return true;
   },
 );
 
@@ -168,8 +177,11 @@ export const bootstrapGoogleAdsConversionMilestones$ = command(
     if (!user || get(bootstrappedUserIds$).has(user.id)) {
       return;
     }
-    await set(syncGoogleAdsConversionMilestones$, signal);
+    const resolved = await set(syncGoogleAdsConversionMilestones$, signal);
     signal.throwIfAborted();
+    if (!resolved) {
+      return;
+    }
     set(bootstrappedUserIds$, (previous) => {
       return new Set([...previous, user.id]);
     });

@@ -133,6 +133,12 @@ type PreparedAllocationChange =
       readonly source: UsagePackAllocationRow;
       readonly targetUsagePackUsd: UsagePackUsd;
       readonly targetStripePriceId: string;
+    }
+  | {
+      readonly kind: "removal";
+      readonly source: UsagePackAllocationRow;
+      readonly targetUsagePackUsd: null;
+      readonly targetStripePriceId: null;
     };
 
 interface PreparedSubscriptionChange {
@@ -466,7 +472,10 @@ function usagePackPeriod(subscription: StripeSubscription): {
   readonly end: number;
 } {
   const packageItems = subscription.items.data.filter((item) => {
-    return usagePackUsdForKnownPriceId(item.price.id) !== null;
+    return (
+      isUsagePackPlanPriceId(item.price.id) ||
+      usagePackUsdForKnownPriceId(item.price.id) !== null
+    );
   });
   const first = packageItems[0];
   const start = first?.current_period_start;
@@ -548,6 +557,18 @@ function prepareAllocationChanges(
     (selection): readonly PreparedAllocationChange[] => {
       const source = allocationsByMember.get(selection.memberId);
       const targetUsagePackUsd = selection.usagePackUsd;
+      if (targetUsagePackUsd === 0) {
+        return source
+          ? [
+              {
+                kind: "removal",
+                source,
+                targetUsagePackUsd: null,
+                targetStripePriceId: null,
+              },
+            ]
+          : [];
+      }
       const targetStripePriceId = activeUsagePackPriceId(targetUsagePackUsd);
       if (!targetStripePriceId) {
         throw new Error(
@@ -603,10 +624,12 @@ function adjustedPackageQuantities(
         quantities.set(change.source.stripePriceId, sourceQuantity - 1);
       }
     }
-    quantities.set(
-      change.targetStripePriceId,
-      (quantities.get(change.targetStripePriceId) ?? 0) + 1,
-    );
+    if (change.kind !== "removal") {
+      quantities.set(
+        change.targetStripePriceId,
+        (quantities.get(change.targetStripePriceId) ?? 0) + 1,
+      );
+    }
   }
   return quantities;
 }
@@ -772,7 +795,8 @@ function restorableScheduleId(
   return changes.every((change) => {
     return (
       change.status === "scheduled" &&
-      change.kind === "downgrade" &&
+      (change.kind === "downgrade" ||
+        (change.kind === "removal" && change.subscriptionChangeId !== null)) &&
       change.stripeScheduleId === scheduleId
     );
   })
@@ -805,7 +829,9 @@ function replacementScheduleId(
     !changes.every((change) => {
       return (
         change.stripeScheduleId === scheduleId &&
-        (replacesPlanDowngrade || change.kind === "downgrade")
+        (replacesPlanDowngrade ||
+          change.kind === "downgrade" ||
+          (change.kind === "removal" && change.subscriptionChangeId !== null))
       );
     })
   ) {
@@ -891,7 +917,7 @@ function prepareExistingSchedule(args: {
     !args.hasImmediateChanges &&
     args.allocationChanges.length > 0 &&
     args.allocationChanges.every((change) => {
-      return change.kind === "downgrade";
+      return change.kind === "downgrade" || change.kind === "removal";
     });
   return replacesScheduledDowngrade
     ? { status: "ready", scheduleId }
@@ -1010,7 +1036,7 @@ async function prepareSubscriptionChange(
   const hasScheduledChanges =
     planIsDowngrade(context.subscription.tier, args.targetTier) ||
     allocationChanges.some((change) => {
-      return change.kind === "downgrade";
+      return change.kind === "downgrade" || change.kind === "removal";
     });
   if (context.subscription.cancelAtPeriodEnd && hasScheduledChanges) {
     return { status: "plan_ending" };
@@ -1274,7 +1300,9 @@ async function subscriptionChangeSnapshotMatches(
         return (
           expectedOpenAllocationIds.has(change.id) &&
           change.status === "scheduled" &&
-          change.kind === "downgrade" &&
+          (change.kind === "downgrade" ||
+            (change.kind === "removal" &&
+              change.subscriptionChangeId !== null)) &&
           change.stripeScheduleId === prepared.existingScheduleId
         );
       })
@@ -1709,6 +1737,10 @@ function projectedPackageQuantities(
     if (!include(change)) {
       continue;
     }
+    if (change.kind === "removal") {
+      priceByMember.delete(change.userId);
+      continue;
+    }
     if (!change.targetStripePriceId) {
       throw new Error(`Subscription change ${change.id} has no target Price`);
     }
@@ -1825,9 +1857,12 @@ function storedSubscriptionChangeMatchesRequest(
     }
     targetUsagePackByMember.set(change.userId, change.targetUsagePackUsd);
   }
+  const paidSelections = args.memberUsagePacks.filter((selection) => {
+    return selection.usagePackUsd !== 0;
+  });
   return (
-    targetUsagePackByMember.size === args.memberUsagePacks.length &&
-    args.memberUsagePacks.every((selection) => {
+    targetUsagePackByMember.size === paidSelections.length &&
+    paidSelections.every((selection) => {
       return (
         targetUsagePackByMember.get(selection.memberId) ===
         selection.usagePackUsd
@@ -1923,7 +1958,7 @@ async function persistDeferredSubscriptionChangeSchedule(
       .where(
         and(
           eq(usagePackAllocationChanges.subscriptionChangeId, stored.root.id),
-          eq(usagePackAllocationChanges.kind, "downgrade"),
+          inArray(usagePackAllocationChanges.kind, ["downgrade", "removal"]),
           inArray(usagePackAllocationChanges.status, [
             "applying",
             "pending_payment",
@@ -1978,9 +2013,6 @@ async function scheduleDeferredSubscriptionChange(
       return true;
     },
   );
-  if (quantities.size === 0) {
-    throw new Error("A usage pack subscription cannot have no packages");
-  }
   const stripe = getStripeClient();
   const existingScheduleId = stripeObjectId(subscription.schedule);
   const existingSchedule = existingScheduleId
@@ -2792,9 +2824,6 @@ function restoredUsagePackScheduleParams(
       },
     ];
   });
-  if (activePackageItems.length === 0) {
-    throw new Error("Usage pack subscription has no active packages");
-  }
   const metadataOverlay = canceledUsageAllowanceScheduleMetadata(subscription);
   return {
     end_behavior: schedule.end_behavior,
@@ -3082,7 +3111,7 @@ async function applyStoredSubscriptionChange(
   const hasScheduledChanges =
     planIsDowngrade(stored.root.sourceTier, stored.root.targetTier) ||
     stored.allocationChanges.some((change) => {
-      return change.kind === "downgrade";
+      return change.kind === "downgrade" || change.kind === "removal";
     });
   if (hasScheduledChanges && stripeSubscriptionWillEnd(subscription)) {
     await failApplyingSubscriptionChange(
@@ -3275,7 +3304,7 @@ export async function handleUsagePackSubscriptionChangeInvoicePaid(
   const hasDeferredChanges =
     planIsDowngrade(root.sourceTier, root.targetTier) ||
     refreshed.allocationChanges.some((change) => {
-      return change.kind === "downgrade";
+      return change.kind === "downgrade" || change.kind === "removal";
     });
   if (hasDeferredChanges) {
     await scheduleDeferredSubscriptionChange(

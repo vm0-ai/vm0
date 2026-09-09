@@ -4,6 +4,10 @@
 // Ads bids on (`Onboarding Start`, `Checkout Start`) fire from the same call
 // sites as their PostHog counterparts.
 
+import {
+  GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
+  GOOGLE_ADS_LEGACY_ACCOUNT_ID,
+} from "@okouai/core/google-ads-account";
 import type { AdAttributionMetadata } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { command } from "ccstate";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
@@ -16,6 +20,7 @@ import {
 } from "./google-ads-conversion.ts";
 import { readStoredAdAttributionMetadata$ } from "./ad-attribution.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
+import { resolveGoogleAdsAccount$ } from "./google-ads-account.ts";
 import type { OnboardingRouteStep } from "../onboarding/onboarding-state.ts";
 
 const ONBOARDING_START_CONVERSION_KEY =
@@ -78,7 +83,11 @@ function attributionProperties(
 }
 
 export const capturePaidOnboardingStepViewed$ = command(
-  ({ get, set }, step: OnboardingRouteStep): void => {
+  async (
+    { get, set },
+    step: OnboardingRouteStep,
+    signal: AbortSignal,
+  ): Promise<void> => {
     const stepIndex = ONBOARDING_STEP_ORDER.indexOf(step);
     capturePaidOnboardingEvent("StepViewed", {
       ...attributionProperties(set(readStoredAdAttributionMetadata$)),
@@ -89,30 +98,33 @@ export const capturePaidOnboardingStepViewed$ = command(
 
     // `Onboarding Start` counts one entry into the onboarding flow, so it is
     // deduped per session rather than fired on every step view.
+    const accountId = await set(resolveGoogleAdsAccount$, signal);
+    const config =
+      accountId === GOOGLE_ADS_LEGACY_ACCOUNT_ID
+        ? {
+            sendTo: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
+            storage: onboardingStartConversionStorage,
+            value: ONBOARDING_START_CONVERSION_VALUE_USD,
+          }
+        : accountId === GOOGLE_ADS_ADSMARCH_ACCOUNT_ID
+          ? {
+              sendTo: GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
+              storage: adsmarchOnboardingStartConversionStorage,
+              value: ONBOARDING_START_CONVERSION_VALUE_USD,
+            }
+          : null;
+    if (!config) {
+      return;
+    }
     const conversionFired = fireGoogleAdsConversion({
-      sendTo: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
-      dedupeValue: GOOGLE_ADS_ONBOARDING_START_SEND_TO,
-      value: ONBOARDING_START_CONVERSION_VALUE_USD,
-      storedDedupeValue: get(onboardingStartConversionStorage.get$),
+      accountId,
+      sendTo: config.sendTo,
+      dedupeValue: config.sendTo,
+      value: config.value,
+      storedDedupeValue: get(config.storage.get$),
     });
     if (conversionFired) {
-      set(
-        onboardingStartConversionStorage.set$,
-        GOOGLE_ADS_ONBOARDING_START_SEND_TO,
-      );
-    }
-
-    const adsmarchConversionFired = fireGoogleAdsConversion({
-      sendTo: GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
-      dedupeValue: GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
-      value: ONBOARDING_START_CONVERSION_VALUE_USD,
-      storedDedupeValue: get(adsmarchOnboardingStartConversionStorage.get$),
-    });
-    if (adsmarchConversionFired) {
-      set(
-        adsmarchOnboardingStartConversionStorage.set$,
-        GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
-      );
+      set(config.storage.set$, config.sendTo);
     }
   },
 );
@@ -136,36 +148,43 @@ export const capturePaidOnboardingRoleConfirmed$ = command(
 );
 
 export const capturePaidOnboardingRedirectToStripe$ = command(
-  ({ get, set }, checkoutSource: string): void => {
+  async (
+    { get, set },
+    checkoutSource: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
     capturePaidOnboardingEvent("RedirectToStripe", {
       ...attributionProperties(set(readStoredAdAttributionMetadata$)),
       checkout_source: checkoutSource,
     });
 
+    const accountId = await set(resolveGoogleAdsAccount$, signal);
+    const config =
+      accountId === GOOGLE_ADS_LEGACY_ACCOUNT_ID
+        ? {
+            sendTo: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
+            storage: checkoutStartConversionStorage,
+            value: CHECKOUT_START_CONVERSION_VALUE_USD,
+          }
+        : accountId === GOOGLE_ADS_ADSMARCH_ACCOUNT_ID
+          ? {
+              sendTo: GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
+              storage: adsmarchCheckoutStartConversionStorage,
+              value: ADSMARCH_CHECKOUT_START_CONVERSION_VALUE_USD,
+            }
+          : null;
+    if (!config) {
+      return;
+    }
     const conversionFired = fireGoogleAdsConversion({
-      sendTo: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
-      dedupeValue: GOOGLE_ADS_CHECKOUT_START_SEND_TO,
-      value: CHECKOUT_START_CONVERSION_VALUE_USD,
-      storedDedupeValue: get(checkoutStartConversionStorage.get$),
+      accountId,
+      sendTo: config.sendTo,
+      dedupeValue: config.sendTo,
+      value: config.value,
+      storedDedupeValue: get(config.storage.get$),
     });
     if (conversionFired) {
-      set(
-        checkoutStartConversionStorage.set$,
-        GOOGLE_ADS_CHECKOUT_START_SEND_TO,
-      );
-    }
-
-    const adsmarchConversionFired = fireGoogleAdsConversion({
-      sendTo: GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
-      dedupeValue: GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
-      value: ADSMARCH_CHECKOUT_START_CONVERSION_VALUE_USD,
-      storedDedupeValue: get(adsmarchCheckoutStartConversionStorage.get$),
-    });
-    if (adsmarchConversionFired) {
-      set(
-        adsmarchCheckoutStartConversionStorage.set$,
-        GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
-      );
+      set(config.storage.set$, config.sendTo);
     }
   },
 );

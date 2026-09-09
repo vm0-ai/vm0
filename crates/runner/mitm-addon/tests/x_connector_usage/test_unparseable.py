@@ -239,7 +239,7 @@ def test_unparseable_no_hints_without_proxy_log_path_emits_process_event(
     )
     flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = ""
 
-    with mitm_ctx(api_url="https://api.vm0.ai") as log:
+    with mitm_ctx(api_url="https://api.okou.ai") as log:
         usage.report_connector_usage(flow, "run-abc-123")
 
     fields = [call.args[1] for call in log.error.call_args_list]

@@ -50,11 +50,11 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const memberInvitationUpgradeRequired = Object.freeze({
+const activePlanRequired = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Upgrade to Pro to invite members",
+      message: "Reactivate your workspace plan to invite members",
       code: "FORBIDDEN",
     }),
   }),
@@ -210,16 +210,8 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
   const db = get(db$);
   const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
   signal.throwIfAborted();
-  if (!capabilities?.memberInvitationAllowed) {
-    return memberInvitationUpgradeRequired;
-  }
-  if (capabilities.memberInviteUsagePackRequired) {
-    if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
-      return providerUnavailable("Usage pack invitations are not ready");
-    }
-    return conflict(
-      "A usage pack must be purchased before inviting this member",
-    );
+  if (capabilities?.status !== "active") {
+    return activePlanRequired;
   }
 
   // Clerk side effect: sends the invitation email server-side.
@@ -306,8 +298,8 @@ const purchasePreviewInner$ = command(
     const db = get(db$);
     const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
     signal.throwIfAborted();
-    if (!capabilities?.memberInvitationAllowed) {
-      return memberInvitationUpgradeRequired;
+    if (capabilities?.status !== "active") {
+      return activePlanRequired;
     }
     if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
       return providerUnavailable("Usage pack invitations are not ready");
@@ -467,8 +459,8 @@ const purchaseConfirmInner$ = command(
     const db = get(db$);
     const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
     signal.throwIfAborted();
-    if (!capabilities?.memberInvitationAllowed) {
-      return memberInvitationUpgradeRequired;
+    if (capabilities?.status !== "active") {
+      return activePlanRequired;
     }
     if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
       return providerUnavailable("Usage pack invitations are not ready");

@@ -257,8 +257,8 @@ function storedPublicBrand(
   value: ActiveSitePointer | HostedSiteManifest,
 ): PublicBrand {
   // Persisted hosted-site R2 pointers and manifests have no drain window.
-  // Brandless objects are historical VM0 content until #27750 backfills every
-  // retained object and verifies that this compatibility read can be removed.
+  // Brandless objects retain their historical VM0 identity permanently;
+  // see the retained-object decision in #28449.
   return value.publicBrand ?? "vm0";
 }
 

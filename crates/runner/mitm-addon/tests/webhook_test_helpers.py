@@ -11,9 +11,9 @@ import runner_flush_lifecycle
 import usage
 
 SENSITIVE_WEBHOOK_URL = (
-    "https://user:pass@api.vm0.ai/api/webhooks/agent/usage-event?token=secret#frag"
+    "https://user:pass@api.okou.ai/api/webhooks/agent/usage-event?token=secret#frag"
 )
-SANITIZED_WEBHOOK_URL = "https://api.vm0.ai/api/webhooks/agent/usage-event"
+SANITIZED_WEBHOOK_URL = "https://api.okou.ai/api/webhooks/agent/usage-event"
 _RUNNER_USAGE_STATE_ID = "runner-state"
 _RUNNER_USAGE_FLUSH_REQUEST_ID = "request-1"
 
@@ -86,7 +86,7 @@ def assert_sensitive_webhook_url_parts_absent(entry: dict) -> None:
     assert "user:pass" not in serialized
     assert "token=secret" not in serialized
     assert "#frag" not in serialized
-    assert "pass@api.vm0.ai" not in serialized
+    assert "pass@api.okou.ai" not in serialized
 
 
 def assert_client_headers(request, *, session_id: str = "runner-session-test") -> None:

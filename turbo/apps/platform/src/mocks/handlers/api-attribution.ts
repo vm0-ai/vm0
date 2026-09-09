@@ -2,6 +2,12 @@ import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/
 import { mockApi } from "../msw-contract.ts";
 
 export const apiAttributionHandlers = [
+  mockApi(
+    acquisitionAttributionContract.resolveGoogleAdsAccount,
+    ({ respond }) => {
+      return respond(200, { googleAdsAccountId: null });
+    },
+  ),
   mockApi(acquisitionAttributionContract.googleAdsMilestones, ({ respond }) => {
     return respond(200, { milestones: [] });
   }),

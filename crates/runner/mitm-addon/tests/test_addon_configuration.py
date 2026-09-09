@@ -67,7 +67,7 @@ class _Options:
         flush_interval_seconds: float = usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
         client_session_id: str = "runner-session-test",
         client_version: str = "runner-version-test",
-        api_url: str = "https://api.vm0.ai",
+        api_url: str = "https://api.okou.ai",
     ) -> None:
         self.vm0_usage_state_id = usage_state_id
         self.vm0_addon_ready_path = addon_ready_path
@@ -302,7 +302,7 @@ class TestAddonConfiguration:
         ):
             mitm_addon.configure({"vm0_client_session_id", "vm0_client_version"})
 
-        req = platform_api.make_api_request("https://api.vm0.ai/webhook", b"{}", "tok")
+        req = platform_api.make_api_request("https://api.okou.ai/webhook", b"{}", "tok")
         normalized_headers = {name.lower(): value for name, value in req.header_items()}
         assert normalized_headers["x-client-session-id"] == "runner-session-configured"
         assert normalized_headers["x-client-version"] == "runner-version-configured"

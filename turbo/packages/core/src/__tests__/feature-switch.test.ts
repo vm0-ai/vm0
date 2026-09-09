@@ -230,32 +230,18 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
 
-  it("should enable intro video for Bingjie only", () => {
+  it("should enable the model picker menu for Bingjie by email outside the staff org", () => {
     const bingjieStates = getAllFeatureStates({
-      email: "BINGJIE@VM0.AI",
+      email: "BINGJIE@OKOU.AI",
       orgId: "org_nonexistent",
     });
-    expect(bingjieStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+    expect(bingjieStates[FeatureSwitchKey.ModelPickerMenu]).toBe(true);
 
-    const otherStaffStates = getAllFeatureStates({
-      email: "ethan@vm0.ai",
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    });
-    expect(otherStaffStates[FeatureSwitchKey.IntroVideo]).toBe(false);
-  });
-
-  it("should enable gradient color themes for Ming only", () => {
-    const mingStates = getAllFeatureStates({
-      email: "MING@VM0.AI",
+    const otherStates = getAllFeatureStates({
+      email: "ethan@okou.ai",
       orgId: "org_nonexistent",
     });
-    expect(mingStates[FeatureSwitchKey.GradientColorThemes]).toBe(true);
-
-    const otherStaffStates = getAllFeatureStates({
-      email: "ethan@vm0.ai",
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    });
-    expect(otherStaffStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
+    expect(otherStates[FeatureSwitchKey.ModelPickerMenu]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

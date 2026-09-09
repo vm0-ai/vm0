@@ -34,7 +34,7 @@ async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_
     reg_path.unlink()
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is not None
@@ -90,7 +90,7 @@ async def test_invalid_registered_sandbox_blocks_before_auth_injection(
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -171,7 +171,7 @@ async def test_invalid_cli_agent_type_blocks_before_auth_injection(
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -218,7 +218,7 @@ async def test_valid_cli_agent_type_is_copied_to_request_metadata(
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -239,7 +239,7 @@ async def test_invalid_registered_sandbox_non_object_blocks_before_auth_injectio
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -298,7 +298,7 @@ async def test_invalid_billable_firewalls_blocks_before_auth_injection(
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -381,7 +381,7 @@ async def test_invalid_routing_metadata_blocks_before_auth_injection(
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -433,7 +433,7 @@ async def test_invalid_registered_sandbox_firewalls_shape_blocks_before_auth_inj
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -483,7 +483,7 @@ async def test_invalid_inline_apis_blocks_before_auth_injection(
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -529,7 +529,7 @@ async def test_registered_sandbox_null_firewalls_passes_through_without_auth_inj
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="unconfigured.example.com")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)

@@ -146,8 +146,8 @@ def report_model_provider_usage(
     - ``run_id`` is non-empty.
     - ``firewall_billable`` is truthy.
     - At least one billable event is built from the available model-provider
-      usage sources, including a positive integer quantity in
-      ``MODEL_USAGE_CATEGORIES``.
+      usage sources, with a resolvable billing tier and a positive integer
+      quantity in ``MODEL_USAGE_CATEGORIES``.
     - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
     It returns ``True`` when all gates pass, at least one event is built, and
@@ -163,9 +163,24 @@ def report_model_provider_usage(
     is consumed by ``terminal_usage.report_model_provider_usage_once``
     separately from those per-call admission keys.
 
-    All failed gates are silent by design except missing sandbox token or API
-    URL, which writes an underbilling signal because billable usage cannot be
-    reported.
+    Terminal reporting classifies each source independently. Models in
+    ``MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS`` require a valid non-negative
+    integer ``tokens.input`` quantity to resolve the billing tier. A source
+    without a resolvable tier is skipped; if it contains positive usage in
+    ``MODEL_USAGE_CATEGORIES``, it emits an error-level ``usage_underbilling``
+    diagnostic with reason ``model_long_context_tier_unresolved`` and
+    ``underbilling_class="risk"``, even with complete reporting context. If no
+    billable events remain across all sources, this function returns ``False``.
+    Unlike ``report_model_provider_usage_source`` for incremental WebSocket
+    reporting, this path does not recover a remembered tier or use a
+    conservative fallback. See
+    ``test_output_without_input_skips_unclassifiable_terminal_billing`` in
+    ``tests/test_model_provider_usage.py`` for the output-only regression.
+
+    Failed firewall/run eligibility gates and sources without positive
+    supported usage are silent. When billable events exist, missing sandbox
+    token or API URL emits a ``missing_reporting_context`` underbilling signal
+    because that usage cannot be reported.
     """
     if not run_id:
         return False
@@ -207,9 +222,10 @@ def report_model_provider_usage_source(
     in a later frame. Callers can drop the source from flow metadata after this
     returns. Tiered models retain only their bounded concrete
     tier decision. Evicted decisions are recovered from bounded source-key
-    admission history when possible so later or duplicate output-only frames
-    derive the same billable category; otherwise positive usage receives a
-    conservative billable fallback.
+    admission history when possible so later or duplicate snapshots derive
+    the same billable category even when they repeat input tokens or change
+    service-tier metadata. Without retained history or a classifiable input
+    partition, positive usage receives a conservative billable fallback.
     """
     usage_events: list[UsageEvent] = []
     source_id = f"{flow.id}:{message_id}"
@@ -591,39 +607,32 @@ def _source_model_usage_pricing(
         )
         tiers.move_to_end(message_id)
         return tier, fast
-    if billing_tier is None:
+    # Admitted source keys remain authoritative after the tier cache evicts
+    # a response, even if this snapshot contains a different input partition.
+    fast = observed_fast is True
+    recovered_pricing = _recover_source_model_usage_pricing(run_id, source_id)
+    if recovered_pricing is not None:
+        billing_tier, fast = recovered_pricing
+    elif billing_tier is None:
         if not has_positive_model_provider_usage(usage):
             return None
-        recovered_pricing = _recover_source_model_usage_pricing(run_id, source_id)
-        billing_tier, fast = recovered_pricing or (
-            _MODEL_USAGE_TIER_LONG_CONTEXT,
-            observed_fast is True,
+        billing_tier = _MODEL_USAGE_TIER_LONG_CONTEXT
+        _log_model_usage_tier_fallback(
+            flow,
+            run_id,
+            provider,
+            billing_tier,
+            fast,
         )
-        if recovered_pricing is None:
-            _log_model_usage_tier_fallback(
-                flow,
-                run_id,
-                provider,
-                billing_tier,
-                fast,
-            )
-        tiers[message_id] = _ModelUsageTierDecision(
-            tier=billing_tier,
-            fast=fast,
-            committed=True,
-        )
-        if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
-            tiers.popitem(last=False)
-        return billing_tier, fast
 
     tiers[message_id] = _ModelUsageTierDecision(
         tier=billing_tier,
-        fast=observed_fast is True,
-        committed=has_positive_model_provider_usage(usage),
+        fast=fast,
+        committed=recovered_pricing is not None or has_positive_model_provider_usage(usage),
     )
     if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
         tiers.popitem(last=False)
-    return billing_tier, observed_fast is True
+    return billing_tier, fast
 
 
 def _recover_source_model_usage_pricing(

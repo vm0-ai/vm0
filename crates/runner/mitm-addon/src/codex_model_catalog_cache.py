@@ -104,6 +104,10 @@ MAX_CATALOG_QUERY_BYTES = (
     * (len(_CLIENT_VERSION_QUERY_NAME.encode()) + _MAX_CLIENT_VERSION_BYTES)
     + 1
 )
+_RAW_ACCEPT_ENCODING = b"accept-encoding"
+# Match the normalizer's inclusive 64 KiB aggregate raw-value budget. Oversized
+# requests bypass this optional cache without decoding or rewriting their values.
+_MAX_ACCEPT_ENCODING_VALUE_BYTES = 64 * 1024
 _MAX_ETAG_BYTES = 512
 _MAX_CONTENT_TYPE_BYTES = 256
 _MAX_JSON_NESTING = 128
@@ -422,13 +426,37 @@ def _single_content_encoding(headers: http.Headers) -> str | None:
 
 
 def _request_accepts_encoded_response(headers: http.Headers) -> bool:
-    values = headers.get_all("Accept-Encoding")
-    if not values:
+    remaining_bytes = _MAX_ACCEPT_ENCODING_VALUE_BYTES
+    has_header = False
+    for raw_name, raw_value in headers.fields:
+        if raw_name.lower() != _RAW_ACCEPT_ENCODING:
+            continue
+        has_header = True
+        if len(raw_value) > remaining_bytes:
+            return True
+        remaining_bytes -= len(raw_value)
+    if not has_header:
         return False
-    tokens = [
-        token.strip().lower() for value in values for token in value.split(",") if token.strip()
-    ]
-    return tokens != [_IDENTITY_ENCODING]
+
+    has_identity = False
+    for raw_name, raw_value in headers.fields:
+        if raw_name.lower() != _RAW_ACCEPT_ENCODING:
+            continue
+        # Preserve mitmproxy's decoding and the existing string whitespace rules,
+        # but stop before decoding later fields once a token requires bypassing.
+        value = raw_value.decode("utf-8", "surrogateescape")
+        start = 0
+        while start < len(value):
+            end = value.find(",", start)
+            if end == -1:
+                end = len(value)
+            token = value[start:end].strip()
+            if token:
+                if has_identity or token.lower() != _IDENTITY_ENCODING:
+                    return True
+                has_identity = True
+            start = end + 1
+    return not has_identity
 
 
 def _cache_control_directive_names(headers: http.Headers) -> set[str]:

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import {
   piSandboxAgentConfigFromEnv,
   runPiSandboxAgentLoop,
+  reportPiSandboxAgentLoopFailure,
 } from "../lib/pi-agent-loop";
 
 export const agentLoopCommand = new Command()
@@ -14,7 +15,6 @@ export const agentLoopCommand = new Command()
         config: await piSandboxAgentConfigFromEnv(),
       });
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
+      reportPiSandboxAgentLoopFailure(error);
     }
   });

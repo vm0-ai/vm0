@@ -1,12 +1,14 @@
-import type {
-  UsagePackCatalogItem,
-  UsagePackUsd,
-} from "@okouai/api-contracts/contracts/billing";
+import type { MemberUsagePackOption } from "../../../../signals/okou-page/settings/usage-pack-pricing-state.ts";
 
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { i18n } from "../../../../i18n/index.ts";
 
-export function usagePackOptionLabel(item: UsagePackCatalogItem): string {
+export function usagePackOptionLabel(item: MemberUsagePackOption): string {
+  if (item.usagePackUsd === 0) {
+    return i18n.t(($) => {
+      return $.billing.plans.usagePacks.noPackage;
+    });
+  }
   const discount = Math.round((item.bonusCredits / item.totalCredits) * 100);
   return i18n.t(
     ($) => {
@@ -20,10 +22,10 @@ export function usagePackOptionLabel(item: UsagePackCatalogItem): string {
   );
 }
 
-export function parseUsagePackOption(
+export function parseUsagePackOption<T extends number>(
   value: string,
-  catalog: readonly UsagePackCatalogItem[],
-): UsagePackUsd {
+  catalog: readonly { readonly usagePackUsd: T }[],
+): T {
   const item = catalog.find((candidate) => {
     return String(candidate.usagePackUsd) === value;
   });

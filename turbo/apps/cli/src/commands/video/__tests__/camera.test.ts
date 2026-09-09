@@ -285,7 +285,7 @@ describe("okou video camera command", () => {
     expect(filter).toMatch(/crop@camera=[^,]*,null,scale=1920:1080:/u);
   });
 
-  it("uses the existing VM0 demo capture event format", async () => {
+  it("uses the existing demo capture event format", async () => {
     const videoPath = join(directory, "browser-recording.webm");
     const eventsPath = join(directory, "browser-recording.events.json");
     const outputPath = join(directory, "browser-draft.mp4");
@@ -294,7 +294,7 @@ describe("okou video camera command", () => {
       eventsPath,
       JSON.stringify({
         schemaVersion: 1,
-        generator: { name: "VM0 Demo Capture", version: "0.3.0" },
+        generator: { name: "Okou Demo Capture", version: "0.3.0" },
         session: {
           durationMs: 10_000,
           recording: {

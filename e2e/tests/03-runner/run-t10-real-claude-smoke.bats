@@ -157,7 +157,7 @@ run_real_claude_steer() {
     assert_success
     run jq -e '
         any(.policies[]?;
-            .model == "deepseek-v4-flash" and
+            .model == "deepseek-v4-pro" and
             .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
@@ -168,7 +168,7 @@ run_real_claude_steer() {
     run run_real_chat \
         "123+456. Reply only RESULT=<answer>." \
         "RESULT=579" \
-        "deepseek-v4-flash"
+        "deepseek-v4-pro"
 
     assert_success
     assert_output --partial '"status":"completed"'
@@ -185,7 +185,7 @@ run_real_claude_steer() {
     run jq -e '
         .cliAgentType == "pi" and
         .environment.OPENAI_BASE_URL == "https://api.deepseek.com/" and
-        .environment.OPENAI_MODEL == "deepseek-v4-flash" and
+        .environment.OPENAI_MODEL == "deepseek-v4-pro" and
         any(
             .firewalls[];
             .kind == "builtin" and

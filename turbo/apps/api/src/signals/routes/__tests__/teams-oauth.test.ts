@@ -27,7 +27,7 @@ const API_ORIGIN = "https://api.okou.ai";
 const CALLBACK_REDIRECT_URI = `${API_ORIGIN}/api/integrations/teams/oauth/callback`;
 const OKOU_APP_ORIGIN = "https://app.okou.ai";
 const WEB_ORIGIN = "https://www.okou.ai";
-const APP_ORIGIN = "https://app.vm0.test";
+const APP_ORIGIN = "https://app.okou.test";
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const MICROSOFT_ME_URL = "https://graph.microsoft.com/v1.0/me";

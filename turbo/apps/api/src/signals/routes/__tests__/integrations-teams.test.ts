@@ -161,7 +161,7 @@ describe("Microsoft Teams integration CLI routes", () => {
   const fixtures: TeamsConnectFixture[] = [];
 
   beforeEach(() => {
-    setupTeamsConnectTestEnv("https://app.vm0.test");
+    setupTeamsConnectTestEnv("https://app.okou.test");
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", "bot-password");
   });
 

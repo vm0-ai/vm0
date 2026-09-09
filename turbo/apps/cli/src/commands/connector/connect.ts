@@ -105,7 +105,10 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
 export const connectCommand = new Command()
   .name("connect")
   .description("Connect a builtin connector with manual grant values")
-  .argument("<slug>", "Builtin connector slug (e.g., zendesk)")
+  .argument(
+    "<selector>",
+    "Builtin connector slug or unique display name; builtin: prefix accepted",
+  )
   .addOption(
     new Option("--add", "Create a new connector account").conflicts(
       "reconnect",

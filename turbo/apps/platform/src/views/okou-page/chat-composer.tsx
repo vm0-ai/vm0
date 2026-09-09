@@ -4584,7 +4584,7 @@ function IllustrationTemplateGrid({
   onSelect: (item: IllustrationTemplateItem) => void;
   onVariantChange: (slug: string, index: number) => void;
 }) {
-  // CSS multi-column masonry mirrors www.vm0.ai/illustration: each tile renders
+  // CSS multi-column masonry mirrors www.okou.ai/illustration: each tile renders
   // the full illustration at its native aspect ratio (no cropping, letterbox,
   // or fixed height), and the column count adapts to the dialog width.
   return (

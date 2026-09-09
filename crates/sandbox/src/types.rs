@@ -62,8 +62,8 @@ pub struct ExecRequest<'a> {
     pub cmd: &'a str,
     /// Guest-side command timeout.
     pub timeout: Duration,
-    /// Environment variables passed to the command. Keys must satisfy the vm0
-    /// guest shell exec env key contract.
+    /// Environment variables passed to the command. Keys must satisfy the guest
+    /// shell exec env key contract.
     pub env: &'a [(&'a str, &'a str)],
     /// Run the command with guest-side sudo privileges.
     pub sudo: bool,
@@ -228,8 +228,8 @@ pub struct StartProcessRequest<'a> {
     /// Host deadline for writing the start request and receiving the guest
     /// process-start acknowledgement.
     pub start_timeout: Duration,
-    /// Environment variables passed to the command. Keys must satisfy the vm0
-    /// guest shell exec env key contract.
+    /// Environment variables passed to the command. Keys must satisfy the guest
+    /// shell exec env key contract.
     pub env: &'a [(&'a str, &'a str)],
     /// Run the command with guest-side sudo privileges.
     pub sudo: bool,

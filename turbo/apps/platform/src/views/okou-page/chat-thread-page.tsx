@@ -301,6 +301,7 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import {
   ChatAssistantMessageBody,
+  CHAT_TOUCH_SELECTION_CLASS,
   ChatUserMessageBubble,
   CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
   CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
@@ -2813,8 +2814,9 @@ function ChatThread({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
+  const mainContainerRef = useGet(thread.mainContainerRef$);
   const setContainerRef = useSet(
-    isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
+    isMain ? mainContainerRef : thread.setContainerRef$,
   );
 
   return (
@@ -2822,7 +2824,10 @@ function ChatThread({
       aria-label={t(($) => {
         return $.chat.thread.ariaLabel;
       })}
-      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      className={cn(
+        "flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none",
+        CHAT_TOUCH_SELECTION_CLASS,
+      )}
       data-chat-thread-container-id={thread.threadId}
       ref={setContainerRef}
       tabIndex={-1}
@@ -3978,13 +3983,15 @@ function RecommendedFollowupList({
       // The layout is decided by the device, not by width, so it is not
       // observable through a media query. Tests and e2e read this instead of
       // the styling classes.
-      data-followup-layout={showFollowupCards ? "quick-replies" : "rows"}
+      data-followup-layout={showFollowupCards ? "quick-reply-rail" : "rows"}
       className={cn(
         // The flat list pulls out by the row buttons' own px-2 so its text
-        // aligns with the message column. Quick replies carry a deeper inner
-        // offset of their own, so the stack stays flush with the column and
-        // the composer instead of pulling out to meet it.
-        showFollowupCards ? "flex flex-col items-start gap-1.5" : "-mx-2",
+        // aligns with the message column. The rail carries a deeper inner
+        // offset of its own, so it stays flush with the column and the
+        // composer instead of pulling out to meet them.
+        showFollowupCards
+          ? "flex items-stretch gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "-mx-2",
       )}
     >
       {source.followups.map((followup, followupIndex) => {
@@ -3995,14 +4002,18 @@ function RecommendedFollowupList({
             title={followup.prompt}
             className={cn(
               "group flex text-left transition-colors",
-              // A quick reply hugs its own text so three suggestions read as
-              // one glanceable stack. `active:` rather than `hover:` carries
-              // the press: Tailwind gates `hover:` behind `(hover: hover)`,
-              // which is exactly the devices this branch never runs on. Rest
-              // already sits on the hover layer, so hover and press each take
-              // the next step up the ladder rather than starting from it.
+              // A quick reply sizes to its own text, so a short suggestion
+              // stays small and more than one fits on screen. The rail equalises
+              // their heights, which is why the contents align to the top: a
+              // one-line reply has to start on the same line as its two-line
+              // neighbour rather than float in the middle of the taller box.
+              //
+              // `active:` rather than `hover:` carries the press: Tailwind gates
+              // `hover:` behind `(hover: hover)`, which is exactly the devices
+              // this branch never runs on. Rest already sits on the hover layer,
+              // so hover and press each take the next step up the ladder.
               showFollowupCards
-                ? "min-h-11 w-fit max-w-full items-center gap-1.5 rounded-[var(--okou-card-radius)] bg-state-hover px-4 py-2.5 hover:bg-state-selected active:bg-state-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                ? "max-w-[min(17rem,72%)] shrink-0 items-start gap-1.5 rounded-surface bg-state-hover px-4 py-3 hover:bg-state-selected active:bg-state-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 : "min-h-8 w-full items-center gap-0 rounded-lg px-2 py-1 hover:bg-state-hover",
             )}
             onClick={() => {
@@ -4014,9 +4025,11 @@ function RecommendedFollowupList({
                 "text-muted-foreground/70 transition-colors group-hover:text-foreground",
                 // A quick reply drops the 28px response rail, but keeps the
                 // icon for `generate`: mispicking one there costs a real
-                // generation rather than another message.
+                // generation rather than another message. `h-6` is one line
+                // box, so the glyph centres on the first line of a wrapped
+                // suggestion instead of on the whole text block.
                 showFollowupCards
-                  ? "inline-flex shrink-0 items-center justify-center"
+                  ? "inline-flex h-6 shrink-0 items-center justify-center"
                   : CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
                 showFollowupCards && followup.kind !== "generate" && "hidden",
               )}
@@ -4027,8 +4040,10 @@ function RecommendedFollowupList({
               className={cn(
                 "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground",
                 // Prompt length is unbounded server-side, so a runaway
-                // suggestion is clamped rather than allowed to grow the stack.
-                showFollowupCards && "line-clamp-3",
+                // suggestion is clamped rather than allowed to grow the rail.
+                // Two lines is also the rail's ceiling: every card matches the
+                // tallest one, so this bounds the whole block.
+                showFollowupCards && "line-clamp-2",
               )}
             >
               {followup.prompt}

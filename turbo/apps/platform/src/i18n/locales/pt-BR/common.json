@@ -1526,7 +1526,7 @@
           "scheduledFor": "Agendado para {{date}}",
           "today": "Hoje"
         },
-        "memberExclusive": "Um pacote por membro. Qualquer uso excedente utiliza créditos pagos conforme o uso.",
+        "memberExclusive": "Os pacotes dos membros são opcionais. O uso excedente utiliza créditos pré-pagos.",
         "memberPackages": "Pacotes dos membros",
         "memberUsage": "Uso do membro",
         "migration": {
@@ -1537,7 +1537,7 @@
           "error": "Não foi possível migrar esta assinatura. Atualize a página e tente novamente.",
           "invoice": "Ver fatura",
           "processing": "Agendando a conversão com a Stripe.",
-          "ready": "Escolha um pacote mensal obrigatório para cada membro e convite pendente.",
+          "ready": "Escolha um pacote mensal para cada membro e convite pendente ou selecione Sem pacote.",
           "review": "Revisar conversão",
           "reviewDescription": "Compare o plano legado atual com o novo plano recorrente antes de agendar a conversão.",
           "reviewTitle": "Revisar conversão do plano",
@@ -1546,11 +1546,13 @@
           "title": "Converter plano legado"
         },
         "monthlyTotal": "Total mensal",
+        "noPackage": "Sem pacote",
         "orderSummary": "Resumo do pedido",
-        "packagePerMemberNote": "Cada membro precisa de um pacote. Você escolhe na próxima etapa.",
+        "packagePerMemberNote": "Na próxima etapa, escolha um pacote pago para cada membro ou selecione Sem pacote.",
         "packCredits": "{{credits}} créditos",
         "packCreditsDiscount": "{{credits}} créditos · {{discount}}% de desconto",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}}% de desconto",
+        "paidPackageRequired": "Selecione um pacote pago para pelo menos um membro para continuar.",
         "planChangeError": "Não foi possível preparar a alteração da assinatura. Tente novamente.",
         "planPlusPackages": "Plano {{plan}} · pacotes por membro de {{lowest}} a {{highest}}",
         "planStep": "Plano",
@@ -2094,6 +2096,8 @@
       "placeholder": "O que deveria mudar aqui?",
       "quote": "Citar",
       "remove": "Remover feedback",
+      "selectionEnd": "Ajustar fim da seleção",
+      "selectionStart": "Ajustar início da seleção",
       "sentEmailDescription": "um e-mail enviado (ID do e-mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID de envio: {{sentId}}",
       "sourcePartHeading": "Feedback sobre esta parte de {{description}}:",
@@ -5615,6 +5619,11 @@
           },
           "roleLabel": "Função",
           "send": "Enviar convite",
+          "suspended": {
+            "action": "Ver planos",
+            "description": "Reative o plano do seu espaço de trabalho para convidar membros.",
+            "title": "Reative o plano para convidar membros"
+          },
           "title": "Convidar membro",
           "upgrade": {
             "action": "Fazer upgrade para o Pro",

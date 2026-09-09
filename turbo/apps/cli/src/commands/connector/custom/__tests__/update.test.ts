@@ -5,14 +5,21 @@ import { join } from "node:path";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { server } from "../../../../mocks/server";
+import {
+  customConnector,
+  stubCustomConnectors,
+} from "../../../__tests__/helpers/custom-connectors";
 import { customConnectorCommand } from "../index";
 import { updateCustomConnectorCommand } from "../update";
 
 const CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
 
-function buildOkouToken(): string {
+function buildOkouToken(
+  capabilities: readonly string[] = ["connector:write"],
+): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -22,7 +29,7 @@ function buildOkouToken(): string {
       runId: "run-1",
       orgId: "org-1",
       scope: "okou",
-      capabilities: ["connector:write"],
+      capabilities,
       iat: 1,
       exp: 2,
     }),
@@ -83,15 +90,17 @@ function oauthMcpDefinition() {
   } as const;
 }
 
-function mcpResponse(definition: ReturnType<typeof manualMcpDefinition>) {
+function mcpResponse(
+  definition: ReturnType<typeof manualMcpDefinition>,
+): CustomConnectorMcpResponse {
   return {
-    kind: "mcp" as const,
+    kind: "mcp",
     id: CONNECTOR_ID,
     slug: "_acme-mcp",
     displayName: definition.displayName,
     endpoint: definition.endpoint,
-    transport: "streamable-http" as const,
-    prefixTemplates: [] as const,
+    transport: "streamable-http",
+    prefixTemplates: [],
     fields: [...definition.fields],
     headerInjections: [...definition.headerInjections],
     queryInjections: [],
@@ -129,9 +138,18 @@ describe("okou connector custom update", () => {
     return path;
   }
 
-  it("updates an MCP definition with the exact file body", async () => {
+  it.each([
+    CONNECTOR_ID,
+    `custom:${CONNECTOR_ID}`,
+    "_acme-mcp",
+    "custom:_acme-mcp",
+    "Acme MCP Updated",
+  ])("updates an MCP definition selected by %s", async (selector) => {
     const definition = manualMcpDefinition();
     const definitionPath = writeDefinition(definition);
+    if (selector !== CONNECTOR_ID) {
+      server.use(stubCustomConnectors([mcpResponse(definition)]));
+    }
     let updateBody: unknown;
     server.use(
       http.put(
@@ -147,7 +165,7 @@ describe("okou connector custom update", () => {
       "node",
       "okou",
       "update",
-      CONNECTOR_ID,
+      selector,
       "--file",
       definitionPath,
     ]);
@@ -156,7 +174,104 @@ describe("okou connector custom update", () => {
     expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
       'Custom connector "Acme MCP Updated" updated',
     );
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(CONNECTOR_ID);
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain("_acme-mcp");
   });
+
+  it("updates an HTTP connector by its exact slug", async () => {
+    const connector = customConnector({ id: CONNECTOR_ID });
+    const definition = {
+      kind: connector.kind,
+      displayName: "Updated HTTP connector",
+      prefixTemplates: connector.prefixTemplates,
+      fields: connector.fields,
+      headerInjections: connector.headerInjections,
+      queryInjections: connector.queryInjections,
+      authMode: connector.authMode,
+    };
+    let updateBody: unknown;
+    server.use(
+      stubCustomConnectors([connector]),
+      http.put(
+        `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+        async ({ request }) => {
+          updateBody = await request.json();
+          return HttpResponse.json({ ...connector, ...definition });
+        },
+      ),
+    );
+
+    await customConnectorCommand.parseAsync([
+      "node",
+      "okou",
+      "update",
+      connector.slug,
+      "--file",
+      writeDefinition(definition),
+      "--json",
+    ]);
+
+    expect(updateBody).toStrictEqual(definition);
+    expect(
+      JSON.parse(mockConsoleLog.mock.calls.flat().join("\n")),
+    ).toMatchObject({
+      id: CONNECTOR_ID,
+      slug: connector.slug,
+      displayName: definition.displayName,
+    });
+  });
+
+  it.each(["unknown", "ambiguous"])(
+    "rejects an %s slug before updating a connector",
+    async (scenario) => {
+      const definition = manualMcpDefinition();
+      server.use(
+        stubCustomConnectors(
+          scenario === "unknown"
+            ? []
+            : [
+                mcpResponse(definition),
+                {
+                  ...mcpResponse(definition),
+                  id: "44444444-4444-4444-8444-444444444444",
+                },
+              ],
+        ),
+      );
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+      try {
+        await expect(
+          customConnectorCommand.parseAsync([
+            "node",
+            "okou",
+            "update",
+            "_acme-mcp",
+            "--file",
+            writeDefinition(definition),
+          ]),
+        ).rejects.toThrow("process.exit called");
+        const message = error.mock.calls.flat().join("\n");
+        expect(message).toContain(
+          scenario === "unknown" ? "Unknown or unavailable" : "Ambiguous",
+        );
+        if (scenario === "unknown") {
+          expect(message).toContain("okou connector custom list");
+        } else {
+          expect(message).toContain(`custom:${CONNECTOR_ID}`);
+          expect(message).toContain(
+            "custom:44444444-4444-4444-8444-444444444444",
+          );
+        }
+        expect(mockConsoleLog).not.toHaveBeenCalled();
+      } finally {
+        error.mockRestore();
+        exit.mockRestore();
+      }
+    },
+  );
 
   it("allows an OAuth update to omit the current client secret", async () => {
     const definition = oauthMcpDefinition();
@@ -195,43 +310,87 @@ describe("okou connector custom update", () => {
     expect(updateBody).not.toHaveProperty("oauthConfig.clientSecret");
   });
 
-  it("rejects hybrid protocol files before making a request", async () => {
-    const definitionPath = writeDefinition({
-      ...manualMcpDefinition(),
-      prefixTemplates: ["https://api.acme.example/"],
-    });
-    let requests = 0;
-    server.use(
-      http.put(
-        `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
-        () => {
-          requests += 1;
-          return HttpResponse.json({}, { status: 500 });
-        },
-      ),
-    );
-    const mockConsoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
-      return undefined as never;
-    });
+  it.each([CONNECTOR_ID, "_acme-mcp"])(
+    "rejects hybrid protocol files before resolving %s",
+    async (selector) => {
+      const definitionPath = writeDefinition({
+        ...manualMcpDefinition(),
+        prefixTemplates: ["https://api.acme.example/"],
+      });
+      let requests = 0;
+      let inventoryRequests = 0;
+      server.use(
+        http.get("http://localhost:3000/api/custom-connectors", () => {
+          inventoryRequests += 1;
+          return HttpResponse.json({
+            connectors: [mcpResponse(manualMcpDefinition())],
+          });
+        }),
+        http.put(
+          `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+          () => {
+            requests += 1;
+            return HttpResponse.json({}, { status: 500 });
+          },
+        ),
+      );
+      const mockConsoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+        return undefined as never;
+      });
 
+      try {
+        await customConnectorCommand.parseAsync([
+          "node",
+          "okou",
+          "update",
+          selector,
+          "--file",
+          definitionPath,
+        ]);
+
+        expect(requests).toBe(0);
+        expect(inventoryRequests).toBe(0);
+        expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+          "prefixTemplates",
+        );
+        expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+          "Invalid input",
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      } finally {
+        mockConsoleError.mockRestore();
+        mockExit.mockRestore();
+      }
+    },
+  );
+
+  it("requires write capability before resolving a slug", async () => {
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken([]));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
     try {
-      await customConnectorCommand.parseAsync([
-        "node",
-        "okou",
-        "update",
-        CONNECTOR_ID,
-        "--file",
-        definitionPath,
-      ]);
-
-      expect(requests).toBe(0);
-      expect(mockExit).toHaveBeenCalledWith(1);
+      await expect(
+        customConnectorCommand.parseAsync([
+          "node",
+          "okou",
+          "update",
+          "_acme-mcp",
+          "--file",
+          writeDefinition(manualMcpDefinition()),
+        ]),
+      ).rejects.toThrow("process.exit called");
+      expect(error.mock.calls.flat().join("\n")).toContain(
+        "Custom connector update is not enabled for this agent run",
+      );
+      expect(mockConsoleLog).not.toHaveBeenCalled();
     } finally {
-      mockConsoleError.mockRestore();
-      mockExit.mockRestore();
+      error.mockRestore();
+      exit.mockRestore();
     }
   });
 

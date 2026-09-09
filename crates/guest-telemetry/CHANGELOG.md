@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.69](https://github.com/vm0-ai/vm0/compare/guest-telemetry-v0.3.68...guest-telemetry-v0.3.69) (2026-09-09)
+
 ## [0.3.68](https://github.com/vm0-ai/vm0/compare/guest-telemetry-v0.3.67...guest-telemetry-v0.3.68) (2026-09-09)
 
 ## [0.3.67](https://github.com/vm0-ai/vm0/compare/guest-telemetry-v0.3.66...guest-telemetry-v0.3.67) (2026-09-08)

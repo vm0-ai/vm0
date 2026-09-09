@@ -180,9 +180,8 @@ export interface ChatPanelSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly setMainContainerRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
+  readonly mainContainerRef$: Computed<
+    Command<(() => void) | undefined, [HTMLElement | null]>
   >;
   // True when the event list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.

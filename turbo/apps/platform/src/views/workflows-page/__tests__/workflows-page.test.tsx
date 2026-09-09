@@ -1,3 +1,4 @@
+import { mockOAuthCompletions } from "../../okou-page/__tests__/connector-page-test-helpers.ts";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as timers from "signal-timers";
@@ -549,7 +550,7 @@ function webhookWorkflowAutomation(): WorkflowWebhookAutomationSummary {
     lastRunAt: null,
     official: null,
     webhookUrl:
-      "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
+      "https://api.okou.test/api/webhooks/workflow-automations/whk_test",
     secretLastFour: "abcd",
     lastReceivedAt: null,
   };
@@ -1015,7 +1016,7 @@ function mockWorkflowApis(
         return respond(200, {
           webhookUrl:
             automation.webhookUrl ??
-            "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
+            "https://api.okou.test/api/webhooks/workflow-automations/whk_test",
           webhookSecret: automation.webhookSecret ?? "webhook-secret",
         });
       }
@@ -3755,6 +3756,8 @@ function mockCalendarReconnect(
   workflow: WorkflowDetailResponse,
   selectedAccount: "work" | "personal" = "personal",
 ) {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   let healthyAccount = googleCalendarAccount({
     id: "10000000-0000-4000-a000-000000000020",
     displayName: "Work Calendar",
@@ -3823,6 +3826,7 @@ function mockCalendarReconnect(
     submittedAccounts.push(body.account);
     return respond(200, {
       authorizationUrl: "https://oauth.test/google-calendar/authorize",
+      oauthAttemptId,
     });
   });
   const authWindow = createAuthWindow();
@@ -3909,6 +3913,10 @@ function mockCalendarReconnect(
       ]);
     },
     complete: () => {
+      completedAttempts.set(
+        oauthAttemptId,
+        selectedAccount === "work" ? healthyAccount.id : reconnectAccount.id,
+      );
       if (selectedAccount === "work") {
         healthyAccount = {
           ...healthyAccount,

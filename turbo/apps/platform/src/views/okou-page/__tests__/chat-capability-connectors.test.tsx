@@ -1,3 +1,5 @@
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
+import { mockOAuthCompletions } from "./connector-page-test-helpers.ts";
 import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -390,6 +392,8 @@ test("Connect and authorize a custom MCP connector", async () => {
 });
 
 test("Connect a single available connector without an unnecessary chooser", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   const sends: CapturedChatSend[] = [];
   const slug = "drive-demo";
   const method = browserAuthMethod();
@@ -410,6 +414,7 @@ test("Connect a single available connector without an unnecessary chooser", asyn
   context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
     return respond(200, {
       authorizationUrl: "https://provider.example.test/authorize-drive",
+      oauthAttemptId,
       connectionId: CONNECTOR_CONNECTION_ID,
     });
   });
@@ -442,6 +447,7 @@ test("Connect a single available connector without an unnecessary chooser", asyn
   context.mocks.data.connectors([
     connectedConnectorResponse({ slug, authMethod: method.id }),
   ]);
+  completedAttempts.set(oauthAttemptId, CONNECTOR_CONNECTION_ID);
   popup.openedWindow.close();
   await waitFor(() => {
     expect(sentPrompts(sends)).toStrictEqual([
@@ -596,7 +602,20 @@ test("Reconnect an expired connector before resuming the task", async () => {
     updatedAt: "2026-08-01T09:00:00.000Z",
   });
   let restored = false;
-  let listCalls = 0;
+  let completionReads = 0;
+  const oauthAttemptId = crypto.randomUUID();
+  context.mocks.api(
+    connectorAccountsContract.oauthCompletion,
+    ({ params, respond }) => {
+      expect(params.attemptId).toBe(oauthAttemptId);
+      completionReads += 1;
+      return restored
+        ? respond(200, { connectionId: CONNECTOR_CONNECTION_ID })
+        : respond(404, {
+            error: { code: "NOT_FOUND", message: "OAuth completion not found" },
+          });
+    },
+  );
   const popup = mockOpenedWindow();
   installCatalogLookup((requestedSlug) => {
     return requestedSlug === slug
@@ -614,11 +633,11 @@ test("Reconnect an expired connector before resuming the task", async () => {
   context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
     return respond(200, {
       authorizationUrl: "https://provider.example.test/reconnect-drive",
+      oauthAttemptId,
       connectionId: CONNECTOR_CONNECTION_ID,
     });
   });
   context.mocks.api(connectorsMainContract.list, ({ respond }) => {
-    listCalls += 1;
     return respond(200, {
       connectors: [
         restored
@@ -662,10 +681,10 @@ test("Reconnect an expired connector before resuming the task", async () => {
     );
   });
 
-  const callsBeforeEarlyReturn = listCalls;
+  const callsBeforeEarlyReturn = completionReads;
   context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
   await waitFor(() => {
-    expect(listCalls).toBeGreaterThan(callsBeforeEarlyReturn);
+    expect(completionReads).toBeGreaterThan(callsBeforeEarlyReturn);
     expect(sends).toHaveLength(0);
   });
 

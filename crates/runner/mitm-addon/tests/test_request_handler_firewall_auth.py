@@ -68,7 +68,7 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
         patch.object(
             auth,
@@ -242,7 +242,7 @@ async def test_head_firewall_auth_failure_is_bodyless(tmp_path, real_flow, mitm_
     auth_fetch = AsyncMock(side_effect=RuntimeError("auth backend unavailable"))
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", auth_fetch),
     ):
         await mitm_addon.request(flow)
@@ -303,7 +303,7 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
     ):
         await mitm_addon.request(flow)
@@ -376,7 +376,7 @@ async def test_connector_sources_partition_firewall_auth_cache_identity(
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
     ):
         await mitm_addon.request(first_flow)
@@ -410,7 +410,7 @@ async def test_builtin_connector_routing_variables_are_forwarded_with_matched_fi
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
     ):
         await mitm_addon.request(flow)
@@ -481,7 +481,7 @@ async def test_custom_firewall_change_during_auth_discards_stale_credentials(
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     request_task: asyncio.Task[None] | None = None
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", auth_fetch),
     ):
         request_task = asyncio.create_task(mitm_addon.request(flow))
@@ -528,7 +528,7 @@ async def test_requestheaders_and_request_share_snapshot_auth_identity(
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
         patch.object(
             auth,
@@ -567,7 +567,7 @@ async def test_registry_reload_replaces_firewall_auth_identity(tmp_path, real_fl
     registry_identities: list[state_file.StateFileIdentity] = []
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
         patch.object(
             auth,
@@ -618,7 +618,7 @@ async def test_registry_reload_reuses_unchanged_firewall_auth_identity(
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
         patch.object(
             auth,
@@ -671,7 +671,7 @@ async def test_registry_reload_coalesces_unchanged_in_flight_firewall_auth(
 
     requests: list[asyncio.Task[None] | None] = [None, None]
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", side_effect=fetch_auth) as auth_fetch,
     ):
         requests[0] = asyncio.create_task(mitm_addon.request(flows[0]))
@@ -735,7 +735,7 @@ async def test_superseded_fetch_completion_does_not_repopulate_auth_state(
 
     old_request: asyncio.Task[None] | None = None
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", side_effect=fetch_auth) as auth_fetch,
     ):
         old_request = asyncio.create_task(mitm_addon.request(old_flow))
@@ -788,7 +788,7 @@ async def test_superseded_401_does_not_mutate_current_auth_state(tmp_path, real_
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
     ):
         await mitm_addon.request(flows[0])
@@ -867,7 +867,7 @@ async def test_local_response_preserves_shared_binding_for_concurrent_auth(
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", auth_fetch),
     ):
         allowed_task = asyncio.create_task(mitm_addon.request(allowed_flow))
@@ -948,7 +948,7 @@ async def test_http_firewall_with_managed_credentials_blocks_before_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1007,7 +1007,7 @@ async def test_http_firewall_without_managed_credentials_still_matches(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1077,7 +1077,7 @@ async def test_reflection_method_firewall_with_managed_credentials_blocks_before
     original_url = flow.request.url
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
         fake_forwarder_upstream(body=b"Authorization: Bearer reflected-by-request") as upstream,
     ):
@@ -1146,7 +1146,7 @@ async def test_reflection_method_firewall_without_managed_credentials_still_matc
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1174,7 +1174,7 @@ async def test_non_reflection_method_with_managed_credentials_still_matches(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1236,7 +1236,7 @@ async def test_https_firewall_with_ordinary_credentials_blocks_when_upstream_is_
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1283,7 +1283,7 @@ async def test_firewall_auth_cancellation_preserves_upstream_binding(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", AsyncMock(side_effect=asyncio.CancelledError)),
         pytest.raises(asyncio.CancelledError),
     ):

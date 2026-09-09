@@ -848,19 +848,21 @@ async function insertUsagePackPurchaseSnapshot(
   if (!subscription) {
     throw new Error("Failed to create usage pack subscription snapshot");
   }
-  await tx.insert(usagePackAllocations).values(
-    args.allocations.map((allocation) => {
-      return {
-        usagePackSubscriptionId: subscription.id,
-        orgId: args.orgId,
-        usagePackUsd: allocation.usagePackUsd,
-        stripePriceId: allocation.stripePriceId,
-        ...("userId" in allocation
-          ? { userId: allocation.userId }
-          : { invitationId: allocation.invitationId }),
-      };
-    }),
-  );
+  if (args.allocations.length > 0) {
+    await tx.insert(usagePackAllocations).values(
+      args.allocations.map((allocation) => {
+        return {
+          usagePackSubscriptionId: subscription.id,
+          orgId: args.orgId,
+          usagePackUsd: allocation.usagePackUsd,
+          stripePriceId: allocation.stripePriceId,
+          ...("userId" in allocation
+            ? { userId: allocation.userId }
+            : { invitationId: allocation.invitationId }),
+        };
+      }),
+    );
+  }
   return subscription.id;
 }
 
@@ -1020,9 +1022,6 @@ const createUsagePackCheckoutSession$ = command(
     args: CreateUsagePackCheckoutSessionArgs,
     signal: AbortSignal,
   ): Promise<StartUsagePackPurchaseResult> => {
-    if (args.allocations.length === 0) {
-      throw new Error("Usage pack checkout requires at least one allocation");
-    }
     await set(
       persistOrgAcquisitionAttribution$,
       { orgId: args.orgId, attribution: args.adAttribution },
@@ -1227,9 +1226,6 @@ export const startUsagePackPurchase$ = command(
     if (!args.supportsInAppPreview) {
       return await set(createUsagePackCheckoutSession$, args, signal);
     }
-    if (args.allocations.length === 0) {
-      throw new Error("Usage pack checkout requires at least one allocation");
-    }
     await set(
       persistOrgAcquisitionAttribution$,
       { orgId: args.orgId, attribution: args.adAttribution },
@@ -1363,8 +1359,7 @@ async function loadUsagePackPurchaseSnapshot(
     subscription.stripeCustomerId !== preview.customerId ||
     subscription.tier !== preview.tier ||
     subscription.stripePlanPriceId !== preview.planPriceId ||
-    !allocations ||
-    allocations.length === 0
+    !allocations
   ) {
     return null;
   }
@@ -1880,11 +1875,6 @@ async function loadUsagePackContext(
     .where(
       eq(usagePackAllocations.usagePackSubscriptionId, usagePackSubscriptionId),
     );
-  if (allocations.length === 0) {
-    throw new Error(
-      `Usage pack subscription ${usagePackSubscriptionId} has no allocations`,
-    );
-  }
   return { subscription, allocations };
 }
 
@@ -2063,7 +2053,14 @@ function inspectStripeUsagePackPackages(
     periodStart ??= itemPeriodStart;
     periodEnd = itemPeriodEnd;
   }
-  if (quantities.size === 0 || !periodEnd) {
+  if (quantities.size === 0) {
+    const basePlan = subscription.items.data.find((item) => {
+      return isUsagePackPlanPriceId(item.price.id);
+    });
+    periodStart = unixDate(basePlan?.current_period_start);
+    periodEnd = unixDate(basePlan?.current_period_end);
+  }
+  if (!periodEnd) {
     return {
       valid: false,
       reason: "subscription has no recognized usage pack item",
@@ -2075,12 +2072,6 @@ function inspectStripeUsagePackPackages(
 function inspectAllocationQuantities(
   allocations: readonly UsagePackAllocationRow[],
 ): InspectedValue<ReadonlyMap<string, number>> {
-  if (allocations.length === 0) {
-    return {
-      valid: false,
-      reason: "local usage pack subscription has no payable allocations",
-    };
-  }
   const quantities = new Map<string, number>();
   for (const allocation of allocations) {
     const usagePackUsd = usagePackUsdForKnownPriceId(allocation.stripePriceId);
@@ -3122,7 +3113,7 @@ async function persistUsagePackPlanState(
     currentPeriodEnd: args.periodEnd,
     cancelAt,
     expiresAt: cancelAt,
-    memberInviteUsagePackRequired: true,
+    showUsagePack: true,
   });
 }
 
@@ -3320,7 +3311,7 @@ export async function handleUsagePackInvoicePaid(
   if (changeOutcome.handled) {
     return changeOutcome;
   }
-  if (!hasUsagePackLine) {
+  if (!hasUsagePackLine && !isUsagePackPlanChangeInvoice(invoice)) {
     return { handled: false, orgId: null };
   }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);

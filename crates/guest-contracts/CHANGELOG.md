@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.7...guest-contracts-v0.13.8) (2026-09-09)
+
+
+### Documentation
+
+* **rust:** correct memory_max_events counter semantics ([#32892](https://github.com/vm0-ai/vm0/issues/32892)) ([a3a0584](https://github.com/vm0-ai/vm0/commit/a3a0584bf74c850cfcfc6c64820030bf3ded4c11))
+
 ## [0.13.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.6...guest-contracts-v0.13.7) (2026-09-09)
 
 

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
 const OVERSIZED_SYSTEM_LOG_LINE_MARKER_FRAGMENT: &str =
-    "vm0 telemetry omitted oversized system log line";
+    "telemetry omitted oversized system log line";
 
 struct SandboxOpsOverrideGuard;
 

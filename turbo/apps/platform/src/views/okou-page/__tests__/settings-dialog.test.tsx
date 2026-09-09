@@ -205,32 +205,6 @@ test("Offer only languages supported by the workspace", async () => {
   expect(document.documentElement.lang).toBe("en-US");
 });
 
-test("Keep the VM0 workspace default in English", async () => {
-  const submittedLocales: UserLocale[] = [];
-  context.mocks.browser.languages(["id-ID"]);
-  context.mocks.api(userPreferencesContract.get, ({ respond }) => {
-    return respond(200, createPreferences(null));
-  });
-  context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
-    if (body.locale !== undefined) {
-      submittedLocales.push(body.locale);
-    }
-    return respond(200, createPreferences(body.locale ?? null));
-  });
-
-  await openDialog("admin", "preference", "app.vm0.ai");
-
-  const languageSelect = await screen.findByRole("combobox", {
-    name: "Language",
-  });
-  await waitFor(() => {
-    expect(submittedLocales).toContain("en-US");
-    expect(submittedLocales).not.toContain("id-ID");
-    expect(languageSelect).toHaveTextContent("English");
-    expect(document.documentElement.lang).toBe("en-US");
-  });
-});
-
 test.each([
   {
     source: "browser",

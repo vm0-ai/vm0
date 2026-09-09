@@ -12,6 +12,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { OpenRouterRequestError, type OpenRouterTextPart } from "./openrouter";
 import { readBoundedResponseText, safeJsonParse } from "../utils";
+import { requestVoiceProvider } from "./voice-provider-request";
 
 const L = logger("OpenRouterVoice");
 
@@ -322,64 +323,80 @@ async function generateStructuredVoiceResponse<T>(
     ? args.systemPrompt
     : `${args.systemPrompt}\nJSON schema: ${JSON.stringify(args.jsonSchema.schema)}`;
 
-  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: args.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: args.content },
-      ],
-      max_tokens: isGemini ? (isGemini25 ? 65_535 : 65_536) : 16_384,
-      ...(isGemini
-        ? { reasoning: { effort: isGemini25 ? "none" : "minimal" } }
-        : { modalities: ["text"] }),
-      temperature: 0,
-      store: false,
-      ...(isGemini && {
-        response_format: {
-          type: "json_schema",
-          json_schema: args.jsonSchema,
+  return await requestVoiceProvider(
+    (requestSignal) => {
+      return fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
         },
-      }),
-    }),
-    signal,
-  });
-  const responseBody = await readBoundedResponseText(
-    response,
-    OPENROUTER_VOICE_RESPONSE_MAX_BYTES,
-  );
-  signal.throwIfAborted();
-  const parsedBody =
-    responseBody.kind === "text" ? safeJsonParse(responseBody.text) : undefined;
-  if (!response.ok) {
-    const error = requestError(
-      "OpenRouter voice request failed",
-      response.status,
-      parsedBody,
-    );
-    L.warn("OpenRouter voice request rejected", {
+        body: JSON.stringify({
+          model: args.model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: args.content },
+          ],
+          max_tokens: isGemini ? (isGemini25 ? 65_535 : 65_536) : 16_384,
+          ...(isGemini
+            ? { reasoning: { effort: isGemini25 ? "none" : "minimal" } }
+            : { modalities: ["text"] }),
+          temperature: 0,
+          store: false,
+          ...(isGemini && {
+            response_format: {
+              type: "json_schema",
+              json_schema: args.jsonSchema,
+            },
+          }),
+        }),
+        signal: requestSignal,
+      });
+    },
+    async (response) => {
+      const responseBody = await readBoundedResponseText(
+        response,
+        OPENROUTER_VOICE_RESPONSE_MAX_BYTES,
+      );
+      signal.throwIfAborted();
+      const parsedBody =
+        responseBody.kind === "text"
+          ? safeJsonParse(responseBody.text)
+          : undefined;
+      if (!response.ok) {
+        const error = requestError(
+          "OpenRouter voice request failed",
+          response.status,
+          parsedBody,
+        );
+        L.warn("OpenRouter voice request rejected", {
+          model: args.model,
+          responseSchema: args.jsonSchema.name,
+          status: error.status,
+          errorType: error.errorType,
+        });
+        throw error;
+      }
+      if (parsedBody === undefined) {
+        throw new Error("OpenRouter voice response was not valid JSON");
+      }
+
+      const content = parseCompletionText(parsedBody);
+      const generated = args.schema.safeParse(safeJsonParse(content));
+      if (!generated.success) {
+        throw new Error(
+          "OpenRouter voice response did not match its JSON schema",
+        );
+      }
+      return generated.data;
+    },
+    {
+      provider: "openrouter",
       model: args.model,
       responseSchema: args.jsonSchema.name,
-      status: error.status,
-      errorType: error.errorType,
-    });
-    throw error;
-  }
-  if (parsedBody === undefined) {
-    throw new Error("OpenRouter voice response was not valid JSON");
-  }
-
-  const content = parseCompletionText(parsedBody);
-  const generated = args.schema.safeParse(safeJsonParse(content));
-  if (!generated.success) {
-    throw new Error("OpenRouter voice response did not match its JSON schema");
-  }
-  return generated.data;
+    },
+    signal,
+  );
 }
 
 /** The saved prefix is spoken content; editor/chat context remains reference only. */

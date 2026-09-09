@@ -1707,3 +1707,46 @@ fn cli_observed_exit_is_attached_without_changing_failure_reason() {
     assert_eq!(with_observed_exit.cli_observed_exit, Some(observed_exit));
     assert_eq!(unchanged, diagnostic);
 }
+
+#[test]
+fn pi_memory_phase2_terminal_diagnostics_survive_guest_error_persistence() {
+    let _system_log_state_guard = crate::lock_system_log_test_state();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+    let fixtures: Vec<Value> = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/pi-memory-phase2-terminal.json"
+    )))
+    .unwrap();
+    for fixture in fixtures {
+        let stderr = fixture["stderr"].as_str().unwrap();
+        let failure = cli_failure_message(1, &[stderr.to_owned()], None);
+        assert_eq!(failure.message, stderr);
+        assert_eq!(failure.source, FailureDetailSource::Stderr);
+        assert_eq!(
+            classify_cli_failure_reason(AgentFramework::Pi, &failure.message),
+            None
+        );
+        let diagnostic = with_cli_failure_reason(
+            FailureDiagnostic::new(
+                FailureClass::CliNonzero,
+                AgentFramework::Pi,
+                PromptMetadata::from_prompt(""),
+            )
+            .with_cli_exit_code(1)
+            .with_failure_detail_source(failure.source),
+            &failure,
+        );
+        let encoded = serde_json::to_string(&diagnostic).unwrap();
+        let decoded: FailureDiagnostic = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.failure_class, FailureClass::CliNonzero);
+        assert_eq!(decoded.failure_reason, None);
+        let error_path = tmp.path().join("guest-error.txt");
+        write_guest_error_file(error_path.to_str().unwrap(), &failure.message);
+        assert_eq!(std::fs::read_to_string(error_path).unwrap(), stderr);
+        let log = std::fs::read_to_string(&system_log_path).unwrap();
+        assert!(log.contains(stderr));
+        assert!(!log.contains("PRIVATE_"));
+    }
+}

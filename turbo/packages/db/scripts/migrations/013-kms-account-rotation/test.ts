@@ -3,11 +3,18 @@
 // CLI integration: a real, isolated Postgres database and an HTTP KMS boundary.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 
@@ -68,6 +75,17 @@ const server = createServer((request, response) => {
         ? body.SourceEncryptionContext
         : body.EncryptionContext,
     );
+    if (
+      operation === "GenerateDataKey" &&
+      string(request.headers.authorization).includes("Credential=target/") &&
+      (body.KeyId !== target || context.purpose !== encryptionContext.purpose)
+    ) {
+      response.writeHead(400, {
+        "content-type": "application/x-amz-json-1.1",
+      });
+      response.end(JSON.stringify({ __type: "AccessDeniedException" }));
+      return;
+    }
     assert.deepEqual(context, encryptionContext);
     let result: Record<string, unknown>;
     if (operation === "GenerateDataKey" || operation === "Encrypt") {
@@ -211,6 +229,144 @@ async function stored(
   ).rows;
   return string(object(rows[0]).value);
 }
+
+async function workflowCli(
+  name: string,
+  operation: "verify" | "migrate",
+  scenario = "success",
+  overrides: Record<string, string> = {},
+): Promise<Record<string, unknown> | null> {
+  const root = join(directory, name);
+  const binary = join(root, "bin");
+  await mkdir(binary, { recursive: true });
+  const wrapper = await readFile(
+    "../../../.github/scripts/tests/fixtures/kms-production-migration-tools.py",
+    "utf8",
+  );
+  for (const command of ["aws", "curl", "pnpm"]) {
+    const path = join(binary, command);
+    await writeFile(path, wrapper);
+    await chmod(path, 0o700);
+  }
+  const snapshot = {
+    version: 1,
+    sourceKeyArn: source,
+    sourcePrincipal: "arn:aws:iam::072707626411:user/vm0-kms-prod",
+    configuration: {
+      AWS_ACCESS_KEY_ID: "source",
+      AWS_SECRET_ACCESS_KEY: "synthetic-source-secret",
+      SECRETS_KMS_KEY_ID: source,
+      AWS_REGION: "us-west-2",
+    },
+    workflow: {
+      repository: "vm0-ai/vm0",
+      commit: "594d907ca844e845f674c04640a58ae8cebcdc8a",
+      runId: "34324494642",
+    },
+  };
+  const pnpm = (await execute("which", ["pnpm"])).stdout.trim();
+  await writeFile(
+    join(root, "provider.json"),
+    JSON.stringify({
+      scenario,
+      snapshot,
+      pnpm,
+      kmsEndpoint: endpoint,
+      databaseUrl: input.toString(),
+      assumeCalls: 0,
+      deploymentReads: 0,
+    }),
+  );
+  const environment = {
+    ...process.env,
+    PATH: binary + delimiter + string(process.env.PATH),
+    RUNNER_TEMP: root,
+    GITHUB_REPOSITORY: "vm0-ai/vm0",
+    GITHUB_REF: "refs/heads/main",
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    GITHUB_RUN_ID: "12345",
+    GITHUB_SHA: "a".repeat(40),
+    GITHUB_WORKFLOW_REF: `vm0-ai/vm0/.github/workflows/kms-production-${operation === "verify" ? "preflight" : "migrate"}.yml@refs/heads/main`,
+    ACTIONS_ID_TOKEN_REQUEST_URL:
+      "https://pipelines.actions.githubusercontent.com/oidc",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "synthetic-github-token",
+    DOPPLER_SERVICE_IDENTITY_ID: "c0c87790-e651-45dd-b7fa-c5ed07bb990f",
+    EXPECTED_BACKUP_SHA256: createHash("sha256")
+      .update(JSON.stringify(snapshot))
+      .digest("hex"),
+    EXPECTED_DEPLOYMENT_ID: "dpl_fixture",
+    VERCEL_TOKEN: "synthetic-vercel-secret",
+    NEON_PROJECT_ID: "hidden-lab-39609750",
+    NEON_API_KEY: "synthetic-neon-secret",
+    AWS_ACCESS_KEY_ID: "target",
+    AWS_SECRET_ACCESS_KEY: "synthetic-target-secret",
+    AWS_SESSION_TOKEN: "",
+    AWS_REGION: "us-west-2",
+    SECRETS_KMS_KEY_ID: target,
+    KMS_OPERATION: operation,
+    KMS_MIGRATION_ROLE_ARN:
+      "arn:aws:iam::251964670836:role/vm0-kms-migration-github-32264",
+    MAX_ROWS: "1",
+    ...overrides,
+  };
+  let failed = false;
+  let output = "";
+  try {
+    const result = await execute(
+      "python3",
+      [resolve("../../../.github/scripts/kms-production-migration.py")],
+      { env: environment, timeout: 60_000 },
+    );
+    output = result.stdout + result.stderr;
+  } catch (error) {
+    const result = object(error);
+    output = string(result.stdout) + string(result.stderr);
+    failed = true;
+  }
+  assert.equal(failed, scenario !== "success", output);
+  let report: Record<string, unknown> | null = null;
+  try {
+    report = object(
+      JSON.parse(
+        await readFile(
+          join(root, "kms-production-reports/operation.json"),
+          "utf8",
+        ),
+      ),
+    );
+  } catch (error) {
+    assert.equal(object(error).code, "ENOENT");
+  }
+  const reportDirectory = join(root, "kms-production-reports");
+  let reportText = "";
+  for (const name of [
+    "operation.json",
+    "verification.json",
+    "migration.json",
+  ]) {
+    try {
+      reportText += await readFile(join(reportDirectory, name), "utf8");
+    } catch (error) {
+      assert.equal(object(error).code, "ENOENT");
+    }
+  }
+  for (const value of [
+    secret,
+    "synthetic-source-secret",
+    "synthetic-target-secret",
+    "synthetic-operator-secret",
+    "synthetic-operator-session",
+    "synthetic-database-secret",
+    "synthetic-doppler-token",
+    "synthetic-provider-secret-must-not-be-logged",
+  ]) {
+    assert.ok(!(output + reportText).includes(value));
+  }
+  if (operation === "verify" || scenario !== "success") {
+    assert.equal(report?.migration, undefined);
+  }
+  return report;
+}
 try {
   const tables = new Map<string, string[]>();
   for (const field of fields) {
@@ -226,6 +382,82 @@ try {
   for (const [table, columns] of tables) {
     await db.query(`CREATE TABLE "${table}" (${columns.join(", ")})`);
   }
+  const workflowCiphertext = encode(
+    await encrypt(kms, Buffer.from(secret), source),
+  );
+  await db.query(
+    "INSERT INTO secrets VALUES ('workflow-1', $1), ('workflow-2', $1)",
+    [workflowCiphertext],
+  );
+  const workflowVerify = await workflowCli("workflow-verify", "verify");
+  assert.equal(
+    object(workflowVerify?.targetRuntimeVerification).databaseVerifiedOnTarget,
+    false,
+  );
+  assert.equal(
+    await stored("secrets", "encrypted_value", "workflow-1"),
+    workflowCiphertext,
+  );
+  for (const scenario of [
+    "backup-changed",
+    "wrong-operator",
+    "deployment-changed",
+    "provider-error",
+  ]) {
+    await workflowCli("workflow-" + scenario, "migrate", scenario);
+    assert.equal(
+      await stored("secrets", "encrypted_value", "workflow-1"),
+      workflowCiphertext,
+    );
+    assert.equal(
+      await stored("secrets", "encrypted_value", "workflow-2"),
+      workflowCiphertext,
+    );
+  }
+  for (const [name, overrides] of [
+    ["unprotected-branch", { GITHUB_REF: "refs/heads/unprotected" }],
+    ["missing-role", { KMS_MIGRATION_ROLE_ARN: "" }],
+    ["invalid-limit", { MAX_ROWS: "100001" }],
+    ["wrong-runtime-key", { SECRETS_KMS_KEY_ID: source }],
+  ] satisfies [string, Record<string, string>][]) {
+    await workflowCli("workflow-" + name, "migrate", "rejected", overrides);
+    assert.equal(
+      await stored("secrets", "encrypted_value", "workflow-1"),
+      workflowCiphertext,
+    );
+  }
+  failRewrap = true;
+  try {
+    await workflowCli("workflow-operator-denied", "migrate", "operator-denied");
+    assert.equal(
+      await stored("secrets", "encrypted_value", "workflow-1"),
+      workflowCiphertext,
+    );
+  } finally {
+    failRewrap = false;
+  }
+  const workflowMigration = await workflowCli("workflow-bounded", "migrate");
+  const migration = object(workflowMigration?.migration);
+  assert.equal(migration.complete, false);
+  assert.equal(object(migration.totals).updated, 1);
+  assert.equal(
+    decode(await stored("secrets", "encrypted_value", "workflow-1")).kms.keyId,
+    target,
+  );
+  assert.equal(
+    await stored("secrets", "encrypted_value", "workflow-2"),
+    workflowCiphertext,
+  );
+  await workflowCli("workflow-resume", "migrate", "success", {
+    CURSOR: string(migration.cursor),
+    MAX_ROWS: "100",
+  });
+  const workflowFinal = await workflowCli("workflow-final", "verify");
+  assert.equal(
+    object(workflowFinal?.targetRuntimeVerification).databaseVerifiedOnTarget,
+    true,
+  );
+  await db.query("DELETE FROM secrets");
   const concurrentFixtures: { id: string; ciphertext: string }[] = [];
   for (let index = 0; index < 9; index++) {
     const envelope = await encrypt(kms, Buffer.from(secret), source);
@@ -542,7 +774,7 @@ try {
   assert.equal(object(invalid.totals).invalid, 1);
   assert.equal(invalid.databaseVerifiedOnTarget, false);
   process.stdout.write(
-    "KMS rotation CLI integration passed: read-only inventory, concurrent verification and failure checkpoints, nested verification, bounded resume, concurrent writes, KMS failure recovery, rewrap preservation, reverse migration, and malformed ciphertext.\n",
+    "KMS rotation CLI integration passed: protected workflow entry, runtime and operator canaries, failure-before-write guards, secret-safe artifacts, read-only inventory, concurrent verification and failure checkpoints, nested verification, bounded resume, concurrent writes, KMS failure recovery, rewrap preservation, reverse migration, and malformed ciphertext.\n",
   );
 } finally {
   kms.destroy();

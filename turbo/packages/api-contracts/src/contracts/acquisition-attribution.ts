@@ -62,6 +62,7 @@ const recordSignupAttributionRequestSchema = z.object({
 
 const recordSignupAttributionResponseSchema = z.object({
   recorded: z.boolean(),
+  googleAdsAccountId: z.string().nullable().optional(),
 });
 
 export const GOOGLE_ADS_CONVERSION_MILESTONE_KINDS = [
@@ -80,9 +81,25 @@ const googleAdsConversionMilestoneSchema = z.object({
 
 const googleAdsConversionMilestonesResponseSchema = z.object({
   milestones: z.array(googleAdsConversionMilestoneSchema),
+  googleAdsAccountId: z.string().nullable().optional(),
 });
 
 export const acquisitionAttributionContract = c.router({
+  resolveGoogleAdsAccount: {
+    method: "POST",
+    path: "/api/attribution/google-ads-account",
+    headers: authHeadersSchema,
+    body: z.object({ attribution: adAttributionMetadataSchema.optional() }),
+    responses: {
+      200: z.object({ googleAdsAccountId: z.string().nullable() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary:
+      "Resolve the Google Ads account from authoritative first-touch attribution",
+  },
   googleAdsMilestones: {
     method: "GET",
     path: "/api/attribution/google-ads-milestones",

@@ -69,7 +69,7 @@ const KLING_RESPONSE_URL =
 const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.(?:vm7|okou)\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
-const WEB_ORIGIN = "https://www.vm0.test";
+const WEB_ORIGIN = "https://www.okou.test";
 
 const VIDEO_PRICING_DEFAULTS = [
   {
@@ -232,7 +232,7 @@ interface VideoFixture {
 
 function ownedArtifactReference(userId: string, filename: string) {
   const key = buildArtifactKey(userId, randomUUID(), filename);
-  return { key, url: buildFileUrlFromKey(key, "vm0") };
+  return { key, url: buildFileUrlFromKey(key, "okou") };
 }
 
 function expectPresignedArtifactReference(value: unknown, key: string): void {

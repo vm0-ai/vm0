@@ -1,7 +1,7 @@
 import { STAFF_ORG_ID_HASHES, fnv1a } from "./identity-hash";
 
 /**
- * Hard identity check: is this org one of the vm0 internal staff orgs?
+ * Hard identity check: is this org one of the Okou internal staff orgs?
  *
  * Intended as an authorization boundary — unlike feature switches, this
  * helper is NOT influenced by `user_feature_switches` overrides or any

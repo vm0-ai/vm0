@@ -3602,7 +3602,7 @@ describe("okou workflow automations", () => {
     expect(watch.calls).toBe(2);
   });
 
-  it("does not stop a Gmail mailbox while another VM0 identity consumes it", async () => {
+  it("does not stop a Gmail mailbox while another connected identity consumes it", async () => {
     const first = await setupFixture();
     const sharedEmail = `cross-identity-${first.fixture.userId}@example.com`;
     await connectGmail(first, sharedEmail);

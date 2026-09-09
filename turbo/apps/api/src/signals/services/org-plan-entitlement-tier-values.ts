@@ -5,7 +5,6 @@ interface OrgTierLimits {
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
-  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedBuiltInModels: boolean;
@@ -27,7 +26,6 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 1,
     canBuyConcurrency: false,
     canBuyCredits: true,
-    memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: true,
     restrictedBuiltInModels: false,
@@ -42,7 +40,6 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 1,
     canBuyConcurrency: false,
     canBuyCredits: false,
-    memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedBuiltInModels: true,
@@ -57,7 +54,6 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 0,
     canBuyConcurrency: false,
     canBuyCredits: false,
-    memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedBuiltInModels: true,
@@ -72,7 +68,6 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 2,
     canBuyConcurrency: false,
     canBuyCredits: true,
-    memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedBuiltInModels: false,
@@ -87,7 +82,6 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 10,
     canBuyConcurrency: true,
     canBuyCredits: true,
-    memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedBuiltInModels: false,
@@ -102,7 +96,6 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 10,
     canBuyConcurrency: true,
     canBuyCredits: true,
-    memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedBuiltInModels: false,

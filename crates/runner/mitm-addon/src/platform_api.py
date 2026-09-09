@@ -85,7 +85,7 @@ def normalize_proxy_url(proxy_url: str) -> str:
 
 
 class _CanonicalProxyHandler(urllib.request.ProxyHandler):
-    """Apply vm0 hostname identity policy to the proxy selected by urllib."""
+    """Apply the platform hostname identity policy to the proxy selected by urllib."""
 
     def proxy_open(
         self,

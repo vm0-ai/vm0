@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.189.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.1...runner-rs-v0.189.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** preserve websocket pricing after tier-cache eviction ([#32896](https://github.com/vm0-ai/vm0/issues/32896)) ([7fd49fb](https://github.com/vm0-ai/vm0/commit/7fd49fb183e4db0add47a730f2280b359788a5d8))
+
+
+### Documentation
+
+* **python:** document terminal model usage tier failures ([#32893](https://github.com/vm0-ai/vm0/issues/32893)) ([136bef5](https://github.com/vm0-ai/vm0/commit/136bef58606b779ef9c2969481bec8ba0d3dd2bb))
+
+
+### Performance Improvements
+
+* **runner:** bound codex catalog accept-encoding inspection ([#32897](https://github.com/vm0-ai/vm0/issues/32897)) ([85b25be](https://github.com/vm0-ai/vm0/commit/85b25be4b45686ee99acc0019f0814fe30524c2a))
+
 ## [0.189.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.0...runner-rs-v0.189.1) (2026-09-09)
 
 

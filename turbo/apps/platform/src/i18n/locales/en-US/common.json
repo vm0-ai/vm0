@@ -1503,7 +1503,7 @@
           "scheduledFor": "Scheduled for {{date}}",
           "today": "Today"
         },
-        "memberExclusive": "One package per member. Any overage uses pay-as-you-go credits.",
+        "memberExclusive": "Member packages are optional. Any overage uses pay-as-you-go credits.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
         "migration": {
@@ -1514,7 +1514,7 @@
           "error": "Could not migrate this subscription. Refresh and try again.",
           "invoice": "View invoice",
           "processing": "Scheduling the conversion with Stripe.",
-          "ready": "Choose one required monthly package for every member and pending invitation.",
+          "ready": "Choose a monthly package for each member and pending invitation, or select No package.",
           "review": "Review conversion",
           "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
           "reviewTitle": "Review plan conversion",
@@ -1523,11 +1523,13 @@
           "title": "Convert legacy plan"
         },
         "monthlyTotal": "Monthly total",
+        "noPackage": "No package",
         "orderSummary": "Order summary",
-        "packagePerMemberNote": "Every member needs a package. You pick each member's package in the next step.",
+        "packagePerMemberNote": "Choose a paid package for each member in the next step, or select No package.",
         "packCredits": "{{credits}} credits",
         "packCreditsDiscount": "{{credits}} credits · {{discount}}% off",
         "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
+        "paidPackageRequired": "Select a paid package for at least one member to continue.",
         "planChangeError": "Could not prepare the subscription change. Try again.",
         "planPlusPackages": "Plan {{plan}} · member packages {{lowest}}–{{highest}} each",
         "planStep": "Plan",
@@ -2059,6 +2061,8 @@
       "placeholder": "What should change about this?",
       "quote": "Quote",
       "remove": "Remove feedback",
+      "selectionEnd": "Adjust selection end",
+      "selectionStart": "Adjust selection start",
       "sentEmailDescription": "a sent email (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", sent ID: {{sentId}}",
       "sourcePartHeading": "Feedback on this part of {{description}}:",
@@ -2533,7 +2537,7 @@
       "presentationTemplates": "Presentation templates",
       "tasks": {
         "image": "Image",
-        "presentation": "Slides",
+        "presentation": "Presentation",
         "video": "Video",
         "website": "Website",
         "workflow": "Workflow"
@@ -5548,6 +5552,11 @@
           },
           "roleLabel": "Role",
           "send": "Send invitation",
+          "suspended": {
+            "action": "View plans",
+            "description": "Reactivate your workspace plan to invite members.",
+            "title": "Reactivate to invite members"
+          },
           "title": "Invite member",
           "upgrade": {
             "action": "Upgrade to Pro",

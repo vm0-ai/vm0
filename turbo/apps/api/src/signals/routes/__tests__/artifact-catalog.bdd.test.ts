@@ -635,7 +635,7 @@ describe("GET /api/artifacts/catalog", () => {
 
   it("reconciles a file written by the previous API after migration", async () => {
     const owner = await catalogActor("Artifact catalog promotion owner");
-    const url = `https://files.vm0.test/${randomUUID()}/legacy-output.zip`;
+    const url = `https://files.okou.test/${randomUUID()}/legacy-output.zip`;
     const fileId = await insertLegacyCatalogFile({
       owner,
       filename: "legacy-output.zip",

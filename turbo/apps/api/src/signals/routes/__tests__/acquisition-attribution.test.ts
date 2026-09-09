@@ -96,12 +96,23 @@ async function readGoogleAdsMilestones(
   actor: ApiTestUser,
 ): Promise<readonly GoogleAdsConversionMilestone[]> {
   mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+  context.mocks.clerk.users.getUserList.mockResolvedValue({
+    data: [
+      {
+        id: actor.userId,
+        privateMetadata: {
+          signup_attribution: { vm0_campaign_id: "24220469665" },
+        },
+      },
+    ],
+  });
   const response = await accept(
     client().googleAdsMilestones({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
   );
+  expect(response.body.googleAdsAccountId).toBe("7935750692");
   return response.body.milestones;
 }
 
@@ -188,7 +199,10 @@ describe("POST /api/attribution/signup", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ recorded: true });
+    expect(response.body).toStrictEqual({
+      recorded: true,
+      googleAdsAccountId: null,
+    });
     expect(context.mocks.clerk.users.updateUserMetadata).toHaveBeenCalledWith(
       userId,
       {
@@ -234,7 +248,10 @@ describe("POST /api/attribution/signup", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ recorded: true });
+    expect(response.body).toStrictEqual({
+      recorded: true,
+      googleAdsAccountId: null,
+    });
     expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledTimes(2);
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
     expect(context.mocks.clerk.users.updateUserMetadata).toHaveBeenCalledTimes(
@@ -270,7 +287,10 @@ describe("POST /api/attribution/signup", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ recorded: false });
+    expect(response.body).toStrictEqual({
+      recorded: false,
+      googleAdsAccountId: null,
+    });
     expect(context.mocks.clerk.users.updateUserMetadata).not.toHaveBeenCalled();
   });
 
@@ -309,7 +329,10 @@ describe("POST /api/attribution/signup", () => {
       }),
       [200],
     );
-    expect(first.body).toStrictEqual({ recorded: true });
+    expect(first.body).toStrictEqual({
+      recorded: true,
+      googleAdsAccountId: null,
+    });
 
     // There is no public org-attribution read API, so the focused fixture
     // verifies the persisted first-touch boundary exercised by this route.
@@ -333,7 +356,10 @@ describe("POST /api/attribution/signup", () => {
       }),
       [200],
     );
-    expect(replay.body).toStrictEqual({ recorded: false });
+    expect(replay.body).toStrictEqual({
+      recorded: false,
+      googleAdsAccountId: null,
+    });
     await expect(
       readOrgAcquisitionAttributionFixture(fixture.org_id),
     ).resolves.toMatchObject({
@@ -353,6 +379,9 @@ describe("GET /api/attribution/google-ads-milestones", () => {
   it("returns no milestones for a user without acquisition activity", async () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: userId, privateMetadata: {} }],
+    });
 
     const response = await accept(
       client().googleAdsMilestones({
@@ -361,7 +390,10 @@ describe("GET /api/attribution/google-ads-milestones", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ milestones: [] });
+    expect(response.body).toStrictEqual({
+      milestones: [],
+      googleAdsAccountId: null,
+    });
   });
 
   it("returns stable run and connector milestones through the public route", async () => {
@@ -536,5 +568,86 @@ describe("GET /api/attribution/google-ads-milestones", () => {
     await expect(
       readGoogleAdsMilestones(actorForFixture(fixture)),
     ).resolves.toStrictEqual([]);
+  });
+});
+
+describe("POST /api/attribution/google-ads-account", () => {
+  it("requires authentication before resolving attribution", async () => {
+    const response = await client().resolveGoogleAdsAccount({
+      body: { attribution: { vm0_campaign_id: "24220469665" } },
+    });
+    expect(response.status).toBe(401);
+  });
+  it.each([
+    {
+      saved: { vm0_campaign_id: "24154967178" },
+      supplied: "24220469665",
+      expected: "1001302527",
+    },
+    {
+      saved: { vm0_campaign_id: "24220469665" },
+      supplied: "24154967178",
+      expected: "7935750692",
+    },
+    {
+      saved: { gclid: "original-click" },
+      supplied: "24220469665",
+      expected: null,
+    },
+    { saved: null, supplied: "24220469665", expected: null },
+    {
+      saved: { vm0_campaign_id: "24220469665,24154967178" },
+      supplied: "24220469665",
+      expected: null,
+    },
+    {
+      saved: { vm0_campaign_id: "99999999999" },
+      supplied: "24220469665",
+      expected: null,
+    },
+  ])(
+    "preserves the saved first touch: $saved",
+    async ({ saved, supplied, expected }) => {
+      const userId = `user_${randomUUID()}`;
+      mocks.clerk.session(userId, null);
+      context.mocks.clerk.users.getUserList.mockResolvedValue({
+        data: [{ id: userId, privateMetadata: { signup_attribution: saved } }],
+      });
+      const response = await accept(
+        client().resolveGoogleAdsAccount({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { attribution: { vm0_campaign_id: supplied } },
+        }),
+        [200],
+      );
+      expect(response.body).toStrictEqual({ googleAdsAccountId: expected });
+      const milestones = await accept(
+        client().googleAdsMilestones({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+      if (expected !== "7935750692") {
+        expect(milestones.body).toStrictEqual({
+          googleAdsAccountId: expected,
+          milestones: [],
+        });
+      }
+    },
+  );
+  it("resolves the captured campaign only before a first touch has been saved", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: userId, privateMetadata: {} }],
+    });
+    const response = await accept(
+      client().resolveGoogleAdsAccount({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { attribution: { vm0_campaign_id: "24220469665" } },
+      }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({ googleAdsAccountId: "7935750692" });
   });
 });

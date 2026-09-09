@@ -176,8 +176,9 @@ function noActiveBillingStatus(): BillingStatusResponse {
   };
 }
 
-function usagePackCatalogResponse() {
+function usagePackCatalogResponse(supportsFreeMembers?: boolean) {
   return {
+    ...(supportsFreeMembers === undefined ? {} : { supportsFreeMembers }),
     usagePacks: [
       {
         usagePackUsd: 20 as const,
@@ -331,7 +332,7 @@ async function waitForAnimationFrame(): Promise<void> {
   await frame.promise;
 }
 
-function mockInitialUsagePackPurchase(): void {
+function mockInitialUsagePackPurchase(supportsFreeMembers?: boolean): void {
   context.mocks.data.org({
     id: "org_1",
     name: "Usage Pack Org",
@@ -341,7 +342,7 @@ function mockInitialUsagePackPurchase(): void {
     return respond(200, noActiveBillingStatus());
   });
   context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
+    return respond(200, usagePackCatalogResponse(supportsFreeMembers));
   });
   context.mocks.data.orgMembers({
     name: "Usage Pack Org",
@@ -441,7 +442,7 @@ async function selectMemberUsagePack(
 }
 
 test("Compare usage-pack plans before choosing one", async () => {
-  mockInitialUsagePackPurchase();
+  mockInitialUsagePackPurchase(true);
   const { choosePlanHeading, proPlan, teamPlan } =
     await openUsagePackPlanSelection();
   expect(choosePlanHeading).toBeInTheDocument();
@@ -449,7 +450,7 @@ test("Compare usage-pack plans before choosing one", async () => {
   // replaces it, so the plan the workspace is deciding against stays visible.
   expect(screen.getByText("No active plan")).toBeInTheDocument();
   // The figure is a floor, not a fixed total: a workspace pays the plan plus
-  // one package for every member, and packages run $20 to $200.
+  // at least one paid package, and paid packages run $20 to $200.
   expect(proPlan).toHaveTextContent("from $20/month");
   expect(
     within(proPlan).getByText("Plan $0 · member packages $20–$200 each"),
@@ -460,7 +461,7 @@ test("Compare usage-pack plans before choosing one", async () => {
   ).toBeInTheDocument();
   expect(
     screen.getByText(
-      "Every member needs a package. You pick each member's package in the next step.",
+      "Choose a paid package for each member in the next step, or select No package.",
     ),
   ).toBeInTheDocument();
   expect(
@@ -526,6 +527,91 @@ test("Compare usage-pack plans before choosing one", async () => {
   }
 });
 
+test.each(["pro", "team"] as const)(
+  "Default a new %s plan to the $20 member package",
+  async (tier) => {
+    mockInitialUsagePackPurchase(true);
+    context.mocks.api(
+      billingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        expect(body).toMatchObject({
+          tier,
+          supportsInAppPreview: true,
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: 20 },
+            { memberId: "user_2", usagePackUsd: 20 },
+            { memberId: "invitation_1", usagePackUsd: 20 },
+          ],
+        });
+        return respond(200, {
+          status: "preview",
+          purchaseType: "usage_pack",
+          tier,
+          immediateAmountCents: tier === "pro" ? 6000 : 22_000,
+          nextRecurringAmountCents: tier === "pro" ? 6000 : 22_000,
+          currency: "usd",
+          expiresAt: "2026-03-16T00:15:00Z",
+          previewToken: `usage-pack-${tier}-preview`,
+        });
+      },
+    );
+    const { proPlan, teamPlan } = await openUsagePackPlanSelection();
+    const plan = tier === "pro" ? proPlan : teamPlan;
+    click(
+      buttonByText(tier === "pro" ? "Start with Pro" : "Start with Team", plan),
+    );
+
+    const memberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    const upgradeLabel = tier === "pro" ? "Upgrade to Pro" : "Upgrade to Team";
+    for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
+      expect(
+        within(memberUsage).getByRole("combobox", {
+          name: `Usage for ${memberName}`,
+        }),
+      ).toHaveTextContent("21,234 credits · 6% off");
+    }
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
+
+    click(buttonByText(upgradeLabel, orderSummary));
+    const confirmation = await screen.findByRole("dialog", {
+      name: "Order summary",
+    });
+    click(buttonByText("Cancel", confirmation));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Order summary" }),
+      ).not.toBeInTheDocument();
+    });
+
+    for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
+      await selectMemberUsagePack(memberUsage, memberName, "No package");
+    }
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeDisabled();
+    expect(
+      within(orderSummary).getByText(
+        "Select a paid package for at least one member to continue.",
+      ),
+    ).toBeVisible();
+
+    await selectMemberUsagePack(
+      memberUsage,
+      "Alex Chen",
+      "$20 · 21,234 credits · 6% off",
+    );
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
+    expect(
+      within(orderSummary).queryByText(
+        "Select a paid package for at least one member to continue.",
+      ),
+    ).not.toBeInTheDocument();
+  },
+);
+
 test("Configure member packages for a new workspace plan", async () => {
   mockInitialUsagePackPurchase();
   const { teamPlan } = await openUsagePackPlanSelection();
@@ -562,7 +648,7 @@ test("Configure member packages for a new workspace plan", async () => {
   ).not.toBeInTheDocument();
   expect(
     within(memberUsage).getByText(
-      "One package per member. Any overage uses pay-as-you-go credits.",
+      "Member packages are optional. Any overage uses pay-as-you-go credits.",
     ),
   ).toBeInTheDocument();
   expect(within(memberUsage).getByText("Team plan")).toBeInTheDocument();
@@ -736,151 +822,161 @@ test("Leave a member-package flow without keeping unfinished choices", async () 
   expect(purchaseSubmitted).toBeFalsy();
 });
 
-test("Add a package for an active member who has no allocation", async () => {
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Managed Usage Pack Org",
-    role: "admin",
-  });
-  context.mocks.data.orgMembers({
-    name: "Managed Usage Pack Org",
-    role: "admin",
-    members: [
-      {
-        userId: "user_1",
-        email: "alex@example.com",
-        firstName: "Alex",
-        lastName: "Chen",
-        imageUrl: "",
-        role: "admin",
-        joinedAt: "2026-01-01T00:00:00Z",
-      },
-      {
-        userId: "user_2",
-        email: "sam@example.com",
-        firstName: "Sam",
-        lastName: "Lee",
-        imageUrl: "",
-        role: "member",
-        joinedAt: "2026-01-02T00:00:00Z",
-      },
-    ],
-    pendingInvitations: [
-      {
-        id: "invitation_paid_pending",
-        email: "paid.pending@example.com",
-        role: "member",
-        createdAt: "2026-01-03T00:00:00Z",
-        usagePackUsd: 100,
-      },
-    ],
-    membershipRequests: [],
-    createdAt: "2026-01-01T00:00:00Z",
-  });
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, activeProBillingStatus());
-  });
-  context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
-  });
-  context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
-    return respond(200, {
-      tier: "pro",
-      currentPeriodEnd: "2026-04-01T00:00:00Z",
-      supportsMemberAdditions: true,
-      allocations: [
+test.each([false, true])(
+  "Add a package for a member without an allocation (no package supported: %s)",
+  async (supportsFreeMembers) => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Managed Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Managed Usage Pack Org",
+      role: "admin",
+      members: [
         {
-          id: "b5235934-83df-4f16-bf41-f46890db7d40",
-          memberId: "user_1",
-          usagePackUsd: 20,
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          pendingChange: null,
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          userId: "user_2",
+          email: "sam@example.com",
+          firstName: "Sam",
+          lastName: "Lee",
+          imageUrl: "",
+          role: "member",
+          joinedAt: "2026-01-02T00:00:00Z",
         },
       ],
-    });
-  });
-  context.mocks.api(
-    billingUsagePackManagementContract.previewSubscriptionChange,
-    ({ body, respond }) => {
-      expect(body).toStrictEqual({
-        targetTier: "pro",
-        memberUsagePacks: [
-          { memberId: "user_1", usagePackUsd: 20 },
-          { memberId: "user_2", usagePackUsd: 50 },
-        ],
-        ...inAppBillingPreviewFields(),
-      });
-      return respond(200, {
-        changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-        sourceTier: "pro",
-        targetTier: "pro",
-        immediateAmountCents: 2500,
-        immediateCreditGrant: {
-          purchasedCredits: 25_000,
-          bonusCredits: 2160,
-          totalCredits: 27_160,
-          expiresAt: "2026-04-01T00:00:00Z",
+      pendingInvitations: [
+        {
+          id: "invitation_paid_pending",
+          email: "paid.pending@example.com",
+          role: "member",
+          createdAt: "2026-01-03T00:00:00Z",
+          usagePackUsd: 100,
         },
-        nextRecurringAmountCents: 7000,
-        currency: "usd",
-        effectiveAt: "2026-03-16T00:00:00Z",
-        prorationDate: "2026-03-16T00:00:00Z",
-        expiresAt: "2026-03-16T00:15:00Z",
+      ],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...usagePackCatalogResponse(),
+        supportsFreeMembers,
       });
-    },
-  );
-
-  await setupPage({
-    context,
-    path: "/?settings=billing",
-    auth: {
-      user: {
-        id: "user_1",
-        fullName: "Alex Chen",
-        email: "alex@example.com",
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        supportsMemberAdditions: true,
+        supportsFreeMembers,
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      billingUsagePackManagementContract.previewSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: 20 },
+            { memberId: "user_2", usagePackUsd: 50 },
+          ],
+          ...inAppBillingPreviewFields(),
+        });
+        return respond(200, {
+          changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+          sourceTier: "pro",
+          targetTier: "pro",
+          immediateAmountCents: 2500,
+          immediateCreditGrant: {
+            purchasedCredits: 25_000,
+            bonusCredits: 2160,
+            totalCredits: 27_160,
+            expiresAt: "2026-04-01T00:00:00Z",
+          },
+          nextRecurringAmountCents: 7000,
+          currency: "usd",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
       },
-    },
-  });
+    );
 
-  await screen.findByText("Pro plan");
-  click(buttonByText("Compare all plans"));
-  const proPlan = await screen.findByRole("article", { name: "Pro plan" });
-  click(buttonByText("Manage", proPlan));
-  const memberUsage = await screen.findByRole("group", {
-    name: "Member usage",
-  });
-  expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
-  expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
-  expect(
-    within(memberUsage).getByText("paid.pending@example.com"),
-  ).toBeInTheDocument();
-  expect(within(memberUsage).getByText("Pending")).toBeInTheDocument();
-  const paidPendingUsage = within(memberUsage).getByRole("combobox", {
-    name: "Usage for paid.pending@example.com",
-  });
-  expect(paidPendingUsage).toHaveTextContent("109,999 credits · 9% off");
-  expect(paidPendingUsage).toBeDisabled();
-  const samUsage = within(memberUsage).getByRole("combobox", {
-    name: "Usage for Sam Lee",
-  });
-  click(samUsage);
-  click(
-    await screen.findByRole("option", {
-      name: "$50 · 54,321 credits · 8% off",
-    }),
-  );
-  const orderSummary = screen.getByRole("region", {
-    name: "Order summary",
-  });
-  const confirmButton = buttonByText("Confirm", orderSummary);
-  click(confirmButton);
-  const reviewDialog = await screen.findByRole("dialog", {
-    name: "Review package change",
-  });
-  expect(reviewDialog).toBeInTheDocument();
-  expect(confirmButton).toHaveTextContent("Updating...");
-  expect(confirmButton).toBeDisabled();
-});
+    await setupPage({
+      context,
+      path: "/?settings=billing",
+      auth: {
+        user: {
+          id: "user_1",
+          fullName: "Alex Chen",
+          email: "alex@example.com",
+        },
+      },
+    });
+
+    await screen.findByText("Pro plan");
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Manage", proPlan));
+    const memberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("paid.pending@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Pending")).toBeInTheDocument();
+    const paidPendingUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for paid.pending@example.com",
+    });
+    expect(paidPendingUsage).toHaveTextContent("109,999 credits · 9% off");
+    expect(paidPendingUsage).toBeDisabled();
+    const samUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Sam Lee",
+    });
+    expect(samUsage).toHaveTextContent(
+      supportsFreeMembers ? "No package" : "21,234 credits · 6% off",
+    );
+    click(samUsage);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 54,321 credits · 8% off",
+      }),
+    );
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    const confirmButton = buttonByText("Confirm", orderSummary);
+    click(confirmButton);
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    expect(reviewDialog).toBeInTheDocument();
+    expect(confirmButton).toHaveTextContent("Updating...");
+    expect(confirmButton).toBeDisabled();
+  },
+);
 
 test("Offer a safe conversion path for a legacy plan", async () => {
   const migrationReady = createDeferredPromise<void>(context.signal);
@@ -1109,7 +1205,7 @@ test("Manage member packages on an Atom-granted plan", async () => {
       ...status,
       subscriptionStatus: "atom_grant",
       hasSubscription: false,
-      memberInviteUsagePackRequired: true,
+      showUsagePack: true,
       cancelAtPeriodEnd: true,
       scheduledChange: {
         type: "cancel",
@@ -1962,305 +2058,376 @@ test("Hide retained package records for people who left the workspace", async ()
   expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
 });
 
-test("Restore a member package that is scheduled to downgrade", async () => {
-  let restored = false;
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Scheduled Usage Pack Org",
-    role: "admin",
-  });
-  context.mocks.data.orgMembers({
-    name: "Scheduled Usage Pack Org",
-    role: "admin",
-    members: [
-      {
-        userId: "user_1",
-        email: "alex@example.com",
-        firstName: "Alex",
-        lastName: "Chen",
-        imageUrl: "",
-        role: "admin",
-        joinedAt: "2026-01-01T00:00:00Z",
-      },
-    ],
-    pendingInvitations: [],
-    membershipRequests: [],
-    createdAt: "2026-01-01T00:00:00Z",
-  });
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, activeProBillingStatus());
-  });
-  context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
-  });
-  context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
-    return respond(200, {
-      tier: "pro",
-      currentPeriodEnd: "2026-04-01T00:00:00Z",
-      allocations: [
+test.each([50, 0] as const)(
+  "Restore a member package scheduled to downgrade to $%s",
+  async (targetUsagePackUsd) => {
+    let restored = false;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Scheduled Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Scheduled Usage Pack Org",
+      role: "admin",
+      members: [
         {
-          id: "b5235934-83df-4f16-bf41-f46890db7d40",
-          memberId: "user_1",
-          usagePackUsd: 100,
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          pendingChange: restored
-            ? null
-            : {
-                id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-                kind: "downgrade",
-                status: "scheduled",
-                targetUsagePackUsd: 50,
-                effectiveAt: "2026-04-01T00:00:00Z",
-              },
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
         },
       ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
     });
-  });
-  context.mocks.api(
-    billingUsagePackManagementContract.previewSubscriptionChange,
-    ({ body, respond }) => {
-      expect(body).toStrictEqual({
-        targetTier: "pro",
-        memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 100 }],
-        ...inAppBillingPreviewFields(),
-      });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
       return respond(200, {
-        changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
-        sourceTier: "pro",
-        targetTier: "pro",
-        immediateAmountCents: 0,
-        nextRecurringAmountCents: 10_000,
-        currency: "usd",
-        effectiveAt: "2026-03-16T00:00:00Z",
-        prorationDate: "2026-03-16T00:00:00Z",
-        expiresAt: "2026-03-16T00:15:00Z",
+        ...usagePackCatalogResponse(),
+        supportsFreeMembers: true,
       });
-    },
-  );
-  context.mocks.api(
-    billingUsagePackManagementContract.confirmSubscriptionChange,
-    ({ body, respond }) => {
-      expect(body).toStrictEqual({
-        changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
-      });
-      restored = true;
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
       return respond(200, {
-        status: "completed",
-        effectiveAt: "2026-03-16T00:00:00Z",
-        hostedInvoiceUrl: null,
-      });
-    },
-  );
-
-  await setupPage({
-    context,
-    path: "/?settings=billing",
-    auth: {
-      user: {
-        id: "user_1",
-        fullName: "Alex Chen",
-        email: "alex@example.com",
-      },
-    },
-  });
-
-  await screen.findByText("Pro plan");
-  click(buttonByText("Compare all plans"));
-  const proPlan = await screen.findByRole("article", { name: "Pro plan" });
-  click(buttonByText("Manage", proPlan));
-  await screen.findByRole("heading", {
-    name: "Configure member packages",
-  });
-  const packageSelect = screen.getByRole("combobox", {
-    name: "Usage for Alex Chen",
-  });
-  expect(packageSelect).toHaveTextContent("54,321 credits · 8% off");
-  const downgradeNotice = screen.getByText("Downgrades to $50 on Apr 1, 2026.");
-  expect(downgradeNotice).toBeVisible();
-  expect(screen.queryByText("+4,321 bonus credits")).not.toBeInTheDocument();
-  const orderSummary = screen.getByRole("region", {
-    name: "Order summary",
-  });
-  expect(screen.queryByText("Change is processing")).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("table", {
-      name: "Current and new subscription comparison",
-    }),
-  ).not.toBeInTheDocument();
-  const scheduledDowngrade = within(orderSummary).getByRole("status", {
-    name: "Downgrade scheduled",
-  });
-  expect(scheduledDowngrade).toBeVisible();
-  expect(scheduledDowngrade).toHaveTextContent(
-    "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
-  );
-  expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
-
-  click(packageSelect);
-  click(
-    await screen.findByRole("option", {
-      name: "$100 · 109,999 credits · 9% off",
-    }),
-  );
-  const comparisonTooltip = await hoverSubscriptionComparison();
-  const comparison = within(comparisonTooltip).getByRole("table", {
-    name: "Current and new subscription comparison",
-  });
-  expect(
-    within(comparison).getByRole("row", {
-      name: /Member packages \$50 \$100/u,
-    }),
-  ).toBeInTheDocument();
-  expect(buttonByText("Restore", orderSummary)).not.toBeDisabled();
-
-  click(buttonByText("Restore", orderSummary));
-  const confirmationDialog = await screen.findByRole("dialog", {
-    name: "Review package change",
-  });
-  click(buttonByText("Confirm", confirmationDialog));
-  await screen.findByRole("heading", {
-    name: "Configure member packages",
-  });
-  await expect(
-    screen.findByText("Subscription change confirmed."),
-  ).resolves.toBeVisible();
-
-  await expect(
-    screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
-  ).resolves.toHaveTextContent("109,999 credits · 9% off");
-  expect(
-    screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
-  ).not.toBeInTheDocument();
-  expect(
-    queryAllByRoleFast(
-      "button",
-      screen.getByRole("region", { name: "Order summary" }),
-    ),
-  ).toHaveLength(0);
-});
-
-test("Replace a scheduled member-package downgrade", async () => {
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Replace Scheduled Usage Pack Org",
-    role: "admin",
-  });
-  context.mocks.data.orgMembers({
-    name: "Replace Scheduled Usage Pack Org",
-    role: "admin",
-    members: [
-      {
-        userId: "user_1",
-        email: "alex@example.com",
-        firstName: "Alex",
-        lastName: "Chen",
-        imageUrl: "",
-        role: "admin",
-        joinedAt: "2026-01-01T00:00:00Z",
-      },
-    ],
-    pendingInvitations: [],
-    membershipRequests: [],
-    createdAt: "2026-01-01T00:00:00Z",
-  });
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, activeProBillingStatus());
-  });
-  context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
-  });
-  context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
-    return respond(200, {
-      tier: "pro",
-      currentPeriodEnd: "2026-04-01T00:00:00Z",
-      allocations: [
-        {
-          id: "b5235934-83df-4f16-bf41-f46890db7d40",
-          memberId: "user_1",
-          usagePackUsd: 200,
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          pendingChange: {
-            id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-            kind: "downgrade",
-            status: "scheduled",
-            targetUsagePackUsd: 50,
-            effectiveAt: "2026-04-01T00:00:00Z",
+        tier: "pro",
+        supportsFreeMembers: true,
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 100,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: restored
+              ? null
+              : {
+                  id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                  kind: targetUsagePackUsd === 0 ? "removal" : "downgrade",
+                  status: "scheduled",
+                  targetUsagePackUsd: targetUsagePackUsd || null,
+                  effectiveAt: "2026-04-01T00:00:00Z",
+                },
           },
+        ],
+      });
+    });
+    context.mocks.api(
+      billingUsagePackManagementContract.previewSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 100 }],
+          ...inAppBillingPreviewFields(),
+        });
+        return respond(200, {
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+          sourceTier: "pro",
+          targetTier: "pro",
+          immediateAmountCents: 0,
+          nextRecurringAmountCents: 10_000,
+          currency: "usd",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      billingUsagePackManagementContract.confirmSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+        });
+        restored = true;
+        return respond(200, {
+          status: "completed",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    await setupPage({
+      context,
+      path: "/?settings=billing",
+      auth: {
+        user: {
+          id: "user_1",
+          fullName: "Alex Chen",
+          email: "alex@example.com",
+        },
+      },
+    });
+
+    await screen.findByText("Pro plan");
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Manage", proPlan));
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    const packageSelect = screen.getByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    expect(packageSelect).toHaveTextContent(
+      targetUsagePackUsd === 0 ? "No package" : "54,321 credits · 8% off",
+    );
+    const notice = `Downgrades to ${targetUsagePackUsd === 0 ? "No package" : "$50"} on Apr 1, 2026.`;
+    const downgradeNotice = screen.getByText(notice);
+    expect(downgradeNotice).toBeVisible();
+    expect(screen.queryByText("+4,321 bonus credits")).not.toBeInTheDocument();
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(screen.queryByText("Change is processing")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("table", {
+        name: "Current and new subscription comparison",
+      }),
+    ).not.toBeInTheDocument();
+    const scheduledDowngrade = within(orderSummary).getByRole("status", {
+      name: "Downgrade scheduled",
+    });
+    expect(scheduledDowngrade).toBeVisible();
+    expect(scheduledDowngrade).toHaveTextContent(
+      "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
+    );
+    expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
+
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$100 · 109,999 credits · 9% off",
+      }),
+    );
+    const comparisonTooltip = await hoverSubscriptionComparison();
+    const comparison = within(comparisonTooltip).getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(
+      within(comparison).getByRole("row", {
+        name:
+          targetUsagePackUsd === 0
+            ? /Member packages \$0 \$100/u
+            : /Member packages \$50 \$100/u,
+      }),
+    ).toBeInTheDocument();
+    expect(buttonByText("Restore", orderSummary)).not.toBeDisabled();
+
+    click(buttonByText("Restore", orderSummary));
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    click(buttonByText("Confirm", confirmationDialog));
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    await expect(
+      screen.findByText("Subscription change confirmed."),
+    ).resolves.toBeVisible();
+
+    await expect(
+      screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
+    ).resolves.toHaveTextContent("109,999 credits · 9% off");
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast(
+        "button",
+        screen.getByRole("region", { name: "Order summary" }),
+      ),
+    ).toHaveLength(0);
+  },
+);
+
+test.each([
+  { targetUsagePackUsd: 100, alreadyScheduled: true },
+  { targetUsagePackUsd: 0, alreadyScheduled: true },
+  { targetUsagePackUsd: 0, alreadyScheduled: false },
+] as const)(
+  "Validate a member package downgrade to $targetUsagePackUsd (replacing: $alreadyScheduled)",
+  async ({ targetUsagePackUsd, alreadyScheduled }) => {
+    let confirmed = false;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Replace Scheduled Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Replace Scheduled Usage Pack Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
         },
       ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
     });
-  });
-  context.mocks.api(
-    billingUsagePackManagementContract.previewSubscriptionChange,
-    ({ body, respond }) => {
-      expect(body).toStrictEqual({
-        targetTier: "pro",
-        memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 100 }],
-        ...inAppBillingPreviewFields(),
-      });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
       return respond(200, {
-        changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
-        sourceTier: "pro",
-        targetTier: "pro",
-        immediateAmountCents: 0,
-        nextRecurringAmountCents: 10_000,
-        currency: "usd",
-        effectiveAt: "2026-04-01T00:00:00Z",
-        prorationDate: "2026-03-16T00:00:00Z",
-        expiresAt: "2026-03-16T00:15:00Z",
+        ...usagePackCatalogResponse(),
+        supportsFreeMembers: true,
       });
-    },
-  );
-
-  await setupPage({
-    context,
-    path: "/?settings=billing",
-    auth: {
-      user: {
-        id: "user_1",
-        fullName: "Alex Chen",
-        email: "alex@example.com",
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        supportsFreeMembers: true,
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 200,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange:
+              confirmed || alreadyScheduled
+                ? {
+                    id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                    kind:
+                      confirmed && targetUsagePackUsd === 0
+                        ? "removal"
+                        : "downgrade",
+                    status: "scheduled",
+                    targetUsagePackUsd: confirmed
+                      ? targetUsagePackUsd || null
+                      : 50,
+                    effectiveAt: "2026-04-01T00:00:00Z",
+                  }
+                : null,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      billingUsagePackManagementContract.previewSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: targetUsagePackUsd },
+          ],
+          ...inAppBillingPreviewFields(),
+        });
+        return respond(200, {
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+          sourceTier: "pro",
+          targetTier: "pro",
+          immediateAmountCents: 0,
+          nextRecurringAmountCents: targetUsagePackUsd * 100,
+          currency: "usd",
+          effectiveAt: "2026-04-01T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
       },
-    },
-  });
+    );
 
-  await screen.findByText("Pro plan");
-  click(buttonByText("Compare all plans"));
-  const proPlan = await screen.findByRole("article", { name: "Pro plan" });
-  click(buttonByText("Manage", proPlan));
-  const packageSelect = await screen.findByRole("combobox", {
-    name: "Usage for Alex Chen",
-  });
-  const orderSummary = screen.getByRole("region", {
-    name: "Order summary",
-  });
+    context.mocks.api(
+      billingUsagePackManagementContract.confirmSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+        });
+        confirmed = true;
+        return respond(200, {
+          status: "scheduled",
+          effectiveAt: "2026-04-01T00:00:00Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
 
-  click(packageSelect);
-  click(
-    await screen.findByRole("option", {
-      name: "$20 · 21,234 credits · 6% off",
-    }),
-  );
-  expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toBeVisible();
-  expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+    await setupPage({
+      context,
+      path: "/?settings=billing",
+      auth: {
+        user: {
+          id: "user_1",
+          fullName: "Alex Chen",
+          email: "alex@example.com",
+        },
+      },
+    });
 
-  click(packageSelect);
-  click(
-    await screen.findByRole("option", {
-      name: "$100 · 109,999 credits · 9% off",
-    }),
-  );
-  expect(screen.getByText("Downgrades to $100 on Apr 1, 2026.")).toBeVisible();
-  expect(
-    screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
-  ).not.toBeInTheDocument();
-  expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+    await screen.findByText("Pro plan");
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Manage", proPlan));
+    const packageSelect = await screen.findByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
 
-  click(buttonByText("Confirm", orderSummary));
-  await expect(
-    screen.findByRole("dialog", { name: "Review package change" }),
-  ).resolves.toBeInTheDocument();
-});
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$20 · 21,234 credits · 6% off",
+      }),
+    );
+    expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toBeVisible();
+    expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name:
+          targetUsagePackUsd === 0
+            ? "No package"
+            : "$100 · 109,999 credits · 9% off",
+      }),
+    );
+    const notice = `Downgrades to ${targetUsagePackUsd === 0 ? "No package" : "$100"} on Apr 1, 2026.`;
+    expect(screen.getByText(notice)).toBeVisible();
+    expect(
+      screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
+    ).not.toBeInTheDocument();
+    const confirmButton = buttonByText("Confirm", orderSummary);
+    expect(confirmButton).toHaveProperty("disabled", targetUsagePackUsd === 0);
+    expect(
+      Boolean(
+        within(orderSummary).queryByText(
+          "Select a paid package for at least one member to continue.",
+        ),
+      ),
+    ).toBe(targetUsagePackUsd === 0);
+    if (targetUsagePackUsd === 0) {
+      return;
+    }
+
+    click(confirmButton);
+    const review = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    click(buttonByText("Confirm", review));
+    await expect(
+      screen.findByText("Subscription change confirmed."),
+    ).resolves.toBeVisible();
+    expect(screen.getByText(notice)).toBeVisible();
+    expect(
+      screen.getByRole("status", { name: "Downgrade scheduled" }),
+    ).toHaveTextContent("Lower package starts Apr 1, 2026");
+  },
+);
 
 test("Upgrade Pro to Team without repurchasing member packages", async () => {
   context.mocks.data.org({
@@ -2439,11 +2606,12 @@ test("Schedule a Team-to-Pro downgrade", async () => {
     return respond(200, billingStatus);
   });
   context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-    return respond(200, usagePackCatalogResponse());
+    return respond(200, usagePackCatalogResponse(true));
   });
   context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
     return respond(200, {
       tier: "team",
+      supportsFreeMembers: true,
       currentPeriodEnd: "2026-04-01T00:00:00Z",
       allocations: [
         {
@@ -2522,9 +2690,34 @@ test("Schedule a Team-to-Pro downgrade", async () => {
   await screen.findByRole("heading", {
     name: "Configure member packages",
   });
+  const memberUsage = screen.getByRole("group", {
+    name: "Member usage",
+  });
   const orderSummary = screen.getByRole("region", {
     name: "Order summary",
   });
+  const confirmDowngradeButton = buttonByText("Confirm", orderSummary);
+  expect(confirmDowngradeButton).toBeEnabled();
+
+  await selectMemberUsagePack(memberUsage, "Alex Chen", "No package");
+  expect(confirmDowngradeButton).toBeDisabled();
+  expect(
+    within(orderSummary).getByText(
+      "Select a paid package for at least one member to continue.",
+    ),
+  ).toBeVisible();
+
+  await selectMemberUsagePack(
+    memberUsage,
+    "Alex Chen",
+    "$20 · 21,234 credits · 6% off",
+  );
+  expect(confirmDowngradeButton).toBeEnabled();
+  expect(
+    within(orderSummary).queryByText(
+      "Select a paid package for at least one member to continue.",
+    ),
+  ).not.toBeInTheDocument();
   const comparison = within(await hoverSubscriptionComparison()).getByRole(
     "table",
     {
@@ -2546,7 +2739,6 @@ test("Schedule a Team-to-Pro downgrade", async () => {
   expect(
     within(orderSummary).queryByText("Scheduled for Apr 1, 2026"),
   ).not.toBeInTheDocument();
-  const confirmDowngradeButton = buttonByText("Confirm", orderSummary);
   expect(downgradeNotice.parentElement).toContainElement(
     confirmDowngradeButton,
   );

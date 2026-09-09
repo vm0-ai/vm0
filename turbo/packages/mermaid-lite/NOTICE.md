@@ -7,7 +7,7 @@ This package contains a modified build of
 Mermaid is Copyright (c) 2014-2022 Knut Sveidqvist and is distributed under
 the MIT License in [LICENSE](./LICENSE).
 
-vm0's build makes these functional changes:
+Okou's build makes these functional changes:
 
 - registers only Mermaid's `flowchart`, legacy `graph`, and `sequenceDiagram`
   syntaxes;

@@ -5886,7 +5886,7 @@ describe("connector catalog executable compatibility", () => {
 
   it("ignores filtered sibling methods when choosing the callback origin", async () => {
     configureSource();
-    mockEnv("OKOU_WEB_URL", "https://app.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://app.okou.test");
     mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-client-id");
     mockOptionalEnv(
       "CLOUDFLARE_OAUTH_CLIENT_SECRET",
@@ -5927,7 +5927,7 @@ describe("connector catalog executable compatibility", () => {
     });
     expect(response.status).toBe(307);
     const location = new URL(response.headers.get("location") ?? "");
-    expect(location.origin).toBe("https://app.vm0.test");
+    expect(location.origin).toBe("https://app.okou.test");
     expect(location.pathname).toBe("/connector/error");
     expect(location.searchParams.get("message")).toBe(
       "Missing state parameter",

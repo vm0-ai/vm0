@@ -9,7 +9,7 @@ import {
 
 const STEAM_ID = "76561198000000000";
 const RETURN_TO = "https://api.okou.ai/api/connectors/steam/callback?state=abc";
-const REALM = "https://vm0.ai/";
+const REALM = "https://okou.ai/";
 
 function callbackParams(
   overrides: Readonly<Record<string, string>> = {},

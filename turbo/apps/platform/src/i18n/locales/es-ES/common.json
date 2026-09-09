@@ -1526,7 +1526,7 @@
           "scheduledFor": "Programado para el {{date}}",
           "today": "Hoy"
         },
-        "memberExclusive": "Un paquete por miembro. Cualquier uso adicional se cobra con créditos de pago por uso.",
+        "memberExclusive": "Los paquetes de miembros son opcionales. El consumo adicional usa créditos de pago por uso.",
         "memberPackages": "Paquetes de miembros",
         "memberUsage": "Uso del miembro",
         "migration": {
@@ -1537,7 +1537,7 @@
           "error": "No se pudo migrar esta suscripción. Actualiza la página e inténtalo de nuevo.",
           "invoice": "Ver factura",
           "processing": "Programando la conversión con Stripe.",
-          "ready": "Elige un paquete mensual obligatorio para cada miembro e invitación pendiente.",
+          "ready": "Elige un paquete mensual para cada miembro e invitación pendiente, o selecciona Sin paquete.",
           "review": "Revisar conversión",
           "reviewDescription": "Compara el plan heredado actual con el nuevo plan recurrente antes de programar la conversión.",
           "reviewTitle": "Revisar conversión del plan",
@@ -1546,11 +1546,13 @@
           "title": "Convertir plan heredado"
         },
         "monthlyTotal": "Total mensual",
+        "noPackage": "Sin paquete",
         "orderSummary": "Resumen del pedido",
-        "packagePerMemberNote": "Cada miembro necesita un paquete. Los eliges en el paso siguiente.",
+        "packagePerMemberNote": "En el siguiente paso, elige un paquete de pago para cada miembro o selecciona Sin paquete.",
         "packCredits": "{{credits}} créditos",
         "packCreditsDiscount": "{{credits}} créditos · {{discount}} % de descuento",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
+        "paidPackageRequired": "Selecciona un paquete de pago para al menos un miembro para continuar.",
         "planChangeError": "No se pudo preparar el cambio de suscripción. Inténtalo de nuevo.",
         "planPlusPackages": "Plan {{plan}} · paquetes por miembro de {{lowest}} a {{highest}}",
         "planStep": "Plan",
@@ -2094,6 +2096,8 @@
       "placeholder": "¿Qué debería cambiar en esto?",
       "quote": "Citar",
       "remove": "Eliminar comentarios",
+      "selectionEnd": "Ajustar final de la selección",
+      "selectionStart": "Ajustar inicio de la selección",
       "sentEmailDescription": "un correo enviado (ID de correo: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID enviado: {{sentId}}",
       "sourcePartHeading": "Comentarios sobre esta parte de {{description}}:",
@@ -5615,6 +5619,11 @@
           },
           "roleLabel": "Rol",
           "send": "Enviar invitación",
+          "suspended": {
+            "action": "Ver planes",
+            "description": "Reactiva el plan de tu espacio de trabajo para invitar a miembros.",
+            "title": "Reactiva el plan para invitar a miembros"
+          },
           "title": "Invitar a un miembro",
           "upgrade": {
             "action": "Mejorar a Pro",

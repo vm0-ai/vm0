@@ -29,6 +29,8 @@ import {
   type StoredBuiltinOAuthState,
 } from "../services/connector-oauth-state.service";
 import { authorizeConnectedConnector$ } from "../services/connected-connector-authorization.service";
+import { recordConnectorOAuthCompletion } from "../services/connector-oauth-completion.service";
+import { publishBuiltinConnectorInvalidationAfterCommit } from "../services/connector-client-invalidation.service";
 import {
   connectorActionResolverForSnapshot,
   type ConnectorActionResolver,
@@ -67,6 +69,7 @@ type CallbackIdentity = {
 };
 
 type CompleteOAuthCallbackInput = {
+  readonly oauthAttemptId: string;
   readonly resolvedMethod: ResolvedConnectorActionMethod;
   readonly oauthRequestedScopes: readonly string[];
   readonly authorizationUrl: string | null;
@@ -85,6 +88,7 @@ type CompleteOAuthCallbackInput = {
 };
 
 type CompleteOpenIdCallbackInput = {
+  readonly oauthAttemptId: string;
   readonly resolvedMethod: ResolvedConnectorActionMethod;
   readonly oauthRequestedScopes: readonly string[];
   readonly callbackParams: Readonly<Record<string, string>>;
@@ -634,6 +638,23 @@ const completeOAuthCallback$ = command(
     );
     signal.throwIfAborted();
 
+    await recordConnectorOAuthCompletion(
+      set(writeDb$),
+      {
+        attemptId: args.oauthAttemptId,
+        connectionId: result.connector.id,
+        ...args.identity,
+      },
+      signal,
+    );
+    await publishBuiltinConnectorInvalidationAfterCommit(
+      {
+        userId: args.identity.userId,
+        connectorSlug: args.connectorSlug,
+      },
+      signal,
+    );
+
     return successRedirectResponse({
       origin: args.origin,
       connectorSlug: args.connectorSlug,
@@ -708,6 +729,23 @@ const completeOpenIdCallback$ = command(
         );
       }
     }
+
+    await recordConnectorOAuthCompletion(
+      set(writeDb$),
+      {
+        attemptId: args.oauthAttemptId,
+        connectionId: result.connector.id,
+        ...args.identity,
+      },
+      signal,
+    );
+    await publishBuiltinConnectorInvalidationAfterCommit(
+      {
+        userId: args.identity.userId,
+        connectorSlug: args.connectorSlug,
+      },
+      signal,
+    );
 
     return successRedirectResponse({
       origin: args.origin,
@@ -897,6 +935,7 @@ const handleOpenIdConnectorCallback$ = command(
       set(
         completeOpenIdCallback$,
         {
+          oauthAttemptId: claimedState.storedState.id,
           resolvedMethod: resolvedState.resolvedMethod,
           oauthRequestedScopes: resolvedState.oauthRequestedScopes,
           callbackParams: openIdCallbackParamsFromQuery(args.query),
@@ -1141,6 +1180,7 @@ const handleAuthCodeConnectorCallback$ = command(
       set(
         completeOAuthCallback$,
         {
+          oauthAttemptId: claimedState.storedState.id,
           resolvedMethod: resolvedState.resolvedMethod,
           oauthRequestedScopes: resolvedState.oauthRequestedScopes,
           authorizationUrl: resolvedState.authorizationUrl,

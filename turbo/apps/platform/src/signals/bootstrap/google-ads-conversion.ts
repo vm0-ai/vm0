@@ -1,3 +1,8 @@
+import {
+  GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
+  GOOGLE_ADS_LEGACY_ACCOUNT_ID,
+} from "@okouai/core/google-ads-account";
+
 // Google Ads website-tag conversions. The gtag base snippet lives in
 // `apps/platform/src/lib/google-ads.ts`; these are the event snippets for the
 // conversion actions that Google Ads uses as bidding signals. Legacy
@@ -52,12 +57,22 @@ type WindowWithGoogleTag = Window & {
  * dedupe value. Returns whether the event fired so the caller can persist it.
  */
 export function fireGoogleAdsConversion(args: {
+  readonly accountId: string | null;
   readonly sendTo: string;
   readonly dedupeValue: string;
   readonly value: number;
   readonly storedDedupeValue: string | null;
   readonly transactionId?: string;
 }): boolean {
+  const tagId =
+    args.accountId === GOOGLE_ADS_LEGACY_ACCOUNT_ID
+      ? "AW-18144854014"
+      : args.accountId === GOOGLE_ADS_ADSMARCH_ACCOUNT_ID
+        ? "AW-18407336975"
+        : null;
+  if (!tagId || !args.sendTo.startsWith(`${tagId}/`)) {
+    return false;
+  }
   if (args.storedDedupeValue === args.dedupeValue) {
     return false;
   }

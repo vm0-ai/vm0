@@ -16,7 +16,7 @@ import type {
   OrgInvitationPurchasePreviewResponse,
   OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
-import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
+import type { MemberUsageSelection } from "./usage-pack-pricing-state.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
 import { orgPlanCapabilities$ } from "../org-plan-capabilities.ts";
@@ -26,10 +26,9 @@ import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import {
-  billingStatusAsync$,
   reloadBillingStatus$,
   reloadUsagePackManagement$,
-  usagePackCatalogAsync$,
+  memberUsagePackOptionsAsync$,
   usagePackManagementAsync$,
 } from "../billing.ts";
 
@@ -286,14 +285,14 @@ export const setInviteRole$ = command(({ set }, value: OrgRole) => {
   set(internalInviteRole$, value);
 });
 
-const internalInviteUsagePackUsd$ = state<UsagePackUsd>(20);
+const internalInviteUsagePackUsd$ = state<MemberUsageSelection | null>(null);
 
 export const inviteUsagePackUsd$ = computed((get) => {
   return get(internalInviteUsagePackUsd$);
 });
 
 export const setInviteUsagePackUsd$ = command(
-  ({ set }, value: UsagePackUsd) => {
+  ({ set }, value: MemberUsageSelection) => {
     set(internalInviteUsagePackUsd$, value);
   },
 );
@@ -303,7 +302,7 @@ export const setInviteDialogOpen$ = command(({ set }, open: boolean) => {
     set(internalInviteEmail$, "");
     set(internalInviteTouched$, false);
     set(internalInviteRole$, "member");
-    set(internalInviteUsagePackUsd$, 20);
+    set(internalInviteUsagePackUsd$, null);
   }
   set(internalInviteDialogOpen$, open);
 });
@@ -336,27 +335,26 @@ export const showMemberUsagePack$ = computed(async (get) => {
 
 export const memberUsagePackManagement$ = computed((get) => {
   return (async () => {
-    if (!(await get(isOrgAdmin$))) {
-      return null;
-    }
-    const billing = await get(billingStatusAsync$);
-    if (billing.memberInviteUsagePackRequired !== true) {
+    if (!(await get(showMemberUsagePack$))) {
       return null;
     }
     return await get(usagePackManagementAsync$);
   })();
 });
 
-export const invitationUsagePackCatalog$ = computed((get) => {
+export const invitationUsagePackConfiguration$ = computed((get) => {
   if (!get(internalInviteDialogOpen$)) {
     return null;
   }
   return (async () => {
-    const management = await get(memberUsagePackManagement$);
-    if (!management) {
+    if (!(await get(showMemberUsagePack$))) {
       return null;
     }
-    return await get(usagePackCatalogAsync$);
+    const [options, management] = await Promise.all([
+      get(memberUsagePackOptionsAsync$),
+      get(usagePackManagementAsync$),
+    ]);
+    return { options, hasSubscription: management !== null };
   })();
 });
 
@@ -591,12 +589,12 @@ export const inviteMember$ = command(
     { get, set },
     email: string,
     role: OrgRole,
-    usagePackUsd: UsagePackUsd | null,
+    usagePackUsd: MemberUsageSelection | null,
     signal: AbortSignal,
   ) => {
     const createClient = get(apiClient$);
     const client = createClient(orgInviteContract);
-    if (usagePackUsd !== null) {
+    if (usagePackUsd !== null && usagePackUsd !== 0) {
       const result = await accept(
         client.previewPurchase({
           body: {
@@ -685,7 +683,7 @@ export const confirmInvitePurchase$ = command(
     set(internalInvitePurchasePreview$, null);
     set(internalInviteEmail$, "");
     set(internalInviteRole$, "member");
-    set(internalInviteUsagePackUsd$, 20);
+    set(internalInviteUsagePackUsd$, null);
     set(refreshOrgMembers$);
     set(reloadUsagePackManagement$);
     set(reloadBillingStatus$);

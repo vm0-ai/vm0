@@ -533,7 +533,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Raw provider cost is $5 per 1,000 requests with no token charge.
   ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
   // SocialKit Growth costs $95 per 50,000 requests. A 25% markup is
-  // $0.002375, rounded up to 3 whole vm0 credits per successful request.
+  // $0.002375, rounded up to 3 whole Okou credits per successful request.
   ...usageGroup("social", "socialkit", [
     [MANAGED_SOCIALKIT_BILLING_CATEGORY, usd(0.003), 1],
   ]),
@@ -547,7 +547,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["provider_cost_usd_micros", 1250, 1_000_000],
   ]),
 
-  // Perplexity Agent API People Search fixed vm0 product pricing, reviewed
+  // Perplexity Agent API People Search fixed Okou product pricing, reviewed
   // 2026-07-23. The $0.020 retail price covers the $0.005 tool invocation,
   // gpt-5-mini model tokens, and operating margin.
   ...usageGroup("people-search", "perplexity", [["request", usd(0.02), 1]]),

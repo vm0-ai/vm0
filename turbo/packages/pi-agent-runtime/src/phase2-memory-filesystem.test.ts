@@ -1,5 +1,8 @@
+import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import {
+  chmod,
+  stat,
   link,
   mkdir,
   mkdtemp,
@@ -23,13 +26,13 @@ import {
   STORAGE_MANIFEST_MAX_PATH_BYTES,
 } from "@okouai/api-contracts/contracts/storages";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { Phase2OutputInvalidError } from "./phase2-memory-diagnostics";
 import {
   applyValidatedPiMemoryPhase2Result,
   createPiMemoryPhase2Workspace,
   Phase2InputInvalidError,
-  Phase2OutputInvalidError,
   PI_MEMORY_PHASE2_EVIDENCE_SLUG_MAX_BYTES,
   PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES,
   PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES,
@@ -58,6 +61,7 @@ const temporaryDirectories: string[] = [];
 const EMPTY_HASH = createHash("sha256").update("").digest("hex");
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryDirectories.splice(0).map(async (directory) => {
       await removePiMemoryPhase2Workspace(directory);
@@ -156,6 +160,221 @@ const VALID_BASE = [
 ] as const;
 
 describe("Pi memory Phase 2 filesystem", () => {
+  it.each([0o444, 0o600])(
+    "applies changes without rewriting unchanged immutable files (mode %s), including no-diff",
+    async (mode) => {
+      const original = [
+        ...VALID_BASE,
+        baseFile(
+          ".git/objects/ab/synthetic-object",
+          "synthetic immutable bytes",
+        ),
+        baseFile("skills/existing/old.md", "delete me"),
+      ];
+      const memoryRoot = await mkdtemp(join(tmpdir(), "pi-memory-writeback-"));
+      temporaryDirectories.push(memoryRoot);
+      for (const file of original) {
+        const path = join(memoryRoot, file.path);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, file.bytes);
+      }
+      const objectPath = join(memoryRoot, ".git/objects/ab/synthetic-object");
+      await chmod(objectPath, mode);
+      const baseFiles = await snapshotMountedPiMemoryPhase2Base(memoryRoot);
+      const workspace = await freshWorkspace(baseFiles);
+      await put(workspace, "MEMORY.md", "# Changed memory\n");
+      await put(workspace, "skills/existing/new.md", "new reference");
+      await unlink(join(workspace.memoryRoot, "skills/existing/old.md"));
+      const prepared = await validatePiMemoryPhase2Output(
+        workspace,
+        "storage-phase2",
+      );
+      const writes = vi.spyOn(fs, "writeFile");
+      await applyValidatedPiMemoryPhase2Result({
+        memoryRoot,
+        memoryStorageId: "storage-phase2",
+        baseFiles,
+        ...prepared,
+      });
+      expect(
+        writes.mock.calls
+          .map(([path]) => {
+            return String(path);
+          })
+          .sort(),
+      ).toEqual([
+        join(memoryRoot, "MEMORY.md"),
+        join(memoryRoot, "skills/existing/new.md"),
+      ]);
+      expect(await readFile(objectPath, "utf8")).toBe(
+        "synthetic immutable bytes",
+      );
+      expect((await stat(objectPath)).mode & 0o777).toBe(mode);
+      await expect(
+        readFile(join(memoryRoot, "skills/existing/old.md")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      const mounted = await snapshotMountedPiMemoryPhase2Base(memoryRoot);
+      expect(
+        mounted.map(({ path, bytes }) => {
+          return [path, bytes.toString()];
+        }),
+      ).toEqual(
+        prepared.files.map(({ path, contentBase64 }) => {
+          return [path, Buffer.from(contentBase64, "base64").toString()];
+        }),
+      );
+      expect(
+        preparedSetFromSnapshot(
+          "storage-phase2",
+          new Map(
+            mounted.map(({ path, bytes }) => {
+              return [path, Buffer.from(bytes)];
+            }),
+          ),
+        ),
+      ).toEqual(prepared);
+      writes.mockClear();
+      await applyValidatedPiMemoryPhase2Result({
+        memoryRoot,
+        memoryStorageId: "storage-phase2",
+        baseFiles: mounted,
+        ...prepared,
+      });
+      expect(writes).not.toHaveBeenCalled();
+      expect((await stat(objectPath)).mode & 0o777).toBe(mode);
+    },
+  );
+
+  it.each(["EACCES", "ENOSPC"])(
+    "retains %s for a changed read-only target without chmod or publication",
+    async (code) => {
+      const workspace = await freshWorkspace(VALID_BASE);
+      const target = join(workspace.memoryRoot, "MEMORY.md");
+      await chmod(target, 0o444);
+      const baseFiles = await snapshotMountedPiMemoryPhase2Base(
+        workspace.memoryRoot,
+      );
+      const files = new Map(
+        baseFiles.map((file) => {
+          return [file.path, Buffer.from(file.bytes)];
+        }),
+      );
+      files.set("MEMORY.md", Buffer.from("changed"));
+      const prepared = preparedSetFromSnapshot("storage-phase2", files);
+      const originalWrite = fs.writeFile;
+      vi.spyOn(fs, "writeFile").mockImplementation(
+        async (path, data, options) => {
+          if (path === target)
+            throw Object.assign(new Error("SECRET /private/path"), {
+              code,
+              path: "/private/path",
+            });
+          return await originalWrite(path, data, options);
+        },
+      );
+      await expect(
+        applyValidatedPiMemoryPhase2Result({
+          memoryRoot: workspace.memoryRoot,
+          memoryStorageId: "storage-phase2",
+          baseFiles,
+          ...prepared,
+        }),
+      ).rejects.toMatchObject({
+        diagnostic: {
+          stage: "mounted_apply",
+          reason: "filesystem",
+          errno: code,
+          fileClass: "memory",
+        },
+      });
+      expect(await readFile(target, "utf8")).toBe("# Task Group: existing\n");
+      expect((await stat(target)).mode & 0o777).toBe(0o444);
+    },
+  );
+
+  it("distinguishes exact-base and final identity rejection", async () => {
+    const workspace = await freshWorkspace(VALID_BASE);
+    const baseFiles = await snapshotMountedPiMemoryPhase2Base(
+      workspace.memoryRoot,
+    );
+    const prepared = await validatePiMemoryPhase2Output(
+      workspace,
+      "storage-phase2",
+    );
+    const applyArgs = {
+      memoryRoot: workspace.memoryRoot,
+      memoryStorageId: "storage-phase2",
+      baseFiles,
+      ...prepared,
+    };
+    await expect(
+      applyValidatedPiMemoryPhase2Result({
+        ...applyArgs,
+        contentIdentity: "0".repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      diagnostic: { stage: "mounted_apply", reason: "final_identity" },
+    });
+    await put(workspace, "MEMORY.md", "changed mount epoch");
+    await expect(
+      applyValidatedPiMemoryPhase2Result(applyArgs),
+    ).rejects.toMatchObject({
+      diagnostic: { stage: "mounted_apply", reason: "base_mismatch" },
+    });
+    expect(
+      await readFile(join(workspace.memoryRoot, "MEMORY.md"), "utf8"),
+    ).toBe("changed mount epoch");
+  });
+
+  it.each([
+    ["summary_header", "V1\nPRIVATE_SUMMARY_SENTINEL"],
+    ["summary_tokens", `v1\n${" token".repeat(2605)}`],
+    ["summary_bytes", `v1\n${" ".repeat(PI_MEMORY_SUMMARY_MAX_BYTES - 2)}`],
+  ])(
+    "classifies %s without exposing generated content",
+    async (reason, content) => {
+      const workspace = await freshWorkspace(VALID_BASE);
+      await put(workspace, "memory_summary.md", content);
+      try {
+        await validatePiMemoryPhase2Output(workspace, "storage-phase2");
+        expect.fail("invalid summary accepted");
+      } catch (error) {
+        expect(error).toMatchObject({
+          diagnostic: {
+            stage: "output_validation",
+            reason,
+            fileClass: "summary",
+          },
+        });
+        if (reason === "summary_tokens") {
+          expect(Buffer.byteLength(content)).toBeLessThan(
+            PI_MEMORY_SUMMARY_MAX_BYTES,
+          );
+          expect(error).toMatchObject({
+            diagnostic: { actual: encode(content).length, limit: 2500 },
+          });
+        }
+        if (reason === "summary_bytes")
+          expect(error).toMatchObject({
+            diagnostic: { actual: 65537, limit: 65536 },
+          });
+        expect(JSON.stringify(error)).not.toContain("PRIVATE_SUMMARY_SENTINEL");
+      }
+    },
+  );
+
+  it("keeps inclusive summary token and byte boundaries", async () => {
+    const workspace = await freshWorkspace(VALID_BASE);
+    const tokenBoundary = `v1\n${" token".repeat(2497)}`;
+    expect(encode(tokenBoundary).length).toBe(2500);
+    for (const content of [tokenBoundary, `v1\n${" ".repeat(65533)}`]) {
+      await put(workspace, "memory_summary.md", content);
+      await expect(
+        validatePiMemoryPhase2Output(workspace, "storage-phase2"),
+      ).resolves.toBeDefined();
+    }
+  });
+
   it("pins every frozen size and count boundary", () => {
     expect(PI_MEMORY_PHASE2_WORKSPACE_DIFF_MAX_BYTES).toBe(4 * 1024 * 1024);
     expect(PI_MEMORY_SUMMARY_MAX_BYTES).toBe(64 * 1024);

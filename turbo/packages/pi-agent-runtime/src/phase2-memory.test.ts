@@ -835,6 +835,33 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     ).toContain("rollout_summaries/codex.md");
   });
 
+  it("preserves output diagnostics when failure lifecycle observation throws", async () => {
+    const provider = await startProvider([{ type: "text", text: "done" }]);
+    const input = args(provider.baseUrl, {
+      baseFiles: [
+        baseFile("MEMORY.md", "# Memory\n"),
+        baseFile("memory_summary.md", `v1\n${" token".repeat(2605)}`),
+      ],
+      selected: [],
+      onLifecycle(event) {
+        if (event.stage === "failed")
+          throw new Error("PRIVATE_OBSERVER_SENTINEL");
+      },
+    });
+    await expect(
+      runPiMemoryPhase2Consolidation(input, new AbortController().signal),
+    ).rejects.toMatchObject({
+      errorClass: "agent_output_invalid",
+      diagnostic: {
+        stage: "output_validation",
+        reason: "summary_tokens",
+        fileClass: "summary",
+        actual: 2608,
+        limit: 2500,
+      },
+    });
+  });
+
   it("returns bounded failures with no partial result and always cleans staging", async () => {
     const cases: ReadonlyArray<{
       readonly steps: readonly ProviderStep[];

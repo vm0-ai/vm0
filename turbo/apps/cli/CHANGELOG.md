@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.320.0](https://github.com/vm0-ai/vm0/compare/cli-v9.319.1...cli-v9.320.0) (2026-09-09)
+
+
+### Features
+
+* **cli:** accept unambiguous connector selectors ([#32847](https://github.com/vm0-ai/vm0/issues/32847)) ([e0b06ef](https://github.com/vm0-ai/vm0/commit/e0b06effce3a9a834ce4deb4b6489dd5ac7cf895))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.420.2
+    * @okouai/core bumped to 8.642.1
+    * @okouai/pi-agent-runtime bumped to 1.24.2
+
 ## [9.319.1](https://github.com/vm0-ai/vm0/compare/cli-v9.319.0...cli-v9.319.1) (2026-09-09)
 
 

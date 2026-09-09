@@ -1,5 +1,4 @@
 import type { ThemePreference } from "@okouai/api-contracts/contracts/user-preferences";
-import { isOkouHostname } from "./platform-host.ts";
 
 const OKOU_THEME_COOKIE_NAME = "__Secure-okou-theme";
 const OKOU_THEME_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
@@ -63,11 +62,7 @@ function resolveOkouThemeCookieDomain(
 function serializeOkouThemePreferenceCookie(
   preference: ThemePreference,
   hostname: string,
-): string | null {
-  if (!isOkouHostname(hostname)) {
-    return null;
-  }
-
+): string {
   const domain = resolveOkouThemeCookieDomain(hostname);
   const domainAttribute = domain ? `; Domain=${domain}` : "";
   return `${OKOU_THEME_COOKIE_NAME}=${encodeOkouThemePreference(preference)}${domainAttribute}; Path=/; Max-Age=${OKOU_THEME_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax; Secure`;
@@ -91,10 +86,6 @@ export function writeOkouThemePreferenceToDocument(
     preference,
     window.location.hostname,
   );
-  if (!cookie) {
-    return;
-  }
-
   /* eslint-disable ccstate/no-catch-abort -- synchronous DOM access cannot carry an application AbortSignal. */
   // eslint-disable-next-line no-restricted-syntax -- synchronous cookie persistence may be blocked and must not break theme application.
   try {

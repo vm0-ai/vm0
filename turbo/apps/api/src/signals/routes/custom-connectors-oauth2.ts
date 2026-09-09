@@ -51,6 +51,7 @@ import {
   clearConnectorOAuthCookies,
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
+import { recordConnectorOAuthCompletion } from "../services/connector-oauth-completion.service";
 import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
 import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
@@ -260,6 +261,36 @@ async function authorizeCustomConnectorAgent(
   }
 }
 
+async function recordAuthorizedCustomOAuthCompletion(
+  args: {
+    readonly db: Db;
+    readonly state: StoredCustomConnectorOAuthState;
+    readonly connectorId: string;
+    readonly connectionId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
+  const error = await authorizeCustomConnectorAgent(args, signal);
+  if (error) {
+    return error;
+  }
+  await recordConnectorOAuthCompletion(
+    args.db,
+    {
+      attemptId: args.state.id,
+      connectionId: args.connectionId,
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+    },
+    signal,
+  );
+  return null;
+}
+
+type CustomOAuthPersistenceResult =
+  | { readonly ok: true; readonly connectionId: string }
+  | { readonly ok: false; readonly message: string };
+
 async function persistCustomConnectorOAuth2Connection(
   args: {
     readonly db: Db;
@@ -286,9 +317,7 @@ async function persistCustomConnectorOAuth2Connection(
     };
   },
   signal: AbortSignal,
-): Promise<
-  { readonly ok: true } | { readonly ok: false; readonly message: string }
-> {
+): Promise<CustomOAuthPersistenceResult> {
   const connectionStorage = storeCustomConnectorOAuth2Connection(args, signal);
   const result = await commitConnectorRuntimeMutation(connectionStorage, () => {
     return {
@@ -310,18 +339,21 @@ async function persistCustomConnectorOAuth2Connection(
     };
   }
   await publishCustomUserInvalidation(args.userId, signal);
-  return { ok: true };
+  return { ok: true, connectionId: result.connectionId };
 }
 
-function customConnectorOAuthPersistenceFailure(
+function customConnectorOAuthPersistenceResult(
   result:
     | Awaited<ReturnType<typeof persistCustomConnectorOAuth2Connection>>
     | undefined,
-): string | null {
+): CustomOAuthPersistenceResult {
   if (!result) {
-    return "OAuth token exchange failed - please try again";
+    return {
+      ok: false,
+      message: "OAuth token exchange failed - please try again",
+    };
   }
-  return result.ok ? null : result.message;
+  return result;
 }
 
 async function codeLessCustomOAuthCallbackResponse(
@@ -357,7 +389,7 @@ async function completeAutomaticOAuthCallback(
     readonly featureContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<CustomOAuthPersistenceResult> {
   const completed = await tapError(
     (async () => {
       if (!args.state.codeVerifier) {
@@ -420,7 +452,7 @@ async function completeAutomaticOAuthCallback(
     })(),
   );
   signal.throwIfAborted();
-  return customConnectorOAuthPersistenceFailure(completed);
+  return customConnectorOAuthPersistenceResult(completed);
 }
 
 async function completeCustomOAuthCallback(
@@ -435,9 +467,12 @@ async function completeCustomOAuthCallback(
     readonly featureContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<CustomOAuthPersistenceResult> {
   if (args.connector.oauthConfig.providerAdapter !== "standard") {
-    return "OAuth callback was sent to the wrong connector endpoint";
+    return {
+      ok: false,
+      message: "OAuth callback was sent to the wrong connector endpoint",
+    };
   }
   const credentials = await tapError(
     decryptCustomConnectorOAuth2Credentials(
@@ -447,7 +482,7 @@ async function completeCustomOAuthCallback(
   );
   signal.throwIfAborted();
   if (!credentials) {
-    return "Could not read OAuth client credentials";
+    return { ok: false, message: "Could not read OAuth client credentials" };
   }
   const completed = await tapError(
     (async () => {
@@ -482,7 +517,7 @@ async function completeCustomOAuthCallback(
     })(),
   );
   signal.throwIfAborted();
-  return customConnectorOAuthPersistenceFailure(completed);
+  return customConnectorOAuthPersistenceResult(completed);
 }
 
 async function completeCurrentOAuthCallback(
@@ -499,7 +534,7 @@ async function completeCurrentOAuthCallback(
     readonly featureContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<CustomOAuthPersistenceResult> {
   if (isCustomConnectorAutomaticOAuthStateContext(args.context)) {
     if (!isCurrentAutomaticOAuthCustomConnector(args.connector, args.context)) {
       throw new Error(
@@ -629,7 +664,7 @@ const completeOAuth2Callback$ = command(
         "MCP custom connector management is not enabled",
       );
     }
-    const persistenceFailure = await completeCurrentOAuthCallback(
+    const persistence = await completeCurrentOAuthCallback(
       {
         db: set(writeDb$),
         request: get(request$).raw,
@@ -643,20 +678,21 @@ const completeOAuth2Callback$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (persistenceFailure) {
-      return callbackError(origin, persistenceFailure);
+    if (!persistence.ok) {
+      return callbackError(origin, persistence.message);
     }
-    const authorizationError = await authorizeCustomConnectorAgent(
+    const completionError = await recordAuthorizedCustomOAuthCompletion(
       {
         db: set(writeDb$),
         state: claimed.state,
         connectorId: connector.id,
+        connectionId: persistence.connectionId,
       },
       signal,
     );
     signal.throwIfAborted();
-    if (authorizationError) {
-      return callbackError(origin, authorizationError);
+    if (completionError) {
+      return callbackError(origin, completionError);
     }
     return callbackRedirect({ origin, status: "success" });
   },

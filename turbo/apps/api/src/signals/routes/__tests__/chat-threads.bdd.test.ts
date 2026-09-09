@@ -4263,7 +4263,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     ]);
     expect(uploadRecorder.folderQueries).toHaveLength(2);
     expect(uploadRecorder.contentTypeHeaders[0]).toMatch(
-      /^multipart\/related; boundary=vm0-/u,
+      /^multipart\/related; boundary=multipart-/u,
     );
     // Fetch derives this forbidden request header from the Buffer body at the
     // transport layer. Supplying it explicitly is rejected by instrumented

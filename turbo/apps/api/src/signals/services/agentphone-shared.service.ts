@@ -17,12 +17,8 @@ export type AgentPhoneUserLink = typeof agentphoneUserLinks.$inferSelect;
 const AGENTPHONE_EMAIL_HANDLE_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/u;
 const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
 
-/**
- * Handles that address the assistant in a group conversation. Every public
- * brand answers to all of them, because group members do not know which brand
- * the deployment presents. Retired names remain accepted for inbound compatibility.
- */
-const AGENTPHONE_MENTION_PATTERN = /(^|\s)@(zero|vm0|okou)\b/iu;
+/** Handle that addresses the assistant in a group conversation. */
+const AGENTPHONE_MENTION_PATTERN = /(^|\s)@okou\b/iu;
 
 /** Whether free-form message text addresses the assistant by handle. */
 export function isAgentPhoneMentionText(value: string): boolean {

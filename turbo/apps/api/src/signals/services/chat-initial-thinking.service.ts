@@ -1,4 +1,5 @@
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { FeatureSwitchKey, isFeatureEnabled } from "@okouai/core";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
@@ -25,6 +26,7 @@ import {
   visibleChatEventCondition,
 } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { queuedUserMessageExists } from "./chat-queued-event.service";
 import {
@@ -249,6 +251,18 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   }
 
   const history = await loadThinkingContextMessages(args);
+  // Scheduling can precede a switch update. Recheck both queue-first and
+  // associated-message work immediately before starting another model attempt.
+  const featureContext = await loadUserFeatureSwitchContext(
+    args.db,
+    args.orgId,
+    args.userId,
+  );
+  if (
+    isFeatureEnabled(FeatureSwitchKey.ThreadActivitySummary, featureContext)
+  ) {
+    return false;
+  }
   const thinking = await tapError(
     generateInitialThinkingText({
       currentPrompt: args.currentPrompt,

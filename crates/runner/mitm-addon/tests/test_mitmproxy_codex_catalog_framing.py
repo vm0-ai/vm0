@@ -161,7 +161,7 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
         patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
     ):
         addon_context.options.update(
-            vm0_api_url="https://api.vm0.ai",
+            vm0_api_url="https://api.okou.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
         client, http2, http_layer, request_headers_hook = _start_http2_request_with_client(

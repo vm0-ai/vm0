@@ -1,3 +1,7 @@
+import {
+  GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
+  GOOGLE_ADS_LEGACY_ACCOUNT_ID,
+} from "@okouai/core/google-ads-account";
 import { command } from "ccstate";
 import {
   acquisitionAttributionContract,
@@ -16,6 +20,8 @@ import {
   GOOGLE_ADS_ADSMARCH_SIGNUP_SEND_TO,
   GOOGLE_ADS_SIGNUP_SEND_TO,
 } from "./google-ads-conversion.ts";
+
+import { resolveGoogleAdsAccount$ } from "./google-ads-account.ts";
 
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
 const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
@@ -80,6 +86,7 @@ export const recordSignupAttribution$ = command(
     let recorded =
       get(signupAttributionRecordedStorage.get$) === attributionFingerprint;
 
+    let googleAdsAccountId: string | null = null;
     if (!recorded) {
       const createClient = get(apiClient$);
       const client = createClient(acquisitionAttributionContract);
@@ -92,6 +99,7 @@ export const recordSignupAttribution$ = command(
       );
       signal.throwIfAborted();
       recorded = result.body.recorded;
+      googleAdsAccountId = result.body.googleAdsAccountId ?? null;
       if (recorded) {
         set(signupAttributionRecordedStorage.set$, attributionFingerprint);
         capturePaidOnboardingEvent("SignupAttributionRecorded", {
@@ -109,25 +117,34 @@ export const recordSignupAttribution$ = command(
     }
 
     if (recorded && recentlyCreatedUser) {
+      googleAdsAccountId ??= await set(resolveGoogleAdsAccount$, signal);
+      const config =
+        googleAdsAccountId === GOOGLE_ADS_LEGACY_ACCOUNT_ID
+          ? {
+              sendTo: GOOGLE_ADS_SIGNUP_SEND_TO,
+              storage: signupConversionRecordedStorage,
+              transactionId: undefined,
+            }
+          : googleAdsAccountId === GOOGLE_ADS_ADSMARCH_ACCOUNT_ID
+            ? {
+                sendTo: GOOGLE_ADS_ADSMARCH_SIGNUP_SEND_TO,
+                storage: adsmarchSignupConversionRecordedStorage,
+                transactionId: user.id,
+              }
+            : null;
+      if (!config) {
+        return;
+      }
       const conversionFired = fireGoogleAdsConversion({
-        sendTo: GOOGLE_ADS_SIGNUP_SEND_TO,
+        accountId: googleAdsAccountId,
+        sendTo: config.sendTo,
         dedupeValue: user.id,
         value: SIGNUP_CONVERSION_VALUE_USD,
-        storedDedupeValue: get(signupConversionRecordedStorage.get$),
+        storedDedupeValue: get(config.storage.get$),
+        transactionId: config.transactionId,
       });
       if (conversionFired) {
-        set(signupConversionRecordedStorage.set$, user.id);
-      }
-
-      const adsmarchConversionFired = fireGoogleAdsConversion({
-        sendTo: GOOGLE_ADS_ADSMARCH_SIGNUP_SEND_TO,
-        dedupeValue: user.id,
-        value: SIGNUP_CONVERSION_VALUE_USD,
-        storedDedupeValue: get(adsmarchSignupConversionRecordedStorage.get$),
-        transactionId: user.id,
-      });
-      if (adsmarchConversionFired) {
-        set(adsmarchSignupConversionRecordedStorage.set$, user.id);
+        set(config.storage.set$, user.id);
       }
     }
   },

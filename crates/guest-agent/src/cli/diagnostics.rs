@@ -92,3 +92,25 @@ where
 
     lines.into_iter().collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pi_memory_phase2_terminal_lines_survive_stderr_collection() {
+        let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/pi-memory-phase2-terminal.json"
+        )))
+        .unwrap();
+        for fixture in fixtures {
+            let stderr = fixture["stderr"].as_str().unwrap();
+            assert!(stderr.len() < CLI_STDERR_RESULT_MAX_LINE_BYTES);
+            for suffix in ["\n", ""] {
+                let wire = format!("{stderr}{suffix}");
+                assert_eq!(collect_stderr_result_tail(wire.as_bytes()).await, [stderr]);
+            }
+        }
+    }
+}

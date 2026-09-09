@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import {
+  connectorOauthStates,
+  connectorOauthCompletions,
+} from "@okouai/db/schema/connector-oauth-state";
 import { and, asc, eq, inArray, lte } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
@@ -14,32 +17,36 @@ interface ConnectorOauthStateCleanupOwner {
   readonly orgId: string;
 }
 
-async function cleanupConnectorOauthStates(
+async function cleanupExpiredOAuthRows(
   db: Db,
-  cutoff: Date,
-  owner: ConnectorOauthStateCleanupOwner | undefined,
-  batchSize: number,
+  table: typeof connectorOauthStates | typeof connectorOauthCompletions,
+  args: {
+    readonly cutoff: Date;
+    readonly owner: ConnectorOauthStateCleanupOwner | undefined;
+    readonly batchSize: number;
+  },
   signal: AbortSignal,
 ): Promise<number> {
+  const { cutoff, owner, batchSize } = args;
   const expiredWhere = owner
     ? and(
-        lte(connectorOauthStates.expiresAt, cutoff),
-        eq(connectorOauthStates.userId, owner.userId),
-        eq(connectorOauthStates.orgId, owner.orgId),
+        lte(table.expiresAt, cutoff),
+        eq(table.userId, owner.userId),
+        eq(table.orgId, owner.orgId),
       )
-    : lte(connectorOauthStates.expiresAt, cutoff);
+    : lte(table.expiresAt, cutoff);
   let totalDeleted = 0;
 
   for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
     const expiredStates = db
-      .select({ id: connectorOauthStates.id })
-      .from(connectorOauthStates)
+      .select({ id: table.id })
+      .from(table)
       .where(expiredWhere)
-      .orderBy(asc(connectorOauthStates.expiresAt))
+      .orderBy(asc(table.expiresAt))
       .limit(batchSize);
     const { rowCount } = await db
-      .delete(connectorOauthStates)
-      .where(inArray(connectorOauthStates.id, expiredStates));
+      .delete(table)
+      .where(inArray(table.id, expiredStates));
     signal.throwIfAborted();
 
     const batchDeleted = rowCount ?? 0;
@@ -50,6 +57,28 @@ async function cleanupConnectorOauthStates(
   }
 
   return totalDeleted;
+}
+
+async function cleanupConnectorOauthStates(
+  db: Db,
+  cutoff: Date,
+  owner: ConnectorOauthStateCleanupOwner | undefined,
+  batchSize: number,
+  signal: AbortSignal,
+): Promise<number> {
+  const states = await cleanupExpiredOAuthRows(
+    db,
+    connectorOauthStates,
+    { cutoff, owner, batchSize },
+    signal,
+  );
+  const completions = await cleanupExpiredOAuthRows(
+    db,
+    connectorOauthCompletions,
+    { cutoff, owner, batchSize },
+    signal,
+  );
+  return states + completions;
 }
 
 export const cleanupConnectorOauthStates$ = command(

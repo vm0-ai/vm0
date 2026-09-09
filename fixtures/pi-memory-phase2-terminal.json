@@ -1,0 +1,56 @@
+[
+  {
+    "name": "legacy",
+    "stderr": "Pi memory Phase 2 agent output was invalid."
+  },
+  {
+    "name": "summary_tokens",
+    "diagnostic": {
+      "stage": "output_validation",
+      "reason": "summary_tokens",
+      "fileClass": "summary",
+      "actual": 2608,
+      "limit": 2500
+    },
+    "stderr": "Pi memory Phase 2 agent output was invalid. pi_memory_phase2={\"stage\":\"output_validation\",\"reason\":\"summary_tokens\",\"fileClass\":\"summary\",\"actual\":2608,\"limit\":2500}"
+  },
+  {
+    "name": "summary_header",
+    "diagnostic": {
+      "stage": "output_validation",
+      "reason": "summary_header",
+      "fileClass": "summary"
+    },
+    "stderr": "Pi memory Phase 2 agent output was invalid. pi_memory_phase2={\"stage\":\"output_validation\",\"reason\":\"summary_header\",\"fileClass\":\"summary\"}"
+  },
+  {
+    "name": "apply_eacces",
+    "diagnostic": {
+      "stage": "mounted_apply",
+      "reason": "filesystem",
+      "fileClass": "immutable",
+      "errno": "EACCES"
+    },
+    "stderr": "Pi memory Phase 2 agent output was invalid. pi_memory_phase2={\"stage\":\"mounted_apply\",\"reason\":\"filesystem\",\"fileClass\":\"immutable\",\"errno\":\"EACCES\"}"
+  },
+  {
+    "name": "apply_enospc",
+    "diagnostic": {
+      "stage": "mounted_apply",
+      "reason": "filesystem",
+      "fileClass": "immutable",
+      "errno": "ENOSPC"
+    },
+    "stderr": "Pi memory Phase 2 agent output was invalid. pi_memory_phase2={\"stage\":\"mounted_apply\",\"reason\":\"filesystem\",\"fileClass\":\"immutable\",\"errno\":\"ENOSPC\"}"
+  },
+  {
+    "name": "apply_unknown",
+    "diagnostic": {
+      "stage": "mounted_apply",
+      "reason": "unknown",
+      "fileClass": "immutable",
+      "errno": "unknown"
+    },
+    "stderr": "Pi memory Phase 2 agent output was invalid. pi_memory_phase2={\"stage\":\"mounted_apply\",\"reason\":\"unknown\",\"fileClass\":\"immutable\",\"errno\":\"unknown\"}"
+  }
+]

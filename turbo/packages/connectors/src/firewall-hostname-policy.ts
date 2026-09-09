@@ -19,7 +19,7 @@ const FIREWALL_HOSTNAME_TO_ASCII_OPTIONS = {
 
 /**
  * Return the fixed-policy ASCII identity for a dot-separated DNS hostname.
- * Callers remain responsible for vm0's stricter raw-input and IP-literal
+ * Callers remain responsible for the platform's stricter raw-input and IP-literal
  * checks before invoking this UTS #46 mapping step.
  */
 export function canonicalizeFirewallDnsHostname(

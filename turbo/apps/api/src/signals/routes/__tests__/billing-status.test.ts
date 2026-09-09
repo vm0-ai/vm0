@@ -132,7 +132,7 @@ describe("GET /api/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("limited-free-1");
-    expect(response.body.memberInvitationAllowed).toBeFalsy();
+    expect(response.body.status).toBe("active");
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.videoGenerationAllowed).toBeFalsy();
@@ -218,7 +218,7 @@ describe("GET /api/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
-    expect(response.body.memberInvitationAllowed).toBeTruthy();
+    expect(response.body.status).toBe("active");
     expect(response.body.credits).toBe(100_000);
     expect(response.body.subscriptionStatus).toBe("active");
     expect(response.body.currentPeriodEnd).toBe(periodEnd.toISOString());
@@ -283,7 +283,7 @@ describe("GET /api/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("custom");
-    expect(response.body.memberInvitationAllowed).toBeTruthy();
+    expect(response.body.status).toBe("active");
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.currentPeriodEnd).toBeNull();
     expect(response.body.concurrencyLimit).toBe(10);
@@ -427,8 +427,7 @@ describe("GET /api/billing/status", () => {
       baseConcurrencyLimit: 10,
       canBuyConcurrency: true,
       canBuyCredits: false,
-      memberInviteUsagePackRequired: true,
-      memberInvitationAllowed: false,
+      showUsagePack: true,
       autoRechargeAllowed: false,
       supportByok: false,
       restrictedVm0Models: false,
@@ -449,9 +448,10 @@ describe("GET /api/billing/status", () => {
     expect(response.body.tier).toBe("pro");
     expect(response.body.canBuyConcurrency).toBeTruthy();
     expect(response.body.canBuyCredits).toBeFalsy();
-    expect(response.body.memberInviteUsagePackRequired).toBeTruthy();
-    expect(response.body.showUsagePack).toBeFalsy();
-    expect(response.body.memberInvitationAllowed).toBeFalsy();
+    expect(response.body.showUsagePack).toBeTruthy();
+    expect(response.body).not.toHaveProperty("memberInviteUsagePackRequired");
+    expect(response.body.status).toBe("active");
+    expect(response.body.memberInvitationAllowed).toBeTruthy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeFalsy();
@@ -503,7 +503,7 @@ describe("GET /api/billing/status", () => {
       [200],
     );
     expect(initialResponse.body.canBuyCredits).toBeFalsy();
-    expect(initialResponse.body.memberInvitationAllowed).toBeFalsy();
+    expect(initialResponse.body.status).toBe("active");
 
     await updateOrgPlanKeyAsLegacyWriterFixture({ orgId, planKey: "pro" });
 
@@ -515,7 +515,7 @@ describe("GET /api/billing/status", () => {
     );
     expect(updatedResponse.body.tier).toBe("limited-free-1");
     expect(updatedResponse.body.canBuyCredits).toBeTruthy();
-    expect(updatedResponse.body.memberInvitationAllowed).toBeTruthy();
+    expect(updatedResponse.body.status).toBe("active");
   });
 
   it("includes active concurrency subscription slots", async () => {
@@ -1272,6 +1272,7 @@ describe("GET /api/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro-suspend");
+    expect(response.body.status).toBe("suspended");
     expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.credits).toBe(0);
     expect(response.body.hasSubscription).toBeFalsy();

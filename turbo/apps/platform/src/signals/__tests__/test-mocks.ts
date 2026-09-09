@@ -147,6 +147,10 @@ interface StorageWriteMock {
   readonly writes: StorageWrite[];
 }
 
+interface StorageWriteMockOptions {
+  readonly blockedKeys?: readonly string[];
+}
+
 interface ClipboardWriteMock {
   writes: string[];
 }
@@ -589,8 +593,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       cookie: (cookie: string): void => {
         vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);
       },
-      localStorageWrites: (): StorageWriteMock => {
-        return mockLocalStorageWrites();
+      localStorageWrites: (
+        options: StorageWriteMockOptions = {},
+      ): StorageWriteMock => {
+        return mockLocalStorageWrites(options);
       },
       clipboardWriteText: (): ClipboardWriteMock => {
         return mockClipboardWriteText();
@@ -841,11 +847,16 @@ function createMockWindow(): MockWindow {
   return mockWindow;
 }
 
-function mockLocalStorageWrites(): StorageWriteMock {
+function mockLocalStorageWrites(
+  options: StorageWriteMockOptions,
+): StorageWriteMock {
   const writes: StorageWrite[] = [];
   const storage = globalThis["localStorage"];
   const setItem = storage.setItem.bind(storage);
   vi.spyOn(storage, "setItem").mockImplementation((key, value) => {
+    if (options.blockedKeys?.includes(key)) {
+      throw new DOMException("Storage access denied", "SecurityError");
+    }
     writes.push({ key, value });
     setItem(key, value);
   });

@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.19.7](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.6...guest-control-client-v0.19.7) (2026-09-09)
+
 ## [0.19.6](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.5...guest-control-client-v0.19.6) (2026-09-09)
 
 

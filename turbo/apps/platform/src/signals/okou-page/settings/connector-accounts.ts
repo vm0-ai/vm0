@@ -14,73 +14,55 @@ import {
   reloadConnectorAccountSummaries$,
 } from "../connector-accounts.ts";
 
-export type ConnectorAccountMutationVersion = number | string | null;
-
-export async function readConnectorAccountMutationVersion(
+export async function readConnectorAccountCount(
   createClient: ApiClientFactory,
   target: ConnectorAccountTarget,
-  account: PlatformConnectorAccountMutationIntent,
   signal: AbortSignal,
-): Promise<ConnectorAccountMutationVersion> {
-  if (account.intent === "add") {
-    const result = await accept(
-      createClient(connectorAccountsContract).summaries({
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    return (
-      result.body.summaries.find((summary) => {
-        return (
-          connectorAccountTargetKey(summary.target) ===
-          connectorAccountTargetKey(target)
-        );
-      })?.accountCount ?? 0
-    );
-  }
+): Promise<number> {
   const result = await accept(
-    createClient(connectorAccountsContract).connection({
-      params: { connectionId: account.connectionId },
-      query: target,
+    createClient(connectorAccountsContract).summaries({
       fetchOptions: { signal },
     }),
-    [200, 404],
+    [200],
   );
-  return result.status === 404 ? null : result.body.updatedAt;
-}
-
-export async function connectorAccountConnectionExists(
-  createClient: ApiClientFactory,
-  target: ConnectorAccountTarget,
-  connectionId: string,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const result = await accept(
-    createClient(connectorAccountsContract).connection({
-      params: { connectionId },
-      query: target,
-      fetchOptions: { signal },
-    }),
-    [200, 404],
-  );
-  return result.status === 200;
-}
-
-export function connectorAccountMutationCompleted(
-  account: PlatformConnectorAccountMutationIntent,
-  initialVersion: ConnectorAccountMutationVersion,
-  currentVersion: ConnectorAccountMutationVersion,
-): boolean {
-  if (account.intent === "add") {
-    return (
-      typeof initialVersion === "number" &&
-      typeof currentVersion === "number" &&
-      currentVersion > initialVersion
-    );
-  }
   return (
-    typeof currentVersion === "string" && currentVersion !== initialVersion
+    result.body.summaries.find((summary) => {
+      return (
+        connectorAccountTargetKey(summary.target) ===
+        connectorAccountTargetKey(target)
+      );
+    })?.accountCount ?? 0
   );
+}
+
+export async function readConnectorOAuthCompletion(
+  createClient: ApiClientFactory,
+  target: ConnectorAccountTarget,
+  account: PlatformConnectorAccountMutationIntent,
+  attemptId: string | undefined,
+  signal: AbortSignal,
+): Promise<string | null> {
+  // New App -> old API: absent attempt IDs cannot prove authorization.
+  // Remove after receipt-capable APIs are the serving and rollback floor (#32870).
+  if (!attemptId) {
+    return null;
+  }
+  const result = await accept(
+    createClient(connectorAccountsContract).oauthCompletion({
+      params: { attemptId },
+      query: target,
+      fetchOptions: { signal },
+    }),
+    [200, 404],
+  );
+  if (
+    result.status === 404 ||
+    (account.intent === "reconnect" &&
+      result.body.connectionId !== account.connectionId)
+  ) {
+    return null;
+  }
+  return result.body.connectionId;
 }
 
 export const settingsConnectorAccounts = createConnectorAccountListSignals({

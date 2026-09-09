@@ -23,7 +23,6 @@ import {
   connectorOauthStartContract,
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
-  connectorsMainContract,
 } from "@okouai/api-contracts/contracts/connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type {
@@ -71,10 +70,8 @@ import type {
   PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
 import {
-  connectorAccountConnectionExists,
-  connectorAccountMutationCompleted,
-  readConnectorAccountMutationVersion,
-  type ConnectorAccountMutationVersion,
+  readConnectorAccountCount,
+  readConnectorOAuthCompletion,
 } from "./connector-accounts.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../../bootstrap/google-ads-conversion-milestones.ts";
 
@@ -112,10 +109,9 @@ const resolveConnectorPostConnectOptions$ = command(
     }
     const authorizeVisibleAgents =
       options.account.intent === "add" &&
-      (await readConnectorAccountMutationVersion(
+      (await readConnectorAccountCount(
         get(apiClient$),
         { kind: "builtin", connectorSlug },
-        options.account,
         signal,
       )) === 0;
     return { ...options, authorizeVisibleAgents };
@@ -2153,88 +2149,12 @@ function connectorMatchesAuthMethod(
   );
 }
 
-function createConnectorOAuthAuthCodeChangedCommand(
-  connectorSlug: ConnectorSlug,
-  authMethod: ConnectorAuthMethodId,
-  agentId: string | undefined,
-  account: PlatformConnectorAccountMutationIntent,
-  useDefaultConnectorProjection: boolean,
-) {
-  // Snapshot taken on the first body invocation: `null` marks "no connector
-  // yet" and an `updatedAt` value marks "reconnect scenario — wait for it to
-  // change". The snapshot must happen inside the loop body so we start from the
-  // freshest server state, not a cached signal value.
-  let initialUpdatedAt: string | null | undefined;
-  let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
-
-  return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
-    if (!useDefaultConnectorProjection) {
-      const currentVersion = await readConnectorAccountMutationVersion(
-        get(apiClient$),
-        { kind: "builtin", connectorSlug },
-        account,
-        sig,
-      );
-      if (initialAccountVersion === undefined) {
-        initialAccountVersion = currentVersion;
-        return false;
-      }
-      return connectorAccountMutationCompleted(
-        account,
-        initialAccountVersion,
-        currentVersion,
-      );
-    }
-    const client = get(apiClient$)(connectorsMainContract);
-    const result = await accept(
-      client.list({ fetchOptions: { signal: sig } }),
-      [200],
-    );
-    const polled = result.body.connectors;
-    const current = polled.find((c) => {
-      return connectorMatchesAuthMethod(c, connectorSlug, authMethod);
-    });
-
-    if (initialUpdatedAt === undefined) {
-      initialUpdatedAt = current?.updatedAt ?? null;
-      return false;
-    }
-    if (current) {
-      if (
-        account.intent === "reconnect" &&
-        current.id !== account.connectionId
-      ) {
-        return false;
-      }
-      // initialUpdatedAt === null means the connector didn't exist on the first
-      // fetch; any subsequent appearance signals completion.
-      const connectionChanged =
-        initialUpdatedAt === null || current.updatedAt !== initialUpdatedAt;
-      if (!connectionChanged || !agentId) {
-        return connectionChanged;
-      }
-      const authorization = await accept(
-        get(apiClient$)(userConnectorsContract).get({
-          params: { id: agentId },
-          fetchOptions: { signal: sig },
-        }),
-        [200, 404],
-      );
-      return (
-        authorization.status === 200 &&
-        authorization.body.enabledConnectorSlugs.includes(connectorSlug)
-      );
-    }
-    return false;
-  });
-}
-
 const defaultConnectorProjectionMatchesAuthMethod$ = command(
   async (
     { get },
     connectorSlug: ConnectorSlug,
     authMethod: ConnectorAuthMethodId,
-    connectionId: string | null,
+    connectionId: string,
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { connectors } = await get(connectors$);
@@ -2242,49 +2162,11 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
     return connectors.some((connector) => {
       return (
         connectorMatchesAuthMethod(connector, connectorSlug, authMethod) &&
-        (connectionId === null || connector.id === connectionId)
+        connector.id === connectionId
       );
     });
   },
 );
-
-function getDefaultConnectorProjectionConnectionId(
-  account: PlatformConnectorAccountMutationIntent,
-  expectedConnectionId: string | null,
-  useDefaultConnectorProjection: boolean,
-): string | null {
-  if (!useDefaultConnectorProjection) {
-    return null;
-  }
-  return account.intent === "reconnect"
-    ? account.connectionId
-    : expectedConnectionId;
-}
-
-function createExpectedConnectorConnectionAvailableCommand(
-  connectorSlug: ConnectorSlug,
-  expectedConnectionId: string | null,
-  requiresAccountMutation: boolean,
-  onConnectorChanged$: ReturnType<
-    typeof createConnectorOAuthAuthCodeChangedCommand
-  >,
-) {
-  return command(
-    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-      if (requiresAccountMutation) {
-        return await set(onConnectorChanged$, signal);
-      }
-      return expectedConnectionId
-        ? await connectorAccountConnectionExists(
-            get(apiClient$),
-            { kind: "builtin", connectorSlug },
-            expectedConnectionId,
-            signal,
-          )
-        : false;
-    },
-  );
-}
 
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
@@ -2303,7 +2185,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     signal: AbortSignal,
   ): Promise<{
     readonly authWindow: Window | null;
-    readonly connectionId: string | null;
+    readonly oauthAttemptId: string | undefined;
     readonly options: PostConnectOptions;
   }> => {
     const standalone = isStandaloneMode();
@@ -2339,7 +2221,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     }
 
     let navigated = false;
-    let connectionId: string | null = null;
+    let oauthAttemptId: string | undefined;
     const options = await withCleanup(
       (async () => {
         if (!isBrowserAuthGrantKind(args.method.grantKind)) {
@@ -2391,7 +2273,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 [200],
               );
         signal.throwIfAborted();
-        connectionId = startResult.body.connectionId ?? null;
+        oauthAttemptId = startResult.body.oauthAttemptId;
 
         if (authWindow) {
           authWindow.location.href = startResult.body.authorizationUrl;
@@ -2418,7 +2300,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     );
     signal.throwIfAborted();
 
-    return { authWindow, connectionId, options };
+    return { authWindow, oauthAttemptId, options };
   },
 );
 
@@ -2430,42 +2312,33 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       readonly method: PublicConnectorCatalogAuthMethodDetail;
       readonly options: PostConnectOptions;
       readonly account: PlatformConnectorAccountMutationIntent;
-      readonly onConnectorChanged$: ReturnType<
-        typeof createConnectorOAuthAuthCodeChangedCommand
-      >;
       readonly oauthStart: {
         readonly authWindow: Window | null;
-        readonly connectionId: string | null;
+        readonly oauthAttemptId: string | undefined;
       };
     },
     signal: AbortSignal,
   ): Promise<ConnectorConnectionResult | false> => {
-    const {
-      connectorSlug,
-      method,
-      options,
-      account,
-      onConnectorChanged$,
-      oauthStart,
-    } = args;
-    const { authWindow, connectionId: expectedConnectionId } = oauthStart;
-    const expectedConnectionAvailable$ =
-      createExpectedConnectorConnectionAvailableCommand(
-        connectorSlug,
-        expectedConnectionId,
-        account.intent === "reconnect" ||
-          (options.useDefaultConnectorProjection ?? false),
-        onConnectorChanged$,
+    const { connectorSlug, method, options, account, oauthStart } = args;
+    let completedConnectionId: string | null = null;
+    const completionAvailable$ = command(async ({ get }, sig: AbortSignal) => {
+      const connectionId = await readConnectorOAuthCompletion(
+        get(apiClient$),
+        { kind: "builtin", connectorSlug },
+        account,
+        oauthStart.oauthAttemptId,
+        sig,
       );
+      sig.throwIfAborted();
+      completedConnectionId = connectionId;
+      return completedConnectionId !== null;
+    });
     const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
     const onMatchingConnectorChanged$ = command(
       async ({ set }, payload: unknown, sig: AbortSignal): Promise<boolean> => {
-        if (!isConnectorChangedPayloadFor(payload, connectorSlug)) {
-          return false;
-        }
-        return expectedConnectionId
-          ? await set(expectedConnectionAvailable$, sig)
-          : await set(onConnectorChanged$, sig);
+        return isConnectorChangedPayloadFor(payload, connectorSlug)
+          ? await set(completionAvailable$, sig)
+          : false;
       },
     );
     const changedPromise = (async () => {
@@ -2474,9 +2347,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
         {
           topic: "connector:changed",
           loopCommand$: onMatchingConnectorChanged$,
-          catchUpCommand$: expectedConnectionId
-            ? expectedConnectionAvailable$
-            : onConnectorChanged$,
+          catchUpCommand$: completionAvailable$,
           options: { runOnSubscribe: true },
         },
         waitSignal,
@@ -2484,11 +2355,11 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       return "connectorChanged" as const;
     })();
     const waitResult = await withCleanup(
-      authWindow === null
+      oauthStart.authWindow === null
         ? changedPromise
         : Promise.race([
             changedPromise,
-            waitForOAuthAuthCodePopupClosed(authWindow, waitSignal),
+            waitForOAuthAuthCodePopupClosed(oauthStart.authWindow, waitSignal),
           ]),
       () => {
         set(resetOAuthAuthCodeWaitSignal$, signal);
@@ -2496,20 +2367,12 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
     );
     signal.throwIfAborted();
 
-    let completedConnectionId = expectedConnectionId;
     if (waitResult === "popupClosed") {
-      const connectedAfterClose = expectedConnectionId
-        ? await set(expectedConnectionAvailable$, signal)
-        : // Older API responses omit the exact ID. Remove this bounded account
-          // mutation fallback with the final rollout contraction in #28571.
-          await set(onConnectorChanged$, signal);
+      await set(completionAvailable$, signal);
       signal.throwIfAborted();
-      if (!connectedAfterClose) {
-        return false;
-      }
-    } else if (!expectedConnectionId) {
-      completedConnectionId =
-        account.intent === "reconnect" ? account.connectionId : null;
+    }
+    if (completedConnectionId === null) {
+      return false;
     }
 
     set(reloadConnectorConnectionState$);
@@ -2519,11 +2382,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
         defaultConnectorProjectionMatchesAuthMethod$,
         connectorSlug,
         method.id,
-        getDefaultConnectorProjectionConnectionId(
-          account,
-          expectedConnectionId,
-          options.useDefaultConnectorProjection ?? false,
-        ),
+        completedConnectionId,
         signal,
       ));
     if (isConnected) {
@@ -2570,17 +2429,6 @@ const connectConnectorOAuthAuthCodeCommand$ = command(
 
     return await withCleanup(
       (async () => {
-        // Snapshot before starting the provider flow. The popup is already open
-        // by the time this runs, so we keep browser popup blockers satisfied
-        // while avoiding a race where a very fast callback completes before the
-        // first poll baseline is captured.
-        const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
-          connectorSlug,
-          method.id,
-          options.agentId,
-          account,
-          options.useDefaultConnectorProjection ?? false,
-        );
         const oauthStart = await set(
           openConnectorOAuthAuthCodeWindow$,
           {
@@ -2597,7 +2445,6 @@ const connectConnectorOAuthAuthCodeCommand$ = command(
                 options,
                 sig,
               );
-              await set(onConnectorChanged$, sig);
               return resolvedOptions;
             },
           },
@@ -2611,7 +2458,6 @@ const connectConnectorOAuthAuthCodeCommand$ = command(
             method,
             options: oauthStart.options,
             account,
-            onConnectorChanged$,
             oauthStart,
           },
           signal,

@@ -1,10 +1,10 @@
 # @okouai/mermaid-lite
 
-Private workspace package containing vm0's focused Mermaid build. It supports
+Private workspace package containing Okou's focused Mermaid build. It supports
 `flowchart`, the legacy `graph` spelling, and `sequenceDiagram`; other Mermaid
 diagram syntaxes are intentionally unsupported.
 
-The generated ESM file is committed so normal vm0 installs and builds do not
+The generated ESM file is committed so normal workspace installs and builds do not
 clone or compile Mermaid. The Flowchart and Sequence Diagram parsers and the
 Dagre renderer are statically linked into that file, so importing this package
 cannot create another browser JavaScript chunk.

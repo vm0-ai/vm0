@@ -138,18 +138,21 @@ describe("okou connector status command", () => {
   });
 
   describe("without agent context", () => {
-    it("displays connected status with details", async () => {
-      server.use(stubConnector(connectedGithub));
+    it.each(["github", "GitHub", "builtin:github", "builtin:GitHub"])(
+      "displays connected status selected by %s",
+      async (selector) => {
+        server.use(stubConnector(connectedGithub));
 
-      await statusCommand.parseAsync(["node", "cli", "github"]);
+        await statusCommand.parseAsync(["node", "cli", selector]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("github");
-      expect(logCalls).toContain("connected");
-      expect(logCalls).toContain("@octocat");
-      expect(logCalls).toContain("oauth");
-      expect(logCalls).not.toContain("Authorized:");
-    });
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain("github");
+        expect(logCalls).toContain("connected");
+        expect(logCalls).toContain("@octocat");
+        expect(logCalls).toContain("oauth");
+        expect(logCalls).not.toContain("Authorized:");
+      },
+    );
 
     it("displays not connected status", async () => {
       server.use(

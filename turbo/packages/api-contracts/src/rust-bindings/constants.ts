@@ -155,13 +155,13 @@ export const rustConstantModuleDocs = [
   {
     rustModulePath: clientHeadersModule,
     rustDoc: [
-      "HTTP header names used to identify vm0 clients in API request logs.",
+      "HTTP header names used to identify platform clients in API request logs.",
     ],
   },
   {
     rustModulePath: clientTypesModule,
     rustDoc: [
-      "Client type values used to identify vm0 API request originators.",
+      "Client type values used to identify platform API request originators.",
     ],
   },
   {
@@ -238,20 +238,24 @@ export const rustConstantBindings = [
     rustModulePath: clientHeadersModule,
     rustConstName: "CLIENT_VERSION_HEADER",
     value: rustString(CLIENT_VERSION_HEADER),
-    rustDoc: ["HTTP header carrying the sending vm0 client component version."],
+    rustDoc: [
+      "HTTP header carrying the sending platform client component version.",
+    ],
   },
   {
     rustModulePath: clientHeadersModule,
     rustConstName: "CLIENT_TYPE_HEADER",
     value: rustString(CLIENT_TYPE_HEADER),
-    rustDoc: ["HTTP header carrying the sending vm0 client component type."],
+    rustDoc: [
+      "HTTP header carrying the sending platform client component type.",
+    ],
   },
   {
     rustModulePath: clientHeadersModule,
     rustConstName: "CLIENT_SESSION_ID_HEADER",
     value: rustString(CLIENT_SESSION_ID_HEADER),
     rustDoc: [
-      "HTTP header carrying the sending vm0 client session identifier.",
+      "HTTP header carrying the sending platform client session identifier.",
     ],
   },
   {
@@ -259,7 +263,7 @@ export const rustConstantBindings = [
     rustConstName: "CLIENT_REQUEST_ID_HEADER",
     value: rustString(CLIENT_REQUEST_ID_HEADER),
     rustDoc: [
-      "HTTP header carrying the per-request vm0 client request identifier.",
+      "HTTP header carrying the per-request platform client request identifier.",
     ],
   },
   {

@@ -7,6 +7,9 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, isNull } from "drizzle-orm";
 import { command } from "ccstate";
 
+import { googleAdsAccountForAttribution } from "@okouai/core/google-ads-account";
+import { clerk$ } from "../external/clerk";
+
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 
@@ -51,6 +54,38 @@ export function parseStoredSignupAttribution(
   const parsed = adAttributionMetadataSchema.safeParse(metadata);
   return parsed.success ? parsed.data : undefined;
 }
+
+export const googleAdsAccountForUser$ = command(
+  async (
+    { get },
+    userId: string,
+    provided: AdAttributionMetadata | undefined,
+    signal: AbortSignal,
+  ) => {
+    const users = await get(clerk$).users.getUserList(
+      { userId: [userId], limit: 1 },
+      undefined,
+      signal,
+    );
+    signal.throwIfAborted();
+    const user = users.data.find((candidate) => {
+      return candidate.id === userId;
+    });
+    if (!user) {
+      throw new Error(`No Clerk user found for user ${userId}`);
+    }
+    const metadata = user.privateMetadata;
+    // An existing unresolved or malformed first touch cannot borrow a later
+    // visit's campaign. Only users with no saved touch may use the captured one.
+    const attribution = Object.prototype.hasOwnProperty.call(
+      metadata,
+      "signup_attribution",
+    )
+      ? parseStoredSignupAttribution(metadata.signup_attribution)
+      : provided;
+    return googleAdsAccountForAttribution(attribution);
+  },
+);
 
 function orgAttributionValues(
   attribution: Readonly<Record<string, string | undefined>> | undefined,

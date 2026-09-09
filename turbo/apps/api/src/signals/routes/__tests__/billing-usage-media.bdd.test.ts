@@ -513,7 +513,10 @@ describe("BILL-02: usage and attribution reads", () => {
 
     context.mocks.clerk.users.updateUserMetadata.mockResolvedValue({});
     const attribution = await api.recordSignupAttribution(admin);
-    expect(attribution.body).toStrictEqual({ recorded: true });
+    expect(attribution.body).toStrictEqual({
+      recorded: true,
+      googleAdsAccountId: null,
+    });
     expect(context.mocks.clerk.users.updateUserMetadata).toHaveBeenCalledWith(
       admin.userId,
       expect.objectContaining({

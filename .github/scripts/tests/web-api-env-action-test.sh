@@ -183,12 +183,9 @@ assert_github_app_empty_outputs() {
 
 assert_github_app_source_keys_absent() {
   local env_file="$1"
-  local source_prefix
   local suffix
-  for source_prefix in OKOU VM0; do
-    for suffix in "${GITHUB_APP_VAR_SUFFIXES[@]}" "${GITHUB_APP_SECRET_SUFFIXES[@]}"; do
-      assert_env_key_absent "$env_file" "${source_prefix}_GITHUB_APP_${suffix}"
-    done
+  for suffix in "${GITHUB_APP_VAR_SUFFIXES[@]}" "${GITHUB_APP_SECRET_SUFFIXES[@]}"; do
+    assert_env_key_absent "$env_file" "OKOU_GITHUB_APP_${suffix}"
   done
 }
 
@@ -271,7 +268,7 @@ run_action() {
   local github_app_vars_json="${7:-}"
   local github_app_secrets_json="${8:-}"
   local input_job_ref="${9-pr-123}"
-  local input_api_backend_url="${10-https://pr-123-api-backend.vm0.test}"
+  local input_api_backend_url="${10-https://pr-123-api-backend.okou.test}"
   local machine_secret_repo_secrets_json="${11:-}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
@@ -313,8 +310,8 @@ run_action() {
     INPUT_ENVIRONMENT="$input_environment" \
     INPUT_DATABASE_URL="postgres://preview-db" \
     INPUT_JOB_REF="$input_job_ref" \
-    INPUT_WEB_URL="https://pr-123-www.vm0.test" \
-    INPUT_APP_URL="https://pr-123-app.vm0.test" \
+    INPUT_WEB_URL="https://pr-123-www.okou.test" \
+    INPUT_APP_URL="https://pr-123-app.okou.test" \
     INPUT_API_BACKEND_URL="$input_api_backend_url" \
     INPUT_CLI_PKG_URL="$input_cli_pkg_url" \
     REPO_VARS_JSON="$repo_vars_json" \
@@ -353,7 +350,7 @@ run_machine_secret_action() {
     "" \
     "" \
     pr-123 \
-    "https://pr-123-api-backend.vm0.test" \
+    "https://pr-123-api-backend.okou.test" \
     "$repo_secrets_json"
 }
 
@@ -522,10 +519,10 @@ assert_machine_secret_canonical "$success_env_file" "github-atom-machine-secret"
 assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-vercel-bypass-secret"
 assert_env_key_count "$success_env_file" OKOU_PREVIEW_JOB_REF 1
 assert_env_value "$success_env_file" OKOU_PREVIEW_JOB_REF "pr-123"
-assert_api_backend_url_canonical "$success_env_file" "https://pr-123-api-backend.vm0.test"
-assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
-assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
-assert_web_url_canonical "$success_env_file" "https://pr-123-www.vm0.test"
+assert_api_backend_url_canonical "$success_env_file" "https://pr-123-api-backend.okou.test"
+assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.okou.test"
+assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.okou.test"
+assert_web_url_canonical "$success_env_file" "https://pr-123-www.okou.test"
 assert_env_value "$success_env_file" CLI_PKG_URL "https://static.okou.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$success_env_file" "ONBOARDING_URL="
@@ -572,7 +569,7 @@ assert_no_fixture_secret_values "$preview_web_output"
 assert_machine_secret_values_absent_from_output "$preview_web_output" "github-atom-machine-secret"
 assert_preview_job_ref_absent "$preview_web_env_file"
 assert_debug_canonical "$preview_web_env_file"
-assert_api_backend_url_canonical "$preview_web_env_file" "https://pr-123-api-backend.vm0.test"
+assert_api_backend_url_canonical "$preview_web_env_file" "https://pr-123-api-backend.okou.test"
 assert_env_key_absent "$preview_web_env_file" OKOU_MACHINE_SECRET_KEY
 assert_web_url_absent "$preview_web_env_file"
 
@@ -583,7 +580,7 @@ empty_job_ref_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "
 assert_contains "$empty_job_ref_output" "Rendered"
 assert_preview_job_ref_absent "$empty_job_ref_env_file"
 assert_debug_canonical "$empty_job_ref_env_file"
-assert_api_backend_url_canonical "$empty_job_ref_env_file" "https://pr-123-api-backend.vm0.test"
+assert_api_backend_url_canonical "$empty_job_ref_env_file" "https://pr-123-api-backend.okou.test"
 assert_machine_secret_canonical "$empty_job_ref_env_file" "github-atom-machine-secret"
 
 empty_dir="$(mktemp -d)"
@@ -593,7 +590,7 @@ empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
 assert_debug_canonical "$empty_env_file"
-assert_api_backend_url_canonical "$empty_env_file" "https://pr-123-api-backend.vm0.test"
+assert_api_backend_url_canonical "$empty_env_file" "https://pr-123-api-backend.okou.test"
 assert_machine_secret_absent "$empty_env_file"
 assert_env_value "$empty_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL ""
 assert_env_value "$empty_env_file" OKOU_PUBLIC_HOST_DOMAIN ""
@@ -612,7 +609,7 @@ assert_no_fixture_secret_values "$production_web_output"
 assert_machine_secret_values_absent_from_output "$production_web_output" "github-atom-machine-secret"
 assert_env_value "$production_web_env_file" OKOU_HOST_SCHEME "https"
 assert_debug_absent "$production_web_env_file"
-assert_api_backend_url_canonical "$production_web_env_file" "https://pr-123-api-backend.vm0.test"
+assert_api_backend_url_canonical "$production_web_env_file" "https://pr-123-api-backend.okou.test"
 assert_web_url_absent "$production_web_env_file"
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
@@ -645,10 +642,10 @@ assert_debug_absent "$production_api_env_file"
 assert_env_value "$production_api_env_file" R2_PRIVATE_ARTIFACTS_BUCKET_NAME "user-artifact-private-prod"
 assert_env_value "$production_api_env_file" R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID "private-prod-key"
 assert_env_value "$production_api_env_file" R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY "private-prod-secret"
-assert_web_url_canonical "$production_api_env_file" "https://pr-123-www.vm0.test"
-assert_api_backend_url_canonical "$production_api_env_file" "https://pr-123-api-backend.vm0.test"
-assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
-assert_env_value "$production_api_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
+assert_web_url_canonical "$production_api_env_file" "https://pr-123-www.okou.test"
+assert_api_backend_url_canonical "$production_api_env_file" "https://pr-123-api-backend.okou.test"
+assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.okou.test"
+assert_env_value "$production_api_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.okou.test"
 assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.okou.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
 assert_machine_secret_canonical "$production_api_env_file" "github-atom-machine-secret"

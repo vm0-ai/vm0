@@ -13,12 +13,15 @@ changes no deployment configuration, and disables no keys.
 
 ## Production preflight
 
-After this PR merges, manually run **KMS Production Preflight** on `main`.
+After production configuration has switched to the existing target user,
+manually run **KMS Production Preflight** on `main` with the expected current
+production API Vercel deployment ID.
 It uses the existing GitHub `production` environment's protected-branch and
 required-reviewer gates. PR branches cannot access that job.
 
-The job first uses the actual old production IAM user, the existing target
-credentials from Doppler `vm0/prd_kms_migration_32264`, and the old user again to
+The job first loads the actual old production IAM user from the independently
+verified Doppler rollback snapshot, uses the current GitHub production target
+credentials, and then the old user again to
 verify synthetic envelope/legacy reads, target writes, rollback reads, and denial
 of old-key writes, test-key access, and the wrong encryption context. STS must
 identify the exact `vm0-kms-prod` user in each expected account. Only synthetic
@@ -34,16 +37,31 @@ used only in process memory for authentication checks and nested queue parsing;
 it is never logged, written to a report, or uploaded. JavaScript strings cannot
 be explicitly zeroed; plaintext byte buffers are cleared after use.
 
-The workflow has no deployment, secret-update, or database-mutation step. It
-does not grant runtime users `ReEncrypt`. A migrate command must run separately
-under the existing migration operator's permissions and with an authorized
-production database connection.
+The preflight workflow has no deployment, secret-update, or database-mutation
+step. After checking deployed application business flows, **KMS Production
+Migrate** executes the bounded mutation through the separate production OIDC
+migration role. It uses GitHub's existing Neon credentials, repeats a fresh full
+target-runtime scan, and verifies synthetic operator re-encryption and rollback
+before writing. It does not grant runtime users `ReEncrypt`.
 
-## Preserve the effective production configuration
+See the [Actions execution and IAM prerequisite](../../../../../../.github/kms-migration-32264/README.md).
+The workflows share a concurrency group. Verification always starts from the
+beginning; migration accepts a checkpoint cursor and defaults to a 1,000-field
+limit. After all batches, run the preflight again and require a fresh complete
+`databaseVerifiedOnTarget: true` report. These post-cutover workflows must not
+be used to repeat the already-completed backup step below.
 
-After preflight succeeds, run **KMS Production Backup** on `main`. Supply the
-current production API Vercel deployment ID as `expected_deployment_id` and
-approve its protected GitHub `production` environment job. This backup is a
+## Completed pre-cutover configuration backup
+
+The pre-cutover verification ([run 34314877468](https://github.com/vm0-ai/vm0/actions/runs/34314877468))
+and configuration backup ([run 34324494642](https://github.com/vm0-ai/vm0/actions/runs/34324494642))
+completed before the GitHub production secrets changed. The backup workflow
+below documents that completed operation; it requires the old configuration
+and refuses the now-existing destination. Do not repeat it after cutover.
+
+For that operation, **KMS Production Backup** ran on `main` with the
+then-current production API Vercel deployment ID as `expected_deployment_id`
+and an approved protected GitHub `production` environment job. This backup is a
 separate operation from deployment or ciphertext migration.
 
 The job verifies the exact old production IAM user and resolves the configured

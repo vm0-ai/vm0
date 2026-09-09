@@ -50,7 +50,7 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -121,7 +121,7 @@ async def test_capture_enabled_reflection_method_with_managed_auth_defers_to_req
     original_path = flow.request.path
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -164,7 +164,7 @@ async def test_firewall_allow_header_auth_requestheaders_strips_connector_intent
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -204,7 +204,7 @@ async def test_shared_route_intent_selects_requestheaders_auth_in_both_orders(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved-primary"}) as auth_fetch,
     ):
         result = mitm_addon.requestheaders(flow)
@@ -241,7 +241,7 @@ async def test_ambiguous_shared_route_requestheaders_never_fetches_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         result = mitm_addon.requestheaders(flow)
@@ -276,7 +276,7 @@ def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_requ
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -316,7 +316,7 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
     get_headers = AsyncMock(side_effect=auth_error)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -365,7 +365,7 @@ async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
     get_headers = AsyncMock(side_effect=asyncio.CancelledError)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -437,7 +437,7 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -481,7 +481,7 @@ def test_capture_enabled_firewall_block_does_not_install_request_stream(
         path="/repos/octocat/hello",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
@@ -523,7 +523,7 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)

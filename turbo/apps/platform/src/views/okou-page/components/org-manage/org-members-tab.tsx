@@ -40,11 +40,12 @@ import {
   orgRoleSchema,
   type OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
-import type {
-  UsagePackCatalogItem,
-  UsagePackManagementResponse,
-  UsagePackUsd,
-} from "@okouai/api-contracts/contracts/billing";
+import type { UsagePackManagementResponse } from "@okouai/api-contracts/contracts/billing";
+import {
+  MINIMUM_USAGE_PACK_USD,
+  type MemberUsagePackOption,
+  type MemberUsageSelection,
+} from "../../../../signals/okou-page/settings/usage-pack-pricing-state.ts";
 import {
   orgMembers$,
   orgPendingInvitations$,
@@ -71,7 +72,7 @@ import {
   setInviteRole$,
   memberUsagePackManagement$,
   showMemberUsagePack$,
-  invitationUsagePackCatalog$,
+  invitationUsagePackConfiguration$,
   inviteUsagePackUsd$,
   setInviteUsagePackUsd$,
   selfDemoteDialogOpen$,
@@ -357,29 +358,31 @@ type InviteDialogMode =
   | "direct"
   | "error"
   | "loading"
-  | "purchase"
+  | "packages"
   | "setup"
+  | "suspended"
   | "upgrade";
 
 function resolveInviteDialogMode(args: {
   readonly capabilities:
     | {
-        readonly memberInvitationAllowed: boolean;
-        readonly memberInviteUsagePackRequired: boolean;
+        readonly legacyMemberInvitationAllowed: boolean | null;
+        readonly status: "active" | "suspended";
       }
     | undefined;
   readonly catalogLoading: boolean;
   readonly catalogError: boolean;
   readonly usagePackConfigured: boolean;
+  readonly packageSetupRequired: boolean;
 }): InviteDialogMode {
   if (!args.capabilities) {
     return "loading";
   }
-  if (!args.capabilities.memberInvitationAllowed) {
-    return "upgrade";
+  if (args.capabilities.status === "suspended") {
+    return "suspended";
   }
-  if (!args.capabilities.memberInviteUsagePackRequired) {
-    return "direct";
+  if (args.capabilities.legacyMemberInvitationAllowed === false) {
+    return "upgrade";
   }
   if (args.catalogLoading) {
     return "loading";
@@ -387,7 +390,10 @@ function resolveInviteDialogMode(args: {
   if (args.catalogError) {
     return "error";
   }
-  return args.usagePackConfigured ? "purchase" : "setup";
+  if (args.usagePackConfigured) {
+    return args.packageSetupRequired ? "setup" : "packages";
+  }
+  return "direct";
 }
 
 function InviteDialogFields({
@@ -411,11 +417,11 @@ function InviteDialogFields({
   readonly setEmail: (value: string) => void;
   readonly setRole: (value: OrgRole) => void;
   readonly setTouched: (value: boolean) => void;
-  readonly setUsagePackUsd: (value: UsagePackUsd) => void;
+  readonly setUsagePackUsd: (value: MemberUsageSelection) => void;
   readonly touched: boolean;
   readonly trimmed: string;
-  readonly usagePacks: readonly UsagePackCatalogItem[] | null;
-  readonly usagePackUsd: UsagePackUsd;
+  readonly usagePacks: readonly MemberUsagePackOption[] | null;
+  readonly usagePackUsd: MemberUsageSelection;
 }) {
   const { t } = useTranslation();
   return (
@@ -476,7 +482,7 @@ function InviteDialogFields({
       </div>
       {usagePacks && (
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium">
+          <label htmlFor="invite-usage-pack" className="text-sm font-medium">
             {t(($) => {
               return $.billing.plans.usagePacks.memberPackages;
             })}
@@ -488,7 +494,7 @@ function InviteDialogFields({
             }}
             disabled={sending}
           >
-            <SelectTrigger>
+            <SelectTrigger id="invite-usage-pack">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
@@ -517,9 +523,27 @@ function InviteDialogContent({
   ...fieldProps
 }: Omit<ComponentProps<typeof InviteDialogFields>, "usagePacks"> & {
   readonly mode: InviteDialogMode;
-  readonly usagePacks: readonly UsagePackCatalogItem[] | null;
+  readonly usagePacks: readonly MemberUsagePackOption[] | null;
 }) {
   const { t } = useTranslation();
+  if (mode === "suspended") {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.suspended.title;
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogDescription className="py-2 leading-6">
+          {t(($) => {
+            return $.settings.workspace.members.invite.suspended.description;
+          })}
+        </DialogDescription>
+      </>
+    );
+  }
   if (mode === "upgrade") {
     return (
       <>
@@ -533,24 +557,6 @@ function InviteDialogContent({
         <DialogDescription className="py-2 leading-6">
           {t(($) => {
             return $.settings.workspace.members.invite.upgrade.description;
-          })}
-        </DialogDescription>
-      </>
-    );
-  }
-  if (mode === "setup") {
-    return (
-      <>
-        <DialogHeader>
-          <DialogTitle>
-            {t(($) => {
-              return $.settings.workspace.members.invite.title;
-            })}
-          </DialogTitle>
-        </DialogHeader>
-        <DialogDescription className="py-2 leading-6">
-          {t(($) => {
-            return $.billing.plans.usagePacks.packagePerMemberNote;
           })}
         </DialogDescription>
       </>
@@ -594,7 +600,7 @@ function InviteDialogContent({
       </DialogHeader>
       <InviteDialogFields
         {...fieldProps}
-        usagePacks={mode === "purchase" ? usagePacks : null}
+        usagePacks={mode === "packages" || mode === "setup" ? usagePacks : null}
       />
     </>
   );
@@ -603,11 +609,18 @@ function InviteDialogContent({
 function InvitePrimaryActionLabel({
   mode,
   sending,
+  usagePackUsd,
 }: {
   readonly mode: InviteDialogMode;
   readonly sending: boolean;
+  readonly usagePackUsd: MemberUsageSelection;
 }) {
   const { t } = useTranslation();
+  if (mode === "suspended") {
+    return t(($) => {
+      return $.settings.workspace.members.invite.suspended.action;
+    });
+  }
   if (mode === "upgrade") {
     return t(($) => {
       return $.settings.workspace.members.invite.upgrade.action;
@@ -633,7 +646,7 @@ function InvitePrimaryActionLabel({
       return $.billing.plans.usagePacks.configurePackages;
     });
   }
-  if (mode === "purchase") {
+  if (mode === "packages" && usagePackUsd !== 0) {
     return t(($) => {
       return $.chat.actions.continue;
     });
@@ -649,15 +662,17 @@ function InviteDialogActions({
   onCancel,
   onPrimary,
   sending,
+  usagePackUsd,
 }: {
   readonly isValid: boolean;
   readonly mode: InviteDialogMode;
   readonly onCancel: () => void;
   readonly onPrimary: () => void;
   readonly sending: boolean;
+  readonly usagePackUsd: MemberUsageSelection;
 }) {
   const { t } = useTranslation();
-  const submitsInvitation = mode === "direct" || mode === "purchase";
+  const submitsInvitation = mode === "direct" || mode === "packages";
   const primaryDisabled =
     mode === "loading" ||
     mode === "error" ||
@@ -670,7 +685,11 @@ function InviteDialogActions({
         })}
       </Button>
       <Button size="sm" disabled={primaryDisabled} onClick={onPrimary}>
-        <InvitePrimaryActionLabel mode={mode} sending={sending} />
+        <InvitePrimaryActionLabel
+          mode={mode}
+          sending={sending}
+          usagePackUsd={usagePackUsd}
+        />
       </Button>
     </DialogFooter>
   );
@@ -684,18 +703,28 @@ function InviteDialog() {
   const setOpen = useSet(setInviteDialogOpen$);
   const role = useGet(inviteRole$);
   const setRole = useSet(setInviteRole$);
-  const usagePackUsd = useGet(inviteUsagePackUsd$);
+  const selectedUsagePackUsd = useGet(inviteUsagePackUsd$);
   const setUsagePackUsd = useSet(setInviteUsagePackUsd$);
   const capabilities = useLastResolved(orgPlanCapabilities$);
   const openBillingPlans = useSet(openSettingsBillingPlans$);
-  const catalogLoadable = useLoadable(invitationUsagePackCatalog$);
-  const usagePacks =
+  const [, openUsagePackConfiguration] = useLoadableSet(
+    openSettingsUsagePackConfiguration$,
+  );
+  const catalogLoadable = useLoadable(invitationUsagePackConfiguration$);
+  const configuration =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  const usagePacks = configuration?.options ?? null;
+  const usagePackUsd =
+    selectedUsagePackUsd ?? (usagePacks === null ? 0 : MINIMUM_USAGE_PACK_USD);
   const mode = resolveInviteDialogMode({
     capabilities,
     catalogLoading: catalogLoadable.state === "loading",
     catalogError: catalogLoadable.state === "hasError",
     usagePackConfigured: usagePacks !== null,
+    packageSetupRequired:
+      configuration !== null &&
+      !configuration.hasSubscription &&
+      usagePackUsd !== 0,
   });
   const [loadable, doInvite] = useLoadableSet(inviteMember$);
   const sending = loadable.state === "loading";
@@ -712,7 +741,7 @@ function InviteDialog() {
       doInvite(
         trimmed,
         role,
-        mode === "purchase" ? usagePackUsd : null,
+        mode === "packages" ? usagePackUsd : null,
         pageSignal,
       ),
       Reason.DomCallback,
@@ -721,11 +750,15 @@ function InviteDialog() {
 
   const openPackageConfiguration = () => {
     setOpen(false);
-    openBillingPlans();
+    if (mode === "setup") {
+      detach(openUsagePackConfiguration(pageSignal), Reason.DomCallback);
+    } else {
+      openBillingPlans();
+    }
   };
 
   const handlePrimary = () => {
-    if (mode === "setup" || mode === "upgrade") {
+    if (mode === "setup" || mode === "suspended" || mode === "upgrade") {
       openPackageConfiguration();
       return;
     }
@@ -777,6 +810,7 @@ function InviteDialog() {
           }}
           onPrimary={handlePrimary}
           sending={sending}
+          usagePackUsd={usagePackUsd}
         />
       </DialogContent>
     </Dialog>
@@ -940,13 +974,21 @@ function UsagePackCell({
 }) {
   const { i18n, t } = useTranslation();
   if (!allocation) {
-    return <div className="text-[13px] text-muted-foreground">—</div>;
+    return (
+      <div className="text-[13px] text-muted-foreground">
+        {t(($) => {
+          return $.billing.plans.usagePacks.noPackage;
+        })}
+      </div>
+    );
   }
 
   const pendingChange = allocation.pendingChange;
   const downgradeTarget =
-    pendingChange?.kind === "downgrade" && pendingChange.status !== "previewed"
-      ? pendingChange.targetUsagePackUsd
+    (pendingChange?.kind === "downgrade" ||
+      pendingChange?.kind === "removal") &&
+    pendingChange.status !== "previewed"
+      ? (pendingChange.targetUsagePackUsd ?? 0)
       : null;
   const effectiveAt =
     pendingChange?.effectiveAt ??
@@ -961,7 +1003,12 @@ function UsagePackCell({
               return $.billing.plans.usagePacks.management.downgradesToDate;
             },
             {
-              package: formatUsd(downgradeTarget, 0),
+              package:
+                downgradeTarget === 0
+                  ? t(($) => {
+                      return $.billing.plans.usagePacks.noPackage;
+                    })
+                  : formatUsd(downgradeTarget, 0),
               date: formatBillingDate(
                 effectiveAt,
                 i18n.resolvedLanguage ?? i18n.language,
@@ -972,7 +1019,14 @@ function UsagePackCell({
             ($) => {
               return $.billing.plans.usagePacks.management.downgradesToPeriod;
             },
-            { package: formatUsd(downgradeTarget, 0) },
+            {
+              package:
+                downgradeTarget === 0
+                  ? t(($) => {
+                      return $.billing.plans.usagePacks.noPackage;
+                    })
+                  : formatUsd(downgradeTarget, 0),
+            },
           );
 
   return (

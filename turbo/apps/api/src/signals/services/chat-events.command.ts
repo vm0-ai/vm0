@@ -1,4 +1,3 @@
-import { clerk$, type ClerkClient } from "../external/clerk";
 /** Canonical ChatEvent write commands. */
 import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
@@ -463,6 +462,19 @@ interface NormalSendFeatureSwitches {
    * switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
+}
+
+function initialThinkingForSend(
+  args: NormalSendArgs,
+  switches: NormalSendFeatureSwitches,
+): boolean {
+  return (
+    args.agentRunPreCreateSource === undefined &&
+    !isFeatureEnabled(
+      FeatureSwitchKey.ThreadActivitySummary,
+      switches.featureSwitchContext,
+    )
+  );
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -1069,7 +1081,6 @@ async function resolveExplicitRunConfiguration(params: {
 
 async function resolveNormalSendFeatureSwitches(
   db: Db,
-  clerk: ClerkClient,
   orgId: string,
   userId: string,
   templates: readonly GenerationTemplateRequest[],
@@ -1077,13 +1088,7 @@ async function resolveNormalSendFeatureSwitches(
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
     codexFastModeEnabled: isCodexFastModeEnabled(context),
-    introVideoEnabled: await loadIntroVideoTemplateAccess(
-      db,
-      clerk,
-      userId,
-      templates,
-      context,
-    ),
+    introVideoEnabled: loadIntroVideoTemplateAccess(templates, context),
     featureSwitchContext: context,
   };
 }
@@ -2432,7 +2437,6 @@ function resolveTimedExplicitRunConfiguration(
 function resolveTimedNormalSendFeatureSwitches(
   args: NormalSendArgs,
   db: Db,
-  clerk: ClerkClient,
 ): ReturnType<typeof resolveNormalSendFeatureSwitches> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2441,7 +2445,6 @@ function resolveTimedNormalSendFeatureSwitches(
     () => {
       return resolveNormalSendFeatureSwitches(
         db,
-        clerk,
         args.orgId,
         args.userId,
         args.body.userMessage.parts.flatMap((part) => {
@@ -2688,7 +2691,7 @@ function usesPi(
 
 const prepareNormalSend$ = command(
   async (
-    { get, set },
+    { set },
     args: NormalSendArgs,
     signal: AbortSignal,
   ): Promise<
@@ -2707,7 +2710,6 @@ const prepareNormalSend$ = command(
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
       db,
-      get(clerk$),
     );
     signal.throwIfAborted();
     const agentRunSourceResult = await resolveTimedNormalSendAgentRunSource(
@@ -2809,7 +2811,7 @@ const prepareNormalSend$ = command(
       videoRunOptions: templateContext.videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
-      initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
+      initialThinkingEnabled: initialThinkingForSend(args, featureSwitches),
       attachFileMetadata,
       runConfiguration,
       clientEventPrechecked: preflight.prechecked,

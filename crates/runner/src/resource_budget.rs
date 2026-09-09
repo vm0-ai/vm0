@@ -47,8 +47,8 @@ impl CpuAdmissionCapacity {
         // C(P) = P - R(P)
         // B(P, F) = C(P) * F
         //
-        // vm0 uses B(P, F) as the fractional declared-vCPU admission limit;
-        // the GKE source defines R(P), not vm0's overcommit factor F.
+        // The runner uses B(P, F) as the fractional declared-vCPU admission limit;
+        // the GKE source defines R(P), not the runner's overcommit factor F.
         let host_reservation = 0.06 * host_cpus.min(1.0)
             + 0.01 * (host_cpus - 1.0).clamp(0.0, 1.0)
             + 0.005 * (host_cpus - 2.0).clamp(0.0, 2.0)

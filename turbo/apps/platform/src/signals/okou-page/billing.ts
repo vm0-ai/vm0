@@ -34,7 +34,7 @@ import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { isOrgAdmin$ } from "../org.ts";
-import { settle, tapError, withCleanup } from "../utils.ts";
+import { bestEffort, settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution$,
@@ -57,6 +57,7 @@ import {
   setUsagePackSubscriptionChangePreview$,
   usagePackMigrationRevisionPreview$,
   usagePackSubscriptionChangePreview$,
+  type MemberUsagePackOption,
 } from "./settings/usage-pack-pricing-state.ts";
 
 // ---------------------------------------------------------------------------
@@ -465,12 +466,32 @@ export const usagePackCreditsAsync$ = computed((get) => {
   return get(usagePackCreditsResource$).promise;
 });
 
-export const usagePackCatalogAsync$ = computed(async (get) => {
+const usagePackCatalogResponse$ = computed(async (get) => {
   const createClient = get(apiClient$);
   const client = createClient(billingUsagePackCatalogContract);
   const result = await accept(client.get(), [200]);
-  return result.body.usagePacks;
+  return result.body;
 });
+
+export const memberUsagePackOptionsAsync$ = computed(
+  async (get): Promise<readonly MemberUsagePackOption[]> => {
+    const catalog = await get(usagePackCatalogResponse$);
+    // Older APIs only accept paid selections. Keep their catalog unchanged until
+    // the server advertises support for a member without a paid allocation.
+    return catalog.supportsFreeMembers
+      ? [
+          {
+            usagePackUsd: 0,
+            priceUsd: 0,
+            purchasedCredits: 0,
+            bonusCredits: 0,
+            totalCredits: 0,
+          },
+          ...catalog.usagePacks,
+        ]
+      : catalog.usagePacks;
+  },
+);
 
 export const usagePackManagementAsync$ = computed(async (get) => {
   get(usagePackManagementReload$);
@@ -485,7 +506,10 @@ export const usagePackMigrationAsync$ = computed(
     get(usagePackMigrationReload$);
     const createClient = get(apiClient$);
     const client = createClient(billingUsagePackMigrationContract);
-    const result = await accept(client.get(), [200, 403, 404, 409]);
+    const result = await accept(
+      client.get({ query: { supportsFreeMembers: "true" } }),
+      [200, 403, 404, 409],
+    );
     return result.status === 200 ? result.body : null;
   },
 );
@@ -823,7 +847,10 @@ export const startCheckout$ = command(
     if (!("url" in result.body)) {
       throw new Error("Plan checkout returned an unexpected confirmation");
     }
-    set(capturePaidOnboardingRedirectToStripe$, "paywall");
+    await bestEffort(
+      set(capturePaidOnboardingRedirectToStripe$, "paywall", signal),
+      signal,
+    );
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
@@ -950,7 +977,10 @@ export const confirmSubscriptionPurchase$ = command(
       );
       signal.throwIfAborted();
       if ("url" in refreshed.body) {
-        set(capturePaidOnboardingRedirectToStripe$, "paywall");
+        await bestEffort(
+          set(capturePaidOnboardingRedirectToStripe$, "paywall", signal),
+          signal,
+        );
         if (state.newTab) {
           window.open(refreshed.body.url, "_blank");
         } else {

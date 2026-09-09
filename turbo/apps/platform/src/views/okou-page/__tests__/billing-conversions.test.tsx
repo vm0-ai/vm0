@@ -57,43 +57,52 @@ test("Returning from concurrency checkout confirms purchased capacity", async ()
   );
 });
 
-test("A confirmed subscription reports the paid conversion", async () => {
-  const googleTag = vi.fn<GoogleTag>();
-  vi.stubGlobal("gtag", googleTag);
-  context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
-    return respond(200, {
-      completed: true,
-      googleAdsConversion: {
-        transactionId: "invoice_subscription_123",
-        valueUsd: 160,
-      },
+test.each(["7935750692", "1001302527", undefined])(
+  "A confirmed subscription reports a browser conversion only for the new account: %s",
+  async (accountId) => {
+    const googleTag = vi.fn<GoogleTag>();
+    vi.stubGlobal("gtag", googleTag);
+    context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
+      return respond(200, {
+        completed: true,
+        googleAdsConversion: {
+          googleAdsAccountId: accountId,
+          transactionId: "invoice_subscription_123",
+          valueUsd: 160,
+        },
+      });
     });
-  });
 
-  await setupPage({
-    context,
-    path: "/agents?billing=team&billing_session_id=cs_paid_subscription",
-    host: "app.okou.ai",
-  });
+    await setupPage({
+      context,
+      path: "/agents?billing=team&billing_session_id=cs_paid_subscription",
+      host: "app.okou.ai",
+    });
 
-  await expect(
-    screen.findByRole("heading", { name: "Agents" }),
-  ).resolves.toBeVisible();
-  await waitFor(() => {
-    expect(window.history.replaceState).toHaveBeenLastCalledWith(
-      {},
-      "",
-      "/agents",
-    );
-    expect(googleTag).toHaveBeenCalledTimes(1);
-  });
-  expect(googleTag).toHaveBeenCalledWith("event", "conversion", {
-    send_to: "AW-18407336975/ePWuCPuRrOccEI_YpslE",
-    value: 40,
-    currency: "USD",
-    transaction_id: "invoice_subscription_123",
-  });
-});
+    await expect(
+      screen.findByRole("heading", { name: "Agents" }),
+    ).resolves.toBeVisible();
+    await waitFor(() => {
+      expect(window.history.replaceState).toHaveBeenLastCalledWith(
+        {},
+        "",
+        "/agents",
+      );
+      expect(googleTag).toHaveBeenCalledTimes(
+        accountId === "7935750692" ? 1 : 0,
+      );
+    });
+    if (accountId !== "7935750692") {
+      return;
+    }
+    expect(googleTag).toHaveBeenCalledWith("event", "conversion", {
+      send_to: "AW-18407336975/ePWuCPuRrOccEI_YpslE",
+      value: 40,
+      currency: "USD",
+      transaction_id: "invoice_subscription_123",
+    });
+  },
+);
 
 test("A confirmed usage-pack purchase reports the paid conversion", async () => {
   const googleTag = vi.fn<GoogleTag>();
@@ -165,6 +174,7 @@ test("A confirmed usage-pack purchase reports the paid conversion", async () => 
         status: "completed",
         hostedInvoiceUrl: null,
         googleAdsConversion: {
+          googleAdsAccountId: "7935750692",
           transactionId: "invoice_usage_pack_123",
           valueUsd: 40,
         },

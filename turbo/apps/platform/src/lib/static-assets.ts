@@ -13,6 +13,8 @@ export const platformOkouWordmarkDarkImg =
   "https://static.okou.io/public/okou-logo-wordmark-dark-40e256bb155e.svg";
 export const platformOkouWordmarkLightImg =
   "https://static.okou.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg";
+export const platformOkouMarkDarkImg =
+  "https://static.okou.io/public/okou-logo-mark-dark-00337dd44485.svg";
 export const platformFeishuAppIconImg = platformStaticAssetUrl(
   "views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
 );

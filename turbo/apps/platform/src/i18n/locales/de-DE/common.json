@@ -1503,7 +1503,7 @@
           "scheduledFor": "Geplant für {{date}}",
           "today": "Heute"
         },
-        "memberExclusive": "Ein Paket pro Mitglied. Jede Mehrnutzung wird über nutzungsabhängige Credits abgerechnet.",
+        "memberExclusive": "Mitgliederpakete sind optional. Mehrverbrauch wird mit nutzungsbasierten Guthaben abgerechnet.",
         "memberPackages": "Mitgliederpakete",
         "memberUsage": "Nutzung des Mitglieds",
         "migration": {
@@ -1514,7 +1514,7 @@
           "error": "Dieses Abonnement konnte nicht migriert werden. Aktualisieren Sie die Seite und versuchen Sie es erneut.",
           "invoice": "Rechnung anzeigen",
           "processing": "Die Umstellung wird bei Stripe geplant.",
-          "ready": "Wählen Sie für jedes Mitglied und jede ausstehende Einladung ein erforderliches monatliches Paket.",
+          "ready": "Wähle für jedes Mitglied und jede ausstehende Einladung ein monatliches Paket oder „Kein Paket“.",
           "review": "Umstellung prüfen",
           "reviewDescription": "Vergleichen Sie den aktuellen Legacy-Plan mit dem neuen wiederkehrenden Plan, bevor Sie die Umstellung planen.",
           "reviewTitle": "Planumstellung prüfen",
@@ -1523,11 +1523,13 @@
           "title": "Legacy-Plan umstellen"
         },
         "monthlyTotal": "Monatliche Gesamtkosten",
+        "noPackage": "Kein Paket",
         "orderSummary": "Bestellübersicht",
-        "packagePerMemberNote": "Jedes Mitglied braucht ein Paket. Die Pakete wählst du im nächsten Schritt.",
+        "packagePerMemberNote": "Wähle im nächsten Schritt für jedes Mitglied ein kostenpflichtiges Paket oder „Kein Paket“.",
         "packCredits": "{{credits}} Credits",
         "packCreditsDiscount": "{{credits}} Credits · {{discount}}% Rabatt",
         "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",
+        "paidPackageRequired": "Wähle für mindestens ein Mitglied ein kostenpflichtiges Paket aus, um fortzufahren.",
         "planChangeError": "Die Abonnementänderung konnte nicht vorbereitet werden. Versuche es erneut.",
         "planPlusPackages": "Tarif {{plan}} · Mitgliedspakete je {{lowest}}–{{highest}}",
         "planStep": "Plan",
@@ -2059,6 +2061,8 @@
       "placeholder": "Was soll sich daran ändern?",
       "quote": "Zitieren",
       "remove": "Feedback entfernen",
+      "selectionEnd": "Auswahlende anpassen",
+      "selectionStart": "Auswahlbeginn anpassen",
       "sentEmailDescription": "eine gesendete E-Mail (Mail-ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", gesendete ID: {{sentId}}",
       "sourcePartHeading": "Feedback zu diesem Teil von {{description}}:",
@@ -5556,6 +5560,11 @@
           },
           "roleLabel": "Rolle",
           "send": "Einladung senden",
+          "suspended": {
+            "action": "Tarife ansehen",
+            "description": "Reaktivieren Sie den Tarif Ihres Arbeitsbereichs, um Mitglieder einzuladen.",
+            "title": "Zum Einladen von Mitgliedern reaktivieren"
+          },
           "title": "Mitglied einladen",
           "upgrade": {
             "action": "Auf Pro upgraden",

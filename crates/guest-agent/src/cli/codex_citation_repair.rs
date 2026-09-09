@@ -204,7 +204,7 @@ fn repair_text(raw: &str, normalized: &str) -> Option<String> {
 }
 
 /// Pinned native literal-only behavior (OpenAI Codex 0.153.4, Apache-2.0).
-/// Unlike vm0's public defense, native leaves a stray closing marker unchanged.
+/// Unlike the platform's public defense, native leaves a stray closing marker unchanged.
 fn native_citation_projection(mut text: &str) -> String {
     let mut visible = String::new();
     while let Some((before, body)) = text.split_once(OPEN) {

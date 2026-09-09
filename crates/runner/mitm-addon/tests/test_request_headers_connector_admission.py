@@ -65,7 +65,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -96,7 +96,7 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
-                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "base": "https://api.okou.ai/api/test/oauth-provider",
                 "auth": {"headers": {"Authorization": "Bearer x"}},
                 "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
             },
@@ -112,10 +112,10 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
@@ -187,18 +187,18 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         track_api_url_parse,
     )
     expected_cached_api_derivation = (
-        (("api.vm0.ai", 443),),
+        (("api.okou.ai", 443),),
         (),
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
         assert admission_derivations == [expected_cached_api_derivation]
         _assert_no_request_stream(flow)
-        assert flow.server_conn.address == ("api.vm0.ai", 443)
+        assert flow.server_conn.address == ("api.okou.ai", 443)
 
         await mitm_addon.request(flow)
 
@@ -210,7 +210,7 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -273,7 +273,7 @@ async def test_test_connector_bounded_requestheaders_without_bypass_blocks(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
-                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "base": "https://api.okou.ai/api/test/oauth-provider",
                 "auth": {"headers": {"Authorization": "Bearer x"}},
                 "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
             },
@@ -289,17 +289,17 @@ async def test_test_connector_bounded_requestheaders_without_bypass_blocks(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "wrong-secret"),
         ),
     )
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -338,7 +338,7 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -381,7 +381,7 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verif
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -471,7 +471,7 @@ async def test_firewall_allow_header_auth_revalidates_connection_after_auth_wait
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         requestheaders_task = asyncio.create_task(
             await_requestheaders_result(mitm_addon.requestheaders(flow))
         )
@@ -528,7 +528,7 @@ async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
     flow.client_conn.sockname = ("172.66.0.243", 443)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -592,7 +592,7 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -649,7 +649,7 @@ async def test_firewall_allow_prior_client_binding_scan_parses_live_endpoint_onc
     binding_ip_parses = track_normalized_binding_ip_parses(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -701,7 +701,7 @@ async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -778,7 +778,7 @@ async def test_firewall_allow_header_auth_unconnected_skips_prior_client_binding
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -821,7 +821,7 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
     validated_flows = track_trusted_authority_validations(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -877,7 +877,7 @@ def test_bounded_requestheaders_keeps_matching_connector_binding_without_classif
 
     monkeypatch.setattr(registry, "load_registry_state", track_registry_load)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         assert mitm_addon.requestheaders(flow) is None
 
     assert validated_flows == [flow]
@@ -912,7 +912,7 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tl
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -953,7 +953,7 @@ async def test_firewall_allow_small_bounded_body_blocks_without_verified_connect
     flow.client_conn.sockname = ("172.66.0.243", 443)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -986,7 +986,7 @@ async def test_firewall_allow_unknown_body_length_retargets_unconnected_upstream
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None

@@ -30,6 +30,7 @@ import {
   getConnectorSwitch,
   listAgent,
   mockConnectors,
+  mockOAuthCompletions,
   mockPublicConnectorStatus,
   publicStatusItem,
 } from "./connector-page-test-helpers.ts";
@@ -298,6 +299,8 @@ test("Add an AWS account with an external code", async () => {
 });
 
 test("Add an account through OpenID", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   const slug = "server-authored-steam";
   mockConnectors(context, []);
   context.mocks.data.agents([
@@ -334,6 +337,7 @@ test("Add an account through OpenID", async () => {
     });
     return respond(200, {
       authorizationUrl: "https://openid.test/partner-steam/authorize",
+      oauthAttemptId,
     });
   });
   await setupPage({
@@ -353,7 +357,8 @@ test("Add an account through OpenID", async () => {
       "https://openid.test/partner-steam/authorize",
     );
   });
-  storeConnectedConnector(slug, "partner-openid");
+  const connected = storeConnectedConnector(slug, "partner-openid");
+  completedAttempts.set(oauthAttemptId, connected.id);
   context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
   await waitFor(() => {
     expect(
@@ -764,7 +769,9 @@ test("Follow provider-authored external-code instructions", async () => {
   expect(within(dialog).getByPlaceholderText("Code")).toBeInTheDocument();
 });
 
-test("Complete OAuth only after the selected connector changes", async () => {
+test("Complete OAuth only after the current attempt succeeds", async () => {
+  const completedAttempts = mockOAuthCompletions(context);
+  let oauthAttemptId = crypto.randomUUID();
   const researchId = "c0000000-0000-4000-a000-000000000002";
   let listed = mockConnectors(context, []);
   context.mocks.data.agents([
@@ -794,7 +801,9 @@ test("Complete OAuth only after the selected connector changes", async () => {
   let authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
   context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
+    oauthAttemptId = crypto.randomUUID();
     return respond(200, {
+      oauthAttemptId,
       authorizationUrl: "https://oauth.test/stripe/authorize",
     });
   });
@@ -851,6 +860,11 @@ test("Complete OAuth only after the selected connector changes", async () => {
   listed = mockConnectors(context, [
     { connectorSlug: "stripe", authMethod: "oauth" },
   ]);
+  const connected = listed[0];
+  if (!connected) {
+    throw new Error("Expected completed Stripe account");
+  }
+  completedAttempts.set(oauthAttemptId, connected.id);
   context.mocks.ably.trigger("connector:changed", { connectorSlug: "stripe" });
 
   await waitFor(() => {
@@ -859,6 +873,10 @@ test("Complete OAuth only after the selected connector changes", async () => {
       within(getConnectorCard("Public Stripe")).getByText("Unnamed account"),
     ).toBeInTheDocument();
   });
+  const naming = await screen.findByRole("dialog", {
+    name: "Name your Public Stripe account",
+  });
+  click(getConnectorAction("button", "Skip", naming));
   await waitFor(() => {
     expect(
       getConnectorAction(

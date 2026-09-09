@@ -1,5 +1,5 @@
 import type { Data, Element, ElementContent, Root, RootContent } from "hast";
-import { marked, Marked, Renderer, type Token, type Tokens } from "marked";
+import { Marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -461,7 +461,9 @@ export function parseMarkdownTree(
   options: MarkdownParseOptions,
 ): Root {
   const math = options.math ? createMarkdownMathContext() : undefined;
-  const parser = math ? new Marked(math.extension) : marked;
+  // Tiptap registers editor-only tokenizers on the global marked instance.
+  // Keep display parsing independent of which editors have been opened.
+  const parser = math ? new Marked(math.extension) : new Marked();
   const html = parser.parse(source, {
     async: false,
     renderer: options.mermaid ? createMarkedRenderer() : null,

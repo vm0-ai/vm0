@@ -15,6 +15,14 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../mocks/server";
+import {
+  catalogItem,
+  stubConnectorCatalog,
+} from "../../__tests__/helpers/connector-catalog";
+import {
+  customConnector,
+  stubCustomConnectors,
+} from "../../__tests__/helpers/custom-connectors";
 import { permissionRequestCommand } from "../permission-request";
 
 const SLACK_READ_PERMISSION = "admin.conversations:read";
@@ -86,6 +94,17 @@ function stubDiagnostic(
     request: ReturnType<typeof connectorCheckRequestSchema.parse>,
   ) => void,
 ): void {
+  if (result.outcome === "unknown-connector") {
+    server.use(
+      stubConnectorCatalog(
+        [catalogItem({ connectorSlug: "unknown-service" })],
+        baseUrl,
+      ),
+    );
+  }
+  if ("connector" in result) {
+    server.use(stubConnectorCatalog([catalogItem(result.connector)], baseUrl));
+  }
   server.use(
     http.post(
       `${baseUrl}/api/connectors/diagnostics/check`,
@@ -125,38 +144,52 @@ describe("okou connector permission-request command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("rejects a custom UUID target with settings guidance instead of a builtin approval link", async () => {
-    const customId = "33333333-3333-4333-8333-333333333333";
-    vi.stubEnv("OKOU_AGENT_ID", "agent-1");
-    vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-1");
-    let diagnosticCalls = 0;
-    stubDiagnostic(resolvedUrlDiagnostic(), "https://app.okou.ai", () => {
-      diagnosticCalls += 1;
-    });
+  it.each([
+    "custom:33333333-3333-4333-8333-333333333333",
+    "33333333-3333-4333-8333-333333333333",
+    "_acme-search",
+    "custom:_acme-search",
+    "Acme Search",
+  ])(
+    "resolves custom selector %s to settings guidance without builtin approval",
+    async (selector) => {
+      const customId = "33333333-3333-4333-8333-333333333333";
+      vi.stubEnv("OKOU_AGENT_ID", "agent-1");
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-1");
+      server.use(
+        stubCustomConnectors([customConnector()], "https://app.okou.ai"),
+      );
+      let diagnosticCalls = 0;
+      stubDiagnostic(resolvedUrlDiagnostic(), "https://app.okou.ai", () => {
+        diagnosticCalls += 1;
+      });
 
-    await expect(
-      permissionRequestCommand.parseAsync([
-        "node",
-        "okou",
-        `custom:${customId}`,
-        "--permission",
-        "items:write",
-        "--url",
-        "https://api.acme.test/items",
-        "--callback-prompt",
-        "Continue after approval",
-      ]),
-    ).rejects.toThrow("process.exit called");
+      await expect(
+        permissionRequestCommand.parseAsync([
+          "node",
+          "okou",
+          selector,
+          "--permission",
+          "items:write",
+          "--url",
+          "https://api.acme.test/items",
+          "--callback-prompt",
+          "Continue after approval",
+        ]),
+      ).rejects.toThrow("process.exit called");
 
-    const message = mockConsoleError.mock.calls.flat().join("\n");
-    expect(message).toContain(customId);
-    expect(message).toContain("[Connectors](https://app.okou.ai/connectors)");
-    expect(message).toContain("review Permissions");
-    expect(message).not.toMatch(/connectorSlug=|action=allow|callbackPrompt=/);
-    expect(mockConsoleLog).not.toHaveBeenCalled();
-    expect(diagnosticCalls).toBe(0);
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
+      const message = mockConsoleError.mock.calls.flat().join("\n");
+      expect(message).toContain(customId);
+      expect(message).toContain("[Connectors](https://app.okou.ai/connectors)");
+      expect(message).toContain("review Permissions");
+      expect(message).not.toMatch(
+        /connectorSlug=|action=allow|callbackPrompt=/,
+      );
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+      expect(diagnosticCalls).toBe(0);
+      expect(mockExit).toHaveBeenCalledWith(1);
+    },
+  );
 
   it("outputs an allow grant link without choosing the user's duration", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.okou.ai");
@@ -489,41 +522,78 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain("Only allow this permission below");
   });
 
-  it("validates a server-authored connector absent from the CLI bundle", async () => {
-    vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.okou.ai");
-    const url = "https://api.server-only.example/v1/records";
-    stubDiagnostic(
-      resolvedUrlDiagnostic({
-        connectorSlug: "server-only",
-        label: "Server Only",
-        base: "https://api.server-only.example",
-        relativePath: "/v1/records",
-        permission: {
-          kind: "matched",
-          permissions: [
-            {
-              name: "records.read",
-              policy: { outcome: "deny", basis: "deny-list" },
-            },
-          ],
-        },
+  it.each([
+    ["server-only", "Server Only"],
+    ["builtin:server-only", "Server Only"],
+    ["Server Only", "Server Only"],
+    ["builtin:Server Only", "Server Only"],
+    ["serveronly", "serveronly"],
+    ["builtin:serveronly", "serveronly"],
+  ])(
+    "validates server-authored selector %s absent from the CLI bundle",
+    async (selector, label) => {
+      vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.okou.ai");
+      server.use(stubCustomConnectors([], "https://app.okou.ai"));
+      const url = "https://api.server-only.example/v1/records";
+      stubDiagnostic(
+        resolvedUrlDiagnostic({
+          connectorSlug: "server-only",
+          label,
+          base: "https://api.server-only.example",
+          relativePath: "/v1/records",
+          permission: {
+            kind: "matched",
+            permissions: [
+              {
+                name: "records.read",
+                policy: { outcome: "deny", basis: "deny-list" },
+              },
+            ],
+          },
+        }),
+      );
+
+      await permissionRequestCommand.parseAsync([
+        "node",
+        "cli",
+        selector,
+        "--permission",
+        "records.read",
+        "--url",
+        url,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`[Manage ${label} permissions]`);
+      expect(logCalls).toContain("connectorSlug=server-only");
+      expect(logCalls).toContain("permission=records.read");
+    },
+  );
+
+  it("rejects embedded credentials before resolving a custom display name", async () => {
+    let inventoryRequests = 0;
+    server.use(
+      http.get("https://app.okou.ai/api/custom-connectors", () => {
+        inventoryRequests += 1;
+        return HttpResponse.json({ connectors: [customConnector()] });
       }),
     );
-
-    await permissionRequestCommand.parseAsync([
-      "node",
-      "cli",
-      "server-only",
-      "--permission",
-      "records.read",
-      "--url",
-      url,
-    ]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("[Manage Server Only permissions]");
-    expect(logCalls).toContain("connectorSlug=server-only");
-    expect(logCalls).toContain("permission=records.read");
+    await expect(
+      permissionRequestCommand.parseAsync([
+        "node",
+        "okou",
+        "Acme Search",
+        "--permission",
+        "items:write",
+        "--url",
+        "https://user:secret-password@api.acme.test/items",
+      ]),
+    ).rejects.toThrow("process.exit called");
+    const output = mockConsoleError.mock.calls.flat().join("\n");
+    expect(output).toContain("valid absolute http or https URL");
+    expect(output).not.toContain("secret-password");
+    expect(inventoryRequests).toBe(0);
+    expect(mockConsoleLog).not.toHaveBeenCalled();
   });
 
   it("exits with an error for an unknown connector slug", async () => {
@@ -532,7 +602,7 @@ describe("okou connector permission-request command", () => {
       await permissionRequestCommand.parseAsync([
         "node",
         "cli",
-        "unknown-service",
+        "builtin:unknown-service",
         "--permission",
         "foo",
         "--url",

@@ -98,7 +98,7 @@ class TestErrorHandler:
             ),
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             mitm_addon.requestheaders(flow)
             assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
                 1,
@@ -122,7 +122,7 @@ class TestErrorHandler:
             method="POST",
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             await mitm_addon.request(flow)
             assert flow.response is None
             flow.error = Error("connection reset by peer")
@@ -150,7 +150,7 @@ class TestErrorHandler:
             method="POST",
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             request_chunk = record_connector_diagnostic_requestheaders_context(flow)
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
@@ -178,7 +178,7 @@ class TestErrorHandler:
             method="POST",
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             record_connector_diagnostic_requestheaders_context(flow)
             flow.response = tutils.tresp(
                 status_code=401,
@@ -228,7 +228,7 @@ class TestErrorHandler:
             ),
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             mitm_addon.requestheaders(flow)
             stream = flow.request.stream
             assert callable(stream)
@@ -324,7 +324,7 @@ class TestErrorHandler:
             ),
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             await mitm_addon.request(flow)
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
@@ -352,7 +352,7 @@ class TestErrorHandler:
             ),
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             await mitm_addon.request(flow)
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
@@ -593,7 +593,7 @@ class TestErrorHandler:
             request_headers=headers(("Host", "api.anthropic.com")),
         )
 
-        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
             await mitm_addon.request(flow)
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)

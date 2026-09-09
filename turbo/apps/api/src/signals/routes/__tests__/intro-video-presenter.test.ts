@@ -189,7 +189,7 @@ async function orgCredits(
 
 describe("Intro Video HeyGen presenter route", () => {
   beforeEach(() => {
-    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
+    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.okou.test");
     mockEnv("HEYGEN_API_KEY", "test-heygen-key");
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -242,51 +242,6 @@ describe("Intro Video HeyGen presenter route", () => {
         code: "FORBIDDEN",
         message: "Intro Video is not enabled",
       },
-    });
-  });
-
-  it("honors the Intro Video email rollout for catalog requests", async () => {
-    const fixture = await seedFixture();
-    context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [
-        {
-          id: fixture.userId,
-          primaryEmailAddressId: "email_bingjie",
-          emailAddresses: [
-            {
-              id: "email_bingjie",
-              emailAddress: "bingjie@vm0.ai",
-            },
-          ],
-        },
-      ],
-    });
-    server.use(
-      http.get(HEYGEN_VOICES_URL, () => {
-        return HttpResponse.json({
-          data: [],
-          has_more: false,
-          next_token: null,
-        });
-      }),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await createIntroVideoPresenterTestApp(
-      fixture.usagePricingResolution,
-    ).request("/api/intro-video/voices?pageSize=24", {
-      headers: authHeaders(),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      voices: [],
-      hasMore: false,
-      nextToken: null,
-    });
-    expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
-      userId: [fixture.userId],
-      limit: 1,
     });
   });
 

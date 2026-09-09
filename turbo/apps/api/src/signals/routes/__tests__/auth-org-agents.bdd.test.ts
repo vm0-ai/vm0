@@ -234,13 +234,50 @@ describe("AUTH-03", () => {
 });
 
 describe("ORG-01 and ORG-02", () => {
+  it("uses entitlement status for invitations and allows a reactivated workspace", async () => {
+    const admin = api.user();
+    await onboardAdmin(admin);
+    await upsertOrgPlanEntitlementFixture({
+      orgId: requiredOrgId(admin),
+      status: "suspended",
+    });
+
+    const invitation = {
+      email: `status-${shortId()}@example.test`,
+      role: "member" as const,
+    };
+    const blocked = await api.requestInviteMember(admin, invitation, [403]);
+    expectApiError(blocked.body);
+    expect(blocked.body.error.message).toBe(
+      "Reactivate your workspace plan to invite members",
+    );
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId: requiredOrgId(admin),
+      status: "manual_active",
+    });
+    const billing = await runsApi.readBillingStatus(admin);
+    expect(billing).toMatchObject({
+      status: "active",
+      memberInvitationAllowed: true,
+    });
+    await api.inviteMember(admin, invitation);
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ emailAddress: invitation.email }),
+    );
+  });
+
   it("projects direct invitation redirects to Okou", async () => {
     mockEnv("APP_URL", "https://app.okou.ai");
     const admin = api.user();
     await upsertOrgPlanEntitlementFixture({
       orgId: requiredOrgId(admin),
-      memberInvitationAllowed: true,
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
 
     const inviteEmail = `okou-invite-${shortId()}@example.test`;
@@ -279,8 +316,7 @@ describe("ORG-01 and ORG-02", () => {
     await onboardAdmin(admin, { slug: baseSlug, name: "BDD Org" });
     await upsertOrgPlanEntitlementFixture({
       orgId: requiredOrgId(admin),
-      memberInvitationAllowed: true,
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
     api.mockClerkOrg(admin, {
       slug: baseSlug,

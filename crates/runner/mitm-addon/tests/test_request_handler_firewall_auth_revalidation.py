@@ -375,7 +375,7 @@ async def test_registry_change_during_auth_blocks_old_authorization(
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
 
     hook_task: asyncio.Task[None] | None = None
-    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         if hook_phase == "request":
             hook_task = asyncio.create_task(mitm_addon.request(flow))
@@ -452,7 +452,7 @@ async def test_public_destination_policy_added_during_auth_blocks_private_destin
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
 
     request_task: asyncio.Task[None] | None = None
-    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
@@ -522,7 +522,7 @@ async def test_unrelated_same_run_policy_change_keeps_equivalent_authorization(
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
 
     hook_task: asyncio.Task[None] | None = None
-    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         if hook_phase == "request":
             hook_task = asyncio.create_task(mitm_addon.request(flow))
@@ -581,7 +581,7 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
 
     request_task: asyncio.Task[None] | None = None
-    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
@@ -647,7 +647,7 @@ async def test_custom_owner_change_during_auth_discards_builtin_credentials(
     with mitm_ctx(
         registry_path=str(registry_path),
         builtin_firewall_catalog_cache_path=str(cache_path),
-        api_url="https://api.vm0.ai",
+        api_url="https://api.okou.ai",
     ):
         mitm_addon.tls_clienthello(tls_data)
         request_task = asyncio.create_task(mitm_addon.request(flow))
@@ -708,7 +708,7 @@ async def test_auth_base_registry_change_during_auth_blocks_resolved_forward(
     monkeypatch.setattr(auth, "forward_request", forward_request)
 
     request_task: asyncio.Task[None] | None = None
-    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         assert mitm_addon.requestheaders(flow) is None
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
@@ -773,7 +773,7 @@ async def test_auth_base_registry_change_while_waiting_for_active_slot_blocks_fo
 
     request_task: asyncio.Task[None] | None = None
     monkeypatch.setattr(auth_base_forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1)
-    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"):
         async with forwarder_concurrency_harness() as (scenario, upstream):
             mitm_addon.tls_clienthello(tls_data)
             assert mitm_addon.requestheaders(flow) is None
@@ -857,7 +857,7 @@ async def test_auth_base_registry_change_while_waiting_for_dns_blocks_forward(
 
     request_task: asyncio.Task[None] | None = None
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         fake_forwarder_upstream(lookup_side_effect=resolve_after_release) as upstream,
     ):
         mitm_addon.tls_clienthello(tls_data)
@@ -915,7 +915,7 @@ async def test_auth_base_unrelated_policy_change_keeps_equivalent_authorization(
 
     request_task: asyncio.Task[None] | None = None
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         fake_forwarder_upstream(status=202, body=b"accepted") as upstream,
     ):
         mitm_addon.tls_clienthello(tls_data)

@@ -1243,14 +1243,14 @@ test("Switch to another signed-in account", async () => {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
-        imageUrl: "https://cdn.vm0.test/users/alex.png",
+        imageUrl: "https://cdn.okou.test/users/alex.png",
         clientSessions: [
           {
             id: "test-session-id",
             status: "active",
             user: {
               fullName: "Alex Rivera",
-              imageUrl: "https://cdn.vm0.test/users/alex.png",
+              imageUrl: "https://cdn.okou.test/users/alex.png",
               primaryEmailAddress: {
                 emailAddress: "alex.rivera@example.test",
               },
@@ -1261,7 +1261,7 @@ test("Switch to another signed-in account", async () => {
             status: "active",
             user: {
               fullName: "Jamie Chen",
-              imageUrl: "https://cdn.vm0.test/users/jamie.png",
+              imageUrl: "https://cdn.okou.test/users/jamie.png",
               primaryEmailAddress: {
                 emailAddress: "jamie.chen@example.test",
               },

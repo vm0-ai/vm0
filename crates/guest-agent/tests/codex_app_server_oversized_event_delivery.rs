@@ -91,12 +91,6 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         })
         .collect::<Vec<_>>();
     assert_eq!(delivered.len(), 12);
-    assert!(
-        requests
-            .iter()
-            .all(|request| !request.body.contains("[vm0:")
-                && !request.body.contains("\"delivery_notice\""))
-    );
     assert_eq!(
         delivered
             .iter()

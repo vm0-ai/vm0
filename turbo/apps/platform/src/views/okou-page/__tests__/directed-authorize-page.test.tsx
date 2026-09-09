@@ -1,3 +1,4 @@
+import { mockOAuthCompletions } from "./connector-page-test-helpers.ts";
 import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
@@ -132,7 +133,10 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
   return { authWindow };
 }
 
-function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
+function mockConnectorOpenIdStart(args: {
+  readonly oauthAttemptId: string;
+  readonly onStart: () => void;
+}): {
   readonly authWindow: Window;
 } {
   const authWindow = context.mocks.browser.authWindow();
@@ -154,6 +158,7 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
       args?.onStart?.();
       return respond(200, {
         authorizationUrl: `https://openid.test/${params.connectorSlug}/authorize`,
+        oauthAttemptId: args.oauthAttemptId,
       });
     },
   );
@@ -365,13 +370,18 @@ test("Connect a manual-token connector while authorizing an agent", async () => 
 
 test("Connect and authorize an agent through OpenID", async () => {
   context.mocks.data.connectors([]);
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
+  const connectionId = crypto.randomUUID();
   let authorized = false;
   const { authWindow } = mockConnectorOpenIdStart({
+    oauthAttemptId,
     onStart: () => {
       authorized = true;
+      completedAttempts.set(oauthAttemptId, connectionId);
       context.mocks.data.connectors([
         {
-          id: crypto.randomUUID(),
+          id: connectionId,
           slug: "steam",
           authMethod: "openid",
           externalId: null,

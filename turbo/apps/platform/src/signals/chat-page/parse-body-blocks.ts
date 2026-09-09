@@ -432,7 +432,7 @@ function hasExplicitUrlOrigin(url: string): boolean {
 
 function isPlatformFileUrl(url: string): boolean {
   const host = browserHost();
-  const baseUrl = host ? `https://${host}` : "https://vm0.local";
+  const baseUrl = host ? `https://${host}` : "https://relative.invalid";
   const parsed = tryParseUrl(url, baseUrl);
   if (!parsed) {
     return false;
@@ -488,7 +488,7 @@ function isHostedSiteUrl(url: string): boolean {
   }
 
   const host = browserHost();
-  const baseUrl = host ? `https://${host}` : "https://vm0.local";
+  const baseUrl = host ? `https://${host}` : "https://relative.invalid";
   const parsed = tryParseUrl(url, baseUrl);
   if (!parsed) {
     return false;
@@ -513,7 +513,7 @@ function hostedSiteAttachment(
     };
   }
   const host = browserHost();
-  const baseUrl = host ? `https://${host}` : "https://vm0.local";
+  const baseUrl = host ? `https://${host}` : "https://relative.invalid";
   const parsed = tryParseUrl(url, baseUrl);
   if (!parsed) {
     return null;

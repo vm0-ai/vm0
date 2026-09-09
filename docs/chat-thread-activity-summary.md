@@ -2,8 +2,9 @@
 
 `threadActivitySummary` is disabled by default, with no rollout audience. Both
 accepted-event capture and direct summary requests resolve the canonical
-owner's organization/user database overrides. This backend slice leaves the
-existing initial-thinking producer and all frontend behavior intact.
+owner's organization/user database overrides. The same switch hands off the
+initial-thinking producer to demand from the visible main thread. Disabled
+accounts retain the existing producer, display and historical behavior.
 
 ## API contract
 
@@ -78,7 +79,41 @@ Debug diagnostics record capture outcomes, cache states, attempt/completion
 counts, latency, cooldown, and cleanup counts. They never contain prompts,
 arguments, results, or provider response bodies.
 
-## Deployment and the next slice
+## Visible viewer lifecycle
+
+The committed main-thread container owns summary demand through its local
+callback-ref AbortSignal and page lifecycle. Sidebar panels and unmounted routes
+do not request summaries. A visible, enabled viewer requests immediately for the
+latest eligible live run from the canonical event fold; the API independently
+verifies the admitted-run pointer and authorization. Subsequent requests use a
+15-second baseline and never precede `retryAfterMs`. Cooldown deadlines survive
+visibility changes. Each viewer serializes requests, including an aborted
+transport still settling after a ref change.
+
+Hiding, navigating away, unmounting, switching off, losing thread access, queuing,
+ending or replacing a run cancels demand and rejects late responses. An
+`ineligible`, 401, 403 or 404 response clears dynamic copy and stops retries for
+that run identity. An unavailable, malformed or failed optional response keeps
+the current run's last usable phrase (or the existing generic indicator) and
+backs off at least 60 seconds, stopping after three consecutive failures.
+
+Cached `pending`, `cooldown` and `stale` phrases keep their actual
+`summaryRevision`, sequence, message cursor and completion time. Hashes are
+opaque; only monotonic summary provenance may replace current copy. Identical
+text preserves the mounted typewriter; changed text restarts it even after
+commentary or a completed animation. Run status remains the existing programmatic
+projection. All dynamic copy stays in transient page state, outside chat events,
+browser persistence, history and model context.
+
+Normal-send preparation suppresses automatic initial thinking for enabled
+owners through the shared gate used by both retained scheduling branches. The
+producer rechecks canonical overrides before starting a model request, covering
+work scheduled before activation. Already-started provider calls cannot be
+recalled. Thread-title generation and the main model are independent and remain
+unchanged. Current normal sends all enter queue-first; the retained
+associated-message scheduling branch has no reachable normal-send caller.
+
+## Deployment and rollout
 
 The migration only creates an empty table and index; it changes no existing
 persisted contract and backfills no historical rows. Existing API/Runner/App
@@ -86,8 +121,11 @@ versions continue their current paths. Apply the additive migration before
 activating readers/writers; normal API production promotion already enforces
 that ordering. This PR does not perform a release or enable production users.
 
-The next slice should use the same switch to stop automatic initial-thinking
-creation for enabled runs and request this endpoint only from the visible active
-thread. It must discard responses for a changed/ended run or disabled switch,
-keep phrases transient, and honor retry metadata without overlapping requests.
-Dynamic phrases must never be appended to durable chat history or agent context.
+New App against an older API without this endpoint receives 404 and retains the
+generic indicator without repeated requests. Older Apps against a new API retain
+their generic indicator for enabled runs because opening-copy generation is
+suppressed. Switch rollback restores the legacy path for subsequent runs; it
+does not backfill opening copy into an already-created run. The feature has no
+GA audience and stays default-off with no production allowlist. Epic #32819 owns
+release, controlled activation, production billing verification and the removal
+of the mixed-version fallback once older API rollback targets are retired.

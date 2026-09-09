@@ -24,7 +24,7 @@ interface UpsertOrgPlanEntitlementArgs {
   readonly currentPeriodEnd?: Date | null;
   readonly cancelAt?: Date | null;
   readonly expiresAt?: Date | null;
-  readonly memberInviteUsagePackRequired?: boolean;
+  readonly showUsagePack?: boolean;
   readonly sourceMetadata?: OrgPlanEntitlementSourceMetadata;
 }
 
@@ -93,11 +93,9 @@ export async function upsertOrgPlanEntitlement(
     tx,
     args,
   );
-  const memberInviteUsagePackRequired =
-    args.memberInviteUsagePackRequired ?? false;
   const showUsagePack =
     (args.tier === "pro" || args.tier === "team") &&
-    memberInviteUsagePackRequired;
+    args.showUsagePack === true;
   const values = {
     orgId: args.orgId,
     planKey: args.tier,
@@ -107,9 +105,10 @@ export async function upsertOrgPlanEntitlement(
     baseConcurrencyLimit: limits.baseConcurrencyLimit,
     canBuyConcurrency: limits.canBuyConcurrency,
     canBuyCredits: limits.canBuyCredits,
-    memberInviteUsagePackRequired,
+    // Mirror for outgoing and rollback API readers. Retire this write with the
+    // legacy column after the serving and rollback gates in #32575 pass.
+    legacyMemberInviteUsagePackRequired: showUsagePack,
     showUsagePack,
-    memberInvitationAllowed: limits.memberInvitationAllowed,
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
     restrictedBuiltInModels: limits.restrictedBuiltInModels,
@@ -140,9 +139,8 @@ export async function upsertOrgPlanEntitlement(
         baseConcurrencyLimit: values.baseConcurrencyLimit,
         canBuyConcurrency: values.canBuyConcurrency,
         canBuyCredits: values.canBuyCredits,
-        memberInviteUsagePackRequired,
+        legacyMemberInviteUsagePackRequired: showUsagePack,
         showUsagePack,
-        memberInvitationAllowed: limits.memberInvitationAllowed,
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,
         restrictedBuiltInModels: values.restrictedBuiltInModels,

@@ -131,11 +131,12 @@ interface BillingOrgRow {
 
 interface BillingStatusResponse {
   tier: string;
+  status: OrgPlanCapabilities["status"];
   canBuyConcurrency: boolean;
   concurrencyPurchaseReviewAvailable: boolean;
   canBuyCredits: boolean;
-  memberInviteUsagePackRequired: boolean;
   showUsagePack: boolean;
+  // Wire compatibility for outgoing Apps only; derived from status (#32575).
   memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
@@ -581,9 +582,8 @@ function billingStatusResponse(args: {
   org: BillingOrgRow | undefined;
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
-  memberInviteUsagePackRequired: boolean;
   showUsagePack: boolean;
-  memberInvitationAllowed: boolean;
+  status: OrgPlanCapabilities["status"];
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -613,9 +613,9 @@ function billingStatusResponse(args: {
     canBuyConcurrency: args.canBuyConcurrency,
     concurrencyPurchaseReviewAvailable: true,
     canBuyCredits: args.canBuyCredits,
-    memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
     showUsagePack: args.showUsagePack,
-    memberInvitationAllowed: args.memberInvitationAllowed,
+    status: args.status,
+    memberInvitationAllowed: args.status === "active",
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
@@ -678,16 +678,10 @@ function billingStatusResponse(args: {
   };
 }
 
-function memberInviteUsagePackRequired(
+function billingPlanStatus(
   capabilities: OrgPlanCapabilities | null,
-): boolean {
-  return capabilities?.memberInviteUsagePackRequired ?? false;
-}
-
-function memberInvitationAllowed(
-  capabilities: OrgPlanCapabilities | null,
-): boolean {
-  return capabilities?.memberInvitationAllowed ?? false;
+): OrgPlanCapabilities["status"] {
+  return capabilities?.status ?? "suspended";
 }
 
 export function orgBillingStatus(
@@ -768,10 +762,8 @@ export function orgBillingStatus(
       org: org[0],
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
-      memberInviteUsagePackRequired:
-        memberInviteUsagePackRequired(capabilities),
       showUsagePack: capabilities?.showUsagePack === true,
-      memberInvitationAllowed: memberInvitationAllowed(capabilities),
+      status: billingPlanStatus(capabilities),
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,

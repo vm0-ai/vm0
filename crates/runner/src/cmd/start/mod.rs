@@ -340,7 +340,7 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`)
+    /// Okou API URL (overrides config; `OKOU_API_BACKEND_URL`)
     #[arg(long, env = "OKOU_API_BACKEND_URL", hide_env_values = true)]
     api_url: Option<String>,
     /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`)

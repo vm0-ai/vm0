@@ -314,7 +314,7 @@ async def test_billable_flow_is_tracked_before_responseheaders(
     flow = _x_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -341,7 +341,7 @@ async def test_billable_flow_error_releases_tracking_after_request(
     flow = _x_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -383,7 +383,7 @@ async def test_header_phase_streamed_billable_flow_error_releases_tracking(
     flow = _x_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -426,7 +426,7 @@ async def test_duplicate_terminal_hooks_do_not_double_decrement_usage_flow(
     second_flow = _model_provider_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(first_flow)
@@ -493,7 +493,7 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
     untracked_flow = _model_provider_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(tracked_flow)
@@ -507,7 +507,7 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
         )
 
     with (
-        mitm_ctx(registry_path=str(non_billable_reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(non_billable_reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(untracked_flow)
@@ -532,7 +532,7 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
             flush_request_id="after-untracked-error",
         )
 
-    with mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.okou.ai"):
         tracked_flow.response = mitm_addon.http.Response.make(200)
         mitm_addon.response(tracked_flow)
 
@@ -556,7 +556,7 @@ async def test_local_firewall_error_leaves_usage_flows_drained(
     )
     flow = _x_tracking_flow(real_flow)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is not None
@@ -594,7 +594,7 @@ async def test_unexpected_request_exception_releases_tracking(
         }
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(
             auth,
             "get_firewall_headers",
@@ -640,7 +640,7 @@ async def test_request_cancellation_releases_tracking_during_auth_resolution(
         raise asyncio.CancelledError
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", cancel_auth_after_tracking),
         pytest.raises(asyncio.CancelledError),
     ):
@@ -676,7 +676,7 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     flow = _model_provider_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -711,7 +711,7 @@ async def test_billable_model_provider_records_model_usage_provider(
     flow = _model_provider_tracking_flow(real_flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -822,7 +822,7 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             raise TimeoutError("test did not release blocked auth.base forward")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(
             auth,
             "get_firewall_headers",
@@ -889,7 +889,7 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     token_meta = _auth_url_rewrite_token_meta()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(
             auth,
             "get_firewall_headers",
@@ -937,7 +937,7 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
             forward_unblocked.set()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(
             auth,
             "get_firewall_headers",

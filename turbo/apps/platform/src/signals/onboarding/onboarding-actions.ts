@@ -1,3 +1,4 @@
+import { bestEffort } from "../utils.ts";
 import { command } from "ccstate";
 import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
@@ -142,7 +143,10 @@ export const prepareOnboardingVideoRun$ = command(
     }
     const checkoutUrl = result.body.url;
     set(capturePaidOnboardingCheckoutCreated$, "onboarding_video");
-    set(capturePaidOnboardingRedirectToStripe$, "onboarding_video");
+    await bestEffort(
+      set(capturePaidOnboardingRedirectToStripe$, "onboarding_video", signal),
+      signal,
+    );
     window.location.href = checkoutUrl;
     return "checkout";
   },

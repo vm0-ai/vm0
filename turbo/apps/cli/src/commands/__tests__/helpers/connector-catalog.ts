@@ -151,8 +151,9 @@ export function catalogPermissionDetail(
 
 export function stubConnectorCatalog(
   connectors: readonly PublicConnectorCatalogItem[],
+  origin = "http://localhost:3000",
 ) {
-  return http.get("http://localhost:3000/api/connector-catalog", () => {
+  return http.get(`${origin}/api/connector-catalog`, () => {
     return HttpResponse.json({ connectors });
   });
 }
