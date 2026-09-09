@@ -31,7 +31,6 @@ import {
   type PiMemoryPhase2ConsolidationArgs,
   type PiMemoryPhase2LifecycleEvent,
   type PiMemoryPhase2SelectedSnapshot,
-  type PiMemoryPhase2UsageEvent,
 } from "./phase2-memory-types";
 
 const servers: Server[] = [];
@@ -604,7 +603,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       { type: "text", text: "MODEL_TEXT_SECRET_31243 completed" },
     ]);
     const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-    const usages: PiMemoryPhase2UsageEvent[] = [];
     const sessions: PiMemoryPhase2SessionSnapshot[] = [];
     let heartbeatCount = 0;
     let cleanupRoot: string | undefined;
@@ -615,9 +613,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       },
       onLifecycle(event) {
         lifecycle.push(event);
-      },
-      onUsage(event) {
-        usages.push(event);
       },
     });
     const hooks: PiMemoryPhase2EngineTestHooks = {
@@ -688,13 +683,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       role: "developer",
       content: `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory\n`,
     });
-    expect(usages).toHaveLength(4);
-    expect(usages.at(-1)).toMatchObject({ responseId: result.responseId });
-    expect(
-      usages.reduce((total, event) => {
-        return total + event.usage.input;
-      }, 0),
-    ).toBe(result.usage.input);
     expect(
       lifecycle.map((event) => {
         return event.stage;
@@ -735,7 +723,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
 
     const contentSafePayloads = JSON.stringify({
       lifecycle,
-      usages,
       result: metadataWithoutContents(result),
     });
     for (const secret of [
@@ -978,7 +965,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       const heartbeatStarted = deferred<void>();
       const modelCompletionSelected = deferred<void>();
       const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-      const usages: PiMemoryPhase2UsageEvent[] = [];
       let heartbeatCount = 0;
       let disposedSessions = 0;
       let cleanupRoot: string | undefined;
@@ -994,9 +980,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
           },
           onLifecycle(event) {
             lifecycle.push(event);
-          },
-          onUsage(event) {
-            usages.push(event);
           },
         }),
         {
@@ -1026,8 +1009,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
 
       expect(heartbeatCount).toBe(2);
       expect(provider.requests).toHaveLength(1);
-      expect(usages).toHaveLength(1);
-      expect(usages[0]?.usage.input).toBeGreaterThan(0);
       expect(disposedSessions).toBe(1);
       expect(
         lifecycle.some((event) => {
@@ -1047,7 +1028,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     const heartbeatResult = deferred<boolean>();
     const heartbeatStarted = deferred<void>();
     const modelCompletionSelected = deferred<void>();
-    const usages: PiMemoryPhase2UsageEvent[] = [];
     let heartbeatCount = 0;
     let disposedSessions = 0;
     const promise = runPiMemoryPhase2ConsolidationForTest(
@@ -1059,9 +1039,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
           }
           heartbeatStarted.resolve();
           return await heartbeatResult.promise;
-        },
-        onUsage(event) {
-          usages.push(event);
         },
       }),
       {
@@ -1089,55 +1066,27 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(result.status).toBe("prepared");
     expect(heartbeatCount).toBe(2);
     expect(provider.requests).toHaveLength(1);
-    expect(usages).toHaveLength(1);
     expect(disposedSessions).toBe(1);
   });
 
-  it("awaits terminal usage before a later output-validation failure", async () => {
+  it("rejects completed model output without the required files", async () => {
     const provider = await startProvider([
       { type: "text", text: "finished without required files" },
     ]);
-    const usages: PiMemoryPhase2UsageEvent[] = [];
     await expectBoundedFailure(
       runPiMemoryPhase2Consolidation(
         args(provider.baseUrl, {
           baseFiles: [],
-          async onUsage(event) {
-            await Promise.resolve();
-            usages.push(event);
-          },
         }),
         new AbortController().signal,
       ),
       "agent_output_invalid",
-    );
-
-    expect(usages).toHaveLength(1);
-    expect(usages[0]?.responseId).toBe("resp_phase2_final_0");
-  });
-
-  it("classifies an asynchronous usage persistence failure as observer failure", async () => {
-    const provider = await startProvider([
-      { type: "text", text: "finished before usage observer" },
-    ]);
-    await expectBoundedFailure(
-      runPiMemoryPhase2Consolidation(
-        args(provider.baseUrl, {
-          async onUsage() {
-            await Promise.resolve();
-            throw new Error("USAGE_PERSISTENCE_SECRET_31291");
-          },
-        }),
-        new AbortController().signal,
-      ),
-      "observer_failed",
     );
   });
 
   it("observes abort from the staged observer before selecting no-diff", async () => {
     const controller = new AbortController();
     const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-    const usages: PiMemoryPhase2UsageEvent[] = [];
     let heartbeatCount = 0;
     let cleanupRoot: string | undefined;
     await expectBoundedFailure(
@@ -1154,9 +1103,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
               controller.abort(new Error("STAGED_ABORT_SECRET_31252"));
             }
           },
-          onUsage(event) {
-            usages.push(event);
-          },
         }),
         {
           async beforeCleanup(root) {
@@ -1169,7 +1115,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     );
 
     expect(heartbeatCount).toBe(0);
-    expect(usages).toStrictEqual([]);
     expect(
       lifecycle.map((event) => {
         return event.stage;
@@ -1186,7 +1131,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       { type: "text", text: "completed before validation abort" },
     ]);
     const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-    const usages: PiMemoryPhase2UsageEvent[] = [];
     let disposedSessions = 0;
     let cleanupRoot: string | undefined;
     await expectBoundedFailure(
@@ -1194,9 +1138,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         args(provider.baseUrl, {
           onLifecycle(event) {
             lifecycle.push(event);
-          },
-          onUsage(event) {
-            usages.push(event);
           },
         }),
         {
@@ -1216,7 +1157,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     );
 
     expect(provider.requests).toHaveLength(1);
-    expect(usages).toHaveLength(1);
     expect(disposedSessions).toBe(1);
     expect(
       lifecycle.map((event) => {
