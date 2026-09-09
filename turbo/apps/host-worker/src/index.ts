@@ -475,6 +475,19 @@ async function readDeliveryRecord(
   return record;
 }
 
+function artifactFileAlias(
+  pathname: string,
+  hostname: string | undefined,
+): string {
+  // The live a.okou.io rewrite adds /artifacts before Workers run. Keep old
+  // links available while routing moves to this Worker; #32492 can remove this
+  // normalization once that Cloudflare rule is disabled and rollback excludes it.
+  const prefix = "/artifacts/";
+  if (hostname === "a.okou.io" && pathname.startsWith(prefix))
+    return pathname.slice(prefix.length);
+  return pathname.slice(1);
+}
+
 async function serveArtifactDelivery(
   request: Request,
   env: Env,
@@ -484,7 +497,9 @@ async function serveArtifactDelivery(
   execution: ExecutionContext,
 ): Promise<Response> {
   const brands = fileHost ? [null] : target!.publicBrands;
-  const alias = fileHost ? pathname.slice(1) : target!.publicSlug;
+  const alias = fileHost
+    ? artifactFileAlias(pathname, env.PUBLIC_ARTIFACT_HOST)
+    : target!.publicSlug;
   const records = await Promise.all(
     brands.map(async (brand) => {
       const record = await readDeliveryRecord(
@@ -529,13 +544,39 @@ async function serveArtifactDelivery(
   if (fileHost) {
     if (record?.kind !== "legacy-file" || !env.PUBLIC_ARTIFACTS_BUCKET)
       return privateResponse(notFoundResponse());
-    return serveArtifactFile(request, env.PUBLIC_ARTIFACTS_BUCKET, record);
+    return serveLegacyArtifactFile(
+      request,
+      env.PUBLIC_ARTIFACTS_BUCKET,
+      record,
+      execution,
+    );
   }
   if (!target) return notFoundResponse();
   if (record && record.kind !== "legacy-site")
     return privateResponse(notFoundResponse());
 
   return serveLegacyHostedSite(request, env, pathname, target, record);
+}
+
+async function serveLegacyArtifactFile(
+  request: Request,
+  bucket: R2Bucket,
+  file: Extract<ArtifactDeliveryRecord, { kind: "legacy-file" }>,
+  execution: ExecutionContext,
+): Promise<Response> {
+  const cache = (caches as CacheStorage & { readonly default: Cache }).default;
+  const key = new Request(request.url);
+  const ranged = request.headers.has("Range");
+  const cached = ranged ? undefined : await cache.match(key);
+  if (cached)
+    return new Response(request.method === "HEAD" ? null : cached.body, cached);
+
+  const response = await serveArtifactFile(request, bucket, file);
+  if (!response.ok) return privateResponse(response);
+  response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  if (request.method === "GET" && response.status === 200 && !ranged)
+    execution.waitUntil(cache.put(key, response.clone()));
+  return response;
 }
 
 async function registrationComplete(
@@ -942,7 +983,13 @@ async function serveAuthorizedArtifact(
     return privateResponse(notFoundResponse());
   };
   const target = policy.target;
-  if (target.kind === "file" && pathname !== "/") return denied();
+  // Image Resizing caches derivatives outside this Worker's policy checks.
+  // Public files must re-enter authorization even when their bytes are warm.
+  if (
+    target.kind === "file" &&
+    (pathname !== "/" || request.headers.get("Via")?.includes("image-resizing"))
+  )
+    return denied();
   const cacheUrl = new URL(request.url);
   cacheUrl.pathname = `/__artifact-content/${policy.publicBrand}/${target.kind === "html" ? target.snapshotId : encodeURIComponent(target.key)}${pathname}`;
   cacheUrl.search = `?html=${acceptsHtml(request)}`;

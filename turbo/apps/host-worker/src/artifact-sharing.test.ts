@@ -13,7 +13,7 @@ const fileId = "00000000-0000-4000-8000-000000000011";
 const snapshotId = "00000000-0000-4000-8000-000000000012";
 const siteId = "00000000-0000-4000-8000-000000000013";
 const publicToken = "a".repeat(24);
-const origin = `https://f.okou.io/${publicToken}.pdf`;
+const origin = `https://a.okou.io/${publicToken}.pdf`;
 const siteOrigin = `https://${publicToken}.okou.app`;
 const policyKey = `artifact-shares/okou/${id}.json`;
 
@@ -149,7 +149,7 @@ function fixture(html = false) {
     OKOU_HOST_DOMAIN: "okou.app",
     HOSTED_SITES_BUCKET: bucket,
     PRIVATE_ARTIFACTS_BUCKET: bucket,
-    PUBLIC_ARTIFACT_HOST: "f.okou.io",
+    PUBLIC_ARTIFACT_HOST: "a.okou.io",
   };
   const bytes = new Map<string, Response>();
   const cache = {
@@ -387,7 +387,7 @@ test("an unregistered public hash cannot use a private object or bypass a revoke
   expect(
     (
       await fetchWorker(
-        new Request(`https://f.okou.io/private-artifacts/${fileId}/report.pdf`),
+        new Request(`https://a.okou.io/private-artifacts/${fileId}/report.pdf`),
         f.env,
       )
     ).status,
@@ -409,7 +409,7 @@ test("a publication registry cannot change a policy's delivery type", async () =
     }),
   );
   const response = await fetchWorker(
-    new Request(`https://f.okou.io/${publicToken}.html`),
+    new Request(`https://a.okou.io/${publicToken}.html`),
     f.env,
   );
   expect(response.status).toBe(404);
@@ -430,34 +430,89 @@ test("malformed alias and registration state fails closed", async () => {
   expect(f.cache.match).not.toHaveBeenCalled();
 });
 
-test("explicit historical Public file registration preserves bytes without enabling unknown aliases", async () => {
+test.each([
+  "0123456789.pdf",
+  "user_historical/00000000-0000-4000-8000-000000000014/report.pdf",
+])(
+  "historical Public file %s keeps its URL, bytes, cache and range access",
+  async (legacy) => {
+    const f = fixture();
+    const key = `artifacts/${legacy}`;
+    f.objects.set(key, "Historical public PDF");
+    f.objects.set(
+      artifactDeliveryKey("okou", "file", legacy),
+      JSON.stringify({
+        version: 1,
+        kind: "legacy-file",
+        publicBrand: "okou",
+        audience: "public",
+        key,
+        filename: "old.pdf",
+        contentType: "application/pdf",
+      }),
+    );
+    const env = {
+      ...f.env,
+      PUBLIC_ARTIFACTS_BUCKET: f.env.HOSTED_SITES_BUCKET,
+    };
+    const response = await fetchWorker(
+      new Request(`https://a.okou.io/${legacy}`),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("Historical public PDF");
+    expect(response.headers.get("Cache-Control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    const head = await fetchWorker(
+      new Request(`https://a.okou.io/${legacy}`, { method: "HEAD" }),
+      env,
+    );
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    const ranged = await fetchWorker(
+      new Request(`https://a.okou.io/${legacy}`, {
+        headers: { Range: "bytes=0-9" },
+      }),
+      env,
+    );
+    expect(ranged.status).toBe(206);
+    expect(await ranged.text()).toBe("Historical");
+    // Cloudflare's existing rewrite can still be active during the route cutover.
+    const rewritten = await fetchWorker(
+      new Request(`https://a.okou.io/artifacts/${legacy}`),
+      env,
+    );
+    expect(rewritten.status).toBe(200);
+    expect(await rewritten.text()).toBe("Historical public PDF");
+    const imageSource = await fetchWorker(
+      new Request(`https://a.okou.io/${legacy}`, {
+        headers: { Via: "image-resizing" },
+      }),
+      env,
+    );
+    expect(imageSource.status).toBe(200);
+    expect(
+      (
+        await fetchWorker(
+          new Request("https://a.okou.io/unregistered.pdf"),
+          env,
+        )
+      ).status,
+    ).toBe(404);
+  },
+);
+
+test("public file shares cannot feed an image cache outside their revocation checks", async () => {
   const f = fixture();
-  const legacy = "0123456789.pdf";
-  const key = `artifacts/${legacy}`;
-  f.objects.set(key, "Historical public PDF");
-  f.objects.set(
-    artifactDeliveryKey("okou", "file", legacy),
-    JSON.stringify({
-      version: 1,
-      kind: "legacy-file",
-      publicBrand: "okou",
-      audience: "public",
-      key,
-      filename: "old.pdf",
-      contentType: "application/pdf",
-    }),
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(200);
+  const resized = await fetchWorker(
+    new Request(origin, { headers: { Via: "1.1 image-resizing" } }),
+    f.env,
   );
-  const env = { ...f.env, PUBLIC_ARTIFACTS_BUCKET: f.env.HOSTED_SITES_BUCKET };
-  const response = await fetchWorker(
-    new Request(`https://f.okou.io/${legacy}`),
-    env,
-  );
-  expect(response.status).toBe(200);
-  expect(await response.text()).toBe("Historical public PDF");
-  expect(
-    (await fetchWorker(new Request("https://f.okou.io/unregistered.pdf"), env))
-      .status,
-  ).toBe(404);
+  expect(resized.status).toBe(404);
+  expect(resized.headers.get("Cache-Control")).toBe("private, no-store");
+  expect(await resized.text()).not.toContain("Private PDF");
 });
 
 test("media byte ranges remain authorized after a full response warms the cache", async () => {
