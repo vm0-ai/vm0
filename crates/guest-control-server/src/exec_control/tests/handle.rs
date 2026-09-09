@@ -7,8 +7,63 @@ use super::super::{
     EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, ExecControlRegistry, handle_exec_control, is_timeout,
 };
 use super::support::{
-    guest_writer_pair, read_exec_control_result, unique_test_nonce, wait_for_sink_state,
+    connected_stream_handle, guest_writer_pair, read_exec_control_result, unique_test_nonce,
+    wait_for_sink_state,
 };
+
+#[test]
+fn connected_control_peer_closure_retains_typed_status_for_later_requests() {
+    for close_before_request in [true, false] {
+        let nonce = unique_test_nonce(32755 + u64::from(close_before_request));
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(55, nonce, true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.as_ref().unwrap();
+        let sink = registry.resolve(55, nonce).unwrap();
+        let mut peer = process_control_ipc::connect_abstract(endpoint).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        process_control_ipc::write_hello(&mut peer).unwrap();
+        wait_for_sink_state(
+            &sink,
+            Duration::from_secs(3),
+            "sink should connect",
+            |inner| matches!(inner, ControlSinkInner::Connected(_)),
+        );
+        let connected = connected_stream_handle(&sink);
+        let (writer, mut host) = guest_writer_pair();
+        let payload =
+            guest_control_proto::encode_exec_control(55, nonce, "cancel", b"payload", 5000)
+                .unwrap();
+        if close_before_request {
+            drop(peer);
+            handle_exec_control(56, &payload, &registry, &writer).unwrap();
+        } else {
+            handle_exec_control(56, &payload, &registry, &writer).unwrap();
+            let request = process_control_ipc::read_request(&mut peer).unwrap();
+            assert_eq!(request.message_id, "cancel");
+            drop(peer);
+        }
+        let (_, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
+        assert_eq!(seq, 56);
+        assert_eq!(status, ExecControlStatus::SinkClosed);
+        assert_eq!(message_id, "cancel");
+        assert!(!diagnostic.is_empty());
+
+        // Existing queued stream owners and new requests retain the first cause.
+        let error = match connected.lock_until(super::super::request_deadline(5000), &sink.active) {
+            Ok(_) => panic!("closed peer should reject queued stream owners"),
+            Err(error) => error,
+        };
+        assert!(matches!(error,
+            super::super::sink::ControlStreamLockError::SinkError(failure)
+                if failure.status() == ExecControlStatus::SinkClosed && failure.diagnostic() == diagnostic
+        ));
+        handle_exec_control(57, &payload, &registry, &writer).unwrap();
+        let (_, seq, status, _, next_diagnostic) = read_exec_control_result(&mut host);
+        assert_eq!(seq, 57);
+        assert_eq!(status, ExecControlStatus::SinkClosed);
+        assert_eq!(next_diagnostic, diagnostic);
+    }
+}
 
 #[test]
 fn handle_exec_control_forwards_to_connected_sink() {

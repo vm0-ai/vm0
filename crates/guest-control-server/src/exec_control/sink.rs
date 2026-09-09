@@ -14,8 +14,8 @@
 //! sink error for later requests, and `Closed` represents operation cleanup.
 //! Requests wait in `Waiting` or `Handshaking` until the sink connects, fails,
 //! closes, or their deadline expires. Connected requests serialize over the
-//! process-control stream. Failed sinks return `SinkError`; closed or inactive
-//! sinks return `Inactive`.
+//! process-control stream. Failed sinks retain `SinkClosed` for connected-peer
+//! closure and `SinkError` otherwise; closed or inactive operations return `Inactive`.
 //!
 //! `inner` and `ready` own connection-state changes and wake waiting forwarders.
 //! `active` is the operation-lifetime gate, so close/drop can stop queued or
@@ -88,7 +88,28 @@ struct ControlStreamGateGuard<'a> {
 pub(super) enum ControlStreamLockError {
     Inactive,
     Timeout,
-    SinkError(String),
+    SinkError(ControlSinkFailure),
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum ControlSinkFailure {
+    Closed(String),
+    Other(String),
+}
+
+impl ControlSinkFailure {
+    pub(super) fn status(&self) -> ExecControlStatus {
+        match self {
+            Self::Closed(_) => ExecControlStatus::SinkClosed,
+            Self::Other(_) => ExecControlStatus::SinkError,
+        }
+    }
+
+    pub(super) fn diagnostic(&self) -> &str {
+        match self {
+            Self::Closed(message) | Self::Other(message) => message,
+        }
+    }
 }
 
 pub(super) enum ControlSinkInner {
@@ -99,7 +120,7 @@ pub(super) enum ControlSinkInner {
     /// The process-control stream is ready for serialized forwarding.
     Connected(ConnectedControlSink),
     /// A terminal sink error to return to subsequent requests.
-    Failed(String),
+    Failed(ControlSinkFailure),
     /// Operation cleanup completed; subsequent requests resolve inactive.
     Closed,
 }
@@ -107,7 +128,7 @@ pub(super) enum ControlSinkInner {
 enum ControlStreamGate {
     Available,
     Locked,
-    Failed(String),
+    Failed(ControlSinkFailure),
 }
 
 /// Reserved pending capacity for one forwarding worker.
@@ -150,10 +171,10 @@ impl ControlSinkState {
             Err(error) => {
                 let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                 if !matches!(*guard, ControlSinkInner::Closed) {
-                    *guard = ControlSinkInner::Failed(format!(
+                    *guard = ControlSinkInner::Failed(ControlSinkFailure::Other(format!(
                         "{}: {error}",
                         EXEC_CONTROL_CLONE_SINK_ERROR_PREFIX
-                    ));
+                    )));
                 }
                 self.ready.notify_all();
                 return;
@@ -194,13 +215,13 @@ impl ControlSinkState {
         Ok(true)
     }
 
-    pub(super) fn fail(&self, message: String) {
+    pub(super) fn fail(&self, failure: ControlSinkFailure) {
         if !self.active.load(Ordering::Acquire) {
             return;
         }
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         match &*guard {
-            ControlSinkInner::Connected(connected) => connected.fail(&message),
+            ControlSinkInner::Connected(connected) => connected.fail(&failure),
             ControlSinkInner::Waiting | ControlSinkInner::Handshaking(_) => {
                 shutdown_sink_stream(&guard);
             }
@@ -210,7 +231,7 @@ impl ControlSinkState {
             *guard,
             ControlSinkInner::Closed | ControlSinkInner::Failed(_)
         ) {
-            *guard = ControlSinkInner::Failed(message);
+            *guard = ControlSinkInner::Failed(failure);
         }
         self.ready.notify_all();
     }
@@ -258,8 +279,8 @@ impl ControlSinkState {
                         ));
                     }
                 }
-                ControlSinkInner::Failed(message) => {
-                    return Err((ExecControlStatus::SinkError, message.clone()));
+                ControlSinkInner::Failed(failure) => {
+                    return Err((failure.status(), failure.diagnostic().to_owned()));
                 }
                 ControlSinkInner::Closed => {
                     return Err((
@@ -318,9 +339,9 @@ impl ConnectedControlSink {
         self.stream.notify_waiters();
     }
 
-    fn fail(&self, message: &str) {
+    fn fail(&self, failure: &ControlSinkFailure) {
         let _ = self.shutdown.shutdown(std::net::Shutdown::Both);
-        self.stream.mark_failed(message);
+        self.stream.mark_failed(failure);
     }
 }
 
@@ -355,10 +376,10 @@ impl ControlStreamState {
                         return Err(ControlStreamLockError::Inactive);
                     }
                     match &*gate {
-                        ControlStreamGate::Failed(message) => {
-                            let message = message.clone();
+                        ControlStreamGate::Failed(failure) => {
+                            let failure = failure.clone();
                             drop(stream);
-                            return Err(ControlStreamLockError::SinkError(message));
+                            return Err(ControlStreamLockError::SinkError(failure));
                         }
                         ControlStreamGate::Available => {
                             *gate = ControlStreamGate::Locked;
@@ -371,8 +392,8 @@ impl ControlStreamState {
                         _gate: ControlStreamGateGuard { state: self },
                     });
                 }
-                ControlStreamGate::Failed(message) => {
-                    return Err(ControlStreamLockError::SinkError(message.clone()));
+                ControlStreamGate::Failed(failure) => {
+                    return Err(ControlStreamLockError::SinkError(failure.clone()));
                 }
                 ControlStreamGate::Locked => {}
             }
@@ -397,10 +418,10 @@ impl ControlStreamState {
         self.ready.notify_all();
     }
 
-    fn mark_failed(&self, message: &str) {
+    fn mark_failed(&self, failure: &ControlSinkFailure) {
         let mut gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
         if !matches!(*gate, ControlStreamGate::Failed(_)) {
-            *gate = ControlStreamGate::Failed(message.to_owned());
+            *gate = ControlStreamGate::Failed(failure.clone());
         }
         self.ready.notify_all();
     }

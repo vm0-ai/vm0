@@ -28,10 +28,12 @@ const HASH_VSOCK_PATH: &str = "/vsock";
 ///   "Invalid API key" but still loads the complete module graph. The claude
 ///   binary is a Bun-compiled executable (not Node.js), so
 ///   `NODE_COMPILE_CACHE` has no effect.
-/// - `codex --help`: codex ships as a Node.js CLI (npm `@openai/codex`); the
-///   `--help` path exits cleanly without credentials yet `require`s the full
-///   module graph and triggers V8 JIT compilation, so the resolved-and-parsed
-///   bytecode is captured in the snapshot. Each warmup is wrapped in its own
+/// - `codex --help`: npm `@openai/codex` uses a Node.js launcher to run the
+///   native Rust CLI. The help command runs without credentials and exits
+///   before the VM is paused, so no live CLI process or reusable process-local
+///   V8 JIT state is preserved. It may warm the guest's file/page cache for
+///   files read during startup; any startup benefit requires measurement.
+///   Each warmup is wrapped in its own
 ///   `(... || true)` sub-shell so a failure on one framework does not block
 ///   the other from warming.
 pub const PREWARM_SCRIPT: &str = "\

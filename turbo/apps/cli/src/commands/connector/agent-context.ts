@@ -15,10 +15,25 @@ export interface ConnectorDiscoveryAgentContext extends AgentContext {
   authorizedCustomConnectorIds: Set<string>;
 }
 
-export async function resolveAgentContext(
+export function resolveConnectorAgentId(
   flagAgentId: string | undefined,
+): string | undefined {
+  const runAgentId = getOkouAgentId();
+  if (
+    runAgentId !== undefined &&
+    flagAgentId !== undefined &&
+    flagAgentId !== runAgentId
+  ) {
+    throw new Error(
+      `--agent ${flagAgentId} conflicts with the current run's Agent ${runAgentId}. Remove --agent or use --agent ${runAgentId}.`,
+    );
+  }
+  return runAgentId ?? flagAgentId;
+}
+
+export async function resolveAgentContext(
+  agentId: string | undefined,
 ): Promise<AgentContext | null> {
-  const agentId = flagAgentId ?? getOkouAgentId();
   if (!agentId) return null;
 
   const [agent, enabledConnectorSlugs] = await Promise.all([
@@ -34,9 +49,8 @@ export async function resolveAgentContext(
 }
 
 export async function resolveConnectorDiscoveryAgentContext(
-  flagAgentId: string | undefined,
+  agentId: string | undefined,
 ): Promise<ConnectorDiscoveryAgentContext | null> {
-  const agentId = flagAgentId ?? getOkouAgentId();
   if (!agentId) return null;
 
   const [agent, enabledConnectorSlugs, customConnectorGrants] =

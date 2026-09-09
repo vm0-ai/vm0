@@ -5,7 +5,10 @@ import {
   listCustomConnectors,
 } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
+import {
+  resolveConnectorAgentId,
+  resolveConnectorDiscoveryAgentContext,
+} from "./agent-context";
 import { padEndAnsi, stripAnsi } from "./connected-as";
 import {
   connectorDiscoveryItems,
@@ -61,10 +64,14 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all connectors and their status")
-  .option("--agent <id>", "Show per-agent authorization column")
+  .option(
+    "--agent <id>",
+    "Show per-agent authorization column (must match the current Agent inside a run)",
+  )
   .option("--json", "Output connector status as JSON")
   .action(
     withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
+      const agentId = resolveConnectorAgentId(options.agent);
       if (isRunBoundConnectorContext()) {
         await printRunConnectorList(options.json ?? false);
         return;
@@ -72,7 +79,7 @@ export const listCommand = new Command()
       const [{ connectors }, customConnectors, agentCtx] = await Promise.all([
         listConnectorCatalogStatus(),
         listCustomConnectors(),
-        resolveConnectorDiscoveryAgentContext(options.agent),
+        resolveConnectorDiscoveryAgentContext(agentId),
       ]);
       const discoveredConnectors = connectorDiscoveryItems(
         connectors,

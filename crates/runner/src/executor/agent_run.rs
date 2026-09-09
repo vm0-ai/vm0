@@ -16,7 +16,8 @@ use guest_contracts::session_history_identity::{
 };
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
+    GuestProcessControlHandle, GuestProcessHandle, ProcessControlFailureKind,
+    ProcessControlGuestStatus, ProcessControlOutcome, ProcessOutputMode, Sandbox,
     SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
@@ -693,6 +694,8 @@ struct ProcessWaitOutcome {
     result: sandbox::Result<sandbox::ProcessExit>,
     cancellation: CancellationDisposition,
     interrupt_stdout_drain: bool,
+    // Proof from the provider result, never from our synthetic Cancelled exit.
+    hard_cancel_terminal_confirmed: bool,
 }
 
 impl ProcessWaitOutcome {
@@ -702,6 +705,7 @@ impl ProcessWaitOutcome {
             result,
             cancellation: CancellationDisposition::None,
             interrupt_stdout_drain,
+            hard_cancel_terminal_confirmed: false,
         }
     }
 
@@ -710,6 +714,7 @@ impl ProcessWaitOutcome {
             result: Ok(exit),
             cancellation: CancellationDisposition::Cooperative,
             interrupt_stdout_drain: false,
+            hard_cancel_terminal_confirmed: false,
         }
     }
 
@@ -725,6 +730,7 @@ impl ProcessWaitOutcome {
             )),
             cancellation: CancellationDisposition::HardFallback,
             interrupt_stdout_drain,
+            hard_cancel_terminal_confirmed: false,
         }
     }
 }
@@ -790,7 +796,14 @@ where
                 pid = guest_process_pid,
                 "cancelled guest process reached terminal status"
             );
-            ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false)
+            let mut outcome =
+                ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false);
+            outcome.hard_cancel_terminal_confirmed = exit.diagnostic.is_empty()
+                && matches!(
+                    exit.termination,
+                    ExecTermination::Exited { .. } | ExecTermination::Cancelled
+                );
+            outcome
         }
         Ok(Err(error)) => {
             warn!(
@@ -813,23 +826,50 @@ where
     }
 }
 
+enum CooperativeCancellationSend {
+    Accepted,
+    Force,
+    Closed(std::io::Error),
+}
+
+fn control_closed_before_cancellation(outcome: &ProcessControlOutcome) -> bool {
+    match outcome {
+        ProcessControlOutcome::GuestStatus { status, .. } => matches!(
+            status,
+            ProcessControlGuestStatus::Inactive | ProcessControlGuestStatus::SinkClosed
+        ),
+        ProcessControlOutcome::Failed {
+            kind: ProcessControlFailureKind::Operation,
+            error,
+            ..
+        } => matches!(
+            error.kind(),
+            std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::UnexpectedEof
+        ),
+        _ => false,
+    }
+}
+
 async fn send_cooperative_user_cancellation(
     run_id: crate::ids::RunId,
     process_control: &GuestProcessControlHandle,
     hard_cancel: &CancellationToken,
     timeout: Duration,
-) -> bool {
+) -> CooperativeCancellationSend {
     let message_id = format!("user-cancellation:{run_id}");
     tokio::select! {
         biased;
-        () = hard_cancel.cancelled() => false,
-        result = process_control.control(
+        () = hard_cancel.cancelled() => CooperativeCancellationSend::Force,
+        outcome = process_control.control_outcome(
             &message_id,
             USER_CANCELLATION_CONTROL_PAYLOAD,
             timeout,
         ) => {
-            match result {
-                Ok(ack) if ack.message_id == message_id => true,
+            let closed = control_closed_before_cancellation(&outcome);
+            match outcome.into_ack() {
+                Ok(ack) if ack.message_id == message_id => CooperativeCancellationSend::Accepted,
                 Ok(ack) => {
                     warn!(
                         run_id = %run_id,
@@ -837,15 +877,16 @@ async fn send_cooperative_user_cancellation(
                         acknowledged_message_id = %ack.message_id,
                         "guest acknowledged the wrong user-cancellation message"
                     );
-                    false
+                    CooperativeCancellationSend::Force
                 }
+                Err(error) if closed => CooperativeCancellationSend::Closed(error),
                 Err(error) => {
                     warn!(
                         run_id = %run_id,
                         error = %error,
                         "failed to send cooperative user cancellation"
                     );
-                    false
+                    CooperativeCancellationSend::Force
                 }
             }
         }
@@ -864,15 +905,15 @@ async fn wait_for_cooperative_user_cancellation<F>(
 where
     F: Future<Output = sandbox::Result<sandbox::ProcessExit>>,
 {
-    if !send_cooperative_user_cancellation(
+    let sent = send_cooperative_user_cancellation(
         run_id,
         process_control,
         hard_cancel,
         process_cancel_timeouts.write,
     )
-    .await
-    {
-        return force_cancel_guest_process(
+    .await;
+    if !matches!(sent, CooperativeCancellationSend::Accepted) {
+        let outcome = force_cancel_guest_process(
             run_id,
             guest_process_pid,
             process_cancel,
@@ -880,6 +921,24 @@ where
             wait_process,
         )
         .await;
+        if let CooperativeCancellationSend::Closed(error) = sent {
+            if outcome.hard_cancel_terminal_confirmed {
+                info!(
+                    run_id = %run_id,
+                    error = %error,
+                    recovered_after_cancellation = true,
+                    "failed to send cooperative user cancellation"
+                );
+            } else {
+                warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    recovered_after_cancellation = false,
+                    "failed to send cooperative user cancellation"
+                );
+            }
+        }
+        return outcome;
     }
 
     tokio::select! {
@@ -2346,6 +2405,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         result,
         cancellation,
         interrupt_stdout_drain,
+        ..
     } = wait_outcome;
     let cancellation_observed = cancellation.observed();
     let used_hard_cancellation_fallback = cancellation.used_hard_fallback();

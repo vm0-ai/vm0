@@ -11334,6 +11334,10 @@ describe("CHAT-02: model-first provider policies", () => {
       { [FeatureSwitchKey.PiLoop]: true },
     );
     mockPiResourceArchiveDownloads();
+    // A real assistant can copy the entire immutable archive notice. Its run
+    // provenance must still keep citation transport private.
+    const copiedArchiveNotice =
+      "Okou Goal retired.\nGoal ID: 00000000-0000-4000-8000-000000000001\nOriginal recorded status: complete\nThe recorded status is preserved; retirement does not mark the objective complete.\n\nFull original objective:\nalpha";
     const consumedAgentEvents: Record<string, unknown>[] = [];
     server.use(
       http.post(
@@ -11365,7 +11369,10 @@ describe("CHAT-02: model-first provider policies", () => {
         return new HttpResponse(
           piResponsesContentSse({
             blocks: [
-              { type: "text", text: `alpha${hidden.slice(0, 17)}` },
+              {
+                type: "text",
+                text: `${copiedArchiveNotice}${hidden.slice(0, 17)}`,
+              },
               { type: "text", text: `${hidden.slice(17)}beta` },
               { type: "text", text: "gamma" },
               { type: "text", text: "delta" },
@@ -11441,7 +11448,11 @@ describe("CHAT-02: model-first provider policies", () => {
         };
       }),
     ).toStrictEqual([
-      { content: "alpha", sequenceNumber: 0, runEventId: "event:0" },
+      {
+        content: copiedArchiveNotice,
+        sequenceNumber: 0,
+        runEventId: "event:0",
+      },
       { content: "beta", sequenceNumber: 1, runEventId: "event:1" },
       { content: "gamma", sequenceNumber: 2, runEventId: "event:2" },
       { content: "delta", sequenceNumber: 3, runEventId: "event:3" },
