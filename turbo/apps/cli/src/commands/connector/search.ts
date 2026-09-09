@@ -286,8 +286,10 @@ Scope:
 Callbacks:
   Use --callback-prompt only in the current web chat for its current Agent,
   when the task needs exactly one connector action; use --limit 1.
-  Only direct connection, reconnect, or Agent authorization actions support it.
-  Custom connectors and other actions that open Connectors settings do not.
+  Direct connection and reconnect actions support it for builtin and custom
+  connectors. Custom HTTP connectors with a permission bundle require existing
+  Agent access. Builtin Agent authorization actions also support callbacks.
+  Actions that open Connectors settings do not support callbacks.
   Keep the prompt free of secrets because it is included in the action URL.
 
 Examples:
