@@ -1944,6 +1944,80 @@ describe("POST /api/billing/checkout", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("keeps a stored click separate from a later campaign during checkout", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        {
+          id: fixture.userId,
+          privateMetadata: {
+            signup_attribution: {
+              source_type: "paid",
+              gclid: "first-click",
+              gclid_present: "true",
+              utm_source: "google",
+              recorded_at: "2026-09-01T00:00:00.000Z",
+            },
+          },
+        },
+      ],
+    });
+    context.mocks.stripe.customers.create.mockResolvedValue({
+      id: `cus_${randomUUID().slice(0, 8)}`,
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/first-touch",
+    });
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingCheckoutContract,
+    );
+    await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+          adAttribution: {
+            gclid: "later-click",
+            vm0_campaign_id: "24220469665",
+            vm0_ad_group_id: "123456",
+            utm_campaign: "later-campaign",
+            ga_client_id: "123.456",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const expectedMetadata = {
+      orgId: fixture.orgId,
+      tier: "pro",
+      priceId: TEST_PRICE_PRO,
+      source_type: "paid",
+      gclid: "first-click",
+      gclid_present: "true",
+      utm_source: "google",
+      ga_client_id: "123.456",
+    };
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expectedMetadata,
+        subscription_data: expect.objectContaining({
+          metadata: expectedMetadata,
+        }),
+      }),
+    );
+    await expect(
+      readOrgAcquisitionAttributionFixture(fixture.orgId),
+    ).resolves.toMatchObject({
+      acquisitionGclid: "first-click",
+      acquisitionCampaignId: null,
+      acquisitionAdGroupId: null,
+      acquisitionCampaign: null,
+    });
+  });
+
   it("attaches ad attribution to Stripe checkout and subscription metadata", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
