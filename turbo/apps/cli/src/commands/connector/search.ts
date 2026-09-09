@@ -16,6 +16,7 @@ import { padEndAnsi, stripAnsi } from "./connected-as";
 import {
   connectorDiscoveryDefinitions,
   connectorDiscoveryItems,
+  connectorDiscoveryJson,
   connectorDiscoveryTarget,
   isConnectorDiscoveryAuthorized,
   renderConnectorDiscoveryConnectedAsCell,
@@ -25,6 +26,7 @@ import {
 import { searchConnectorCatalog } from "./public-catalog";
 import {
   currentConnectorSearchAction,
+  connectorSearchActionLinks,
   printConnectorSearchGuidance,
   runConnectorSearchAction,
   type ConnectorSearchAction,
@@ -34,6 +36,7 @@ import {
   resolveRunConnectorAccountLookups,
   type RunConnectorAccountLookup,
 } from "./run-account-context";
+import { connectorInspectionType } from "./inspection";
 
 const EXACT_MATCH_THRESHOLD = 80;
 
@@ -103,6 +106,8 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
   readonly connectors: readonly T[];
   readonly keyword: string;
   readonly limit: number | undefined;
+  readonly json: boolean | undefined;
+  readonly jsonConnector: (connector: T) => object;
   readonly availabilityHeader: string;
   readonly renderAvailability: (connector: T) => string;
   readonly accountHeader: string;
@@ -126,6 +131,45 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
     throw new Error(
       "--callback-prompt requires a single connector match. Narrow the search to the intended connector with --limit 1.",
     );
+  }
+
+  if (args.json) {
+    const actions = results.flatMap((result) => {
+      const action = args.connectionAction(result.connector);
+      return action ? [action] : [];
+    });
+    console.log(
+      JSON.stringify(
+        {
+          context: args.runBound ? "run" : "current",
+          query: { keyword: args.keyword, limit: args.limit ?? null },
+          agent: args.agentContext
+            ? {
+                agentId: args.agentContext.agentId,
+                displayName: args.agentContext.displayName,
+              }
+            : null,
+          total,
+          exactMatch:
+            results.length > 0 && results[0]!.score >= EXACT_MATCH_THRESHOLD,
+          connectors: results.map((result) => {
+            return {
+              ...args.jsonConnector(result.connector),
+              score: result.score,
+            };
+          }),
+          actions: connectorSearchActionLinks({
+            actions,
+            origin: args.origin,
+            agentId: args.agentContext?.agentId,
+            callbackPrompt: args.callbackPrompt,
+          }),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
   }
 
   if (results.length === 0) {
@@ -218,6 +262,7 @@ export const searchCommand = new Command()
     "--agent <id>",
     "Show per-agent authorization column (must match the current Agent inside a run)",
   )
+  .option("--json", "Output connector matches and actions as JSON")
   .option(
     "--callback-prompt <prompt>",
     "Continue the current web chat after one connector action (use --limit 1)",
@@ -231,7 +276,12 @@ export const searchCommand = new Command()
     withErrorHandler(
       async (
         keyword: string,
-        options: { agent?: string; limit?: number; callbackPrompt?: string },
+        options: {
+          agent?: string;
+          limit?: number;
+          callbackPrompt?: string;
+          json?: boolean;
+        },
       ) => {
         const agentId = resolveConnectorAgentId(options.agent);
         const trimmed = keyword.trim();
@@ -276,6 +326,32 @@ export const searchCommand = new Command()
             connectors: definitions,
             keyword: trimmed,
             limit: options.limit,
+            json: options.json,
+            jsonConnector: (connector) => {
+              const target = connectorDiscoveryTarget(connector);
+              const account = runAccountForConnector(connector);
+              return {
+                target,
+                connectorType: connectorInspectionType(
+                  target,
+                  connector.kind === "custom"
+                    ? connector.customConnector
+                    : null,
+                ),
+                slug: connector.slug,
+                label: connector.label,
+                account,
+                availableForRun:
+                  account.state === "context-unavailable"
+                    ? null
+                    : account.state === "available" &&
+                      account.metadata.connectionStatus !==
+                        "reconnect-required",
+                authorized: agentContext
+                  ? isConnectorDiscoveryAuthorized(connector, agentContext)
+                  : null,
+              };
+            },
             availabilityHeader: "AVAILABLE THIS RUN",
             renderAvailability: (connector) => {
               return renderRunAvailabilityCell(
@@ -315,6 +391,10 @@ export const searchCommand = new Command()
           connectors: discoveredConnectors,
           keyword: trimmed,
           limit: options.limit,
+          json: options.json,
+          jsonConnector: (connector) => {
+            return connectorDiscoveryJson(connector, agentContext);
+          },
           availabilityHeader: "AVAILABLE",
           renderAvailability: (connector) => {
             return renderCurrentAvailabilityCell(connector, agentContext);

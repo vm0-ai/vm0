@@ -17,6 +17,27 @@ const commandCases = [
   { name: "list", command: listCommand, args: [] },
   { name: "status", command: statusCommand, args: ["github"] },
   { name: "search", command: searchCommand, args: ["github"] },
+  { name: "list JSON", command: listCommand, args: ["--json"] },
+  {
+    name: "status JSON",
+    command: statusCommand,
+    args: ["github", "--json"],
+  },
+  {
+    name: "search JSON",
+    command: searchCommand,
+    args: ["github", "--json"],
+  },
+  {
+    name: "custom list JSON",
+    command: customConnectorCommand,
+    args: ["list", "--json"],
+  },
+  {
+    name: "custom status JSON",
+    command: customConnectorCommand,
+    args: ["status", CUSTOM_CONNECTOR_ID, "--json"],
+  },
   { name: "custom list", command: customConnectorCommand, args: ["list"] },
   {
     name: "custom status",
@@ -68,9 +89,11 @@ describe("run-bound connector Agent selectors", () => {
     vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", undefined);
     for (const { command } of commandCases) {
       command.setOptionValue("agent", undefined);
+      command.setOptionValue("json", false);
     }
     for (const command of customConnectorCommand.commands) {
       command.setOptionValue("agent", undefined);
+      command.setOptionValue("json", false);
     }
     requests = [];
     server.use(
