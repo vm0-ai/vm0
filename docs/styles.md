@@ -47,7 +47,7 @@ Token and variant changes are reviewed at their owning layer together with affec
 | --------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Fill            | `bg-card`                                                 | Existing semantic card fill in each theme                                                            |
 | Border          | `--color-surface-border`, `--border-width-surface`        | Gray 400 at 0.7 CSS pixels; the browser rounds for its device scale                                  |
-| Radius          | `rounded-surface`, `rounded-surface-compact`              | 1.25rem and 0.75rem in every theme                                                                   |
+| Radius          | `rounded-surface`, `rounded-surface-compact`              | 1.25rem and a fixed 12px respectively in every theme                                                 |
 | Elevation       | `shadow-surface` via `--surface-shadow`                   | Neutral lift in Light/Dark; the gradient theme uses the canonical state-layer hue with reduced alpha |
 | Pointer overlay | `--background-image-surface-hover`                        | State-hover painted above the opaque card fill                                                       |
 | Transition      | `transition-[background-color] duration-150 ease-surface` | Background color only, 150ms, CSS `ease`                                                             |

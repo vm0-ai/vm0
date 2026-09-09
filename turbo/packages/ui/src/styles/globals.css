@@ -144,7 +144,7 @@
 
   /* Page surfaces: theme-neutral geometry, theme-aware fill and elevation. */
   --radius-surface: 1.25rem;
-  --radius-surface-compact: 0.75rem;
+  --radius-surface-compact: 12px;
   --border-width-surface: 0.7px;
   --shadow-surface: var(--surface-shadow);
   --background-image-surface-hover: linear-gradient(
