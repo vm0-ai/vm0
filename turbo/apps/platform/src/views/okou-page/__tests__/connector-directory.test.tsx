@@ -342,3 +342,48 @@ test("List the catalog when it is too small for any category to fill a shelf", a
   expect(dialog.querySelector("[data-testid^='connector-shelf-']")).toBeNull();
   expect(within(dialog).getByText("Gmail")).toBeVisible();
 });
+
+test("Count the whole category on a chip, not the slice discovery returned", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({
+    catalog: rankedCatalog(),
+    categoryConnectorCounts: { mail: 329, voice: 50 },
+    categoryMetadata: {
+      categories: [
+        {
+          id: "mail",
+          label: "Communication and Collaboration",
+          menuLabel: "Communication",
+          groupId: null,
+        },
+      ],
+      groups: [],
+    },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  const dialog = await openDirectory(user);
+  await waitFor(() => {
+    expect(within(dialog).getByTestId("connector-shelf-mail")).toBeVisible();
+  });
+
+  // The chip stands for the category, so it has to carry the catalog's own
+  // name and the server's total -- not a name derived from the id and the ten
+  // connectors this response happened to include.
+  const chips = Array.from(
+    dialog.querySelectorAll<HTMLElement>("[data-connector-category-chip]"),
+  ).map((element) => {
+    return element.textContent;
+  });
+  expect(chips).toContain("Communication329");
+  expect(
+    within(dialog).getByRole("heading", {
+      name: "Communication and Collaboration",
+    }),
+  ).toBeVisible();
+});

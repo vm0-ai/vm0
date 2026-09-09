@@ -16,8 +16,8 @@ import {
   SegmentControlItem,
 } from "@okouai/ui/components/ui/segment-control";
 import { Button, cn } from "@okouai/ui";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/connector-accounts.ts";
 import type {
   ComposerConnectorUiState,
@@ -273,10 +273,12 @@ function CustomConnectorDirectoryCard({
 
 function DirectoryCategoryChips({
   sections,
+  categoryCounts,
   selected,
   onSelect,
 }: {
   readonly sections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly selected: string | null;
   readonly onSelect: (category: string | null) => void;
 }) {
@@ -320,9 +322,14 @@ function DirectoryCategoryChips({
               }}
             >
               {section.menuLabel}
-              <span className="text-[11px] text-muted-foreground/70 tabular-nums">
-                {section.connectors.length}
-              </span>
+              {/* The chip stands for the whole category, not the slice
+                  discovery returned, so it counts only what the server
+                  reported and shows nothing when it reported nothing. */}
+              {categoryCounts?.[section.category] !== undefined && (
+                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                  {categoryCounts[section.category]}
+                </span>
+              )}
             </button>
           );
         })}
@@ -602,6 +609,7 @@ function DirectoryBrowseView({
   tab,
   search,
   category,
+  categoryCounts,
   loading,
   model,
   renderCard,
@@ -611,6 +619,7 @@ function DirectoryBrowseView({
   readonly tab: ConnectorDirectoryTab;
   readonly search: string;
   readonly category: string | null;
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
@@ -635,6 +644,7 @@ function DirectoryBrowseView({
       {tab === "discover" && (
         <DirectoryCategoryChips
           sections={model.categorySections}
+          categoryCounts={categoryCounts}
           selected={category}
           onSelect={(next) => {
             onUpdateState({
@@ -808,6 +818,14 @@ interface ConnectorDirectoryDialogProps {
   readonly onUpdateState: UpdateDirectoryState;
   /** Category totals from discovery; a shelf's closing cell stands for these. */
   readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  /**
+   * The catalog's category names, from the same discovery response as the
+   * connectors. Reading them from the full-catalog status endpoint instead
+   * made every chip wait on a 6.7 MB response and show an id-derived name
+   * until it arrived.
+   */
+  readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
+  readonly loading: boolean;
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
   readonly connectedCustom: readonly CustomConnectorResponse[];
@@ -846,6 +864,8 @@ export function ConnectorDirectoryDialog({
   state,
   onUpdateState,
   categoryCounts,
+  categoryMetadata,
+  loading,
   connected,
   unconnected,
   connectedCustom,
@@ -858,7 +878,6 @@ export function ConnectorDirectoryDialog({
 }: ConnectorDirectoryDialogProps) {
   const { t } = useTranslation();
   const accountLabelOf = useConnectorAccountLabel();
-  const catalogLoadable = useLastLoadable(connectorCatalogStatus$);
   const accountsLoadable = useLastLoadable(connectorAccountSummaryByTarget$);
   const accountSummaries: ReadonlyMap<string, ConnectorAccountSummary> =
     accountsLoadable.state === "hasData"
@@ -875,10 +894,7 @@ export function ConnectorDirectoryDialog({
     unconnectedCustom,
     search,
     category,
-    categoryMetadata:
-      catalogLoadable.state === "hasData"
-        ? catalogLoadable.data.categoryMetadata
-        : undefined,
+    categoryMetadata,
     otherCategoryLabel: t(($) => {
       return $.chat.connectors.directory.otherCategory;
     }),
@@ -887,7 +903,6 @@ export function ConnectorDirectoryDialog({
       return $.connectors.catalog.shelf.popular;
     }),
   });
-  const loading = catalogLoadable.state === "loading" && connected.length === 0;
   const navigableSlugs = navigableDirectorySlugs(tab, model);
   const activeSlug = navigableSlugs[state.directoryActiveIndex];
   const detailConnector = state.directoryDetailSlug
@@ -954,6 +969,7 @@ export function ConnectorDirectoryDialog({
             tab={tab}
             search={search}
             category={category}
+            categoryCounts={categoryCounts}
             loading={loading}
             model={model}
             renderCard={renderCard}

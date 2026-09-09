@@ -1,6 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   agentCustomConnectorsContract,
@@ -84,6 +85,12 @@ interface ComposerConnectorData {
   readonly categoryConnectorCounts:
     | Readonly<Record<string, number>>
     | undefined;
+  /**
+   * The catalog's own category names. They ride on the same discovery response
+   * as the connectors, so the directory never has to name a category before it
+   * knows what that category is called.
+   */
+  readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
 }
 
 export interface ComposerConnectorSignals {
@@ -391,6 +398,7 @@ export function createComposerConnectorSignals(
       customConnectors,
       authorization,
       categoryConnectorCounts: catalog.categoryConnectorCounts,
+      categoryMetadata: catalog.categoryMetadata,
     };
   });
   const addDialogKeyword$ = computed((get) => {

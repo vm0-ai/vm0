@@ -10564,6 +10564,8 @@ function ComposerConnectorsSlot({
             state={connectorUi}
             onUpdateState={updateConnectorUi}
             categoryCounts={connectorData?.categoryConnectorCounts}
+            categoryMetadata={connectorData?.categoryMetadata}
+            loading={connectorData === undefined}
             connected={agentConnectors}
             unconnected={unconnectedConnectors}
             connectedCustom={agentCustomConnectors}
