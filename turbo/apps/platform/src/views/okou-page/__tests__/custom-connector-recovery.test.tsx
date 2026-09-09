@@ -23,6 +23,7 @@ import {
   getConnectorCard,
   queryConnectorAction,
   listAgent,
+  mockOAuthCompletions,
 } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
@@ -203,17 +204,28 @@ test.each(["missing", "invalid"] as const)(
   },
 );
 
-test.each(["completed", "cancelled"] as const)(
-  "Confirm a %s custom OAuth reconnect from the exact account's update",
+test.each([
+  "completed",
+  "completed-unhealthy-default",
+  "cancelled",
+  "account-updated",
+  "other-account",
+] as const)(
+  "Confirm a custom OAuth reconnect using its exact completion receipt: %s",
   async (outcome) => {
+    const completed =
+      outcome === "completed" || outcome === "completed-unhealthy-default";
+    const defaultConnected = outcome !== "completed-unhealthy-default";
     const connector = customConnector({
       slug: "_acme-oauth",
       authMode: "oauth",
-      connected: true,
-      connectedAccountId: DEFAULT_ACCOUNT_ID,
-      connectedAccountUpdatedAt: "2026-01-01T00:00:00Z",
+      connected: defaultConnected,
+      connectedAccountId: defaultConnected ? DEFAULT_ACCOUNT_ID : undefined,
+      connectedAccountUpdatedAt: defaultConnected
+        ? "2026-01-01T00:00:00Z"
+        : undefined,
       fields: [],
-      missingRequiredFields: [],
+      missingRequiredFields: defaultConnected ? [] : ["oauth"],
       configuredFieldKeys: [],
       headerInjections: [
         {
@@ -233,6 +245,28 @@ test.each(["completed", "cancelled"] as const)(
       },
     });
     mockDefinition(connector);
+    if (!defaultConnected) {
+      context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+        return respond(200, {
+          summaries: [
+            {
+              target: { kind: "custom", customConnectorId: connector.id },
+              accountCount: 2,
+              attentionCount: 2,
+              defaultConnection: {
+                ...account(connector),
+                id: DEFAULT_ACCOUNT_ID,
+                displayName: "Expired default",
+                authMethod: "oauth",
+                isDefault: true,
+              },
+            },
+          ],
+        });
+      });
+    }
+    const completedAttempts = mockOAuthCompletions(context);
+    const oauthAttemptId = crypto.randomUUID();
     let reconnected = false;
     context.mocks.api(
       connectorAccountsContract.connection,
@@ -262,11 +296,18 @@ test.each(["completed", "cancelled"] as const)(
           intent: "reconnect",
           connectionId: ACCOUNT_ID,
         });
-        reconnected = outcome === "completed";
+        reconnected = completed || outcome === "account-updated";
+        if (completed || outcome === "other-account") {
+          completedAttempts.set(
+            oauthAttemptId,
+            completed ? ACCOUNT_ID : DEFAULT_ACCOUNT_ID,
+          );
+        }
         return respond(200, {
           result: "authorization",
           authorizationUrl: "https://acme.test/oauth/reconnect",
           connectionId: ACCOUNT_ID,
+          oauthAttemptId,
         });
       },
     );
@@ -309,10 +350,9 @@ test.each(["completed", "cancelled"] as const)(
         "https://acme.test/oauth/reconnect",
       );
     });
-    const expected =
-      outcome === "completed"
-        ? { prompts: ["Continue after OAuth"], canContinue: false }
-        : { prompts: [], canContinue: true };
+    const expected = completed
+      ? { prompts: ["Continue after OAuth"], canContinue: false }
+      : { prompts: [], canContinue: true };
     await waitFor(() => {
       const currentDialog = screen.queryByRole("dialog", {
         name: `Connect ${connector.displayName}`,

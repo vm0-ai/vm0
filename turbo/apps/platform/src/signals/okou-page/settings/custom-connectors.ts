@@ -502,7 +502,7 @@ const authorizeCompletedCustomConnectorTarget$ = command(
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
-    if (!args.connector?.connected) {
+    if (!args.connector) {
       return false;
     }
     if (
@@ -645,7 +645,8 @@ const connectCustomConnectorAuthorizationForTargetCommand$ = command(
       signal,
     );
     return {
-      connected: connector?.connected ?? false,
+      // The receipt confirms this account; the projection describes the default.
+      connected: true,
       targetAuthorized,
       connectionId,
     };
