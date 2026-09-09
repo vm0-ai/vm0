@@ -67,14 +67,35 @@ describe("okou web upload-file command", () => {
 
   describe("successful upload", () => {
     it.each([
-      ["report.md", "text/markdown; charset=utf-8"],
-      ["note.txt", "text/plain; charset=utf-8"],
-      ["table.csv", "text/csv; charset=utf-8"],
-      ["table.tsv", "text/tab-separated-values; charset=utf-8"],
+      {
+        createPath: () => {
+          return join(tmpDir, "report.md");
+        },
+        contentType: "text/markdown; charset=utf-8",
+      },
+      {
+        createPath: () => {
+          return join(tmpDir, "note.txt");
+        },
+        contentType: "text/plain; charset=utf-8",
+      },
+      {
+        createPath: () => {
+          return join(tmpDir, "table.csv");
+        },
+        contentType: "text/csv; charset=utf-8",
+      },
+      {
+        createPath: () => {
+          return join(tmpDir, "table.tsv");
+        },
+        contentType: "text/tab-separated-values; charset=utf-8",
+      },
     ])(
-      "delivers %s with UTF-8 metadata and original bytes",
-      async (filename, contentType) => {
-        const filePath = join(tmpDir, basename(filename));
+      "delivers $contentType with original bytes",
+      async ({ createPath, contentType }) => {
+        const filePath = createPath();
+        const filename = basename(filePath);
         const bytes = Buffer.from("中文 / 日本語 / 한글 / emoji 😀\n", "utf8");
         writeFileSync(filePath, bytes);
         const file = {
