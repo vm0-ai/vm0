@@ -381,12 +381,6 @@ if ! oauth_client_config_prefixes | grep -qx SLACK; then
   fail "expected Slack OAuth client config to come from Doppler"
 fi
 
-# Both the variable and the secret sources are canonical-only now, so no
-# source read in the action may name a legacy ZERO_ variable or secret.
-if grep -En '(repo_var|repo_secret|add_(var|secret) [A-Z0-9_]+) "?ZERO_' "$ACTION"; then
-  fail "environment sources must read canonical OKOU_ names, not ZERO_"
-fi
-
 github_app_canonical_vars_json='{"OKOU_GITHUB_APP_SLUG":" github-canonical-slug ","OKOU_GITHUB_APP_ID":"github-canonical-id","OKOU_GITHUB_APP_CLIENT_ID":"github-canonical-client-id"}'
 github_app_canonical_secrets_json='{"OKOU_GITHUB_APP_CLIENT_SECRET":"github-canonical-client-secret","OKOU_GITHUB_APP_WEBHOOK_SECRET":"github-canonical-webhook-secret","OKOU_GITHUB_APP_PRIVATE_KEY":"github-canonical-private-key"}'
 github_app_canonical_dir="$(mktemp -d)"

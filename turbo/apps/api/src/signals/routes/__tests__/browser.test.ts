@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
@@ -262,19 +261,16 @@ async function createClaimedChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
   agentId: string,
-  prompt: string | { readonly text: string; readonly publicBrand: PublicBrand },
+  prompt: string,
 ) {
-  const promptText = typeof prompt === "string" ? prompt : prompt.text;
-  const publicBrand = typeof prompt === "string" ? "vm0" : prompt.publicBrand;
   const sent = await chat.requestSendEvent(
     actor,
     {
       agentId,
-      prompt: promptText,
+      prompt,
       cloudBrowserEnabled: true,
     },
     [201],
-    { publicBrand },
   );
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected a chat run");
@@ -2175,10 +2171,7 @@ describe("okou browser route", () => {
       runs,
       actor,
       agent.agentId,
-      {
-        text: "Open a managed browser for screenshot capture",
-        publicBrand: "okou",
-      },
+      "Open a managed browser for screenshot capture",
     );
     const providerId = randomUUID();
     acceptBrowserUseCdpSessions([providerId]);

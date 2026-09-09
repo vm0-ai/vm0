@@ -4,7 +4,6 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   PUBLIC_BRAND_PRESENTATION,
   PUBLIC_BRAND,
@@ -138,7 +137,7 @@ function officialLinkConflictResponse(
   const message =
     reason === "telegram-user-linked"
       ? `This Telegram account is already connected to another ${brandName} organization through the ${botLabel}. Disconnect it before connecting a different account.`
-      : reason === "vm0-org-linked"
+      : reason === "org-linked"
         ? `Your ${brandName} account is already connected to another Telegram account for the ${botLabel} in this organization. Disconnect it before connecting a different Telegram account.`
         : "This official Telegram account link already exists. Disconnect it first and try again.";
 
@@ -178,7 +177,6 @@ function sendConnectSuccessMessage(args: {
   readonly botToken: string;
   readonly telegramUserId: string;
   readonly official: boolean;
-  readonly publicBrand: PublicBrand;
 }): void {
   const text = args.official
     ? `✅ Account linked.\nSend me a message to start chatting with ${PUBLIC_BRAND_PRESENTATION.assistantName}.`
@@ -416,7 +414,6 @@ const linkOfficialInner$ = command(
         botToken: config.botToken,
         telegramUserId: connectSignature.telegramUserId,
         official: true,
-        publicBrand,
       });
 
       return linkSuccessResponse(
@@ -480,7 +477,6 @@ const linkCustomWithConnectSignature$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const publicBrand = PUBLIC_BRAND;
     const connectSignature = args.body.connectSignature;
     if (!connectSignature) {
       return missingAuthMethodResponse();
@@ -520,7 +516,6 @@ const linkCustomWithConnectSignature$ = command(
       botToken: args.installation.botToken,
       telegramUserId: connectSignature.telegramUserId,
       official: false,
-      publicBrand,
     });
 
     return linkSuccessResponse(

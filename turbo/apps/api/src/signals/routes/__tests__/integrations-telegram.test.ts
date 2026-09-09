@@ -1325,7 +1325,7 @@ describe("POST /api/integrations/telegram/link", () => {
     });
   });
 
-  it("uses the request Host brand for a legacy-compatible official connect payload", async () => {
+  it("connects the official Telegram bot with a signed payload", async () => {
     const { token, orgId, userId } = await seedLinkContext();
     await seedDefaultAgentForLink(orgId, userId);
     const telegramUserId = "99015";

@@ -97,7 +97,6 @@ function settingsSuccessRedirect(args: {
   readonly tenantName?: string | null;
   readonly teamName?: string | null;
   readonly botName?: string | null;
-  readonly publicBrand: PublicBrand;
 }): Response {
   const params = new URLSearchParams({ status: "connected" });
   if (args.tenantName) {
@@ -449,7 +448,6 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     tenantName: result.installation.teamsTenantName,
     teamName: result.installation.teamsTeamName,
     botName: result.installation.botName,
-    publicBrand: state.publicBrand,
   });
 });
 

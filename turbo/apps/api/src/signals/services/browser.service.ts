@@ -303,7 +303,6 @@ function browserViewerUrl(chatThreadId: string): string {
 function publicBrowser(
   row: BrowserSessionRow,
   presentation: {
-    readonly publicBrand: PublicBrand;
     readonly liveUrl: string | null;
     readonly screenshotUrl: string | null;
     readonly idleExpiresAt?: Date | null;
@@ -1535,7 +1534,7 @@ async function createAndClaimProviderInstance(
       {
         profileId: args.profile.providerProfileId,
         proxyCountryCode: args.browser.proxyCountryCode,
-        // Zero owns reclamation through the idle lease, so the provider only
+        // Okou owns reclamation through the idle lease, so the provider only
         // needs to enforce the absolute upper bound.
         timeoutMinutes: BROWSER_PROVIDER_TIMEOUT_MINUTES,
       },
@@ -1665,7 +1664,6 @@ const startProviderInstance$ = command(
       kind: "ok",
       value: {
         browser: publicBrowser(claimed.browser, {
-          publicBrand: args.context.publicBrand,
           liveUrl: started.liveUrl,
           screenshotUrl,
           idleExpiresAt: claimed.instance.idleExpiresAt,
@@ -1893,7 +1891,6 @@ const inspectActiveConnection$ = command(
         kind: "ok",
         value: {
           browser: publicBrowser(owner ?? browser, {
-            publicBrand: args.context.publicBrand,
             liveUrl,
             screenshotUrl,
             idleExpiresAt: leased?.idleExpiresAt ?? instance.idleExpiresAt,
@@ -2296,7 +2293,6 @@ const leaseInstanceForBrowser$ = command(
   async (
     { set },
     browser: BrowserSessionRow,
-    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
@@ -2319,7 +2315,6 @@ const leaseInstanceForBrowser$ = command(
     return {
       kind: "ok",
       value: publicBrowser(browser, {
-        publicBrand,
         liveUrl: null,
         screenshotUrl,
         idleExpiresAt: leased.idleExpiresAt,
@@ -2346,12 +2341,7 @@ export const leaseCurrentBrowser$ = command(
     if (!browser) {
       return notFound();
     }
-    return await set(
-      leaseInstanceForBrowser$,
-      browser,
-      context.value.publicBrand,
-      signal,
-    );
+    return await set(leaseInstanceForBrowser$, browser, signal);
   },
 );
 
@@ -2372,12 +2362,7 @@ export const leaseBrowserByThread$ = command(
     if (accessError) {
       return accessError;
     }
-    return await set(
-      leaseInstanceForBrowser$,
-      browser,
-      access.publicBrand,
-      signal,
-    );
+    return await set(leaseInstanceForBrowser$, browser, signal);
   },
 );
 
@@ -2481,7 +2466,6 @@ export const resizeBrowserByThread$ = command(
     return {
       kind: "ok",
       value: publicBrowser(browser, {
-        publicBrand: access.publicBrand,
         liveUrl: provider.value.liveUrl,
         screenshotUrl,
         idleExpiresAt: persisted.value.instance.idleExpiresAt,
@@ -2540,7 +2524,6 @@ export const getBrowser$ = command(
     return {
       kind: "ok",
       value: publicBrowser(row, {
-        publicBrand: access.publicBrand,
         liveUrl,
         screenshotUrl,
         idleExpiresAt,

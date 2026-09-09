@@ -23,7 +23,6 @@ import {
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@okouai/api-contracts/contracts/onboarding";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   agentCustomConnectorsContract,
@@ -374,12 +373,6 @@ function requestDate(request: BddMembershipRequest): number {
 
 function defaultOrgMember(actor: ApiTestUser): BddOrgMember {
   return actor.orgRole ? { actor, role: actor.orgRole } : { actor };
-}
-
-function publicBrandHeaders(publicBrand: PublicBrand) {
-  return publicBrand === "okou"
-    ? { extraHeaders: { origin: "https://app.okou.ai" } }
-    : {};
 }
 
 export function createAuthOrgAgentsBddApi(context: TestContext) {
@@ -747,7 +740,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async readOnboardingStatus(
       actor: ApiTestUser,
-      publicBrand: PublicBrand = "vm0",
     ): Promise<OnboardingStatusResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         onboardingStatusContract,
@@ -755,7 +747,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       const response = await accept(
         client.getStatus({
           headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
         }),
         [200],
       );
@@ -941,7 +932,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async inviteMember(
       actor: ApiTestUser,
       body: InviteOrgMemberRequest,
-      publicBrand: PublicBrand = "vm0",
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         orgInviteContract,
@@ -950,7 +940,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.invite({
           headers: authenticate(actor),
           body,
-          ...publicBrandHeaders(publicBrand),
         }),
         [200],
       );
@@ -1216,7 +1205,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async createAgent(
       actor: ApiTestUser,
       body: AgentRequest = {},
-      publicBrand: PublicBrand = "vm0",
     ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsMainContract,
@@ -1224,7 +1212,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       const response = await accept(
         client.create({
           headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
           body,
         }),
         [201],
@@ -1246,17 +1233,13 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async listAgents(
-      actor: ApiTestUser,
-      publicBrand: PublicBrand = "vm0",
-    ): Promise<readonly AgentResponse[]> {
+    async listAgents(actor: ApiTestUser): Promise<readonly AgentResponse[]> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsMainContract,
       );
       const response = await accept(
         client.list({
           headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
         }),
         [200],
       );
@@ -1279,7 +1262,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readAgent(
       actor: ApiTestUser,
       agentId: string,
-      publicBrand: PublicBrand = "vm0",
     ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsByIdContract,
@@ -1288,7 +1270,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.get({
           params: { id: agentId },
           headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
         }),
         [200],
       );
@@ -1313,7 +1294,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       body: AgentMetadataRequest,
-      publicBrand: PublicBrand = "vm0",
     ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsByIdContract,
@@ -1322,7 +1302,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.updateMetadata({
           params: { id: agentId },
           headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
           body,
         }),
         [200],
@@ -1334,7 +1313,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       body: AgentRequest,
-      publicBrand: PublicBrand = "vm0",
     ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsByIdContract,
@@ -1343,7 +1321,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({
           params: { id: agentId },
           headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
           body,
         }),
         [200],

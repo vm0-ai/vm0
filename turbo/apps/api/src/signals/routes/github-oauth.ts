@@ -4,7 +4,6 @@ import {
   type GithubAppSetupCallbackQuery,
   type GithubOauthConnectQuery,
 } from "@okouai/api-contracts/contracts/github-oauth";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 import {
   exchangeGitHubCode,
@@ -254,7 +253,6 @@ type GithubCallbackStateResolution =
   | {
       readonly ok: false;
       readonly response: Response;
-      readonly publicBrand: PublicBrand;
     };
 
 type GithubCallbackAccessResolution =
@@ -352,7 +350,6 @@ async function resolveGithubCallbackState(args: {
   if (!state) {
     return {
       ok: false,
-      publicBrand: "vm0",
       response: worksErrorRedirect(
         "Invalid OAuth state. Please try installing again from the Platform.",
       ),
@@ -367,7 +364,6 @@ async function resolveGithubCallbackState(args: {
   ) {
     return {
       ok: false,
-      publicBrand: "vm0",
       response: worksErrorRedirect(
         "Invalid state signature. Please try installing again from the Platform.",
       ),

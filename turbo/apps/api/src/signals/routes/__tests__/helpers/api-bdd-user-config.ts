@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
@@ -195,7 +194,6 @@ export function createUserConfigBddApi(context: TestContext) {
     okouBearer(
       actor: ApiTestUser,
       capabilities: readonly Capability[],
-      publicBrand?: PublicBrand,
     ): MintedBearer {
       const seconds = Math.floor(now() / 1000);
       const runId = `run_${randomUUID()}`;
@@ -205,7 +203,6 @@ export function createUserConfigBddApi(context: TestContext) {
         orgId: requireOrgId(actor),
         runId,
         capabilities: [...capabilities],
-        ...(publicBrand ? { publicBrand } : {}),
         iat: seconds,
         exp: seconds + 3600,
       });

@@ -1493,7 +1493,6 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
 function teamsValidationFallbackNotice(args: {
   readonly command: TeamsBotCommand | null;
   readonly isGreeting: boolean;
-  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult | null {
   if (args.command === "help") {
@@ -1924,7 +1923,6 @@ interface ConnectedCommandBeforeComposeArgs {
   readonly command: TeamsBotCommand | null;
   readonly installation: BoundTeamsInstallation;
   readonly connection: TeamsConnection;
-  readonly publicBrand: PublicBrand;
 }
 
 const connectedCommandBeforeCompose$ = command(
@@ -2292,7 +2290,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         teamsValidationFallbackNotice({
           command,
           isGreeting,
-          publicBrand: args.publicBrand,
           installation: args.installation,
         }) ?? {
           kind: "ignored",
@@ -2367,7 +2364,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         command,
         installation: boundInstallation,
         connection,
-        publicBrand: args.publicBrand,
       },
       signal,
     );

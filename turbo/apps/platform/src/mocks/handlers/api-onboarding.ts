@@ -3,6 +3,7 @@ import {
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@okouai/api-contracts/contracts/onboarding";
+import { DEFAULT_AGENT_DISPLAY_NAME } from "@okouai/core/public-brand";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_ONBOARDING_STATUS: OnboardingStatusResponse = {
@@ -12,7 +13,7 @@ const DEFAULT_ONBOARDING_STATUS: OnboardingStatusResponse = {
   hasOrg: true,
   hasDefaultAgent: true,
   defaultAgentId: "c0000000-0000-4000-a000-000000000001",
-  defaultAgentMetadata: { displayName: "Zero" },
+  defaultAgentMetadata: { displayName: DEFAULT_AGENT_DISPLAY_NAME },
 };
 
 let mockOnboardingStatus: OnboardingStatusResponse = {

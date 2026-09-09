@@ -223,7 +223,6 @@ function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
-  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -232,7 +231,6 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: ["file:write"],
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -1214,7 +1212,6 @@ describe("POST /api/voice-io/*", () => {
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
-      publicBrand: "okou",
     });
     const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/voice-io/speech", {

@@ -19,7 +19,7 @@ import {
 
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const DEFAULT_BOT_ID = "28:e2e-okou-bot";
-const DEFAULT_BOT_NAME = "Zero";
+const DEFAULT_BOT_NAME = "Okou";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

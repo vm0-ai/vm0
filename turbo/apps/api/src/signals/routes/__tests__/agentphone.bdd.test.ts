@@ -893,7 +893,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const phone = uniquePhoneHandle();
-    await ap.linkViaWebhookConnectPrompt(actor, phone, sends, "okou");
+    await ap.linkViaWebhookConnectPrompt(actor, phone, sends);
     expect(lastSend(sends).body).toContain(
       "Your phone number is now connected to Okou.",
     );
