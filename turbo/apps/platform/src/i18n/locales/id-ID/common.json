@@ -2396,84 +2396,111 @@
             "prompt": "Buat gambar untuk situs saya"
           }
         },
+        "video": {
+          "animatePhoto": {
+            "label": "Ubah foto menjadi video",
+            "prompt": "Animasikan foto yang saya berikan dengan gerakan alami. Pertahankan ciri subjek dan tanyakan bagian yang perlu bergerak."
+          },
+          "brandIntro": {
+            "label": "Buat pembuka untuk merek saya",
+            "prompt": "Buat video pembuka singkat untuk merek saya dengan logo dan detail yang saya berikan. Bantu memilih suasananya."
+          },
+          "eventPromo": {
+            "label": "Promosikan acara saya",
+            "prompt": "Buat video promosi singkat untuk acara saya. Tanyakan acara, audiens, dan detail yang perlu disertakan."
+          },
+          "loopingBackground": {
+            "label": "Buat latar belakang berulang",
+            "prompt": "Buat video latar dengan gerakan lembut yang berulang tanpa jeda. Tanyakan adegan dan suasana yang saya inginkan."
+          },
+          "productDemo": {
+            "label": "Tampilkan produk saya dalam gerakan",
+            "prompt": "Buat video singkat dari foto produk saya. Pertahankan tampilannya dan tonjolkan fitur yang saya pilih."
+          },
+          "socialClip": {
+            "label": "Buat klip untuk media sosial",
+            "prompt": "Buat video singkat untuk media sosial. Bantu pilih pesan yang jelas dan gaya visual yang sesuai dengan audiens saya."
+          },
+          "videoGreeting": {
+            "label": "Buat video ucapan",
+            "prompt": "Buat video ucapan singkat untuk ulang tahun, hari raya, atau perayaan. Tanyakan acara, penerima, dan pesannya."
+          },
+          "visualExplainer": {
+            "label": "Jelaskan ide secara visual",
+            "prompt": "Buat video singkat yang memudahkan pemahaman satu ide. Tanyakan ide yang akan dijelaskan dan target audiensnya."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Buat halaman pemesanan layanan saya",
+            "prompt": "Buat halaman yang menjelaskan layanan saya dan cara memesan. Gunakan tautan pemesanan yang sudah ada dan tanyakan detail layanan."
+          },
+          "businessSite": {
+            "label": "Buat situs untuk bisnis saya",
+            "prompt": "Buat situs yang menjelaskan bisnis, layanan, dan cara menghubungi saya. Mulai dengan detail bisnis dan audiens."
+          },
+          "cafeMenu": {
+            "label": "Tampilkan menu kafe saya secara online",
+            "prompt": "Buat situs kafe dengan menu, harga, jam buka, dan lokasi. Gunakan detail dan foto yang saya berikan."
+          },
+          "coursePage": {
+            "label": "Buat halaman untuk kursus saya",
+            "prompt": "Buat halaman yang mengenalkan kursus, target peserta, hasil belajar, dan cara mendaftar melalui tautan yang saya berikan."
+          },
+          "eventPage": {
+            "label": "Buat halaman untuk acara saya",
+            "prompt": "Buat halaman acara dengan tanggal, lokasi, agenda, dan tautan pendaftaran yang saya berikan. Tanyakan detail yang belum tersedia."
+          },
+          "linkPage": {
+            "label": "Satukan tautan saya dalam satu halaman",
+            "prompt": "Buat halaman tautan sederhana dengan perkenalan, karya, dan akun sosial saya. Tanyakan tautan yang perlu disertakan."
+          },
+          "portfolio": {
+            "label": "Tampilkan karya saya dalam portofolio",
+            "prompt": "Buat situs portofolio untuk karya saya. Bantu susun proyek, perkenalan diri, dan informasi kontak."
+          },
+          "productLaunch": {
+            "label": "Luncurkan halaman untuk produk saya",
+            "prompt": "Buat halaman produk dengan manfaat, visual, dan langkah selanjutnya yang jelas. Tanyakan produk yang diluncurkan dan targetnya."
+          }
+        },
         "workflow": {
-          "businessNews": {
-            "label": "Ikuti berita yang penting bagi bisnis saya",
-            "prompt": "Ikuti berita yang penting bagi bisnis saya"
-          },
-          "competitorUpdates": {
-            "label": "Ikuti kabar terbaru pesaing",
-            "prompt": "Ikuti kabar terbaru pesaing"
-          },
-          "crmUpdates": {
-            "label": "Perbarui data CRM saya",
-            "prompt": "Perbarui data CRM saya"
-          },
-          "customerFeedback": {
-            "label": "Temukan pola dalam masukan pelanggan",
-            "prompt": "Temukan pola dalam masukan pelanggan"
-          },
-          "customerReviews": {
-            "label": "Pantau ulasan pelanggan baru",
-            "prompt": "Pantau ulasan pelanggan baru"
-          },
-          "emailDrafts": {
-            "label": "Buat draf balasan email penting",
-            "prompt": "Buat draf balasan email penting"
+          "emailBrief": {
+            "label": "Dapatkan ringkasan email setiap pagi",
+            "prompt": "Ringkas email penting, balasan yang perlu dibuat, dan tugas setiap pagi. Konfirmasi kotak masuk dan waktu penerimaan terlebih dahulu."
           },
           "fileOrganization": {
-            "label": "Atur file baru saat masuk",
-            "prompt": "Atur file baru saat masuk"
-          },
-          "invoices": {
-            "label": "Kumpulkan faktur dari email saya",
-            "prompt": "Kumpulkan faktur dari email saya"
-          },
-          "leadFollowUp": {
-            "label": "Tindak lanjuti prospek yang mungkin terlewat",
-            "prompt": "Tindak lanjuti prospek yang mungkin terlewat"
+            "label": "Atur file yang baru masuk",
+            "prompt": "Atur file baru dengan aturan penamaan dan pengarsipan yang disepakati. Konfirmasi sumber, folder tujuan, dan kategori."
           },
           "meetingActions": {
-            "label": "Ubah catatan rapat menjadi langkah berikutnya",
-            "prompt": "Ubah catatan rapat menjadi langkah berikutnya"
+            "label": "Ubah catatan rapat menjadi tugas",
+            "prompt": "Saat catatan rapat baru tersedia, ambil tugas, penanggung jawab, dan tenggat. Tandai informasi yang belum ada dan konfirmasi lokasi catatan."
           },
           "meetingPrep": {
-            "label": "Persiapkan rapat besok",
-            "prompt": "Persiapkan rapat besok"
+            "label": "Bantu persiapkan rapat saya",
+            "prompt": "Sebelum rapat, siapkan informasi peserta, latar belakang, dan topik diskusi. Konfirmasi kalender, sumber materi, dan waktu pengingat."
           },
-          "mondayPriorities": {
-            "label": "Susun prioritas hari Senin saya",
-            "prompt": "Susun prioritas hari Senin saya"
+          "numbersBrief": {
+            "label": "Dapatkan ringkasan angka harian",
+            "prompt": "Rangkum angka yang saya pantau beserta perubahan sejak pembaruan terakhir setiap hari. Konfirmasi sumber data, metrik, dan waktu pengiriman."
           },
-          "projectDelays": {
-            "label": "Temukan proyek yang tertinggal",
-            "prompt": "Temukan proyek yang tertinggal"
+          "progressRecap": {
+            "label": "Rangkum progres dan langkah berikutnya",
+            "prompt": "Rangkum pekerjaan selesai, tugas tertunda, dan prioritas berikutnya secara rutin. Konfirmasi sumber catatan serta jadwal harian atau mingguan."
           },
-          "readingDigest": {
-            "label": "Buat rangkuman bacaan mingguan",
-            "prompt": "Buat rangkuman bacaan mingguan"
+          "replyWatch": {
+            "label": "Beri tahu saat email mendapat balasan",
+            "prompt": "Pantau balasan untuk satu email, lalu beri tahu saya dan rangkum isinya. Konfirmasi email yang perlu diikuti terlebih dahulu."
           },
-          "salesSummary": {
-            "label": "Dapatkan ringkasan penjualan mingguan",
-            "prompt": "Dapatkan ringkasan penjualan mingguan"
-          },
-          "socialDrafts": {
-            "label": "Buat draf unggahan sosial dari kabar saya",
-            "prompt": "Buat draf unggahan sosial dari kabar saya"
-          },
-          "supportThemes": {
-            "label": "Ringkas tema dukungan setiap hari",
-            "prompt": "Ringkas tema dukungan setiap hari"
-          },
-          "teamUpdates": {
-            "label": "Kumpulkan pembaruan untuk tim saya",
-            "prompt": "Kumpulkan pembaruan untuk tim saya"
+          "topicUpdates": {
+            "label": "Ikuti kabar terbaru tentang suatu topik",
+            "prompt": "Ikuti topik yang saya minati dan rangkum informasi baru yang penting beserta sumbernya. Tanyakan topik dan frekuensi pembaruan."
           }
         }
       },
       "ideasLabel": "Ide untuk memulai",
       "label": "Mulai tugas",
-      "more": "Lainnya",
       "moreIdeas": "Ide lainnya",
       "moreTemplates": "Template lainnya",
       "presentationTemplates": "Template presentasi",
@@ -2481,10 +2508,9 @@
         "image": "Gambar",
         "presentation": "Slide",
         "video": "Video",
+        "website": "Situs web",
         "workflow": "Alur kerja"
-      },
-      "website": "Situs web",
-      "workflowTemplates": "Template alur kerja"
+      }
     },
     "templates": {
       "categories": {

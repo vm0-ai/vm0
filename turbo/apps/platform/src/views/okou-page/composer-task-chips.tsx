@@ -9,7 +9,6 @@ import {
   Image,
   Mail,
   MessageSquare,
-  MoreHorizontal,
   Presentation,
   RefreshCw,
   Search,
@@ -18,16 +17,13 @@ import {
   Video,
   Workflow,
 } from "lucide-react";
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@okouai/ui";
+import { Button } from "@okouai/ui";
 import { cn } from "@okouai/ui/lib/utils";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
-import type { ComposerTask } from "../../signals/okou-page/composer-task-chips.ts";
+import type {
+  ComposerIdeaTask,
+  ComposerTask,
+} from "../../signals/okou-page/composer-task-chips.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ComposerPresentationRecommendations } from "./chat-composer.tsx";
@@ -37,6 +33,7 @@ const TASK_ICONS = {
   presentation: Presentation,
   image: Image,
   video: Video,
+  website: Globe,
 } as const;
 const IDEA_ICONS = {
   image: [
@@ -48,15 +45,37 @@ const IDEA_ICONS = {
     ChartNoAxesCombined,
   ],
   workflow: [
-    UserRound,
-    CalendarDays,
     Mail,
     Search,
+    FileText,
     ChartNoAxesCombined,
+    CalendarDays,
+    FileText,
     MessageSquare,
+    FileText,
+  ],
+  video: [
+    Image,
+    Video,
+    MessageSquare,
+    CalendarDays,
+    Presentation,
+    RefreshCw,
+    Sparkles,
+    Mail,
+  ],
+  website: [
+    Globe,
+    UserRound,
+    CalendarDays,
+    Sparkles,
+    FileText,
+    Presentation,
+    ArrowUpRight,
+    CalendarDays,
   ],
 } as const;
-const IDEAS_PER_PAGE = 6;
+const IDEAS_PER_PAGE = { image: 6, workflow: 4, video: 4, website: 4 } as const;
 const IMAGE_IDEAS = [
   "productScene",
   "headshot",
@@ -78,109 +97,44 @@ const IMAGE_IDEAS = [
   "brandCharacter",
 ] as const;
 const WORKFLOW_IDEAS = [
-  "leadFollowUp",
-  "meetingActions",
-  "invoices",
-  "competitorUpdates",
-  "salesSummary",
-  "customerFeedback",
-  "crmUpdates",
+  "emailBrief",
+  "topicUpdates",
+  "progressRecap",
+  "numbersBrief",
   "meetingPrep",
-  "emailDrafts",
-  "teamUpdates",
-  "businessNews",
+  "meetingActions",
+  "replyWatch",
   "fileOrganization",
-  "projectDelays",
-  "socialDrafts",
-  "customerReviews",
-  "readingDigest",
-  "supportThemes",
-  "mondayPriorities",
+] as const;
+const VIDEO_IDEAS = [
+  "animatePhoto",
+  "productDemo",
+  "socialClip",
+  "eventPromo",
+  "visualExplainer",
+  "loopingBackground",
+  "brandIntro",
+  "videoGreeting",
+] as const;
+const WEBSITE_IDEAS = [
+  "businessSite",
+  "portfolio",
+  "eventPage",
+  "productLaunch",
+  "cafeMenu",
+  "coursePage",
+  "linkPage",
+  "bookingPage",
 ] as const;
 const CHIP_CLASS =
   "gap-2 rounded-full border border-transparent px-3 font-normal hover:bg-gray-50";
-
-function ComposerTaskMore({ signals }: { readonly signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const openTemplates = useSet(signals.template.openTemplatePicker$);
-  const selectTask = useSet(signals.taskChips.selectTask$);
-  const openCategory = (category: string) => {
-    selectTask(null);
-    openTemplates({ kind: "insert", category });
-  };
-  return (
-    <>
-      <Button
-        type="button"
-        size="sm"
-        variant="quiet"
-        className={CHIP_CLASS}
-        onClick={() => {
-          openCategory("website");
-        }}
-      >
-        <Globe size={16} aria-hidden />
-        {t(($) => {
-          return $.chat.taskChips.website;
-        })}
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            size="sm"
-            variant="quiet"
-            className={CHIP_CLASS}
-          >
-            <MoreHorizontal size={16} aria-hidden />
-            {t(($) => {
-              return $.chat.taskChips.more;
-            })}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem
-            onSelect={() => {
-              openCategory("avatar");
-            }}
-          >
-            <UserRound size={16} aria-hidden />
-            {t(($) => {
-              return $.artifacts.kinds.avatar;
-            })}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              openCategory("workflow");
-            }}
-          >
-            <Workflow size={16} aria-hidden />
-            {t(($) => {
-              return $.chat.taskChips.workflowTemplates;
-            })}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              openCategory("slides");
-            }}
-          >
-            <Presentation size={16} aria-hidden />
-            {t(($) => {
-              return $.chat.startCards.openTemplatesAria;
-            })}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
-  );
-}
 
 function ComposerTaskIdeas({
   signals,
   task,
 }: {
   readonly signals: ComposerSignals;
-  readonly task: "image" | "workflow";
+  readonly task: ComposerIdeaTask;
 }) {
   const { t } = useTranslation();
   const copy = t(
@@ -189,19 +143,27 @@ function ComposerTaskIdeas({
     },
     { returnObjects: true },
   );
-  const ideas =
-    task === "image"
-      ? IMAGE_IDEAS.map((key) => {
-          return copy.image[key];
-        })
-      : WORKFLOW_IDEAS.map((key) => {
-          return copy.workflow[key];
-        });
+  const ideas = {
+    image: IMAGE_IDEAS.map((key) => {
+      return copy.image[key];
+    }),
+    workflow: WORKFLOW_IDEAS.map((key) => {
+      return copy.workflow[key];
+    }),
+    video: VIDEO_IDEAS.map((key) => {
+      return copy.video[key];
+    }),
+    website: WEBSITE_IDEAS.map((key) => {
+      return copy.website[key];
+    }),
+  }[task];
+  const ideasPerPage = IDEAS_PER_PAGE[task];
   const page = useGet(signals.taskChips.ideaPages$)[task];
   const nextIdeas = useSet(signals.taskChips.nextIdeas$);
   const insertPrompt = useSet(signals.editor.selectOrAppendText$);
   const saveDraft = useSet(signals.draft.save$);
   const pageSignal = useGet(pageSignal$);
+  const openTemplates = useSet(signals.template.openTemplatePicker$);
   const icons = IDEA_ICONS[task];
   return (
     <div
@@ -211,11 +173,28 @@ function ComposerTaskIdeas({
         return $.chat.taskChips.ideasLabel;
       })}
     >
+      {task === "website" && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="quiet"
+            size="xs"
+            className="font-normal hover:bg-gray-50"
+            onClick={() => {
+              openTemplates({ kind: "insert", category: "website" });
+            }}
+          >
+            {t(($) => {
+              return $.chat.taskChips.moreTemplates;
+            })}
+          </Button>
+        </div>
+      )}
       <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
         {ideas
-          .slice(page * IDEAS_PER_PAGE, (page + 1) * IDEAS_PER_PAGE)
+          .slice(page * ideasPerPage, (page + 1) * ideasPerPage)
           .map((idea, index) => {
-            const Icon = icons[index % icons.length]!;
+            const Icon = icons[(page * ideasPerPage + index) % icons.length]!;
             return (
               <Button
                 key={idea.label}
@@ -252,7 +231,7 @@ function ComposerTaskIdeas({
           size="xs"
           className="gap-2 font-normal hover:bg-gray-50"
           onClick={() => {
-            nextIdeas(task, Math.ceil(ideas.length / IDEAS_PER_PAGE));
+            nextIdeas(task, Math.ceil(ideas.length / ideasPerPage));
           }}
         >
           <RefreshCw size={14} aria-hidden />
@@ -284,6 +263,7 @@ export function ComposerTaskChips({
     "presentation",
     "image",
     "video",
+    "website",
   ];
   return (
     <section
@@ -301,7 +281,11 @@ export function ComposerTaskChips({
       >
         {tasks
           .filter((task) => {
-            return task === "workflow" || signals.create.modes.includes(task);
+            return (
+              task === "workflow" ||
+              task === "website" ||
+              signals.create.modes.includes(task)
+            );
           })
           .map((task) => {
             const Icon = TASK_ICONS[task];
@@ -326,12 +310,11 @@ export function ComposerTaskChips({
               </Button>
             );
           })}
-        <ComposerTaskMore signals={signals} />
       </div>
       {selected === "presentation" && (
         <ComposerPresentationRecommendations signals={signals} />
       )}
-      {(selected === "image" || selected === "workflow") && (
+      {selected !== null && selected !== "presentation" && (
         <ComposerTaskIdeas signals={signals} task={selected} />
       )}
     </section>

@@ -5920,11 +5920,11 @@ export function ComposerPresentationRecommendations({
   const picker = useComposerTemplatePicker(signals);
   const imported = useImportedPresentationTemplatePickerItems(signals).slice(
     0,
-    5,
+    3,
   );
   const builtIn = PRESENTATION_TEMPLATE_PICKER_ITEMS.slice(
     0,
-    5 - imported.length,
+    3 - imported.length,
   );
   const openTemplates = useSet(signals.template.openTemplatePicker$);
   const setMode = useSet(signals.create.setMode$);
@@ -5936,7 +5936,22 @@ export function ComposerPresentationRecommendations({
         return $.chat.taskChips.presentationTemplates;
       })}
     >
-      <div className="grid min-w-0 grid-cols-2 items-start gap-4 sm:grid-cols-3">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="quiet"
+          size="xs"
+          className="font-normal hover:bg-gray-50"
+          onClick={() => {
+            openTemplates({ kind: "insert", category: "slides" });
+          }}
+        >
+          {t(($) => {
+            return $.chat.taskChips.moreTemplates;
+          })}
+        </Button>
+      </div>
+      <div className="grid min-w-0 grid-cols-2 items-start gap-4 sm:grid-cols-4">
         <PptImportCard
           signals={signals}
           compact
@@ -5985,21 +6000,6 @@ export function ComposerPresentationRecommendations({
             </ComposerPresentationSuggestion>
           );
         })}
-      </div>
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="quiet"
-          size="xs"
-          className="font-normal hover:bg-gray-50"
-          onClick={() => {
-            openTemplates({ kind: "insert", category: "slides" });
-          }}
-        >
-          {t(($) => {
-            return $.chat.taskChips.moreTemplates;
-          })}
-        </Button>
       </div>
     </div>
   );

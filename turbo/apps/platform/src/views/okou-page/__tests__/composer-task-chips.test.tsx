@@ -137,23 +137,43 @@ test("Task changes preserve uploaded files and the draft, and toggling off resto
 test.each([
   {
     task: "Workflow",
-    first: "Follow up with leads I might miss",
-    next: "Keep my CRM up to date",
-    prompt: "Help me keep track of leads",
+    first: "Get my morning email brief",
+    next: "Help me prepare for meetings",
+    prompt: "Give me a morning brief",
+    cycle: ["Help me prepare for meetings", "Get my morning email brief"],
   },
   {
     task: "Image",
     first: "Put my product in a new scene",
     next: "Make a photo ready for my store",
     prompt: "Put my product in a new scene.",
+    cycle: [
+      "Make a photo ready for my store",
+      "Create an image for my website",
+      "Put my product in a new scene",
+    ],
+  },
+  {
+    task: "Video",
+    first: "Turn a photo into a video",
+    next: "Explain an idea visually",
+    prompt: "Animate a photo I provide",
+    cycle: ["Explain an idea visually", "Turn a photo into a video"],
+  },
+  {
+    task: "Website",
+    first: "Build a website for my business",
+    next: "Put my café menu online",
+    prompt: "Build a website that explains my business",
+    cycle: ["Put my café menu online", "Build a website for my business"],
   },
 ])(
   "$task ideas rotate without changing the draft and append without replacing it",
-  async ({ task, first, next, prompt }) => {
+  async ({ task, first, next, prompt, cycle }) => {
     const capture = mockTemplateChat();
     const editor = await setupChips();
     const tasks = screen.getByRole("group", { name: "Choose a task" });
-    if (task === "Image") {
+    if (task !== "Workflow") {
       click(button(task, tasks));
     }
     const ideas = await screen.findByRole("group", {
@@ -171,6 +191,11 @@ test.each([
     await within(ideas).findByText(next);
     expect(within(ideas).queryByText(first)).toBeNull();
     expect(editor.textContent).toBe(draft);
+    for (const label of cycle.slice(1)) {
+      click(button("More ideas", ideas));
+      await within(ideas).findByText(label);
+      expect(editor.textContent).toBe(draft);
+    }
     expect(editor).toHaveTextContent("Keep this context");
     expect(capture.sentMessages).toHaveLength(0);
   },
@@ -207,6 +232,17 @@ test("A presentation suggestion inserts a canonical template and preserves the p
   expect(
     within(templates).getByLabelText("Import your own deck"),
   ).toHaveAttribute("accept", ".pptx,.ppt,.pdf");
+  for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS.slice(0, 3)) {
+    expect(button(item.title, templates)).toBeInTheDocument();
+  }
+  expect(
+    queryAllByRoleFast("button", templates).some((item) => {
+      return (
+        item.textContent?.trim() ===
+        PRESENTATION_TEMPLATE_PICKER_ITEMS[3]!.title
+      );
+    }),
+  ).toBe(false);
   const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
   click(button(template.title, templates));
   await waitFor(() => {
@@ -234,13 +270,27 @@ test("Uploaded presentation suggestions use the existing template reference", as
     title: "My brand deck",
     canManage: true,
   });
-  mockPresentationTemplateLibrary([deck]);
+  mockPresentationTemplateLibrary([
+    deck,
+    ...[24, 25, 26].map((index) => {
+      return createUploadedTemplate({
+        id: `81000000-0000-4000-a000-0000000000${index}`,
+        title: `My brand deck ${index}`,
+        canManage: true,
+      });
+    }),
+  ]);
   const editor = await setupChips();
   click(button("Slides", screen.getByRole("group", { name: "Choose a task" })));
   const templates = await screen.findByRole("group", {
     name: "Presentation templates",
   });
   await within(templates).findByText("My brand deck");
+  expect(
+    queryAllByRoleFast("button", templates).filter((item) => {
+      return item.textContent?.trim().startsWith("My brand deck");
+    }),
+  ).toHaveLength(3);
   click(button("My brand deck", templates));
   await waitFor(() => {
     expect(editor).toHaveTextContent("My brand deck");
@@ -297,6 +347,15 @@ test("More templates and Website open the existing library in the matching categ
     expect(screen.queryByRole("dialog")).toBeNull();
   });
   click(button("Website", tasks));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(button("Website", tasks)).toHaveAttribute("aria-pressed", "true");
+  expect(
+    queryAllByRoleFast("button", tasks).map((item) => {
+      return item.textContent?.trim();
+    }),
+  ).not.toContain("More");
+  await screen.findByText("Build a website for my business");
+  click(button("More templates"));
   await screen.findByRole("dialog");
   expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByTestId("composer-create-mode")).toBeNull();
@@ -325,9 +384,9 @@ test("Starting ideas use the active app language", async () => {
     featureSwitches: { [FeatureSwitchKey.ComposerTaskChips]: true },
   });
   const editor = await findComposerEditor();
-  const idea = "見落としそうな見込み客をフォローする";
+  const idea = "毎朝、重要なメールをまとめる";
   click(button(idea));
   await waitFor(() => {
-    expect(editor).toHaveTextContent(idea);
+    expect(editor).toHaveTextContent("毎朝、注目すべきメール");
   });
 });

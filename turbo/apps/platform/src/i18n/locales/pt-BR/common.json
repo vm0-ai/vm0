@@ -2444,84 +2444,111 @@
             "prompt": "Criar uma imagem para meu site"
           }
         },
+        "video": {
+          "animatePhoto": {
+            "label": "Transformar uma foto em vídeo",
+            "prompt": "Anime uma foto que eu fornecer com movimentos naturais. Mantenha o assunto reconhecível e pergunte o que deve se mover."
+          },
+          "brandIntro": {
+            "label": "Criar uma abertura para minha marca",
+            "prompt": "Crie uma abertura curta para minha marca com o logotipo e os detalhes que eu fornecer. Ajude a escolher o clima."
+          },
+          "eventPromo": {
+            "label": "Divulgar meu evento",
+            "prompt": "Crie um vídeo promocional curto para meu evento. Pergunte sobre o evento, o público e os detalhes a incluir."
+          },
+          "loopingBackground": {
+            "label": "Criar um fundo em loop",
+            "prompt": "Crie um fundo de vídeo em loop contínuo com movimentos suaves. Pergunte qual cenário e clima eu quero."
+          },
+          "productDemo": {
+            "label": "Mostrar meu produto em movimento",
+            "prompt": "Crie um vídeo curto a partir da foto do meu produto. Preserve sua aparência e destaque a característica que eu escolher."
+          },
+          "socialClip": {
+            "label": "Criar um vídeo para redes sociais",
+            "prompt": "Crie um vídeo curto para redes sociais. Ajude a escolher uma mensagem clara e um estilo visual adequado ao meu público."
+          },
+          "videoGreeting": {
+            "label": "Criar uma mensagem de vídeo comemorativa",
+            "prompt": "Crie uma mensagem curta em vídeo para um aniversário, feriado ou celebração. Pergunte a ocasião, o destinatário e a mensagem."
+          },
+          "visualExplainer": {
+            "label": "Explicar uma ideia visualmente",
+            "prompt": "Crie um vídeo curto que torne uma ideia fácil de entender. Pergunte qual ideia explicar e para quem."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Criar uma página para agendar meus serviços",
+            "prompt": "Crie uma página explicando meus serviços e como agendá-los. Use meu link de agendamento existente e pergunte os detalhes dos serviços."
+          },
+          "businessSite": {
+            "label": "Criar um site para meu negócio",
+            "prompt": "Crie um site que apresente meu negócio, serviços e formas de contato. Comece pelos detalhes do negócio e pelo público."
+          },
+          "cafeMenu": {
+            "label": "Publicar o cardápio do meu café",
+            "prompt": "Crie um site para meu café com cardápio, preços, horários e localização. Use as informações e fotos que eu fornecer."
+          },
+          "coursePage": {
+            "label": "Criar uma página para meu curso",
+            "prompt": "Crie uma página apresentando meu curso, público e resultados de aprendizagem. Use meu link de inscrição para as matrículas."
+          },
+          "eventPage": {
+            "label": "Criar uma página para meu evento",
+            "prompt": "Crie uma página de evento com data, local, programação e link de inscrição que eu fornecer. Pergunte pelos detalhes ausentes."
+          },
+          "linkPage": {
+            "label": "Reunir meus links em uma página",
+            "prompt": "Crie uma página simples de links com minha apresentação, trabalho e redes sociais. Pergunte quais links incluir."
+          },
+          "portfolio": {
+            "label": "Mostrar meu trabalho em um portfólio",
+            "prompt": "Crie um site de portfólio para meu trabalho. Ajude a organizar projetos, apresentação pessoal e informações de contato."
+          },
+          "productLaunch": {
+            "label": "Lançar uma página para meu produto",
+            "prompt": "Crie uma página de produto com benefícios, imagens e uma próxima ação clara. Pergunte o que vou lançar e para quem."
+          }
+        },
         "workflow": {
-          "businessNews": {
-            "label": "Acompanhar notícias relevantes para meu negócio",
-            "prompt": "Acompanhar notícias relevantes para meu negócio"
-          },
-          "competitorUpdates": {
-            "label": "Acompanhar novidades dos concorrentes",
-            "prompt": "Acompanhar novidades dos concorrentes"
-          },
-          "crmUpdates": {
-            "label": "Manter meu CRM atualizado",
-            "prompt": "Manter meu CRM atualizado"
-          },
-          "customerFeedback": {
-            "label": "Encontrar padrões no feedback dos clientes",
-            "prompt": "Encontrar padrões no feedback dos clientes"
-          },
-          "customerReviews": {
-            "label": "Acompanhar novas avaliações de clientes",
-            "prompt": "Acompanhar novas avaliações de clientes"
-          },
-          "emailDrafts": {
-            "label": "Rascunhar respostas a e-mails importantes",
-            "prompt": "Rascunhar respostas a e-mails importantes"
+          "emailBrief": {
+            "label": "Receber meu resumo de e-mails pela manhã",
+            "prompt": "Resuma pela manhã os e-mails importantes, as respostas pendentes e as ações necessárias. Confirme a caixa de entrada e o horário desejado."
           },
           "fileOrganization": {
-            "label": "Organizar novos arquivos conforme chegam",
-            "prompt": "Organizar novos arquivos conforme chegam"
-          },
-          "invoices": {
-            "label": "Reunir faturas do meu e-mail",
-            "prompt": "Reunir faturas do meu e-mail"
-          },
-          "leadFollowUp": {
-            "label": "Acompanhar leads que posso perder",
-            "prompt": "Acompanhar leads que posso perder"
+            "label": "Organizar os arquivos que chegam",
+            "prompt": "Organize arquivos novos conforme regras combinadas de nomes e arquivamento. Confirme origem, pasta de destino e categorias."
           },
           "meetingActions": {
-            "label": "Transformar notas de reunião em próximos passos",
-            "prompt": "Transformar notas de reunião em próximos passos"
+            "label": "Transformar notas de reunião em tarefas",
+            "prompt": "Quando chegarem novas notas de reunião, extraia tarefas, responsáveis e prazos. Sinalize detalhes ausentes e confirme onde encontrar as notas."
           },
           "meetingPrep": {
-            "label": "Preparar as reuniões de amanhã",
-            "prompt": "Preparar as reuniões de amanhã"
+            "label": "Ajudar a preparar minhas reuniões",
+            "prompt": "Antes das reuniões, prepare informações sobre participantes, contexto e pontos de discussão. Confirme calendário, materiais e antecedência do lembrete."
           },
-          "mondayPriorities": {
-            "label": "Preparar minhas prioridades de segunda-feira",
-            "prompt": "Preparar minhas prioridades de segunda-feira"
+          "numbersBrief": {
+            "label": "Receber meu resumo diário de números",
+            "prompt": "Resuma diariamente os números que acompanho e as mudanças desde a última atualização. Confirme a fonte, os indicadores e o horário."
           },
-          "projectDelays": {
-            "label": "Identificar projetos atrasados",
-            "prompt": "Identificar projetos atrasados"
+          "progressRecap": {
+            "label": "Resumir meu progresso e próximos passos",
+            "prompt": "Resuma regularmente o trabalho concluído, as pendências e as próximas prioridades. Confirme a fonte dos registros e a frequência diária ou semanal."
           },
-          "readingDigest": {
-            "label": "Montar um resumo semanal de leituras",
-            "prompt": "Montar um resumo semanal de leituras"
+          "replyWatch": {
+            "label": "Avisar quando um e-mail receber resposta",
+            "prompt": "Acompanhe a resposta a um e-mail específico, depois me avise e resuma o conteúdo. Confirme primeiro qual e-mail acompanhar."
           },
-          "salesSummary": {
-            "label": "Receber meu resumo semanal de vendas",
-            "prompt": "Receber meu resumo semanal de vendas"
-          },
-          "socialDrafts": {
-            "label": "Criar rascunhos de posts com minhas novidades",
-            "prompt": "Criar rascunhos de posts com minhas novidades"
-          },
-          "supportThemes": {
-            "label": "Resumir os temas do suporte a cada dia",
-            "prompt": "Resumir os temas do suporte a cada dia"
-          },
-          "teamUpdates": {
-            "label": "Reunir atualizações para minha equipe",
-            "prompt": "Reunir atualizações para minha equipe"
+          "topicUpdates": {
+            "label": "Acompanhar novidades sobre um tema",
+            "prompt": "Acompanhe um tema que me interessa e resuma novas informações importantes com fontes. Pergunte o tema e a frequência desejada."
           }
         }
       },
       "ideasLabel": "Ideias para começar",
       "label": "Tarefas para começar",
-      "more": "Mais",
       "moreIdeas": "Mais ideias",
       "moreTemplates": "Mais modelos",
       "presentationTemplates": "Modelos de apresentação",
@@ -2529,10 +2556,9 @@
         "image": "Imagem",
         "presentation": "Slides",
         "video": "Vídeo",
+        "website": "Site",
         "workflow": "Fluxo de trabalho"
-      },
-      "website": "Site",
-      "workflowTemplates": "Modelos de fluxo de trabalho"
+      }
     },
     "templates": {
       "categories": {

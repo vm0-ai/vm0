@@ -2400,84 +2400,111 @@
             "prompt": "Ein Bild für meine Website erstellen"
           }
         },
+        "video": {
+          "animatePhoto": {
+            "label": "Aus einem Foto ein Video machen",
+            "prompt": "Animiere ein bereitgestelltes Foto mit natürlichen Bewegungen. Halte das Motiv erkennbar und frage, was sich bewegen soll."
+          },
+          "brandIntro": {
+            "label": "Ein Intro für meine Marke erstellen",
+            "prompt": "Erstelle ein kurzes Markenvideo als Einstieg mit meinem Logo und meinen Markeninformationen. Hilf mir bei der Wahl der Stimmung."
+          },
+          "eventPromo": {
+            "label": "Meine Veranstaltung bewerben",
+            "prompt": "Erstelle ein kurzes Werbevideo für meine Veranstaltung. Frage nach Anlass, Publikum und den gewünschten Informationen."
+          },
+          "loopingBackground": {
+            "label": "Einen Hintergrund in Endlosschleife erstellen",
+            "prompt": "Erstelle einen nahtlos wiederholbaren Videohintergrund mit sanfter Bewegung. Frage nach Szene und Stimmung."
+          },
+          "productDemo": {
+            "label": "Mein Produkt in Bewegung zeigen",
+            "prompt": "Erstelle aus meinem Produktfoto ein kurzes Produktvideo. Bewahre das Aussehen und betone das von mir gewählte Merkmal."
+          },
+          "socialClip": {
+            "label": "Einen Clip für soziale Medien erstellen",
+            "prompt": "Erstelle ein kurzes Video für soziale Medien. Hilf mir, eine klare Botschaft und einen passenden Stil für mein Publikum zu wählen."
+          },
+          "videoGreeting": {
+            "label": "Einen Videogruß erstellen",
+            "prompt": "Erstelle einen kurzen Videogruß für einen Geburtstag, Feiertag oder eine Feier. Frage nach Anlass, Empfänger und Botschaft."
+          },
+          "visualExplainer": {
+            "label": "Eine Idee anschaulich erklären",
+            "prompt": "Erstelle ein kurzes Video, das eine Idee verständlich erklärt. Frage nach der Idee und dem Zielpublikum."
+          }
+        },
+        "website": {
+          "bookingPage": {
+            "label": "Eine Seite zum Buchen meiner Leistungen erstellen",
+            "prompt": "Erstelle eine Seite zu meinen Leistungen und zur Buchung. Nutze meinen vorhandenen Buchungslink und frage nach den Leistungsdetails."
+          },
+          "businessSite": {
+            "label": "Eine Website für mein Unternehmen erstellen",
+            "prompt": "Erstelle eine Website über mein Unternehmen, meine Leistungen und Kontaktmöglichkeiten. Kläre zuerst die Geschäftsdaten und Zielgruppe."
+          },
+          "cafeMenu": {
+            "label": "Die Speisekarte meines Cafés online stellen",
+            "prompt": "Erstelle eine Café-Website mit Speisekarte, Preisen, Öffnungszeiten und Standort. Nutze meine Angaben und Fotos."
+          },
+          "coursePage": {
+            "label": "Eine Seite für meinen Kurs erstellen",
+            "prompt": "Erstelle eine Kursseite mit Zielgruppe, Lernzielen und Anmeldung über meinen vorhandenen Anmeldelink."
+          },
+          "eventPage": {
+            "label": "Eine Seite für meine Veranstaltung erstellen",
+            "prompt": "Erstelle eine Veranstaltungsseite mit Datum, Ort, Ablauf und dem bereitgestellten Anmeldelink. Frage nach fehlenden Informationen."
+          },
+          "linkPage": {
+            "label": "Meine Links auf einer Seite bündeln",
+            "prompt": "Erstelle eine einfache Profilseite mit meiner Vorstellung, Arbeit und sozialen Links. Frage, welche Links aufgenommen werden sollen."
+          },
+          "portfolio": {
+            "label": "Meine Arbeit in einem Portfolio zeigen",
+            "prompt": "Erstelle eine Portfolio-Website für meine Arbeit. Hilf mir, Projekte, meine Vorstellung und Kontaktdaten zu strukturieren."
+          },
+          "productLaunch": {
+            "label": "Eine Seite für mein Produkt veröffentlichen",
+            "prompt": "Erstelle eine Produktseite mit Vorteilen, Bildern und einem klaren nächsten Schritt. Frage nach Produkt und Zielgruppe."
+          }
+        },
         "workflow": {
-          "businessNews": {
-            "label": "Relevante Nachrichten für mein Unternehmen verfolgen",
-            "prompt": "Relevante Nachrichten für mein Unternehmen verfolgen"
-          },
-          "competitorUpdates": {
-            "label": "Neuigkeiten der Konkurrenz verfolgen",
-            "prompt": "Neuigkeiten der Konkurrenz verfolgen"
-          },
-          "crmUpdates": {
-            "label": "Mein CRM aktuell halten",
-            "prompt": "Mein CRM aktuell halten"
-          },
-          "customerFeedback": {
-            "label": "Muster im Kundenfeedback erkennen",
-            "prompt": "Muster im Kundenfeedback erkennen"
-          },
-          "customerReviews": {
-            "label": "Neue Kundenbewertungen verfolgen",
-            "prompt": "Neue Kundenbewertungen verfolgen"
-          },
-          "emailDrafts": {
-            "label": "Antworten auf wichtige E-Mails entwerfen",
-            "prompt": "Antworten auf wichtige E-Mails entwerfen"
+          "emailBrief": {
+            "label": "Meine morgendliche E-Mail-Übersicht erhalten",
+            "prompt": "Fasse morgens wichtige E-Mails, nötige Antworten und Aufgaben zusammen. Kläre zuerst das Postfach und die gewünschte Uhrzeit."
           },
           "fileOrganization": {
-            "label": "Neue Dateien bei Eingang organisieren",
-            "prompt": "Neue Dateien bei Eingang organisieren"
-          },
-          "invoices": {
-            "label": "Rechnungen aus meinen E-Mails sammeln",
-            "prompt": "Rechnungen aus meinen E-Mails sammeln"
-          },
-          "leadFollowUp": {
-            "label": "Bei übersehenen Interessenten nachfassen",
-            "prompt": "Bei übersehenen Interessenten nachfassen"
+            "label": "Eingehende Dateien organisieren",
+            "prompt": "Organisiere neue Dateien nach vereinbarten Benennungs- und Ablageregeln. Kläre Quelle, Zielordner und Kategorien."
           },
           "meetingActions": {
-            "label": "Aus Besprechungsnotizen nächste Schritte ableiten",
-            "prompt": "Aus Besprechungsnotizen nächste Schritte ableiten"
+            "label": "Aus Besprechungsnotizen Aufgaben ableiten",
+            "prompt": "Leite aus neuen Besprechungsnotizen Aufgaben, Zuständige und Fristen ab. Markiere fehlende Angaben und kläre den Speicherort der Notizen."
           },
           "meetingPrep": {
-            "label": "Die Besprechungen von morgen vorbereiten",
-            "prompt": "Die Besprechungen von morgen vorbereiten"
+            "label": "Meine Besprechungen vorbereiten",
+            "prompt": "Bereite vor Besprechungen Informationen zu Personen, Hintergründen und Themen vor. Kläre Kalender, Unterlagen und den Zeitpunkt der Erinnerung."
           },
-          "mondayPriorities": {
-            "label": "Meine Prioritäten für Montag vorbereiten",
-            "prompt": "Meine Prioritäten für Montag vorbereiten"
+          "numbersBrief": {
+            "label": "Meine tägliche Zahlenübersicht erhalten",
+            "prompt": "Fasse täglich die Zahlen zusammen, die ich verfolge, und zeige Veränderungen zum letzten Stand. Kläre Quelle, Kennzahlen und Uhrzeit."
           },
-          "projectDelays": {
-            "label": "Verspätete Projekte erkennen",
-            "prompt": "Verspätete Projekte erkennen"
+          "progressRecap": {
+            "label": "Fortschritte und nächste Schritte zusammenfassen",
+            "prompt": "Fasse erledigte Arbeit, offene Aufgaben und nächste Prioritäten regelmäßig zusammen. Kläre die Quelle der Aufzeichnungen und ob täglich oder wöchentlich."
           },
-          "readingDigest": {
-            "label": "Eine wöchentliche Leseübersicht erstellen",
-            "prompt": "Eine wöchentliche Leseübersicht erstellen"
+          "replyWatch": {
+            "label": "Bei einer E-Mail-Antwort Bescheid geben",
+            "prompt": "Achte auf eine Antwort auf eine bestimmte E-Mail, benachrichtige mich und fasse sie zusammen. Kläre zuerst, welche E-Mail gemeint ist."
           },
-          "salesSummary": {
-            "label": "Meine wöchentliche Verkaufsübersicht erhalten",
-            "prompt": "Meine wöchentliche Verkaufsübersicht erhalten"
-          },
-          "socialDrafts": {
-            "label": "Social-Media-Beiträge aus meinen Neuigkeiten entwerfen",
-            "prompt": "Social-Media-Beiträge aus meinen Neuigkeiten entwerfen"
-          },
-          "supportThemes": {
-            "label": "Tägliche Supportthemen zusammenfassen",
-            "prompt": "Tägliche Supportthemen zusammenfassen"
-          },
-          "teamUpdates": {
-            "label": "Neuigkeiten für mein Team zusammenstellen",
-            "prompt": "Neuigkeiten für mein Team zusammenstellen"
+          "topicUpdates": {
+            "label": "Neuigkeiten zu einem Thema verfolgen",
+            "prompt": "Verfolge ein Thema und fasse wichtige neue Informationen mit Quellen zusammen. Frage nach dem Thema und der gewünschten Häufigkeit."
           }
         }
       },
       "ideasLabel": "Ideen zum Einstieg",
       "label": "Aufgaben zum Einstieg",
-      "more": "Mehr",
       "moreIdeas": "Weitere Ideen",
       "moreTemplates": "Weitere Vorlagen",
       "presentationTemplates": "Präsentationsvorlagen",
@@ -2485,10 +2512,9 @@
         "image": "Bild",
         "presentation": "Folien",
         "video": "Video",
+        "website": "Website",
         "workflow": "Workflow"
-      },
-      "website": "Website",
-      "workflowTemplates": "Workflow-Vorlagen"
+      }
     },
     "templates": {
       "categories": {
