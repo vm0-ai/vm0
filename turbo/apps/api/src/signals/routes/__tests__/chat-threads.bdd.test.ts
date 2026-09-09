@@ -3403,8 +3403,7 @@ describe("CHAT-01 chat search", () => {
     });
 
     const emptyResults = await chat.searchChat(owner, "quokka");
-    expect(emptyResults.results).toStrictEqual([]);
-    expect(emptyResults.hasMore).toBeFalsy();
+    expect(emptyResults).toStrictEqual({ results: [] });
 
     const blankKeyword = await chat.requestSearchChat(owner, "   ", {}, [400]);
     expectApiError(blankKeyword.body);
@@ -3567,24 +3566,6 @@ describe("CHAT-01 chat search", () => {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-
-    // hasMore flips when matches exceed the limit.
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "capybara sighting one",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "capybara sighting two",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "capybara sighting three",
-    });
-    await projectChatEventSearch();
-    const limited = await chat.searchChat(owner, "capybara", { limit: 2 });
-    expect(limited.results).toHaveLength(2);
-    expect(limited.hasMore).toBeTruthy();
   }, 60_000);
 
   it("returns batched matched messages without context across threads", async () => {
@@ -3617,10 +3598,7 @@ describe("CHAT-01 chat search", () => {
     });
 
     await projectChatEventSearch();
-    const contextual = await chat.searchChat(owner, `${marker} needle`, {
-      limit: 3,
-    });
-    expect(contextual.hasMore).toBeFalsy();
+    const contextual = await chat.searchChat(owner, `${marker} needle`);
     expect(
       contextual.results
         .map((result) => {
@@ -3848,7 +3826,7 @@ describe("CHAT-01 chat search index", () => {
     expectApiError(deleted.body);
   }, 60_000);
 
-  it("applies agent, since and limit filters inside the projection", async () => {
+  it("applies agent and since filters inside the projection", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     bdd.acceptAgentStorageWrites();
@@ -3909,14 +3887,6 @@ describe("CHAT-01 chat search index", () => {
     });
     expect(byAgent.results).toHaveLength(1);
     expect(byAgent.results[0]?.chatThreadId).toBe(threadB);
-
-    // The limit and its hasMore probe are applied while matching.
-    const limited = await chat.searchChat(owner, "水豚", { limit: 2 });
-    expect(limited.results).toHaveLength(2);
-    expect(limited.hasMore).toBeTruthy();
-    const exact = await chat.searchChat(owner, "水豚", { limit: 4 });
-    expect(exact.results).toHaveLength(4);
-    expect(exact.hasMore).toBeFalsy();
   }, 60_000);
 });
 

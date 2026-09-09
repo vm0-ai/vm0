@@ -78,7 +78,7 @@ async function sendNoCreditMessage(
 }
 
 describe("GET /api/chat/search durable reader", () => {
-  it("finds older sparse matches and keeps frequent matches newest first", async () => {
+  it("returns up to 25 newest matches without pagination", async () => {
     const owner = bdd.user();
     const source = await createSearchThread(
       owner,
@@ -108,28 +108,43 @@ describe("GET /api/chat/search durable reader", () => {
     });
     await projectChatSearchMessages([source.threadId]);
 
-    const sparse = await chat.searchChat(owner, sparseKeyword, { limit: 1 });
-    expect(sparse.hasMore).toBeTruthy();
-    expect(sparse.results).toHaveLength(1);
-    expect(sparse.results[0]?.matchedMessage.content).toBe(
-      `${sparseKeyword} newer`,
-    );
+    const sparse = await chat.searchChat(owner, sparseKeyword);
+    expect(
+      sparse.results.map((result) => {
+        return result.matchedMessage.content;
+      }),
+    ).toStrictEqual([`${sparseKeyword} newer`, `${sparseKeyword} older`]);
+    expect(sparse).not.toHaveProperty("hasMore");
 
-    const frequent = await chat.searchChat(owner, frequentKeyword, {
-      limit: 1,
-    });
-    expect(frequent.hasMore).toBeTruthy();
-    expect(frequent.results).toHaveLength(1);
-    expect(frequent.results[0]?.matchedMessage.content).toBe(
-      `${frequentKeyword} 79`,
+    const frequent = await chat.searchChat(owner, frequentKeyword);
+    expect(
+      frequent.results.map((result) => {
+        return result.matchedMessage.content;
+      }),
+    ).toStrictEqual(
+      Array.from({ length: 25 }, (_, index) => {
+        return `${frequentKeyword} ${79 - index}`;
+      }),
     );
+    expect(frequent).not.toHaveProperty("hasMore");
+
+    // Retired limits from open browser tabs or older CLIs cannot change the cap.
+    for (const limit of [1, 50]) {
+      const previousClient = await chat.requestSearchChat(
+        owner,
+        frequentKeyword,
+        { limit },
+        [200],
+      );
+      expect(previousClient.status).toBe(200);
+      expect(previousClient.body).toStrictEqual(frequent);
+    }
 
     const missing = await chat.searchChat(
       owner,
       `absent${randomUUID().replaceAll("-", "")}`,
-      { limit: 1 },
     );
-    expect(missing).toStrictEqual({ results: [], hasMore: false });
+    expect(missing).toStrictEqual({ results: [] });
   });
 
   it("serves matched message identity after source events are deleted", async () => {
@@ -162,7 +177,6 @@ describe("GET /api/chat/search durable reader", () => {
     ).resolves.toBeGreaterThan(0);
 
     const search = await chat.searchChat(owner, keyword);
-    expect(search).toMatchObject({ hasMore: false });
     expect(search.results).toHaveLength(1);
     const result = search.results[0];
     if (!result) {
@@ -237,7 +251,7 @@ describe("GET /api/chat/search durable reader", () => {
     expect(otherOrgSearch.results).toStrictEqual([]);
   });
 
-  it("continues past orphan-only candidate pages and preserves hasMore", async () => {
+  it("continues past orphan-only candidate batches to find visible matches", async () => {
     const owner = bdd.user();
     const keyword = `orphanpage${randomUUID().replaceAll("-", "")}`;
     const baseTime = now();
@@ -259,11 +273,13 @@ describe("GET /api/chat/search durable reader", () => {
           `orphan-reader-${randomUUID().slice(0, 8)}`,
         );
         orphanThreadIds.push(orphan.threadId);
-        await sendNoCreditMessage(owner, {
-          agentId: orphan.agentId,
-          threadId: orphan.threadId,
-          prompt: keyword,
-        });
+        for (let messageIndex = 0; messageIndex < 5; messageIndex++) {
+          await sendNoCreditMessage(owner, {
+            agentId: orphan.agentId,
+            threadId: orphan.threadId,
+            prompt: keyword,
+          });
+        }
       }
     });
 
@@ -300,10 +316,9 @@ describe("GET /api/chat/search durable reader", () => {
       }),
     );
 
-    const search = await chat.searchChat(owner, keyword, { limit: 1 });
+    const search = await chat.searchChat(owner, keyword);
     expect(search.results).toHaveLength(1);
     expect(search.results[0]?.chatThreadId).toBe(visible.threadId);
-    expect(search.hasMore).toBeFalsy();
 
     const cleanup = await requestChatSearchProjection(orphanThreadIds);
     expect(cleanup.orphanedThreads).toBe(orphanThreadIds.length);

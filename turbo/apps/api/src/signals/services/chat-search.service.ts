@@ -1,7 +1,8 @@
 import { computed, type Computed } from "ccstate";
-import type {
-  ChatSearchMessage,
-  ChatSearchResult,
+import {
+  CHAT_SEARCH_RESULT_LIMIT,
+  type ChatSearchMessage,
+  type ChatSearchResult,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import { agents } from "@okouai/db/schema/agent";
@@ -266,9 +267,9 @@ async function chatSearchIndexedMatchBatch(
 }
 
 /**
- * Over-fetches bounded candidate pages and discards rows whose source thread
- * has already been deleted. A stable keyset cursor continues past orphan-heavy
- * pages until the caller's result probe is full or the index is exhausted.
+ * Discards matches whose source thread has already been deleted. The internal
+ * keyset cursor continues past those rows until 25 visible results are found
+ * or the index is exhausted; it is never exposed as search pagination.
  */
 async function chatSearchIndexedMatches(
   db: ReadonlyDb,
@@ -278,14 +279,13 @@ async function chatSearchIndexedMatches(
     readonly keyword: string;
     readonly agentId?: string;
     readonly since?: Date;
-    readonly limit: number;
   },
 ): Promise<ChatSearchMatchRow[]> {
-  const candidateLimit = args.limit * 2;
   const matches: ChatSearchMatchRow[] = [];
   let cursor: ChatSearchCandidateCursor | undefined;
 
-  while (matches.length < args.limit) {
+  while (matches.length < CHAT_SEARCH_RESULT_LIMIT) {
+    const candidateLimit = CHAT_SEARCH_RESULT_LIMIT - matches.length;
     const candidates = await chatSearchIndexedMatchBatch(db, {
       ...args,
       limit: candidateLimit,
@@ -311,12 +311,15 @@ async function chatSearchIndexedMatches(
         text: candidate.text,
         agentName: candidate.agentName,
       });
-      if (matches.length === args.limit) {
+      if (matches.length === CHAT_SEARCH_RESULT_LIMIT) {
         break;
       }
     }
 
-    if (matches.length === args.limit || candidates.length < candidateLimit) {
+    if (
+      matches.length === CHAT_SEARCH_RESULT_LIMIT ||
+      candidates.length < candidateLimit
+    ) {
       break;
     }
     const lastCandidate = candidates[candidates.length - 1];
@@ -339,11 +342,9 @@ export function chatSearch(args: {
   readonly keyword: string;
   readonly agentId?: string;
   readonly since?: number;
-  readonly limit: number;
 }): Computed<
   Promise<{
     readonly results: readonly ChatSearchResult[];
-    readonly hasMore: boolean;
   }>
 > {
   return computed(async (get) => {
@@ -355,12 +356,9 @@ export function chatSearch(args: {
       keyword: args.keyword,
       agentId: args.agentId,
       since: sinceDate,
-      limit: args.limit + 1,
     });
 
-    const hasMore = matches.length > args.limit;
-    const truncated = hasMore ? matches.slice(0, args.limit) : matches;
-    const results = truncated.map((match): ChatSearchResult => {
+    const results = matches.map((match): ChatSearchResult => {
       const matchedMessage = toChatSearchMessage(match);
       return {
         chatThreadId: match.chatThreadId,
@@ -373,6 +371,6 @@ export function chatSearch(args: {
       };
     });
 
-    return { results, hasMore };
+    return { results };
   });
 }

@@ -1809,17 +1809,11 @@ const chatSearchResultSchema = z.object({
   matchedRanges: z.array(chatSearchMatchRangeSchema),
 });
 
-/**
- * `hasMore` indicates that the server truncated the result set at `limit`.
- * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
- * query schema below) and chat-message search is a lookup tool, not a bulk
- * export. Callers that hit `hasMore=true` should narrow the query (add
- * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
- * genuine pagination is ever needed, introduce `nextCursor` here.
- */
+export const CHAT_SEARCH_RESULT_LIMIT = 25;
+
+/** The newest matching messages, capped at 25 without pagination. */
 const chatSearchResponseSchema = z.object({
-  results: z.array(chatSearchResultSchema),
-  hasMore: z.boolean(),
+  results: z.array(chatSearchResultSchema).max(CHAT_SEARCH_RESULT_LIMIT),
 });
 
 /**
@@ -1836,7 +1830,6 @@ export const chatSearchContract = c.router({
       keyword: z.string().trim().min(1),
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
-      limit: z.coerce.number().min(1).max(50).default(20),
     }),
     responses: {
       200: chatSearchResponseSchema,
@@ -1844,7 +1837,7 @@ export const chatSearchContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Search chat messages within caller's org",
+    summary: "Search up to 25 newest chat messages within caller's org",
   },
 });
 
