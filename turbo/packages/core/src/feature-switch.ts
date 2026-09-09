@@ -406,7 +406,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Render recommended follow-ups as a stack of tappable quick replies on touch devices.",
+      "Render recommended follow-ups as a horizontally scrollable rail of tappable quick replies on touch devices.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

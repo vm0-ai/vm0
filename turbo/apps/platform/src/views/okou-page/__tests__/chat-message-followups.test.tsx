@@ -333,7 +333,7 @@ test("A recommended follow-up edits the draft without sending it", async () => {
   expect(onSendRequest).not.toHaveBeenCalled();
 });
 
-test("A touch device renders the recommended follow-ups as quick replies", async () => {
+test("A touch device renders the recommended follow-ups as a quick reply rail", async () => {
   context.mocks.browser.matchMedia((query) => {
     return query === "(pointer: coarse)";
   });
@@ -349,7 +349,7 @@ test("A touch device renders the recommended follow-ups as quick replies", async
   });
 
   const group = await keepGoingGroup();
-  expect(group).toHaveAttribute("data-followup-layout", "quick-replies");
+  expect(group).toHaveAttribute("data-followup-layout", "quick-reply-rail");
   expect(followupButtons(group)).toHaveLength(variedFollowups().length);
 });
 
