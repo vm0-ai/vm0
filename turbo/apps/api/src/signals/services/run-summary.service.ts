@@ -5,9 +5,17 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { logger } from "../../lib/log";
 import { stripMarkdown } from "../../lib/strip-markdown";
 import { writeDb$, type Db } from "../external/db";
-import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
+import {
+  AUXILIARY_TEXT_MAX_TOKENS,
+  FAST_PATH_MODEL,
+  generateTextWithUsage,
+  openRouterTokenCounts,
+} from "../external/openrouter";
 import { tapError } from "../utils";
-import { generateAuxiliary } from "./auxiliary-generation.service";
+import {
+  generateAuxiliary,
+  type RecordAuxiliaryGenerationDetail,
+} from "./auxiliary-generation.service";
 import { writeRunMetadata } from "./agent-run-metadata-write.service";
 
 const log = logger("run-summary");
@@ -32,12 +40,15 @@ async function generateRunSummary(
   triggerSource: string,
   prompt: string,
   resultText: string,
+  record: RecordAuxiliaryGenerationDetail,
   signal?: AbortSignal,
 ): Promise<string | null> {
   const promptSnippet = truncateSnippet(prompt);
   const resultSnippet = truncateSnippet(resultText);
 
-  const content = await generateText(
+  // A shortened summary still describes what the run produced, and the
+  // alternative is a run with no summary at all.
+  const generation = await generateTextWithUsage(
     FAST_PATH_MODEL,
     [
       {
@@ -49,11 +60,22 @@ async function generateRunSummary(
         content: `Context (user request):\n${promptSnippet}\n\nResult:\n${resultSnippet}`,
       },
     ],
-    768,
-    { reasoning: { effort: "low" }, temperature: 0.3 },
+    AUXILIARY_TEXT_MAX_TOKENS,
+    {
+      reasoning: { effort: "low" },
+      temperature: 0.3,
+      acceptTruncatedText: true,
+    },
     signal,
   );
-  return content === null ? null : stripMarkdown(content);
+  if (generation === null) {
+    return null;
+  }
+  record({
+    truncated: generation.truncated === true,
+    tokens: openRouterTokenCounts(generation.usage),
+  });
+  return stripMarkdown(generation.text);
 }
 
 export async function saveRunSummary(
@@ -69,11 +91,12 @@ export async function saveRunSummary(
   const summary = await generateAuxiliary(
     {
       feature: "run_summary",
-      generate: () => {
+      generate: (record) => {
         return generateRunSummary(
           args.triggerSource,
           args.prompt,
           args.resultText,
+          record,
           signal,
         );
       },

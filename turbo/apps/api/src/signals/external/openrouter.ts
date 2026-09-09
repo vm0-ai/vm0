@@ -7,9 +7,13 @@ import {
   safeSync,
 } from "../utils";
 import {
+  openRouterFailureReason,
   recordOpenRouterFailure,
+  recordOpenRouterFailureTokenCounts,
   recordOpenRouterRequestFailure,
   recordOpenRouterTransportFailure,
+  type OpenRouterFailureReason,
+  type OpenRouterTokenCounts,
 } from "./openrouter-failure";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -24,6 +28,21 @@ const OPENROUTER_ERROR_RESPONSE_MAX_BYTES = 64 * 1024;
  * single model rather than one constant per service.
  */
 export const FAST_PATH_MODEL = "google/gemini-3.8-flash";
+
+/**
+ * Token budget for the short auxiliary text generations (chat and shared-thread
+ * titles, notification summaries, run summaries, recommended follow-ups).
+ *
+ * `FAST_PATH_MODEL` reports `reasoning.mandatory: true` with
+ * `supported_efforts: ["high", "medium", "low"]` and no independent reasoning
+ * budget, and Gemini 3 spends thinking and visible output from one combined
+ * `max_output_tokens`. `effort: "low"` is already the model's floor, so the
+ * only remaining lever is the ceiling: a budget sized for the answer alone lets
+ * model-chosen thinking starve the answer to nothing. A ceiling is not billed —
+ * only generated tokens are — and length stays governed by the prompts, so
+ * raising it removes the starvation without buying longer answers.
+ */
+export const AUXILIARY_TEXT_MAX_TOKENS = 2048;
 
 export interface OpenRouterTextPart {
   readonly type: "text";
@@ -58,6 +77,8 @@ export interface OpenRouterUsage {
 interface OpenRouterTextGeneration {
   readonly text: string;
   readonly usage?: OpenRouterUsage;
+  /** The completion stopped at the token budget and the text may be partial. */
+  readonly truncated?: boolean;
 }
 
 interface OpenRouterChoice {
@@ -80,6 +101,12 @@ type OpenRouterReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
 interface OpenRouterGenerateTextOptions {
   readonly reasoning?: { readonly effort: OpenRouterReasoningEffort };
   readonly temperature?: number;
+  /**
+   * Return a non-empty completion that stopped at the token budget instead of
+   * throwing. Only callers whose output stays useful when shortened may opt in;
+   * anything persisted immutably or parsed as JSON must keep rejecting it.
+   */
+  readonly acceptTruncatedText?: boolean;
 }
 
 export class OpenRouterRequestError extends Error {
@@ -247,8 +274,43 @@ async function ensureOpenRouterResponseOk(response: Response): Promise<void> {
   });
 }
 
+/** Provider counts are untrusted numbers; retain only bounded integers. */
+export function openRouterTokenCounts(
+  usage: OpenRouterUsage | undefined,
+): OpenRouterTokenCounts {
+  const completionTokens = tokenCount(usage?.completion_tokens);
+  const reasoningTokens = tokenCount(
+    usage?.completion_tokens_details?.reasoning_tokens,
+  );
+  return {
+    ...(completionTokens === undefined ? {} : { completionTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+  };
+}
+
+function tokenCount(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.trunc(value)))
+    : undefined;
+}
+
+/**
+ * An incomplete completion is a capacity outcome, not invalid provider output.
+ * Keeping the distinction finite lets telemetry separate the expected budget
+ * ceiling from content the caller genuinely cannot interpret.
+ */
+function incompleteFinishReason(
+  finishReason: string | undefined,
+): OpenRouterFailureReason | undefined {
+  if (finishReason === "length") {
+    return "output_truncated";
+  }
+  return finishReason === "tool_calls" ? "unexpected_tool_calls" : undefined;
+}
+
 function parseOpenRouterGeneration(
   data: OpenRouterResponse,
+  acceptTruncatedText: boolean,
 ): OpenRouterTextGeneration {
   const choice = data.choices?.[0];
   if (!choice) {
@@ -270,6 +332,7 @@ function parseOpenRouterGeneration(
       value: choice.error ?? data.error,
     });
   }
+  const rawContent = choice.message?.content;
   if (choice.finish_reason !== "stop") {
     const nativeFinishReason = safeDiagnosticString(
       choice.native_finish_reason,
@@ -280,15 +343,27 @@ function parseOpenRouterGeneration(
       "content_filter",
       "tool_calls",
     ]);
+    const partial = typeof rawContent === "string" ? rawContent.trim() : "";
+    if (acceptTruncatedText && finishReason === "length" && partial) {
+      return generation(partial, data.usage, true);
+    }
     const nativeReason = nativeFinishReason
       ? ` (native: ${nativeFinishReason})`
       : "";
-    throw new Error(
+    const error = new Error(
       `OpenRouter completion finished with ${finishReason ?? "unknown"}${nativeReason}`,
     );
+    const reason = incompleteFinishReason(finishReason);
+    if (reason) {
+      recordOpenRouterFailure(error, reason);
+      recordOpenRouterFailureTokenCounts(
+        error,
+        openRouterTokenCounts(data.usage),
+      );
+    }
+    throw error;
   }
 
-  const rawContent = choice.message?.content;
   if (typeof rawContent !== "string") {
     throw new Error("OpenRouter returned invalid content");
   }
@@ -296,9 +371,19 @@ function parseOpenRouterGeneration(
   if (!content) {
     throw new Error("OpenRouter returned empty content");
   }
-  return data.usage === undefined
-    ? { text: content }
-    : { text: content, usage: data.usage };
+  return generation(content, data.usage, false);
+}
+
+function generation(
+  text: string,
+  usage: OpenRouterUsage | undefined,
+  truncated: boolean,
+): OpenRouterTextGeneration {
+  return {
+    text,
+    ...(usage === undefined ? {} : { usage }),
+    ...(truncated ? { truncated } : {}),
+  };
 }
 
 /**
@@ -383,10 +468,19 @@ export async function generateTextWithUsage(
     if (typeof data !== "object" || data === null) {
       throw new Error("OpenRouter returned invalid JSON");
     }
-    return parseOpenRouterGeneration(data as OpenRouterResponse);
+    return parseOpenRouterGeneration(
+      data as OpenRouterResponse,
+      options?.acceptTruncatedText === true,
+    );
   });
   if ("error" in parsed) {
-    if (!(parsed.error instanceof OpenRouterRequestError)) {
+    // Only classify what nothing else has. A reason recorded at the throw site
+    // is more specific than this fallback, and overwriting it would erase the
+    // one signal that separates an expected outcome from a defect.
+    if (
+      !(parsed.error instanceof OpenRouterRequestError) &&
+      openRouterFailureReason(parsed.error) === "unknown"
+    ) {
       recordOpenRouterFailure(parsed.error, "invalid_output");
     }
     throw parsed.error;
