@@ -110,8 +110,22 @@
     {
       "idx": 1093,
       "version": "7",
-      "when": 1788926835123,
-      "tag": "1093_heavy_anita_blake",
+      "when": 1788925770488,
+      "tag": "1093_goal_retirement_receipt",
+      "breakpoints": true
+    },
+    {
+      "idx": 1094,
+      "version": "7",
+      "when": 1788925772586,
+      "tag": "1094_archive_retired_goals",
+      "breakpoints": true
+    },
+    {
+      "idx": 1095,
+      "version": "7",
+      "when": 1788929076141,
+      "tag": "1095_blue_lake",
       "breakpoints": true
     }
   ]

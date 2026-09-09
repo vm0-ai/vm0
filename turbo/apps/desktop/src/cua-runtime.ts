@@ -198,7 +198,9 @@ export class CuaEmbeddedRuntime {
         { name: "HOME", value: context.directory },
       ],
       inheritStderr: false,
-      noOverlay: true,
+      // Preserve the daemon's AppKit loop; the SDK process disables session
+      // cursor drawing before making any owned session available.
+      noOverlay: false,
     });
     const connection = await context.host.start();
     context.connection = connection;

@@ -18531,10 +18531,36 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it.each(
     [
+      ...[
+        "refresh_token_reused",
+        "refresh_token_expired",
+        "refresh_token_invalidated",
+      ].map((refreshErrorCode) => {
+        return {
+          name: refreshErrorCode,
+          failureReason: "reconnect_required" as const,
+          errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+          refreshErrorCode,
+          expectedReconnect: true,
+          expired: true,
+          providerCalls: 0,
+        };
+      }),
       {
-        name: "reconnect-required refresh",
+        name: "unknown refresh failure",
         failureReason: "reconnect_required" as const,
         errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+        refreshErrorCode: "new_provider_error",
+        expectedReconnect: false,
+        expired: true,
+        providerCalls: 0,
+      },
+      {
+        name: "transient refresh failure",
+        failureReason: undefined,
+        errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+        refreshErrorCode: null,
+        expectedReconnect: false,
         expired: true,
         providerCalls: 0,
       },
@@ -18542,6 +18568,8 @@ describe("CHAT-02: run-level model overrides", () => {
         name: "subscription usage limit",
         failureReason: "usage_limit" as const,
         errorCode: "PI_API_MODEL_FAILED",
+        refreshErrorCode: null,
+        expectedReconnect: false,
         expired: false,
         providerCalls: 1,
       },
@@ -18553,6 +18581,7 @@ describe("CHAT-02: run-level model overrides", () => {
   )(
     "classifies a $name with tier $tier without replay, billing, or private diagnostics",
     async (scenario) => {
+      mockOptionalEnv("OKOU_DEBUG", "webhook:firewall-auth,pi-api-first-turn");
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const privateMarker = `private-${scenario.failureReason}-diagnostic`;
       const externalAccountId = `chat-${scenario.failureReason}-account`;
@@ -18592,18 +18621,18 @@ describe("CHAT-02: run-level model overrides", () => {
         throw new Error("Expected subscription auth to complete");
       }
       let refreshAttempts = 0;
-      if (scenario.failureReason === "reconnect_required") {
+      if (scenario.expired) {
         server.use(
           http.post("https://auth.openai.com/oauth/token", () => {
             refreshAttempts += 1;
             return HttpResponse.json(
               {
                 error: {
-                  code: "refresh_token_invalidated",
+                  code: scenario.refreshErrorCode ?? "server_error",
                   message: privateMarker,
                 },
               },
-              { status: 401 },
+              { status: scenario.refreshErrorCode === null ? 503 : 401 },
             );
           }),
         );
@@ -18653,14 +18682,44 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(modelCalls).toBe(scenario.providerCalls);
       expect(refreshAttempts).toBe(scenario.expired ? 1 : 0);
       expect(oauth.oauthToken).toHaveLength(1);
+      if (scenario.expectedReconnect) {
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        for (const log of [
+          context.mocks.axiomLogging.debug,
+          context.mocks.axiomLogging.info,
+        ]) {
+          expect(log).not.toHaveBeenCalledWith(
+            "codex-oauth-token token refresh failed",
+            expect.anything(),
+          );
+          expect(log).not.toHaveBeenCalledWith(
+            "Pi API first-turn outcome",
+            expect.objectContaining({
+              runId: run.runId,
+              outcome: "terminal_failure",
+            }),
+          );
+        }
+      } else {
+        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+          "Pi API first-turn outcome",
+          expect.objectContaining({
+            runId: run.runId,
+            outcome: "terminal_failure",
+            reason: scenario.errorCode,
+          }),
+        );
+      }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          eventType: "run.failed",
-          runId: run.runId,
-          failureReason: scenario.failureReason,
-        }),
-      );
+      const failureEvent = events.find((event) => {
+        return event.eventType === "run.failed" && event.runId === run.runId;
+      });
+      if (failureEvent?.eventType !== "run.failed") {
+        throw new Error("Expected the subscription run failure event");
+      }
+      expect(failureEvent.failureReason).toBe(scenario.failureReason);
       const publicState = JSON.stringify({
         failed,
         events,
@@ -18684,6 +18743,30 @@ describe("CHAT-02: run-level model overrides", () => {
         capabilities: { piModelConfigGenerations: [1, 2, 3] },
       });
       expectApiError(claim.body);
+      if (scenario.expectedReconnect) {
+        const repeated = await sendChatRun(actor, {
+          agentId,
+          prompt: "retry the terminal subscription account",
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: scenario.tier },
+        });
+        await waitForRunStatus(actor, repeated.runId, "failed", 10_000);
+        await flushWaitUntilForTest();
+        expect(refreshAttempts).toBe(1);
+        expect(modelCalls).toBe(0);
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        expect(
+          (await chat.listThreadEvents(actor, repeated.threadId)).events,
+        ).toContainEqual(
+          expect.objectContaining({
+            eventType: "run.failed",
+            runId: repeated.runId,
+            failureReason: "reconnect_required",
+          }),
+        );
+      }
     },
     90_000,
   );

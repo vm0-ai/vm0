@@ -465,9 +465,16 @@ Apply this floor only to the release/API target: the first compatible release
 retained an older Runner tag. All independent Runner ancestry, reader, host
 architecture, and release-asset checks still apply. The rollback workflow loads
 the resolver from current `main`, so merging the guard constrains future
-canonical executions without a release or test rollback. This does not prove
-that old fixed API deployments are non-writable or authorize Goal archival;
-those remain separate gates in [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
+canonical executions without a release or test rollback.
+
+The accepted S1 gate verifies the currently serving normal production version
+rejects Goal creation/reactivation and cannot continue Goal work. Historical
+Vercel/fixed-deployment inventory is outside that gate under the
+[user decision](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5595137042);
+this does not claim those deployments were disabled. Keep the rollback floor,
+[archival and settlement checks](goal-retirement-archival.md), and the requirement
+to deploy consumer removal before a later physical schema drop in
+[EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
 
 ### Usage pack visibility compatibility retirement
 

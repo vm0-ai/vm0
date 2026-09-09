@@ -69,7 +69,9 @@ async function main() {
       { name: "HOME", value: path.dirname(socketPath) },
     ],
     inheritStderr: false,
-    noOverlay: true,
+    // Match production's AppKit loop. This proof starts no sessions or actions,
+    // so its cursor stays off screen and never draws.
+    noOverlay: false,
   });
   if (mode === "healthy" || mode === "native-cancel") {
     await healthy(sdk, host);
