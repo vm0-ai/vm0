@@ -108,10 +108,10 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
   ).toBeVisible();
   expect(queryButton("Attach")).toBeNull();
   expect(stop.closest("[data-composer-voice-tray]")).toHaveClass(
-    "min-h-10",
-    "bg-neutral-50",
-    "px-2",
-    "py-1",
+    "min-h-12",
+    "bg-gray-50",
+    "px-3",
+    "py-2",
   );
   return stop;
 }
