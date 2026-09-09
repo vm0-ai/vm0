@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { env } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { emailSubscriptionRoutes } from "../email-subscription";
 import { emailUnsubscribeRoutes } from "../email-unsubscribe";
@@ -89,10 +90,7 @@ describe("email subscription preferences", () => {
 
   it("reads one-click opt-outs and allows explicit resubscription", async () => {
     const owner = await actor();
-    const signature = createHmac(
-      "sha256",
-      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    )
+    const signature = createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
       .update(`unsubscribe:${owner.userId}`)
       .digest("hex")
       .slice(0, 32);

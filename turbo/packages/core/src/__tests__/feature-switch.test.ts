@@ -138,7 +138,7 @@ describe("isFeatureEnabled", () => {
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.MorningBrief]).toEqual({
       maintainer: "lancy@okou.ai",
       description:
-        "Enable the first-class Morning Brief experience in Preferences.",
+        "Enable Morning Brief and email subscription management in Preferences.",
       rolloutStage: "beta",
     });
   });
