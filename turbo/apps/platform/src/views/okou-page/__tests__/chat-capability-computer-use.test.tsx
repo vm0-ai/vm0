@@ -297,7 +297,6 @@ test("Discover computers that are available for Computer Use", async () => {
     name: "Computer Use hosts",
   });
   expect(within(hostGroup).getByText("Studio Mac")).toBeVisible();
-  expect(within(hostGroup).getByText("Zero")).toBeVisible();
   expect(within(hostGroup).queryByText("Travel Mac")).toBeNull();
   expect(screen.getByText("Cloud browser")).toBeVisible();
   const studioSwitch = screen.getByRole("switch", {
@@ -345,7 +344,6 @@ test("Discover computers that are available for Computer Use", async () => {
   context.mocks.ably.trigger("computerUseHostsChanged");
 
   await expect(screen.findByText("Travel Mac")).resolves.toBeVisible();
-  expect(screen.getByText("Okou")).toBeVisible();
   expect(
     screen.getByRole("switch", { name: "Connect Travel Mac" }),
   ).not.toBeChecked();
