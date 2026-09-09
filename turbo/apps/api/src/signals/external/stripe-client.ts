@@ -8,7 +8,7 @@ import { testOverride } from "../../lib/singleton";
  * once in that small program instead of inside the core one, which is what sets
  * the CI peak RSS for apps/api (same move as `@aws-sdk/*` in PR #25714).
  *
- * Everything exported below is a vm0-owned type; that is what keeps the emitted
+ * Everything exported below is an application-owned type; that is what keeps the emitted
  * `.d.ts` free of Stripe types. The mirrors cover exactly the fields callers
  * read and the params they send - widening them is fine, naming a Stripe type
  * in an exported signature is not.
@@ -830,7 +830,7 @@ function stripeSdk(): StripeSDK {
 }
 
 /**
- * Per-call Stripe SDK instantiation, narrowed to the vm0-owned client surface.
+ * Per-call Stripe SDK instantiation, narrowed to the application-owned client surface.
  *
  * In tests, override via `mockStripeClient(fakeSdk)` so the wrapper doesn't
  * construct a real Stripe client. (The centralized `vi.mock("stripe")` factory
@@ -877,7 +877,7 @@ export function mockStripeClient(fakeSdk: unknown): void {
 /**
  * Stripe's `Event` is a wide discriminated union, and narrowing it is the only
  * reason the webhook dispatcher would need the SDK types. The gateway does that
- * narrowing once and hands core a vm0-owned envelope instead.
+ * narrowing once and hands core an application-owned envelope instead.
  */
 export type StripeWebhookEvent =
   | {
@@ -1025,7 +1025,7 @@ export async function listUndeliveredStripePaidCheckoutSessions(
  * Lists Stripe's still-undelivered `invoice.paid` events, oldest first.
  * Stripe retains Events for 30 days, which is substantially longer than the
  * hourly billing reconciliation interval. Keeping the SDK event union at
- * this gateway lets the billing service consume only vm0-owned invoice types.
+ * this gateway lets the billing service consume only application-owned invoice types.
  */
 export async function listUndeliveredStripePaidInvoices(
   signal: AbortSignal,

@@ -70,7 +70,7 @@ run_config_tasks() {
       -e "runner_version=999.0.0" \
       -e "default_rootfs_hash=rootfs" \
       -e "default_snapshot_hash=snapshot" \
-      -e "api_url=https://www.vm0.ai" \
+      -e "api_url=https://www.okou.ai" \
       -e "official_runner_secret=test" \
       "$playbook" >"$tmp/ansible-output" 2>&1
 }

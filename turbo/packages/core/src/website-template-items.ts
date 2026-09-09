@@ -12,7 +12,7 @@ export interface WebsiteTemplateItem {
   readonly target: "website";
 }
 
-// Curated user-facing website picker catalog backed by vm0 private R2
+// Curated user-facing website picker catalog backed by private R2
 // packages.
 const WEBSITE_TEMPLATE_PREVIEW_BASE_URL =
   "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260727-ccff774";

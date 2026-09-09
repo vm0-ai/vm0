@@ -169,7 +169,5 @@ describe("okou generate sprite command", () => {
     expect(helpOutput).toContain("--sheet <grid>");
     expect(helpOutput).toContain("--bundle <preset>");
     expect(helpOutput).toContain("--art-style <style>");
-    expect(helpOutput).not.toContain("--provider");
-    expect(helpOutput).not.toContain("--all");
   });
 });

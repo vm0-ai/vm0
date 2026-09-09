@@ -33,7 +33,7 @@ export const composeJobs = pgTable(
     userId: text("user_id").notNull(), // Clerk user ID
     githubUrl: text("github_url"),
     overwrite: boolean("overwrite").default(false).notNull(),
-    // Platform compose: the vm0.yaml content submitted from the UI
+    // Platform compose: the agent configuration content submitted from the UI
     content: jsonb("content").$type<ComposeJobContent>(),
     // Platform compose: the instructions file content (e.g. CLAUDE.md)
     instructions: text("instructions"),

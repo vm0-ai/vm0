@@ -186,6 +186,18 @@ describe("GET/PUT /api/model-policies", () => {
       [400],
     );
     expect(oldPreference.body.error.message).toBe(retired.body.error.message);
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            ...toUpdate(existing.body),
+            makeBuiltInPolicy("claude-fable-5-1"),
+          ],
+        },
+      }),
+      [200],
+    );
     const successor = await accept(
       preferences.update({
         headers: authHeaders(),
@@ -371,40 +383,35 @@ describe("GET/PUT /api/model-policies", () => {
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
-  it("keeps an existing allowed default for limited-free-1 workspaces", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-    const client = apiClient();
-    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
-    const previousDefaultModel = "gpt-5.6-luna";
-    const updates = toUpdate(listed.body).map((policy) => {
-      return {
-        ...policy,
-        isDefault: policy.model === previousDefaultModel,
-      };
-    });
-    await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { policies: updates },
-      }),
-      [200],
-    );
+  it.each(["deepseek-v4-flash", "gpt-5.6-luna"] as const)(
+    "keeps an existing %s default for limited-free-1 workspaces",
+    async (previousDefaultModel) => {
+      const fixture = seedFixture();
+      useSession(fixture);
+      const client = apiClient();
+      await accept(
+        client.update({
+          headers: authHeaders(),
+          body: {
+            policies: [makeBuiltInPolicy(previousDefaultModel, true)],
+          },
+        }),
+        [200],
+      );
 
-    await makeLimitedFreeWorkspace(fixture);
-    useSession(fixture);
-    const response = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
+      await makeLimitedFreeWorkspace(fixture);
+      useSession(fixture);
+      const response = await accept(
+        client.list({ headers: authHeaders() }),
+        [200],
+      );
 
-    expect(response.body.workspaceDefaultModel).toBe(previousDefaultModel);
-    expect(
-      response.body.policies.find((policy) => {
-        return policy.isDefault;
-      })?.model,
-    ).toBe(previousDefaultModel);
-  });
+      expect(response.body.workspaceDefaultModel).toBe(previousDefaultModel);
+      expect(response.body.policies).toMatchObject([
+        { model: previousDefaultModel, isDefault: true },
+      ]);
+    },
+  );
 
   it("allows members to read policy controls", async () => {
     const fixture = await seedFixture();
@@ -659,7 +666,7 @@ describe("GET/PUT /api/model-policies", () => {
     const updates = [
       ...toUpdate(listResponse.body),
       makeBuiltInPolicy("claude-opus-5"),
-      makeBuiltInPolicy("deepseek-v4-pro"),
+      makeBuiltInPolicy("deepseek-v4-flash"),
     ];
     const configuredModels = new Set(
       updates.map((policy) => {
@@ -695,8 +702,8 @@ describe("GET/PUT /api/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeBuiltInPolicy("deepseek-v4-flash", true),
-          makeBuiltInPolicy("deepseek-v4-pro"),
+          makeBuiltInPolicy("deepseek-v4-pro", true),
+          makeBuiltInPolicy("gpt-6-astra"),
         ],
       },
     });
@@ -804,7 +811,10 @@ describe("GET/PUT /api/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeBuiltInPolicy("gpt-5.6-sol"),
+    ].map((policy) => {
       if (policy.model !== "gpt-5.6-sol") {
         return policy;
       }
@@ -979,7 +989,10 @@ describe("GET/PUT /api/model-policies", () => {
         client.list({ headers: authHeaders() }),
         [200],
       );
-      const updates = toUpdate(listResponse.body).map((policy) => {
+      const updates = [
+        ...toUpdate(listResponse.body),
+        makeBuiltInPolicy("gpt-5.6-sol"),
+      ].map((policy) => {
         if (policy.model !== "gpt-5.6-sol") {
           return policy;
         }
@@ -1019,7 +1032,10 @@ describe("GET/PUT /api/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeBuiltInPolicy("gpt-5.6-sol"),
+    ].map((policy) => {
       if (policy.model !== "gpt-5.6-sol") {
         return policy;
       }
@@ -1064,16 +1080,10 @@ describe("GET/PUT /api/model-policies", () => {
         client.list({ headers: authHeaders() }),
         [200],
       );
-      const updates = toUpdate(listResponse.body).map((policy) => {
-        return policy.model === "gpt-5.6-sol"
-          ? {
-              ...policy,
-              defaultProviderType: "built-in" as const,
-              credentialScope: "org" as const,
-              modelProviderId: null,
-            }
-          : policy;
-      });
+      const updates = [
+        ...toUpdate(listResponse.body),
+        makeBuiltInPolicy("gpt-5.6-sol"),
+      ];
       await accept(
         client.update({
           headers: authHeaders(),
@@ -1504,7 +1514,7 @@ describe("GET/PUT /api/model-policies", () => {
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "deepseek-v4-flash") {
+      if (policy.model !== "deepseek-v4-pro") {
         return policy;
       }
       return {

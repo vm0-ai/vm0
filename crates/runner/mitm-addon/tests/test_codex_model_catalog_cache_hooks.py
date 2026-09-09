@@ -552,7 +552,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
         ),
     )
     with (
-        mitm_ctx(registry_path=str(request_registry), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(request_registry), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers=resolved_headers),
     ):
         await mitm_addon.request(request_flow)
@@ -579,7 +579,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     )
     header_flow.metadata["_request_end_stream"] = True
     with (
-        mitm_ctx(registry_path=str(header_registry), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(header_registry), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers=resolved_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(header_flow)
@@ -641,7 +641,7 @@ async def test_prefetch_marker_requires_one_exact_raw_value_across_request_hooks
     flow.metadata["_request_end_stream"] = True
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(
             headers={
                 "Authorization": "Bearer resolved-token",
@@ -725,7 +725,7 @@ async def test_catalog_wait_revalidates_only_provider_continuation(
     follower_task: asyncio.Task[None] | None = None
     try:
         with (
-            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
             fake_firewall_headers(headers=resolved_headers),
         ):
             if entry_point == "request":
@@ -832,7 +832,7 @@ async def test_cancelled_requestheaders_catalog_follower_releases_usage_tracking
     follower_task: asyncio.Task[None] | None = None
     try:
         with (
-            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
             fake_firewall_headers(headers=resolved_headers),
         ):
             follower_task = asyncio.create_task(

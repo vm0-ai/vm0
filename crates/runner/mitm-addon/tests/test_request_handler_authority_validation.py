@@ -63,7 +63,7 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -103,7 +103,7 @@ async def test_authority_validation_deny_response_logs_network_target(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -142,7 +142,7 @@ async def test_authority_validation_deny_logs_malformed_fallback_target(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -190,7 +190,7 @@ async def test_browser_user_agent_marker_survives_authority_validation_block(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -234,7 +234,7 @@ async def test_valid_pseudo_authority_allows_firewall_auth(
     bind_flow_upstream(flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -280,7 +280,7 @@ async def test_rejects_oversized_unicode_authority_before_punycode_encoding(
     real_normalize_label_text = host_normalization._normalize_label_text
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
             host_normalization,
@@ -357,7 +357,7 @@ async def test_valid_http1_request_target_authority_allows_firewall_auth(
     bind_flow_upstream(flow, port=request_port)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -409,7 +409,7 @@ async def test_rejects_disagreement_between_pseudo_authority_and_host(
     flow.request.authority = pseudo_authority
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -485,7 +485,7 @@ async def test_rejects_invalid_http1_request_target_authority_before_firewall_au
     original_headers = tuple(flow.request.headers.fields)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -513,10 +513,10 @@ async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
         host="203.0.113.10",
         sni="attacker.example.com",
         path="/api/runs/heartbeat",
-        request_headers=headers(("Host", "api.vm0.ai")),
+        request_headers=headers(("Host", "api.okou.ai")),
     )
 
-    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is not None
@@ -571,7 +571,7 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
     original_path = flow.request.path
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -634,7 +634,7 @@ async def test_rejects_over_budget_host_without_decoding_or_auth(
         return real_normalize_hostname(host)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
             request_authority,
@@ -694,7 +694,7 @@ async def test_redacts_over_budget_host_from_network_log(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -730,7 +730,7 @@ async def test_rejects_host_authority_port_mismatch_before_firewall_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -760,7 +760,7 @@ async def test_rejects_missing_https_sni_before_firewall_auth(
     flow.client_conn.sni = None
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -794,7 +794,7 @@ async def test_rejects_invalid_https_sni_logs_proxy_entry_before_firewall_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -836,7 +836,7 @@ async def test_http_host_spoof_does_not_match_domain_firewall(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -863,11 +863,11 @@ async def test_http_host_spoof_does_not_trigger_vm0_api_auto_allow(
         host="203.0.113.10",
         port=80,
         path="/api/runs/heartbeat",
-        request_headers=headers(("Host", "api.vm0.ai")),
+        request_headers=headers(("Host", "api.okou.ai")),
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)

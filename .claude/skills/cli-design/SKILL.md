@@ -1,6 +1,6 @@
 ---
 name: cli-design
-description: Design patterns and conventions for the vm0 CLI user experience
+description: Design patterns and conventions for the Okou CLI user experience
 context: fork
 ---
 

@@ -134,7 +134,7 @@
         mode: "0644"
         content: |
           [Unit]
-          Description=vm0 Stripe CLI listener for {{ job_ref }}
+          Description=Okou Stripe CLI listener for {{ job_ref }}
           After=network-online.target
           Wants=network-online.target
 

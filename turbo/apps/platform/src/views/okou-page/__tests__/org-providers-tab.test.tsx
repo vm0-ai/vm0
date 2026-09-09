@@ -730,23 +730,24 @@ test("Limit free workspaces to eligible built-in models", async () => {
   click(buttonByText("Add model"));
   const dialog = screen.getByRole("dialog", { name: "Add model" });
   click(within(dialog).getByRole("combobox"));
-  const deepSeekFlashOption = await screen.findByRole("option", {
-    name: "DeepSeek V4 Flash",
+  const deepSeekProOption = await screen.findByRole("option", {
+    name: "DeepSeek V4 Pro",
   });
   expect(
-    screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
+    screen.getByRole("option", { name: "DeepSeek V4 Flash" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("option", { name: "GPT 6 Astra" }),
   ).not.toBeInTheDocument();
-  click(deepSeekFlashOption);
+  click(deepSeekProOption);
 
   expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
   click(buttonByText("Add model", dialog));
 
   const deepseekRow = await screen.findByTestId(
-    "org-model-policy-row-deepseek-v4-flash",
+    "org-model-policy-row-deepseek-v4-pro",
   );
-  expect(
-    within(deepseekRow).getByText("DeepSeek V4 Flash"),
-  ).toBeInTheDocument();
+  expect(within(deepseekRow).getByText("DeepSeek V4 Pro")).toBeInTheDocument();
 });
 
 test("Connect a workspace API key to a model route", async () => {

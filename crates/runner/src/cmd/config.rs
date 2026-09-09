@@ -41,7 +41,7 @@ pub struct ConfigArgs {
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
-    /// vm0 API URL (`OKOU_API_BACKEND_URL`)
+    /// Okou API URL (`OKOU_API_BACKEND_URL`)
     #[arg(long, env = "OKOU_API_BACKEND_URL", hide_env_values = true)]
     api_url: String,
     /// Runner authentication token (`OKOU_RUNNER_TOKEN`)

@@ -284,7 +284,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show a compact overview of chat, image, and video models with nested model lists and Fast settings.",
     enabled: false,
     enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
-    enabledEmailHashes: ["6490c77f", "9fd4ee92"], // bingjie@okou.ai, bingjie@vm0.ai
+    enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatPreference]: {
@@ -312,7 +312,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
@@ -399,9 +398,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
-    // Scoped to the maintainer rather than the whole staff org while the
-    // render-on-confirm upload is still unexercised outside tests.
-    enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
@@ -422,8 +418,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Apply a palette-derived tint across interface surfaces, borders, states, and workspace ambience.",
     enabled: false,
-    // Ming only for the first pass; widen once the system mapping settles.
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@okou.ai",

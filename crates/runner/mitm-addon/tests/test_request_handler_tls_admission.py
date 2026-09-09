@@ -73,7 +73,7 @@ async def test_valid_tls_admission_blocks_when_registry_entry_disappears(
     )
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_empty_registry(reg_path)
 
@@ -113,7 +113,7 @@ async def test_valid_tls_admission_blocks_when_run_id_changes(
     )
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_registry(
             tmp_path,
@@ -170,7 +170,7 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_is_unavailable(
     )
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         flow.client_conn.peername = request_peername
 
@@ -215,7 +215,7 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_changes(
     )
     flow.client_conn.peername = (request_client_ip, 12345)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_registry(
             tmp_path,
@@ -244,7 +244,7 @@ async def test_invalid_tls_admission_blocks_when_registry_entry_disappears(
     reg_path.write_text(json.dumps({"sandboxes": {client_ip: "broken"}, "updatedAt": 0}))
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_empty_registry(reg_path)
 
@@ -264,7 +264,7 @@ async def test_registry_unavailable_tls_admission_blocks_when_registry_lacks_ip(
     reg_path = tmp_path / "registry.json"
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_empty_registry(reg_path)
 
@@ -308,7 +308,7 @@ async def test_tls_admission_uses_repaired_registry_at_request_time(
         },
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_registry(tmp_path, client_ip=client_ip, sandbox_info=repaired_sandbox)
 
@@ -330,7 +330,7 @@ async def test_missing_registry_entry_without_tls_admission_passes_through(
     _write_empty_registry(reg_path)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is None
@@ -370,7 +370,7 @@ async def test_tls_admission_keeps_guarding_multiple_requests(
     second_flow = real_flow(with_response=False, client_ip=client_ip, host="api.github.com")
     second_flow.client_conn.id = first_flow.client_conn.id
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         _write_empty_registry(reg_path)
 
@@ -409,7 +409,7 @@ async def test_client_disconnected_removes_tls_admission(
     )
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.tls_clienthello(tls_data)
         mitm_addon.client_disconnected(tls_data.context.client)
         _write_empty_registry(reg_path)

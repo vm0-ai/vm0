@@ -120,7 +120,7 @@ export const webhookStripeContract = c.router({
 
 /**
  * Stripe Connect automation-event webhook contract. This route is intentionally
- * separate from the vm0 billing webhook above.
+ * separate from the platform billing webhook above.
  */
 export const webhookStripeAutomationEventsContract = c.router({
   post: {

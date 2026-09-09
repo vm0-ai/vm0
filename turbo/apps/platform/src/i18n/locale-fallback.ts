@@ -1,4 +1,3 @@
-import { isOkouHostname } from "../lib/platform-host.ts";
 import {
   DEFAULT_LOCALE,
   isSupportedLocale,
@@ -53,20 +52,14 @@ function resolveBrowserLocale(languages: readonly string[]): SupportedLocale {
 }
 
 function resolveInitialLocaleFallback({
-  hostname,
   cookieHeader,
   browserLanguages,
 }: {
-  readonly hostname: string;
   readonly cookieHeader: string;
   readonly browserLanguages: readonly string[];
 }): SupportedLocale {
-  // Site and browser values are initial hints for Okou only. Authenticated
+  // Site and browser values are initial hints. Authenticated
   // workspace preference sync remains authoritative after bootstrap.
-  if (!isOkouHostname(hostname)) {
-    return DEFAULT_LOCALE;
-  }
-
   return (
     readOkouLocaleCookie(cookieHeader) ?? resolveBrowserLocale(browserLanguages)
   );
@@ -76,7 +69,6 @@ export function resolveInitialLocaleFallbackFromBrowser(): SupportedLocale {
   const browserLanguages =
     navigator.languages.length > 0 ? navigator.languages : [navigator.language];
   return resolveInitialLocaleFallback({
-    hostname: window.location.hostname,
     cookieHeader: document.cookie,
     browserLanguages,
   });

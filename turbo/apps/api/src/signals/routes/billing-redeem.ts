@@ -46,7 +46,7 @@ const redeemAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const { successUrl, cancelUrl } = bodyResult.data;
 
   // Open-redirect guard: client supplies successUrl/cancelUrl and they flow
-  // straight to Stripe. Pin both to vm0-owned hosts so an attacker can't
+  // straight to Stripe. Pin both to Okou-owned hosts so an attacker can't
   // redirect Stripe back to evil.example.com.
   if (
     !billingRedirectAllowed(successUrl) ||

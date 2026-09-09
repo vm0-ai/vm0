@@ -1,7 +1,4 @@
-import {
-  isOkouProductionHostname,
-  okouAppWorkerPreviewJobRef,
-} from "@okouai/core/platform-service-origin";
+import { isOkouProductionHostname } from "@okouai/core/platform-service-origin";
 
 type PlatformEnvironment = "development" | "preview" | "production";
 type PlatformPublicBrand = "okou";
@@ -33,12 +30,6 @@ interface PlatformClientTelemetryConfig {
   readonly token: string | null;
 }
 
-const OKOU_PRODUCTION_DOMAIN = "okou.ai";
-const OKOU_PREVIEW_DOMAIN = "omby.ai";
-const OKOU_ROOT_DOMAINS = [
-  OKOU_PRODUCTION_DOMAIN,
-  OKOU_PREVIEW_DOMAIN,
-] as const;
 const OFFICE_DOCUMENT_VIEWER_BASE_URL =
   "https://view.officeapps.live.com/op/embed.aspx";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
@@ -52,19 +43,6 @@ function browserHostname(): string | null {
     return null;
   }
   return location.hostname.toLowerCase();
-}
-
-function isDomainOrSubdomain(hostname: string, domain: string): boolean {
-  return hostname === domain || hostname.endsWith(`.${domain}`);
-}
-
-export function isOkouHostname(hostname: string): boolean {
-  const normalizedHostname = hostname.toLowerCase().replace(/:\d+$/u, "");
-  return (
-    OKOU_ROOT_DOMAINS.some((domain) => {
-      return isDomainOrSubdomain(normalizedHostname, domain);
-    }) || okouAppWorkerPreviewJobRef(normalizedHostname) !== null
-  );
 }
 
 export function resolvePlatformServiceStatusConfig(

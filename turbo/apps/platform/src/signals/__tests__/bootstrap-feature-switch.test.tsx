@@ -21,7 +21,7 @@ import {
   mockOrgModelRoutes,
 } from "../../views/okou-page/__tests__/chat-composer-test-helpers.ts";
 
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const CUSTOMER_ORG_ID = "org_customer_workspace";
 
 async function openTemplates() {
   click(await screen.findByLabelText("Template"));
@@ -56,7 +56,7 @@ test("A signed-in workspace receives its enabled features", async () => {
   });
 });
 
-async function setupIntroVideoRolloutPage(args: {
+async function setupModelPickerRolloutPage(args: {
   readonly email: string;
   readonly fullName: string;
   readonly userId: string;
@@ -67,7 +67,8 @@ async function setupIntroVideoRolloutPage(args: {
     return respond(200, {
       switches: {},
       effectiveSwitches: {
-        [FeatureSwitchKey.IntroVideo]: false,
+        [FeatureSwitchKey.ModelPickerMenu]: false,
+        [FeatureSwitchKey.IntroVideo]: true,
       },
     });
   });
@@ -78,39 +79,73 @@ async function setupIntroVideoRolloutPage(args: {
     auth: {
       user: { id: args.userId, fullName: args.fullName, email: args.email },
       organization: {
-        activeOrg: { id: STAFF_ORG_ID, name: "Staff" },
-        memberships: [{ id: STAFF_ORG_ID }],
+        activeOrg: { id: CUSTOMER_ORG_ID, name: "Customer" },
+        memberships: [{ id: CUSTOMER_ORG_ID }],
       },
     },
     cachedFeatureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: false,
       [FeatureSwitchKey.IntroVideo]: false,
     },
   });
 
   await screen.findByRole("textbox", { name: "Message" });
-  await openTemplates();
+  // The explainer tab is visible only after the workspace feature response
+  // has been applied, so it marks the end of feature hydration.
+  const user = userEvent.setup({ delay: null });
+  await user.click(await screen.findByLabelText("Template"));
+  await screen.findByRole("dialog");
+  await waitFor(() => {
+    expect(explainerTab()).toBeVisible();
+  });
+  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 }
 
-test("Bingjie retains the explainer video rollout after hydration", async () => {
-  await setupIntroVideoRolloutPage({
-    email: "BINGJIE@VM0.AI",
+// The legacy picker renders its trigger as a <button role="combobox">; only
+// the model picker menu renders a plain button named after the model.
+function modelMenuTrigger(): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((button) => {
+    const role = button.getAttribute("role");
+    return (
+      (role === null || role === "button") &&
+      (button.getAttribute("aria-label") === "Claude Sonnet 4.6" ||
+        button.textContent?.trim() === "Claude Sonnet 4.6")
+    );
+  });
+}
+
+test("Bingjie retains the model picker menu rollout after hydration", async () => {
+  await setupModelPickerRolloutPage({
+    email: "BINGJIE@OKOU.AI",
     fullName: "Bingjie",
     userId: "user_bingjie",
   });
 
-  await waitFor(() => {
-    expect(explainerTab()).toBeVisible();
+  const trigger = await waitFor(() => {
+    const button = modelMenuTrigger();
+    if (!button) {
+      throw new Error("Expected the model picker menu trigger");
+    }
+    return button;
   });
+  click(trigger);
+  await expect(
+    screen.findByRole("region", { name: "Models" }),
+  ).resolves.toBeVisible();
 });
 
-test("another staff member does not receive the explainer video rollout", async () => {
-  await setupIntroVideoRolloutPage({
-    email: "ethan@vm0.ai",
-    fullName: "Another staff member",
-    userId: "user_other_staff",
+test("another member does not receive the model picker menu rollout", async () => {
+  await setupModelPickerRolloutPage({
+    email: "ethan@okou.ai",
+    fullName: "Another member",
+    userId: "user_other_member",
   });
 
-  expect(explainerTab()).toBeUndefined();
+  await expectComposerModel("Claude Sonnet 4.6");
+  expect(modelMenuTrigger()).toBeUndefined();
 });
 
 test("Image recognition remains available by default", async () => {

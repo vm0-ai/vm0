@@ -51,7 +51,7 @@ function teamsOauthConnectUrl(
     readonly orgId: string;
     readonly userId: string;
   },
-  origin = "https://api.vm0.test",
+  origin = "https://api.okou.test",
 ): string {
   const url = new URL("/api/teams/oauth/connect", origin);
   url.searchParams.set("orgId", fixture.orgId);
@@ -222,7 +222,7 @@ describe("GET /api/integrations/teams/connect", () => {
           orgId: fixture.orgId,
           userId: fixture.userId,
         },
-        "https://app.vm0.test",
+        "https://app.okou.test",
       ),
     });
   });

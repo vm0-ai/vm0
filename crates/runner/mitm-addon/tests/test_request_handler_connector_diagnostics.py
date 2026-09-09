@@ -92,7 +92,7 @@ async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_au
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -134,7 +134,7 @@ async def test_shared_base_head_diagnostic_is_bodyless(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -172,7 +172,7 @@ async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_befor
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -207,7 +207,7 @@ async def test_shared_base_active_connector_intent_keeps_active_auth_path(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -265,7 +265,7 @@ async def test_shared_base_unknown_endpoint_with_configured_auth_keeps_active_au
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -295,7 +295,7 @@ async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -324,7 +324,7 @@ async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -363,7 +363,7 @@ async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -394,7 +394,7 @@ async def test_inactive_builtin_connector_url_without_auth_allows_upstream(
         request_content_type="application/json",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is None
@@ -426,7 +426,7 @@ async def test_streamed_inactive_builtin_connector_request_waits_for_response_fa
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -461,7 +461,7 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is None
@@ -485,7 +485,7 @@ async def test_asterisk_form_without_active_firewall_skips_connector_diagnostic(
         path="*",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is None
@@ -518,7 +518,7 @@ async def test_active_builtin_connector_url_uses_firewall_path(
     with (
         mitm_ctx(
             registry_path=str(reg_path),
-            api_url="https://api.vm0.ai",
+            api_url="https://api.okou.ai",
             builtin_firewall_catalog_cache_path=str(cache_path),
         ),
         fake_firewall_headers(),

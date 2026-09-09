@@ -95,7 +95,7 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
@@ -145,7 +145,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         mitm_addon.requestheaders(flow)
@@ -194,7 +194,7 @@ async def test_auth_base_requestheaders_rejects_saturated_admission_before_auth(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(
             auth_base_forwarder,
             "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES",
@@ -245,7 +245,7 @@ def test_auth_base_requestheaders_releases_new_admission_after_attach_failure(
 
     try:
         with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
             pytest.raises(RuntimeError, match="already attached"),
         ):
             mitm_addon.requestheaders(flow)
@@ -280,7 +280,7 @@ async def test_auth_base_requestheaders_rejects_missing_content_length(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         mitm_addon.requestheaders(flow)
@@ -323,7 +323,7 @@ async def test_auth_base_requestheaders_rejects_shared_body_framing(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         mitm_addon.requestheaders(flow)
@@ -360,7 +360,7 @@ async def test_browser_auth_base_requestheaders_skips_body_framing_rejection(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         mitm_addon.requestheaders(flow)
@@ -400,7 +400,7 @@ async def test_auth_base_requestheaders_rejects_extreme_content_length_before_au
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         mitm_addon.requestheaders(flow)
@@ -431,7 +431,7 @@ async def test_auth_base_requestheaders_accepts_matching_duplicate_content_lengt
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     assert flow.response is None
@@ -484,7 +484,7 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
     mock_forward = AsyncMock(return_value=(200, b"ok", {}))
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
         patch.object(auth, "forward_request", mock_forward),
     ):
@@ -528,7 +528,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
         fake_forwarder_upstream(status=202, body=b"accepted"),
     ):
@@ -568,7 +568,7 @@ async def test_auth_base_buffered_request_revalidates_registry_before_auth(
     get_headers = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -608,7 +608,7 @@ async def test_auth_base_requestheaders_admission_released_on_auth_failure(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(
             auth,
             "get_firewall_headers",
@@ -657,7 +657,7 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
     ):
         mitm_addon.requestheaders(flow)
@@ -698,7 +698,7 @@ async def test_auth_base_duplicate_content_type_releases_requestheaders_admissio
     mock_forward = AsyncMock()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
         patch.object(auth, "forward_request", mock_forward),
     ):
@@ -742,7 +742,7 @@ async def test_auth_base_requestheaders_admission_released_when_request_already_
         request_body=b"ok",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
             1,

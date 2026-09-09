@@ -100,7 +100,6 @@ import {
   featureSwitch$,
   reloadFeatureSwitch$,
 } from "./external/feature-switch.ts";
-import { clearRetiredPinnedAgentStorage$ } from "./external/retired-pinned-agent-storage.ts";
 import {
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
@@ -591,7 +590,6 @@ export const bootstrap$ = command(
     render: () => void,
     signal: AbortSignal,
   ): BootstrapRuntime => {
-    set(clearRetiredPinnedAgentStorage$);
     set(initializeAppVersion$, appVersion);
     set(initBootstrapPhaseTiming$);
     set(captureInvitationRedirect$);

@@ -1274,7 +1274,7 @@ describe("createApp", () => {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("https://api.vm0.test/health", {
+      const response = await app.request("https://api.okou.test/health", {
         method: "GET",
         headers: {
           "user-agent": "okou-test-agent",
@@ -1294,7 +1294,7 @@ describe("createApp", () => {
       expect(event).toMatchObject({
         method: "GET",
         status: 200,
-        host: "api.vm0.test",
+        host: "api.okou.test",
         path_template: "/health",
         remote_addr: "203.0.113.10",
         user_agent: "okou-test-agent",

@@ -50,7 +50,7 @@ test("Join an invited workspace from the workspace switcher", async () => {
       publicOrganizationData: {
         id: "org_invited",
         name: "Invited Org",
-        imageUrl: "https://cdn.vm0.test/orgs/invited.png",
+        imageUrl: "https://cdn.okou.test/orgs/invited.png",
       },
       accept: async () => {
         await acceptDeferred.promise;
@@ -75,7 +75,7 @@ test("Join an invited workspace from the workspace switcher", async () => {
           id: "org_current",
           name: "Acme",
           slug: "acme",
-          imageUrl: "https://cdn.vm0.test/orgs/acme.png",
+          imageUrl: "https://cdn.okou.test/orgs/acme.png",
           hasImage: true,
         },
         memberships: [
@@ -84,7 +84,7 @@ test("Join an invited workspace from the workspace switcher", async () => {
             organization: {
               id: "org_current",
               name: "Acme",
-              imageUrl: "https://cdn.vm0.test/orgs/acme.png",
+              imageUrl: "https://cdn.okou.test/orgs/acme.png",
             },
           },
           {
@@ -92,7 +92,7 @@ test("Join an invited workspace from the workspace switcher", async () => {
             organization: {
               id: "org_design",
               name: "Design Org",
-              imageUrl: "https://cdn.vm0.test/orgs/design.png",
+              imageUrl: "https://cdn.okou.test/orgs/design.png",
             },
           },
         ],
@@ -116,11 +116,11 @@ test("Join an invited workspace from the workspace switcher", async () => {
     expect(screen.getByText("Invited Org")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Design Org" })).toHaveAttribute(
       "src",
-      "https://cdn.vm0.test/orgs/design.png",
+      "https://cdn.okou.test/orgs/design.png",
     );
     expect(screen.getByRole("img", { name: "Invited Org" })).toHaveAttribute(
       "src",
-      "https://cdn.vm0.test/orgs/invited.png",
+      "https://cdn.okou.test/orgs/invited.png",
     );
   });
 

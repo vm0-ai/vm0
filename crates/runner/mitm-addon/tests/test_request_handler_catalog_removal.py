@@ -155,7 +155,7 @@ async def test_removed_connector_becomes_ordinary_request_without_auth(
         mitm_ctx(
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
-            api_url="https://api.vm0.ai",
+            api_url="https://api.okou.ai",
         ),
         fake_firewall_headers(headers={"Authorization": "Bearer retained"}) as auth_fetch,
     ):
@@ -255,7 +255,7 @@ async def test_custom_connector_id_selects_active_owner_and_does_not_fall_throug
     )
 
     with (
-        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer selected"}) as auth_fetch,
     ):
         await mitm_addon.request(active_flow)
@@ -351,7 +351,7 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
     with mitm_ctx(
         registry_path=str(registry_path),
         builtin_firewall_catalog_cache_path=str(cache_path),
-        api_url="https://api.vm0.ai",
+        api_url="https://api.okou.ai",
     ):
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:

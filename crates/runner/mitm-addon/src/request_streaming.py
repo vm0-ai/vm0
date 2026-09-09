@@ -5,7 +5,7 @@ chunk. Capture-enabled callers also retain a capped prefix consumed by network
 capture and X connector billing refinement.
 
 Configuration preserves any existing callable stream without composing with it.
-When setup first finds an externally owned callback, it creates no vm0
+When setup first finds an externally owned callback, it creates no addon
 observation or capture state, so the size and capture helpers return ``None``. A
 repeated call for this module's callback leaves its existing state intact.
 Terminal response and error handling retain installed metadata through connector
@@ -26,12 +26,12 @@ def configure_request_stream(
     *,
     capture_body: bool = True,
 ) -> None:
-    """Install vm0 request-size observation and optional capped body capture.
+    """Install addon request-size observation and optional capped body capture.
 
     If the request stream is already callable, preserve it without composition
-    and do not create or reset vm0 request-stream metadata. An external callback
-    encountered before vm0 setup therefore leaves no vm0 size or capture state,
-    while repeated vm0 configuration retains the state installed by the first
+    and do not create or reset addon request-stream metadata. An external callback
+    encountered before addon setup therefore leaves no addon size or capture state,
+    while repeated addon configuration retains the state installed by the first
     call.
     """
     if callable(flow.request.stream):

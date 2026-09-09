@@ -35,10 +35,10 @@ OpenAI Codex files at the same pinned commit and Apache-2.0 license:
 - `codex-rs/memories/read/src/citations.rs`
 - `codex-rs/protocol/src/memory_citation.rs`
 
-vm0's TypeScript authority is
+Okou's TypeScript authority is
 `api-contracts/src/contracts/pi-memory-citations.ts`; the Rust Sandbox adapter
 is `guest-agent/src/cli/pi_memory_citation.rs`. Both consume the same
-`fixtures/pi-memory-citations.json`. vm0 additionally removes complete stray
+`fixtures/pi-memory-citations.json`. Okou additionally removes complete stray
 delimiters, bounds untrusted fields and counts, and never exposes citation
 metadata through public text, logs, metrics, Stage 1 input, or exported Pi
 JSONL derivatives.

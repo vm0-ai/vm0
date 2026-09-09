@@ -46,8 +46,8 @@ export interface TeamsConnectFixture {
 }
 
 export function setupTeamsConnectTestEnv(
-  appUrl = "https://app.vm0.test",
-  apiBackendUrl = "https://api.vm0.test",
+  appUrl = "https://app.okou.test",
+  apiBackendUrl = "https://api.okou.test",
 ): void {
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   mockEnv("MICROSOFT_TEAMS_APP_TENANT_ID", TEAMS_APP_TENANT_ID);

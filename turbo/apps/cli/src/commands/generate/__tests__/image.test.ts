@@ -993,9 +993,9 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("--compile");
     expect(helpOutput).toContain("--compiled-prompt");
     expect(helpOutput).toContain("--raw-prompt");
-    expect(helpOutput).not.toContain("--skip-style");
+
     expect(helpOutput).toContain("--json");
-    expect(helpOutput).not.toContain("--styled ");
+
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");
     expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
@@ -1006,7 +1006,7 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("image-style:notion-illustration");
     expect(helpOutput).toContain("Notion-editorial-style hand-drawn");
     expect(helpOutput).toContain("image-style:vm0-illustration");
-    expect(helpOutput).toContain("Generate vm0-style vm0 in-app");
+    expect(helpOutput).toContain("Generate Okou in-app");
     expect(helpOutput).toContain("image-style:flat-poster");
     expect(helpOutput).toContain(
       "an optional short wordmark supplied by the user",

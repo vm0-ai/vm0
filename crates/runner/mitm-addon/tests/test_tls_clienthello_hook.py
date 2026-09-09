@@ -14,7 +14,7 @@ class TestTlsClienthello:
         data = make_tls_data(client_ip="192.168.99.99")
 
         with (
-            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
@@ -25,7 +25,7 @@ class TestTlsClienthello:
         data = make_tls_data(client_ip="10.200.0.1", sni="blocked.com")
 
         with (
-            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
@@ -37,7 +37,7 @@ class TestTlsClienthello:
         data = make_tls_data(client_ip="10.200.0.2", sni="anything.com")
 
         with (
-            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
@@ -98,7 +98,7 @@ class TestTlsClienthello:
     ):
         data = make_tls_data(
             client_ip="10.200.0.1",
-            sni="api.vm0.ai",
+            sni="api.okou.ai",
             client_sni="",
         )
 
@@ -164,7 +164,7 @@ class TestTlsClienthello:
         )
 
         with (
-            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
@@ -188,7 +188,7 @@ class TestTlsClienthello:
             server_connected=True,
         )
 
-        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
             mitm_addon.tls_clienthello(data)
 
         assert data.context.server.address == ("140.82.112.5", 443)
@@ -226,7 +226,7 @@ class TestTlsClienthello:
         )
         data = make_tls_data(client_ip="10.200.0.9", sni="anything.com")
 
-        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
             mitm_addon.tls_clienthello(data)
 
         assert data.ignore_connection is False
@@ -238,7 +238,7 @@ class TestTlsClienthello:
         registry_file.unlink()
         data = make_tls_data(client_ip="10.200.0.1", sni="anything.com")
 
-        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.okou.ai"):
             mitm_addon.tls_clienthello(data)
 
         assert data.ignore_connection is False

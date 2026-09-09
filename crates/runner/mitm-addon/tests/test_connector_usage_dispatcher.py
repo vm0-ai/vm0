@@ -151,7 +151,7 @@ class TestConnectorUsageDispatcher:
         flow.metadata.pop(metadata_keys.ORIGINAL_URL)
 
         with (
-            mitm_ctx(api_url="https://api.vm0.ai"),
+            mitm_ctx(api_url="https://api.okou.ai"),
             pytest.raises(ValueError, match="original_url"),
         ):
             usage.report_connector_usage(flow, "run-abc-123")

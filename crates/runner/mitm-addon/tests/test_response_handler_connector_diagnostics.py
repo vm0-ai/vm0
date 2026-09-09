@@ -53,7 +53,7 @@ async def test_replaces_unauthenticated_connector_auth_error_body(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         assert flow.response is None
         assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
@@ -118,7 +118,7 @@ async def test_replaces_buffered_head_401_with_bodyless_diagnostic(tmp_path, rea
         method="HEAD",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -203,7 +203,7 @@ async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, r
         method="GET",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -242,7 +242,7 @@ async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream
     )
     upstream_chunk = b"discarded-upstream-body-" * 1024
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -306,7 +306,7 @@ def test_responseheaders_preserves_upstream_for_query_over_inspection_limit(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -376,7 +376,7 @@ async def test_query_inspection_boundaries_control_connector_401_diagnostic(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         assert flow.response is None
         flow.response = tutils.tresp(
@@ -424,7 +424,7 @@ async def test_encoded_query_auth_preserves_connector_401(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         assert flow.response is None
         flow.response = tutils.tresp(
@@ -494,7 +494,7 @@ async def test_configured_auth_preserves_connector_401(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         assert flow.response is None
         flow.response = tutils.tresp(
@@ -521,7 +521,7 @@ async def test_restores_connector_diagnostic_body_when_headers_end_stream(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -555,7 +555,7 @@ async def test_head_response_stream_emits_no_diagnostic_body(tmp_path, real_flow
         method="HEAD",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -600,7 +600,7 @@ async def test_streams_connector_401_when_user_auth_is_present(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -635,7 +635,7 @@ async def test_streamed_connector_401_with_user_auth_keeps_upstream_response(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -674,7 +674,7 @@ async def test_streamed_connector_401_with_query_auth_keeps_upstream_response(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -712,7 +712,7 @@ def test_streamed_connector_401_before_request_gets_diagnostic(tmp_path, real_fl
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -762,7 +762,7 @@ def test_streamed_authenticated_connector_401_before_request_keeps_upstream_resp
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -802,7 +802,7 @@ def test_streamed_query_authenticated_connector_401_before_request_keeps_upstrea
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -849,7 +849,7 @@ def test_streamed_browser_connector_403_before_request_keeps_upstream_response(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -885,12 +885,12 @@ def test_streamed_api_allow_response_before_request_logs_without_firewall_contex
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
-        host="api.vm0.ai",
+        host="api.okou.ai",
         path="/api/runs",
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         request_stream = flow.request.stream
         assert callable(request_stream)
@@ -932,7 +932,7 @@ async def test_replaces_connector_401_body_when_auth_header_has_empty_bearer_tok
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -968,7 +968,7 @@ async def test_replaces_connector_401_body_when_only_proxy_authorization_is_pres
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -1004,7 +1004,7 @@ async def test_replaces_connector_401_body_when_auth_header_has_empty_key_token(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -1036,7 +1036,7 @@ async def test_replaces_connector_401_body_when_auth_query_param_is_empty(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -1072,7 +1072,7 @@ async def test_preserves_connector_401_body_when_user_auth_is_present(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -1104,7 +1104,7 @@ async def test_preserves_model_provider_401_body_without_connector_diagnostic(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
         flow.response = tutils.tresp(
@@ -1133,7 +1133,7 @@ async def test_preserves_connector_401_body_when_query_auth_is_present(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -1161,7 +1161,7 @@ async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
         method="GET",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         flow.response = tutils.tresp(
             status_code=401,
@@ -1199,7 +1199,7 @@ async def test_preserves_non_auth_connector_response(
     )
     upstream_body = f"upstream-{status_code}".encode()
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         assert flow.response is None
         flow.response = tutils.tresp(
@@ -1244,7 +1244,7 @@ async def test_preserves_browser_403_body_for_connector_candidate(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         await mitm_addon.request(flow)
         flow.response = tutils.tresp(
             status_code=403,

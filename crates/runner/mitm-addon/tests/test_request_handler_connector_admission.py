@@ -32,7 +32,7 @@ def _write_test_oauth_registry(tmp_path):
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
-                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "base": "https://api.okou.ai/api/test/oauth-provider",
                 "auth": {"headers": {"Authorization": "Bearer x"}},
                 "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
             },
@@ -61,7 +61,7 @@ async def test_matching_sni_and_host_blocks_firewall_auth_when_upstream_is_unbou
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -106,7 +106,7 @@ async def test_matching_sni_and_host_retargets_unconnected_firewall_auth(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -126,27 +126,27 @@ async def test_same_host_and_port_on_other_api_scheme_uses_normal_connector_auth
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        base="https://api.vm0.ai:443",
+        base="https://api.okou.ai:443",
     )
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
-        host="api.vm0.ai",
+        host="api.okou.ai",
         path="/repos",
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="http://api.vm0.ai:443"),
+        mitm_ctx(registry_path=str(reg_path), api_url="http://api.okou.ai:443"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
     assert flow.response is None
-    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.vm0.ai:443"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.okou.ai:443"
     assert flow.request.headers["Authorization"] == "Bearer x"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.port == 443
     assert binding.kinds == frozenset(("connector_auth",))
 
@@ -165,7 +165,7 @@ async def test_matching_sni_and_host_records_binding_when_unconnected_address_al
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -196,7 +196,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_veri
     flow.server_conn.peername = ("140.82.112.5", 443)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -242,7 +242,7 @@ async def test_matching_sni_and_host_requires_upstream_certificate_evidence(
         flow.server_conn.certificate_list = ()
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -284,7 +284,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
     flow.server_conn.error = None
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -316,7 +316,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
     flow.server_conn.error = "certificate verify failed"
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -353,7 +353,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_early_b
     binding_ip_parses = track_normalized_binding_ip_parses(monkeypatch)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -394,7 +394,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_after_retarg
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -437,7 +437,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_verifie
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -475,7 +475,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_endp
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -537,7 +537,7 @@ async def test_matching_sni_and_host_blocks_non_authoritative_connected_endpoint
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -581,7 +581,7 @@ async def test_matching_sni_and_host_allows_equivalent_ipv6_binding_peer(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -615,7 +615,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_stale_b
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -642,7 +642,7 @@ async def test_matching_sni_and_host_allows_bound_firewall_auth(
     bind_flow_upstream(flow)
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)
@@ -668,16 +668,16 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         server_address=("203.0.113.10", 443),
         peername=("203.0.113.10", 443),
     )
@@ -686,7 +686,7 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
     with (
         mitm_ctx(
             registry_path=str(reg_path),
-            api_url="https://api.vm0.ai",
+            api_url="https://api.okou.ai",
             ssl_insecure=False,
         ),
         fake_firewall_headers() as auth_fetch,
@@ -697,7 +697,7 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer x"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -710,16 +710,16 @@ async def test_matching_sni_and_host_blocks_test_connector_with_insecure_upstrea
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         server_address=("203.0.113.10", 443),
         peername=("203.0.113.10", 443),
     )
@@ -728,7 +728,7 @@ async def test_matching_sni_and_host_blocks_test_connector_with_insecure_upstrea
     with (
         mitm_ctx(
             registry_path=str(reg_path),
-            api_url="https://api.vm0.ai",
+            api_url="https://api.okou.ai",
             ssl_insecure=True,
         ),
         fake_firewall_headers() as auth_fetch,
@@ -755,10 +755,10 @@ async def test_test_connector_extends_existing_api_allow_binding(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
@@ -767,7 +767,7 @@ async def test_test_connector_extends_existing_api_allow_binding(
     seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow",)),
         original_address=("203.0.113.10", 443),
@@ -775,7 +775,7 @@ async def test_test_connector_extends_existing_api_allow_binding(
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -784,7 +784,7 @@ async def test_test_connector_extends_existing_api_allow_binding(
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer x"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow", "connector_auth"))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -797,10 +797,10 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "wrong-secret"),
         ),
     )
@@ -808,7 +808,7 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
     seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow",)),
         original_address=("203.0.113.10", 443),
@@ -816,7 +816,7 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -827,7 +827,7 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
 
 
@@ -839,17 +839,17 @@ async def test_test_connector_unconnected_without_bypass_blocks_before_binding(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "wrong-secret"),
         ),
     )
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -870,10 +870,10 @@ async def test_test_connector_without_bypass_does_not_reuse_connector_auth_bindi
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "wrong-secret"),
         ),
     )
@@ -882,7 +882,7 @@ async def test_test_connector_without_bypass_does_not_reuse_connector_auth_bindi
     seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow", "connector_auth")),
         original_address=("203.0.113.10", 443),
@@ -890,7 +890,7 @@ async def test_test_connector_without_bypass_does_not_reuse_connector_auth_bindi
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -901,7 +901,7 @@ async def test_test_connector_without_bypass_does_not_reuse_connector_auth_bindi
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow", "connector_auth"))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -914,10 +914,10 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.99",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
@@ -925,7 +925,7 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host="api.vm0.ai",
+        host="api.okou.ai",
         port=443,
         kinds=frozenset(("api_allow",)),
         original_address=("203.0.113.10", 443),
@@ -933,7 +933,7 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -944,7 +944,7 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
+    assert binding.host == "api.okou.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
 
@@ -953,7 +953,7 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     ("binding_host", "binding_port"),
     [
         pytest.param("api.github.com", 443, id="host-mismatch"),
-        pytest.param("api.vm0.ai", 8443, id="port-mismatch"),
+        pytest.param("api.okou.ai", 8443, id="port-mismatch"),
     ],
 )
 async def test_test_connector_rejects_mismatched_existing_binding_after_verified_tls(
@@ -971,17 +971,17 @@ async def test_test_connector_rejects_mismatched_existing_binding_after_verified
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
-        server_address=("api.vm0.ai", 443),
+        sni="api.okou.ai",
+        server_address=("api.okou.ai", 443),
         peername=("203.0.113.10", 443),
     )
     seed_server_binding(
@@ -998,7 +998,7 @@ async def test_test_connector_rejects_mismatched_existing_binding_after_verified
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -1020,23 +1020,23 @@ async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypa
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         path="/api/test/oauth-provider/echo",
         request_headers=headers(
-            ("Host", "api.vm0.ai"),
+            ("Host", "api.okou.ai"),
             ("x-vm0-test-endpoint-bypass", "wrong-secret"),
         ),
     )
     mark_connected_tls_upstream(
         flow,
-        sni="api.vm0.ai",
+        sni="api.okou.ai",
         server_address=("203.0.113.10", 443),
         peername=None,
     )
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)

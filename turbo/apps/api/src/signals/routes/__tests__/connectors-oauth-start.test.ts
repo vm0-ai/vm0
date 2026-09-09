@@ -27,7 +27,7 @@ const TEST_APP_ROUTES = Object.freeze([
 const context = testContext();
 const mocks = createRouteMocks(context);
 
-const BASE_URL = "https://app.vm0.test";
+const BASE_URL = "https://app.okou.test";
 const API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.okou.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";

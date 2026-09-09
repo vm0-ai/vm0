@@ -41,7 +41,7 @@ async def test_post_auth_request_exception_fails_closed_after_dispatch(
         fake_firewall_headers(headers={"Authorization": resolved_token}),
     ):
         addon_context.options.update(
-            vm0_api_url="https://api.vm0.ai",
+            vm0_api_url="https://api.okou.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
         client, http_layer = start_http_layer(

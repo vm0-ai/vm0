@@ -233,7 +233,7 @@ test("Send a large image with a fallback-enabled text model", async () => {
 
   await readyChat();
   await expect(
-    screen.findByRole("combobox", { name: "DeepSeek V4 Flash" }),
+    screen.findByRole("combobox", { name: "DeepSeek V4 Pro" }),
   ).resolves.toBeVisible();
   await uploadFile(
     user,

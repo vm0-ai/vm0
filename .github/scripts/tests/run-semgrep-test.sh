@@ -20,7 +20,7 @@ chmod +x "$fake_bin/semgrep"
 
 git -C "$repo_dir" init --quiet
 git -C "$repo_dir" config user.name "Semgrep Test"
-git -C "$repo_dir" config user.email "semgrep-test@vm0.ai"
+git -C "$repo_dir" config user.email "semgrep-test@okou.ai"
 
 printf 'base\n' > "$repo_dir/source.txt"
 git -C "$repo_dir" add source.txt

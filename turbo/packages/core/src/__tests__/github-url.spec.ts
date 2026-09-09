@@ -65,10 +65,10 @@ describe("parseGitHubTreeUrl", () => {
   });
 
   it("preserves full path for unique identification", () => {
-    const url = "https://github.com/vm0/skills/tree/main/conventional-commits";
+    const url = "https://github.com/okou/skills/tree/main/conventional-commits";
     const result = parseGitHubTreeUrl(url);
 
-    expect(result?.fullPath).toBe("vm0/skills/tree/main/conventional-commits");
+    expect(result?.fullPath).toBe("okou/skills/tree/main/conventional-commits");
   });
 
   it("handles trailing slash on path", () => {

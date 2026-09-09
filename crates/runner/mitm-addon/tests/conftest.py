@@ -382,7 +382,7 @@ def mitm_ctx(tmp_path):
     def _stub(
         *,
         registry_path: str | None = None,
-        api_url: str = "https://api.vm0.ai",
+        api_url: str = "https://api.okou.ai",
         builtin_firewall_catalog_cache_path: str | None = None,
         client_session_id: str = "runner-session-test",
         client_version: str = "runner-version-test",
@@ -544,13 +544,13 @@ def fresh_usage_executor():
 @pytest.fixture(
     params=[
         pytest.param("https://[::1", id="unmatched-ipv6-bracket"),
-        pytest.param("https://api.vm0.ai:not-a-port", id="non-numeric-port"),
-        pytest.param("https://api.vm0.ai:65536", id="out-of-range-port"),
+        pytest.param("https://api.okou.ai:not-a-port", id="non-numeric-port"),
+        pytest.param("https://api.okou.ai:65536", id="out-of-range-port"),
         pytest.param(
-            "https://user:secret@api.vm0.ai/base",
+            "https://user:secret@api.okou.ai/base",
             id="userinfo",
         ),
-        pytest.param("https://api.vm0.ai:/base", id="empty-port"),
+        pytest.param("https://api.okou.ai:/base", id="empty-port"),
     ]
 )
 def malformed_platform_api_url(request: pytest.FixtureRequest) -> str:

@@ -131,25 +131,31 @@ function expectSelected(element: HTMLElement): void {
   expect(selectionAttribute).toBe("true");
 }
 
-test("A user can change theme while reviewing the unified preferences", async () => {
-  mockPreferences();
+test("Theme preferences work on the development host when storage writes are blocked", async () => {
+  const updates = mockPreferences({ theme: null });
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.dark");
+  context.mocks.browser.localStorageWrites({
+    blockedKeys: ["theme", "colorTheme"],
+  });
 
-  await setupPage({ context, path: "/settings", host: "app.okou.ai" });
+  await setupPage({ context, path: "/settings", host: "app.vm7.ai" });
 
   await expect(
     screen.findByText("Your preferred color scheme"),
   ).resolves.toBeVisible();
-  click(getFastRole("button", "Dark"));
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  click(getFastRole("button", "Light"));
 
   await waitFor(() => {
-    expectSelected(getFastRole("button", "Dark"));
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expectSelected(getFastRole("button", "Light"));
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(updates).toContainEqual({ theme: "light" });
   });
 
   await expect(
     screen.findByText("Your agents will use this time zone during runs"),
   ).resolves.toBeVisible();
-  expect(getFastRole("button", "Dark")).toBeVisible();
+  expect(getFastRole("button", "Light")).toBeVisible();
 });
 
 test("Account-backed appearance preferences are restored and saved", async () => {
@@ -264,7 +270,7 @@ test("Chat settings fall back to Preference while the capability is disabled", a
 test("Chat settings keep the agreed row order and save chat defaults", async () => {
   const updates = mockPreferences({ cloudBrowserEnabledByDefault: false });
   context.mocks.data.userModelPreference({
-    selectedModel: "gpt-5.6-sol",
+    selectedModel: "gpt-6-astra",
     serviceTier: null,
     selectedVideoModel: null,
     selectedImageModel: null,
@@ -313,18 +319,18 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
 
-  click(await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }));
-  click(await screen.findByRole("option", { name: "GPT 5.6 Sol Fast" }));
+  click(await within(dialog).findByRole("combobox", { name: "GPT 6 Astra" }));
+  click(await screen.findByRole("option", { name: "GPT 6 Astra Fast" }));
   await waitFor(() => {
     expect(modelUpdates).toContainEqual({
-      selectedModel: "gpt-5.6-sol",
+      selectedModel: "gpt-6-astra",
       serviceTier: "priority",
     });
     expect(
-      within(dialog).getByRole("combobox", { name: "GPT 5.6 Sol Fast" }),
+      within(dialog).getByRole("combobox", { name: "GPT 6 Astra Fast" }),
     ).toBeVisible();
   });
-  click(within(dialog).getByRole("combobox", { name: "GPT 5.6 Sol Fast" }));
+  click(within(dialog).getByRole("combobox", { name: "GPT 6 Astra Fast" }));
   click(
     await screen.findByRole("option", { name: "Inherit from org default" }),
   );

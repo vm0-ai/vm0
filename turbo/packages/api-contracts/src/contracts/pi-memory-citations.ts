@@ -4,7 +4,7 @@ import { CitationLiteralEscaper } from "./pi-memory-citation-literals";
 /**
  * Adapted from OpenAI Codex rust-v0.152.1 at
  * 5adb68a49933ae446bf11935662c83dba55a0804. Portions copyright OpenAI and
- * licensed under Apache-2.0. vm0 additionally suppresses stray complete
+ * licensed under Apache-2.0. Okou additionally suppresses stray complete
  * delimiters so internal transport markup cannot reach public projections.
  */
 

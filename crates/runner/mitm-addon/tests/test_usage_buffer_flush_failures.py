@@ -592,7 +592,7 @@ def test_timeout_delivery_failure_retains_batch_and_retries_with_same_key(
     usage.set_pending_path(str(pending_path))
 
     usage.buffer_usage_events(
-        "https://api.vm0.ai/api/webhooks/agent/usage-event",
+        "https://api.okou.ai/api/webhooks/agent/usage-event",
         "token-a",
         "run-1",
         [event(source_key="source-1", quantity=10)],

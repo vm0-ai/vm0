@@ -150,19 +150,19 @@ Request streaming
 - ``REQUEST_STREAM_BUFFER``: capped ``bytearray`` written by
   ``requestheaders()`` only when this module installs its callback with body
   capture enabled. A setup attempt that finds an externally owned callable does
-  not create this buffer; repeated vm0 setup preserves the existing buffer. Read
+  not create this buffer; repeated addon setup preserves the existing buffer. Read
   by request body capture and connector billing refinement. Removed by stream
   cleanup after terminal hooks.
 - ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
   ``total_bytes``. Written only when this module installs its callback and read
   for request size. A setup attempt that finds an externally owned callable does
-  not create this state; repeated vm0 setup preserves existing state.
+  not create this state; repeated addon setup preserves existing state.
   Capture-enabled paths also write ``REQUEST_STREAM_BUFFER`` and use this state
   for capture truncation and connector billing refinement. Removed by stream
   cleanup.
 - ``REQUEST_STREAM_COMPLETE``: ``bool`` written by ``request()`` after
   mitmproxy finishes delivering a request whose stream size is tracked by this
-  module. The external-callable no-op path provides no vm0 stream state from
+  module. The external-callable no-op path provides no addon stream state from
   which to establish this marker. Read by connector billing before treating a
   non-truncated request stream buffer as a complete request body. Removed by
   stream cleanup.

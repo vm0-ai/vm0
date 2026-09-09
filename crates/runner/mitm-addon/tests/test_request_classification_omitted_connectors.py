@@ -12,7 +12,7 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 
-_API_URL = "https://api.vm0.ai"
+_API_URL = "https://api.okou.ai"
 _CLIENT_IP = "10.200.0.5"
 _CONNECTOR_INTENT_HEADER = "X-VM0-Connector-Intent"
 

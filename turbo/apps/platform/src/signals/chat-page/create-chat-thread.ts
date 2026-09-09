@@ -212,6 +212,7 @@ import {
   type BrowserLifecycleOptimisticEvents,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
+import { createThreadActivitySummarySignals } from "./thread-activity-summary.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
   messageDocumentToPrompt,
@@ -4317,7 +4318,12 @@ function createChatPanelSignalsWithDraft(
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
-  const container = createChatThreadContainerSignals();
+  const activity = createThreadActivitySummarySignals(
+    threadId,
+    chatEvents.chatEvents$,
+    threadMeta$,
+  );
+  const container = createChatThreadContainerSignals(activity.attach$, signal);
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
   const composer = createThreadComposerSignalsWithContext(
@@ -4372,6 +4378,16 @@ function createChatPanelSignalsWithDraft(
     reloadConnectorAccountPreference$:
       composer.connector.accounts.reloadPreference$,
   });
+  const thinkingText$ = computed(async (get) => {
+    return get(activity.enabled$)
+      ? get(activity.thinkingText$)
+      : await get(messages.thinkingText$);
+  });
+  const thinkingEventId$ = computed(async (get) => {
+    return get(activity.enabled$)
+      ? get(activity.thinkingId$)
+      : await get(messages.thinkingEventId$);
+  });
   return {
     threadId,
     agentId,
@@ -4403,11 +4419,10 @@ function createChatPanelSignalsWithDraft(
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),
+    thinkingText$,
+    thinkingEventId$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    ...createThinkingIndicatorSignals(
-      messages.thinkingText$,
-      messages.thinkingEventId$,
-    ),
+    ...createThinkingIndicatorSignals(thinkingText$, thinkingEventId$),
     artifacts$: messages.artifacts$,
     reloadArtifacts$: messages.reloadArtifacts$,
   };

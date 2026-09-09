@@ -99,7 +99,7 @@ async function cachePath(): Promise<string> {
   const scope = createHash("sha256")
     .update(`${apiUrl}\0${token.orgId}\0${token.userId}`)
     .digest("hex");
-  return join(cacheRoot(), "vm0", "zero", "chat-threads", `${scope}.json`);
+  return join(cacheRoot(), "okou", "chat-threads", `${scope}.json`);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

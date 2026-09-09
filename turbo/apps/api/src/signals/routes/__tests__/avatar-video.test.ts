@@ -165,7 +165,7 @@ async function orgCredits(fixture: AvatarVideoFixture): Promise<number> {
 
 describe("JoggAI built-in avatar video routes", () => {
   beforeEach(() => {
-    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
+    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.okou.test");
     mockEnv("JOGGAI_API_KEY", "test-joggai-key");
     mockEnv("JOGGAI_WEBHOOK_SECRET", JOGGAI_WEBHOOK_SECRET);
     context.mocks.clerk.authenticateRequest.mockReset();
@@ -445,11 +445,11 @@ describe("JoggAI built-in avatar video routes", () => {
         body: JSON.stringify({
           avatarId: 81,
           voiceId: "en-US-ChristopherNeural",
-          script: "Welcome to vm0",
+          script: "Welcome to Okou",
           aspectRatio: "landscape",
           screenStyle: 2,
           caption: false,
-          videoName: "vm0 introduction",
+          videoName: "Product introduction",
         }),
       });
 
@@ -464,12 +464,12 @@ describe("JoggAI built-in avatar video routes", () => {
         voice: {
           type: "script",
           voice_id: "en-US-ChristopherNeural",
-          script: "Welcome to vm0",
+          script: "Welcome to Okou",
         },
         aspect_ratio: "landscape",
         screen_style: 2,
         caption: false,
-        video_name: "vm0 introduction",
+        video_name: "Product introduction",
       });
       expect(asRecord(observedBody)).not.toHaveProperty("webhook_url");
 
@@ -665,7 +665,7 @@ describe("JoggAI built-in avatar video routes", () => {
       randomUUID(),
       "voice.mp3",
     );
-    const audioUrl = buildFileUrlFromKey(audioKey, "vm0");
+    const audioUrl = buildFileUrlFromKey(audioKey, "okou");
     let observedBody: unknown = null;
     server.use(
       http.post(JOGGAI_CREATE_URL, async ({ request }) => {
@@ -737,7 +737,7 @@ describe("JoggAI built-in avatar video routes", () => {
       body: JSON.stringify({
         avatarId: 1790,
         voiceId: "en-US-AvaNeural",
-        script: "Welcome to vm0",
+        script: "Welcome to Okou",
         screenStyle: 3,
       }),
     });

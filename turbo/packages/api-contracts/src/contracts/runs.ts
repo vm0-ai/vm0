@@ -510,7 +510,7 @@ const agentEventsResponseSchema = z.object({
  * Network log action semantics:
  * ALLOW means the request was allowed to continue.
  * DENY means network policy denied the request.
- * BLOCK means vm0/proxy/auth/preconditions blocked the request locally.
+ * BLOCK means platform/proxy/auth/preconditions blocked the request locally.
  */
 const networkLogActionSchema = z.enum(["ALLOW", "DENY", "BLOCK"]);
 

@@ -117,12 +117,12 @@ test("A pending session can choose an organization and continue", async () => {
       membership(
         "org_alpha",
         "Alpha Company",
-        "https://cdn.vm0.test/orgs/alpha.png",
+        "https://cdn.okou.test/orgs/alpha.png",
       ),
       membership(
         "org_beta",
         "Beta Studio",
-        "https://cdn.vm0.test/orgs/beta.png",
+        "https://cdn.okou.test/orgs/beta.png",
       ),
     ],
     taskKey: "choose-organization",
@@ -141,11 +141,11 @@ test("A pending session can choose an organization and continue", async () => {
   });
   expect(screen.getByRole("img", { name: "Alpha Company" })).toHaveAttribute(
     "src",
-    "https://cdn.vm0.test/orgs/alpha.png",
+    "https://cdn.okou.test/orgs/alpha.png",
   );
   expect(screen.getByRole("img", { name: "Beta Studio" })).toHaveAttribute(
     "src",
-    "https://cdn.vm0.test/orgs/beta.png",
+    "https://cdn.okou.test/orgs/beta.png",
   );
   expect(screen.getByText("Signed in as test@example.com")).toBeVisible();
   expect(document.body).not.toHaveTextContent("membership_org_alpha");
@@ -306,7 +306,7 @@ test("A user without an organization can accept an invitation even when creation
         publicOrganizationData: {
           id: "org_invited",
           name: "Invited team",
-          imageUrl: "https://cdn.vm0.test/invited.png",
+          imageUrl: "https://cdn.okou.test/invited.png",
         },
         accept,
       },

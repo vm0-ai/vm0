@@ -277,7 +277,7 @@ const MARKDOWN_RUN_OUTPUT = [
   "",
   "**Bold** _italic_ `code` ~~strike~~",
   "",
-  "See [docs](https://vm0.ai/docs) and ![chart](https://vm0.ai/chart.png)",
+  "See [docs](https://okou.ai/docs) and ![chart](https://okou.ai/chart.png)",
   "",
   "- first",
   "* second",
@@ -292,8 +292,8 @@ const EXPECTED_PLAIN_RUN_OUTPUT = [
   "Bold italic code strike",
   "",
   "See docs",
-  "https://vm0.ai/docs and chart",
-  "https://vm0.ai/chart.png",
+  "https://okou.ai/docs and chart",
+  "https://okou.ai/chart.png",
   "",
   "- first",
   "- second",
@@ -982,7 +982,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const groupMessageId = await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
-      body: "@Zero summarize this thread",
+      body: "@Okou summarize this thread",
       conversationId,
       isGroup: true,
       recentHistory: [
@@ -998,7 +998,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     const admittedGroup = await findAgentphoneChatEventByPromptFixture({
       userId: actor.userId,
-      prompt: "@Zero summarize this thread",
+      prompt: "@Okou summarize this thread",
     });
     expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });
     if (!admittedGroup) {
@@ -1009,7 +1009,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
     expect(groupLaunchContext).toMatchObject({
       contextType: "agentphone",
-      agentphoneMessageText: "@Zero summarize this thread",
+      agentphoneMessageText: "@Okou summarize this thread",
       agentphoneThreadContext: expect.stringContaining("Earlier group context"),
       agentphoneMessageId: groupMessageId,
       agentphoneConversationId: conversationId,
@@ -1022,7 +1022,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
     });
     const run1 = await claimDispatchedRun(runnerGroup);
-    expect(run1.prompt).toBe("@Zero summarize this thread");
+    expect(run1.prompt).toBe("@Okou summarize this thread");
     const groupThreadContext = groupLaunchContext?.agentphoneThreadContext;
     if (!groupThreadContext) {
       throw new Error("Expected AgentPhone group launch thread context");
@@ -1060,7 +1060,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
-      body: "@Zero what changed since then",
+      body: "@Okou what changed since then",
       conversationId,
       isGroup: true,
     });
@@ -1089,7 +1089,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: intruder,
-      body: "/disconnect @Zero",
+      body: "/disconnect @Okou",
       conversationId,
       isGroup: true,
     });
@@ -1109,7 +1109,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const strangerMessageId = await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: stranger,
-      body: "@Zero hello",
+      body: "@Okou hello",
       conversationId: strangerConversationId,
       isGroup: true,
     });
@@ -1135,7 +1135,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: stranger,
-      body: "/connect @Zero",
+      body: "/connect @Okou",
       conversationId,
       isGroup: true,
     });
@@ -1152,7 +1152,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
-      body: "/new_session @Zero",
+      body: "/new_session @Okou",
       conversationId,
       isGroup: true,
     });
@@ -1167,7 +1167,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: stranger,
-      body: "@Zero resume the old group",
+      body: "@Okou resume the old group",
       conversationId,
       isGroup: true,
     });
@@ -1272,7 +1272,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
-      body: "@Zero group before unlink",
+      body: "@Okou group before unlink",
       conversationId: groupConversationId,
       isGroup: true,
     });

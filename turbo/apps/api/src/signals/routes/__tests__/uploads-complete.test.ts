@@ -159,7 +159,7 @@ function addUploadObject(
 describe("POST /api/uploads/complete", () => {
   it("records a private artifact from an agent run in the catalog with its authenticated URL", async () => {
     const fixture = await createRunUploadFixture({ chatThread: true });
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     createRouteMocks(context).clerk.session(
       fixture.actor.userId,
       fixture.actor.orgId,

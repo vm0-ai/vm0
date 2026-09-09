@@ -81,7 +81,7 @@ type AgentStoragePrepareBody = z.infer<
 type AgentStorageCommitBody = z.infer<
   (typeof webhookStoragesCommitContract.commit)["body"]
 >;
-interface Vm0SignatureHeaders {
+interface EventConsumerSignatureHeaders {
   readonly "x-vm0-signature": string;
   readonly "x-vm0-timestamp": string;
 }
@@ -146,7 +146,9 @@ function builtInGenerationToken(args: {
     .digest("hex");
 }
 
-function vm0SignatureHeaders(body: unknown): Vm0SignatureHeaders {
+function eventConsumerSignatureHeaders(
+  body: unknown,
+): EventConsumerSignatureHeaders {
   const timestamp = Math.floor(now() / 1000);
   return {
     "x-vm0-signature": createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
@@ -471,8 +473,8 @@ export function createWebhookCallbackApi(context: TestContext) {
       );
     },
 
-    signedEventConsumerHeaders(body: unknown): Vm0SignatureHeaders {
-      return vm0SignatureHeaders(body);
+    signedEventConsumerHeaders(body: unknown): EventConsumerSignatureHeaders {
+      return eventConsumerSignatureHeaders(body);
     },
 
     /**

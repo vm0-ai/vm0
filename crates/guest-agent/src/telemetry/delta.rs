@@ -7,8 +7,7 @@ use std::path::Path;
 const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
 
 /// Marker uploaded when a single system-log line is too large to send safely.
-const OVERSIZED_SYSTEM_LOG_LINE_MARKER: &str =
-    "[vm0 telemetry omitted oversized system log line]\n";
+const OVERSIZED_SYSTEM_LOG_LINE_MARKER: &str = "[telemetry omitted oversized system log line]\n";
 
 pub(super) struct TextDelta {
     pub(super) content: String,

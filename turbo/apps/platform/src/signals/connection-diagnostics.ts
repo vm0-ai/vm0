@@ -4,7 +4,7 @@ import { z } from "zod";
 import { now } from "../lib/time.ts";
 
 const MAX_CONNECTION_DIAGNOSTIC_EVENTS = 500;
-const CONNECTION_DIAGNOSTIC_EVENT = "vm0:connection-diagnostic";
+const CONNECTION_DIAGNOSTIC_EVENT = "okou:connection-diagnostic";
 
 // The Worker publishes its own capture over the shared database bridge, so the
 // diagnostics shape is a wire format and Zod owns it.

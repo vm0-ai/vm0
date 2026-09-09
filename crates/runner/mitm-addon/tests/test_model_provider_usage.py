@@ -225,7 +225,7 @@ class TestReportModelProviderUsage:
     def test_falls_back_to_response_model_then_unknown(
         self, tmp_path, real_flow, usage_webhook_api
     ):
-        """Provider falls back only when selected vm0 model metadata is absent."""
+        """Provider falls back only when selected built-in model metadata is absent."""
         flow = make_model_provider_usage_reporting_flow(
             real_flow,
             tmp_path,
@@ -414,7 +414,7 @@ class TestReportModelProviderUsage:
             usage={"tokens.input": 50},
         )
 
-        with mitm_ctx(api_url="https://api.vm0.ai"):
+        with mitm_ctx(api_url="https://api.okou.ai"):
             usage.report_model_provider_usage(flow, "run-abc-123")
 
         assert jsonl_exists_after_flush(proxy_log)

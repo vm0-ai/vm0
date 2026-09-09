@@ -1,7 +1,7 @@
 //! Pi hidden memory-citation transport normalization.
 //!
 //! Adapted from OpenAI Codex rust-v0.152.1 commit
-//! 5adb68a49933ae446bf11935662c83dba55a0804 under Apache-2.0. vm0 also
+//! 5adb68a49933ae446bf11935662c83dba55a0804 under Apache-2.0. Okou also
 //! suppresses stray complete delimiters before public projection.
 
 use serde::{Deserialize, Serialize};

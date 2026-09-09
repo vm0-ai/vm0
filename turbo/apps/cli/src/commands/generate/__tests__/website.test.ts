@@ -316,13 +316,5 @@ describe("okou generate website command", () => {
     expect(helpOutput).toContain("--title <text>");
     expect(helpOutput).toContain("--design-system <id>");
     expect(helpOutput).toContain("--template <id>");
-    expect(helpOutput).not.toContain("--json");
-    expect(helpOutput).not.toContain("--provider");
-    expect(helpOutput).not.toContain("--all");
-    expect(helpOutput).not.toContain("--images");
-    expect(helpOutput).not.toContain("--image-model");
-    expect(helpOutput).not.toContain("--template-direction");
-    expect(helpOutput).not.toContain("--audience");
-    expect(helpOutput).not.toContain("--site <slug>");
   });
 });

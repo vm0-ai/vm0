@@ -136,7 +136,7 @@ export const mailContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Permanently delete a Gmail draft and its vm0 record",
+    summary: "Permanently delete a Gmail draft and its Okou record",
   },
   sendDraft: {
     method: "POST",

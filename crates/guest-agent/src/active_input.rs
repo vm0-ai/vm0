@@ -813,7 +813,7 @@ impl ActiveInputController {
     /// Code output and should continue through event delivery.
     /// [`ReplayUserEventAction::InternalInitialPrompt`] and
     /// [`ReplayUserEventAction::InternalActiveInput`] mean the event is an
-    /// internal echo of input vm0 already delivered and should be filtered.
+    /// internal echo of input the platform already delivered and should be filtered.
     /// [`ReplayUserEventAction::UnknownPromptUser`] means the event looks like a
     /// prompt-style user event but cannot be attributed to known input, so
     /// callers should handle it conservatively.

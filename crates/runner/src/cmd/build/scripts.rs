@@ -904,7 +904,7 @@ exit 18
     }
 
     #[test]
-    fn rootfs_scripts_install_explicit_runtime_tool_hooks_without_replacing_bash() {
+    fn rootfs_scripts_install_explicit_runtime_tool_hooks() {
         let tool_exec_path = guest_contracts::guest_binary::TOOL_EXEC_PATH;
         let tool_exec_assignment = format!(r#"TOOL_EXEC_DEST="{tool_exec_path}""#);
         let claude_hook_command = format!(r#""command": "{tool_exec_path} hook""#);
@@ -920,10 +920,6 @@ exit 18
         assert!(
             CUSTOMIZE_SCRIPT.contains(&codex_hook_command),
             "customize-rootfs.sh should configure the Codex tool hook"
-        );
-        assert!(
-            !CUSTOMIZE_SCRIPT.contains("/bin/bash.vm0-real"),
-            "customize-rootfs.sh should leave the distribution Bash executable untouched"
         );
         assert!(
             VERIFY_SCRIPT.contains("check_required_file_contains \"$CLAUDE_TOOL_HOOK_DEST\""),

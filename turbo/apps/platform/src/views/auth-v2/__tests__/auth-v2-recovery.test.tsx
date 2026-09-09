@@ -400,7 +400,7 @@ test("Workspace selection shows only the user's current memberships", async () =
       membership(
         "org_alpha",
         "Alpha Company",
-        "https://cdn.vm0.test/orgs/alpha.png",
+        "https://cdn.okou.test/orgs/alpha.png",
       ),
       membership("org_beta", "Beta Studio"),
     ],
@@ -411,7 +411,7 @@ test("Workspace selection shows only the user's current memberships", async () =
   const beta = await waitForButton("Continue with Beta Studio");
   expect(screen.getByRole("img", { name: "Alpha Company" })).toHaveAttribute(
     "src",
-    "https://cdn.vm0.test/orgs/alpha.png",
+    "https://cdn.okou.test/orgs/alpha.png",
   );
   expect(beta).toHaveTextContent("B");
   expect(document.body).not.toHaveTextContent("membership_org_alpha");

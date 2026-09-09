@@ -32,11 +32,11 @@ def test_capture_enabled_api_allow_installs_request_stream(tmp_path, real_flow, 
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
-        host="api.vm0.ai",
+        host="api.okou.ai",
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     callback = _request_stream(flow)
@@ -66,7 +66,7 @@ def test_capture_enabled_browser_allow_installs_request_stream(
         request_headers=headers(("Host", "example.com"), ("User-Agent", _BROWSER_USER_AGENT)),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     assert callable(flow.request.stream)
@@ -88,7 +88,7 @@ def test_capture_enabled_final_allow_installs_request_stream(tmp_path, real_flow
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     assert callable(flow.request.stream)
@@ -112,7 +112,7 @@ def test_capture_enabled_small_bounded_body_does_not_install_request_stream(
         request_headers=headers(("Host", "example.com"), ("Content-Length", "4")),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
@@ -139,7 +139,7 @@ def test_capture_enabled_body_at_stream_limit_does_not_install_request_stream(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
@@ -163,7 +163,7 @@ def test_capture_enabled_explicit_zero_length_body_does_not_install_request_stre
         request_headers=headers(("Host", "example.com"), ("Content-Length", "0")),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
@@ -188,7 +188,7 @@ def test_capture_enabled_bodyless_method_without_content_length_installs_request
             request_headers=headers(("Host", "example.com")),
         )
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
             mitm_addon.requestheaders(flow)
 
         callback = _request_stream(flow)
@@ -216,7 +216,7 @@ def test_capture_enabled_body_over_stream_limit_installs_request_stream(
         ),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     assert callable(flow.request.stream)
@@ -242,7 +242,7 @@ def test_capture_enabled_preserves_preexisting_callable_stream(tmp_path, real_fl
 
     flow.request.stream = existing_stream
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     assert flow.request.stream is existing_stream
@@ -267,7 +267,7 @@ def test_capture_enabled_repeated_configuration_preserves_stream_state(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         callback = _request_stream(flow)
         assert callback(b"first chunk") == b"first chunk"
@@ -316,7 +316,7 @@ def test_capture_enabled_replaces_boolean_stream_with_capture_callback(
     )
     flow.request.stream = True
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     callback = _request_stream(flow)
@@ -343,7 +343,7 @@ async def test_request_releases_cached_classification_after_stream_setup(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
         await mitm_addon.request(flow)
@@ -368,7 +368,7 @@ def test_capture_enabled_chunked_body_installs_request_stream(
         request_headers=headers(("Host", "example.com"), ("Transfer-Encoding", "chunked")),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     assert callable(flow.request.stream)
@@ -386,7 +386,7 @@ def test_capture_disabled_final_allow_does_not_install_request_stream(
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
@@ -401,7 +401,7 @@ def test_non_stream_requestheaders_probe_restores_request_metadata(tmp_path, rea
         method="POST",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"):
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)

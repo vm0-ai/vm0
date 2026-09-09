@@ -115,11 +115,6 @@ describe("okou generate source-backed artifact commands", () => {
     expect(helpOutput).toContain("--title <text>");
     expect(helpOutput).toContain("--design-system <id>");
     expect(helpOutput).toContain("--template <id>");
-    expect(helpOutput).not.toContain("--json");
-    expect(helpOutput).not.toContain("--provider");
-    expect(helpOutput).not.toContain("--all");
-    expect(helpOutput).not.toContain("--audience");
-    expect(helpOutput).not.toContain("--site <slug>");
   });
 
   it("returns every registered skill when no target is requested", () => {

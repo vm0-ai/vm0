@@ -19,7 +19,7 @@ import { teamsConnectRoutes } from "../teams-connect";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const CONNECT_PATH = "http://api.test/api/teams/connect";
-const APP_ORIGIN = "https://app.vm0.test";
+const APP_ORIGIN = "https://app.okou.test";
 
 function connectUrl(params: {
   readonly tenantId?: string;
