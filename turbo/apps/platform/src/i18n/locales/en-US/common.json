@@ -5710,6 +5710,11 @@
       "action": "Back to home",
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
+    },
+    "workerFailure": {
+      "action": "Refresh",
+      "description": "Your connection was interrupted. Refresh the page to continue.",
+      "title": "Refresh to continue"
     }
   },
   "sharedThread": {

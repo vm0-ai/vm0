@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import { SharedDatabaseHttpError } from "../../shared-database/http-error.ts";
+import { SharedDatabaseWorkerLoadError } from "../../shared-database/worker-load-error.ts";
 import {
   deserializeSharedDatabaseError,
   serializeSharedDatabaseError,
@@ -42,6 +43,8 @@ test.each(["page", "shared-worker"] as const)(
   async (runtime) => {
     const beforeSend = startSentry(runtime);
     const expected = [
+      new SharedDatabaseWorkerLoadError(undefined),
+      new SharedDatabaseWorkerLoadError(new Error("Worker script failed")),
       new Error("Connection to server unavailable"),
       new Error("Channel attach timed out"),
       new DOMException("Permission denied by system", "NotAllowedError"),
@@ -88,6 +91,10 @@ test.each(["page", "shared-worker"] as const)(
   async (runtime) => {
     const beforeSend = startSentry(runtime);
     for (const exception of [
+      {
+        type: "SharedDatabaseWorkerLoadError",
+        value: "Shared database worker failed to load",
+      },
       { type: "Error", value: "Connection to server unavailable" },
       { type: "Error", value: "Channel attach timed out" },
       { type: "NotAllowedError", value: SAFARI_PERMISSION_MESSAGE },
@@ -114,6 +121,10 @@ test.each(["page", "shared-worker"] as const)(
   async (runtime) => {
     const beforeSend = startSentry(runtime);
     for (const error of [
+      new Error("Shared database worker failed to load"),
+      new Error(
+        "ChatThreadEvent cursor expired immediately after a server snapshot",
+      ),
       new Error("Voice draft recording failed", {
         cause: new Error("Storage write failed"),
       }),

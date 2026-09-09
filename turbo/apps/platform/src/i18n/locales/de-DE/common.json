@@ -5718,6 +5718,11 @@
       "action": "Zurück zur Startseite",
       "description": "Die gesuchte Seite existiert nicht.",
       "title": "Seite nicht gefunden"
+    },
+    "workerFailure": {
+      "action": "Aktualisieren",
+      "description": "Deine Verbindung wurde unterbrochen. Aktualisiere die Seite, um fortzufahren.",
+      "title": "Zum Fortfahren aktualisieren"
     }
   },
   "sharedThread": {

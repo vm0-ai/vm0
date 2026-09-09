@@ -5,6 +5,7 @@ import { Toaster } from "@okouai/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { AppSkeletonOverlay, Router } from "./router.tsx";
 import { ForceUpgradeDialog } from "./components/force-upgrade-dialog.tsx";
+import { SharedWorkerFailureDialog } from "./components/shared-worker-failure-dialog.tsx";
 import { AuthV2AddAccountDialog } from "./auth-v2/auth-v2-add-account-dialog.tsx";
 import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
@@ -85,6 +86,7 @@ export const setupRouter = (
           <InstatusStatusNotice />
           <ConnectorConnectionProgress />
         </ErrorBoundary>
+        <SharedWorkerFailureDialog />
         <AppToaster />
       </StoreProvider>
     </StrictMode>,

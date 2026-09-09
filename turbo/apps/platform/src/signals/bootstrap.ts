@@ -15,6 +15,7 @@ import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { setupSharedDatabaseBridge$ } from "./shared-database-browser.ts";
+import { listenSharedWorkerFailure$ } from "./shared-worker-failure.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
@@ -652,6 +653,8 @@ export const bootstrap$ = command(
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
+    // Keep failures that happen before the first React render observable.
+    set(listenSharedWorkerFailure$, signal);
     const sharedDatabaseDaemon = isDesktopAuthFlow()
       ? Promise.resolve()
       : set(setupSharedDatabaseBridge$, signal);

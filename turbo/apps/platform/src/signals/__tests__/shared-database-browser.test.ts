@@ -280,14 +280,12 @@ test("Reject pending requests and mark the connection disconnected when the work
 
   workers[0]!.fail();
 
-  await expect(query).rejects.toThrow(
-    "SharedWorker module script failed to load",
-  );
+  await expect(query).rejects.toThrow("Shared database worker failed to load");
   await expect(computed).rejects.toThrow(
-    "SharedWorker module script failed to load",
+    "Shared database worker failed to load",
   );
   await expect(bridge.getComputed("chat-thread-indicators")).rejects.toThrow(
-    "SharedWorker module script failed to load",
+    "Shared database worker failed to load",
   );
   expect(context.store.get(sharedDatabaseConnectionStatus$)).toBe(
     "disconnected",
