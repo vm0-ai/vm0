@@ -388,7 +388,9 @@ Examples:
               return runConnectorSearchAction(
                 connector,
                 runAccountForConnector(connector),
-                agentContext,
+                agentContext
+                  ? isConnectorDiscoveryAuthorized(connector, agentContext)
+                  : null,
               );
             },
             origin,

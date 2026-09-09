@@ -19,6 +19,7 @@ import {
 } from "../../__tests__/helpers/connector-catalog";
 import {
   customConnector,
+  customMcpConnector,
   stubAgentCustomConnectors,
   stubCustomConnectors,
 } from "../../__tests__/helpers/custom-connectors";
@@ -226,6 +227,67 @@ describe("custom connector URL diagnostics", () => {
     },
   );
 
+  it.each([
+    customConnector({ connected: true, missingRequiredFields: [] }),
+    customMcpConnector({
+      id: CUSTOM_ID,
+      connected: true,
+      missingRequiredFields: [],
+    }),
+  ])(
+    "preserves the configured origin and exact $kind account in JSON recovery links",
+    async (connector) => {
+      const appOrigin = "https://preview-app.example.com";
+      vi.stubEnv("OKOU_APP_URL", appOrigin);
+      server.use(
+        stubRunConnectorAccountInspection([account("reconnect-required")]),
+        http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
+          return HttpResponse.json(connector);
+        }),
+      );
+
+      await check("--json");
+
+      const json: unknown = JSON.parse(output());
+      expect(json).toMatchObject({
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "link",
+            url: `${appOrigin}/connectors/${connector.slug}/reconnect/${ACCOUNT_ID}?agentId=agent-1`,
+            supportsCallback: true,
+          }),
+          expect.objectContaining({
+            kind: "link",
+            url: `${appOrigin}/connectors?tab=custom&customConnectorId=${CUSTOM_ID}&view=access&permission=items%3Awrite&agentId=agent-1`,
+            guidance: expect.stringContaining(
+              "Settings review does not support callbacks",
+            ),
+          }),
+        ]),
+      });
+      expect(output()).not.toContain(DEFAULT_ACCOUNT_ID);
+      expect(log).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("offers the directed custom connect flow outside a run in JSON", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
+
+    await check("--json");
+
+    const json: unknown = JSON.parse(output());
+    expect(json).toMatchObject({
+      context: "current",
+      actions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "link",
+          url: `${ORIGIN}/connectors/_mutable-new-slug/connect`,
+          supportsCallback: true,
+        }),
+      ]),
+    });
+  });
+
   it("reports unavailable definition metadata explicitly without replacing its account", async () => {
     server.use(
       http.get(`${ORIGIN}/api/custom-connectors/${CUSTOM_ID}`, () => {
@@ -245,6 +307,13 @@ describe("custom connector URL diagnostics", () => {
         definitionAvailable: false,
       },
       account: { connectionId: ACCOUNT_ID },
+      actions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "link",
+          url: `${ORIGIN}/connectors?tab=custom&customConnectorId=${CUSTOM_ID}&view=accounts&agentId=agent-1`,
+          supportsCallback: false,
+        }),
+      ]),
     });
   });
 

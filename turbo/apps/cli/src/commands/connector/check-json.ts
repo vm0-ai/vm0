@@ -16,6 +16,7 @@ import { getOkouAgentId } from "../../lib/okou-env";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   CALLBACK_PROMPT_PLACEHOLDER,
+  connectorActionUrl,
   currentChatSupportsActionCallback,
 } from "./action-url";
 import {
@@ -26,7 +27,10 @@ import {
   requireUrlRequest,
   type ResolvedDiagnostic,
 } from "./check-diagnostic";
-import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
+import {
+  customConnectorSettingsGuidance,
+  customConnectorSettingsPath,
+} from "./custom-connector-guidance";
 import { connectorInspectionType } from "./inspection";
 import {
   isRunBoundConnectorContext,
@@ -84,11 +88,20 @@ function permissionActions(
         {
           kind: "link",
           label: `Review ${permission.name} for custom connector ${target.customConnectorId}`,
-          url: new URL("/connectors", origin).toString(),
+          url: connectorActionUrl({
+            origin,
+            path: customConnectorSettingsPath(
+              target.customConnectorId,
+              "access",
+              permission.name,
+            ),
+            agentId,
+          }),
           guidance: customConnectorSettingsGuidance(
             target.customConnectorId,
             origin,
             permission.name,
+            agentId,
           ),
         },
       ];
@@ -164,29 +177,78 @@ async function loadCheckEvidence(
   return { definition, currentConnection, account, authorized, origin };
 }
 
+function customCheckConnectionActions(
+  target: Extract<ConnectorAccountTarget, { kind: "custom" }>,
+  label: string,
+  evidence: Awaited<ReturnType<typeof loadCheckEvidence>>,
+): ConnectorSearchAction[] {
+  const { definition, account, authorized } = evidence;
+  if (definition === null) {
+    return [
+      {
+        label: `Review ${label} accounts and agent access`,
+        path: customConnectorSettingsPath(target.customConnectorId, "accounts"),
+        supportsCallback: false,
+      },
+    ];
+  }
+  if (account !== null) {
+    const action = runConnectorSearchAction(
+      {
+        kind: "custom",
+        slug: definition.slug,
+        label,
+        customConnector: definition,
+      },
+      account,
+      authorized,
+    );
+    return action === null ? [] : [action];
+  }
+  if (!definition.connected) {
+    return [
+      {
+        label: `Connect or authorize ${label}`,
+        path: `/connectors/${definition.slug}/connect`,
+        supportsCallback: true,
+      },
+    ];
+  }
+  return authorized === false
+    ? [
+        {
+          label: `Review ${label} agent access`,
+          path: customConnectorSettingsPath(target.customConnectorId, "access"),
+          supportsCallback: false,
+        },
+      ]
+    : [];
+}
+
 function checkConnectionActions(
   target: ConnectorAccountTarget,
   label: string,
   evidence: Awaited<ReturnType<typeof loadCheckEvidence>>,
 ): ConnectorSearchAction[] {
-  const { definition, currentConnection, account, authorized } = evidence;
+  if (target.kind === "custom") {
+    return customCheckConnectionActions(target, label, evidence);
+  }
+  const { currentConnection, account, authorized } = evidence;
   const connectionActions: ConnectorSearchAction[] = [];
   if (account !== null) {
     const action = runConnectorSearchAction(
       {
-        kind: target.kind === "builtin" ? "catalog" : "custom",
-        slug:
-          target.kind === "builtin"
-            ? target.connectorSlug
-            : `custom:${target.customConnectorId}`,
+        kind: "catalog",
+        slug: target.connectorSlug,
         label,
       },
       account,
+      authorized,
     );
     if (action !== null) {
       connectionActions.push(action);
     }
-  } else if (target.kind === "builtin") {
+  } else {
     if (
       currentConnection === null ||
       currentConnection.connectionStatus === "reconnect-required"
@@ -197,27 +259,13 @@ function checkConnectionActions(
         supportsCallback: true,
       });
     }
-  } else if (definition === null || !definition.connected) {
-    connectionActions.push({
-      label: `Review ${label} accounts and agent access`,
-      path: "/connectors",
-      supportsCallback: false,
-    });
   }
   if (authorized === false) {
-    connectionActions.push(
-      target.kind === "builtin"
-        ? {
-            label: `Authorize ${label}`,
-            path: `/connectors/${target.connectorSlug}/authorize`,
-            supportsCallback: true,
-          }
-        : {
-            label: `Review ${label} agent access`,
-            path: "/connectors",
-            supportsCallback: false,
-          },
-    );
+    connectionActions.push({
+      label: `Authorize ${label}`,
+      path: `/connectors/${target.connectorSlug}/authorize`,
+      supportsCallback: true,
+    });
   }
   return connectionActions;
 }

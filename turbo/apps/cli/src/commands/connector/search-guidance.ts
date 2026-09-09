@@ -18,8 +18,18 @@ export interface ConnectorSearchAction {
   readonly supportsCallback: boolean;
 }
 
+type ConnectorSearchTarget =
+  | Pick<
+      Extract<ConnectorDiscoveryDefinition, { kind: "catalog" }>,
+      "kind" | "slug" | "label"
+    >
+  | Pick<
+      Extract<ConnectorDiscoveryDefinition, { kind: "custom" }>,
+      "kind" | "slug" | "label" | "customConnector"
+    >;
+
 function accountSettingsAction(
-  connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
+  connector: ConnectorSearchTarget,
 ): ConnectorSearchAction {
   return {
     label: `Review ${connector.label} accounts and agent access`,
@@ -42,7 +52,7 @@ function connectAction(
 }
 
 function customAccessAction(
-  connector: Extract<ConnectorDiscoveryDefinition, { kind: "custom" }>,
+  connector: Extract<ConnectorSearchTarget, { kind: "custom" }>,
 ): ConnectorSearchAction {
   return {
     label: `Review ${connector.label} agent access`,
@@ -52,16 +62,14 @@ function customAccessAction(
 }
 
 export function runConnectorSearchAction(
-  connector: Pick<ConnectorDiscoveryDefinition, "kind" | "slug" | "label">,
+  connector: ConnectorSearchTarget,
   lookup: RunConnectorAccountLookup,
-  agentContext: ConnectorDiscoveryAgentContext | null,
+  authorized: boolean | null,
 ): ConnectorSearchAction | null {
   switch (lookup.state) {
     case "available":
       if (lookup.metadata.connectionStatus !== "reconnect-required") {
-        return connector.kind === "custom" &&
-          agentContext &&
-          !isConnectorDiscoveryAuthorized(connector, agentContext)
+        return connector.kind === "custom" && authorized === false
           ? customAccessAction(connector)
           : null;
       }
@@ -72,8 +80,7 @@ export function runConnectorSearchAction(
       };
     case "not-admitted":
       if (connector.kind === "custom" && connector.customConnector.connected) {
-        return agentContext &&
-          !isConnectorDiscoveryAuthorized(connector, agentContext)
+        return authorized === false
           ? customAccessAction(connector)
           : accountSettingsAction(connector);
       }

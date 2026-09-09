@@ -70,6 +70,10 @@ Search's `actions` contain labels, exact URLs, and callback support. The usual
 single-match and callback restrictions apply. Preserve returned action URLs,
 including all query parameters.
 
+Recovery URLs use `OKOU_APP_URL` when configured; otherwise the CLI derives the
+app origin from the API URL. Custom connection actions use the connector's
+directed Connect flow or the exact run-selected account's reconnect flow.
+
 Check emits the validated diagnostic without collapsing `deny`, `ask`,
 `unavailable`, unknown endpoints, ambiguous targets, or missing run context.
 The additional `connector`, `account`, `connection`, `authorization`, and
@@ -80,8 +84,10 @@ rejected, and query strings/fragments are stripped before transport and output.
 
 Check's `actions` contain commands, links, or guidance. Builtin permission
 requests are offered only for denied/ask outcomes from a URL diagnostic.
-Custom connectors retain their settings-based remediation; unknown custom
-endpoints are not turned into builtin permission requests. Retry commands retain
+Custom permission actions open the targeted access settings with the Agent and
+permission context, without granting access. Missing definitions or ambiguous
+accounts retain manual settings guidance. Unknown custom endpoints are not
+turned into builtin permission requests. Retry commands retain
 the sanitized request selectors and JSON mode. Routing and permission results
 describe intended state, not confirmation that the runner applied a later
 update. Connector/account changes apply to future runs.
