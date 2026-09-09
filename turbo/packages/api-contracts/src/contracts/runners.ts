@@ -895,7 +895,7 @@ export const piApiFirstTurnOwnershipTransferModeSchema = z.enum([
   "settled-session-continuation",
 ]);
 
-export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
+const piApiFirstTurnManifestV3Schema = z.discriminatedUnion("mode", [
   z
     .object({
       ...piApiFirstTurnOwnershipTransferManifestShape,
@@ -914,6 +914,42 @@ export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
     .object({
       ...piApiFirstTurnOwnershipTransferManifestShape,
       mode: z.literal("settled-session-continuation"),
+    })
+    .strict()
+    .readonly(),
+]);
+
+// Large H0 checkpoints bypass API materialization. The sandbox verifies the
+// original blob before starting the turn; API-produced H1 stays bounded at 16 MiB.
+export const piApiFirstTurnManifestSchema = z.union([
+  piApiFirstTurnManifestV3Schema,
+  z
+    .object({
+      ...piApiFirstTurnOwnershipTransferManifestShape,
+      schemaVersion: z.literal(4),
+      mode: z.literal("sandbox-first"),
+      session: piApiFirstTurnSessionSchema
+        .unwrap()
+        .extend({
+          rawSize: z
+            .number()
+            .int()
+            .positive()
+            .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+        })
+        .readonly(),
+      history: z
+        .object({
+          url: z.url(),
+          encoding: sessionHistoryEncodingSchema,
+          encodedSize: z
+            .number()
+            .int()
+            .positive()
+            .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+        })
+        .strict()
+        .readonly(),
     })
     .strict()
     .readonly(),

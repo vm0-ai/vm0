@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { zstdDecompressSync } from "node:zlib";
+import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
   readGoalThreadFixture,
@@ -47,6 +47,8 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
+  PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
@@ -13871,6 +13873,248 @@ describe("CHAT-02: model-first provider policies", () => {
     const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
     expect(claim.status).toBe(404);
   }, 90_000);
+
+  it.each(["identity", "gzip", "zstd"] as const)(
+    "saves large Pi %s history and transfers the next turn without API history or resource IO",
+    async (encoding) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      let modelCalls = 0;
+      let resourceDownloads = 0;
+      server.use(
+        http.post("https://api.openai.com/v1/responses", () => {
+          modelCalls += 1;
+          return nativeCodexSseResponse(
+            piResponsesTextSse("unexpected API answer", modelCalls),
+          );
+        }),
+        http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, () => {
+          resourceDownloads += 1;
+          return HttpResponse.json(
+            { error: "API resources unavailable" },
+            { status: 503 },
+          );
+        }),
+      );
+      const queued = await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "/skill:long-session finish in sandbox",
+      });
+      await completeChatRunOk(
+        queued.anchor.runId,
+        queued.anchorClaim.sandboxHeaders,
+        { usagePricingResolution: queued.usagePricingResolution },
+      );
+      await flushWaitUntilForTest();
+      const { run } = queued;
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      const session = MemoryPiSession.create({
+        cwd: "/home/user/workspace",
+        id: run.threadId,
+      });
+      session.appendMessage({
+        role: "user",
+        content: "preserve the complete native history",
+        timestamp: 1,
+      });
+      session.appendMessage({
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "x".repeat(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+          },
+        ],
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      });
+      const raw = Buffer.from(session.toJsonl());
+      const encoded =
+        encoding === "gzip"
+          ? gzipSync(raw)
+          : encoding === "zstd"
+            ? zstdCompressSync(raw)
+            : raw;
+      const hash = createHash("sha256").update(raw).digest("hex");
+      expect(raw.length).toBeGreaterThan(PI_API_FIRST_TURN_SESSION_MAX_BYTES);
+      const invalidHash = createHash("sha256")
+        .update(randomUUID())
+        .digest("hex");
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: invalidHash,
+          rawSize: encoding === "identity" ? raw.length : 1,
+          encodedSize: encoded.length,
+          encoding,
+        },
+        claimed.sandboxHeaders,
+        [200],
+      );
+      const invalidSuffix =
+        encoding === "identity"
+          ? "blob"
+          : encoding === "gzip"
+            ? "blob.gz"
+            : "blob.zst";
+      checkpointObjects.set(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${invalidHash}.${invalidSuffix}`,
+        encoded,
+      );
+      const invalidCheckpoint = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: run.threadId,
+            cliAgentSessionHistoryHash: invalidHash,
+          },
+        },
+        claimed.sandboxHeaders,
+        [400],
+        undefined,
+        queued.usagePricingResolution,
+      );
+      expect(JSON.stringify(invalidCheckpoint.body)).toContain(
+        encoding === "identity"
+          ? "[PI_H2_HASH_MISMATCH]"
+          : "[PI_H2_DECOMPRESSION_FAILED]",
+      );
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "running",
+      });
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash,
+          rawSize: raw.length,
+          encodedSize: encoded.length,
+          encoding,
+        },
+        claimed.sandboxHeaders,
+        [200],
+      );
+      const suffix =
+        encoding === "identity"
+          ? "blob"
+          : encoding === "gzip"
+            ? "blob.gz"
+            : "blob.zst";
+      const blobKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${hash}.${suffix}`;
+      checkpointObjects.set(blobKey, encoded);
+      const completed = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: run.threadId,
+            cliAgentSessionHistoryHash: hash,
+          },
+        },
+        claimed.sandboxHeaders,
+        [200],
+        undefined,
+        queued.usagePricingResolution,
+      );
+      expect(completed.body).toStrictEqual({
+        success: true,
+        status: "completed",
+      });
+      await flushWaitUntilForTest();
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "completed",
+      });
+      const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
+      const resumed = await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: run.threadId,
+          prompt: "continue the long session",
+          model: "gpt-5.6-terra",
+        },
+        "vm0",
+        queued.usagePricingResolution,
+      );
+      await flushWaitUntilForTest();
+      const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      const manifest = piApiFirstTurnManifestSchema.parse(
+        JSON.parse(
+          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
+        ),
+      );
+      expect(manifest).toMatchObject({
+        schemaVersion: 4,
+        mode: "sandbox-first",
+        outcome: "ownership-transfer",
+        baseSession: { sessionId: run.threadId, sha256: hash },
+        session: { sessionId: run.threadId, sha256: hash, rawSize: raw.length },
+        history: {
+          encoding,
+          encodedSize: encoded.length,
+          url: expect.any(String),
+        },
+        sandboxEventSequenceStart: 1,
+      });
+      if (manifest.schemaVersion !== 4) {
+        throw new Error("Expected a referenced sandbox checkpoint");
+      }
+      expect(new URL(manifest.history.url).searchParams.get("object")).toBe(
+        blobKey,
+      );
+      expect(modelCalls).toBe(0);
+      expect(resourceDownloads).toBe(0);
+      expect(
+        context.mocks.s3.send.mock.calls
+          .slice(callsBeforeResume)
+          .some(([command]) => {
+            const candidate = command as PiCheckpointS3Command;
+            return (
+              candidate.constructor?.name === "GetObjectCommand" &&
+              piS3ObjectKey(candidate) === blobKey
+            );
+          }),
+      ).toBeFalsy();
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
+        ),
+      ).toBeFalsy();
+      const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
+      expect(resumedClaim.claim.resumeSession).toMatchObject({
+        sessionId: run.threadId,
+        historyRef: { hash, encoding, rawSize: raw.length },
+      });
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: resumed.runId,
+          hash: "f".repeat(64),
+          rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+          encodedSize: 1,
+          encoding,
+        },
+        resumedClaim.sandboxHeaders,
+        [400],
+      );
+      await cancelChatRun(actor, resumed.runId, resumedClaim.sandboxHeaders);
+    },
+    30_000,
+  );
 
   it.each([
     "/skill:handoff-skill first  argument\nsecond line",

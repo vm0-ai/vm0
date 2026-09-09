@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import { gunzip, zstdDecompress } from "node:zlib";
 
 import {
   PI_API_FIRST_TURN_SESSION_MAX_BYTES,
@@ -17,6 +19,8 @@ import {
 const MANIFEST_MAX_BYTES = 16 * 1024;
 const INITIAL_POLL_DELAY_MS = 100;
 const MAX_POLL_DELAY_MS = 500;
+const gunzipHistory = promisify(gunzip);
+const unzstdHistory = promisify(zstdDecompress);
 
 type PiApiFirstTurnHandoffErrorCode =
   | "PI_HANDOFF_BASE_SESSION_MISMATCH"
@@ -300,12 +304,17 @@ async function restoreSession(args: {
   validateManifestIdentity(args);
   let response: Response;
   try {
-    response = await args.runtime.fetch(args.config.sessionUrl, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(
-        Math.max(1, args.config.deadlineAt - args.runtime.now()),
-      ),
-    });
+    response = await args.runtime.fetch(
+      args.manifest.schemaVersion === 4
+        ? args.manifest.history.url
+        : args.config.sessionUrl,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(
+          Math.max(1, args.config.deadlineAt - args.runtime.now()),
+        ),
+      },
+    );
   } catch (error) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_H1_DOWNLOAD_FAILED",
@@ -319,13 +328,50 @@ async function restoreSession(args: {
       `Pi API first-turn H1 returned ${response.status}`,
     );
   }
-  const bytes = await responseBufferWithMaxBytes({
+  const encoded = await responseBufferWithMaxBytes({
     response,
-    maxBytes: PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+    maxBytes:
+      args.manifest.schemaVersion === 4
+        ? args.manifest.history.encodedSize
+        : PI_API_FIRST_TURN_SESSION_MAX_BYTES,
     code: "PI_HANDOFF_H1_TOO_LARGE",
     readErrorCode: "PI_HANDOFF_H1_DOWNLOAD_FAILED",
     label: "Pi API first-turn H1",
   });
+  let bytes = encoded;
+  if (args.manifest.schemaVersion === 4) {
+    if (encoded.length !== args.manifest.history.encodedSize) {
+      throw new PiApiFirstTurnHandoffError(
+        "PI_HANDOFF_H1_HASH_MISMATCH",
+        "Pi sandbox history encoded size does not match the manifest",
+      );
+    }
+    try {
+      switch (args.manifest.history.encoding) {
+        case "identity": {
+          break;
+        }
+        case "gzip": {
+          bytes = await gunzipHistory(encoded, {
+            maxOutputLength: args.manifest.session.rawSize,
+          });
+          break;
+        }
+        case "zstd": {
+          bytes = await unzstdHistory(encoded, {
+            maxOutputLength: args.manifest.session.rawSize,
+          });
+          break;
+        }
+      }
+    } catch (error) {
+      throw new PiApiFirstTurnHandoffError(
+        "PI_HANDOFF_H1_INVALID",
+        "Pi sandbox history could not be decoded within its size limit",
+        { cause: error },
+      );
+    }
+  }
   if (args.runtime.now() >= args.config.deadlineAt) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_H1_LATE",

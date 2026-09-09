@@ -193,6 +193,28 @@ raises the frontend compatibility floor, rolling the frontend below that floor
 also requires rolling back the backend floor. Rolling the backend back to the
 dual-protocol preparation release remains safe for canonical clients.
 
+### Pi native session history
+
+Pi checkpoint persistence shares the Runner's 128 MiB raw and encoded history
+bound. The API-first execution budget remains 16 MiB. Before resource loading or
+provider ownership, a larger saved checkpoint selects sandbox-first execution
+from blob metadata. A V4 ownership-transfer manifest carries a presigned history
+reference; only the sandbox downloads and decompresses H0 for the next turn. The
+API still validates complete H2 history at checkpoint time, so its peak memory
+and validation work can exceed the raw file size.
+
+V3 manifests remain the active format for API-produced H1 and small
+sandbox-first H0. The CLI accepts both formats and retains the same V2 Guest
+boundary control; Runner job and launch-config schemas are unchanged. API and
+CLI changes must ship through the same commit-addressed CLI artifact selection.
+Previously captured contexts retain their package and history reference; new
+contexts select the new reader. Old Runners already support 128 MiB history.
+
+Pi remains staff-only behind `PiLoop`. Rolling the API back below this change
+restores its 16 MiB validation and resume limit: larger saved histories stay in
+storage, but continuing those sessions requires the fixed API and CLI again.
+There is no history truncation, migration, or alternate reader for that rollback.
+
 ### Runner
 
 Runner deployment is draining, not instant. The production promote playbook
