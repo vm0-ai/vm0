@@ -5,7 +5,7 @@ import type {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 /**
- * vm0 owns rollout associations. Deploy an association before publishing a
+ * Okou owns rollout associations. Deploy an association before publishing a
  * method that should be gated, and remove it when its switch graduates.
  */
 const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<

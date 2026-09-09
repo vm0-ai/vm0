@@ -578,6 +578,11 @@
       "unavailable": "{{kind}}-Vorschau nicht verfügbar.",
       "videoLabel": "Videovorschau für {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Mit der Organisation teilen",
+      "sharePublic": "Öffentlich teilen",
+      "unavailable": "Dieses Artefakt ist nicht verfügbar oder du hast keinen Zugriff."
+    },
     "sidebar": {
       "openSharedConversation": "Geteilte Unterhaltung öffnen",
       "panelTitle": "Artefakte",
@@ -1887,6 +1892,9 @@
         "presentationPlaceholder": "Worum geht es in deiner Präsentation?",
         "question": "Was möchtest du möglich machen?",
         "settingsAdjusted": "Einige Videoeinstellungen wurden an dieses Modell angepasst",
+        "slideCount": "Folienanzahl",
+        "slideCountAuto": "Automatisch",
+        "slideCountRange": "{{range}} Folien",
         "title": "Erstellen",
         "video": "Video erstellen",
         "videoPlaceholder": "Beschreibe das gewünschte Video…"

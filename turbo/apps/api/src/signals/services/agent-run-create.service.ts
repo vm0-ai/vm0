@@ -682,7 +682,7 @@ interface ExplicitConnectorScope {
 }
 
 // Session naming in this service:
-// - agentSessionId is the vm0 application session (`agent_sessions.id`) used
+// - agentSessionId is the Okou application session (`agent_sessions.id`) used
 //   for product-level continuation and future correctness checks.
 // - cliAgentSessionId is the Claude/Codex/Pi agent session stored on
 //   `conversations.cli_agent_session_id`.

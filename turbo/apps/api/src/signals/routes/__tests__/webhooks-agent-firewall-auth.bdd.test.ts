@@ -41,6 +41,11 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
+  createAuthDeviceApiActions,
+  mockCodexDeviceAuthProvider,
+} from "./helpers/api-bdd-auth-device";
+import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
+import {
   transitionRunToTerminal,
   transitionRunToTimeout,
   type TestTerminalRunStatus,
@@ -2730,6 +2735,7 @@ describe("FW-9: codex model-provider access", () => {
   });
 
   it("stops retrying terminal chatgpt refresh failures", async () => {
+    mockOptionalEnv("OKOU_DEBUG", "webhook:firewall-auth");
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     const terminalErrorCodes = [
@@ -2783,16 +2789,164 @@ describe("FW-9: codex model-provider access", () => {
       }
 
       expect(refreshCalls).toBe(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        expect.stringContaining("codex-oauth-token token refresh failed"),
-        expect.objectContaining({
-          accessSourceKey: "codex-oauth-token",
-          errorCode,
-          failureReason: "reconnect_required",
-        }),
-      );
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+      expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+      for (const log of [
+        context.mocks.axiomLogging.debug,
+        context.mocks.axiomLogging.info,
+      ]) {
+        expect(log).not.toHaveBeenCalledWith(
+          expect.stringContaining("token refresh failed"),
+          expect.anything(),
+        );
+      }
     }
+  });
+
+  it("keeps terminal Codex failure on the exact account until reconnect", async () => {
+    const fw = createFirewallApi(context);
+    const authDevice = createAuthDeviceApiActions(context);
+    const support = createAuthDeviceSupportApi(context);
+    const { actor, headers } = await firewallRun();
+    await support.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+    const accounts: string[] = [];
+    for (const accountId of ["expired-account", "healthy-account"]) {
+      mockCodexDeviceAuthProvider({
+        tokenScope: "personal",
+        accountId,
+        accessTokenExpiresAt:
+          Math.floor(now() / 1000) +
+          (accountId === "expired-account" ? -60 : 7200),
+      });
+      const started = await authDevice.requestCodexStart(
+        actor,
+        "personal",
+        [200],
+        { mode: "add" },
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Codex account connection to start");
+      }
+      const completed = await authDevice.requestCodexComplete(
+        actor,
+        started.body.sessionToken,
+        [200],
+      );
+      if (
+        !("status" in completed.body) ||
+        completed.body.status !== "complete"
+      ) {
+        throw new Error("Expected Codex account connection to complete");
+      }
+      accounts.push(completed.body.provider.id);
+    }
+    const [expiredAccountId, healthyAccountId] = accounts;
+    if (!expiredAccountId || !healthyAccountId) {
+      throw new Error("Expected both concrete accounts");
+    }
+    await support.activatePersonalModelProviderAccount(actor, healthyAccountId);
+    let refreshCalls = 0;
+    fw.mockCodexTokenRefresh(() => {
+      refreshCalls += 1;
+      return HttpResponse.json(
+        { error: { code: "refresh_token_reused", message: "reused token" } },
+        { status: 401 },
+      );
+    });
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({}),
+      authHeaders: {
+        Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+      },
+      secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth-token" },
+      secretConnectorMetadataMap: {
+        CHATGPT_ACCESS_TOKEN: {
+          sourceType: "model-provider" as const,
+          sourceUserId: actor.userId,
+          sourceId: expiredAccountId,
+          metadataKey: "codex-oauth-token",
+        },
+      },
+    };
+    context.mocks.axiomLogging.warn.mockClear();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const failed = await fw.requestFirewallAuth(headers, body, [502]);
+      expect(failed.body).toMatchObject({
+        error: {
+          code: "TOKEN_REFRESH_FAILED",
+          failureReason: "reconnect_required",
+        },
+      });
+    }
+    expect(refreshCalls).toBe(1);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    const failedAccounts = await support.listPersonalModelProviders(
+      actor,
+      [200],
+    );
+    expect(failedAccounts.body).toMatchObject({
+      modelProviders: expect.arrayContaining([
+        expect.objectContaining({
+          id: expiredAccountId,
+          needsReconnect: true,
+          lastRefreshErrorCode: "refresh_token_reused",
+        }),
+        expect.objectContaining({
+          id: healthyAccountId,
+          isActive: true,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        }),
+      ]),
+    });
+
+    const reconnected = mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "expired-account",
+    });
+    const started = await authDevice.requestCodexStart(
+      actor,
+      "personal",
+      [200],
+      {
+        mode: "reconnect",
+        modelProviderId: expiredAccountId,
+      },
+    );
+    if (started.status !== 200) {
+      throw new Error("Expected exact Codex account reconnect to start");
+    }
+    await authDevice.requestCodexComplete(
+      actor,
+      started.body.sessionToken,
+      [200],
+    );
+    const recoveredAccounts = await support.listPersonalModelProviders(
+      actor,
+      [200],
+    );
+    expect(recoveredAccounts.body).toMatchObject({
+      modelProviders: expect.arrayContaining([
+        expect.objectContaining({
+          id: expiredAccountId,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        }),
+      ]),
+    });
+    const resolved = await fw.requestFirewallAuth(headers, body, [200]);
+    expect(resolved.body).toMatchObject({
+      headers: {
+        Authorization: `Bearer ${reconnected.oauthTokenResponses[0]?.access_token}`,
+      },
+      refreshedConnectors: [],
+    });
+    expect(reconnected.oauthToken).toHaveLength(1);
   });
 
   it("retries a transient codex refresh failure", async () => {
@@ -2841,6 +2995,10 @@ describe("FW-9: codex model-provider access", () => {
       "Bearer recovered-chatgpt-token",
     );
     expect(refreshCalls).toBe(2);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "codex-oauth-token token refresh failed",
+      expect.objectContaining({ failureReason: "upstream_provider" }),
+    );
   });
 
   it("omits the failure reason for unknown chatgpt refresh error codes", async () => {
@@ -2884,6 +3042,10 @@ describe("FW-9: codex model-provider access", () => {
     expect(failed.body.error.code).toBe("TOKEN_REFRESH_FAILED");
     expect(failed.body.error.failureReason).toBeUndefined();
     expect(failed.body.error.connectors).toStrictEqual(["codex-oauth-token"]);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "codex-oauth-token token refresh failed",
+      expect.objectContaining({ errorCode: "refresh_token_other" }),
+    );
   });
 });
 

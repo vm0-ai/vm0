@@ -47,6 +47,30 @@ telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
 version. Remove any historical query fallback only after its bounded
 observation window expires.
 
+## Blank Sandbox Memory
+
+Tenant-free sandboxes prepared for the blank pool retain their full profile
+resource budget. Firecracker stops their reactive balloon controller and
+pauses vCPUs without requesting aggressive idle balloon inflation. Guest
+quiesce and operation fencing still complete before pause. This avoids a
+large idle-only inflate/deflate cycle when a prepared sandbox is claimed.
+
+Unpark still requests memory return without waiting for physical balloon
+convergence. After a preserved blank resumes, its background controller waits
+for both target-zero convergence and the first successful Agent-ready event
+before resuming reactive reclamation. Guest operations and Agent startup do not
+wait for that controller, and no fixed delay is added. Failed or cancelled
+startup does not release the gate; ordinary park, stop and destruction cancel
+the owned controller. The full profile budget stays reserved throughout.
+
+A small balloon from active preparation may remain at park. Exact/session idle
+sandboxes continue using ordinary memory reclamation, including after a
+claimed blank completes its first run.
+
+Pool sizing, full-profile admission, exact-first reuse and blank-first pressure
+eviction are unchanged. Preserving blank memory can increase physical idle
+memory usage; the profile budget is not a measurement of resident memory.
+
 ## Idle Workspace Reclamation Concurrency
 
 Workspace promotion uses two independent runner-process-local admission gates,

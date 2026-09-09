@@ -47,7 +47,7 @@ import {
   requiredUserMessageForEvent,
 } from "./chat-user-message.service";
 import {
-  canonicalChatEventContent,
+  canonicalChatEventVisibleContent,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
 
@@ -289,7 +289,7 @@ async function getLatestTitleContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
+      content: canonicalChatEventVisibleContent(),
       userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
@@ -495,7 +495,7 @@ async function getLatestFollowupContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
+      content: canonicalChatEventVisibleContent(),
       userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,

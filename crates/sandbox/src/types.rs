@@ -643,6 +643,8 @@ pub enum ProcessControlGuestStatus {
     QueueFull,
     /// The guest process-control sink returned an error.
     SinkError,
+    /// The connected guest process-control sink closed during request I/O.
+    SinkClosed,
 }
 
 impl ProcessControlGuestStatus {
@@ -654,7 +656,7 @@ impl ProcessControlGuestStatus {
             Self::SinkUnavailable => io::ErrorKind::NotConnected,
             Self::SinkTimeout => io::ErrorKind::TimedOut,
             Self::QueueFull => io::ErrorKind::WouldBlock,
-            Self::SinkError => io::ErrorKind::BrokenPipe,
+            Self::SinkError | Self::SinkClosed => io::ErrorKind::BrokenPipe,
         }
     }
 
@@ -668,6 +670,7 @@ impl ProcessControlGuestStatus {
             Self::SinkTimeout => "exec control sink timed out",
             Self::QueueFull => "exec control queue is full",
             Self::SinkError => "exec control sink error",
+            Self::SinkClosed => "exec control sink closed",
         }
     }
 }

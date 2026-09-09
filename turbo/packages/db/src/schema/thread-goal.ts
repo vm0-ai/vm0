@@ -10,6 +10,7 @@ import {
   check,
   foreignKey,
   integer,
+  bigint,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
@@ -36,6 +37,12 @@ export const threadGoals = pgTable(
       .notNull(),
     objective: text("objective").notNull(),
     objectiveBrief: text("objective_brief").notNull(),
+    // S2 retirement receipt survives hot-event retention. Keep until S5 replay
+    // and schema removal; deliberately no foreign key to chat_events.
+    retirementArchiveEventId: uuid("retirement_archive_event_id"),
+    retirementArchiveSeqId: bigint("retirement_archive_seq_id", {
+      mode: "number",
+    }),
     autonomyBudget: integer("autonomy_budget").notNull().default(10),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -57,6 +64,14 @@ export const threadGoals = pgTable(
       check(
         "thread_goals_autonomy_budget_check",
         sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
+      ),
+      check(
+        "thread_goals_retirement_archive_receipt_check",
+        sql`(${table.retirementArchiveEventId} IS NULL AND ${table.retirementArchiveSeqId} IS NULL)
+          OR (${table.retirementArchiveEventId} IS NOT NULL
+            AND ${table.retirementArchiveSeqId} IS NOT NULL
+            AND ${table.retirementArchiveSeqId} > 0
+            AND ${table.retirementArchiveSeqId} <= 9007199254740991)`,
       ),
     ];
   },

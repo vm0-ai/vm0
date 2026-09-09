@@ -73,10 +73,15 @@ export function mergeFirstTouchAttribution(
     return undefined;
   }
 
-  // Clerk contains the first-touch record. It wins over a later browser
-  // payload, while the payload can fill fields that were not available when
-  // the user record was created, such as a newly added client identifier.
-  return { ...provided, ...stored };
+  if (!stored) {
+    return provided;
+  }
+
+  // The click and its campaign belong to one touch. Filling missing campaign
+  // fields from a later visit can send the original click to another Ads account.
+  // A GA client identifier is independent of that advertising attribution.
+  const gaClientId = stored.ga_client_id ?? provided?.ga_client_id;
+  return { ...stored, ...(gaClientId ? { ga_client_id: gaClientId } : {}) };
 }
 
 export const persistOrgAcquisitionAttribution$ = command(

@@ -5,6 +5,7 @@ import {
   type SourceType,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { command } from "ccstate";
+import { normalizeGoogleAdsAttributionParams } from "../../lib/google-ads-attribution.ts";
 import { registerPostHogAttribution } from "../../lib/posthog.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 
@@ -66,9 +67,10 @@ function collectAttributionParams(
   searchParams: URLSearchParams,
 ): URLSearchParams {
   const attributionParams = new URLSearchParams();
+  const normalized = normalizeGoogleAdsAttributionParams(searchParams);
 
   for (const param of AD_ATTRIBUTION_PARAMS) {
-    for (const value of searchParams.getAll(param)) {
+    for (const value of normalized.getAll(param)) {
       attributionParams.append(param, value);
     }
   }
@@ -184,11 +186,13 @@ export const applyStoredAdAttribution$ = command(({ get }, url: URL): void => {
     return;
   }
 
-  const attributionParams = new URLSearchParams(storedAttribution);
+  const attributionParams = collectAttributionParams(
+    new URLSearchParams(storedAttribution),
+  );
+  url.searchParams.delete("okou_campaign_id");
+  url.searchParams.delete("okou_ad_group_id");
   for (const param of AD_ATTRIBUTION_PARAMS) {
-    if (url.searchParams.has(param)) {
-      continue;
-    }
+    url.searchParams.delete(param);
 
     for (const value of attributionParams.getAll(param)) {
       url.searchParams.append(param, value);
@@ -200,7 +204,9 @@ function adAttributionMetadataFromStoredValue(
   storedAttribution: string | null,
   cookieString: string,
 ): AdAttributionMetadata | undefined {
-  const attributionParams = new URLSearchParams(storedAttribution ?? "");
+  const attributionParams = collectAttributionParams(
+    new URLSearchParams(storedAttribution ?? ""),
+  );
   const metadata: AdAttributionMetadata = {};
 
   const sourceType = attributionParams.get("source_type");

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { resolveAgentContext } from "./agent-context";
+import { resolveAgentContext, resolveConnectorAgentId } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   availableConnectorSlugs,
@@ -263,7 +263,10 @@ export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a connector")
   .argument("<slug>", "Connector slug (e.g., github)")
-  .option("--agent <id>", "Show authorization state for the given agent")
+  .option(
+    "--agent <id>",
+    "Show authorization state for the given Agent (must match the current Agent inside a run)",
+  )
   .option("--json", "Output connector status as JSON")
   .action(
     withErrorHandler(
@@ -271,13 +274,14 @@ export const statusCommand = new Command()
         connectorSlug: string,
         options: { agent?: string; json?: boolean },
       ) => {
+        const agentId = resolveConnectorAgentId(options.agent);
         if (isRunBoundConnectorContext()) {
           await printRunConnectorStatus(connectorSlug, options.json ?? false);
           return;
         }
         const [catalog, agentCtx] = await Promise.all([
           listConnectorCatalogStatus(),
-          resolveAgentContext(options.agent),
+          resolveAgentContext(agentId),
         ]);
         const connector = findConnectorStatusItem(
           catalog.connectors,

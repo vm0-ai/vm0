@@ -596,6 +596,11 @@
       "unavailable": "Visualização de {{kind}} indisponível.",
       "videoLabel": "Visualização de vídeo de {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Compartilhar com a organização",
+      "sharePublic": "Compartilhar publicamente",
+      "unavailable": "Este artefato não está disponível ou você não tem acesso."
+    },
     "sidebar": {
       "openSharedConversation": "Abrir conversa compartilhada",
       "panelTitle": "Artefatos",
@@ -1916,6 +1921,9 @@
         "presentationPlaceholder": "Qual é o tema da sua apresentação?",
         "question": "O que você gostaria de realizar?",
         "settingsAdjusted": "Algumas configurações de vídeo foram ajustadas para este modelo",
+        "slideCount": "Número de slides",
+        "slideCountAuto": "Automático",
+        "slideCountRange": "{{range}} slides",
         "title": "Criar",
         "video": "Criar vídeo",
         "videoPlaceholder": "Descreva o vídeo que você quer criar…"

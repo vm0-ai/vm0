@@ -21,6 +21,9 @@ describe("okou connector custom readers", () => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
+    for (const command of customConnectorCommand.commands) {
+      command.setOptionValue("agent", undefined);
+    }
   });
 
   afterEach(() => {
@@ -46,45 +49,75 @@ describe("okou connector custom readers", () => {
     expect(output).toContain("http");
   });
 
-  it("renders grant-based authorization for an agent", async () => {
-    const connector = customConnector();
-    server.use(
-      stubCustomConnectors([connector]),
-      http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
-        return HttpResponse.json({
-          agentId: AGENT_ID,
-          ownerId: "owner-1",
-          description: null,
-          displayName: "Maya",
-          sound: null,
-          avatarUrl: null,
-        });
-      }),
-      stubAgentCustomConnectors([
-        {
-          customConnectorId: connector.id,
-          permissionNames: ["chat:write"],
+  it.each([
+    { context: "non-run", runAgent: undefined, args: ["--agent", AGENT_ID] },
+    { context: "run with omitted selector", runAgent: AGENT_ID, args: [] },
+    {
+      context: "run with matching selector",
+      runAgent: AGENT_ID,
+      args: ["--agent", AGENT_ID],
+    },
+  ])(
+    "renders custom grants in list and status for $context",
+    async ({ runAgent, args }) => {
+      vi.stubEnv("OKOU_AGENT_ID", runAgent);
+      const connector = customConnector();
+      server.use(
+        stubCustomConnectors([connector]),
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+          () => {
+            return HttpResponse.json(connector);
+          },
+        ),
+        http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
+          return HttpResponse.json({
+            agentId: AGENT_ID,
+            ownerId: "owner-1",
+            description: null,
+            displayName: "Maya",
+            sound: null,
+            avatarUrl: null,
+          });
+        }),
+        stubAgentCustomConnectors([
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["chat:write"],
+          },
+        ]),
+      );
+
+      await customConnectorCommand.parseAsync([
+        "node",
+        "okou",
+        "list",
+        ...args,
+      ]);
+
+      const output = consoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("AUTHORIZED FOR Maya");
+      const connectorRow = (consoleLog.mock.calls.flat() as string[]).find(
+        (line) => {
+          return line.startsWith(connector.id);
         },
-      ]),
-    );
+      );
+      expect(connectorRow).toMatch(/✓$/u);
 
-    await customConnectorCommand.parseAsync([
-      "node",
-      "okou",
-      "list",
-      "--agent",
-      AGENT_ID,
-    ]);
+      consoleLog.mockClear();
+      await customConnectorCommand.parseAsync([
+        "node",
+        "okou",
+        "status",
+        CONNECTOR_ID,
+        ...args,
+      ]);
 
-    const output = consoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("AUTHORIZED FOR Maya");
-    const connectorRow = (consoleLog.mock.calls.flat() as string[]).find(
-      (line) => {
-        return line.startsWith(connector.id);
-      },
-    );
-    expect(connectorRow).toMatch(/✓$/u);
-  });
+      const status = consoleLog.mock.calls.flat().join("\n");
+      expect(status).toContain("Custom connector: Acme Search");
+      expect(status).toMatch(/Authorized:\s+yes/u);
+    },
+  );
 
   it("shows tagged HTTP routing details in status", async () => {
     const connector = customConnector();

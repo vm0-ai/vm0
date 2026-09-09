@@ -1,5 +1,88 @@
+diff --git a/dist/api/bedrock-converse-stream.d.ts b/dist/api/bedrock-converse-stream.d.ts
+index 5d44bf071e84329250385366c0e6f623c7d910dd..1bae891a22bffee77ce4766b3b3c1e72633c3df7 100644
+--- a/dist/api/bedrock-converse-stream.d.ts
++++ b/dist/api/bedrock-converse-stream.d.ts
+@@ -1,6 +1,9 @@
++import type { BedrockRuntimeClientConfig } from "@aws-sdk/client-bedrock-runtime";
+ import type { SimpleStreamOptions, StreamFunction, StreamOptions, ThinkingBudgets, ThinkingLevel } from "../types.ts";
+ export type BedrockThinkingDisplay = "summarized" | "omitted";
+ export interface BedrockOptions extends StreamOptions {
++    /** Explicit execution-edge client configuration; bypasses all ambient auth/region discovery. */
++    clientConfig?: BedrockRuntimeClientConfig;
+     region?: string;
+     profile?: string;
+     toolChoice?: "auto" | "any" | "none" | {
+@@ -34,5 +37,5 @@ export interface BedrockOptions extends StreamOptions {
+     bearerToken?: string;
+ }
+ export declare const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions>;
+-export declare const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStreamOptions>;
++export declare const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStreamOptions & Pick<BedrockOptions, "clientConfig">>;
+ //# sourceMappingURL=bedrock-converse-stream.d.ts.map
+\ No newline at end of file
+diff --git a/dist/api/bedrock-converse-stream.js b/dist/api/bedrock-converse-stream.js
+index 6bc6312906ec3d75f31d190994d21c87f1d0767d..d715b109878e92dec50e2e9d87ff4dc37523a441 100644
+--- a/dist/api/bedrock-converse-stream.js
++++ b/dist/api/bedrock-converse-stream.js
+@@ -43,10 +43,11 @@ export const stream = (model, context, options = {}) => {
+         // over ambient AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY. The SDK default
+         // chain already prefers a configured profile over env keys, but only when
+         // `credentials` is not set on the client config. See #6957.
++        // Explicit clients must never enter ambient credential/region discovery.
++        const config = options.clientConfig ?? {};
++        if (!options.clientConfig) {
+         const optionsProfile = options.profile || options.env?.AWS_PROFILE;
+-        const config = {
+-            profile: optionsProfile || getProviderEnvValue("AWS_PROFILE", options.env),
+-        };
++        config.profile = optionsProfile || getProviderEnvValue("AWS_PROFILE", options.env);
+         const configuredRegion = getConfiguredBedrockRegion(options);
+         const hasAmbientConfiguredProfile = Boolean(getProviderEnvValue("AWS_PROFILE"));
+         const endpointRegion = getStandardBedrockEndpointRegion(model.baseUrl);
+@@ -118,12 +119,14 @@ export const stream = (model, context, options = {}) => {
+             config.token = { token: bearerToken };
+             config.authSchemePreference = ["httpBearerAuth"];
+         }
++        }
+         // Kept outside the try so the catch can still correlate a mid-stream failure:
+         // exceptions delivered as stream events carry no HTTP metadata of their own.
+         let responseRequestId;
++        let client;
+         try {
+             const supportsStrictMode = model.compat?.supportsStrictMode ?? false;
+-            const client = new BedrockRuntimeClient(config);
++            client = new BedrockRuntimeClient(config);
+             let observedRawResponse = false;
+             if (options.onResponse) {
+                 addResponseHeadersMiddleware(client, options.onResponse, model, () => {
+@@ -155,6 +158,7 @@ export const stream = (model, context, options = {}) => {
+             const command = new ConverseStreamCommand(commandInput);
+             const response = await client.send(command, { abortSignal: options.signal });
+             responseRequestId = normalizeDiagnosticValue(response.$metadata.requestId);
++            output.responseId = responseRequestId;
+             if (!observedRawResponse && response.$metadata.httpStatusCode !== undefined) {
+                 const responseHeaders = {};
+                 if (response.$metadata.requestId) {
+@@ -232,6 +236,9 @@ export const stream = (model, context, options = {}) => {
+             stream.push({ type: "error", reason: output.stopReason, error: output });
+             stream.end();
+         }
++        finally {
++            client?.destroy();
++        }
+     })();
+     return stream;
+ };
+@@ -384,6 +391,7 @@ export const streamSimple = (model, context, options) => {
+     const base = {
+         ...buildBaseOptions(model, context, options, undefined),
+         toolChoice: options?.toolChoice,
++        clientConfig: options?.clientConfig,
+     };
+     if (!options?.reasoning) {
+         return stream(model, context, { ...base, reasoning: undefined });
 diff --git a/dist/api/openai-codex-responses.d.ts b/dist/api/openai-codex-responses.d.ts
-index 704476d..8274468 100644
+index 704476da084be53d6aa194a5f774fa3ad47f5e9a..8274468318617744f206f551fe5c0c22e935c7ef 100644
 --- a/dist/api/openai-codex-responses.d.ts
 +++ b/dist/api/openai-codex-responses.d.ts
 @@ -1,6 +1,7 @@
@@ -11,7 +94,7 @@ index 704476d..8274468 100644
      reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
      serviceTier?: ResponseCreateParamsStreaming["service_tier"];
 diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
-index bf979d4..429a003 100644
+index bf979d439f531c62494291050722f7e93435280d..429a00309d485aa5506cffa15a040be947c6d43d 100644
 --- a/dist/api/openai-codex-responses.js
 +++ b/dist/api/openai-codex-responses.js
 @@ -164,7 +164,10 @@ export const stream = (model, context, options) => {

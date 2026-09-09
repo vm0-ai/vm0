@@ -577,6 +577,11 @@
       "unavailable": "{{kind}} 미리보기를 사용할 수 없습니다.",
       "videoLabel": "{{filename}} 비디오 미리보기"
     },
+    "sharing": {
+      "shareOrganization": "조직에 공유",
+      "sharePublic": "공개적으로 공유",
+      "unavailable": "이 아티팩트를 사용할 수 없거나 액세스 권한이 없습니다."
+    },
     "sidebar": {
       "openSharedConversation": "공유된 대화 열기",
       "panelTitle": "아티팩트",
@@ -1884,6 +1889,9 @@
         "presentationPlaceholder": "프레젠테이션의 주제는 무엇인가요?",
         "question": "무엇을 실현하고 싶으신가요?",
         "settingsAdjusted": "이 모델에 맞게 일부 동영상 설정을 조정했습니다",
+        "slideCount": "슬라이드 수",
+        "slideCountAuto": "자동",
+        "slideCountRange": "{{range}}장",
         "title": "만들기",
         "video": "동영상 만들기",
         "videoPlaceholder": "만들고 싶은 동영상을 설명하세요…"

@@ -57,8 +57,9 @@ interface ChatScrollGeometry {
 function conversationEvents(
   prefix: string,
   label: string,
+  count = 6,
 ): MockChatEventInput[] {
-  return Array.from({ length: 6 }, (_, index) => {
+  return Array.from({ length: count }, (_, index) => {
     const item = index + 1;
     const runId = `${prefix}-run-${item.toString()}`;
     const userSecond = (item * 3 - 2).toString().padStart(2, "0");
@@ -434,12 +435,14 @@ async function expectAtLatestActivity(
 test("Restore the reading position during keyboard thread navigation", async () => {
   context.mocks.browser.userAgent(LINUX_CHROME_USER_AGENT);
   const user = userEvent.setup();
-  const currentEvents = conversationEvents("keyboard-current", "Current");
+  // Three exchanges keep the reading anchor between the top and tail. The
+  // neighboring threads only need content that proves navigation completed.
+  const currentEvents = conversationEvents("keyboard-current", "Current", 3);
   mockThreadStories(KEYBOARD_CURRENT_THREAD_ID, [
     {
       id: KEYBOARD_PREVIOUS_THREAD_ID,
       title: "Previous keyboard thread",
-      events: conversationEvents("keyboard-previous", "Previous"),
+      events: conversationEvents("keyboard-previous", "Previous", 1),
     },
     {
       id: KEYBOARD_CURRENT_THREAD_ID,
@@ -449,7 +452,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
     {
       id: KEYBOARD_NEXT_THREAD_ID,
       title: "Next keyboard thread",
-      events: conversationEvents("keyboard-next", "Next"),
+      events: conversationEvents("keyboard-next", "Next", 1),
     },
   ]);
 
@@ -459,7 +462,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
     path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
   });
 
-  const targetText = "Current message 3";
+  const targetText = "Current message 2";
   await waitForInteractiveThread(
     KEYBOARD_CURRENT_THREAD_ID,
     "Current keyboard thread",
@@ -480,7 +483,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
   await waitForInteractiveThread(
     KEYBOARD_PREVIOUS_THREAD_ID,
     "Previous keyboard thread",
-    "Previous message 6",
+    "Previous message 1",
   );
 
   await user.click(threadSection(KEYBOARD_PREVIOUS_THREAD_ID));

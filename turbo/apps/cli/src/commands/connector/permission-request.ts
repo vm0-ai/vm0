@@ -15,7 +15,8 @@ import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { createBrowserAuthorizationRequest } from "../../lib/api/domains/browser";
 import { createComputerUseAuthorizationRequest } from "../../lib/api/domains/computer-use";
 import { diagnoseConnectorCheck } from "../../lib/api/domains/connectors";
-import { getOkouAgentId, getOkouToken } from "../../lib/okou-env";
+import { getOkouToken } from "../../lib/okou-env";
+import { resolveConnectorAgentId } from "./agent-context";
 import {
   connectorActionCallbackAvailable,
   finalizeActionUrl,
@@ -309,7 +310,7 @@ export const permissionRequestCommand = new Command()
   .addOption(
     new Option(
       "--agent <id>",
-      "Agent ID whose permission page should be opened (defaults to OKOU_AGENT_ID)",
+      "Agent ID whose permission page should be opened (must match OKOU_AGENT_ID inside a run)",
     ),
   )
   .addOption(
@@ -340,7 +341,8 @@ Notes:
   - A platform URL is output only when that request maps to a denied or approval-required permission
   - Use --permission __unknown__ to request access to unknown endpoints
   - Custom connectors use Connectors > agent access > Permissions, not this builtin approval flow
-  - Use --agent to request a permission for another agent; defaults to OKOU_AGENT_ID
+  - Inside a run, --agent must match the current Agent; omit it to use OKOU_AGENT_ID
+  - Outside a run, use --agent to select the Agent whose permission page should be opened
   - The user chooses the permission duration on the confirmation page
 ${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
   )
@@ -356,6 +358,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           callbackPrompt?: string;
         },
       ) => {
+        const agentId = resolveConnectorAgentId(opts.agent);
         if (
           isBrowserPermissionTarget({
             connectorSlug,
@@ -385,7 +388,6 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           return;
         }
 
-        const agentId = opts.agent ?? getOkouAgentId();
         const customConnectorId = customConnectorIdFromSelector(connectorSlug);
         if (customConnectorId !== undefined) {
           throw new Error(

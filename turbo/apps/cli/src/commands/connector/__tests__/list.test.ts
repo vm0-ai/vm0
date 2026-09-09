@@ -24,7 +24,6 @@ import {
 } from "../../__tests__/helpers/custom-connectors";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
-const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 
 const connectedGithub = {
   id: "1",
@@ -128,6 +127,7 @@ describe("okou connector list command", () => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", undefined);
     listCommand.setOptionValue("agent", undefined);
     listCommand.setOptionValue("json", false);
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
@@ -280,8 +280,8 @@ describe("okou connector list command", () => {
       expect(logCalls).not.toContain("CONNECTED AS");
     });
 
-    it("does not let --agent bypass unavailable run context", async () => {
-      vi.stubEnv("OKOU_AGENT_ID", ALT_AGENT_UUID);
+    it("does not let matching --agent bypass unavailable run context", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
 
       await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
 

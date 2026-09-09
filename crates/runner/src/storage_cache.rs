@@ -313,6 +313,8 @@ struct BackgroundFillAdmissionState {
 enum BackgroundFillCommand {
     Start((String, String)),
     Shutdown(oneshot::Sender<()>),
+    #[cfg(test)]
+    Checkpoint(oneshot::Sender<(usize, usize)>),
 }
 
 struct BackgroundFillCoordinatorInner {
@@ -595,6 +597,11 @@ async fn run_background_fill_supervisor(
             command = receiver.recv() => {
                 match command {
                     Some(BackgroundFillCommand::Start(key)) => pending.push_back(key),
+                    #[cfg(test)]
+                    Some(BackgroundFillCommand::Checkpoint(complete)) => {
+                        // Earlier Start commands have passed the admission loop above.
+                        let _ = complete.send((workers.len(), pending.len()));
+                    }
                     Some(BackgroundFillCommand::Shutdown(complete)) => {
                         let mut state = inner
                             .state
@@ -3923,8 +3930,9 @@ mod tests {
                     let permit = release.acquire_owned().await.map_err(|_| {
                         io::Error::new(io::ErrorKind::BrokenPipe, "release semaphore closed")
                     })?;
+                    // Each permit releases one response, without unblocking the next handler.
+                    permit.forget();
                     socket.write_all(&http_response("200 OK", &body)).await?;
-                    drop(permit);
                     active.fetch_sub(1, Ordering::SeqCst);
                     Ok::<(), io::Error>(())
                 });
@@ -5730,17 +5738,51 @@ mod tests {
                 .expect("two admitted workers should reach the archive server")
                 .expect("archive request channel should remain open");
         }
-        assert!(matches!(
-            server.requests.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ));
-        assert_eq!(server.max_active.load(Ordering::SeqCst), 2);
+        // A FIFO checkpoint observes the third key's admission decision even if
+        // an over-admitted worker has not reached its HTTP handler yet.
+        let (complete, completed) = oneshot::channel();
+        let (active_workers, pending_keys) = tokio::time::timeout(Duration::from_secs(5), async {
+            coordinator
+                .lifecycle
+                .inner
+                .commands
+                .send(BackgroundFillCommand::Checkpoint(complete))
+                .await
+                .expect("supervisor command channel should remain open");
+            completed
+                .await
+                .expect("supervisor should acknowledge the checkpoint")
+        })
+        .await
+        .expect("supervisor should process all three starts while responses are held");
 
-        server.release.add_permits(3);
+        server.release.add_permits(1);
+        let third_request =
+            tokio::time::timeout(Duration::from_secs(5), server.requests.recv()).await;
+        server.release.add_permits(2);
         join_raw_http_task(server.task, "archive server after all workers are released")
             .await
             .expect("archive server should not fail");
-        coordinator.shutdown().await;
+        tokio::time::timeout(Duration::from_secs(5), coordinator.shutdown())
+            .await
+            .expect("coordinator should drain all admitted workers");
+
+        // Assert only after draining, so a failing admission oracle also joins its work.
+        assert_eq!(
+            (active_workers, pending_keys),
+            (2, 1),
+            "the third key must remain queued while both active responses are held"
+        );
+        third_request
+            .expect("the third worker should start after one slot is released")
+            .expect("archive request channel should remain open");
+        assert_eq!(server.max_active.load(Ordering::SeqCst), 2);
+        for name in ["global-a", "global-b", "global-c"] {
+            assert_eq!(
+                std::fs::read(home.storage_cache_dir(name, "v1").join("archive.tar.gz")).unwrap(),
+                body
+            );
+        }
     }
 
     #[tokio::test]

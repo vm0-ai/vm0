@@ -8,7 +8,10 @@ import {
 } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
-import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
+import {
+  resolveConnectorAgentId,
+  resolveConnectorDiscoveryAgentContext,
+} from "./agent-context";
 import { padEndAnsi, stripAnsi } from "./connected-as";
 import {
   connectorDiscoveryDefinitions,
@@ -211,7 +214,10 @@ export const searchCommand = new Command()
     "Search supported connectors by slug, label, category, generation type, or tag and show availability and connection links",
   )
   .argument("<keyword>", "Search keyword (case-insensitive)")
-  .option("--agent <id>", "Show per-agent authorization column")
+  .option(
+    "--agent <id>",
+    "Show per-agent authorization column (must match the current Agent inside a run)",
+  )
   .option(
     "--callback-prompt <prompt>",
     "Continue the current web chat after one connector action (use --limit 1)",
@@ -227,6 +233,7 @@ export const searchCommand = new Command()
         keyword: string,
         options: { agent?: string; limit?: number; callbackPrompt?: string },
       ) => {
+        const agentId = resolveConnectorAgentId(options.agent);
         const trimmed = keyword.trim();
         if (!trimmed) {
           throw new Error("Keyword cannot be empty.");
@@ -237,7 +244,7 @@ export const searchCommand = new Command()
             await Promise.all([
               listConnectorCatalog(),
               listCustomConnectors(),
-              resolveConnectorDiscoveryAgentContext(options.agent),
+              resolveConnectorDiscoveryAgentContext(agentId),
               getPlatformOrigin(),
             ]);
           const definitions = connectorDiscoveryDefinitions(
@@ -297,7 +304,7 @@ export const searchCommand = new Command()
           await Promise.all([
             listConnectorCatalogStatus(),
             listCustomConnectors(),
-            resolveConnectorDiscoveryAgentContext(options.agent),
+            resolveConnectorDiscoveryAgentContext(agentId),
             getPlatformOrigin(),
           ]);
         const discoveredConnectors = connectorDiscoveryItems(

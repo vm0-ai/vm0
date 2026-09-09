@@ -674,6 +674,17 @@ pub trait Sandbox: Send + Sync + Any {
         Ok(SandboxParkOutcome::Reusable)
     }
 
+    /// Park a tenant-free sandbox prepared for the blank pool.
+    ///
+    /// The caller retains the full profile resource budget. Providers may
+    /// preserve guest memory to avoid reclaiming it only to return it during
+    /// startup. All fencing, idempotency, failure and cleanup requirements of
+    /// [`park`](Self::park) still apply. Providers without a distinct blank
+    /// memory policy use ordinary parking.
+    async fn park_for_blank_pool(&mut self) -> Result<SandboxParkOutcome> {
+        self.park().await
+    }
+
     /// Run one final normal guest exec and park without reopening operation
     /// admission between the exec and pause.
     ///

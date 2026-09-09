@@ -578,6 +578,11 @@
       "unavailable": "{{kind}} पूर्वावलोकन अनुपलब्ध है.",
       "videoLabel": "{{filename}} के लिए वीडियो पूर्वावलोकन"
     },
+    "sharing": {
+      "shareOrganization": "संगठन के साथ शेयर करें",
+      "sharePublic": "सार्वजनिक रूप से शेयर करें",
+      "unavailable": "यह आर्टिफ़ैक्ट उपलब्ध नहीं है या आपके पास इसका ऐक्सेस नहीं है।"
+    },
     "sidebar": {
       "openSharedConversation": "साझा बातचीत खोलें",
       "panelTitle": "आर्टिफ़ैक्ट",
@@ -1887,6 +1892,9 @@
         "presentationPlaceholder": "आपकी प्रस्तुति का विषय क्या है?",
         "question": "आप क्या साकार करना चाहेंगे?",
         "settingsAdjusted": "इस मॉडल के लिए कुछ वीडियो सेटिंग समायोजित की गई हैं",
+        "slideCount": "स्लाइड की संख्या",
+        "slideCountAuto": "स्वचालित",
+        "slideCountRange": "{{range}} स्लाइड",
         "title": "बनाएँ",
         "video": "वीडियो बनाएँ",
         "videoPlaceholder": "आप जो वीडियो बनाना चाहते हैं उसका वर्णन करें…"

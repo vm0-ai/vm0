@@ -63,6 +63,7 @@ import {
 } from "./agent-webhook-complete.service";
 import { createPiApiFirstTurnCheckpoint$ } from "./agent-webhook-checkpoints.service";
 import {
+  isTerminalChatgptRefreshErrorCode,
   resolveCurrentModelProviderRuntimeSecretForApi,
   resolveModelProviderRuntimeSecretForApi,
 } from "./agent-webhook-firewall-auth.service";
@@ -154,6 +155,16 @@ class PiApiFirstTurnError extends Error {
     this.name = "PiApiFirstTurnError";
     this.code = code;
     this.failureReason = options?.failureReason;
+  }
+}
+
+class PiApiFirstTurnCodexReconnectRequiredError extends PiApiFirstTurnError {
+  constructor() {
+    super(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription access token is unavailable",
+      { failureReason: "reconnect_required" },
+    );
   }
 }
 
@@ -1060,6 +1071,14 @@ async function resolveCodexSubscriptionCredentials(
   }
   const accessToken = accessTokenResolution.value;
   if (accessToken.status === "unavailable") {
+    if (
+      accessToken.reconnectState?.needsReconnect &&
+      isTerminalChatgptRefreshErrorCode(
+        accessToken.reconnectState.lastRefreshErrorCode,
+      )
+    ) {
+      throw new PiApiFirstTurnCodexReconnectRequiredError();
+    }
     const reconnectRequired =
       accessToken.reconnectState === null ||
       accessToken.reconnectState.needsReconnect;
@@ -1150,6 +1169,16 @@ async function apiFirstTurnModelConfig(
         executionContext.secretConnectorMap?.[binding.secretName];
       const metadata =
         executionContext.secretConnectorMetadataMap?.[binding.secretName];
+      if (
+        "schemaVersion" in modelConfig &&
+        modelConfig.schemaVersion === 4 &&
+        providerKey === "claude-code-oauth-token"
+      ) {
+        throw piApiFirstTurnError(
+          "PI_API_MODEL_CREDENTIAL_INVALID",
+          "Claude subscription credentials cannot be used by Pi",
+        );
+      }
       if (!value && providerKey && metadata) {
         const resolved = await settle(
           resolveModelProviderRuntimeSecretForApi({
@@ -1197,7 +1226,15 @@ async function recordApiFirstTurnUsage(
     billableFirewalls: activation.executionContext.billableFirewalls,
     modelUsageProvider: activation.executionContext.modelUsageProvider,
     piProvider: activation.executionContext.piModelConfig.provider,
-    requestedServiceTier: activation.executionContext.piModelConfig.serviceTier,
+    nativeModelConfig:
+      "schemaVersion" in activation.executionContext.piModelConfig &&
+      activation.executionContext.piModelConfig.schemaVersion === 4
+        ? activation.executionContext.piModelConfig
+        : undefined,
+    requestedServiceTier:
+      "serviceTier" in activation.executionContext.piModelConfig
+        ? activation.executionContext.piModelConfig.serviceTier
+        : undefined,
     turn,
   });
 }
@@ -2362,19 +2399,21 @@ const runPiApiFirstTurnCore$ = command(
       logCanonicalApiFirstTurnCancellation(context, ownership);
       return undefined;
     }
-    L.warn("Pi API first-turn outcome", {
-      runId: activation.runId,
-      ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
-      outcome: "terminal_failure",
-      reason: failure.code,
-      ownershipStage: ownership.stage,
-      ...(resourceFallbackReason
-        ? { fallbackReason: resourceFallbackReason }
-        : {}),
-      ...(apiAttemptTimedOut
-        ? { recoveryReason: "api_attempt_timed_out" }
-        : {}),
-    });
+    if (!(failure instanceof PiApiFirstTurnCodexReconnectRequiredError)) {
+      L.warn("Pi API first-turn outcome", {
+        runId: activation.runId,
+        ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
+        outcome: "terminal_failure",
+        reason: failure.code,
+        ownershipStage: ownership.stage,
+        ...(resourceFallbackReason
+          ? { fallbackReason: resourceFallbackReason }
+          : {}),
+        ...(apiAttemptTimedOut
+          ? { recoveryReason: "api_attempt_timed_out" }
+          : {}),
+      });
+    }
     return set(
       failApiFirstTurn$,
       context,

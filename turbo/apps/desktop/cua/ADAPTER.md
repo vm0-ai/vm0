@@ -35,6 +35,13 @@ upstream suggestion triggers escalation, another route, another driver or replay
 
 ## Addressing, observations and facts
 
+Window discovery considers only on-screen windows for the exact live PID.
+Hidden auxiliary windows, minimized windows and windows in other Spaces do not
+compete with a visible target. Initial observation requires exactly one such
+window; multiple visible windows remain ambiguous. A retained window must still
+be on-screen with the same ID and frame before an action. The adapter does not
+choose by title, size or z-order, or restore hidden windows automatically.
+
 One generation owns one embedded process/client/session and one current
 observation. Host-generated session labels are not authorization. Every host
 snapshot and opaque element ID binds bundle/PID/path/window, CUA snapshot and

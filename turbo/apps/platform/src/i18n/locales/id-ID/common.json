@@ -577,6 +577,11 @@
       "unavailable": "Pratinjau {{kind}} tidak tersedia.",
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
+    "sharing": {
+      "shareOrganization": "Bagikan ke organisasi",
+      "sharePublic": "Bagikan ke publik",
+      "unavailable": "Artefak ini tidak tersedia atau Anda tidak memiliki akses."
+    },
     "sidebar": {
       "openSharedConversation": "Buka percakapan yang dibagikan",
       "panelTitle": "Artefak",
@@ -1884,6 +1889,9 @@
         "presentationPlaceholder": "Apa topik presentasi Anda?",
         "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "slideCount": "Jumlah slide",
+        "slideCountAuto": "Otomatis",
+        "slideCountRange": "{{range}} slide",
         "title": "Buat",
         "video": "Buat video",
         "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"

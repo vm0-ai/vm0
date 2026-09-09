@@ -71,8 +71,13 @@ permissions UI, snapshots, deadlines and first-party lifecycle supervision;
 ordinary startup and passive permission reads neither load CUA nor launch it.
 The helper uses the bundled Electron executable, never system Node. It starts
 the absolute packaged daemon with the build's real bundle ID, standard permission
-mode, a private mode-0700 directory and both telemetry flags disabled. Overlay
-and history remain disabled.
+mode, a private mode-0700 directory and both telemetry flags disabled. The
+daemon's AppKit event loop remains active so macOS running-app inventory updates
+after launch and quit. Before exposing each owned session, the helper uses
+`setAgentCursorEnabled` to disable cursor drawing and validates the reply; failed
+or cancelled setup cannot admit an action. PiP and history remain disabled.
+CUA 0.23.2's `noOverlay: true` also disables its AppKit loop, leaving
+`NSWorkspace.runningApplications` stale, so it is not used for drawing control.
 
 The [guardian topology and macOS proof](guardian-proof/README.md) describe the
 native spawn gate, retained waitable identity, independent process-group
@@ -150,6 +155,12 @@ failed-force/identity/observation fences. A separate real-Electron nine-command
 round trip uses the production guardian/helper/IPC and substitutes only public
 SDK responses; it operates no actual apps. Native metadata/cancel stress uses
 the real pinned SDK, but neither fixture establishes the original mutex race.
+
+The [application discovery proof](discovery-proof/README.md) uses the real
+production helper, guardian and pinned SDK with a disposable native application.
+It checks cold launch, external launch, quit/reopen and stale PID removal within
+one daemon generation, then verifies process cleanup. The adapter proof also
+rejects session admission when cursor suppression fails or is cancelled.
 
 The distribution fault test uses fixture archives to inject corruption, unsafe
 entries, version/architecture mismatches, missing files, cache corruption, and

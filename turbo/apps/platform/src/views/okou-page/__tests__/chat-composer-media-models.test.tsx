@@ -221,23 +221,12 @@ function assertCatalogRows(
   }
 }
 
-test("Choose an image model from a curated catalog", async () => {
-  const user = userEvent.setup();
-  const updates: ImageModel[] = [];
+test("Show the curated image model catalog", async () => {
   installModelEnvironment();
   mockThread({
     selectedModel: DEFAULT_RUN_MODEL,
     selectedImageModel: null,
   });
-  context.mocks.api(
-    chatThreadImageModelContract.update,
-    ({ body, respond }) => {
-      if (body.model) {
-        updates.push(body.model);
-      }
-      return respond(204);
-    },
-  );
 
   await setupPage({
     context,
@@ -245,7 +234,14 @@ test("Choose an image model from a curated catalog", async () => {
   });
 
   await openCategory("Image");
-  expectSelected("Nano Banana 2");
+  expect(mediaModelRow("Nano Banana 2")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(mediaModelRow("Nano Banana 2")).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
   assertCatalogRows(
     PUBLIC_IMAGE_MODELS.map((model) => {
       return IMAGE_MODEL_CONFIGS[model].label;
@@ -258,30 +254,37 @@ test("Choose an image model from a curated catalog", async () => {
       "Qwen Image",
     ],
   );
+});
 
-  click(mediaModelRow("GPT Image 1"));
-  await waitFor(() => {
-    expect(updates).toStrictEqual(["gpt-image-1"]);
+test.each([
+  { label: "GPT Image 1", model: "gpt-image-1" },
+  { label: "GPT Image 2.5 Flare", model: "gpt-image-2.5-flare" },
+  { label: "GPT Image 2.5 Sunburst", model: "gpt-image-2.5-sunburst" },
+  { label: "Seedream 5 Pro", model: "dola-seedream-5-0-pro-260628" },
+  { label: "FLUX.2 Pro", model: "fal-ai/flux-2-pro" },
+])("Choose $label for the current thread", async ({ label, model }) => {
+  const updates: (ImageModel | null)[] = [];
+  installModelEnvironment();
+  mockThread({
+    selectedModel: DEFAULT_RUN_MODEL,
+    selectedImageModel: null,
   });
-  for (const label of ["GPT Image 2.5 Flare", "GPT Image 2.5 Sunburst"]) {
-    await chooseMediaModel("Image", label);
-    await openCategory("Image");
-    expectSelected(label);
-    await user.keyboard("{Escape}");
-  }
-  await chooseMediaModel("Image", "Seedream 5 Pro");
-  await chooseMediaModel("Image", "FLUX.2 Pro");
+  context.mocks.api(
+    chatThreadImageModelContract.update,
+    ({ body, respond }) => {
+      updates.push(body.model);
+      return respond(204);
+    },
+  );
 
+  await setupPage({ context, path: `/chats/${THREAD_ID}` });
+
+  await chooseMediaModel("Image", label);
   await openCategory("Image");
-  expectSelected("FLUX.2 Pro");
-  expect(updates).toStrictEqual([
-    "gpt-image-1",
-    "gpt-image-2.5-flare",
-    "gpt-image-2.5-sunburst",
-    "dola-seedream-5-0-pro-260628",
-    "fal-ai/flux-2-pro",
-  ]);
-  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expectSelected(label);
+    expect(updates).toStrictEqual([model]);
+  });
 });
 
 test("Keep image model choices clear on mobile", async () => {
