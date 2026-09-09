@@ -120,7 +120,9 @@ import {
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { ConnectorAccountNameDialog } from "./components/settings/connector-account-name-dialog.tsx";
 import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
-import { sshSummary$ } from "../../signals/ssh.ts";
+import { SshAccessManagementDialog } from "./components/settings/ssh-access-management-dialog.tsx";
+import { SshLoadError } from "./ssh-load-error.tsx";
+import { sshSummary$, sshAgentAccessRows$ } from "../../signals/ssh.ts";
 import { filteredSshSummary$ } from "../../signals/okou-page/settings/ssh-connector.ts";
 
 const REMOTE_ACCESS_CATEGORY = "remote-access";
@@ -1226,6 +1228,17 @@ function ManagedConnectorAccessDialog() {
   );
 }
 
+function SshDirectoryLoadError() {
+  const summary = useLoadable(sshSummary$);
+  const filtered = useLoadable(filteredSshSummary$);
+  const rows = useLoadable(sshAgentAccessRows$);
+  return summary.state === "hasError" ||
+    filtered.state === "hasError" ||
+    rows.state === "hasError" ? (
+    <SshLoadError />
+  ) : null;
+}
+
 export function ConnectorsPage() {
   const { t } = useTranslation();
   const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
@@ -1543,9 +1556,14 @@ export function ConnectorsPage() {
                 {activeTab === "custom" && <CustomConnectorsPanel />}
               </>
             )}
+            {(shelfEnabled || activeTab === "builtin") && (
+              <SshDirectoryLoadError />
+            )}
           </div>
         </div>
       </main>
+
+      <SshAccessManagementDialog />
 
       {accountConnect && (
         <ConnectModal

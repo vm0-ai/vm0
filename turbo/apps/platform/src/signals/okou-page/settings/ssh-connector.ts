@@ -43,6 +43,8 @@ export const filteredSshSummary$ = computed(async (get) => {
         params: { agentId: filter.agentId },
       }),
       [200, 404],
+      undefined,
+      { showErrorToast: false },
     );
     if (result.status === 404 || !result.body.enabled) {
       return null;

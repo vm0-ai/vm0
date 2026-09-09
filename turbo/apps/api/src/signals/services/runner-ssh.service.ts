@@ -1,3 +1,4 @@
+import { publishSshClientInvalidation } from "./ssh-client-invalidation.service";
 import {
   sshHostKeySchema,
   type RunnerSshResolveRequest,
@@ -170,7 +171,7 @@ export async function pinRunnerSsh(
   if (!initial) {
     return unavailable;
   }
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction<RunnerSshPinResponse>(async (tx) => {
     // Same row as owner edit/reset, scoped only after non-locking authorization.
     const [locked] = await tx
       .select({ id: sshConnections.id })
@@ -221,4 +222,12 @@ export async function pinRunnerSsh(
     signal.throwIfAborted();
     return { outcome: "pinned", generation: row.generation + 1 };
   });
+  if (result.outcome === "pinned") {
+    await publishSshClientInvalidation({
+      orgId: initial.orgId,
+      userId: initial.userId,
+    });
+  }
+  signal.throwIfAborted();
+  return result;
 }

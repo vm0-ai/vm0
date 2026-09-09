@@ -4,7 +4,8 @@ import {
 } from "@okouai/api-contracts/contracts/ssh-access";
 import { command } from "ccstate";
 
-import { notFound } from "../../lib/error";
+import { SSH_ERROR_CODES } from "@okouai/api-contracts/contracts/ssh-errors";
+import { sshErrorResponse } from "../../lib/ssh-error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
@@ -17,7 +18,20 @@ import {
   updateAgentSshAccess,
 } from "../services/ssh-access.service";
 
-const unavailable = Object.freeze(notFound("SSH access is not available"));
+const unavailable = Object.freeze(
+  sshErrorResponse(
+    404,
+    SSH_ERROR_CODES.UNAVAILABLE,
+    "SSH access is not available",
+  ),
+);
+const agentUnavailable = Object.freeze(
+  sshErrorResponse(
+    404,
+    SSH_ERROR_CODES.AGENT_UNAVAILABLE,
+    "Agent is not available",
+  ),
+);
 const ownerAuth = {
   accept: ["session"],
   requireOrganization: true,
@@ -36,7 +50,7 @@ const getAccess$ = command(async ({ get }, signal: AbortSignal) => {
     agentId: params.agentId,
   });
   signal.throwIfAborted();
-  return result ? { status: 200 as const, body: result } : unavailable;
+  return result ? { status: 200 as const, body: result } : agentUnavailable;
 });
 
 const updateAccess$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -48,7 +62,11 @@ const updateAccess$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = await get(bodyResultOf(agentSshAccessContract.update));
   signal.throwIfAborted();
   if (!body.ok) {
-    return body.response;
+    return sshErrorResponse(
+      400,
+      SSH_ERROR_CODES.INVALID_INPUT,
+      "Invalid SSH access",
+    );
   }
   const result = await updateAgentSshAccess(
     set(writeDb$),
@@ -56,7 +74,7 @@ const updateAccess$ = command(async ({ get, set }, signal: AbortSignal) => {
     body.data.enabled,
     signal,
   );
-  return result ? { status: 200 as const, body: result } : unavailable;
+  return result ? { status: 200 as const, body: result } : agentUnavailable;
 });
 
 const listHosts$ = command(async ({ get }, signal: AbortSignal) => {

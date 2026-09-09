@@ -6,10 +6,12 @@ import {
   useLoadable,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { AgentSshAccess } from "../okou-page/agent-ssh-access.tsx";
+import { SshLoadError } from "../okou-page/ssh-load-error.tsx";
 import type { ReactNode } from "react";
 import { currentAgentSshAccess$ } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -636,6 +638,18 @@ function AgentPermissionsDrawer({
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
 
+function sshAccessForAgent(
+  access: Loadable<{
+    readonly agentId: string;
+    readonly enabled: boolean;
+  } | null>,
+  agentId: string,
+) {
+  return access.state === "hasData" && access.data?.agentId === agentId
+    ? access.data
+    : null;
+}
+
 function JobPermissionsTab({
   agentId,
   displayName,
@@ -645,11 +659,7 @@ function JobPermissionsTab({
 }) {
   const { t } = useTranslation("agents");
   const sshAccessLoadable = useLastLoadable(currentAgentSshAccess$);
-  const sshAccess =
-    sshAccessLoadable.state === "hasData" &&
-    sshAccessLoadable.data?.agentId === agentId
-      ? sshAccessLoadable.data
-      : null;
+  const sshAccess = sshAccessForAgent(sshAccessLoadable, agentId);
   // Use useLastLoadable so the list keeps showing the previous data while the
   // signal refetches after a toggle/save or a permission-policy reload. This
   // prevents the entire list from flickering to the skeleton on each change
@@ -739,16 +749,21 @@ function JobPermissionsTab({
     ) : userGrantsLoadable.state === "hasError" ? (
       <PermissionGrantsError />
     ) : null;
-  if (status && !sshAccess) {
+  if (status && !sshAccess && sshAccessLoadable.state !== "hasError") {
     return status;
   }
 
   return (
     <div className="mx-auto w-full max-w-[900px] flex flex-col gap-4">
       {connectedConnectors.length === 0 && !sshAccess ? (
-        <NoConnectedConnectors />
+        sshAccessLoadable.state === "hasError" ? (
+          <SshLoadError />
+        ) : (
+          <NoConnectedConnectors />
+        )
       ) : (
         <>
+          {sshAccessLoadable.state === "hasError" && <SshLoadError />}
           <ConnectedConnectorPermissions
             sshAccess={sshAccess}
             status={status}

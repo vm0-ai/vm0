@@ -170,11 +170,15 @@ describe("SSH authority invalidation", () => {
         [200],
       );
       generation = changed.body.generation;
-      expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+      expect(context.mocks.ably.publish.mock.calls).toHaveLength(3);
       expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
-        expect.arrayContaining(expected),
+        expect.arrayContaining([
+          ["ssh:changed", { orgId: f.orgId }],
+          ...expected,
+        ]),
       );
       expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+        [`user:${f.userId}`],
         [`runner-group:${group}`],
         [`runner-group:${group}`],
       ]);
@@ -188,9 +192,12 @@ describe("SSH authority invalidation", () => {
       }),
       [200],
     );
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+    expect(context.mocks.ably.publish.mock.calls).toHaveLength(3);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
-      expect.arrayContaining(expected),
+      expect.arrayContaining([
+        ["ssh:changed", { orgId: f.orgId }],
+        ...expected,
+      ]),
     );
     context.mocks.ably.publish.mockClear();
     await accept(
@@ -200,9 +207,12 @@ describe("SSH authority invalidation", () => {
       }),
       [204],
     );
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+    expect(context.mocks.ably.publish.mock.calls).toHaveLength(3);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
-      expect.arrayContaining(expected),
+      expect.arrayContaining([
+        ["ssh:changed", { orgId: f.orgId }],
+        ...expected,
+      ]),
     );
     const listed = await accept(
       config().list({ headers: sessionHeaders }),
@@ -238,6 +248,7 @@ describe("SSH authority invalidation", () => {
       }),
     ]);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       [
         "ssh-authority-invalidated",
         { runId: f.runId, connectionId: f.connectionId },
@@ -268,6 +279,7 @@ describe("SSH authority invalidation", () => {
         .sort(),
     ).toStrictEqual([200, 409]);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       [
         "ssh-authority-invalidated",
         { runId: f.runId, connectionId: f.connectionId },
@@ -292,6 +304,7 @@ describe("SSH authority invalidation", () => {
       [200],
     );
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       ["ssh-authority-invalidated", { runId: f.runId, connectionId: null }],
     ]);
     await expect(resolve(f)).resolves.toStrictEqual({ outcome: "unavailable" });
@@ -723,7 +736,11 @@ describe("official Runner SSH authority", () => {
   it("pins exactly once for concurrent equal observations and only accepts expected plus one", async () => {
     const f = await fixture();
     const kms = useSecretKmsProbe();
+    context.mocks.ably.publish.mockClear();
     const outcomes = await Promise.all([pin(f), pin(f), pin(f)]);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
+    ]);
     expect(
       outcomes.filter((r) => {
         return r.outcome === "pinned";

@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { agentSshAccessContract } from "@okouai/api-contracts/contracts/ssh-access";
+import {
+  agentSshAccessContract,
+  sshChangedPayloadSchema,
+} from "@okouai/api-contracts/contracts/ssh-access";
+import { setAblyPayloadLoop$ } from "./realtime.ts";
 import {
   sshConnectionsContract,
   type SshConnectionResponse,
@@ -12,7 +16,7 @@ import { clerk$, currentOrgInfo$, currentUserInfo$ } from "./auth.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { apiClient$ } from "./api-client.ts";
-import { currentAgent$ } from "./agent.ts";
+import { currentAgent$, agents$ } from "./agent.ts";
 import { accept } from "../lib/accept.ts";
 import {
   createDeferredPromise,
@@ -141,7 +145,7 @@ const dialog$ = state<{
   readonly kind: "create" | "edit" | "rotate" | "delete" | "reset";
   readonly connection: SshConnectionResponse | null;
 } | null>(null);
-const conflict$ = state(false);
+const conflict$ = state<string | null>(null);
 export const sshConflict$ = computed((get) => {
   return get(conflict$);
 });
@@ -157,6 +161,8 @@ export const sshConnections$ = computed(async (get) => {
   const result = await accept(
     (await get(sshClients$)).connections.list(),
     [200, 404],
+    undefined,
+    { showErrorToast: false },
   );
   return result.status === 200 ? result.body.connections : null;
 });
@@ -168,6 +174,8 @@ export const sshSummary$ = computed(async (get) => {
   const result = await accept(
     (await get(sshClients$)).connections.summary(),
     [200, 404],
+    undefined,
+    { showErrorToast: false },
   );
   return result.status === 200 ? result.body : null;
 });
@@ -178,11 +186,50 @@ export const closeSshDialog$ = command(({ set }) => {
 export const refreshSsh$ = command(({ set }) => {
   set(cancelSshPrivateKeyFile$);
   set(dialog$, null);
-  set(conflict$, false);
+  set(conflict$, null);
+  set(closeSshAccessManagement$);
+  set(invalidateSsh$);
+});
+
+// Background changes must not discard an open credential form or dialog.
+export const invalidateSsh$ = command(({ set }) => {
   set(reload$, (value) => {
     return value + 1;
   });
 });
+
+const catchUpSsh$ = command(({ set }) => {
+  set(invalidateSsh$);
+  return false;
+});
+const onSshChanged$ = command(
+  async ({ get, set }, payload: unknown, signal: AbortSignal) => {
+    const parsed = sshChangedPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      return false;
+    }
+    const org = await get(currentOrgInfo$);
+    signal.throwIfAborted();
+    if (org?.id === parsed.data.orgId) {
+      set(invalidateSsh$);
+    }
+    return false;
+  },
+);
+export const subscribeSshChanged$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(
+      setAblyPayloadLoop$,
+      {
+        topic: "ssh:changed",
+        loopCommand$: onSshChanged$,
+        catchUpCommand$: catchUpSsh$,
+        options: { runOnSubscribe: true },
+      },
+      signal,
+    );
+  },
+);
 export const openSshDialog$ = command(
   async (
     { get, set },
@@ -195,7 +242,7 @@ export const openSshDialog$ = command(
     if (!identity) {
       return;
     }
-    set(conflict$, false);
+    set(conflict$, null);
     set(cancelSshPrivateKeyFile$);
     set(dialog$, { identity, kind, connection });
   },
@@ -238,7 +285,7 @@ export const saveSsh$ = command(
             username: textField(form, "username"),
           }
         : undefined;
-    let conflicted = false;
+    let conflicted: string | null = null;
     if (dialog.kind === "create") {
       const body = createSshConnectionRequestSchema.parse({
         ...fields,
@@ -271,7 +318,7 @@ export const saveSsh$ = command(
           [200, 409],
           signal,
         );
-        conflicted = result.status === 409;
+        conflicted = result.status === 409 ? result.body.error.code : null;
       } else {
         const body = updateSshConnectionRequestSchema.parse({
           expectedGeneration: connection.generation,
@@ -283,7 +330,7 @@ export const saveSsh$ = command(
           [200, 409],
           signal,
         );
-        conflicted = result.status === 409;
+        conflicted = result.status === 409 ? result.body.error.code : null;
       }
     }
     signal.throwIfAborted();
@@ -299,9 +346,8 @@ export const saveSsh$ = command(
   },
 );
 
-const accessReload$ = state(0);
 export const currentAgentSshAccess$ = computed(async (get) => {
-  get(accessReload$);
+  get(reload$);
   if (!(await get(sshIdentity$))) {
     return null;
   }
@@ -317,25 +363,38 @@ export const currentAgentSshAccess$ = computed(async (get) => {
       params: { agentId: agent.agentId },
     }),
     [200, 404],
+    undefined,
+    { showErrorToast: false },
   );
   return result.status === 200
     ? { agentId: agent.agentId, ...result.body }
     : null;
 });
-export const updateCurrentAgentSshAccess$ = command(
+export const updateAgentSshAccess$ = command(
   async (
     { get, set },
     agentId: string,
     enabled: boolean,
     signal: AbortSignal,
   ) => {
-    const access = await get(currentAgentSshAccess$);
+    const clients = await get(sshClients$);
     signal.throwIfAborted();
-    if (access?.agentId !== agentId) {
+    const [summary, visibleAgents] = await Promise.all([
+      get(sshSummary$),
+      get(agents$),
+    ]);
+    signal.throwIfAborted();
+    if (
+      !summary ||
+      summary.configuredCount === 0 ||
+      !visibleAgents.some((agent) => {
+        return agent.agentId === agentId;
+      })
+    ) {
       return;
     }
     await accept(
-      (await get(sshClients$)).access.update({
+      clients.access.update({
         params: { agentId },
         body: { enabled },
         fetchOptions: { signal },
@@ -344,8 +403,66 @@ export const updateCurrentAgentSshAccess$ = command(
       signal,
     );
     signal.throwIfAborted();
-    set(accessReload$, (value) => {
-      return value + 1;
-    });
+    if (clients.identity !== (await get(sshIdentity$))) {
+      return;
+    }
+    signal.throwIfAborted();
+    set(invalidateSsh$);
+  },
+);
+
+export const sshAgentAccessRows$ = computed(async (get) => {
+  const summary = await get(sshSummary$);
+  if (!summary) {
+    return null;
+  }
+  if (summary.configuredCount === 0) {
+    return [];
+  }
+  const [visibleAgents, clients] = await Promise.all([
+    get(agents$),
+    get(sshClients$),
+  ]);
+  const rows = await Promise.all(
+    visibleAgents.map(async (agent) => {
+      const result = await accept(
+        clients.access.get({ params: { agentId: agent.agentId } }),
+        [200, 404],
+        undefined,
+        { showErrorToast: false },
+      );
+      return result.status === 200
+        ? { agent, enabled: result.body.enabled }
+        : null;
+    }),
+  );
+  return rows.filter((row) => {
+    return row !== null;
+  });
+});
+
+const accessManagementIdentity$ = state<string | null>(null);
+const accessSearch$ = state("");
+export const sshAccessSearch$ = computed((get) => {
+  return get(accessSearch$);
+});
+export const searchSshAccess$ = command(({ set }, value: string) => {
+  return set(accessSearch$, value);
+});
+export const sshAccessManagementOpen$ = computed(async (get) => {
+  const identity = get(accessManagementIdentity$);
+  return identity !== null && identity === (await get(sshIdentity$));
+});
+export const closeSshAccessManagement$ = command(({ set }) => {
+  set(accessManagementIdentity$, null);
+  set(accessSearch$, "");
+});
+export const openSshAccessManagement$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const identity = await get(sshIdentity$);
+    signal.throwIfAborted();
+    set(accessManagementIdentity$, identity);
+    set(accessSearch$, "");
+    set(invalidateSsh$);
   },
 );

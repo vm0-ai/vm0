@@ -16,9 +16,76 @@ import {
 const context = testContext();
 const agentId = "c0000000-0000-4000-8000-000000000001";
 
+test("The global card manages visible Agent grants with Connector presentation and search", async () => {
+  mockCatalog();
+  const otherId = "c0000000-0000-4000-8000-000000000002";
+  context.mocks.data.agents([
+    listAgent(agentId, "Research"),
+    { ...listAgent(otherId, "Shared"), ownerId: "another-owner" },
+  ]);
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 2 });
+  });
+  const grants = new Set<string>();
+  context.mocks.api(agentSshAccessContract.get, ({ params, respond }) => {
+    return respond(200, { enabled: grants.has(params.agentId) });
+  });
+  context.mocks.api(
+    agentSshAccessContract.update,
+    ({ params, body, respond }) => {
+      if (body.enabled) {
+        grants.add(params.agentId);
+      } else {
+        grants.delete(params.agentId);
+      }
+      return respond(200, { enabled: body.enabled });
+    },
+  );
+  await page("/connectors?keywords=ssh");
+  await screen.findByText("Add access");
+  click(screen.getByTestId("connector-card-agent-access"));
+  const dialog = await screen.findByRole("dialog");
+  click(
+    await within(dialog).findByRole("switch", {
+      name: "Authorize SSH access for Research",
+    }),
+  );
+  await within(dialog).findByRole("switch", {
+    name: "Revoke SSH access for Research",
+  });
+  expect(screen.getByTestId("connector-card-access-names")).toHaveTextContent(
+    "Research",
+  );
+  click(
+    within(dialog).getByRole("switch", {
+      name: "Authorize SSH access for Shared",
+    }),
+  );
+  await within(dialog).findByRole("switch", {
+    name: "Revoke SSH access for Shared",
+  });
+  expect(screen.getByTestId("connector-card-access-names")).toHaveTextContent(
+    "2 agents",
+  );
+  await fill(within(dialog).getByRole("textbox"), "shared");
+  expect(within(dialog).queryByText("Research")).toBeNull();
+  click(
+    within(dialog).getByRole("switch", {
+      name: "Revoke SSH access for Shared",
+    }),
+  );
+  await within(dialog).findByRole("switch", {
+    name: "Authorize SSH access for Shared",
+  });
+  expect(grants).toStrictEqual(new Set([agentId]));
+});
+
 function mockCatalog() {
   mockConnectors(context, []);
   mockPublicConnectorStatus(context, []);
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+    return respond(200, { enabled: false });
+  });
 }
 
 async function page(path = "/connectors", enabled = true) {
@@ -85,7 +152,10 @@ test.each([0, 1, 2])(
         : `${count} ${count === 1 ? "host" : "hosts"} configured`;
     await screen.findByText(label);
     const entry = getConnectorAction("link", "Manage SSH hosts");
-    expect(entry).toHaveAttribute("href", "/connectors/ssh");
+    expect(entry).toHaveAttribute(
+      "href",
+      count === 0 ? "/connectors/ssh?add=1" : "/connectors/ssh",
+    );
     expect(
       screen.getByRole("heading", { name: "Remote access" }),
     ).toBeInTheDocument();
@@ -109,7 +179,9 @@ test.each([0, 1, 2])(
     ).toBeInTheDocument();
     click(entry);
     await screen.findByRole("heading", { name: "SSH hosts" });
-    click(getConnectorAction("button", "Add host"));
+    if (count !== 0) {
+      click(getConnectorAction("button", "Add host"));
+    }
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
     expect(within(dialog).queryByText("OAuth")).not.toBeInTheDocument();

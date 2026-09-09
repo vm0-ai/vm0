@@ -13,6 +13,10 @@ import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-crede
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 
+import {
+  SSH_ERROR_CODES,
+  type SshErrorCode,
+} from "@okouai/api-contracts/contracts/ssh-errors";
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { visibleJoinedAgentCondition } from "./agent-data.service";
@@ -26,22 +30,39 @@ type SshConnectionRow = typeof sshConnections.$inferSelect;
 type SshConnectionFailure = {
   readonly kind: "bad_request" | "not_found" | "conflict";
   readonly message: string;
+  readonly code: SshErrorCode;
 };
 type SshConnectionResult<T> =
   | { readonly ok: true; readonly value: T }
   | ({ readonly ok: false } & SshConnectionFailure);
 
-const SSH_CONNECTION_NOT_FOUND = "SSH connection not found";
-const SSH_CONNECTION_GENERATION_CONFLICT =
-  "SSH connection was modified by another request";
-const SSH_CONNECTION_ENDPOINT_CONFLICT =
-  "An SSH connection for this host and port already exists";
+const SSH_FAILURES = {
+  invalidHost: {
+    kind: "bad_request",
+    message: "Invalid SSH host",
+    code: SSH_ERROR_CODES.INVALID_HOST,
+  },
+  notFound: {
+    kind: "not_found",
+    message: "SSH connection not found",
+    code: SSH_ERROR_CODES.CONNECTION_NOT_FOUND,
+  },
+  generationConflict: {
+    kind: "conflict",
+    message: "SSH connection was modified by another request",
+    code: SSH_ERROR_CODES.GENERATION_CONFLICT,
+  },
+  endpointConflict: {
+    kind: "conflict",
+    message: "An SSH connection for this host and port already exists",
+    code: SSH_ERROR_CODES.ENDPOINT_CONFLICT,
+  },
+} satisfies Record<string, SshConnectionFailure>;
 
 function failure(
-  kind: SshConnectionFailure["kind"],
-  message: string,
+  reason: keyof typeof SSH_FAILURES,
 ): SshConnectionFailure & { readonly ok: false } {
-  return { ok: false, kind, message };
+  return { ok: false, ...SSH_FAILURES[reason] };
 }
 
 function canonicalizeIpv6(host: string): string {
@@ -67,7 +88,7 @@ function canonicalizeSshHost(host: string): SshConnectionResult<string> {
     withoutRootDot.includes("]") ||
     withoutRootDot.includes("://")
   ) {
-    return failure("bad_request", "Invalid SSH host");
+    return failure("invalidHost");
   }
 
   const ipVersion = isIP(withoutRootDot);
@@ -80,7 +101,7 @@ function canonicalizeSshHost(host: string): SshConnectionResult<string> {
 
   const ascii = domainToASCII(withoutRootDot).toLowerCase();
   if (ascii.length === 0 || ascii.length > 253) {
-    return failure("bad_request", "Invalid SSH host");
+    return failure("invalidHost");
   }
 
   const labels = ascii.split(".");
@@ -96,7 +117,7 @@ function canonicalizeSshHost(host: string): SshConnectionResult<string> {
       );
     })
   ) {
-    return failure("bad_request", "Invalid SSH host");
+    return failure("invalidHost");
   }
 
   return { ok: true, value: ascii };
@@ -273,7 +294,7 @@ export async function createSshConnection(args: {
     port: args.body.port,
   });
   if (duplicate) {
-    return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
+    return failure("endpointConflict");
   }
 
   const encryptedCredentials = await encryptSshCredentials(
@@ -291,7 +312,7 @@ export async function createSshConnection(args: {
         port: args.body.port,
       })
     ) {
-      return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
+      return failure("endpointConflict");
     }
 
     // Match Connector's zero-to-one account transition, including re-adding
@@ -349,11 +370,11 @@ export async function createSshConnection(args: {
       authorizedAgents: visibleAgents.length > 0,
     };
   });
-  if (result.ok && result.authorizedAgents) {
+  if (result.ok) {
     await publishSshRuntimeInvalidation(args.db, {
       orgId: args.orgId,
       userId: args.userId,
-      connectionId: null,
+      connectionId: result.authorizedAgents ? null : result.value.id,
     });
   }
   return result;
@@ -377,10 +398,10 @@ export async function updateSshConnection(args: {
 
   const preflight = await findOwnerConnection(args.db, args);
   if (!preflight) {
-    return failure("not_found", SSH_CONNECTION_NOT_FOUND);
+    return failure("notFound");
   }
   if (preflight.generation !== args.body.expectedGeneration) {
-    return failure("conflict", SSH_CONNECTION_GENERATION_CONFLICT);
+    return failure("generationConflict");
   }
   const preflightHost = canonicalHost?.value ?? preflight.host;
   const preflightPort = args.body.port ?? preflight.port;
@@ -393,7 +414,7 @@ export async function updateSshConnection(args: {
       exceptConnectionId: args.connectionId,
     })
   ) {
-    return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
+    return failure("endpointConflict");
   }
 
   const encryptedCredentials =
@@ -418,10 +439,10 @@ export async function updateSshConnection(args: {
       .limit(1)
       .for("update");
     if (!current) {
-      return failure("not_found", SSH_CONNECTION_NOT_FOUND);
+      return failure("notFound");
     }
     if (current.generation !== args.body.expectedGeneration) {
-      return failure("conflict", SSH_CONNECTION_GENERATION_CONFLICT);
+      return failure("generationConflict");
     }
 
     const host = canonicalHost?.value ?? current.host;
@@ -435,7 +456,7 @@ export async function updateSshConnection(args: {
         exceptConnectionId: args.connectionId,
       })
     ) {
-      return failure("conflict", SSH_CONNECTION_ENDPOINT_CONFLICT);
+      return failure("endpointConflict");
     }
 
     const endpointChanged = host !== current.host || port !== current.port;
@@ -503,7 +524,7 @@ export async function deleteSshConnection(args: {
         )
         .returning({ id: sshConnections.id });
       if (!deleted) {
-        return failure("not_found", SSH_CONNECTION_NOT_FOUND);
+        return failure("notFound");
       }
       return { ok: true, value: undefined };
     },
@@ -542,10 +563,10 @@ export async function resetSshConnectionHostKey(args: {
       .limit(1)
       .for("update");
     if (!current) {
-      return failure("not_found", SSH_CONNECTION_NOT_FOUND);
+      return failure("notFound");
     }
     if (current.generation !== args.expectedGeneration) {
-      return failure("conflict", SSH_CONNECTION_GENERATION_CONFLICT);
+      return failure("generationConflict");
     }
 
     const [updated] = await tx

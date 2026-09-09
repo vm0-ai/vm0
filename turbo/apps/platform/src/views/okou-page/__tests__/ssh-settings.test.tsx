@@ -11,15 +11,10 @@ import {
   type SshConnectionResponse,
 } from "@okouai/api-contracts/contracts/ssh-connections";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import {
-  click,
-  fill,
-  queryAllByRoleFast,
-  setupPage,
-} from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { catalogConnectorFixture } from "../../team-page/__tests__/team-page-test-helpers.ts";
@@ -49,6 +44,154 @@ const base: SshConnectionResponse = Object.freeze({
   learnedHostKey: null,
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
+});
+
+test("A notification or reconnect refreshes hosts without clearing an open credential form", async () => {
+  let host = base;
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [host] });
+  });
+  await page();
+  click(
+    await waitFor(() => {
+      return getAction("button", "Replace credentials");
+    }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  const key = within(dialog).getByLabelText("Private key");
+  await fill(key, "unsaved-key");
+  await fill(
+    within(dialog).getByLabelText("Passphrase (optional)"),
+    "unsaved-passphrase",
+  );
+  host = { ...base, displayName: "Changed remotely", generation: 2 };
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+  await screen.findByText("Changed remotely");
+  expect(key).toHaveValue("unsaved-key");
+  expect(within(dialog).getByLabelText("Passphrase (optional)")).toHaveValue(
+    "unsaved-passphrase",
+  );
+  expect(dialog).toBeInTheDocument();
+  expect(queryAction("button", "Refresh")).toBeNull();
+  host = { ...host, displayName: "Changed while offline" };
+  context.mocks.ably.triggerReconnect();
+  await screen.findByText("Changed while offline");
+  expect(key).toHaveValue("unsaved-key");
+});
+
+test("SSH notifications ignore malformed and other-workspace payloads", async () => {
+  let reads = 0;
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    reads++;
+    return respond(200, { connections: [base] });
+  });
+  await page();
+  await screen.findByText("Deployment");
+  const before = reads;
+  await act(async () => {
+    context.mocks.ably.trigger("ssh:changed", { orgId: "another-org" });
+    context.mocks.ably.trigger("ssh:changed", { orgId, unexpected: true });
+    context.mocks.ably.trigger("ssh:changed", null);
+    await Promise.resolve();
+  });
+  expect(reads).toBe(before);
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+  await waitFor(() => {
+    expect(reads).toBeGreaterThan(before);
+  });
+});
+
+test("The zero-host Add intent is consumed once and notifications never reopen it", async () => {
+  let reads = 0;
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    reads++;
+    return respond(200, { connections: [] });
+  });
+  await page("/connectors/ssh?add=1");
+  const dialog = await screen.findByRole("dialog");
+  expect(window.location.search).toBe("");
+  click(getAction("button", "Cancel", dialog));
+  await waitFor(() => {
+    return expect(screen.queryByRole("dialog")).toBeNull();
+  });
+  const before = reads;
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+  await waitFor(() => {
+    return expect(reads).toBeGreaterThan(before);
+  });
+  await screen.findByText("0 hosts configured");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("A stale zero-host entry does not auto-open Add when a host already exists", async () => {
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [base] });
+  });
+  await page("/connectors/ssh?add=1");
+  await screen.findByText("Deployment");
+  expect(window.location.search).toBe("");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("A localized load error is retryable and distinct from feature unavailability", async () => {
+  let failed = true;
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return failed
+      ? respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "opaque server message",
+          },
+        })
+      : respond(200, { connections: [] });
+  });
+  await setupPage({
+    context,
+    path: "/connectors/ssh",
+    auth,
+    locale: "fr-FR",
+    featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
+  });
+  await screen.findByText(
+    "Impossible de charger les paramètres SSH. Réessayez.",
+  );
+  expect(document.body.textContent).not.toContain("opaque server message");
+  expect(screen.queryByText(/pas disponible pour ce compte/u)).toBeNull();
+  failed = false;
+  click(getAction("button", "Réessayer"));
+  await screen.findByText("0 hôte configuré");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("A duplicate endpoint is translated by Platform, with a useful recovery action", async () => {
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [] });
+  });
+  context.mocks.api(sshConnectionsContract.create, ({ respond }) => {
+    return respond(409, {
+      error: {
+        code: "SSH_ENDPOINT_CONFLICT",
+        message: "server diagnostic must not be UI copy",
+      },
+    });
+  });
+  await page("/connectors/ssh?add=1");
+  const dialog = await screen.findByRole("dialog");
+  await fill(within(dialog).getByLabelText("Display name"), "Deployment");
+  await fill(
+    within(dialog).getByLabelText("Public hostname or IP address"),
+    "ssh.example.com",
+  );
+  await fill(within(dialog).getByLabelText("SSH username"), "deploy");
+  await fill(within(dialog).getByLabelText("Private key"), "not-a-real-key");
+  click(getAction("button", "Save", dialog));
+  await screen.findByText(
+    "An SSH host with this address and port already exists. Edit the existing host or use a different address or port.",
+  );
+  expect(document.body.textContent).not.toContain(
+    "server diagnostic must not be UI copy",
+  );
+  expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
 });
 async function page(path = "/connectors/ssh", enabled = true) {
   await setupPage({
@@ -481,7 +624,9 @@ test("Reset requires confirmation, generation conflict refreshes without retry, 
       resets++;
       expect(body).toStrictEqual({ expectedGeneration: 1 });
       hosts = [{ ...learned, generation: 2 }];
-      return respond(409, { error: { code: "CONFLICT", message: "changed" } });
+      return respond(409, {
+        error: { code: "SSH_GENERATION_CONFLICT", message: "changed" },
+      });
     },
   );
   context.mocks.api(sshConnectionsContract.delete, ({ respond }) => {
@@ -604,7 +749,7 @@ test("A visible shared Agent offers the current user's SSH authorization", async
   ).not.toBeChecked();
 });
 
-test("Deleting the last host hides Authorization without clearing its retained grant", async () => {
+test("A last-host deletion notification hides Authorization without clearing its retained grant", async () => {
   const agent: AgentResponse = {
     agentId,
     ownerId: auth.user.id,
@@ -637,29 +782,9 @@ test("Deleting the last host hides Authorization without clearing its retained g
   });
   await page(`/agents/${agentId}?tab=authorization`);
   await screen.findByRole("switch", { name: "Revoke SSH access" });
-  click(getAction("button", "Manage SSH hosts"));
-  await screen.findByText("1 host configured");
-  click(getAction("button", "Delete host"));
-  const dialog = await screen.findByRole("dialog");
-  click(getAction("button", "Delete host", dialog));
-  await screen.findByText("0 hosts configured");
-  click(
-    getAction(
-      "link",
-      "Agents",
-      screen.getByRole("navigation", { name: "Sidebar" }),
-    ),
-  );
-  const agentLink = await waitFor(() => {
-    const link = queryAllByRoleFast("link").find((candidate) => {
-      return candidate.getAttribute("href") === `/agents/${agentId}`;
-    });
-    expect(link).toBeDefined();
-    return link!;
-  });
-  click(agentLink);
-  await screen.findByRole("heading", { name: "SSH Research" });
-  click(getAction("button", "Authorization"));
+  expect(queryAction("button", "Manage SSH hosts")).toBeNull();
+  exists = false;
+  context.mocks.ably.trigger("ssh:changed", { orgId });
   await screen.findByText(/No connected services yet/);
   expect(
     screen.queryByRole("switch", { name: /SSH access/ }),
@@ -714,7 +839,7 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
     name: "Grant SSH access",
   });
   expect(control).not.toBeChecked();
-  expect(getAction("button", "Manage SSH hosts")).toBeInTheDocument();
+  expect(queryAction("button", "Manage SSH hosts")).not.toBeInTheDocument();
   expect(
     screen.queryByText(/No connected services yet/),
   ).not.toBeInTheDocument();
@@ -730,9 +855,6 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
       screen.getByRole("switch", { name: "Grant SSH access" }),
     ).not.toBeChecked();
   });
-  click(getAction("button", "Manage SSH hosts"));
-  await screen.findByRole("heading", { name: "SSH hosts" });
-  expect(pathname()).toBe("/connectors/ssh");
 });
 
 test.each([false, true])(

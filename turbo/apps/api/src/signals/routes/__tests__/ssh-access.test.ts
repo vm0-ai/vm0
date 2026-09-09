@@ -156,6 +156,7 @@ describe("owner SSH grants and live Run inventory", () => {
     context.mocks.ably.publish.mockClear();
     const first = await createHost();
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       ["ssh-authority-invalidated", { runId: f.runId, connectionId: null }],
     ]);
     for (const params of [f.params, ownPrivate, other.params]) {
@@ -434,6 +435,7 @@ describe("owner SSH grants and live Run inventory", () => {
         [200],
       );
       expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+        ["ssh:changed", { orgId: f.orgId }],
         ["ssh-authority-invalidated", { runId: f.runId, connectionId: null }],
       ]);
       await accept(inventory().list({ headers: f.token() }), [404]);
@@ -496,6 +498,7 @@ describe("owner SSH grants and live Run inventory", () => {
       [200],
     );
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: other.orgId }],
       ["ssh-authority-invalidated", { runId: other.runId, connectionId: null }],
     ]);
     await accept(inventory().list({ headers: f.token() }), [404]);

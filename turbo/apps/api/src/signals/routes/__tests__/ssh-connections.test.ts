@@ -77,6 +77,35 @@ function createBody(
 }
 
 describe("SSH connection routes", () => {
+  it("notifies only the owner after every successful creation, even without visible Agents", async () => {
+    useSecretKmsProbe();
+    const owner = actor("browser-notice");
+    await enableSsh(owner);
+    for (const host of ["first.example.com", "second.example.com"]) {
+      context.mocks.ably.publish.mockClear();
+      context.mocks.ably.channelGet.mockClear();
+      await accept(
+        client().create({ headers: authHeaders(), body: createBody(host) }),
+        [201],
+      );
+      expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+        ["ssh:changed", { orgId: owner.orgId }],
+      ]);
+      expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+        [`user:${owner.userId}`],
+      ]);
+    }
+    context.mocks.ably.publish.mockClear();
+    const duplicate = await accept(
+      client().create({
+        headers: authHeaders(),
+        body: createBody("first.example.com"),
+      }),
+      [409],
+    );
+    expect(duplicate.body.error.code).toBe("SSH_ENDPOINT_CONFLICT");
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([]);
+  });
   it("requires an organization session and the feature flag before parsing input", async () => {
     const kms = useSecretKmsProbe();
     const unauthenticated = await accept(client().list({ headers: {} }), [401]);
@@ -112,6 +141,7 @@ describe("SSH connection routes", () => {
     expect(disabledResponse.body.error.message).toBe(
       "SSH configuration is not available",
     );
+    expect(disabledResponse.body.error.code).toBe("SSH_UNAVAILABLE");
 
     const rawResponse = await setupRawAppRequest({
       context,
@@ -376,7 +406,7 @@ describe("SSH connection routes", () => {
         client().create({ headers: authHeaders(), body: createBody(host) }),
         [400],
       );
-      expect(response.body.error.code).toBe("BAD_REQUEST");
+      expect(response.body.error.code).toBe("SSH_INVALID_HOST");
     }
     expect(kms.generateDataKeyCalls).toBe(0);
 

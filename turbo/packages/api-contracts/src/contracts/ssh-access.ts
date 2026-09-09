@@ -5,6 +5,9 @@ import { apiErrorSchema } from "./errors";
 import { sshConnectionResponseSchema } from "./ssh-connections";
 
 const c = initContract();
+export const sshChangedPayloadSchema = z
+  .object({ orgId: z.string().min(1) })
+  .strict();
 const agentPath = z.object({ agentId: z.uuid() }).strict();
 const accessSchema = z.object({ enabled: z.boolean() }).strict();
 const errors = {

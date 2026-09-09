@@ -13,11 +13,18 @@ Open **Connectors -> Remote access -> SSH** (`/connectors/ssh`) to manage hosts 
 current organization and user, without selecting or creating an Agent. The SSH
 card uses the same presentation as connector cards: no hosts shows the service
 description and add affordance; configured hosts show a compact host-count
-footer instead. The count is configuration, not tested connectivity. It participates in
+footer with **Add access** or **Used by** Agent authorization. The authorization
+dialog lists your currently visible Agents with search and the same switches as
+Connector access management, while writing only the standalone SSH grant API.
+The count is configuration, not tested connectivity. It participates in
 search and category navigation. Connection-status filters mean configured or
 not configured for SSH; an Agent filter uses its independent SSH grant, even
 when no hosts are configured. SSH never opens generic connector account or
 permission dialogs.
+
+The zero-host card enters `/connectors/ssh?add=1`. The page consumes this intent
+once, checks the current inventory and opens **Add host** only if it is still
+empty. Cancelling, refreshing, or receiving a notification does not reopen it.
 
 The management page follows the Agent and Workflow detail-page layout, with
 **Connectors / SSH** breadcrumbs on desktop and mobile. Use the Connectors
@@ -43,7 +50,7 @@ Reopen the host to review the current settings before saving again.
 Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
 with the same search and loading switch, not in Profile. The information tooltip
 explains the all-host grant and accepted Run-lifetime cache window.
-The management button opens the same global host page. With no hosts, the SSH
+There is no permission-sliders or host-management button in that row. With no hosts, the SSH
 row is hidden without clearing grants. Adding the first host automatically
 authorizes all Agents currently visible to you, including other users' public
 Agents in the same workspace. Host creation and these grants commit together.
@@ -56,6 +63,25 @@ The grant covers all your current and future hosts in that workspace, only for
 your Runs. An Agent's creator or another user does not receive your credentials
 or your grant. Agents cannot grant themselves access. This is not limited to
 chat-triggered Runs.
+
+Chat's services popover shows SSH alongside configured Connectors, with the
+same authorization switch, a host-management action and an enabled trigger icon.
+It always uses that composer's Agent, including split-pane chats. No hosts hides
+the SSH row; **Add connectors** offers the same zero-host setup entry.
+
+Owner API business errors use stable `SSH_*` codes. Platform translates them,
+including recovery guidance for invalid input, duplicate endpoints, stale
+generations and unavailable hosts/Agents. A failed read shows a localized load
+error with **Retry**, distinct from feature unavailability. There is no persistent
+Refresh button and background failures do not show raw server-message toasts.
+
+Successful host and grant changes publish best-effort `ssh:changed` on the owner's
+user channel with only `{ orgId }`. Learning a new host key also refreshes the
+browser. Platform checks the workspace and invalidates host, summary and grant
+reads; reconnect and foreground catch-up recover missed updates. These refreshes
+do not close dialogs, clear unsaved keys or automatically grant access. Browser
+notifications are separate from Runner authority invalidation and do not tighten
+the accepted Run-lifetime cache window.
 
 ## Agent commands
 

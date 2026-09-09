@@ -94,6 +94,7 @@ const userRealtimeTopicSchema = z.union([
   z.literal("billing:changed"),
   z.literal("browserSessionChanged"),
   z.literal("connector:changed"),
+  z.literal("ssh:changed"),
   z.literal("connectorPermissionUpdated"),
   z.literal("customConnectorListChanged"),
   z.literal("feishu:changed"),

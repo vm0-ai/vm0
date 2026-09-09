@@ -36,6 +36,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
+import { SshLoadError } from "./ssh-load-error.tsx";
+import { localizedSshError } from "../../lib/ssh-error.ts";
 import {
   DetailPageBreadcrumbBar,
   DetailPageHeader,
@@ -432,7 +434,10 @@ function SshHosts() {
       </p>
     );
   }
-  if (hosts.state !== "hasData" || !hosts.data) {
+  if (hosts.state === "hasError") {
+    return <SshLoadError />;
+  }
+  if (!hosts.data) {
     return (
       <p className="text-sm text-muted-foreground">
         {t(($) => {
@@ -467,9 +472,10 @@ function SshHosts() {
       </div>
       {conflict && (
         <p role="alert" className="text-sm">
-          {t(($) => {
-            return $.ssh.conflict;
-          })}
+          {localizedSshError(conflict) ??
+            t(($) => {
+              return $.ssh.errors.failed;
+            })}
         </p>
       )}
       {hosts.data.length === 0 && (
@@ -482,7 +488,6 @@ function SshHosts() {
       {hosts.data.map((connection) => {
         return <HostCard key={connection.id} connection={connection} />;
       })}
-      <SshDialog />
     </div>
   );
 }
@@ -532,6 +537,7 @@ export function SshConnectorPage() {
       </DetailPageHeader>
       <DetailPageMain constrainContent>
         <SshHosts />
+        <SshDialog />
       </DetailPageMain>
     </DetailPageShell>
   );

@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Info, Terminal } from "lucide-react";
@@ -9,11 +9,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@okouai/ui";
-import { updateCurrentAgentSshAccess$ } from "../../signals/ssh.ts";
+import { updateAgentSshAccess$ } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ConnectorPermissionRow } from "./components/settings/connector-permission-row.tsx";
 
 export function AgentSshAccess({
@@ -24,9 +22,8 @@ export function AgentSshAccess({
   readonly enabled: boolean;
 }) {
   const { t } = useTranslation();
-  const [saving, update] = useLoadableSet(updateCurrentAgentSshAccess$);
+  const [saving, update] = useLoadableSet(updateAgentSshAccess$);
   const signal = useGet(pageSignal$);
-  const navigate = useSet(detachedNavigateTo$);
   return (
     <ConnectorPermissionRow
       icon={<Terminal size={20} className="shrink-0" aria-hidden="true" />}
@@ -68,14 +65,8 @@ export function AgentSshAccess({
       }
       enabled={enabled}
       loading={saving.state === "loading"}
-      showManage
-      manageLabel={t(($) => {
-        return $.ssh.manage;
-      })}
+      showManage={false}
       isLast
-      onManage={() => {
-        return navigate(ROUTES.connectorSsh);
-      }}
       onToggle={(checked) => {
         return detach(update(agentId, checked, signal), Reason.DomCallback);
       }}

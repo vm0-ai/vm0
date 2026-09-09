@@ -35,7 +35,7 @@ export function ConnectorPermissionRow({
   readonly showManage: boolean;
   readonly manageLabel?: string;
   readonly isLast: boolean;
-  readonly onManage: () => void;
+  readonly onManage?: () => void;
   readonly onToggle: (checked: boolean) => void;
 }) {
   const { t } = useTranslation();
