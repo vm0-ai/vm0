@@ -317,6 +317,7 @@ import {
   CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
   CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
   CHAT_THREAD_RESPONSE_STACK_CLASS,
+  CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS,
   CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
@@ -7006,10 +7007,12 @@ function PagedAssistantTimeline({
   items,
   thread,
   mainActions,
+  workHistory = false,
 }: {
   items: readonly PagedAssistantTimelineItem[];
   thread: ChatPanelSignals;
   mainActions?: ReactNode;
+  workHistory?: boolean;
 }) {
   return items.map((item) => {
     if (item.kind === "model-change") {
@@ -7038,12 +7041,12 @@ function PagedAssistantTimeline({
               className={cn(
                 "ml-3.5 w-[calc(100%-0.875rem)] border-l border-border/70 pl-[13px]",
                 CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
-                CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
               )}
             >
               <PagedAssistantTimeline
                 items={item.historyItems}
                 thread={thread}
+                workHistory
               />
             </div>
           )}
@@ -7067,6 +7070,7 @@ function PagedAssistantTimeline({
         key={item.event.id}
         event={item.event}
         thread={thread}
+        workHistory={workHistory}
       />
     );
   });
@@ -7223,9 +7227,11 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
+  workHistory = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  workHistory?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7233,6 +7239,8 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
+        className={cn(workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS)}
+        data-chat-run-work-history-item={workHistory ? "" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7254,11 +7262,16 @@ function PagedAssistantEventItem({
         className={cn(
           CHAT_THREAD_RESPONSE_LINE_CLASS,
           CHAT_THREAD_RESPONSE_FLUSH_CLASS,
+          workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
         )}
+        data-chat-run-work-history-item={workHistory ? "" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
         <MarkdownEventBody
+          className={
+            workHistory ? CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS : undefined
+          }
           tree={event.tree}
           mediaPreview
           onRetry={

@@ -31,7 +31,8 @@ export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
 
 // Work-history commentary is supporting context, not the final response.
 export const CHAT_THREAD_WORK_HISTORY_TEXT_CLASS =
-  "[&_.okou-chat-bubble-assistant]:text-sm [&_.okou-chat-bubble-assistant]:leading-5 [&_.wmde-markdown]:!text-muted-foreground";
+  "text-sm leading-5 text-muted-foreground";
+export const CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS = "!text-muted-foreground";
 
 // Keep the entry animation, but do not let its duration also animate the
 // responsive margin: that would continue changing layout after resize.

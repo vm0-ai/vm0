@@ -434,14 +434,17 @@ function MarkdownTreeFrame({
  * ahead of time, so opening a thread re-renders without re-parsing.
  */
 export function MarkdownEventBody({
+  className,
   tree,
   mediaPreview,
 }: {
+  readonly className?: string;
   readonly tree: Root;
   readonly mediaPreview: boolean | "link";
 }) {
   return (
     <MarkdownTreeFrame
+      className={className}
       tree={tree}
       mediaPreview={mediaPreview}
       style={{ fontSize: "inherit", lineHeight: "inherit" }}
