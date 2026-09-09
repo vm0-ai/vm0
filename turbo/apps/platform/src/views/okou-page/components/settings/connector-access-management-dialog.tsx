@@ -472,7 +472,7 @@ export function ConnectorAccessManagementDialog({
     managedConnectorFirewallPermissionMetadata$,
   );
   const pageSignal = useGet(pageSignal$);
-  const search = useGet(connectorAccessManagementSearch$);
+  const search = useGet(connectorAccessManagementSearch$).value;
   const pendingSavingAgentId = useGet(connectorAccessManagementSavingAgentId$);
   const permissionAgentId = useGet(connectorAccessManagementPermissionAgentId$);
   const setSearch = useSet(setConnectorAccessManagementSearch$);
@@ -703,7 +703,7 @@ export function CustomConnectorAccessManagementDialog({
   const permissionBundleLoadable = useLoadable(
     customConnectorPermissionBundle$,
   );
-  const search = useGet(connectorAccessManagementSearch$);
+  const search = useGet(connectorAccessManagementSearch$).value;
   const setSearch = useSet(setConnectorAccessManagementSearch$);
   const openPermissions = useSet(openCustomConnectorPermissions$);
   const closePermissions = useSet(closeCustomConnectorPermissions$);

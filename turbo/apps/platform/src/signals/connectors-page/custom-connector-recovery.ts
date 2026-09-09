@@ -10,7 +10,10 @@ import {
   openCustomConnectorAccessDialog$,
 } from "../okou-page/settings/custom-connectors.ts";
 import { openCustomAccountManager$ } from "../okou-page/settings/connector-account-dialogs.ts";
-import { setConnectorAccessManagementSearch$ } from "../okou-page/settings/connector-access-management.ts";
+import {
+  connectorAccessManagementSearch$,
+  setConnectorAccessManagementSearch$,
+} from "../okou-page/settings/connector-access-management.ts";
 import {
   closeCustomConnectorPermissions$,
   customConnectorPermissionDraft$,
@@ -29,13 +32,14 @@ const setupCustomConnectorAccessRecovery$ = command(
     if (!agentId) {
       return;
     }
+    const initialDialog = get(customConnectorDialog$);
+    const initialSearch = get(connectorAccessManagementSearch$);
     const authorizations = await get(customConnectorAgentAuthorizations$);
     signal.throwIfAborted();
-    const dialog = get(customConnectorDialog$);
     if (
       get(searchParams$).toString() !== params.toString() ||
-      dialog.kind !== "access" ||
-      dialog.connector.id !== connector.id
+      get(customConnectorDialog$) !== initialDialog ||
+      get(connectorAccessManagementSearch$) !== initialSearch
     ) {
       return;
     }

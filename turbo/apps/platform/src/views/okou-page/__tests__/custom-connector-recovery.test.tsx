@@ -715,6 +715,85 @@ test.each(
   },
 );
 
+test.each(
+  [false, true].flatMap((namedPermission) => {
+    return [false, true].map((cleared) => {
+      return { namedPermission, cleared };
+    });
+  }),
+)(
+  "Keep manual Agent search during delayed recovery with permission=$namedPermission and cleared=$cleared",
+  async ({ namedPermission, cleared }) => {
+    const connector = customConnector({
+      connected: true,
+      permissionBundleRef: "builtin:feishu@1",
+      missingRequiredFields: [],
+    });
+    mockDefinition(connector);
+    const release = context.mocks.deferred<void>();
+    context.mocks.api(
+      agentCustomConnectorsContract.get,
+      async ({ params, respond }) => {
+        await release.promise;
+        return respond(200, {
+          grants:
+            params.id === AGENT_ID
+              ? [
+                  {
+                    customConnectorId: connector.id,
+                    permissionNames: ["standard:use"],
+                  },
+                ]
+              : [],
+        });
+      },
+    );
+    context.mocks.api(
+      customConnectorByIdContract.permissions,
+      ({ respond }) => {
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [{ name: "standard:use", description: "Read data" }],
+          defaultPolicies: { "standard:use": "allow" },
+        });
+      },
+    );
+    const params = new URLSearchParams({
+      tab: "custom",
+      customConnectorId: connector.id,
+      view: "access",
+      agentId: AGENT_ID,
+    });
+    if (namedPermission) {
+      params.set("permission", "standard:use");
+    }
+    await setupPage({ context, path: `/connectors?${params.toString()}` });
+    const dialog = await screen.findByRole("dialog", {
+      name: `Manage ${connector.displayName} access`,
+    });
+    const search = within(dialog).getByRole("textbox");
+    await fill(search, "Support");
+    if (cleared) {
+      await fill(search, "");
+    }
+    const expectedSearch = cleared ? "" : "Support";
+    expect(search).toHaveValue(expectedSearch);
+
+    release.resolve();
+
+    await waitFor(() => {
+      expect(
+        within(getConnectorCard(connector.displayName)).getByTestId(
+          "connector-card-agent-access",
+        ),
+      ).toHaveTextContent("Used by Research");
+    });
+    expect(search).toHaveValue(expectedSearch);
+    expect(screen.queryAllByRole("dialog")).toHaveLength(1);
+    expect(within(dialog).getByText("Support")).toBeInTheDocument();
+  },
+);
+
 test("Keep a closed custom access review closed when Agent grants arrive", async () => {
   const connector = customConnector({
     connected: true,

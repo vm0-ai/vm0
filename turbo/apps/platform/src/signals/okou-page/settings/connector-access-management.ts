@@ -32,7 +32,10 @@ interface SetConnectorAgentAuthorizationParams {
 }
 
 const managedConnectorAccessSlugState$ = state<ConnectorSlug | null>(null);
-const connectorAccessManagementSearchState$ = state("");
+// Identity distinguishes an untouched search from one edited and then cleared.
+const connectorAccessManagementSearchState$ = state<{
+  readonly value: string;
+}>({ value: "" });
 const connectorAccessManagementSavingAgentIdState$ = state<string | null>(null);
 const connectorAccessManagementPermissionAgentIdState$ = state<string | null>(
   null,
@@ -62,14 +65,14 @@ export const setManagedConnectorAccessSlug$ = command(
 
 export const closeConnectorAccessManagement$ = command(({ set }) => {
   set(managedConnectorAccessSlugState$, null);
-  set(connectorAccessManagementSearchState$, "");
+  set(connectorAccessManagementSearchState$, { value: "" });
   set(connectorAccessManagementSavingAgentIdState$, null);
   set(connectorAccessManagementPermissionAgentIdState$, null);
 });
 
 export const setConnectorAccessManagementSearch$ = command(
   ({ set }, search: string) => {
-    set(connectorAccessManagementSearchState$, search);
+    set(connectorAccessManagementSearchState$, { value: search });
   },
 );
 
