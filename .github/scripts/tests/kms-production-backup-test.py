@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the real backup CLI with isolated external command fixtures."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -109,6 +110,12 @@ class BackupCliTest(unittest.TestCase):
         )
         self.assertEqual(snapshot["workflow"]["runId"], "12345")
         self.assertTrue(report["readbackVerified"])
+        self.assertEqual(
+            report["snapshotSha256"],
+            hashlib.sha256(
+                state["secrets"]["KMS_BACKUP_JSON"]["raw"].encode()
+            ).hexdigest(),
+        )
         self.assertFalse(report["productionConfigurationChanged"])
 
     def test_wrong_principal_stops_before_backup(self):

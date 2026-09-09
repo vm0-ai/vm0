@@ -2,6 +2,7 @@
 """Escrow effective production KMS configuration without changing deployments."""
 
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -261,6 +262,7 @@ def main():
         "deployment": deployment,
         "runId": run_id,
         "readbackVerified": True,
+        "snapshotSha256": hashlib.sha256(snapshot.encode()).hexdigest(),
         "productionConfigurationChanged": False,
     }
     report_path = Path(required_env("RUNNER_TEMP")) / "kms-production-backup.json"

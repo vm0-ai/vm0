@@ -66,9 +66,11 @@ An existing backup blocks the job. The write also uses Doppler's conditional
 new-secret operation so a concurrent writer cannot be overwritten. Both the raw
 and computed read-back must exactly match the snapshot, with masked visibility.
 Only sanitized metadata is uploaded to the seven-day GitHub artifact; credential
-values pass directly from the protected runner to Doppler. Provider error bodies
-are suppressed because they can contain secrets. A missing success report or
-failed read-back is a blocker for replacing production configuration.
+values pass directly from the protected runner to Doppler. The report includes a
+SHA-256 digest of the complete snapshot for independent verification against a
+later Doppler read. Provider error bodies are suppressed because they can contain
+secrets. A missing success report or failed read-back is a blocker for replacing
+production configuration.
 
 The stored deployment is a rollback reference, not proof that rolling back its
 code is still compatible with later schema changes. Recheck the current
