@@ -3,6 +3,7 @@ import type { SignIn } from "@clerk/react";
 import type { ComponentProps } from "react";
 import { platformOkouWordmarkLightImg } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
+import { AUTH_V2_PRIMARY_ACTION_CLASS } from "../auth-v2/auth-v2-action-styles.ts";
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 
@@ -33,6 +34,10 @@ export function getAuthV1ComponentAppearance(
       card: "m-0 w-full rounded-none border-0 bg-card px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)] shadow-none",
       // Clerk owns the header rhythm; only the wordmark keeps its brand width.
       logoImage: "h-auto w-[76px]",
+      // Clerk shares colorPrimary between links and filled controls. Keep the
+      // accessible link color at provider level, then give only the CTA the
+      // same filled treatment as Auth V2.
+      formButtonPrimary: cn(AUTH_V2_PRIMARY_ACTION_CLASS, "border-transparent"),
       otpCodeFieldInput: AUTH_V1_OTP_INPUT_CLASS,
     },
   };

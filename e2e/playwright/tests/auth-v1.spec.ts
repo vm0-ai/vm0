@@ -328,6 +328,15 @@ for (const device of [
       const error = page.locator(".cl-otpCodeFieldErrorText:visible");
       const resend = page.locator(".cl-formResendCodeLink");
       await expect(inputs).toBeVisible();
+      const primaryAction = page.getByRole("button", {
+        exact: true,
+        name: "Continue",
+      });
+      await expect(primaryAction).toHaveCSS(
+        "background-color",
+        "rgb(255, 165, 0)",
+      );
+      await expect(primaryAction).toHaveCSS("color", "rgb(36, 35, 33)");
       const slots = page.locator(".cl-otpCodeFieldInput");
       await expect(slots).toHaveCount(6);
       const expectedBorderColor =
