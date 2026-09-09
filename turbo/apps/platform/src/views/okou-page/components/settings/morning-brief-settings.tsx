@@ -1,3 +1,4 @@
+import type { MorningBriefPreferenceResponse } from "@okouai/api-contracts/contracts/morning-brief-preference";
 import { Button } from "@okouai/ui/components/ui/button";
 import { Switch } from "@okouai/ui/components/ui/switch";
 import { useGet, useLoadable, useSet } from "ccstate-react";
@@ -107,13 +108,16 @@ function MorningBriefStatus({
 }
 
 function MorningBriefDeliveryStatus({
-  enabled,
+  preference,
 }: {
-  readonly enabled: boolean;
+  readonly preference: MorningBriefPreferenceResponse | undefined;
 }) {
   const { t } = useTranslation();
   const subscription = useLoadable(emailSubscription$);
-  if (!enabled) {
+  if (!preference || preference.unavailableReason !== null) {
+    return null;
+  }
+  if (!preference.enabled) {
     return (
       <span>
         {t(($) => {
@@ -223,9 +227,7 @@ export function MorningBriefSettings() {
               loadFailed={loadFailed}
               mutationFailed={mutationFailed}
             />
-            {preference && unavailable === null && (
-              <MorningBriefDeliveryStatus enabled={preference.enabled} />
-            )}
+            <MorningBriefDeliveryStatus preference={preference} />
           </div>
         }
       >

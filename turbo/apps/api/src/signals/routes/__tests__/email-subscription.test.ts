@@ -71,7 +71,7 @@ describe("email subscription preferences", () => {
     );
     expect(
       (await accept(client().get({ headers }), [200])).body.subscribed,
-    ).toBe(false);
+    ).toBeFalsy();
 
     const other = await actor();
     expect((await accept(client().get({ headers }), [200])).body).toMatchObject(
@@ -84,7 +84,7 @@ describe("email subscription preferences", () => {
     );
     expect(
       (await accept(client().get({ headers }), [200])).body.subscribed,
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it("reads one-click opt-outs and allows explicit resubscription", async () => {
@@ -103,18 +103,18 @@ describe("email subscription preferences", () => {
     await accept(unsubscribe.get({ query }), [302]);
     expect(
       (await accept(client().get({ headers }), [200])).body.subscribed,
-    ).toBe(true);
+    ).toBeTruthy();
     await accept(unsubscribe.unsubscribe({ query }), [200]);
     expect(
       (await accept(client().get({ headers }), [200])).body.subscribed,
-    ).toBe(false);
+    ).toBeFalsy();
     await accept(
       client().update({ headers, body: { subscribed: true } }),
       [200],
     );
     expect(
       (await accept(client().get({ headers }), [200])).body.subscribed,
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it.each(["email.bounced", "email.complained"])(
@@ -151,7 +151,8 @@ describe("email subscription preferences", () => {
 
   it("contains both endpoints under the Morning Brief switch", async () => {
     await actor(false);
-    await accept(client().get({ headers }), [403]);
+    const response = await accept(client().get({ headers }), [403]);
+    expect(response.body.error.code).toBe("FORBIDDEN");
     await accept(
       client().update({ headers, body: { subscribed: false } }),
       [403],
@@ -172,7 +173,7 @@ describe("email subscription preferences", () => {
     expect(response.status).toBe(400);
     expect(
       (await accept(client().get({ headers }), [200])).body.subscribed,
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it("does not disguise provider failure as an unavailable recipient", async () => {
@@ -180,13 +181,15 @@ describe("email subscription preferences", () => {
     context.mocks.clerk.users.getUserList.mockRejectedValue(
       new Error("Clerk request failed"),
     );
-    await accept(client().get({ headers }), [500]);
+    const response = await accept(client().get({ headers }), [500]);
+    expect(response.status).toBe(500);
   });
 
   it("requires an active workspace for rollout evaluation", async () => {
     const owner = await actor();
     mocks.clerk.session(owner.userId, null);
-    await accept(client().get({ headers }), [401]);
+    const response = await accept(client().get({ headers }), [401]);
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
     await accept(
       client().update({ headers, body: { subscribed: false } }),
       [401],
@@ -210,7 +213,8 @@ describe("email subscription preferences", () => {
       exp: timestamp + 60,
     });
     const runHeaders = { authorization: `Bearer ${token}` };
-    await accept(client().get({ headers: runHeaders }), [403]);
+    const response = await accept(client().get({ headers: runHeaders }), [403]);
+    expect(response.body.error.code).toBe("FORBIDDEN");
     await accept(
       client().update({ headers: runHeaders, body: { subscribed: true } }),
       [403],

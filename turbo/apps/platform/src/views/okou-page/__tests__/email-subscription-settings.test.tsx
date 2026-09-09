@@ -54,7 +54,9 @@ describe("email subscription settings", () => {
       return respond(200, { ...emailPreference, subscribed });
     });
     const region = await openPreferences();
-    expect(await within(region).findByText("Subscribed")).toBeVisible();
+    await expect(
+      within(region).findByText("Subscribed"),
+    ).resolves.toBeVisible();
     const dialog = screen.getByRole("dialog", { name: "Settings" });
     click(within(dialog).getByLabelText("Close"));
     await waitFor(() => {
@@ -73,7 +75,7 @@ describe("email subscription settings", () => {
     click(account);
     const menu = await screen.findByRole("menu");
     click(within(menu).getByText("Settings"));
-    expect(await screen.findByText("Unsubscribed")).toBeVisible();
+    await expect(screen.findByText("Unsubscribed")).resolves.toBeVisible();
     expect(
       screen.getByRole("switch", { name: "Receive emails from Okou" }),
     ).not.toBeChecked();
@@ -111,7 +113,7 @@ describe("email subscription settings", () => {
     );
 
     const region = await openPreferences();
-    expect(await within(region).findByText("Chat only")).toBeVisible();
+    await expect(within(region).findByText("Chat only")).resolves.toBeVisible();
     expect(
       within(region).getByText(
         "Email is off. Your brief will still appear in Chat.",
@@ -126,19 +128,23 @@ describe("email subscription settings", () => {
     expect(brief).toBeChecked();
 
     click(emails);
-    expect(await within(region).findByText("Chat + email")).toBeVisible();
+    await expect(
+      within(region).findByText("Chat + email"),
+    ).resolves.toBeVisible();
     expect(emails).toBeChecked();
     expect(brief).toBeChecked();
 
     click(brief);
-    expect(await within(region).findByText("Paused")).toBeVisible();
+    await expect(within(region).findByText("Paused")).resolves.toBeVisible();
     expect(brief).not.toBeChecked();
     expect(emails).toBeChecked();
 
     click(emails);
-    expect(await within(region).findByText("Unsubscribed")).toBeVisible();
+    await expect(
+      within(region).findByText("Unsubscribed"),
+    ).resolves.toBeVisible();
     click(brief);
-    expect(await within(region).findByText("Chat only")).toBeVisible();
+    await expect(within(region).findByText("Chat only")).resolves.toBeVisible();
     expect(emails).not.toBeChecked();
     expect(brief).toBeChecked();
   });
@@ -158,11 +164,11 @@ describe("email subscription settings", () => {
       }),
     ).not.toBeInTheDocument();
     response.resolve(emailPreference);
-    expect(
-      await within(region).findByRole("switch", {
+    await expect(
+      within(region).findByRole("switch", {
         name: "Receive emails from Okou",
       }),
-    ).toBeChecked();
+    ).resolves.toBeChecked();
   });
 
   it("keeps the saved value and disables repeated changes while saving", async () => {
@@ -184,11 +190,13 @@ describe("email subscription settings", () => {
       name: "Receive emails from Okou",
     });
     click(toggle);
-    expect(await within(region).findByText("Saving…")).toBeVisible();
+    await expect(within(region).findByText("Saving…")).resolves.toBeVisible();
     expect(toggle).toBeChecked();
     expect(toggle).toHaveAttribute("aria-disabled", "true");
     saved.resolve();
-    expect(await within(region).findByText("Unsubscribed")).toBeVisible();
+    await expect(
+      within(region).findByText("Unsubscribed"),
+    ).resolves.toBeVisible();
     expect(toggle).not.toBeChecked();
     expect(toggle).not.toHaveAttribute("aria-disabled", "true");
   });
@@ -207,11 +215,11 @@ describe("email subscription settings", () => {
       return respond(200, emailPreference);
     });
     const region = await openPreferences();
-    expect(
-      await within(region).findByText(
+    await expect(
+      within(region).findByText(
         "Could not save or load your email subscription. Try again.",
       ),
-    ).toBeVisible();
+    ).resolves.toBeVisible();
     expect(
       within(region).queryByRole("switch", {
         name: "Receive emails from Okou",
@@ -219,7 +227,9 @@ describe("email subscription settings", () => {
     ).not.toBeInTheDocument();
     failed = false;
     click(retryButton(region));
-    expect(await within(region).findByText("Subscribed")).toBeVisible();
+    await expect(
+      within(region).findByText("Subscribed"),
+    ).resolves.toBeVisible();
     expect(
       within(region).getByRole("switch", { name: "Receive emails from Okou" }),
     ).toBeChecked();
@@ -248,11 +258,11 @@ describe("email subscription settings", () => {
       name: "Receive emails from Okou",
     });
     click(toggle);
-    expect(
-      await within(region).findByText(
+    await expect(
+      within(region).findByText(
         "Could not save or load your email subscription. Try again.",
       ),
-    ).toBeVisible();
+    ).resolves.toBeVisible();
     expect(toggle).toBeChecked();
     failed = false;
     click(retryButton(region));
@@ -281,10 +291,12 @@ describe("email subscription settings", () => {
         });
       });
       const region = await openPreferences();
-      expect(
-        await within(region).findByText("Email unavailable"),
-      ).toBeVisible();
-      expect(await within(region).findByText("Chat only")).toBeVisible();
+      await expect(
+        within(region).findByText("Email unavailable"),
+      ).resolves.toBeVisible();
+      await expect(
+        within(region).findByText("Chat only"),
+      ).resolves.toBeVisible();
       expect(
         within(region).getByRole("switch", {
           name: "Receive emails from Okou",
