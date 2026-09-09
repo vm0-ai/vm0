@@ -7,6 +7,17 @@ import type { ComposerUiSignalGroups } from "./chat-composer.ts";
 
 const COMPOSER_CREATE_MODES = ["presentation", "video", "image"] as const;
 
+export const PRESENTATION_SLIDE_COUNTS = [
+  "auto",
+  "4-8",
+  "8-12",
+  "12-16",
+  "16-20",
+  "20-24",
+] as const;
+
+type PresentationSlideCount = (typeof PRESENTATION_SLIDE_COUNTS)[number];
+
 export type ComposerCreateMode = (typeof COMPOSER_CREATE_MODES)[number];
 export type ComposerCreateCommand = ComposerCreateMode | "choose";
 
@@ -92,6 +103,15 @@ export function createComposerCreateSignals(
     );
   });
   const internalMode$ = state<ComposerCreateCommand | null>(null);
+  const internalPresentationSlideCount$ = state<PresentationSlideCount>("8-12");
+  const presentationSlideCount$ = computed((get) => {
+    return get(internalPresentationSlideCount$);
+  });
+  const setPresentationSlideCount$ = command(
+    ({ set }, slideCount: PresentationSlideCount) => {
+      set(internalPresentationSlideCount$, slideCount);
+    },
+  );
   const enabled$ = computed((get) => {
     return get(featureSwitch$)[FeatureSwitchKey.ComposerCreateCommands];
   });
@@ -118,6 +138,9 @@ export function createComposerCreateSignals(
       if (mode !== "video") {
         set(ui.videoOptions.setVideoRunOptions$, {});
       }
+      if (mode !== "presentation") {
+        set(internalPresentationSlideCount$, "8-12");
+      }
       if (mode !== "choose") {
         set(composer.focus$);
       }
@@ -139,7 +162,16 @@ export function createComposerCreateSignals(
       set(setMode$, mode);
     },
   );
-  return { enabled$, modes, mode$, choosing$, setMode$, selectCommand$ };
+  return {
+    enabled$,
+    modes,
+    mode$,
+    choosing$,
+    setMode$,
+    selectCommand$,
+    presentationSlideCount$,
+    setPresentationSlideCount$,
+  };
 }
 
 export type ComposerCreateSignals = ReturnType<

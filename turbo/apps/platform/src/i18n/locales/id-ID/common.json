@@ -1884,6 +1884,9 @@
         "presentationPlaceholder": "Apa topik presentasi Anda?",
         "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "slideCount": "Jumlah slide",
+        "slideCountAuto": "Otomatis",
+        "slideCountRange": "{{range}} slide",
         "title": "Buat",
         "video": "Buat video",
         "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"

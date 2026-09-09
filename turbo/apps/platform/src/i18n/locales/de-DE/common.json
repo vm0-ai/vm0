@@ -1887,6 +1887,9 @@
         "presentationPlaceholder": "Worum geht es in deiner Präsentation?",
         "question": "Was möchtest du möglich machen?",
         "settingsAdjusted": "Einige Videoeinstellungen wurden an dieses Modell angepasst",
+        "slideCount": "Folienanzahl",
+        "slideCountAuto": "Automatisch",
+        "slideCountRange": "{{range}} Folien",
         "title": "Erstellen",
         "video": "Video erstellen",
         "videoPlaceholder": "Beschreibe das gewünschte Video…"

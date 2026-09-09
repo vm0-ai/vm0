@@ -1916,6 +1916,9 @@
         "presentationPlaceholder": "Di cosa tratta la tua presentazione?",
         "question": "Cosa vorresti realizzare?",
         "settingsAdjusted": "Alcune impostazioni video sono state adattate a questo modello",
+        "slideCount": "Numero di diapositive",
+        "slideCountAuto": "Automatico",
+        "slideCountRange": "{{range}} diapositive",
         "title": "Crea",
         "video": "Crea video",
         "videoPlaceholder": "Descrivi il video che vuoi creare…"

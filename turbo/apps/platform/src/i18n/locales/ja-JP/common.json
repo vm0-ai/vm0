@@ -1884,6 +1884,9 @@
         "presentationPlaceholder": "プレゼンテーションのテーマは何ですか？",
         "question": "何を実現したいですか？",
         "settingsAdjusted": "このモデルに合わせて一部の動画設定を調整しました",
+        "slideCount": "スライド数",
+        "slideCountAuto": "自動",
+        "slideCountRange": "{{range}}枚",
         "title": "作成",
         "video": "動画を作成",
         "videoPlaceholder": "作成したい動画を説明してください…"

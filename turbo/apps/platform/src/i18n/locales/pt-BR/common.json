@@ -1916,6 +1916,9 @@
         "presentationPlaceholder": "Qual é o tema da sua apresentação?",
         "question": "O que você gostaria de realizar?",
         "settingsAdjusted": "Algumas configurações de vídeo foram ajustadas para este modelo",
+        "slideCount": "Número de slides",
+        "slideCountAuto": "Automático",
+        "slideCountRange": "{{range}} slides",
         "title": "Criar",
         "video": "Criar vídeo",
         "videoPlaceholder": "Descreva o vídeo que você quer criar…"

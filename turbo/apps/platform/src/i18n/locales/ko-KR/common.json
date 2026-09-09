@@ -1884,6 +1884,9 @@
         "presentationPlaceholder": "프레젠테이션의 주제는 무엇인가요?",
         "question": "무엇을 실현하고 싶으신가요?",
         "settingsAdjusted": "이 모델에 맞게 일부 동영상 설정을 조정했습니다",
+        "slideCount": "슬라이드 수",
+        "slideCountAuto": "자동",
+        "slideCountRange": "{{range}}장",
         "title": "만들기",
         "video": "동영상 만들기",
         "videoPlaceholder": "만들고 싶은 동영상을 설명하세요…"
