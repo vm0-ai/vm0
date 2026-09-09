@@ -2533,7 +2533,7 @@
       "presentationTemplates": "Presentation templates",
       "tasks": {
         "image": "Image",
-        "presentation": "Slides",
+        "presentation": "Presentation",
         "video": "Video",
         "website": "Website",
         "workflow": "Workflow"
