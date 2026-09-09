@@ -52,8 +52,6 @@ const SCROLL_EDGE_FADE =
 
 const SECTION_PREVIEW_LIMIT = 6;
 
-const KEYCAP = "rounded-md bg-gray-0 px-1.5 py-px";
-
 type UpdateDirectoryState = (patch: Partial<ComposerConnectorUiState>) => void;
 
 type RenderConnectorCard = (
@@ -586,32 +584,6 @@ function DirectoryToolbar({
   );
 }
 
-function DirectoryFooter() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex shrink-0 items-center gap-1.5 border-t border-border/50 bg-gray-50 px-6 py-2.5 text-xs text-muted-foreground">
-      <span className={cn(KEYCAP, DIRECTORY_HAIRLINE)}>↑</span>
-      <span className={cn(KEYCAP, DIRECTORY_HAIRLINE)}>↓</span>
-      <span>
-        {t(($) => {
-          return $.chat.connectors.directory.keyMove;
-        })}
-      </span>
-      <span className={cn(KEYCAP, "ml-2", DIRECTORY_HAIRLINE)}>↵</span>
-      <span>
-        {t(($) => {
-          return $.chat.connectors.directory.keyOpen;
-        })}
-      </span>
-      <span className="ml-auto hidden sm:inline">
-        {t(($) => {
-          return $.chat.connectors.directory.matchedOn;
-        })}
-      </span>
-    </div>
-  );
-}
-
 function DirectoryBody({
   tab,
   loading,
@@ -733,7 +705,6 @@ function DirectoryBrowseView({
           onConnectCustom={onConnectCustom}
         />
       </div>
-      <DirectoryFooter />
     </>
   );
 }
