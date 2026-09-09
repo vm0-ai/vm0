@@ -97,7 +97,6 @@ function settingsSuccessRedirect(args: {
   readonly tenantName?: string | null;
   readonly teamName?: string | null;
   readonly botName?: string | null;
-  readonly publicBrand: PublicBrand;
 }): Response {
   const params = new URLSearchParams({ status: "connected" });
   if (args.tenantName) {
@@ -154,12 +153,8 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
 }
 
 /**
- * Both brands send Microsoft the canonical path; the brand decides the host
- * only. The Microsoft app registration holds this path on both brand hosts.
- *
- * Project here rather than in `getOAuthApiOrigin`, whose other caller builds
- * the built-in connector callback that is already registered with every
- * provider.
+ * Microsoft Teams uses its registered integration callback path. Keep it
+ * separate from the built-in connector callback path used by other providers.
  */
 function callbackRedirectUri(origin: string): string {
   return `${origin}/api/integrations/teams/oauth/callback`;
@@ -407,7 +402,6 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     orgId: auth.orgId,
     orgRole: auth.orgRole,
     tenantId: exchange.tenantId,
-    publicBrand: state.publicBrand,
     teamsAadObjectId: exchange.user.id,
     teamsUserDisplayName: exchange.user.displayName ?? undefined,
     teamsUserPrincipalName:
@@ -454,7 +448,6 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     tenantName: result.installation.teamsTenantName,
     teamName: result.installation.teamsTeamName,
     botName: result.installation.botName,
-    publicBrand: state.publicBrand,
   });
 });
 

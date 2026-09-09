@@ -14,7 +14,7 @@
 #   ansible-playbook -i "host1,host2," playbooks/build-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
-#     -e "api_url=https://www.vm0.ai" \
+#     -e "api_url=https://api.okou.ai" \
 #     -e "runner_version=0.3.0" \
 #     -e "r2_account_id=xxx" \
 #     -e "r2_access_key_id=xxx" \

@@ -1,7 +1,43 @@
 use std::io;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::process::{Child, Command, ExitStatus};
 
 use crate::log::log;
+
+/// Common ownership operations for standard and directly contained children.
+pub(crate) trait ChildProcess {
+    fn id(&self) -> u32;
+    fn kill(&mut self) -> io::Result<()>;
+    fn wait(&mut self) -> io::Result<ExitStatus>;
+}
+
+impl ChildProcess for Child {
+    fn id(&self) -> u32 {
+        self.id()
+    }
+
+    fn kill(&mut self) -> io::Result<()> {
+        self.kill()
+    }
+
+    fn wait(&mut self) -> io::Result<ExitStatus> {
+        self.wait()
+    }
+}
+
+/// Keep a private launch descriptor out of the standard descriptor slots.
+pub(crate) fn private_descriptor(fd: OwnedFd) -> io::Result<OwnedFd> {
+    if fd.as_raw_fd() > libc::STDERR_FILENO {
+        return Ok(fd);
+    }
+    // SAFETY: fd is owned and valid. fcntl returns a distinct owned CLOEXEC fd.
+    let duplicate = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 3) };
+    if duplicate < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the successful duplicate is transferred to exactly one owner.
+    Ok(unsafe { OwnedFd::from_raw_fd(duplicate) })
+}
 
 /// Extract exit code from ExitStatus, mapping signals to 128 + signal number.
 #[cfg(unix)]
@@ -47,7 +83,7 @@ fn process_group_signal_pid(pgid: u32) -> Option<libc::pid_t> {
 ///
 /// # Safety
 ///
-/// `child_id` must come from a direct child returned by `Command::spawn()`, and
+/// `child_id` must come from an owned direct-child spawn, and
 /// that child must not have been reaped. Keeping the child unreaped prevents
 /// its PID, and therefore its process-group ID, from being reused.
 pub(crate) unsafe fn kill_owned_child_process_group(child_id: u32) -> bool {
@@ -71,9 +107,9 @@ pub(crate) unsafe fn kill_owned_child_process_group(child_id: u32) -> bool {
 }
 
 /// Kill the direct child's process group and reap the direct child.
-pub(crate) fn kill_and_reap_child(mut child: Child) {
+pub(crate) fn kill_and_reap_child(mut child: impl ChildProcess) {
     let child_id = child.id();
-    // SAFETY: child_id comes from a live `Child` returned by Command::spawn.
+    // SAFETY: child_id comes from an owned, unreaped direct child.
     let group_killed = unsafe { kill_owned_child_process_group(child_id) };
     let child_killed = child.kill().is_ok();
     if !group_killed && !child_killed {

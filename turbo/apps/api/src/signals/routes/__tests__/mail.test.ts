@@ -774,7 +774,6 @@ describe("POST /api/mail/drafts/link", () => {
       fixture.actor,
       randomUUID(),
       ["connector:read"],
-      "okou",
     );
     const linked = await linkDraft(fixture, {
       authorization: `Bearer ${okouToken}`,

@@ -327,22 +327,13 @@ describe("presentation template items", () => {
     }
   });
 
-  it("keeps picker items on runbook packages after retiring the legacy catalog", () => {
+  it("resolves picker items to runbook packages and color systems", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
-      // Picker selections resolve to self-contained runbook packages; legacy
-      // registry entries have been retired.
       expect(
         findPresentationRunbookPackage(item.templateId),
         item.templateId,
       ).toBeDefined();
       expect(findColorSystem(item.colorSystemId ?? "")).toBeDefined();
-    }
-  });
-
-  it("keeps picker prompts free of retired registry selector language", () => {
-    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
-      expect(item.prompt).not.toContain("template `");
-      expect(item.prompt).not.toContain("design system `");
     }
   });
 

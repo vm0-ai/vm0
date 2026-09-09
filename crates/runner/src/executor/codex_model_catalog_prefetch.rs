@@ -109,6 +109,7 @@ impl StartedCodexModelCatalogPrefetch {
         let request = StartProcessRequest {
             cmd: PREFETCH_COMMAND,
             timeout: PREFETCH_GUEST_TIMEOUT,
+            timeout_is_expected: true,
             start_timeout: PREFETCH_HOST_START_TIMEOUT,
             env: &[],
             sudo: false,

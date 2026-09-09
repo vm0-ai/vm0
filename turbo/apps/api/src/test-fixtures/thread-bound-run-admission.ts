@@ -75,7 +75,7 @@ export async function createUnassociatedThreadBoundAgentRunsServiceFixture(
 }
 
 /**
- * Exercise the lower agent-run boundary so non-Zero internal callers cannot
+ * Exercise the lower agent-run boundary so internal callers outside Chat cannot
  * bypass the same queue-claim invariant.
  */
 export async function createUnassociatedThreadBoundAgentRunFixture(

@@ -70,6 +70,8 @@ export function createImageLoadRegistry(): ImageLoadRegistry {
 declare module "hast" {
   interface Data {
     imageLoadSignals?: ImageLoadSignals;
+    /** An enclosing Markdown link already owns this image's destination. */
+    imageInsideLink?: boolean;
   }
 }
 
@@ -88,17 +90,21 @@ export function embedImageLoadSignals(
   tree: Root,
   resolve: (url: string) => ImageLoadSignals,
 ): void {
-  const visitNode = (node: Root | Element): void => {
+  const visitNode = (node: Root | Element, insideLink: boolean): void => {
     for (const child of node.children) {
       if (child.type !== "element" || child.data?.card) {
         continue;
       }
       const url = mediaImageUrl(child);
       if (url !== undefined) {
-        child.data = { ...child.data, imageLoadSignals: resolve(url) };
+        child.data = {
+          ...child.data,
+          imageLoadSignals: resolve(url),
+          imageInsideLink: insideLink,
+        };
       }
-      visitNode(child);
+      visitNode(child, insideLink || child.tagName === "a");
     }
   };
-  visitNode(tree);
+  visitNode(tree, false);
 }

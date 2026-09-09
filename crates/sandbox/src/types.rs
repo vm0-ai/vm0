@@ -219,6 +219,12 @@ pub struct StartProcessRequest<'a> {
     pub cmd: &'a str,
     /// Guest-side process timeout.
     pub timeout: Duration,
+    /// Whether a clean guest execution timeout is an expected best-effort outcome.
+    ///
+    /// Only changes host terminal logging to info. The timeout result, deadlines,
+    /// start/wait errors, and warnings for additional diagnostics or output loss
+    /// are unchanged.
+    pub timeout_is_expected: bool,
     /// Host deadline for writing the start request and receiving the guest
     /// process-start acknowledgement.
     pub start_timeout: Duration,
@@ -1253,6 +1259,7 @@ mod tests {
     #[test]
     fn start_process_timeout_ms_rounds_nonzero_submillisecond_up() {
         let req = StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "true",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_nanos(1),

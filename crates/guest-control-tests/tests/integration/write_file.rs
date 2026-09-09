@@ -144,6 +144,7 @@ async fn blocked_write_allows_exec_cancel_and_quiesce() {
     let handle = h
         .host()
         .start_supervised_exec(SupervisedExecRequest {
+            timeout_is_expected: false,
             role: guest_control_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::None,
             command: "exec sleep 60",

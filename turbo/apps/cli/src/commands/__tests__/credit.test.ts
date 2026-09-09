@@ -31,6 +31,7 @@ function stubBillingStatus(
 ) {
   return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
+      showUsagePack: false,
       tier: overrides.tier ?? "pro",
       canBuyCredits: overrides.canBuyCredits ?? true,
       videoGenerationAllowed: overrides.videoGenerationAllowed ?? true,

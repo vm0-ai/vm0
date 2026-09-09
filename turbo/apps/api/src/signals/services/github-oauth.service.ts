@@ -555,7 +555,6 @@ export async function buildGithubUserConnectAuthorizationUrl(
     readonly userId: string;
     readonly orgId: string;
     readonly origin: string;
-    readonly publicBrand: PublicBrand;
     readonly authMethodId: ConnectorAuthMethodId;
     readonly method: ConnectorAuthMethodRuntimeConfig;
     readonly readEnv: ConnectorEnvReader;

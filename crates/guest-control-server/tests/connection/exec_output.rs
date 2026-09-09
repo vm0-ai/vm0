@@ -7,14 +7,15 @@ use super::exec_helpers::{EXEC_OPERATION_TIMEOUT_TEST_MS, read_exec_stdout_outpu
 use super::support::*;
 
 #[test]
-fn exec_operation_large_stdout_stderr_capture_soak() {
+fn exec_operation_captures_binary_tails_after_large_stdout_stderr() {
     let (handle, mut host_stream) = start_guest_connection();
-    let len = 32 * 1024usize;
+    let payload_len = 64 * 1024usize;
+    let len = payload_len + 3;
 
     send_exec_start(
         &mut host_stream,
         138,
-        "head -c 32768 /dev/zero | tr '\\0' o; head -c 32768 /dev/zero | tr '\\0' e >&2",
+        "head -c 65536 /dev/zero | tr '\\0' o; printf '\\000\\377\\001'; head -c 65536 /dev/zero | tr '\\0' e >&2; printf '\\376\\000\\002' >&2",
         5000,
         ExecOutputPolicy::Capture {
             limit_bytes: len as u32,
@@ -31,8 +32,12 @@ fn exec_operation_large_stdout_stderr_capture_soak() {
     let stderr = result.stderr.unwrap();
     assert_eq!(stdout.len(), len);
     assert_eq!(stderr.len(), len);
-    assert!(stdout.iter().all(|byte| *byte == b'o'));
-    assert!(stderr.iter().all(|byte| *byte == b'e'));
+    let mut expected_stdout = vec![b'o'; payload_len];
+    expected_stdout.extend_from_slice(&[0, 255, 1]);
+    let mut expected_stderr = vec![b'e'; payload_len];
+    expected_stderr.extend_from_slice(&[254, 0, 2]);
+    assert_eq!(stdout, expected_stdout);
+    assert_eq!(stderr, expected_stderr);
     assert!(!result.stdout_truncated);
     assert!(!result.stderr_truncated);
 

@@ -9,6 +9,7 @@ import type {
   UsagePackMigrationStateResponse,
   UsagePackUsd,
 } from "@okouai/api-contracts/contracts/billing";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   usagePackAllocations,
@@ -1959,6 +1960,7 @@ async function completeMigrationInvitations(
         usagePackSubscriptionId: migration.id,
         allocationId: allocation.id,
         orgId: migration.orgId,
+        publicBrand: PUBLIC_BRAND,
         normalizedEmail: selection.normalizedEmail,
         role: selection.role,
         inviterUserId: selection.inviterUserId,

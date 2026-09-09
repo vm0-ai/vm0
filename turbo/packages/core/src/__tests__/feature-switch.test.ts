@@ -25,7 +25,6 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
     expect(FeatureSwitchKey.SshAccess).toBe("sshAccess");
-    expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
     expect(FeatureSwitchKey.AgentMessageMath).toBe("agentMessageMath");
     expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
       "progressiveArtifactPreview",
@@ -187,7 +186,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OkouDebug]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       true,
@@ -214,7 +212,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OkouDebug]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       false,
@@ -293,24 +290,16 @@ describe("getAllFeatureStates", () => {
 });
 
 describe("feature switch override filtering", () => {
-  it("keeps overrides for every registered switch", () => {
+  it("keeps registered overrides when the input also contains unknown keys", () => {
     const switches = Object.fromEntries(
       Object.values(FeatureSwitchKey).map((key) => {
         return [key, true];
       }),
     );
 
-    expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
-  });
-
-  it("ignores removed Pi memory overrides while retaining the PiLoop control", () => {
     expect(
-      filterFeatureSwitchOverrides({
-        piMemoryRecall: false,
-        piMemoryGeneration: false,
-        [FeatureSwitchKey.PiLoop]: true,
-      }),
-    ).toStrictEqual({ [FeatureSwitchKey.PiLoop]: true });
+      filterFeatureSwitchOverrides({ ...switches, unknownFeature: true }),
+    ).toStrictEqual(switches);
   });
 });
 

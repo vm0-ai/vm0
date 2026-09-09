@@ -13,7 +13,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 /**
  * Official Telegram bot user links.
  *
- * The shared Zero bot is global: one Telegram user can connect to exactly one
+ * The shared Okou bot is global: one Telegram user can connect to exactly one
  * internal account/org at a time. To reconnect somewhere else, they must
  * disconnect first.
  */

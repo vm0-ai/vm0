@@ -5,7 +5,7 @@ import { browserContract } from "./browser";
 
 const threadId = "22222222-2222-4222-8222-222222222222";
 
-function browserResponse(overrides: Record<string, unknown> = {}) {
+function browserResponse() {
   return {
     browser: {
       threadId,
@@ -21,7 +21,6 @@ function browserResponse(overrides: Record<string, unknown> = {}) {
       suspensionReason: null,
       createdAt: "2026-07-30T01:00:00.000Z",
       updatedAt: "2026-07-30T01:00:00.000Z",
-      ...overrides,
     },
     cdpUrl: "wss://cdp.browser.example",
     lifecycleEventId: null,
@@ -44,20 +43,5 @@ describe("managed browser contracts", () => {
     ).toStrictEqual({
       threadId,
     });
-  });
-
-  it("rejects legacy browser IDs", () => {
-    expect(() => {
-      browserSessionChangedPayloadSchema.parse({
-        browserId: "11111111-1111-4111-8111-111111111111",
-      });
-    }).toThrow();
-    expect(() => {
-      browserContract.use.responses[200].parse(
-        browserResponse({
-          id: "11111111-1111-4111-8111-111111111111",
-        }),
-      );
-    }).toThrow();
   });
 });

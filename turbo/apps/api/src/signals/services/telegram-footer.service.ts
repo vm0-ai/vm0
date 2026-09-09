@@ -39,18 +39,13 @@ function telegramUserLabel(
 
 function displayLabel(row: {
   agentDisplayName: string | null;
-  agentName: string | null;
-  composeName: string;
+  agentName: string;
 }): string {
   const displayName = row.agentDisplayName?.trim();
   if (displayName) {
     return displayName;
   }
-  const agentName = row.agentName?.trim();
-  if (agentName) {
-    return agentName;
-  }
-  return row.composeName.trim() || "zero";
+  return row.agentName;
 }
 
 async function resolveComposeLabel(
@@ -61,7 +56,6 @@ async function resolveComposeLabel(
     .select({
       agentDisplayName: agents.displayName,
       agentName: agents.name,
-      composeName: agents.name,
     })
     .from(agents)
     .where(eq(agents.id, composeId))
@@ -170,7 +164,6 @@ async function resolveRunAgentLabel(
     .select({
       agentDisplayName: agents.displayName,
       agentName: agents.name,
-      composeName: agents.name,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))

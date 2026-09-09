@@ -58,7 +58,15 @@ export interface ComposerConnectorUiState {
   readonly popoverSearch: string;
   readonly popoverSortOrder: readonly string[] | null;
   readonly permissionConnectorSlug: ConnectorSlug | null;
+  readonly directoryTab: ConnectorDirectoryTab;
+  readonly directoryCategory: string | null;
+  readonly directoryDetailSlug: ConnectorSlug | null;
+  /** Index into the connectors the arrow keys currently walk through. */
+  readonly directoryActiveIndex: number;
 }
+
+/** Which half of the directory is showing: what is connected, or what is not. */
+export type ConnectorDirectoryTab = "yours" | "discover" | "custom";
 
 interface ComposerConnectorData {
   readonly relatedCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
@@ -190,6 +198,10 @@ function initialComposerConnectorUiState(): ComposerConnectorUiState {
     popoverSearch: "",
     popoverSortOrder: null,
     permissionConnectorSlug: null,
+    directoryTab: "yours",
+    directoryCategory: null,
+    directoryDetailSlug: null,
+    directoryActiveIndex: 0,
   };
 }
 

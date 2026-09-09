@@ -142,6 +142,7 @@ function buttonNamed(
 
 function limitedFreeBillingStatus(): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier: "limited-free-1",
     supportByok: false,
     restrictedVm0Models: true,

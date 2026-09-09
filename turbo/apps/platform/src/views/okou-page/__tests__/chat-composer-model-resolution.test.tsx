@@ -127,7 +127,9 @@ async function sendMessage(text: string): Promise<void> {
   const mountedComposer = await screen.findByRole("textbox", {
     name: "Message",
   });
-  const composerCard = mountedComposer.closest(".okou-composer");
+  const composerCard = mountedComposer.closest(
+    "[data-slot='chat-composer-card']",
+  );
   if (!composerCard) {
     throw new Error("Mounted composer card was not found");
   }

@@ -11,6 +11,101 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.869.1](https://github.com/vm0-ai/vm0/compare/app-v0.869.0...app-v0.869.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** cap chat search at 25 and bound sparse keyword scans ([#32767](https://github.com/vm0-ai/vm0/issues/32767)) ([0e7fdb7](https://github.com/vm0-ai/vm0/commit/0e7fdb77c421152675528b82feeb698fd95b29d6))
+* **platform:** align composer focus and connector borders ([#32701](https://github.com/vm0-ai/vm0/issues/32701)) ([8dfdc75](https://github.com/vm0-ai/vm0/commit/8dfdc75666353ff056b155c5ebc257f8c7b2b7f2))
+
+
+### Refactoring
+
+* finish brand retirement cleanup ([#32728](https://github.com/vm0-ai/vm0/issues/32728)) ([6254182](https://github.com/vm0-ai/vm0/commit/62541820a08410060d6cfde83887e17fa7a86429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.2
+    * @okouai/core bumped to 8.640.1
+    * @okouai/ui bumped to 1.6.6
+
+## [0.869.0](https://github.com/vm0-ai/vm0/compare/app-v0.868.1...app-v0.869.0) (2026-09-09)
+
+
+### Features
+
+* **platform:** frame every avatar to one size in its box ([#32766](https://github.com/vm0-ai/vm0/issues/32766)) ([90c14bb](https://github.com/vm0-ai/vm0/commit/90c14bb0f0374714cf14ecb1b41762eabb940708))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.640.0
+
+## [0.868.1](https://github.com/vm0-ai/vm0/compare/app-v0.868.0...app-v0.868.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **platform:** drop the dashed outline on a selected freehand stroke ([#32735](https://github.com/vm0-ai/vm0/issues/32735)) ([79896cd](https://github.com/vm0-ai/vm0/commit/79896cde1145c44abdba9ae62b13e94f791f7c51))
+
+## [0.868.0](https://github.com/vm0-ai/vm0/compare/app-v0.867.1...app-v0.868.0) (2026-09-09)
+
+
+### Features
+
+* **app:** add the connector directory behind a feature switch ([#32703](https://github.com/vm0-ai/vm0/issues/32703)) ([b671bb4](https://github.com/vm0-ai/vm0/commit/b671bb4ad7e3fba6e154a66b2cce71323a4c4d82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.639.0
+
+## [0.867.1](https://github.com/vm0-ai/vm0/compare/app-v0.867.0...app-v0.867.1) (2026-09-09)
+
+
+### Refactoring
+
+* **platform:** remove chat run work folding switch ([#32727](https://github.com/vm0-ai/vm0/issues/32727)) ([1357f20](https://github.com/vm0-ai/vm0/commit/1357f20a71a4ddfad029682d776826593492f0cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.1
+    * @okouai/connectors bumped to 3.8.5
+    * @okouai/core bumped to 8.638.1
+
+## [0.867.0](https://github.com/vm0-ai/vm0/compare/app-v0.866.1...app-v0.867.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+
+
+### Bug Fixes
+
+* **app:** reset agent instructions editor on discard ([#32674](https://github.com/vm0-ai/vm0/issues/32674)) ([7f52d90](https://github.com/vm0-ai/vm0/commit/7f52d90aee56e895c55bb79d176a6e296ad04409))
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+* **platform:** show connector progress only when feedback is missing ([#32602](https://github.com/vm0-ai/vm0/issues/32602)) ([9f6cc7c](https://github.com/vm0-ai/vm0/commit/9f6cc7cff0a3837627da0a1839454e8108a99460))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.0
+    * @okouai/core bumped to 8.638.0
+
 ## [0.866.1](https://github.com/vm0-ai/vm0/compare/app-v0.866.0...app-v0.866.1) (2026-09-08)
 
 

@@ -20,7 +20,6 @@ import { isActiveRunModel } from "@okouai/api-contracts/contracts/model-provider
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type {
   SecretResponse,
   SecretType,
@@ -224,7 +223,6 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly publicBrand?: PublicBrand;
 }
 
 type UpdateUserPreferencesResult =

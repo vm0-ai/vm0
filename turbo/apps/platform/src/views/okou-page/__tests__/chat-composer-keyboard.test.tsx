@@ -312,7 +312,7 @@ test("Treat whitespace as an empty message", async () => {
   });
 
   const editor = await loadNewChatComposer();
-  const composer = editor.closest(".okou-composer");
+  const composer = editor.closest("[data-slot='chat-composer-card']");
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer surface not found");
   }
@@ -340,7 +340,7 @@ test("Hide the placeholder after adding an empty line", async () => {
   });
 
   const editor = await loadNewChatComposer();
-  const composer = editor.closest(".okou-composer");
+  const composer = editor.closest("[data-slot='chat-composer-card']");
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer surface not found");
   }

@@ -126,6 +126,7 @@ function billingStatus(
   capabilities: Partial<BillingStatusResponse> = {},
 ): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier,
     credits: 20_000,
     onboardingPaymentPending: false,
@@ -156,7 +157,7 @@ function mockBillingTier(
 async function findComposerEditor(): Promise<HTMLElement> {
   return await waitFor(() => {
     const editor = document.querySelector(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!(editor instanceof HTMLElement)) {
       throw new Error("Composer editor not found");

@@ -24,6 +24,14 @@
 //! exposes no catalog for that identity and marks builtin-dependent sandbox entries
 //! invalid until a usable cache is loaded.
 //!
+//! A known transient JSON body-read failure with a usable cache is INFO. The
+//! next scheduled refresh gets one opportunity to recover; a failed observation
+//! at least one refresh interval later warns once per episode. Only a complete
+//! successful refresh clears the episode, including an unchanged catalog. Other
+//! failures remain warnings. Cache usability includes the consumer's Unix owner
+//! and write-permission checks, so an untrusted file is not an unchanged-payload
+//! success. This reports refresh health, not cache expiry.
+//!
 //! # Cross-language compatibility
 //!
 //! Catalog changes must stay compatible with TypeScript artifact validation in
@@ -58,8 +66,9 @@ use api_contracts::generated::constants::runners::{
     BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION, BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
 };
 
-use super::api::ApiClient;
-use crate::error::{RunnerError, RunnerResult};
+use super::api::{ApiClient, DegradationEpisodeTracker};
+use crate::duration::duration_ms;
+use crate::error::{ApiTransportCause, RunnerError, RunnerResult};
 use crate::lock;
 use crate::types::Firewall;
 
@@ -370,6 +379,7 @@ async fn run_periodic_refresh_with_interval<F, Fut>(
     F: FnMut(CancellationToken) -> Fut,
     Fut: Future<Output = RunnerResult<()>>,
 {
+    let degradation = DegradationEpisodeTracker::new();
     loop {
         tokio::select! {
             biased;
@@ -386,18 +396,122 @@ async fn run_periodic_refresh_with_interval<F, Fut>(
                 if cancel.is_cancelled() {
                     return;
                 }
+                if let Some(recovery) = degradation
+                    .recover(tokio::time::Instant::now().into_std())
+                    .await
+                {
+                    info!(
+                        cache_path = %cache_path.display(),
+                        recovered_after_failures = recovery.recovered_after_failures,
+                        failure_elapsed_ms = duration_ms(recovery.failure_elapsed),
+                        was_degraded = recovery.was_degraded,
+                        "builtin firewall catalog refresh recovered"
+                    );
+                }
             }
             Err(error) => {
                 if cancel.is_cancelled() {
                     return;
                 }
-                warn!(
-                    error = %error,
-                    cache_path = %cache_path.display(),
-                    "periodic builtin firewall catalog refresh failed"
-                );
+                log_periodic_refresh_failure(&error, cache_path, cancel, &degradation, interval)
+                    .await;
             }
         }
+    }
+}
+
+async fn log_periodic_refresh_failure(
+    error: &RunnerError,
+    cache_path: &Path,
+    cancel: &CancellationToken,
+    degradation: &DegradationEpisodeTracker,
+    interval: Duration,
+) {
+    let body_error = match error {
+        RunnerError::ApiBodyRead(error)
+            if error.content_type == "application/json"
+                && matches!(
+                    error.failure_cause,
+                    ApiTransportCause::Timeout
+                        | ApiTransportCause::ConnectionReset
+                        | ApiTransportCause::ConnectionAborted
+                        | ApiTransportCause::BrokenPipe
+                        | ApiTransportCause::UnexpectedEof
+                        | ApiTransportCause::HttpIncompleteMessage
+                        | ApiTransportCause::HttpClosed
+                ) =>
+        {
+            error
+        }
+        _ => {
+            warn!(
+                error = %error,
+                cache_path = %cache_path.display(),
+                "periodic builtin firewall catalog refresh failed"
+            );
+            return;
+        }
+    };
+
+    let cache = tokio::select! {
+        biased;
+        () = cancel.cancelled() => return,
+        result = read_catalog_cache(cache_path) => result,
+    };
+    if cancel.is_cancelled() {
+        return;
+    }
+    match cache {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            warn!(
+                error = %error,
+                cache_path = %cache_path.display(),
+                "periodic builtin firewall catalog refresh failed; cache is missing"
+            );
+            return;
+        }
+        Err(cache_error) => {
+            warn!(
+                error = %error,
+                cache_error = %cache_error,
+                cache_path = %cache_path.display(),
+                "periodic builtin firewall catalog refresh failed; cache is unusable"
+            );
+            return;
+        }
+    }
+
+    // Allow the existing scheduled retry to recover. The threshold is one full
+    // refresh interval (five minutes), not the heartbeat/poll freshness budget.
+    let observation = degradation
+        .observe_failure(tokio::time::Instant::now().into_std(), interval)
+        .await;
+    macro_rules! emit_failure {
+        ($emit:ident, $message:literal) => {
+            $emit!(
+                cache_path = %cache_path.display(),
+                endpoint = body_error.endpoint_label,
+                status = body_error.status.as_u16(),
+                content_type = body_error.content_type,
+                content_length = ?body_error.content_length,
+                received_bytes = body_error.received_bytes,
+                failure_cause = body_error.failure_cause.as_str(),
+                consecutive_failures = observation.consecutive_failures,
+                failure_elapsed_ms = duration_ms(observation.failure_elapsed),
+                degraded = observation.degraded,
+                will_retry = true,
+                $message
+            );
+        };
+    }
+    if observation.emit_degradation {
+        emit_failure!(warn, "builtin firewall catalog refresh degraded");
+    } else {
+        emit_failure!(
+            info,
+            "periodic builtin firewall catalog refresh failed; will retry"
+        );
     }
 }
 
@@ -478,7 +592,7 @@ async fn read_catalog_cache(
     let Some(content) = crate::state_file::read_to_string(
         cache_path,
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
-        crate::state_file::OwnerCheck::CurrentEuid,
+        crate::state_file::OwnerCheck::CurrentEuidNoUntrustedWrites,
     )
     .await?
     else {
@@ -524,10 +638,473 @@ fn validate_catalog_digest(value: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+    use crate::http::{HttpClient, HttpClientConfig};
+    use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, json_response};
     use crate::types::{FirewallApi, FirewallAuth, FirewallPermission};
+    use tracing::{Level, instrument::WithSubscriber};
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    struct RefreshFixture {
+        api: ApiClient,
+        cache_path: PathBuf,
+        lock_path: PathBuf,
+        _dir: tempfile::TempDir,
+    }
+
+    impl RefreshFixture {
+        async fn new(server: &RawHttpTestServer) -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+            let api = ApiClient::new(
+                HttpClient::new(HttpClientConfig {
+                    api_url: server.url(),
+                    vercel_bypass: None,
+                    client_session_id: "catalog-refresh-test".to_string(),
+                })
+                .unwrap(),
+                "private-runner-token".to_string(),
+            );
+            run_initial_refresh(&api, &cache_path, &lock_path, &CancellationToken::new())
+                .await
+                .unwrap();
+            Self {
+                api,
+                cache_path,
+                lock_path,
+                _dir: dir,
+            }
+        }
+    }
+
+    fn catalog_response() -> Vec<u8> {
+        json_response(
+            "200 OK",
+            &serde_json::to_string(&catalog("github")).unwrap(),
+        )
+    }
+
+    fn truncated_response(content_type: &str) -> Vec<u8> {
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: 256\r\nConnection: close\r\n\r\nprivate-response-body"
+        )
+        .into_bytes()
+    }
+
+    async fn advance_refresh_interval<F: Future<Output = ()>>(mut refresh: Pin<&mut F>) {
+        // Poll the real loop until it registers its next sleep, then advance only
+        // that sleep. Keep the clock running for real socket and filesystem I/O.
+        tokio::select! {
+            biased;
+            () = &mut refresh => panic!("refresh loop exited before cancellation"),
+            () = tokio::task::yield_now() => {}
+        }
+        tokio::time::pause();
+        tokio::time::advance(BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL).await;
+        tokio::time::resume();
+    }
+
+    async fn next_refresh_event<F: Future<Output = ()>>(
+        mut refresh: Pin<&mut F>,
+        captured: &CapturedEvents,
+    ) -> CapturedEvent {
+        captured.clear();
+        advance_refresh_interval(refresh.as_mut()).await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::select! {
+                biased;
+                () = refresh => panic!("refresh loop exited before cancellation"),
+                event = async {
+                    loop {
+                        let events: Vec<_> = captured.entries().into_iter().filter(|event| {
+                            event.fields.get("message").is_some_and(|message| {
+                                message.starts_with("periodic builtin firewall catalog refresh")
+                                    || message.starts_with("builtin firewall catalog refresh ")
+                            })
+                        }).collect();
+                        if !events.is_empty() {
+                            assert_eq!(events.len(), 1, "one outcome per refresh: {events:?}");
+                            let event = events.into_iter().next().unwrap();
+                            return event;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                } => event,
+            }
+        })
+        .await
+        .expect("refresh must produce an observable failure or recovery")
+    }
+
+    #[tokio::test]
+    async fn periodic_body_read_failures_degrade_once_and_recover_unchanged_cache() {
+        let truncated = truncated_response("application/json; private=private-header-value");
+        let server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated.clone()),
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated.clone()),
+            RawHttpAction::Respond(truncated.clone()),
+            RawHttpAction::Respond(truncated.clone()),
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated.clone()),
+            RawHttpAction::Respond(truncated),
+            RawHttpAction::Respond(catalog_response()),
+        ])
+        .await;
+        let fixture = RefreshFixture::new(&server).await;
+        let original = tokio::fs::read(&fixture.cache_path).await.unwrap();
+        #[cfg(unix)]
+        let original_inode = {
+            use std::os::unix::fs::MetadataExt;
+            tokio::fs::metadata(&fixture.cache_path)
+                .await
+                .unwrap()
+                .ino()
+        };
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let cancel = CancellationToken::new();
+        let refresh = run_periodic_refresh(
+            fixture.api,
+            fixture.cache_path.clone(),
+            fixture.lock_path,
+            cancel.clone(),
+            BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+        )
+        .with_subscriber(subscriber);
+        tokio::pin!(refresh);
+
+        for (index, (level, count, degraded)) in [
+            (Level::INFO, "1", "false"),
+            (Level::INFO, "1", "false"),
+            (Level::INFO, "1", "false"),
+            (Level::WARN, "2", "true"),
+            (Level::INFO, "3", "true"),
+            (Level::INFO, "3", "true"),
+            (Level::INFO, "1", "false"),
+            (Level::WARN, "2", "true"),
+            (Level::INFO, "2", "true"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let event = next_refresh_event(refresh.as_mut(), &captured).await;
+            assert_eq!(event.level, level, "{event:?}");
+            if matches!(index, 1 | 5 | 8) {
+                assert_eq!(
+                    event.fields["message"],
+                    "builtin firewall catalog refresh recovered"
+                );
+                assert_eq!(event.fields["recovered_after_failures"], count);
+                assert_eq!(event.fields["was_degraded"], degraded);
+            } else {
+                assert_eq!(event.fields["consecutive_failures"], count);
+                assert_eq!(event.fields["degraded"], degraded);
+                assert_eq!(event.fields["status"], "200");
+                assert_eq!(event.fields["content_type"], "application/json");
+                assert_eq!(event.fields["content_length"], "Some(256)");
+                assert_eq!(event.fields["failure_cause"], "unexpected_eof");
+                assert!(event.fields["received_bytes"].parse::<u64>().unwrap() < 256);
+                let diagnostic = format!("{event:?}");
+                for private in [
+                    "private-response-body",
+                    "private-header-value",
+                    "private-runner-token",
+                ] {
+                    assert!(!diagnostic.contains(private), "{diagnostic}");
+                }
+            }
+            assert_eq!(
+                tokio::fs::read(&fixture.cache_path).await.unwrap(),
+                original
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                assert_eq!(
+                    tokio::fs::metadata(&fixture.cache_path)
+                        .await
+                        .unwrap()
+                        .ino(),
+                    original_inode
+                );
+            }
+        }
+        cancel.cancel();
+        refresh.await;
+        let requests = server.assert_finished_with_requests().await;
+        assert_eq!(requests.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn periodic_catalog_genuine_failures_warn_without_resetting_body_read_episode() {
+        let oversized = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            BUILTIN_FIREWALL_CATALOG_MAX_BYTES + 1
+        )
+        .into_bytes();
+        let invalid_chunks = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\nnot-a-chunk-size\r\n".to_vec();
+        let failures = [
+            json_response("403 Forbidden", r#"{"error":"forbidden"}"#),
+            json_response("200 OK", "not JSON"),
+            json_response("200 OK", "{}"),
+            oversized,
+            invalid_chunks,
+            truncated_response("text/html; private=private-header-value"),
+        ];
+        let mut actions = vec![
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated_response("application/json")),
+        ];
+        actions.extend(failures.iter().cloned().map(RawHttpAction::Respond));
+        actions.push(RawHttpAction::Respond(catalog_response()));
+        let server = RawHttpTestServer::spawn(actions).await;
+        let fixture = RefreshFixture::new(&server).await;
+        let original = tokio::fs::read(&fixture.cache_path).await.unwrap();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let cancel = CancellationToken::new();
+        let refresh = run_periodic_refresh(
+            fixture.api,
+            fixture.cache_path.clone(),
+            fixture.lock_path,
+            cancel.clone(),
+            BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+        )
+        .with_subscriber(subscriber);
+        tokio::pin!(refresh);
+
+        assert_eq!(
+            next_refresh_event(refresh.as_mut(), &captured).await.level,
+            Level::INFO
+        );
+        for _ in failures {
+            let event = next_refresh_event(refresh.as_mut(), &captured).await;
+            assert_eq!(event.level, Level::WARN, "{event:?}");
+            assert_eq!(
+                event.fields["message"],
+                "periodic builtin firewall catalog refresh failed"
+            );
+            assert!(!format!("{event:?}").contains("private-header-value"));
+            assert_eq!(
+                tokio::fs::read(&fixture.cache_path).await.unwrap(),
+                original
+            );
+        }
+        let recovery = next_refresh_event(refresh.as_mut(), &captured).await;
+        assert_eq!(
+            recovery.fields["message"],
+            "builtin firewall catalog refresh recovered"
+        );
+        assert_eq!(recovery.fields["recovered_after_failures"], "1");
+        assert_eq!(recovery.fields["was_degraded"], "false");
+        cancel.cancel();
+        refresh.await;
+        server.assert_finished().await;
+    }
+
+    #[tokio::test]
+    async fn periodic_body_read_failure_with_unusable_cache_warns_immediately() {
+        for missing in [true, false] {
+            let server = RawHttpTestServer::spawn(vec![
+                RawHttpAction::Respond(catalog_response()),
+                RawHttpAction::Respond(truncated_response("application/json")),
+            ])
+            .await;
+            let fixture = RefreshFixture::new(&server).await;
+            if missing {
+                tokio::fs::remove_file(&fixture.cache_path).await.unwrap();
+            } else {
+                tokio::fs::write(&fixture.cache_path, "invalid cache")
+                    .await
+                    .unwrap();
+            }
+            let captured = CapturedEvents::default();
+            let subscriber = tracing_subscriber::registry().with(captured.clone());
+            let cancel = CancellationToken::new();
+            let refresh = run_periodic_refresh(
+                fixture.api,
+                fixture.cache_path,
+                fixture.lock_path,
+                cancel.clone(),
+                BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+            )
+            .with_subscriber(subscriber);
+            tokio::pin!(refresh);
+
+            let event = next_refresh_event(refresh.as_mut(), &captured).await;
+            assert_eq!(event.level, Level::WARN);
+            assert_eq!(
+                event.fields["message"],
+                if missing {
+                    "periodic builtin firewall catalog refresh failed; cache is missing"
+                } else {
+                    "periodic builtin firewall catalog refresh failed; cache is unusable"
+                }
+            );
+            cancel.cancel();
+            refresh.await;
+            server.assert_finished().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn periodic_catalog_publication_failure_preserves_cache_and_warns() {
+        let server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(catalog_response()),
+        ])
+        .await;
+        let fixture = RefreshFixture::new(&server).await;
+        let original = tokio::fs::read(&fixture.cache_path).await.unwrap();
+        let _lock = lock::acquire(fixture.lock_path.clone()).await.unwrap();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let cancel = CancellationToken::new();
+        let refresh = run_periodic_refresh(
+            fixture.api,
+            fixture.cache_path.clone(),
+            fixture.lock_path,
+            cancel.clone(),
+            BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+        )
+        .with_subscriber(subscriber);
+        tokio::pin!(refresh);
+
+        let event = next_refresh_event(refresh.as_mut(), &captured).await;
+        assert_eq!(event.level, Level::WARN);
+        assert!(event.fields["error"].contains("cache lock is already held"));
+        assert_eq!(
+            tokio::fs::read(&fixture.cache_path).await.unwrap(),
+            original
+        );
+        cancel.cancel();
+        refresh.await;
+        server.assert_finished().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn periodic_refresh_rejects_untrusted_cache_and_repairs_unchanged_payload() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated_response("application/json")),
+            RawHttpAction::Respond(truncated_response("application/json")),
+            RawHttpAction::Respond(catalog_response()),
+        ])
+        .await;
+        let fixture = RefreshFixture::new(&server).await;
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let cancel = CancellationToken::new();
+        let refresh = run_periodic_refresh(
+            fixture.api,
+            fixture.cache_path.clone(),
+            fixture.lock_path,
+            cancel.clone(),
+            BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+        )
+        .with_subscriber(subscriber);
+        tokio::pin!(refresh);
+
+        assert_eq!(
+            next_refresh_event(refresh.as_mut(), &captured).await.level,
+            Level::INFO
+        );
+        tokio::fs::set_permissions(&fixture.cache_path, std::fs::Permissions::from_mode(0o666))
+            .await
+            .unwrap();
+        let failure = next_refresh_event(refresh.as_mut(), &captured).await;
+        assert_eq!(failure.level, Level::WARN);
+        assert_eq!(
+            failure.fields["message"],
+            "periodic builtin firewall catalog refresh failed; cache is unusable"
+        );
+        assert!(failure.fields["cache_error"].contains("group or other users"));
+
+        let recovery = next_refresh_event(refresh.as_mut(), &captured).await;
+        assert_eq!(recovery.level, Level::INFO);
+        assert_eq!(
+            recovery.fields["message"],
+            "builtin firewall catalog refresh recovered"
+        );
+        assert_eq!(recovery.fields["recovered_after_failures"], "1");
+        assert_eq!(
+            tokio::fs::metadata(&fixture.cache_path)
+                .await
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        let cache = read_catalog_cache(&fixture.cache_path)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cache.firewalls, catalog("github").firewalls);
+        cancel.cancel();
+        refresh.await;
+        server.assert_finished().await;
+    }
+
+    #[tokio::test]
+    async fn periodic_catalog_cancellation_closes_request_without_failure_or_recovery() {
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(catalog_response()),
+            RawHttpAction::Respond(truncated_response("application/json")),
+            RawHttpAction::WaitForDisconnect,
+        ])
+        .await;
+        let fixture = RefreshFixture::new(&server).await;
+        server.next_request("initial catalog refresh").await;
+        let original = tokio::fs::read(&fixture.cache_path).await.unwrap();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(
+            captured
+                .clone()
+                .with_filter(tracing_subscriber::filter::LevelFilter::INFO),
+        );
+        let cancel = CancellationToken::new();
+        let refresh = run_periodic_refresh(
+            fixture.api,
+            fixture.cache_path.clone(),
+            fixture.lock_path,
+            cancel.clone(),
+            BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
+        )
+        .with_subscriber(subscriber);
+        tokio::pin!(refresh);
+
+        assert_eq!(
+            next_refresh_event(refresh.as_mut(), &captured).await.level,
+            Level::INFO
+        );
+        server.next_request("failed catalog body read").await;
+        captured.clear();
+        advance_refresh_interval(refresh.as_mut()).await;
+        tokio::select! {
+            biased;
+            () = &mut refresh => panic!("refresh exited before cancellation"),
+            _ = server.next_request("pending catalog refresh") => {}
+        }
+        cancel.cancel();
+        refresh.await;
+        server.assert_finished().await;
+        assert!(captured.entries().is_empty(), "{:?}", captured.entries());
+        assert_eq!(
+            tokio::fs::read(&fixture.cache_path).await.unwrap(),
+            original
+        );
+    }
 
     fn digest() -> String {
         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()

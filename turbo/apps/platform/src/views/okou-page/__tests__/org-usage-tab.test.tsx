@@ -41,6 +41,7 @@ function mockBillingStatus(
 ): void {
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
+      showUsagePack: false,
       tier: "pro",
       credits: 12_000,
       onboardingPaymentPending: false,

@@ -193,6 +193,28 @@ raises the frontend compatibility floor, rolling the frontend below that floor
 also requires rolling back the backend floor. Rolling the backend back to the
 dual-protocol preparation release remains safe for canonical clients.
 
+### Pi native session history
+
+Pi checkpoint persistence shares the Runner's 128 MiB raw and encoded history
+bound. The API-first execution budget remains 16 MiB. Before resource loading or
+provider ownership, a larger saved checkpoint selects sandbox-first execution
+from blob metadata. A V4 ownership-transfer manifest carries a presigned history
+reference; only the sandbox downloads and decompresses H0 for the next turn. The
+API still validates complete H2 history at checkpoint time, so its peak memory
+and validation work can exceed the raw file size.
+
+V3 manifests remain the active format for API-produced H1 and small
+sandbox-first H0. The CLI accepts both formats and retains the same V2 Guest
+boundary control; Runner job and launch-config schemas are unchanged. API and
+CLI changes must ship through the same commit-addressed CLI artifact selection.
+Previously captured contexts retain their package and history reference; new
+contexts select the new reader. Old Runners already support 128 MiB history.
+
+Pi remains staff-only behind `PiLoop`. Rolling the API back below this change
+restores its 16 MiB validation and resume limit: larger saved histories stay in
+storage, but continuing those sessions requires the fixed API and CLI again.
+There is no history truncation, migration, or alternate reader for that rollback.
+
 ### Runner
 
 Runner deployment is draining, not instant. The production promote playbook
@@ -428,6 +450,52 @@ recovery must restore compatibility first or roll forward.
 Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
+
+### Okou Goal retirement rollback floor
+
+The production rollback resolver requires the release/API target to contain
+Goal retirement commit `6d391117e4fead19e2105136fb2792a6e77801d8`. The first
+compatible release is `1f68f182a2457ec3aea52d8063be2bd2d2263abd` (API 1.571.1).
+This permanent floor prevents canonical rollback from restoring Goal creation,
+reactivation, or continuation. It rejects pre-boundary targets before API or
+Runner artifact resolution and output publication, even if the rollback
+dashboard still lists those historical releases.
+
+Apply this floor only to the release/API target: the first compatible release
+retained an older Runner tag. All independent Runner ancestry, reader, host
+architecture, and release-asset checks still apply. The rollback workflow loads
+the resolver from current `main`, so merging the guard constrains future
+canonical executions without a release or test rollback. This does not prove
+that old fixed API deployments are non-writable or authorize Goal archival;
+those remain separate gates in [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
+
+### Usage pack visibility compatibility retirement
+
+`showUsagePack` has an explicit API writer and billing response starting with
+commit `65ac0518bde2310887470cb0874aeae06c0c0397`, first released in
+`api-v1.570.0` (`22c62b9e92f42078ae314e505b983a62eda35dac`). Its
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34227208941/job/102068385804)
+completed on 2026-09-08 at 12:54:51 UTC. The later `api-v1.572.1` artifact
+(`561b7d6bf0da6ccca2542c0f9cd053d67151ba31`) also completed
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34297728653/job/102298538957)
+on 2026-09-09 at 01:11:34 UTC.
+
+Migration `1092` removes the temporary legacy-writer trigger and function after
+this rollout. The billing response now requires the flag, and the frontend
+reads it directly. The existing Okou Goal retirement rollback floor requires
+commit `6d391117e4fead19e2105136fb2792a6e77801d8`, which descends from the
+explicit usage-pack writer commit. Its first compatible release is API 1.571.1,
+so every permitted rollback target also contains the required writer and
+response. The resolver runs from current `main` and rejects older targets before
+artifact resolution, including entries still retained in the rollback dashboard.
+Keep this enforced boundary when retiring the usage-pack compatibility bridge;
+all other deployment and Runner rollback checks continue to apply.
+
+The cleanup retains existing visibility values, the physical
+`member_invite_usage_pack_required` column and its ORM declaration, and all
+existing admin requirements. It does not change usage-pack balances or purchase
+eligibility. Further legacy-column retirement remains tracked in
+[issue #32575](https://github.com/vm0-ai/vm0/issues/32575).
 
 ### Workflow automation connector-account projections
 

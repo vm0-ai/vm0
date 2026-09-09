@@ -68,14 +68,14 @@ function physicalEntries(
 const publicBrandDisposition = {
   classification: "retain",
   reason:
-    "VM0 remains a supported public presentation brand, so persisted public_brand values are an active product boundary rather than an internal alias.",
+    "Persisted public_brand values preserve historical object and integration identities; current public presentation uses Okou.",
   ownerIssue: "#27750",
   writerStopCondition:
-    "#27750 records a product decision that disables creation of new VM0-branded objects on every listed public_brand surface.",
+    "Okou-only public writers shipped in #32484. Any remaining legacy database defaults require verification of their individual writers.",
   drainEvidence:
-    "For 30 consecutive days after that decision, production counts have zero new vm0-branded rows and zero supported VM0-domain reads that require the value.",
+    "Historical VM0 objects remain legitimate reads. Elapsed rollout time or zero recent writes does not establish that those objects are absent.",
   removalGate:
-    "#27750 approves removal only after the 30-day zero-write/read window and every listed public_brand member is backfilled or explicitly retained.",
+    "Retain members needed by historical objects, including the permanent compatibility decision in #28449. Removal requires an explicit retirement decision and verified zero dependencies from supported writers, stored objects, and readers for that member.",
 } as const satisfies ManifestDisposition;
 
 const desktopDisposition = {

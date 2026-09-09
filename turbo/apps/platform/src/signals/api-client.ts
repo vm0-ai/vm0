@@ -1,5 +1,5 @@
 /**
- * Type-safe tRPC-backed API client for platform → zero API calls.
+ * Type-safe API client for Platform → Okou API calls.
  *
  * Replaces raw fetch$ usage with typed tRPC-backed clients that provide
  * compile-time type checking for request/response shapes.

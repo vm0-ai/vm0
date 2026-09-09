@@ -68,11 +68,15 @@ function MediaImage({
   url,
   alt,
   load,
+  asLink = false,
+  insideLink = false,
 }: {
   src: string | undefined;
   url: string;
   alt: string;
   load: ImageLoadSignals;
+  asLink?: boolean;
+  insideLink?: boolean;
 }) {
   const imageStatus = useGet(load.status$);
   const markLoaded = useSet(load.loaded$);
@@ -86,17 +90,10 @@ function MediaImage({
   const openImageLightbox = useSet(openImageLightbox$);
   const showPlaceholder = imageStatus !== "loaded";
 
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        const threadId = event.currentTarget.closest<HTMLElement>(
-          "[data-chat-thread-container-id]",
-        )?.dataset.chatThreadContainerId;
-        openImageLightbox(threadId ? { threadId, url } : url);
-      }}
-      className="my-1 inline-grid aspect-[10/9] w-[200px] max-w-full cursor-pointer grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
-    >
+  const className =
+    "my-1 inline-grid aspect-[10/9] w-[200px] max-w-full cursor-pointer grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden rounded-lg border border-foreground/10 bg-muted/30";
+  const preview = (
+    <>
       {showPlaceholder && (
         <span
           data-testid="markdown-image-preview-loading"
@@ -122,6 +119,38 @@ function MediaImage({
           }`}
         />
       )}
+    </>
+  );
+
+  if (asLink) {
+    // A linked Markdown thumbnail already has its own destination.
+    if (insideLink) {
+      return <span className={className}>{preview}</span>;
+    }
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+      >
+        {preview}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        const threadId = event.currentTarget.closest<HTMLElement>(
+          "[data-chat-thread-container-id]",
+        )?.dataset.chatThreadContainerId;
+        openImageLightbox(threadId ? { threadId, url } : url);
+      }}
+      className={className}
+    >
+      {preview}
     </button>
   );
 }
@@ -241,6 +270,24 @@ function MediaImageRenderer(props: MarkdownImageProps) {
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }
 
+function LinkedMediaImageRenderer(props: MarkdownImageProps) {
+  const { src, alt } = props;
+  const load = props.node?.data?.imageLoadSignals;
+  if (typeof src === "string" && isSafeMediaUrl(src) && load) {
+    return (
+      <MediaImage
+        src={src}
+        url={src}
+        alt={alt ?? ""}
+        load={load}
+        asLink
+        insideLink={props.node?.data?.imageInsideLink}
+      />
+    );
+  }
+  return <PlainImageRenderer {...props} />;
+}
+
 function containsBlockArtifact(node: Element): boolean {
   return node.children.some((child) => {
     if (child.type !== "element") {
@@ -340,6 +387,11 @@ const MEDIA_MARKDOWN_COMPONENTS = {
   div: MarkdownDivRenderer,
 } as const;
 
+const LINKED_MEDIA_MARKDOWN_COMPONENTS = {
+  ...PLAIN_MARKDOWN_COMPONENTS,
+  img: LinkedMediaImageRenderer,
+} as const;
+
 // Neutralize raw HTML by escaping only `<`: a tag cannot start without it, so
 // escaping `<` alone stops tag injection. Leaving `>` intact preserves Markdown
 // block syntax that relies on a leading `>` — most importantly blockquotes,
@@ -347,7 +399,7 @@ const MEDIA_MARKDOWN_COMPONENTS = {
 interface MarkdownTreeFrameProps {
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly mediaPreview?: boolean;
+  readonly mediaPreview?: boolean | "link";
   readonly tree: Root;
 }
 
@@ -361,9 +413,12 @@ function MarkdownTreeFrame({
     <MarkdownFrame className={className} style={style}>
       {toJsxRuntime(tree, {
         Fragment,
-        components: mediaPreview
-          ? MEDIA_MARKDOWN_COMPONENTS
-          : PLAIN_MARKDOWN_COMPONENTS,
+        components:
+          mediaPreview === "link"
+            ? LINKED_MEDIA_MARKDOWN_COMPONENTS
+            : mediaPreview
+              ? MEDIA_MARKDOWN_COMPONENTS
+              : PLAIN_MARKDOWN_COMPONENTS,
         ignoreInvalidStyle: true,
         jsx,
         jsxs,
@@ -383,7 +438,7 @@ export function MarkdownEventBody({
   mediaPreview,
 }: {
   readonly tree: Root;
-  readonly mediaPreview: boolean;
+  readonly mediaPreview: boolean | "link";
 }) {
   return (
     <MarkdownTreeFrame

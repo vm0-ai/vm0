@@ -137,16 +137,16 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });
 
-export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
-});
-
 export const agentMessageMathEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AgentMessageMath] ?? false;
 });
 
 export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
+});
+
+export const avatarFramingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AvatarFraming] ?? false;
 });
 
 export const customConnectorMcpEnabled$ = computed((get): boolean => {

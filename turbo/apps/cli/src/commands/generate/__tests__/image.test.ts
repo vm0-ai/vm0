@@ -960,6 +960,9 @@ describe("okou generate image command", () => {
     const normalizedHelpOutput = helpOutput.replace(/\s+/g, " ");
 
     expect(helpOutput).toContain("gpt-image-2");
+    expect(helpOutput).toContain("gpt-image-2.5-flare");
+    expect(helpOutput).toContain("gpt-image-2.5-sunburst");
+    expect(normalizedHelpOutput).toContain("xhigh and max");
     expect(helpOutput).toContain("gpt-image-1 (default)");
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
@@ -972,7 +975,7 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("--compression <0-100>");
     expect(helpOutput).toContain("Moderation strictness: auto or low");
     expect(helpOutput).toContain(
-      "Uses fal.ai and BytePlus for built-in image model execution",
+      "Uses OpenAI, fal.ai, and BytePlus for built-in image model execution",
     );
     expect(helpOutput).toContain("--seed");
     expect(helpOutput).toContain("--safety-tolerance");

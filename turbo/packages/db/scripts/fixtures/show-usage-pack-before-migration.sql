@@ -1,5 +1,5 @@
 -- org_plan_entitlements from 1089_snapshot.json at
--- 31c98f1feb32cd19c975467d6943c9532813fc52; remove with compatibility #32575.
+-- 31c98f1feb32cd19c975467d6943c9532813fc52, for historical 1090 backfill coverage.
 CREATE TABLE "org_plan_entitlements" (
   "org_id" text PRIMARY KEY NOT NULL,
   "plan_key" text NOT NULL,

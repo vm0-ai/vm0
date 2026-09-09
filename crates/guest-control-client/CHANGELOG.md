@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.5](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.4...guest-control-client-v0.19.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify cancelled workspace promotion skips ([#32793](https://github.com/vm0-ai/vm0/issues/32793)) ([5b45464](https://github.com/vm0-ai/vm0/commit/5b4546424e912fee5831a284ea9a54ead5311c1b))
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+
+## [0.19.4](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.3...guest-control-client-v0.19.4) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** attribute guest connection startup phases ([#32705](https://github.com/vm0-ai/vm0/issues/32705)) ([176ca98](https://github.com/vm0-ai/vm0/commit/176ca98235eee2d021f23448aef8158d51ecb43f))
+
 ## [0.19.3](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.2...guest-control-client-v0.19.3) (2026-09-08)
 
 ## [0.19.2](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.1...guest-control-client-v0.19.2) (2026-09-08)

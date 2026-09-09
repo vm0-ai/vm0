@@ -262,7 +262,7 @@ const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
 const clerkJsVersion = "6.25.8";
 const previewClerkHost = "informed-calf-6.clerk.accounts.dev";
-const productionClerkHost = "clerk.vm0.ai";
+const productionClerkHost = "clerk.okou.ai";
 const previewClerkPublishableKey = publishableKey("test", previewClerkHost);
 const productionClerkPublishableKey = publishableKey(
   "live",

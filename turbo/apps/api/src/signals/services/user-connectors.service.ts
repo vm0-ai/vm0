@@ -18,6 +18,7 @@ import {
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import { publishConnectorRuntimeSyncWakeups } from "./connector-runtime-wakeup.service";
+import { changedCustomConnectorIds } from "./user-custom-connector-changes";
 import {
   effectiveCustomConnectorPermissionBundleRef,
   FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
@@ -60,7 +61,7 @@ type DbTransaction = Tx;
 
 interface UserCustomConnectorTransactionResult {
   readonly result: UpdateUserCustomConnectorsResult;
-  readonly previousIds: readonly string[];
+  readonly changedConnectorIds: readonly string[];
 }
 
 interface UpdateUserCustomConnectorsArgs {
@@ -588,7 +589,7 @@ async function persistUserCustomConnectorTransaction(args: {
     args.request,
   );
   if (!agentLocked) {
-    return { result: { status: "agentNotFound" }, previousIds: [] };
+    return { result: { status: "agentNotFound" }, changedConnectorIds: [] };
   }
   const previousRows = await args.tx
     .select({
@@ -620,7 +621,11 @@ async function persistUserCustomConnectorTransaction(args: {
         grants: args.grants,
         operation: args.operation,
       }),
-      previousIds,
+      changedConnectorIds: changedCustomConnectorIds(
+        previousRows,
+        args.grants,
+        args.operation,
+      ),
     };
   }
   const definitions = await lockCustomConnectorDefinitionsForGrant(args.tx, {
@@ -633,7 +638,7 @@ async function persistUserCustomConnectorTransaction(args: {
         status: "customConnectorsNotFound",
         missingIds: definitions.missingIds,
       },
-      previousIds,
+      changedConnectorIds: [],
     };
   }
   const previousIdSet = new Set(previousIds);
@@ -652,7 +657,7 @@ async function persistUserCustomConnectorTransaction(args: {
     if (!isCustomConnectorMcpEnabled(featureSwitchContext)) {
       return {
         result: { status: "mcpFeatureDisabled" },
-        previousIds,
+        changedConnectorIds: [],
       };
     }
   }
@@ -669,26 +674,31 @@ async function persistUserCustomConnectorTransaction(args: {
     snapshot: args.connectorCatalogSnapshot,
   });
   if (!permissionSelection.ok) {
-    return { result: permissionSelection.error, previousIds };
+    return { result: permissionSelection.error, changedConnectorIds: [] };
   }
+  const validatedGrants = connectorIds.map((customConnectorId) => {
+    return {
+      customConnectorId,
+      permissionNames: [
+        ...(permissionSelection.permissionNamesByConnectorId.get(
+          customConnectorId,
+        ) ?? []),
+      ],
+    };
+  });
   return {
     result: await persistUserCustomConnectorUpdate(args.tx, {
       orgId: args.request.orgId,
       userId: args.request.userId,
       agentId: args.request.agentId,
-      grants: connectorIds.map((customConnectorId) => {
-        return {
-          customConnectorId,
-          permissionNames: [
-            ...(permissionSelection.permissionNamesByConnectorId.get(
-              customConnectorId,
-            ) ?? []),
-          ],
-        };
-      }),
+      grants: validatedGrants,
       operation: args.operation,
     }),
-    previousIds,
+    changedConnectorIds: changedCustomConnectorIds(
+      previousRows,
+      validatedGrants,
+      args.operation,
+    ),
   };
 }
 
@@ -733,15 +743,7 @@ export async function updateUserCustomConnectors(
         userId: args.userId,
         agentId: args.agentId,
       },
-      targets: [
-        ...committed.previousIds,
-        ...committed.result.grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        ...grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-      ].map((customConnectorId) => {
+      targets: committed.changedConnectorIds.map((customConnectorId) => {
         return { kind: "custom" as const, customConnectorId };
       }),
     });

@@ -1924,7 +1924,6 @@ async function appendAssociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly appendQueueMarker: boolean;
   readonly triggerSource: "web" | "agent";
-  readonly publicBrand: PublicBrand;
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
@@ -2916,7 +2915,6 @@ function scheduleAssociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly triggerSource: "web" | "agent";
-  readonly publicBrand: PublicBrand;
 }): void {
   waitUntil(
     (async () => {
@@ -2935,7 +2933,6 @@ function scheduleAssociatedUserMessage(params: {
         userMessage: params.body.userMessage,
         appendQueueMarker: params.appendQueueMarker,
         triggerSource: params.triggerSource,
-        publicBrand: params.publicBrand,
         clearDraft: true,
       });
       if (inserted) {
@@ -2979,7 +2976,6 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
   readonly triggerSource: "web" | "agent";
-  readonly publicBrand: PublicBrand;
   readonly queueFirstClaim:
     | {
         readonly createdAt: Date;
@@ -3024,7 +3020,6 @@ function scheduleCreatedChatRunSideEffects(params: {
     touchThreadSort: params.touchThreadSort,
     attachFileMetadata: params.attachFileMetadata,
     triggerSource: params.triggerSource,
-    publicBrand: params.publicBrand,
   });
 }
 
@@ -3079,7 +3074,6 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
 async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   const appUrl = env("APP_URL");
@@ -3189,14 +3183,12 @@ async function appendInsufficientCreditsEvents(params: {
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
   readonly touchThreadSort: boolean;
   readonly queueFirstEventId?: string;
 }): Promise<CreatedChatEventResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
     orgId: params.orgId,
-    publicBrand: params.publicBrand,
   });
   if (params.queueFirstEventId) {
     return appendQueueFirstInsufficientCreditsEvents({
@@ -3514,7 +3506,6 @@ function scheduleNormalChatRunSideEffects(params: {
       params.prepared.thread.isNewThread,
     ),
     triggerSource: params.prepared.triggerSource,
-    publicBrand: params.args.publicBrand,
     queueFirstClaim: {
       createdAt: params.queueFirstClaimedAt,
     },
@@ -3568,7 +3559,6 @@ const createNormalChatRun$ = command(
         body: prepared.body,
         userId: args.userId,
         orgId: args.orgId,
-        publicBrand: args.publicBrand,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
           args.agentRunPreCreateSource,
           prepared.thread.isNewThread,

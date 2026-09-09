@@ -30,6 +30,12 @@ case "${1:-}" in
       else
         [ "${MOCK_BLANK_TARGET_FLOOR_VALID:-1}" = "1" ]
       fi
+    elif [ "${3:-}" = "6d391117e4fead19e2105136fb2792a6e77801d8" ]; then
+      # The retained Runner predates S1 even when the API target contains it.
+      if [ "${4:-}" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ]; then
+        exit 1
+      fi
+      [ "${MOCK_GOAL_TARGET_FLOOR_VALID:-1}" = "1" ]
     else
       [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
     fi
@@ -80,6 +86,7 @@ SH
 cat >"${fake_bin}/ssh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'ssh %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
 if [ "${1:-}" = "-n" ]; then shift; fi
 remote=$1
 host=${remote#*@}
@@ -121,12 +128,14 @@ assert_failure() {
   grep -q "$expected_message" "${tmp_dir}/failure.err" || fail "missing failure message: ${expected_message}"
 }
 
+# An S1-compatible API target must still resolve its valid pre-S1 Runner.
 : >"${tmp_dir}/boundaries.log"
 output_file="${tmp_dir}/success.output"
 run_resolver "$output_file" >"${tmp_dir}/success.log"
 grep -qx "target_commit=${target_commit}" "$output_file" || fail "missing target commit output"
 grep -qx "api_deployment_url=https://api-0.vercel.app" "$output_file" || fail "missing API deployment output"
 grep -qx "runner_version=1.2.3" "$output_file" || fail "missing Runner version output"
+grep -qx "runner_tag=runner-rs-v1.2.3" "$output_file" || fail "missing retained Runner tag output"
 runner_matrix=$(sed -n 's/^runner_matrix=//p' "$output_file")
 jq -e 'length == 2 and .[0].id == "arm64" and .[1].id == "x86_64"' >/dev/null <<<"$runner_matrix" || fail "unexpected Runner matrix"
 
@@ -167,6 +176,18 @@ assert_failure "Target commit predates the blank sandbox status reader" \
 [ ! -s "${tmp_dir}/blank-target-floor.output" ] || fail "old blank reader target must not publish outputs"
 if grep -q '^curl ' "${tmp_dir}/boundaries.log"; then
   fail "blank reader target rejection must precede artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Target commit predates the Okou Goal retirement boundary" \
+  run_resolver "${tmp_dir}/goal-target-floor.output" \
+  MOCK_READER_FLOOR_VALID=1 MOCK_BLANK_TARGET_FLOOR_VALID=1 MOCK_GOAL_TARGET_FLOOR_VALID=0
+grep -Fq "first compatible release is 1f68f182a2457ec3aea52d8063be2bd2d2263abd (API 1.571.1)" \
+  "${tmp_dir}/failure.err" || fail "Goal rejection must identify the first compatible API release"
+[ ! -s "${tmp_dir}/goal-target-floor.output" ] || fail "pre-S1 API target must not publish outputs"
+[ ! -s "${tmp_dir}/failure.out" ] || fail "pre-S1 API target must not print resolved targets"
+if grep -qE '^(curl|ssh|git (show|rev-list)) ' "${tmp_dir}/boundaries.log"; then
+  fail "Goal target rejection must precede API and Runner artifact resolution"
 fi
 
 : >"${tmp_dir}/boundaries.log"

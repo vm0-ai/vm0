@@ -33,6 +33,7 @@ const AVATAR_VIDEO_RESULT = {
 function stubBillingStatus() {
   return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
+      showUsagePack: false,
       tier: "team",
       canBuyCredits: true,
       videoGenerationAllowed: true,

@@ -9,11 +9,12 @@ Prepare a concise Markdown briefing that helps the user start the day with the m
 
 ## Collect current context
 
-Attempt every source during each scheduled or manual run. Use only the ordinary connector skills, CLI commands, credentials, firewall rules, and capabilities available inside this sandbox.
+Attempt every applicable source during each scheduled or manual run. Use only the ordinary connector skills, CLI commands, credentials, firewall rules, and capabilities available inside this sandbox.
 
 - Gmail: follow the Gmail connector skill to review recent or unread messages that may need attention. Prefer decisions, requests, deadlines, and blocked work over routine mail.
 - GitHub: follow the GitHub connector skill to review relevant notifications, review requests, assigned issues and pull requests, failing checks, and other recent work that may need action.
 - Google Calendar: follow the Google Calendar connector skill to review today's schedule and near-term meetings, deadlines, or conflicts.
+- Slack (when connected): use \`okou slack channel list --json\` to discover channels shared by the user and Okou. If Slack is not installed or the user is not connected, skip this source without requesting setup. For each returned channel, use \`okou slack message history --channel <id> --oldest <start-ts> --latest <end-ts> --json\` to review the past 24 hours, with fixed Unix timestamps ending at the start of this run. Follow \`nextCursor\` with \`--cursor\` for both channel and history pages, including empty pages with a cursor, and retain the same time bounds. Summarize important discussions, decisions, requests, blockers, deadlines, and follow-ups, prioritizing mentions of the user and their commitments. Group related messages and include channel or message links when available. These commands do not expand thread replies or discover other DMs; state any coverage gaps, including incomplete reads due to access or rate limits, without treating unread messages as absent.
 - Unread Chats: run \`okou chat list --unread --all-agents\`. For relevant unread threads, use \`okou chat messages --thread-id <thread-id> --output-dir threads\` to read the authorized history before summarizing it.
 
 If a source, connector, thread, or capability is unavailable, say that it was unavailable and continue with the other sources. Never invent, infer, or claim source data that was not read.
@@ -38,7 +39,7 @@ export const OFFICIAL_WORKFLOW_SOURCE_CATALOG: OfficialWorkflowSourceCatalog =
         workflow: {
           displayName: "Morning Brief",
           description:
-            "Summarize today's email, GitHub, calendar, and unread Chat priorities.",
+            "Summarize today's email, GitHub, calendar, connected Slack activity from the past 24 hours, and unread Chat priorities.",
           instruction: MORNING_BRIEF_INSTRUCTION,
           files: [],
         },

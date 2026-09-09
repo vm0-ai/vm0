@@ -7,8 +7,8 @@ interface AgentPhoneConnectParams {
   timestamp: number;
   signature: string;
   channel?: string;
-  publicBrand?: PublicBrand;
-  publicBrandSignature?: string;
+  publicBrand: PublicBrand;
+  publicBrandSignature: string;
 }
 
 interface AgentPhoneConnectParamError {
@@ -61,12 +61,8 @@ function encodeReturnPath(
   if (effectiveChannel) {
     search.set("channel", effectiveChannel);
   }
-  if (params.publicBrand) {
-    search.set("publicBrand", params.publicBrand);
-  }
-  if (params.publicBrandSignature) {
-    search.set("brandSig", params.publicBrandSignature);
-  }
+  search.set("publicBrand", params.publicBrand);
+  search.set("brandSig", params.publicBrandSignature);
   return `/agentphone/connect?${search.toString()}`;
 }
 
@@ -106,21 +102,14 @@ function parseTimestamp(value: string): number | undefined {
 }
 
 interface ParsedBrandState {
-  publicBrand?: PublicBrand;
-  publicBrandSignature?: string;
+  publicBrand: PublicBrand;
+  publicBrandSignature: string;
 }
 
 function parseBrandState(
   publicBrand: string | undefined,
   publicBrandSignature: string | undefined,
 ): ParsedBrandState | undefined {
-  if (publicBrand === undefined && publicBrandSignature === undefined) {
-    // Old Platform -> new API rollout compatibility: old web/app clients can
-    // remain active for about two days. Remove with #27750 after the client
-    // floor excludes this Platform version and the final cutoff-eligible
-    // ten-minute link has expired.
-    return {};
-  }
   if (
     !isPublicBrand(publicBrand) ||
     publicBrandSignature === undefined ||
@@ -193,10 +182,8 @@ export function parseAgentPhoneConnectParams(
     timestamp,
     signature,
     ...(channel ? { channel } : {}),
-    ...(brandState.publicBrand ? { publicBrand: brandState.publicBrand } : {}),
-    ...(brandState.publicBrandSignature
-      ? { publicBrandSignature: brandState.publicBrandSignature }
-      : {}),
+    publicBrand: brandState.publicBrand,
+    publicBrandSignature: brandState.publicBrandSignature,
   };
 
   return {

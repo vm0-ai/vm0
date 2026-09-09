@@ -1,5 +1,4 @@
 import { computed, type Computed } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -47,7 +46,6 @@ function buildSlackInstallUrl(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly reinstall: boolean;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
@@ -66,7 +64,6 @@ function buildSlackConnectUrl(args: {
   readonly apiOrigin: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
@@ -95,7 +92,6 @@ export function slackOrgStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole?: ApiOrgRole;
-  readonly publicBrand: PublicBrand;
 }): Computed<Promise<SlackOrgStatusResult>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -142,7 +138,6 @@ export function slackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: true,
-            publicBrand: args.publicBrand,
           })
         : null;
       return { scopeMismatch, reinstallUrl };
@@ -155,7 +150,6 @@ export function slackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: false,
-            publicBrand: args.publicBrand,
           })
         : null;
       return {
@@ -191,7 +185,6 @@ export function slackOrgStatus(args: {
         apiOrigin: args.apiOrigin,
         orgId: args.orgId,
         userId: args.userId,
-        publicBrand: args.publicBrand,
       });
 
       return {

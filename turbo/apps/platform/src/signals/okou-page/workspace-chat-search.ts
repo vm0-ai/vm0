@@ -13,7 +13,6 @@ import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.t
 import { chatListQuery$, debouncedChatListQuery$ } from "./sidebar-state.ts";
 
 const MAX_VISIBLE_CHAT_THREAD_RESULTS = 25;
-const MAX_CHAT_SEARCH_RESULTS = 25;
 
 export interface WorkspaceSearchChatThread {
   readonly id: string;
@@ -154,7 +153,6 @@ export const workspaceSearchChatMessages$ = computed(
       client.search({
         query: {
           keyword: query,
-          limit: MAX_CHAT_SEARCH_RESULTS,
         },
       }),
       [200],

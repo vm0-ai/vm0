@@ -55,7 +55,7 @@ import {
 // can drive it. Keyboard events on a detached editor are silently dropped.
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");
@@ -2524,7 +2524,6 @@ test("Search workspace chats and messages", async () => {
               },
             ]
           : [],
-      hasMore: false,
     });
   });
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
@@ -2680,7 +2679,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
     }),
   ]);
   context.mocks.api(chatSearchContract.search, ({ respond }) => {
-    return respond(200, { results: [], hasMore: false });
+    return respond(200, { results: [] });
   });
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
     return respond(200, { artifacts: [], nextCursor: null });

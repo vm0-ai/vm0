@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
@@ -67,7 +66,6 @@ async function openChat(): Promise<void> {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
 }
@@ -299,46 +297,39 @@ test("Retire completion and followups while retaining the result actions", async
   sendGate.resolve();
 });
 
-test.each([true, false])(
-  "Handle a late previous-run failure with work folding enabled=%s",
-  async (enabled) => {
-    const events = [
-      ...resultEvents(),
-      completedEvent({ id: "old-completion", runId: RUN_A, seqId: 4 }),
-      promptEvent({
-        id: "pending-next-input",
-        runId: RUN_B,
-        seqId: 5,
-        text: "Continue with the next response",
-      }),
-    ];
-    installRunChat({ chatEvents: events, activeRunIds: [RUN_B] });
-    await setupPage({
-      context,
-      path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: enabled },
-    });
-    await readyChat();
-    expect(screen.getByText("Continue with the next response")).toBeVisible();
+test("Handle a late previous-run failure during the next response", async () => {
+  const events = [
+    ...resultEvents(),
+    completedEvent({ id: "old-completion", runId: RUN_A, seqId: 4 }),
+    promptEvent({
+      id: "pending-next-input",
+      runId: RUN_B,
+      seqId: 5,
+      text: "Continue with the next response",
+    }),
+  ];
+  installRunChat({ chatEvents: events, activeRunIds: [RUN_B] });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+  });
+  await readyChat();
+  expect(screen.getByText("Continue with the next response")).toBeVisible();
 
-    events.push(
-      failedEvent(RUN_A, OLD_ERROR, 6),
-      assistantEvent({
-        id: "next-response-result",
-        runId: RUN_B,
-        seqId: 7,
-        text: "The next response is progressing",
-      }),
-    );
-    publishRunUpdate();
+  events.push(
+    failedEvent(RUN_A, OLD_ERROR, 6),
+    assistantEvent({
+      id: "next-response-result",
+      runId: RUN_B,
+      seqId: 7,
+      text: "The next response is progressing",
+    }),
+  );
+  publishRunUpdate();
 
-    await expect(
-      screen.findByText("The next response is progressing"),
-    ).resolves.toBeVisible();
-    expect(screen.queryByText(OLD_ERROR) !== null).toBe(!enabled);
-    if (!enabled) {
-      return;
-    }
-    await expectRetainedResult();
-  },
-);
+  await expect(
+    screen.findByText("The next response is progressing"),
+  ).resolves.toBeVisible();
+  expect(screen.queryByText(OLD_ERROR)).not.toBeInTheDocument();
+  await expectRetainedResult();
+});

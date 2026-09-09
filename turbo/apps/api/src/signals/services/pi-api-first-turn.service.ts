@@ -8,6 +8,8 @@ import {
   CANONICAL_WORKING_DIR,
   PI_AGENT_DIR,
   PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
+  type StoredResumeSession,
   type PiApiFirstTurnManifest,
   type PiApiFirstTurnOwnershipTransferMode,
   type PiResourceSnapshot,
@@ -50,6 +52,7 @@ import { writeDb$, type Db } from "../external/db";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import {
   downloadS3BufferWithMaxBytes,
+  generatePresignedGetUrl,
   putImmutableS3Object,
   putS3Object,
 } from "../external/s3";
@@ -82,6 +85,7 @@ import {
 } from "./session-history-blobs";
 import {
   PI_API_FIRST_TURN_API_OWNERSHIP_TIMEOUT_MS,
+  PI_API_FIRST_TURN_URL_TTL_SECONDS,
   piApiFirstTurnObjectKey,
   type PiApiFirstTurnActivation,
 } from "./pi-api-first-turn-config";
@@ -237,6 +241,62 @@ function loadInlineResumeSession(sessionHistory: string): LoadedResumeSession {
   return { jsonl: sessionHistory, sha256: sha256(bytes) };
 }
 
+async function readResumeSessionMetadata(
+  db: Db,
+  historyRef: Extract<
+    StoredResumeSession,
+    { historyRef: unknown }
+  >["historyRef"],
+  signal: AbortSignal,
+) {
+  const hash = historyRef.hash;
+  const [metadata] = await db
+    .select({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!metadata || metadata.rawSize <= 0 || metadata.encodedSize <= 0) {
+    throw piApiFirstTurnError(
+      "PI_H0_METADATA_INVALID",
+      "Pi H0 metadata is unavailable or invalid",
+    );
+  }
+  if (
+    metadata.rawSize > RESUME_SESSION_HISTORY_MAX_BYTES ||
+    metadata.encodedSize > RESUME_SESSION_HISTORY_MAX_BYTES
+  ) {
+    throw piApiFirstTurnError(
+      "PI_H0_TOO_LARGE",
+      "Pi H0 exceeds the native session size limit",
+    );
+  }
+  const normalizedEncoding = safeSync(() => {
+    return normalizeSessionHistoryBlobEncoding(metadata.encoding);
+  });
+  if ("error" in normalizedEncoding) {
+    throw piApiFirstTurnError(
+      "PI_H0_ENCODING_UNSUPPORTED",
+      "Pi H0 uses an unsupported encoding",
+      normalizedEncoding.error,
+    );
+  }
+  const encoding = normalizedEncoding.ok;
+  const referencedEncoding =
+    historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+  if (encoding !== referencedEncoding) {
+    throw piApiFirstTurnError(
+      "PI_H0_METADATA_INVALID",
+      "Pi H0 encoding does not match the stored checkpoint reference",
+    );
+  }
+  return { ...metadata, encoding };
+}
+
 const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
   { get },
   args: {
@@ -254,22 +314,11 @@ const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
   }
 
   const hash = resumeSession.historyRef.hash;
-  const [metadata] = await args.db
-    .select({
-      rawSize: blobs.rawSize,
-      encoding: blobs.encoding,
-      encodedSize: blobs.encodedSize,
-    })
-    .from(blobs)
-    .where(eq(blobs.hash, hash))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!metadata || metadata.rawSize <= 0 || metadata.encodedSize <= 0) {
-    throw piApiFirstTurnError(
-      "PI_H0_METADATA_INVALID",
-      "Pi H0 metadata is unavailable or invalid",
-    );
-  }
+  const metadata = await readResumeSessionMetadata(
+    args.db,
+    resumeSession.historyRef,
+    signal,
+  );
   if (
     metadata.rawSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES ||
     metadata.encodedSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES
@@ -279,25 +328,7 @@ const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
       "Pi H0 exceeds the API first-turn limit",
     );
   }
-  const normalizedEncoding = safeSync(() => {
-    return normalizeSessionHistoryBlobEncoding(metadata.encoding);
-  });
-  if ("error" in normalizedEncoding) {
-    throw piApiFirstTurnError(
-      "PI_H0_ENCODING_UNSUPPORTED",
-      "Pi H0 uses an unsupported encoding",
-      normalizedEncoding.error,
-    );
-  }
-  const encoding = normalizedEncoding.ok;
-  const referencedEncoding =
-    resumeSession.historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
-  if (encoding !== referencedEncoding) {
-    throw piApiFirstTurnError(
-      "PI_H0_METADATA_INVALID",
-      "Pi H0 encoding does not match the stored checkpoint reference",
-    );
-  }
+  const encoding = metadata.encoding;
   const key = resumeSessionHistoryBlobKey(hash, encoding);
   const downloaded = await settle(
     get(
@@ -1884,6 +1915,105 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
   });
 });
 
+// This is an execution-budget decision before API-first resource or history IO.
+// The original checkpoint remains authoritative; the sandbox validates its bytes.
+const publishLargeHistoryTransfer$ = command(
+  async function publishLargeHistoryTransfer(
+    { get, set },
+    args: ApiFirstTurnContext,
+    commitProgress: ApiFirstTurnCommitProgress,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const { executionContext, launchConfig, sessionId } =
+      validateApiFirstTurnLaunch(args);
+    const resumeSession = executionContext.resumeSession;
+    if (!resumeSession || !("historyRef" in resumeSession)) {
+      return false;
+    }
+    const metadata = await readResumeSessionMetadata(
+      args.db,
+      resumeSession.historyRef,
+      signal,
+    );
+    if (
+      metadata.rawSize <= PI_API_FIRST_TURN_SESSION_MAX_BYTES &&
+      metadata.encodedSize <= PI_API_FIRST_TURN_SESSION_MAX_BYTES
+    ) {
+      return false;
+    }
+    const hash = resumeSession.historyRef.hash;
+    if (
+      resumeSession.sessionId !== sessionId ||
+      launchConfig.baseSession.sessionId !== sessionId ||
+      launchConfig.baseSession.sha256 !== hash
+    ) {
+      throw piApiFirstTurnError(
+        "PI_H0_HASH_MISMATCH",
+        "Pi H0 does not match the launch base checkpoint",
+      );
+    }
+    const commitIdentity = apiFirstTurnCommitIdentity(args);
+    return await withApiFirstTurnLifecycle(args, async (tx) => {
+      signal.throwIfAborted();
+      const state = validateApiFirstTurnHandoffCommit(
+        args,
+        await readApiFirstTurnLifecycleState(tx, args.activation.runId),
+        commitIdentity,
+        "Pi large-history transfer lost commit eligibility",
+      );
+      const url = await get(
+        generatePresignedGetUrl(
+          env("R2_USER_STORAGES_BUCKET_NAME"),
+          resumeSessionHistoryBlobKey(hash, metadata.encoding),
+          PI_API_FIRST_TURN_URL_TTL_SECONDS,
+          undefined,
+          true,
+        ),
+      );
+      signal.throwIfAborted();
+      validateApiFirstTurnHandoffCommit(
+        args,
+        state,
+        commitIdentity,
+        "Pi large-history transfer lost commit eligibility before publication",
+      );
+      // Publication may transfer ownership even if its response is lost.
+      commitProgress.started = true;
+      await set(
+        writeManifest$,
+        {
+          runId: args.activation.runId,
+          manifest: {
+            schemaVersion: 4,
+            outcome: "ownership-transfer",
+            mode: "sandbox-first",
+            baseSession: launchConfig.baseSession,
+            session: { sessionId, sha256: hash, rawSize: metadata.rawSize },
+            history: {
+              url,
+              encoding: metadata.encoding,
+              encodedSize: metadata.encodedSize,
+            },
+            sandboxEventSequenceStart: launchConfig.sandboxEventSequenceStart,
+          },
+        },
+        signal,
+      );
+      L.debug("Pi API first-turn outcome", {
+        runId: args.activation.runId,
+        ...piApiFirstTurnOutcomeTelemetry(executionContext),
+        outcome: "ownership_transfer",
+        reason: "history_exceeds_api_budget",
+        handoffOwner: "sandbox",
+        ownershipStage: "pre-provider",
+        rawSize: metadata.rawSize,
+        encodedSize: metadata.encodedSize,
+      });
+      return true;
+    });
+  },
+);
+
 const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
@@ -1891,6 +2021,9 @@ const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
   commitProgress: ApiFirstTurnCommitProgress,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
+  if (await set(publishLargeHistoryTransfer$, args, commitProgress, signal)) {
+    return undefined;
+  }
   const prepared = await set(prepareApiFirstTurn$, args, ownership, signal);
   const committed = await settle(
     set(commitApiFirstTurn$, args, prepared, commitProgress, signal),

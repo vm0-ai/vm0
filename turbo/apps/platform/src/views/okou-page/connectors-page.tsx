@@ -13,10 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
-import type {
-  PublicConnectorCatalogCategoryMetadata,
-  PublicConnectorCatalogDiscoveryResponse,
-} from "@okouai/api-contracts/contracts/connector-catalog";
+import type { PublicConnectorCatalogDiscoveryResponse } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
@@ -56,6 +53,7 @@ import {
   scrollToConnectorCategory,
   type ConnectorCategoryGroup,
 } from "../../signals/okou-page/settings/connector-categories.ts";
+import { localizeConnectorCategoryMetadata } from "./components/settings/connector-category-labels.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
@@ -104,168 +102,6 @@ import {
   openBuiltinAccountManager$,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { ConnectorAccountNameDialog } from "./components/settings/connector-account-name-dialog.tsx";
-
-function connectorCategoryTranslation(
-  id: string,
-): { readonly label: string; readonly menuLabel: string } | null {
-  switch (id) {
-    case "ai": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.ai.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.ai.menu;
-        }),
-      };
-    }
-    case "ai-agent-apps": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiAgentApps.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiAgentApps.menu;
-        }),
-      };
-    }
-    case "ai-general-models": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiGeneralModels.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiGeneralModels.menu;
-        }),
-      };
-    }
-    case "ai-image-video": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiImageVideo.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiImageVideo.menu;
-        }),
-      };
-    }
-    case "ai-memory-tracing-eval": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiMemoryTracingEval.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiMemoryTracingEval.menu;
-        }),
-      };
-    }
-    case "ai-voice-audio": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiVoiceAudio.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.aiVoiceAudio.menu;
-        }),
-      };
-    }
-    case "communication-collaboration": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.communicationCollaboration
-            .label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.communicationCollaboration
-            .menu;
-        }),
-      };
-    }
-    case "data-automation-infrastructure": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.dataAutomationInfrastructure
-            .label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.dataAutomationInfrastructure
-            .menu;
-        }),
-      };
-    }
-    case "docs-files-knowledge": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.docsFilesKnowledge.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.docsFilesKnowledge.menu;
-        }),
-      };
-    }
-    case "engineering-team-execution": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.engineeringTeamExecution.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.engineeringTeamExecution.menu;
-        }),
-      };
-    }
-    case "marketing-content-growth": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.marketingContentGrowth.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.marketingContentGrowth.menu;
-        }),
-      };
-    }
-    case "meetings-scheduling": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.meetingsScheduling.label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.meetingsScheduling.menu;
-        }),
-      };
-    }
-    case "sales-crm-business-operations": {
-      return {
-        label: i18n.t(($) => {
-          return $.connectors.catalog.categories.salesCrmBusinessOperations
-            .label;
-        }),
-        menuLabel: i18n.t(($) => {
-          return $.connectors.catalog.categories.salesCrmBusinessOperations
-            .menu;
-        }),
-      };
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
-function localizeConnectorCategoryMetadata(
-  metadata: PublicConnectorCatalogCategoryMetadata | undefined,
-): PublicConnectorCatalogCategoryMetadata | undefined {
-  if (!metadata) {
-    return undefined;
-  }
-  return {
-    categories: metadata.categories.map((category) => {
-      return { ...category, ...connectorCategoryTranslation(category.id) };
-    }),
-    groups: metadata.groups.map((group) => {
-      return { ...group, ...connectorCategoryTranslation(group.id) };
-    }),
-  };
-}
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element

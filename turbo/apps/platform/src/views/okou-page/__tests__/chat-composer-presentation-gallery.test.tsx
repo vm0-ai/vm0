@@ -6,11 +6,9 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-} from "../../../lib/platform-template-items.ts";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
 import { tabByText } from "./chat-composer-test-helpers.ts";
 import {
   AGENT_ID,

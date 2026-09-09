@@ -78,6 +78,35 @@ Controlled processes deny process inspection across the boundary.
 
 ## Ownership and Reuse
 
+### Direct cgroup creation
+
+Guest-control-server uses one contained-command launcher for typed storage,
+ordinary Workload exec (including oversized storage fallback), and controlled
+Agent startup. It prepares the operation hierarchy and resource policy, then
+uses `clone3(CLONE_INTO_CGROUP)` to create the child in its target leaf:
+`workload` for Workload, or `control` for Agent. It does not create an
+uncontained child and migrate it afterward. The outer cgroup directory
+descriptor remains private and close-on-exec; runtime/tool brokers retain
+their separate authenticated, write-only placement capabilities.
+
+The launcher prepares arguments, environment, credentials and descriptors in
+the parent. Its copied child performs only the audited pre-exec setup, with
+signals masked during that setup. Startup errors are reported through a
+close-on-exec error pipe; a failed or timed-out handshake kills and reaps the
+owned child before containment cleanup. Unsupported or denied syscalls fail
+the launch instead of retrying without containment. Agent readiness observes
+exit without reaping, so the terminal owner retains the PID through cleanup.
+
+Direct placement requires cgroup v2 and Linux 5.7; the launcher's
+`close_range(CLOSE_RANGE_CLOEXEC)` additionally requires Linux 5.11. The
+committed guest kernel is 6.1.155. Fixed process-group-only helpers and explicit
+local TestNoop backends still use standard process creation. Guest Agent's
+internal CLI launcher and the managed tool's migrate-self/exec boundary are
+unchanged. There is no persistent cgroup pool, resident launcher or cgroup
+mount-policy change.
+
+### Operation lifetime
+
 All fixed helpers and workload operations hold operation guards. Agent
 readiness keeps the exec operation, placement brokers, and containment owner
 active, so reuse cannot quiesce or park during bootstrap. Reuse first fences
@@ -85,6 +114,12 @@ new operations, waits for active ownership to reach zero, and verifies that
 the `vm0-exec` hierarchy is empty before parking. A terminal result does not
 replace descendant cleanup: the operation's containment owner remains
 responsible for graceful or forced cleanup and hierarchy removal.
+
+Output drains retain their 64 KiB read capacity but allocate the read buffer
+uninitialized on the heap. This avoids faulting every page of a large stack
+buffer when a short-lived helper emits little or no output. Only the bytes
+initialized by a successful read are exposed to capture or streaming; output
+limits, cancellation wakeups and terminal drain deadlines are unchanged.
 
 Storage remains contained even though it has a typed entry point because its
 download, extraction, cache, and filesystem work is user influenced. The DNS,

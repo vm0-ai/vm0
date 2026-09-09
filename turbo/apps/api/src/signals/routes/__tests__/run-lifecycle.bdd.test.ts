@@ -11663,12 +11663,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, []);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      { runId: run.runId, target: targetIdentity },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     const [defaultPermissionRuntime] = await api.syncConnectorRuntime(
       run.runId,
       {
@@ -11681,16 +11687,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(defaultPermissionRuntime?.nextSyncAt).toBeUndefined();
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
-    const restoredGrantWakeups = context.mocks.ably.publish.mock.calls.filter(
-      ([eventName]) => {
-        return eventName === "connector-runtime-sync";
-      },
-    );
-    expect(restoredGrantWakeups).toStrictEqual([
-      ["connector-runtime-sync", { runId: run.runId, target: targetIdentity }],
-    ]);
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledExactlyOnceWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -11775,8 +11783,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
-    context.mocks.ably.publish.mockClear();
-    context.mocks.ably.publish.mockRejectedValueOnce(
+    context.mocks.ably.batchPublish.mockClear();
+    context.mocks.ably.batchPublish.mockRejectedValueOnce(
       new Error("Custom runtime wakeup unavailable"),
     );
     await connectors.updateCustomConnector(actor, custom.id, {
@@ -11794,10 +11802,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       queryInjections: custom.queryInjections,
       authMode: custom.authMode,
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      { runId: run.runId, target: targetIdentity },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: [
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({ runId: run.runId, target: targetIdentity }),
+          encoding: "json",
+        },
+      ],
+    });
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
     const lastKnownGoodAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -13715,7 +13729,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(kms.decryptCalls).toBe(1);
 
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await connectors.setCustomConnectorValues(
       actor,
       saved.connector.id,
@@ -13732,10 +13746,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         ),
       },
     );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      expect.anything(),
-    );
+    expect(context.mocks.ably.batchPublish).not.toHaveBeenCalled();
     const [pinnedRuntimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [pinnedTarget],
     });
@@ -15048,20 +15059,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(otherUserRuntime.body.error.message).toBe(
       "Run does not belong to user",
     );
-    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.batchPublish.mockClear();
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: snapshotRun.runId,
-        target: { kind: "builtin", connectorSlug: "slack" },
-      },
-    );
+    expect(context.mocks.ably.batchPublish).toHaveBeenCalledWith({
+      channels: [expect.stringMatching(/^runner-group:/)],
+      messages: expect.arrayContaining([
+        {
+          name: "connector-runtime-sync",
+          data: JSON.stringify({
+            runId: snapshotRun.runId,
+            target: { kind: "builtin", connectorSlug: "slack" },
+          }),
+          encoding: "json",
+        },
+      ]),
+    });
     const [refreshedRuntime] = await api.syncConnectorRuntime(
       snapshotRun.runId,
       { targets: [snapshotSlackTarget] },

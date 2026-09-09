@@ -210,13 +210,6 @@ function visibilityOwnerError(
     return null;
   }
 
-  // Old web/app -> new API: already-open clients can keep sending unchanged
-  // visibility for about two days. Remove after the client-version floor
-  // excludes builds before #31731; tracked by #31732.
-  if (requestedVisibility === existing.visibility) {
-    return null;
-  }
-
   return forbidden("Only the agent owner can update agent visibility");
 }
 

@@ -21,7 +21,6 @@ import {
 import { connectorCatalogConnectionList } from "../services/connector-data.service";
 import { notFound, providerUnavailable } from "../../lib/error";
 import { settle } from "../utils";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const connectorCatalogAuth = {
   requireOrganization: true,
@@ -80,7 +79,6 @@ const connectorCatalogRequestContext$ = command(async ({ get }) => {
   return {
     db: get(db$),
     featureStates: getAllFeatureStates(featureSwitchContext),
-    publicBrand: PUBLIC_BRAND,
   };
 });
 
@@ -93,7 +91,6 @@ const listConnectorCatalogInner$ = command(
       listPublicConnectorCatalog({
         db: context.db,
         featureStates: context.featureStates,
-        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -130,7 +127,6 @@ const listConnectorCatalogStatusInner$ = command(
         db: context.db,
         featureStates: context.featureStates,
         connections: connectorState.value,
-        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -169,7 +165,6 @@ const discoverConnectorCatalogInner$ = command(
         featureStates: context.featureStates,
         connections: connectorState.value,
         keyword: query.keyword,
-        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -221,7 +216,6 @@ const getConnectorCatalogInner$ = command(
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
         connections: connectorState.value,
-        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -247,7 +241,6 @@ const getConnectorCatalogPermissionsInner$ = command(
         db: context.db,
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
-        publicBrand: context.publicBrand,
       }),
       signal,
     );

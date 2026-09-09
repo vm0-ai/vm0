@@ -253,12 +253,12 @@ test("Navigate the connector catalog with a keyboard", async () => {
   });
   ai.focus();
   await user.keyboard("{Enter}");
-  const models = getConnectorAction("button", "General Models and Reasoning");
+  const models = getConnectorAction("button", "General models and reasoning");
   models.focus();
   await user.keyboard("{Enter}");
   const engineering = getConnectorAction(
     "button",
-    "Engineering and Team Execution",
+    "Engineering and team execution",
   );
   engineering.focus();
   await user.keyboard("{Enter}");

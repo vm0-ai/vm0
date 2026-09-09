@@ -448,7 +448,7 @@ export function OnboardingWorkflowPickerPage() {
 
   const handleWorkflowSelect = (workflowId: string): void => {
     setDraft({ workflowId });
-    // "Talk to Zero and make my own" skips the customize step and hands the
+    // "Talk to Okou and make my own" skips the customize step and hands the
     // user straight into the product; preset workflows keep the run page.
     if (workflowId === CUSTOM_WORKFLOW_ID) {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;

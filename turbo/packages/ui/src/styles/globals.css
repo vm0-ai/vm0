@@ -93,6 +93,7 @@
    * Semantic Colors
    * =================================== */
   --color-border: hsl(var(--border));
+  --color-surface-focus: hsl(var(--surface-focus));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
   --color-background: hsl(var(--background));
@@ -375,6 +376,8 @@
     --interrupt-foreground: var(--on-filled); /* white on Coral 500 */
 
     --border: var(--gray-200); /* gray-200 - primary border color (lighter) */
+    /* Large editable surfaces emphasize their existing edge on focus. */
+    --surface-focus: var(--gray-500);
     --input: var(--white); /* white - same as card */
     --ring: var(--primary-400); /* primary-400 - 6.73:1 on the canvas */
 
@@ -522,6 +525,7 @@
     --interrupt-foreground: var(--on-filled); /* white on Coral 500 */
 
     --border: var(--gray-200); /* gray-200 - primary border color */
+    --surface-focus: 38.8 38% 38%;
     --input: var(
       --gray-200
     ); /* gray-200 - lighter than card for visible input surfaces */

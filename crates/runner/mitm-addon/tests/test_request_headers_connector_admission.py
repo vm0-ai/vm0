@@ -16,6 +16,7 @@ import request_classification
 import upstream_admission
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_helpers import cancel_pending_task
 from tests.request_handler_helpers import (
     _single_firewall_sandbox,
@@ -402,12 +403,14 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verif
     assert binding.original_address == ("172.66.0.243", 443)
 
 
-async def test_firewall_allow_disconnect_during_header_auth_restores_probe_state(
+@pytest.mark.parametrize("disconnect_during_auth", [False, True], ids=["connected", "disconnected"])
+async def test_firewall_allow_header_auth_revalidates_connection_after_auth_wait(
     tmp_path,
     real_flow,
     mitm_ctx,
     headers,
     monkeypatch,
+    disconnect_during_auth,
 ):
     reg_path = _write_registry(
         tmp_path,
@@ -459,14 +462,11 @@ async def test_firewall_allow_disconnect_during_header_auth_restores_probe_state
     async def resolve_auth(*_args, **_kwargs):
         auth_resolution_entered.set()
         await release_auth_resolution.wait()
-        return {
-            "headers": {"Authorization": "Bearer resolved"},
-            "query": {"api_key": "resolved"},
-            "resolved_secrets": ["EXAMPLE_TOKEN"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-        }
+        return firewall_auth_response(
+            headers={"Authorization": "Bearer resolved"},
+            query={"api_key": "resolved"},
+            resolved_secrets=["EXAMPLE_TOKEN"],
+        )
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
@@ -477,8 +477,9 @@ async def test_firewall_allow_disconnect_during_header_auth_restores_probe_state
         )
         try:
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
-            flow.server_conn.state = connection.ConnectionState.CLOSED
-            mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
+            if disconnect_during_auth:
+                flow.server_conn.state = connection.ConnectionState.CLOSED
+                mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
             release_auth_resolution.set()
             await requestheaders_task
         finally:
@@ -486,15 +487,21 @@ async def test_firewall_allow_disconnect_during_header_auth_restores_probe_state
             await cancel_pending_task(requestheaders_task)
 
     auth_fetch.assert_awaited_once()
-    _assert_no_request_stream(flow)
     assert flow.response is None
     assert flow.error is None
-    assert flow.request.headers.fields == original_headers
-    assert flow.request.path == original_path
     assert flow.metadata["preexisting"] == "keep"
-    for key in request_classification.REQUEST_HEADERS_PROBE_METADATA_KEYS:
-        assert key not in flow.metadata
-    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+    if disconnect_during_auth:
+        _assert_no_request_stream(flow)
+        assert flow.request.headers.fields == original_headers
+        assert flow.request.path == original_path
+        for key in request_classification.REQUEST_HEADERS_PROBE_METADATA_KEYS:
+            assert key not in flow.metadata
+        assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+    else:
+        assert callable(flow.request.stream)
+        assert flow.request.headers["Authorization"] == "Bearer resolved"
+        assert dict(flow.request.query) == {"client": "visible", "api_key": "resolved"}
+        assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(

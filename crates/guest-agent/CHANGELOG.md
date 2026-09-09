@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.86.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.20...guest-agent-v0.86.21) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+
+
+### Documentation
+
+* **guest-agent:** correct pi configuration handoff documentation ([#32789](https://github.com/vm0-ai/vm0/issues/32789)) ([13b101e](https://github.com/vm0-ai/vm0/commit/13b101e5871985b0a34d5613468f7444960c4a9f))
+
+## [0.86.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.19...guest-agent-v0.86.20) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
 ## [0.86.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.18...guest-agent-v0.86.19) (2026-09-08)
 
 ## [0.86.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.17...guest-agent-v0.86.18) (2026-09-08)

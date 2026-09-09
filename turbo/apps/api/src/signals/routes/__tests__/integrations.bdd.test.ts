@@ -81,6 +81,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function signedSlackOAuthStateText(location: string | null): string {
+  return new URL(location ?? "").searchParams.get("state") ?? "";
+}
+
 function decodeSignedSlackOAuthState(state: string): unknown {
   const [encodedPayload, signature, extra] = state.split(".");
   if (!encodedPayload || !signature || extra) {
@@ -1994,6 +1998,10 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       isAdmin: true,
     });
 
+    const installStart = await integrations.requestSlackOauthInstall(
+      { orgId, userId: admin.userId, prompt: "install prompt" },
+      [307],
+    );
     context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
       slackBotOauthResponse({
         accessToken: "xoxb-bdd-slack",
@@ -2007,12 +2015,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const installed = await integrations.requestSlackOauthCallback(
       {
         code: "install-code",
-        state: JSON.stringify({
-          orgId,
-          userId: admin.userId,
-          prompt: "install prompt",
-          publicBrand: "okou",
-        }),
+        state: signedSlackOAuthStateText(installStart.headers.get("location")),
       },
       [307],
     );
@@ -2120,6 +2123,10 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       isConnected: false,
       isAdmin: false,
     });
+    const wrongTeamStart = await integrations.requestSlackOauthConnect(
+      { orgId, userId: disconnectedMember.userId },
+      [307],
+    );
     context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
       slackUserOauthResponse({
         workspaceId: "T_OTHER_BDD_SLACK",
@@ -2129,12 +2136,9 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const wrongTeam = await integrations.requestSlackOauthCallback(
       {
         code: "wrong-team-code",
-        state: JSON.stringify({
-          orgId,
-          userId: disconnectedMember.userId,
-          flow: "connect",
-          publicBrand: "okou",
-        }),
+        state: signedSlackOAuthStateText(
+          wrongTeamStart.headers.get("location"),
+        ),
       },
       [307],
     );
@@ -5316,7 +5320,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const slackUser1 = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUser1,
-      publicBrand: "okou",
     });
     integrations.clearSlackCallHistory();
 
@@ -5798,7 +5801,6 @@ describe("INT-02: Telegram integration", () => {
         }),
       },
       [200],
-      "okou",
     );
     await bdd.deleteAgent(actor, onboarding.defaultAgentId);
 
@@ -5819,7 +5821,6 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
       [200],
-      "okou",
     );
     expect(inbound.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -5975,7 +5976,6 @@ describe("INT-02: Telegram integration", () => {
         defaultAgentId: agent.agentId,
       },
       [201],
-      "okou",
     );
     expect(registered.body).toMatchObject({
       id: botId,
@@ -6041,7 +6041,6 @@ describe("INT-02: Telegram integration", () => {
         "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
       },
       [200],
-      "okou",
     );
     expect(customConnectPrompt.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -6338,7 +6337,6 @@ describe("INT-02: Telegram integration", () => {
       actor,
       { botToken: telegramBotToken, defaultAgentId: agent.agentId },
       [201],
-      "okou",
     );
     if (!webhookSecret) {
       throw new Error(
@@ -6378,7 +6376,6 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": webhookSecret },
       [200],
-      "okou",
     );
     expect(inbound.body).toBe("OK");
 
@@ -6652,27 +6649,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     }
     expect(new URL(redirectUrl).pathname).toBe("/api/github/oauth/connect");
 
-    const untrustedOkouConnect = await integrations.requestGithubOauthConnect(
-      null,
-      {},
-      [307],
-    );
-    const untrustedOkouUrl = new URL(
-      untrustedOkouConnect.headers.get("location") ?? "",
-    );
-    expect(untrustedOkouUrl.origin).toBe("https://app.okou.ai");
-
-    const trustedOkouConnect = await integrations.requestGithubOauthConnect(
-      null,
-      {},
-      [307],
-      "okou",
-    );
-    const trustedOkouUrl = new URL(
-      trustedOkouConnect.headers.get("location") ?? "",
-    );
-    expect(trustedOkouUrl.origin).toBe("https://app.okou.ai");
-
     const actor = integrations.user();
     const invalidSignedConnect = await integrations.requestGithubOauthConnect(
       actor,
@@ -6808,7 +6784,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     const okouInstall = await integrations.requestGithubOauthInstall(
       installQuery,
       [307],
-      "okou",
     );
     const okouStateString =
       new URL(okouInstall.headers.get("location") ?? "").searchParams.get(
@@ -6832,7 +6807,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: okouStateString,
       },
       [307],
-      "okou",
     );
     expect(new URL(okouError.headers.get("location") ?? "").origin).toBe(
       "https://app.okou.ai",
@@ -6853,7 +6827,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: tamperedState,
       },
       [307],
-      "okou",
     );
     expect(new URL(tamperedError.headers.get("location") ?? "").origin).toBe(
       "https://app.okou.ai",
@@ -6870,7 +6843,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: tamperedCallbackState,
       },
       [307],
-      "okou",
     );
     expect(new URL(tamperedCallback.headers.get("location") ?? "").origin).toBe(
       "https://app.okou.ai",
@@ -7246,7 +7218,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       actor,
       { phoneHandle },
       [200],
-      "okou",
     );
     expect(sent.body).toStrictEqual({
       phoneHandle,
@@ -7289,7 +7260,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       actor,
       connectBody,
       [200],
-      "okou",
     );
     expect(connected.body).toStrictEqual({ phoneHandle });
 
@@ -7351,35 +7321,11 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       integrations.user(),
       connectBody,
       [409],
-      "okou",
     );
     expect(duplicateConnect.body).toMatchObject({
       error: { code: "CONFLICT" },
     });
 
-    mockOptionalEnv(
-      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
-      String(connectBody.timestamp),
-    );
-    const legacyConnect = await integrations.requestConnectAgentPhone(
-      integrations.user(),
-      {
-        phoneHandle: connectBody.phoneHandle,
-        agentphoneAgentId: connectBody.agentphoneAgentId,
-        timestamp: connectBody.timestamp,
-        signature: connectBody.signature,
-        channel: connectBody.channel,
-      },
-      [409],
-    );
-    expect(legacyConnect.body).toMatchObject({
-      error: { code: "CONFLICT" },
-    });
-
-    mockOptionalEnv(
-      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
-      String(connectBody.timestamp - 1),
-    );
     const strippedNewConnect = await integrations.requestConnectAgentPhone(
       integrations.user(),
       {
@@ -7390,7 +7336,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         channel: connectBody.channel,
       },
       [400],
-      "vm0",
     );
     expect(strippedNewConnect.body).toMatchObject({
       error: { code: "BAD_REQUEST" },

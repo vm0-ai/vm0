@@ -365,13 +365,12 @@ const searchChatInner$ = computed(async (get) => {
       keyword: query.keyword,
       agentId: query.agentId,
       since: query.since,
-      limit: query.limit,
     }),
   );
 
   return {
     status: 200 as const,
-    body: { results: [...result.results], hasMore: result.hasMore },
+    body: { results: [...result.results] },
   };
 });
 

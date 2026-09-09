@@ -651,6 +651,7 @@ impl SandboxNetwork {
 struct ProcessStartContractRequest<'a> {
     command: &'a str,
     timeout_ms: u32,
+    timeout_is_expected: bool,
     start_timeout: Duration,
     env: &'a [(&'a str, &'a str)],
     sudo: bool,
@@ -796,7 +797,18 @@ impl FirecrackerSandbox {
                 timeout_ms: u64::try_from(timeout.timeout().as_millis()).unwrap_or(u64::MAX),
             };
         }
-        let reason = if error.kind() == io::ErrorKind::TimedOut {
+        let admission_rejection = error.get_ref().and_then(|source| {
+            source.downcast_ref::<guest_control_client::NormalOperationRejection>()
+        });
+        let reason = if matches!(
+            admission_rejection,
+            Some(
+                guest_control_client::NormalOperationRejection::NotParkable
+                    | guest_control_client::NormalOperationRejection::Closed
+            )
+        ) {
+            SandboxOperationReason::GuestConnectionUnavailable
+        } else if error.kind() == io::ErrorKind::TimedOut {
             SandboxOperationReason::Timeout
         } else {
             SandboxOperationReason::Guest
@@ -2054,6 +2066,7 @@ impl FirecrackerSandbox {
                 .start_supervised_process(SupervisedExecRequest {
                     role,
                     timeout: process_timeout_policy(request.timeout_ms),
+                    timeout_is_expected: request.timeout_is_expected,
                     command: request.command,
                     env: request.env,
                     sudo: request.sudo,
@@ -2900,6 +2913,7 @@ impl Sandbox for FirecrackerSandbox {
                     command: request.cmd,
                     timeout_ms: request.timeout_ms(),
                     start_timeout: request.start_timeout,
+                    timeout_is_expected: request.timeout_is_expected,
                     env: request.env,
                     sudo: request.sudo,
                     output: request.output,
@@ -2923,6 +2937,7 @@ impl Sandbox for FirecrackerSandbox {
                     command: "",
                     timeout_ms: request.timeout_ms(),
                     start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
+                    timeout_is_expected: false,
                     env: request.env,
                     sudo: false,
                     output: request.output,

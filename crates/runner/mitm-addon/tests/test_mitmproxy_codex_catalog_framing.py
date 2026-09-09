@@ -31,6 +31,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
 from tests.codex_model_catalog_cache_helpers import catalog_flow
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.flow_helpers import header_map, response_stream
 from tests.mitmproxy_http_framing_helpers import CLIENT_IP, start_http_layer
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
@@ -151,14 +152,9 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
     response_streaming.release_response_stream_state(seed_flow)
 
     registry_path = _write_codex_firewall_registry(tmp_path)
-    token_meta = {
-        "headers": resolved_headers,
-        "resolved_secrets": [],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers=resolved_headers,
+    )
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,

@@ -212,9 +212,7 @@ function displayLabel(row: {
   readonly agentDisplayName: string | null;
   readonly agentName: string;
 }): string {
-  return (
-    plainLabel(row.agentDisplayName) ?? plainLabel(row.agentName) ?? "zero"
-  );
+  return plainLabel(row.agentDisplayName) ?? row.agentName;
 }
 
 async function resolveComposeLabel(

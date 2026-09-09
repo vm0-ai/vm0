@@ -137,6 +137,8 @@ pub struct GuestStateRestoreCall {
 /// construction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartProcessCall {
+    /// Whether the caller classifies clean guest timeouts as expected.
+    pub timeout_is_expected: bool,
     /// Command string passed to `StartProcessRequest.cmd`.
     pub cmd: String,
     /// Timeout passed to `StartProcessRequest.timeout`.

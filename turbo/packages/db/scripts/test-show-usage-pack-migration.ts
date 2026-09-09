@@ -2,20 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
-import {
-  legacyOrgPlanEntitlements,
-  legacyOrgPlanEntitlementValues,
-  upsertLegacyOrgPlanEntitlement,
-} from "./fixtures/show-usage-pack-legacy-api";
 
 const databaseUrl = process.env.DATABASE_URL;
 assert.ok(databaseUrl, "DATABASE_URL is required");
 const client = new Client({ connectionString: databaseUrl });
 await client.connect();
-const legacyDb = drizzle(client);
 const schema = `show_usage_pack_${randomUUID().replaceAll("-", "")}`;
 
 async function assertVisibility(orgId: string, expected: boolean) {
@@ -51,12 +43,13 @@ try {
     for (const tier of ["pro", "team", "custom", "limited-free-1"]) {
       for (const required of [true, false]) {
         const orgId = `${source}_${tier}_${required}`;
-        await upsertLegacyOrgPlanEntitlement(legacyDb, {
-          orgId,
-          planKey: tier,
-          source,
-          memberInviteUsagePackRequired: required,
-        });
+        await client.query(
+          `INSERT INTO org_plan_entitlements (
+            org_id, plan_key, plan_rank, source,
+            member_invite_usage_pack_required, restricted_built_in_models
+          ) VALUES ($1, $2, 1, $3, $4, false)`,
+          [orgId, tier, source, required],
+        );
         expected.push({
           org_id: orgId,
           show_usage_pack: required && (tier === "pro" || tier === "team"),
@@ -64,11 +57,6 @@ try {
       }
     }
   }
-  const legacyRows = await legacyDb
-    .select()
-    .from(legacyOrgPlanEntitlements)
-    .orderBy(legacyOrgPlanEntitlements.orgId);
-
   const migration = await readFile(
     new URL("../src/migrations/1090_show_usage_pack.sql", import.meta.url),
     "utf8",
@@ -83,63 +71,42 @@ try {
       return left.org_id.localeCompare(right.org_id);
     }),
   );
-  assert.deepEqual(
-    await legacyDb
-      .select()
-      .from(legacyOrgPlanEntitlements)
-      .orderBy(legacyOrgPlanEntitlements.orgId),
-    legacyRows,
+  const cleanup = await readFile(
+    new URL(
+      "../src/migrations/1092_retire_show_usage_pack_compatibility.sql",
+      import.meta.url,
+    ),
+    "utf8",
   );
+  await client.query(cleanup);
+  const retained = await client.query(
+    "SELECT org_id, show_usage_pack FROM org_plan_entitlements ORDER BY org_id",
+  );
+  assert.deepEqual(retained.rows, backfilled.rows);
 
-  // Conflicting upserts invoke both BEFORE INSERT and BEFORE UPDATE triggers.
-  // Exercise the outgoing API's complete statement without the new column.
+  // The explicit capability survives inserts and conflicting updates even when
+  // the legacy invitation field has a different value.
   for (const source of sources) {
-    const orgId = `old_api_${source}`;
-    for (const [planKey, required, visible] of [
-      ["team", true, true],
-      ["limited-free-1", false, false],
-      ["pro", true, true],
-      ["pro", false, false],
-    ] as const) {
-      await upsertLegacyOrgPlanEntitlement(legacyDb, {
-        orgId,
-        planKey,
-        source,
-        memberInviteUsagePackRequired: required,
-      });
+    const orgId = `explicit_visibility_${source}`;
+    for (const visible of [true, false, true]) {
+      await client.query(
+        `INSERT INTO org_plan_entitlements (
+          org_id, plan_key, plan_rank, source,
+          member_invite_usage_pack_required, show_usage_pack,
+          restricted_built_in_models
+        ) VALUES ($1, 'pro', 1, $2, $3, $4, false)
+        ON CONFLICT (org_id) DO UPDATE SET
+          plan_key = EXCLUDED.plan_key,
+          member_invite_usage_pack_required = EXCLUDED.member_invite_usage_pack_required,
+          show_usage_pack = EXCLUDED.show_usage_pack`,
+        [orgId, source, !visible, visible],
+      );
       await assertVisibility(orgId, visible);
-      const [legacyRow] = await legacyDb
-        .select()
-        .from(legacyOrgPlanEntitlements)
-        .where(eq(legacyOrgPlanEntitlements.orgId, orgId));
-      assert.ok(legacyRow);
-      assert.equal(legacyRow.planKey, planKey);
-      assert.equal(legacyRow.memberInviteUsagePackRequired, required);
     }
   }
-
-  // Returning every old mapped column must also remain legal after migration.
-  const returningValues = legacyOrgPlanEntitlementValues({
-    orgId: "old_api_returning",
-    planKey: "team",
-    source: "stripe_atom_grant",
-    memberInviteUsagePackRequired: true,
-  });
-  const [returned] = await legacyDb
-    .insert(legacyOrgPlanEntitlements)
-    .values(returningValues)
-    .returning();
-  assert.ok(returned);
-  const { createdAt, ...returnedValues } = returned;
-  assert.ok(createdAt instanceof Date);
-  assert.deepEqual(returnedValues, {
-    ...returningValues,
-    stripeProductId: null,
-    metadataVersion: "1",
-    metadataHash: null,
-  });
-  await assertVisibility(returningValues.orgId, true);
-  console.log("Usage pack visibility backfill and legacy writer checks passed");
+  console.log(
+    "Usage pack backfill, retained data, and explicit writer checks passed",
+  );
 } finally {
   await client.query("ROLLBACK");
   await client.end();
