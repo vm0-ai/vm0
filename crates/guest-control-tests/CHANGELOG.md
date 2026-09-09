@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.10.4...guest-control-tests-v0.10.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+
 ## [0.10.4](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.10.3...guest-control-tests-v0.10.4) (2026-09-08)
 
 ## [0.10.3](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.10.2...guest-control-tests-v0.10.3) (2026-09-08)

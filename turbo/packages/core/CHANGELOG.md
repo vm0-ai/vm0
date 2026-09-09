@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.640.1](https://github.com/vm0-ai/vm0/compare/core-v8.640.0...core-v8.640.1) (2026-09-09)
+
+
+### Refactoring
+
+* finish brand retirement cleanup ([#32728](https://github.com/vm0-ai/vm0/issues/32728)) ([6254182](https://github.com/vm0-ai/vm0/commit/62541820a08410060d6cfde83887e17fa7a86429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.2
+
 ## [8.640.0](https://github.com/vm0-ai/vm0/compare/core-v8.639.0...core-v8.640.0) (2026-09-09)
 
 

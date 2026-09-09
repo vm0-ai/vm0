@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.188.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.17...runner-rs-v0.188.18) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify cancelled workspace promotion skips ([#32793](https://github.com/vm0-ai/vm0/issues/32793)) ([5b45464](https://github.com/vm0-ai/vm0/commit/5b4546424e912fee5831a284ea9a54ead5311c1b))
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+* **runner:** classify firewall catalog refresh degradation ([#32778](https://github.com/vm0-ai/vm0/issues/32778)) ([e0d4a64](https://github.com/vm0-ai/vm0/commit/e0d4a6479033e1013617c2902f52e73e65f210ed))
+
 ## [0.188.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.16...runner-rs-v0.188.17) (2026-09-08)
 
 

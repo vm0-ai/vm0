@@ -8,6 +8,28 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.573.1](https://github.com/vm0-ai/vm0/compare/api-v1.573.0...api-v1.573.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** cap chat search at 25 and bound sparse keyword scans ([#32767](https://github.com/vm0-ai/vm0/issues/32767)) ([0e7fdb7](https://github.com/vm0-ai/vm0/commit/0e7fdb77c421152675528b82feeb698fd95b29d6))
+
+
+### Refactoring
+
+* finish brand retirement cleanup ([#32728](https://github.com/vm0-ai/vm0/issues/32728)) ([6254182](https://github.com/vm0-ai/vm0/commit/62541820a08410060d6cfde83887e17fa7a86429))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.2
+    * @okouai/core bumped to 8.640.1
+    * @okouai/db bumped to 1.247.4
+    * @okouai/pi-agent-runtime bumped to 1.23.7
+
 ## [1.573.0](https://github.com/vm0-ai/vm0/compare/api-v1.572.2...api-v1.573.0) (2026-09-09)
 
 
