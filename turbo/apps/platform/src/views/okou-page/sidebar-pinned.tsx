@@ -208,42 +208,6 @@ interface PinnedGridAgent {
 type PinnedDropSide = "before" | "after";
 
 /**
- * The drag handle shown above a pinned tile while a reorder drag is in flight.
- * Hovering a tile leaves it untouched — the handle marks the reorderable slots
- * once dragging starts, so browsing pinned agents stays quiet. It is absolutely
- * positioned so it costs no layout: the tile keeps its size and the avatar
- * never moves.
- *
- * Every inset is a whole pixel. The tile is a `1fr` grid column, so the handle
- * is centred on a fractional x; a half-pixel padding would round up on one edge
- * and down on the other and visibly push the dots off-centre.
- */
-function PinnedAgentDragHandle() {
-  return (
-    <span
-      aria-hidden="true"
-      data-testid="pinned-agent-drag-handle"
-      className="pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px]"
-    >
-      {[0, 1].map((row) => {
-        return (
-          <span key={row} className="flex gap-[2px]">
-            {[0, 1, 2].map((dot) => {
-              return (
-                <span
-                  key={dot}
-                  className="h-[2px] w-[2px] rounded-full bg-[hsl(var(--gray-500))]"
-                />
-              );
-            })}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-/**
  * A grid tile is only a fifth of the sidebar wide, so almost every agent name
  * is truncated down to a few characters. The tile carries a hover tooltip with
  * the full name — a native `title` is too slow and too easy to miss for a label
@@ -339,9 +303,6 @@ function PinnedAgentGridCard({
           : "text-sidebar-foreground hover:bg-state-hover"
       } ${isReorderable ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      {isReorderable && isDragInFlight && !isDragging && (
-        <PinnedAgentDragHandle />
-      )}
       {dropSide && (
         <span
           aria-hidden="true"
