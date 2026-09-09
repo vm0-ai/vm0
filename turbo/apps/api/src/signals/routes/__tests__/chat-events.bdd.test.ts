@@ -133,9 +133,13 @@ import {
   API_TEST_CONNECTOR_CATALOG,
   apiTestConnectorCatalogValidationAuthority,
   clearApiTestConnectorCatalogExternalReaderIdentityReplacements,
+  clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
+  deleteApiTestConnectorCatalogRuntimeProjectionRow,
+  deleteApiTestConnectorCatalogRuntimeProjectionSet,
   installApiTestConnectorCatalog,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogExternalReaderIdentityReadHook,
+  setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook,
 } from "../../../test-fixtures/connector-catalog";
 import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import {
@@ -1867,14 +1871,163 @@ async function configureRuntimeContextGateway(
   ]);
 }
 
+function setThreadConnectorCatalogReadHook(hook: () => Promise<void>): void {
+  // Admission first reads the run scope's projection and passes that result
+  // into preparation. Inject the failure/barrier only on the subsequent
+  // current-authority read for the stored thread account.
+  let admissionRead = true;
+  setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(() => {
+    if (admissionRead) {
+      admissionRead = false;
+      return Promise.resolve();
+    }
+    return hook();
+  });
+}
+
 describe("CHAT-02: thread connector account selection", () => {
+  it.each(["missing", "incomplete"] as const)(
+    "reads the selected account when the catalog projection is %s",
+    async (projectionState) => {
+      const fixture = await selectedThreadConnectorFixture(
+        "Thread catalog projection fallback",
+      );
+      // Advance authority so setup's cached selection cannot hide a missing row.
+      await installApiTestConnectorCatalog({
+        catalogVersion: `api-test-thread-fallback-${randomUUID()}`,
+        runtimeProjection: true,
+      });
+      // Model an older/incomplete persisted projection through the external
+      // database fixture; public APIs cannot create these rollout states.
+      if (projectionState === "missing") {
+        await deleteApiTestConnectorCatalogRuntimeProjectionSet();
+      } else {
+        await deleteApiTestConnectorCatalogRuntimeProjectionRow("openai");
+      }
+      const selections = await accept(
+        chatThreadConnectorSelectionsClient().get({
+          headers: sessionHeaders(fixture.actor),
+          params: { id: fixture.threadId },
+        }),
+        [200],
+      );
+      expect(selections.body.selectedConnections).toMatchObject([
+        {
+          id: fixture.connectionId,
+          target: { kind: "builtin", connectorSlug: "openai" },
+          connectionStatus: "connected",
+        },
+      ]);
+    },
+  );
+
+  it("uses a selected builtin account without reading the full catalog", async () => {
+    const fixture = await selectedThreadConnectorFixture(
+      "Scoped thread catalog selection",
+    );
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    });
+    // Reject the external full-snapshot read while leaving real scoped
+    // PostgreSQL projections available to this API request.
+    setApiTestConnectorCatalogExternalReaderIdentityReadHook(() => {
+      return Promise.reject(new Error("Full catalog read is unavailable"));
+    });
+
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(fixture.actor),
+        params: { id: fixture.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: fixture.connectionId,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+    const run = await sendChatRun(fixture.actor, {
+      agentId: fixture.agentId,
+      threadId: fixture.threadId,
+      prompt: "Use the selected account from its current projection",
+    });
+    const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: fixture.connectionId });
+    await cancelChatRun(fixture.actor, run.runId, claimed.sandboxHeaders);
+  });
+
+  it("preserves an out-of-scope choice without requiring its catalog", async () => {
+    const fixture = await selectedThreadConnectorFixture(
+      "Out-of-scope thread catalog selection",
+    );
+    await api.enableAgentConnectors(fixture.actor, fixture.agentId, []);
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    });
+    const rejectCatalogRead = () => {
+      return Promise.reject(new Error("Connector catalog is unavailable"));
+    };
+    setApiTestConnectorCatalogExternalReaderIdentityReadHook(rejectCatalogRead);
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(
+      rejectCatalogRead,
+    );
+    const run = await sendChatRun(fixture.actor, {
+      agentId: fixture.agentId,
+      threadId: fixture.threadId,
+      prompt: "Do not use the connector removed from the agent scope",
+    });
+    const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toBeUndefined();
+    await cancelChatRun(fixture.actor, run.runId, claimed.sandboxHeaders);
+
+    clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    await api.enableAgentConnectors(fixture.actor, fixture.agentId, ["openai"]);
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(fixture.actor),
+        params: { id: fixture.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: fixture.connectionId,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+    const reauthorized = await sendChatRun(fixture.actor, {
+      agentId: fixture.agentId,
+      threadId: fixture.threadId,
+      prompt: "Use the preserved account after reauthorization",
+    });
+    const reauthorizedClaim = await claimChatRun(
+      fixture.runnerGroup,
+      reauthorized.runId,
+    );
+    expect(
+      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: fixture.connectionId });
+    await cancelChatRun(
+      fixture.actor,
+      reauthorized.runId,
+      reauthorizedClaim.sandboxHeaders,
+    );
+  });
+
   it("overlaps stored thread selection with model-provider resolution", async () => {
     const fixture = await selectedThreadConnectorFixture(
       "Runtime context overlap thread",
     );
     await configureRuntimeContextGateway(fixture.actor);
     onTestFinished(() => {
-      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     });
     const threadCatalogReadStarted = createDeferredPromise<void>(
       context.signal,
@@ -1884,7 +2037,7 @@ describe("CHAT-02: thread connector account selection", () => {
         threadCatalogReadStarted.resolve(undefined);
       }
     });
-    setApiTestConnectorCatalogExternalReaderIdentityReadHook(() => {
+    setThreadConnectorCatalogReadHook(() => {
       if (!threadCatalogReadStarted.settled()) {
         threadCatalogReadStarted.resolve(undefined);
       }
@@ -1924,7 +2077,7 @@ describe("CHAT-02: thread connector account selection", () => {
       "Overlap stored thread selection with runtime context",
       "runtime-context-priority-secret",
     ]);
-    clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
     expect(kms.decryptCalls).toBeGreaterThan(0);
     expect(claimed.claim.environment).toMatchObject({
@@ -1943,13 +2096,13 @@ describe("CHAT-02: thread connector account selection", () => {
       "Runtime context abort priority thread",
     );
     onTestFinished(() => {
-      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     });
     const abortError = new Error("runtime context priority abort");
     abortError.name = "AbortError";
     const abortThreadError = new Error("thread selection below abort");
     const abortController = new AbortController();
-    setApiTestConnectorCatalogExternalReaderIdentityReadHook(() => {
+    setThreadConnectorCatalogReadHook(() => {
       abortController.abort(abortError);
       return Promise.reject(abortThreadError);
     });
@@ -1978,7 +2131,7 @@ describe("CHAT-02: thread connector account selection", () => {
     );
     await configureRuntimeContextGateway(fixture.actor);
     onTestFinished(() => {
-      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     });
     const providerFailureStarted = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
@@ -1988,7 +2141,7 @@ describe("CHAT-02: thread connector account selection", () => {
     });
     const threadError = new Error("runtime thread selection priority failure");
     const providerError = new Error("model provider below thread failure");
-    setApiTestConnectorCatalogExternalReaderIdentityReadHook(async () => {
+    setThreadConnectorCatalogReadHook(async () => {
       await providerFailureStarted.promise;
       throw threadError;
     });
@@ -2355,6 +2508,19 @@ describe("CHAT-02: thread connector account selection", () => {
       agentId,
       prompt: "Use my default custom connector account",
     });
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    });
+    const rejectBuiltinCatalogRead = () => {
+      return Promise.reject(new Error("Builtin catalog is unavailable"));
+    };
+    setApiTestConnectorCatalogExternalReaderIdentityReadHook(
+      rejectBuiltinCatalogRead,
+    );
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(
+      rejectBuiltinCatalogRead,
+    );
     await accept(
       chatThreadConnectorSelectionsClient().update({
         headers: sessionHeaders(actor),
@@ -2369,6 +2535,22 @@ describe("CHAT-02: thread connector account selection", () => {
       }),
       [200],
     );
+    const availableSelection = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: first.threadId },
+      }),
+      [200],
+    );
+    expect(availableSelection.body.selectedConnections).toMatchObject([
+      {
+        id: connectorId,
+        target: { kind: "custom", customConnectorId: customConnector.id },
+        connectionStatus: "connected",
+      },
+    ]);
+    clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     await cancelChatRun(actor, first.runId);
     await setCustomConnectorCredentialStorageState(context, {
       orgId,

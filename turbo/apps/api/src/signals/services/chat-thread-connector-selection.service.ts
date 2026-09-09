@@ -586,18 +586,18 @@ export async function resolveChatThreadConnectorSelections(
   const storedSelections = await projectStoredSelections(db, {
     orgId: args.orgId,
     userId: args.userId,
-    selections: rows.map(selectionFromRow),
+    selections: rows.map(selectionFromRow).filter((selection) => {
+      return targetIsAuthorized(args.scope, selection.target);
+    }),
   });
   const selectionCandidates = new Map<
     string,
     readonly ConnectorAccountSelection[]
   >();
   for (const selection of storedSelections) {
-    if (targetIsAuthorized(args.scope, selection.target)) {
-      selectionCandidates.set(connectorAccountTargetKey(selection.target), [
-        selection,
-      ]);
-    }
+    selectionCandidates.set(connectorAccountTargetKey(selection.target), [
+      selection,
+    ]);
   }
   if (args.connectorSourceId !== undefined) {
     const target = await loadConnectorTarget(db, {

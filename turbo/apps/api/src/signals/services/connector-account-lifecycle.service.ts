@@ -62,7 +62,9 @@ import {
   connectorCredentialStatusWithMethod,
 } from "./connector-credential-status.service";
 import {
+  loadConnectorRuntimeSelection,
   loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 
@@ -423,7 +425,7 @@ async function customTargetIsVisible(
 
 function builtinConnection(
   row: ConnectorAccountRow,
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   now: Date,
   includeScopeMismatch = false,
 ): ConnectorAccountConnection | null {
@@ -568,7 +570,7 @@ function customConnection(
 
 function projectConnection(
   row: ConnectorAccountRow,
-  snapshot: ConnectorRuntimeSnapshot | null,
+  snapshot: ConnectorRuntimeSelection | null,
   now: Date,
   includeBuiltinScopeMismatch = false,
 ): ConnectorAccountConnection | null {
@@ -821,6 +823,34 @@ export async function getConnectorAccount(
   return projectConnection(row, snapshot, nowDate());
 }
 
+async function loadConnectorAccountRuntimeSelection(
+  db: ReadonlyDb,
+  rows: readonly ConnectorAccountRow[],
+): Promise<ConnectorRuntimeSelection | null> {
+  const connectorSlugs = rows.flatMap((row) => {
+    const slug = connectorSlugSchema.safeParse(row.connectorSlug);
+    return slug.success ? [slug.data] : [];
+  });
+  if (connectorSlugs.length === 0) {
+    return null;
+  }
+  const result = await settle(
+    loadConnectorRuntimeSelection(db, {
+      requestedConnectorSlugs: connectorSlugs,
+    }),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (!isConnectorCatalogUnavailableError(result.error)) {
+    throw result.error;
+  }
+  log.warn("Connector catalog unavailable while resolving account lifecycle", {
+    error: result.error,
+  });
+  return null;
+}
+
 export async function listConnectorAccountsByIds(
   db: ReadonlyDb,
   args: {
@@ -837,7 +867,7 @@ export async function listConnectorAccountsByIds(
     ...args,
     connectionIds,
   });
-  const snapshot = await loadCurrentConnectorRuntimeSnapshot(db);
+  const snapshot = await loadConnectorAccountRuntimeSelection(db, rows);
   const now = nowDate();
   return rows.flatMap((row) => {
     const connection = projectConnection(row, snapshot, now);
