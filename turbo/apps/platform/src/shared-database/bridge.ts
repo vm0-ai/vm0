@@ -37,7 +37,6 @@ export interface SharedDatabaseBridgeEvents {
   readonly databaseInvalidated: (
     dataKey: SharedDatabaseDataKey,
   ) => void | Promise<void>;
-  readonly databaseReconnected: () => void | Promise<void>;
   readonly workerUnavailable: (
     reason: SharedDatabaseWorkerUnavailableReason,
   ) => void;

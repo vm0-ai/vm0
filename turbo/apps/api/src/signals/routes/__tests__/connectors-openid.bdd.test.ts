@@ -71,9 +71,6 @@ async function startSteamOpenId(
     }),
     [200],
   );
-  if (!response.body.oauthAttemptId) {
-    throw new Error("Expected OpenID attempt ID");
-  }
   return {
     authorizationUrl: new URL(response.body.authorizationUrl),
     oauthAttemptId: response.body.oauthAttemptId,

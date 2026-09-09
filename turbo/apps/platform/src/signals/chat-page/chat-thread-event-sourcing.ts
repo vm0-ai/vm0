@@ -3,6 +3,7 @@ import {
   chatThreadMetadataContract,
   type ChatThreadEvent,
   type ChatThreadMetadata,
+  type ReasoningEffort,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
@@ -14,9 +15,7 @@ import {
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
-import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
 import {
@@ -61,6 +60,7 @@ export interface ThreadMeta {
   readonly title: string | null;
   readonly pinnedAt: string | null;
   readonly selectedModel: string | null;
+  readonly reasoningEffort?: ReasoningEffort | null;
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
@@ -297,11 +297,6 @@ const syncSharedEventDrivenChatThreads$ = command(
 
 const subscribeSharedEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    set(
-      subscribeRealtimeReadyCatchUp$,
-      syncSharedEventDrivenChatThreads$,
-      signal,
-    );
     const dataKey = await get(sharedChatThreadEventDataKey$);
     signal.throwIfAborted();
     const cached = await set(
@@ -360,6 +355,7 @@ const canonicalThreadMetaMap$ = computed((get) => {
       title: thread.title,
       pinnedAt: thread.pinnedAt,
       selectedModel: thread.selectedModel,
+      reasoningEffort: thread.reasoningEffort ?? null,
       serviceTier: thread.serviceTier,
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
@@ -394,6 +390,7 @@ function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta {
     title: metadata.title,
     pinnedAt: metadata.pinnedAt,
     selectedModel: metadata.selectedModel,
+    reasoningEffort: metadata.reasoningEffort ?? null,
     serviceTier: metadata.serviceTier,
     computerUseHostId: metadata.computerUseHostId,
     cloudBrowserEnabled: metadata.cloudBrowserEnabled,
@@ -532,32 +529,13 @@ export const resolveThreadMeta$ = command(
 
     const remoteStartedAt = performance.now();
     const initialRemoteSync = get(initialRemoteChatThreadEventsSyncedDeferred$);
-    const foregroundReady = get(foregroundReady$);
-    const foregroundSyncBarrier = get(chatThreadEventSyncBarrier$);
-    const foregroundSync =
-      initialRemoteSync.settled() &&
-      (foregroundReady.pending || foregroundSyncBarrier.inFlight)
-        ? foregroundSyncBarrier.next.promise
-        : null;
-    if (foregroundSync) {
-      await waitForSharedWork(foregroundReady.promise, signal);
-      await waitForSharedWork(foregroundSync, signal);
-      signal.throwIfAborted();
-      meta = get(meta$);
-      if (meta) {
-        return {
-          localDurationMs,
-          meta,
-          remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
-          source: "remote",
-        };
-      }
-    }
-
     const syncBarrier = get(chatThreadEventSyncBarrier$);
+    // Refresh missing threads against current server state after initial sync.
     const canonicalSync = syncBarrier.inFlight
       ? syncBarrier.next.promise
-      : initialRemoteSync.promise;
+      : initialRemoteSync.settled()
+        ? set(syncSharedEventDrivenChatThreads$, get(rootSignal$))
+        : initialRemoteSync.promise;
     const syncVersion = get(chatThreadEventSyncVersion$);
     const resolution = await set(
       resolveColdThreadMeta$,

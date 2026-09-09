@@ -17,7 +17,11 @@ const STORAGE_VERSION_PREFIX = `__system__/volume/${STORAGE_NAME}/${VERSION_ID}`
 const PRIVATE_NAME = "TOKEN_SECURITY_API_TOKEN";
 const VALUE_REF = `$secrets.${PRIVATE_NAME}`;
 
-function catalogArtifact(description: string): ConnectorCatalogArtifact {
+function catalogArtifact(
+  description: string,
+  privateName = PRIVATE_NAME,
+  placeholder: string | null = null,
+): ConnectorCatalogArtifact {
   return {
     artifactSchemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
     catalogVersion: CATALOG_VERSION,
@@ -48,25 +52,25 @@ function catalogArtifact(description: string): ConnectorCatalogArtifact {
             visible: true,
             storage: {
               version: 1,
-              secrets: [PRIVATE_NAME],
+              secrets: [privateName],
               variables: [],
             },
             grant: {
               kind: "manual",
               fields: [
                 {
-                  privateName: PRIVATE_NAME,
+                  privateName,
                   publicId: "credential",
                   label: "API token",
                   required: true,
-                  placeholder: null,
+                  placeholder,
                   storage: "secret",
                 },
               ],
             },
             access: {
               kind: "static",
-              envBindings: { SERVICE_TOKEN: VALUE_REF },
+              envBindings: { SERVICE_TOKEN: `$secrets.${privateName}` },
             },
             revoke: { kind: "none" },
           },
@@ -90,10 +94,10 @@ function catalogArtifact(description: string): ConnectorCatalogArtifact {
   };
 }
 
-function decodeCatalog(description: string): ConnectorCatalogArtifact {
-  const rawBytes = Buffer.from(
-    `${JSON.stringify(catalogArtifact(description))}\n`,
-  );
+function decodeCatalog(
+  artifact: ConnectorCatalogArtifact,
+): ConnectorCatalogArtifact {
+  const rawBytes = Buffer.from(`${JSON.stringify(artifact)}\n`);
   return decodeConnectorCatalogSnapshot({
     catalogGzip: encodeConnectorCatalogSnapshot(rawBytes),
     catalogRawSize: rawBytes.byteLength,
@@ -104,7 +108,9 @@ function decodeCatalog(description: string): ConnectorCatalogArtifact {
 
 describe("connector catalog public projection", () => {
   it("accepts the exact public slug derived from bundled skill storage", () => {
-    const artifact = decodeCatalog("Public connector description");
+    const artifact = decodeCatalog(
+      catalogArtifact("Public connector description"),
+    );
 
     expect(artifact.connectors[0]?.slug).toBe(CONNECTOR_SLUG);
   });
@@ -117,7 +123,115 @@ describe("connector catalog public projection", () => {
     ["private value reference", VALUE_REF],
   ])("rejects a leaked %s", (_name, privateValue) => {
     expect(() => {
-      decodeCatalog(privateValue);
+      decodeCatalog(catalogArtifact(privateValue));
     }).toThrow("public-leakage");
+  });
+
+  it.each([
+    ["ABCD_EFGH", "prefix-abcd-efgh-suffix"],
+    [PRIVATE_NAME, "Your token security api token"],
+  ])("rejects a placeholder derived from %s", (privateName, placeholder) => {
+    expect(() => {
+      decodeCatalog(
+        catalogArtifact("Public description", privateName, placeholder),
+      );
+    }).toThrow("public-leakage");
+  });
+
+  it.each([
+    ["ABC_DEFG", "abc-defg"],
+    ["ABCDEFGH", "abcd-efgh"],
+    [PRIVATE_NAME, "Enter your credential"],
+  ])(
+    "accepts an unrelated placeholder for %s: %s",
+    (privateName, placeholder) => {
+      const artifact = catalogArtifact(
+        "Public description",
+        privateName,
+        placeholder,
+      );
+      expect(decodeCatalog(artifact)).toEqual(artifact);
+    },
+  );
+
+  it("keeps normalized private names public outside derived-value paths", () => {
+    const artifact = catalogArtifact("Token security api token");
+    for (const connector of artifact.connectors) {
+      connector.tags = ["token-security-api-token"];
+    }
+    expect(decodeCatalog(artifact)).toEqual(artifact);
+  });
+
+  it("rejects exact private values inside public arrays", () => {
+    const artifact = catalogArtifact("Public description");
+    for (const connector of artifact.connectors) {
+      connector.tags = [PRIVATE_NAME];
+    }
+    expect(() => {
+      decodeCatalog(artifact);
+    }).toThrow("public-leakage");
+  });
+
+  it.each(["defaultValue", "value", "neither"])(
+    "checks derived private names in device fields: %s",
+    (field) => {
+      const artifact = catalogArtifact("Public description");
+      for (const connector of artifact.connectors) {
+        for (const method of connector.authMethods) {
+          method.client = {
+            clientType: "public",
+            clientRegistration: "static",
+            clientId: "fixture-device-client",
+          };
+          method.grant = {
+            kind: "device-auth",
+            scopes: [],
+            outputs: { token: VALUE_REF },
+            startOptions: [
+              {
+                privateName: "environment",
+                publicId: "environment",
+                kind: "select",
+                label: "Environment",
+                required: true,
+                defaultValue:
+                  field === "defaultValue" ? "token-security-api-token" : null,
+                options: [
+                  {
+                    // Keep the default-value case independent: missing its
+                    // leakage check must reach relationship-mismatch, not
+                    // pass because the option value also leaks.
+                    value:
+                      field === "value"
+                        ? "token-security-api-token"
+                        : "production",
+                    label: "Production",
+                  },
+                ],
+              },
+            ],
+          };
+        }
+      }
+      if (field === "neither") {
+        expect(decodeCatalog(artifact)).toEqual(artifact);
+      } else {
+        expect(() => {
+          decodeCatalog(artifact);
+        }).toThrow("public-leakage");
+      }
+    },
+  );
+
+  it("keeps sensitive matching scoped to its connector", () => {
+    const firstPrivateName = "FIRST_PRIVATE_FIELD";
+    const first = catalogArtifact("Public description", firstPrivateName);
+    const second = catalogArtifact(firstPrivateName, "SECOND_PRIVATE_FIELD");
+    for (const connector of second.connectors) {
+      connector.slug = "another-connector";
+      connector.skill = { kind: "none" };
+      first.connectors.push(connector);
+    }
+    expect(decodeCatalog(first)).toEqual(first);
   });
 });

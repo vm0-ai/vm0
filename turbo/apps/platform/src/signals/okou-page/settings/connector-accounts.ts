@@ -39,14 +39,9 @@ export async function readConnectorOAuthCompletion(
   createClient: ApiClientFactory,
   target: ConnectorAccountTarget,
   account: PlatformConnectorAccountMutationIntent,
-  attemptId: string | undefined,
+  attemptId: string,
   signal: AbortSignal,
 ): Promise<string | null> {
-  // New App -> old API: absent attempt IDs cannot prove authorization.
-  // Remove after receipt-capable APIs are the serving and rollback floor (#32870).
-  if (!attemptId) {
-    return null;
-  }
   const result = await accept(
     createClient(connectorAccountsContract).oauthCompletion({
       params: { attemptId },

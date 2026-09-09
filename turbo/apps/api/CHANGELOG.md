@@ -8,6 +8,77 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.577.0](https://github.com/vm0-ai/vm0/compare/api-v1.576.0...api-v1.577.0) (2026-09-09)
+
+
+### Features
+
+* **api:** rank connector discovery and give every category a slice ([#32927](https://github.com/vm0-ai/vm0/issues/32927)) ([571b67f](https://github.com/vm0-ai/vm0/commit/571b67ff4bc5848abed2aa91061e33b0f517ae0a))
+* **chat:** persist model-aware reasoning effort selections ([#32926](https://github.com/vm0-ai/vm0/issues/32926)) ([5802f5b](https://github.com/vm0-ai/vm0/commit/5802f5ba59d8d47865139dccd1f49acdf50a2a02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.0
+    * @okouai/core bumped to 8.645.0
+    * @okouai/db bumped to 1.249.0
+    * @okouai/pi-agent-runtime bumped to 1.24.5
+
+## [1.576.0](https://github.com/vm0-ai/vm0/compare/api-v1.575.3...api-v1.576.0) (2026-09-09)
+
+
+### Features
+
+* add email subscription management to morning brief preferences ([#32933](https://github.com/vm0-ai/vm0/issues/32933)) ([e114cb8](https://github.com/vm0-ai/vm0/commit/e114cb8c9be99fbaf0513bece90d02736ce43b2e))
+
+
+### Bug Fixes
+
+* **pi:** hand off failed api model turns to sandbox ([#32948](https://github.com/vm0-ai/vm0/issues/32948)) ([26c896f](https://github.com/vm0-ai/vm0/commit/26c896fe39acf3b62837819d34dd38a4a77a9084))
+
+
+### Refactoring
+
+* **api:** retire the legacy zero teams command prefix ([#32947](https://github.com/vm0-ai/vm0/issues/32947)) ([b1692d8](https://github.com/vm0-ai/vm0/commit/b1692d895c8032853f7834ce5828c9350cfd0656)), closes [#32941](https://github.com/vm0-ai/vm0/issues/32941)
+* **connectors:** require browser oauth attempt ids ([#32960](https://github.com/vm0-ai/vm0/issues/32960)) ([6e74f9a](https://github.com/vm0-ai/vm0/commit/6e74f9aca7e9e180c95cb5321b46cb641af6896e))
+* **naming:** correct residual retired-brand copy and internal names ([#32946](https://github.com/vm0-ai/vm0/issues/32946)) ([c5e6ef9](https://github.com/vm0-ai/vm0/commit/c5e6ef9e41593c017fd2fd57222a40d123270db5)), closes [#32939](https://github.com/vm0-ai/vm0/issues/32939)
+
+
+### Performance Improvements
+
+* **api:** scope catalog reads for thread connector selections ([#32956](https://github.com/vm0-ai/vm0/issues/32956)) ([a8e237e](https://github.com/vm0-ai/vm0/commit/a8e237ede91c9d8c9543603121ed09178be1876f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.421.0
+    * @okouai/core bumped to 8.644.0
+    * @okouai/db bumped to 1.248.5
+    * @okouai/pi-agent-runtime bumped to 1.24.4
+
+## [1.575.3](https://github.com/vm0-ai/vm0/compare/api-v1.575.2...api-v1.575.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **ads:** route browser conversions by verified account ownership ([#32902](https://github.com/vm0-ai/vm0/issues/32902)) ([bb561b8](https://github.com/vm0-ai/vm0/commit/bb561b8ee07aa5c8ae4bcddfadc633e9900ad550))
+* **voice:** recover transient provider capacity failures ([#32918](https://github.com/vm0-ai/vm0/issues/32918)) ([6600861](https://github.com/vm0-ai/vm0/commit/660086182f9ecf4a7f67eb8cf43166af2071dbf6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.3
+    * @okouai/connectors bumped to 3.8.7
+    * @okouai/core bumped to 8.643.0
+    * @okouai/db bumped to 1.248.4
+    * @okouai/pi-agent-runtime bumped to 1.24.3
+
 ## [1.575.2](https://github.com/vm0-ai/vm0/compare/api-v1.575.1...api-v1.575.2) (2026-09-09)
 
 

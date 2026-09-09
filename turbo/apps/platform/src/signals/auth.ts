@@ -20,7 +20,6 @@ import {
 } from "../lib/platform-host.ts";
 import { BRAND_NAME, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { setupForegroundCatchUp$ } from "./foreground-catch-up.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -326,7 +325,6 @@ export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
-    set(setupForegroundCatchUp$, signal);
 
     // Set initial Sentry user context
     if (clerk.user) {

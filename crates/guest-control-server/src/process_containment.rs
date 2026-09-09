@@ -568,11 +568,10 @@ impl CgroupGuard {
         };
 
         Ok(Self {
-            oom_evidence: trusted_control.then(|| {
-                Arc::new(Mutex::new(crate::oom_evidence::EvidenceMonitor::new(
-                    group_path.clone(),
-                )))
-            }),
+            oom_evidence: trusted_control
+                .then(|| crate::oom_evidence::EvidenceMonitor::new(group_path.clone()))
+                .flatten()
+                .map(|monitor| Arc::new(Mutex::new(monitor))),
             group_name,
             group_path,
             outer_placement,

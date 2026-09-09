@@ -685,8 +685,7 @@ mod tests {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
-                .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
-                .env_remove(retired_runtime_marker_env());
+                .env_remove(CANONICAL_RUNTIME_MARKER_ENV);
             if let Some((name, value)) = marker {
                 command.env(name, value);
             }
@@ -713,20 +712,10 @@ mod tests {
         }
     }
 
-    fn retired_runtime_marker_env() -> String {
-        ["VM0", "MITMDUMP", "RUNTIME", "DIR"].join("_")
-    }
-
-    fn marker_environment(canonical: Option<&[u8]>, retired: Option<&[u8]>) -> Vec<u8> {
+    fn marker_environment(canonical: Option<&[u8]>) -> Vec<u8> {
         let mut environ = b"UNRELATED=value\0".to_vec();
         if let Some(value) = canonical {
             environ.extend_from_slice(CANONICAL_RUNTIME_MARKER_PREFIX);
-            environ.extend_from_slice(value);
-            environ.push(0);
-        }
-        if let Some(value) = retired {
-            environ.extend_from_slice(retired_runtime_marker_env().as_bytes());
-            environ.push(b'=');
             environ.extend_from_slice(value);
             environ.push(0);
         }
@@ -758,45 +747,22 @@ mod tests {
         drop(runtime);
     }
 
-    #[tokio::test]
-    async fn acquisition_ignores_retired_legacy_only_process() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("runtime");
-        let lock_path = dir.path().join("runtime.lock");
-        crate::private_fs::ensure_private_dir(&root).await.unwrap();
-        let launch = root.join("launch-retired");
-        std::fs::create_dir(&launch).unwrap();
-        let retired_marker = retired_runtime_marker_env();
-        let mut child = ProbeChild::spawn(Some((&retired_marker, &launch)));
-
-        let runtime = MitmdumpRuntime::acquire(root, lock_path).await.unwrap();
-
-        child.assert_responds();
-        assert!(!launch.exists(), "stale launch directory was not removed");
-        drop(runtime);
-    }
-
     #[test]
-    fn runtime_marker_resolver_reads_canonical_bytes_only() {
+    fn runtime_marker_resolver_reads_canonical_marker_as_raw_bytes() {
         let canonical = b"/runtime/launch-canonical";
-        let retired = b"/runtime/launch-retired";
         let non_unicode = b"/runtime/launch-\xff";
 
-        assert!(resolve_runtime_marker(&marker_environment(None, None)).is_none());
+        assert!(resolve_runtime_marker(&marker_environment(None)).is_none());
         assert_eq!(
-            resolve_runtime_marker(&marker_environment(None, Some(retired))),
-            None,
-        );
-        assert_eq!(
-            resolve_runtime_marker(&marker_environment(Some(b""), None)),
+            resolve_runtime_marker(&marker_environment(Some(b""))),
             Some(b"".as_slice()),
         );
         assert_eq!(
-            resolve_runtime_marker(&marker_environment(Some(non_unicode), None)),
+            resolve_runtime_marker(&marker_environment(Some(non_unicode))),
             Some(non_unicode.as_slice()),
         );
         assert_eq!(
-            resolve_runtime_marker(&marker_environment(Some(canonical), Some(retired))),
+            resolve_runtime_marker(&marker_environment(Some(canonical))),
             Some(canonical.as_slice()),
         );
     }
@@ -852,23 +818,6 @@ mod tests {
         let launch = root.path().join("launch-removed-marker");
         std::fs::create_dir(&launch).unwrap();
         let mut replacement = ProbeChild::spawn(None);
-        let current = process_identity(replacement.pid()).await;
-
-        signal_stable_process(&runtime, Some(&launch), current)
-            .await
-            .unwrap();
-
-        replacement.assert_responds();
-    }
-
-    #[tokio::test]
-    async fn pidfd_signal_ignores_retired_legacy_marker() {
-        let root = tempfile::tempdir().unwrap();
-        let runtime = test_runtime(root.path()).await;
-        let launch = root.path().join("launch-retired-marker");
-        std::fs::create_dir(&launch).unwrap();
-        let retired_marker = retired_runtime_marker_env();
-        let mut replacement = ProbeChild::spawn(Some((&retired_marker, &launch)));
         let current = process_identity(replacement.pid()).await;
 
         signal_stable_process(&runtime, Some(&launch), current)

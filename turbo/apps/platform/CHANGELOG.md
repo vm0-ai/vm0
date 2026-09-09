@@ -11,6 +11,80 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.876.0](https://github.com/vm0-ai/vm0/compare/app-v0.875.0...app-v0.876.0) (2026-09-09)
+
+
+### Features
+
+* **api:** rank connector discovery and give every category a slice ([#32927](https://github.com/vm0-ai/vm0/issues/32927)) ([571b67f](https://github.com/vm0-ai/vm0/commit/571b67ff4bc5848abed2aa91061e33b0f517ae0a))
+* **chat:** persist model-aware reasoning effort selections ([#32926](https://github.com/vm0-ai/vm0/issues/32926)) ([5802f5b](https://github.com/vm0-ai/vm0/commit/5802f5ba59d8d47865139dccd1f49acdf50a2a02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.0
+    * @okouai/core bumped to 8.645.0
+
+## [0.875.0](https://github.com/vm0-ai/vm0/compare/app-v0.874.0...app-v0.875.0) (2026-09-09)
+
+
+### Features
+
+* add email subscription management to morning brief preferences ([#32933](https://github.com/vm0-ai/vm0/issues/32933)) ([e114cb8](https://github.com/vm0-ai/vm0/commit/e114cb8c9be99fbaf0513bece90d02736ce43b2e))
+* display automation times in agent and browser timezones ([#32899](https://github.com/vm0-ai/vm0/issues/32899)) ([98d2ec1](https://github.com/vm0-ai/vm0/commit/98d2ec14f6f36170b904ebfd40204d58050e252d))
+* support fuzzy workflow command matching ([#32930](https://github.com/vm0-ai/vm0/issues/32930)) ([550b15a](https://github.com/vm0-ai/vm0/commit/550b15a978b97e0715f48304361679169f2bd87e))
+
+
+### Bug Fixes
+
+* **platform:** lazy-load katex from the app bundle ([#32809](https://github.com/vm0-ai/vm0/issues/32809)) ([8f0440c](https://github.com/vm0-ai/vm0/commit/8f0440ca0009ddbfae9bb03968e011538407999c))
+
+
+### Refactoring
+
+* **connectors:** require browser oauth attempt ids ([#32960](https://github.com/vm0-ai/vm0/issues/32960)) ([6e74f9a](https://github.com/vm0-ai/vm0/commit/6e74f9aca7e9e180c95cb5321b46cb641af6896e))
+* **platform:** remove desktop product badge from computer use host rows ([#32952](https://github.com/vm0-ai/vm0/issues/32952)) ([36e8ec7](https://github.com/vm0-ai/vm0/commit/36e8ec7929cde580326559715a36e651a4b2a03d)), closes [#32949](https://github.com/vm0-ai/vm0/issues/32949)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.421.0
+    * @okouai/core bumped to 8.644.0
+
+## [0.874.0](https://github.com/vm0-ai/vm0/compare/app-v0.873.0...app-v0.874.0) (2026-09-09)
+
+
+### Features
+
+* **web-chat:** lay out mobile follow-ups as a horizontal quick reply rail ([#32916](https://github.com/vm0-ai/vm0/issues/32916)) ([2a0245c](https://github.com/vm0-ai/vm0/commit/2a0245c5bfe062996a15400df5f625570f29c0db))
+
+
+### Bug Fixes
+
+* **ads:** route browser conversions by verified account ownership ([#32902](https://github.com/vm0-ai/vm0/issues/32902)) ([bb561b8](https://github.com/vm0-ai/vm0/commit/bb561b8ee07aa5c8ae4bcddfadc633e9900ad550))
+* lighten chat header pin controls ([#32922](https://github.com/vm0-ai/vm0/issues/32922)) ([5f07dad](https://github.com/vm0-ai/vm0/commit/5f07dadccb8706e707eab4be8ca069a4b85edf13))
+* **voice:** recover transient provider capacity failures ([#32918](https://github.com/vm0-ai/vm0/issues/32918)) ([6600861](https://github.com/vm0-ai/vm0/commit/660086182f9ecf4a7f67eb8cf43166af2071dbf6))
+
+
+### Refactoring
+
+* **app:** migrate agent tone choices to shared control ([#32873](https://github.com/vm0-ai/vm0/issues/32873)) ([cd00125](https://github.com/vm0-ai/vm0/commit/cd0012572ce91c992d330c1599961e4248207303))
+* **platform:** remove page visibility and reconnect recovery ([#32861](https://github.com/vm0-ai/vm0/issues/32861)) ([ed4e519](https://github.com/vm0-ai/vm0/commit/ed4e5193b70610b70a4fc1a15ef0370882a853af))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.3
+    * @okouai/connectors bumped to 3.8.7
+    * @okouai/core bumped to 8.643.0
+    * @okouai/ui bumped to 1.6.9
+
 ## [0.873.0](https://github.com/vm0-ai/vm0/compare/app-v0.872.0...app-v0.873.0) (2026-09-09)
 
 

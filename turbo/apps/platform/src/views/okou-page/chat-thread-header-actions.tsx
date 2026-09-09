@@ -10,16 +10,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@okouai/ui";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import { openThreadAutomations$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
-import {
-  detach,
-  onRejection,
-  Reason,
-  throwIfAbort,
-} from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
@@ -34,48 +28,7 @@ export function ChatThreadPinButton({
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const pinned = useGet(thread.pin.pinned$);
-  const pending = useGet(thread.pin.pending$);
   const setPinned = useSet(thread.pin.setPinned$);
-
-  async function updatePin(nextPinned: boolean, allowUndo = true) {
-    const changed = await onRejection(
-      setPinned(nextPinned, pageSignal),
-      (error: unknown) => {
-        throwIfAbort(error);
-        toast.error(
-          t(($) => {
-            return $.chat.toasts.pinUpdateFailed;
-          }),
-        );
-      },
-    );
-    pageSignal.throwIfAborted();
-    if (!changed) {
-      return;
-    }
-    toast.success(
-      nextPinned
-        ? t(($) => {
-            return $.chat.toasts.pinned;
-          })
-        : t(($) => {
-            return $.chat.toasts.unpinned;
-          }),
-      {
-        id: `chat-pin-${thread.threadId}`,
-        action: allowUndo
-          ? {
-              label: t(($) => {
-                return $.chat.actions.undo;
-              }),
-              onClick: () => {
-                detach(updatePin(!nextPinned, false), Reason.DomCallback);
-              },
-            }
-          : undefined,
-      },
-    );
-  }
 
   return (
     <Button
@@ -87,7 +40,7 @@ export function ChatThreadPinButton({
       className={cn(
         "shrink-0 duration-150",
         mobile && "size-11",
-        pinned && "bg-gray-50 text-foreground",
+        pinned ? "text-gray-700" : "text-gray-600",
       )}
       aria-label={
         pinned
@@ -99,13 +52,16 @@ export function ChatThreadPinButton({
             })
       }
       aria-pressed={pinned}
-      aria-busy={pending}
-      disabled={pending}
       onClick={() => {
-        detach(updatePin(!pinned), Reason.DomCallback);
+        detach(setPinned(!pinned, pageSignal), Reason.DomCallback);
       }}
     >
-      <Pin size={18} fill={pinned ? "currentColor" : "none"} />
+      <span className="relative inline-flex" aria-hidden="true">
+        <Pin size={18} strokeWidth={1.75} />
+        {pinned && (
+          <span className="absolute -bottom-1 left-1/2 size-0.75 -translate-x-1/2 rounded-full bg-current" />
+        )}
+      </span>
     </Button>
   );
 }

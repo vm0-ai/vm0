@@ -1,6 +1,7 @@
 //! Root-owned, operation-scoped kernel reader reused by metrics and cleanup.
 
 use guest_contracts::oom_evidence::*;
+use guest_contracts::process_containment::CGROUP_V2_MOUNT_PATH;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -13,6 +14,7 @@ const CAPTURE_BUDGET: Duration = Duration::from_millis(50);
 
 pub(crate) struct EvidenceMonitor {
     root: PathBuf,
+    cgroup_root: String,
     initial: [MemorySnapshot; 3],
     evidence: OomEvidence,
     kernel: Option<File>,
@@ -27,13 +29,18 @@ pub(crate) struct EvidenceMonitor {
 impl EvidenceMonitor {
     #[cfg(test)]
     pub(crate) fn without_kernel_for_test(root: PathBuf) -> Self {
-        let mut monitor = Self::new(root);
-        monitor.kernel = None;
-        monitor.kernel_status = EvidenceStatus::Unavailable;
-        monitor
+        // Only the read location is synthetic. Identity still traverses the
+        // production mount-relative conversion, never the temporary directory.
+        Self::with_sources(
+            Path::new("/sys/fs/cgroup/vm0-exec/exec-281-10-3"),
+            root,
+            Err(io::Error::from(io::ErrorKind::NotFound)),
+            boottime_us(),
+        )
+        .unwrap()
     }
 
-    pub(crate) fn new(root: PathBuf) -> Self {
+    pub(crate) fn new(root: PathBuf) -> Option<Self> {
         let started = boottime_us();
         let kernel_result = OpenOptions::new()
             .read(true)
@@ -43,12 +50,22 @@ impl EvidenceMonitor {
                 file.seek(SeekFrom::End(0))?;
                 Ok(file)
             });
+        Self::with_sources(&root, root.clone(), kernel_result, started)
+    }
+
+    fn with_sources(
+        identity_root: &Path,
+        root: PathBuf,
+        kernel_result: io::Result<File>,
+        started: u64,
+    ) -> Option<Self> {
+        let cgroup_root = operation_cgroup(identity_root)?;
         let kernel_status = match &kernel_result {
             Ok(_) => EvidenceStatus::Available,
             Err(error) if error.kind() == io::ErrorKind::PermissionDenied => EvidenceStatus::Denied,
             Err(_) => EvidenceStatus::Unavailable,
         };
-        let initial = snapshots(&root, None, Instant::now() + CAPTURE_BUDGET);
+        let initial = snapshots(&root, &cgroup_root, None, Instant::now() + CAPTURE_BUDGET);
         let guest_boot_id = bounded_read(Path::new("/proc/sys/kernel/random/boot_id"))
             .ok()
             .and_then(|text| uuid::Uuid::parse_str(text.trim()).ok())
@@ -64,8 +81,9 @@ impl EvidenceMonitor {
             incidents: Vec::new(),
             dropped_incidents: 0,
         };
-        Self {
+        Some(Self {
             root,
+            cgroup_root,
             previous_events: initial[0].events.clone(),
             pending_kernel_kills: 0,
             initial,
@@ -73,13 +91,13 @@ impl EvidenceMonitor {
             kernel: kernel_result.ok(),
             kernel_status,
             last_sequence: None,
-        }
+        })
     }
 
     pub(crate) fn capture(&mut self, reason: CaptureReason) -> OomEvidence {
         let deadline = Instant::now() + CAPTURE_BUDGET;
         let (mut kernel_events, mut kernel_status) = self.read_kernel(deadline);
-        let groups = snapshots(&self.root, Some(&self.initial), deadline);
+        let groups = snapshots(&self.root, &self.cgroup_root, Some(&self.initial), deadline);
         if groups
             .iter()
             .any(|group| group.status == EvidenceStatus::Recreated)
@@ -200,6 +218,23 @@ impl EvidenceMonitor {
             deadline,
         )
     }
+}
+
+fn operation_cgroup(root: &Path) -> Option<String> {
+    let relative = root.strip_prefix(CGROUP_V2_MOUNT_PATH).ok()?.to_str()?;
+    let operation = relative.strip_prefix("vm0-exec/exec-")?;
+    // Require the exact trusted mount and one operation component. Do not
+    // reinterpret another mount, a traversal or an arbitrary path as evidence.
+    if relative.len() + "/workload/runtime".len() + 1 > 256
+        || root.to_str()? != format!("{CGROUP_V2_MOUNT_PATH}/{relative}")
+        || operation.is_empty()
+        || !operation
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b'-')
+    {
+        return None;
+    }
+    Some(format!("/{relative}"))
 }
 
 fn retain_observed_counters(previous: &mut MemoryEvents, current: &MemoryEvents) {
@@ -407,6 +442,7 @@ fn events(text: Option<&str>) -> MemoryEvents {
 
 fn snapshots(
     root: &Path,
+    cgroup_root: &str,
     baseline: Option<&[MemorySnapshot; 3]>,
     deadline: Instant,
 ) -> [MemorySnapshot; 3] {
@@ -483,11 +519,11 @@ fn snapshots(
         };
         MemorySnapshot {
             role: role.into(),
-            cgroup: path
-                .strip_prefix("/sys/fs/cgroup")
-                .unwrap_or(&path)
-                .display()
-                .to_string(),
+            cgroup: if index == 0 {
+                format!("{cgroup_root}/workload")
+            } else {
+                format!("{cgroup_root}/workload/{role}")
+            },
             inode: initial.and_then(|value| value.inode).or(inode),
             status,
             current,
@@ -573,10 +609,7 @@ mod tests {
                     .unwrap();
                 }
             }
-            let mut monitor = EvidenceMonitor::new(root.clone());
-            // All reads below use tiny fixture files, never the host kernel.
-            monitor.kernel = None;
-            monitor.kernel_status = EvidenceStatus::Unavailable;
+            let mut monitor = EvidenceMonitor::without_kernel_for_test(root.clone());
             monitor.evidence.started_boottime_us = 1000;
             Self {
                 _directory: directory,
@@ -594,8 +627,7 @@ mod tests {
         }
 
         fn kernel(&mut self, sequence: u64, time: u64, constraint: &str) {
-            let cgroup = &self.monitor.initial[0].cgroup;
-            self.record(&format!("6,{sequence},{time},-;oom-kill:constraint={constraint},nodemask=(null),cpuset=/,mems_allowed=0,task_memcg={cgroup}/runtime,task=node,pid=999999,uid=1000\n"));
+            self.record(&format!("6,{sequence},{time},-;oom-kill:constraint={constraint},nodemask=(null),cpuset=/,mems_allowed=0,task_memcg=/vm0-exec/exec-281-10-3/workload/runtime,task=node,pid=999999,uid=1000\n"));
         }
 
         fn record(&mut self, record: &str) {
@@ -605,6 +637,155 @@ mod tests {
             self.monitor.kernel = Some(file);
             self.monitor.kernel_status = EvidenceStatus::Available;
         }
+    }
+
+    #[test]
+    fn collector_rejects_paths_outside_the_exact_operation_mount() {
+        let directory = tempfile::tempdir().unwrap();
+        for root in [
+            "/tmp/vm0-exec/exec-281-10-3",
+            "/sys/fs/cgroup2/vm0-exec/exec-281-10-3",
+            "/sys/fs/cgroup/other/exec-281-10-3",
+            "/sys/fs/cgroup/vm0-exec/exec-",
+            "/sys/fs/cgroup/vm0-exec/exec-private",
+            "/sys/fs/cgroup/vm0-exec/exec-281-10-3/../exec-1",
+            "/sys/fs/cgroup/vm0-exec/exec-281-10-3/workload",
+            "/sys/fs//cgroup/vm0-exec/exec-281-10-3",
+            "/sys/fs/cgroup/./vm0-exec/exec-281-10-3",
+            "sys/fs/cgroup/vm0-exec/exec-281-10-3",
+        ] {
+            assert!(
+                EvidenceMonitor::with_sources(
+                    Path::new(root),
+                    directory.path().to_path_buf(),
+                    Err(io::Error::from(io::ErrorKind::NotFound)),
+                    1000,
+                )
+                .is_none(),
+                "accepted unowned root: {root}"
+            );
+        }
+        assert!(operation_cgroup(directory.path()).is_none());
+        assert!(
+            operation_cgroup(Path::new(&format!(
+                "/sys/fs/cgroup/vm0-exec/exec-{}",
+                "1".repeat(256)
+            )))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn canonical_collector_identity_matches_independent_kernel_paths() {
+        for (path, memcg) in [
+            (
+                "/vm0-exec/exec-281-10-3/workload",
+                "/vm0-exec/exec-281-10-3/workload",
+            ),
+            (
+                "/vm0-exec/exec-281-10-3/workload/runtime",
+                "/vm0-exec/exec-281-10-3/workload",
+            ),
+            (
+                "/vm0-exec/exec-281-10-3/workload/tools",
+                "/vm0-exec/exec-281-10-3/workload",
+            ),
+            (
+                "/vm0-exec/exec-281-10-3/workload/tools/tool-45-6",
+                "/vm0-exec/exec-281-10-3/workload",
+            ),
+            ("/vm0-exec/exec-281-10-3/control", "/vm0-exec/exec-281-10-3"),
+        ] {
+            for (constraint, trigger) in [("CONSTRAINT_NONE", "/"), ("CONSTRAINT_MEMCG", memcg)] {
+                let mut fixture = Fixture::new();
+                fixture.record(&format!("6,10,2000,-;oom-kill:constraint={constraint},oom_memcg={trigger},task_memcg={path},task=node,pid=999999,uid=1000\n"));
+                let captured = fixture.monitor.capture(CaptureReason::Sample);
+                assert_eq!(captured.incidents.len(), 1, "missing victim in {path}");
+                let event = &captured.incidents[0].kernel_events[0];
+                assert_eq!(event.task_cgroup, path);
+                assert_eq!(event.oom_cgroup.as_deref(), Some(trigger));
+                assert_eq!(event.constraint, constraint);
+                assert_eq!(event.victim_pid, 999999);
+            }
+        }
+        for path in [
+            "/vm0-exec/exec-281-10-30/workload/runtime",
+            "vm0-exec/exec-281-10-3/workload/runtime",
+            "//vm0-exec/exec-281-10-3/workload/runtime",
+            "/vm0-exec/exec-281-10-3/workload/tools/tool-1/../runtime",
+        ] {
+            let mut fixture = Fixture::new();
+            fixture.record(&format!("6,10,2000,-;oom-kill:constraint=CONSTRAINT_NONE,task_memcg={path},task=node,pid=999999,uid=1000\n"));
+            let captured = fixture.monitor.capture(CaptureReason::Sample);
+            assert!(captured.incidents.is_empty());
+            assert_eq!(captured.kernel_status, EvidenceStatus::Uncorrelated);
+        }
+    }
+
+    #[test]
+    fn collector_output_matches_api_fixture() {
+        // This is the producer half of the cross-language contract test. Only
+        // nondeterministic UUIDs, wall-clock times and filesystem inodes are
+        // replaced for comparison; cgroup paths and counter values are intact.
+        fn stable(mut evidence: OomEvidence) -> OomEvidence {
+            fn stable_inodes(groups: &mut [MemorySnapshot; 3]) {
+                for (index, group) in groups.iter_mut().enumerate() {
+                    group.inode = group.inode.map(|_| index as u64 + 1);
+                }
+            }
+            evidence.operation_id = "11111111-1111-4111-8111-111111111111".into();
+            evidence.guest_boot_id = Some("22222222-2222-4222-8222-222222222222".into());
+            evidence.sampled_at = "2026-09-09T09:00:00.000Z".into();
+            stable_inodes(&mut evidence.groups);
+            for (index, incident) in evidence.incidents.iter_mut().enumerate() {
+                incident.id = format!("{}:{}", evidence.operation_id, index + 1);
+                incident.captured_at = evidence.sampled_at.clone();
+                stable_inodes(&mut incident.groups);
+            }
+            evidence
+        }
+        let mut fixture = Fixture::new();
+        fs::remove_file(fixture.root.join("workload/runtime/memory.peak")).unwrap();
+        fs::remove_file(fixture.root.join("workload/tools/memory.events.local")).unwrap();
+        fixture.monitor = EvidenceMonitor::without_kernel_for_test(fixture.root.clone());
+        fixture.monitor.evidence.started_boottime_us = 1000;
+        let initial = fixture.monitor.capture(CaptureReason::Sample);
+        fixture.counters(1);
+        fixture.kernel(10, 2000, "CONSTRAINT_MEMCG");
+        let sample = fixture.monitor.capture(CaptureReason::Sample);
+        let cleanup = fixture.monitor.capture(CaptureReason::Cleanup);
+        for evidence in [&initial, &sample, &cleanup] {
+            for groups in std::iter::once(&evidence.groups)
+                .chain(evidence.incidents.iter().map(|incident| &incident.groups))
+            {
+                assert_eq!(groups[0].cgroup, "/vm0-exec/exec-281-10-3/workload");
+                assert_eq!(groups[1].cgroup, "/vm0-exec/exec-281-10-3/workload/runtime");
+                assert_eq!(groups[2].cgroup, "/vm0-exec/exec-281-10-3/workload/tools");
+                assert_eq!(groups[0].current, Some(4096));
+                assert_eq!(groups[1].peak, None);
+                assert_eq!(groups[2].local_events.oom, None);
+            }
+        }
+        assert_eq!(sample.incidents, cleanup.incidents);
+        assert_eq!(sample.incidents[0].kernel_events.len(), 1);
+        let generated = serde_json::json!({
+            "initial": stable(initial),
+            "sample": stable(sample),
+            "cleanup": stable(cleanup),
+        });
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/oom-evidence-collector.json");
+        if std::env::var_os("UPDATE_OOM_COLLECTOR_FIXTURE").is_some() {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(
+                &path,
+                serde_json::to_string_pretty(&generated).unwrap() + "\n",
+            )
+            .unwrap();
+        }
+        let checked: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(generated, checked, "regenerate the collector API fixture");
     }
 
     #[test]
@@ -665,9 +846,8 @@ mod tests {
         let fd: OwnedFd = reader.into();
         fixture.monitor.kernel = Some(File::from(fd));
         fixture.monitor.kernel_status = EvidenceStatus::Available;
-        let cgroup = fixture.monitor.initial[0].cgroup.clone();
         for seq in 1..=MAX_KERNEL_EVENTS + 1 {
-            writer.send(format!("6,{seq},2000,-;oom-kill:constraint=CONSTRAINT_NONE,task_memcg={cgroup}/runtime,task=node,pid=999999,uid=1000").as_bytes()).unwrap();
+            writer.send(format!("6,{seq},2000,-;oom-kill:constraint=CONSTRAINT_NONE,task_memcg=/vm0-exec/exec-281-10-3/workload/runtime,task=node,pid=999999,uid=1000").as_bytes()).unwrap();
         }
         let captured = fixture.monitor.capture(CaptureReason::Sample);
         assert_eq!(captured.incidents[0].kernel_events.len(), MAX_KERNEL_EVENTS);
@@ -788,8 +968,7 @@ mod tests {
             );
         }
         let mut fixture = Fixture::new();
-        let control = format!("{}/control", fixture.root.display());
-        fixture.record(&format!("6,10,2000,-;oom-kill:constraint=CONSTRAINT_NONE,task_memcg={control},task=guest-agent,pid=999999,uid=1000\n"));
+        fixture.record("6,10,2000,-;oom-kill:constraint=CONSTRAINT_NONE,task_memcg=/vm0-exec/exec-281-10-3/control,task=guest-agent,pid=999999,uid=1000\n");
         fixture.monitor.capture(CaptureReason::Sample);
         fs::write(
             fixture.root.join("workload/memory.events"),
@@ -882,8 +1061,7 @@ mod tests {
     fn repeated_operations_and_recreated_cgroups_do_not_inherit_counters() {
         let mut fixture = Fixture::new();
         fixture.counters(5);
-        let mut next = EvidenceMonitor::new(fixture.root.clone());
-        next.kernel = None;
+        let mut next = EvidenceMonitor::without_kernel_for_test(fixture.root.clone());
         assert_ne!(
             fixture.monitor.evidence.operation_id,
             next.evidence.operation_id
@@ -925,6 +1103,7 @@ mod tests {
         assert!(serde_json::to_vec(&capture).unwrap().len() < MAX_EVIDENCE_BYTES);
         let deadline = snapshots(
             &fixture.root,
+            &fixture.monitor.cgroup_root,
             Some(&fixture.monitor.initial),
             Instant::now(),
         );

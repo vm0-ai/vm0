@@ -225,37 +225,39 @@ runner proxy remains the accounting authority established by
 [#32639](https://github.com/vm0-ai/vm0/pull/32639). The independent private
 checkpoint validation marker remains required for publication.
 
-The API keeps the authenticated, immutable-binding-validated journal ACK while
-old reporters remain supported:
-
-| CLI artifact | Guest artifact | Completion behavior                                            |
-| ------------ | -------------- | -------------------------------------------------------------- |
-| Old          | Old            | Reports to the retained validated ACK.                         |
-| New          | Old            | Old Guest accepts the missing journal.                         |
-| Old          | New            | Guest completes without reading the old CLI's private journal. |
-| New          | New            | Consolidation and checkpoint publication use no journal.       |
-
-The runtime package is bundled into the CLI artifact; removing its journal-only
-usage observer does not change already-pinned CLI packages. Aggregate provider
-results and lifecycle observation remain independent of that observer.
-
-Endpoint removal is tracked by
+The API ACK and journal-only contract are retired by
 [#32788](https://github.com/vm0-ai/vm0/issues/32788), under delivery parent
-[#32783](https://github.com/vm0-ai/vm0/issues/32783). Before removing the ACK,
-record the exact CLI commit-addressed and Runner/Guest artifacts, serving
-deployment times, last possible old-context creation/admission cutoff, and
-supported rollback floor. Verify zero old queued/running contexts, zero live
-reporting processes, and completed bounded finalization/retries. Reconcile
-context and artifact identities, terminal/process evidence, and content-free
-endpoint traffic across up to two hours queued plus two hours executing plus
-bounded finalization. Elapsed time or missing telemetry alone is not proof.
-Keep the ACK while supported rollback can restore an incompatible reporter.
+[#32783](https://github.com/vm0-ai/vm0/issues/32783). The parent's dated production
+receipt records the endpoint-specific gate:
 
-This source change does not establish those production cutoffs or alter rollback
-policy. Verify the proxy accounting prerequisite for supported API/Runner
-artifacts separately. The 122-minute private binding retention starts at terminal
-settlement to protect late proxy usage; it is not the journal drain gate and
-remains unchanged, along with ordinary pending-usage/callback cleanup blockers.
+- Producer stop shipped in Runner 0.189.0 / Guest 0.86.22 and CLI artifact commit
+  `82d1a6ff154c9ca81fd8e08d6764290733eb324d`. API and Runner promotion completed
+  at 07:00:31 and 07:02:02 UTC on 2026-09-09, respectively.
+- The 09:05–09:09 UTC fleet inspection found only Runner 0.189.0 and 0.189.1
+  services running on prod-11, prod-12 and prod-13. All older services were
+  stopped with no active runs or idle/blank sandboxes. The last old reporting
+  service exited at 09:00:56.020 UTC.
+- Shutdown destroys owned tasks and stops runtime workers. The old Guest's
+  awaited journal retries were process-local, with no durable replay queue.
+  Deployed Guest versions no longer read or forward journals, and the serving
+  API/Runner versions include the proxy-only accounting prerequisite.
+
+New run contexts select the latest deployed CLI. Although a queued context can
+retain its creation-time package URL, that cannot restore forwarding in a new
+Guest. Once report-capable Guests and their finalization have exited, waiting
+for older CLI URLs adds no endpoint-specific protection. The receipt uses
+artifact/source/process evidence, not a database queue census or a claim of zero
+endpoint traffic; elapsed time and missing telemetry are not the proof.
+
+Rollback to a journal-reporting Guest is explicitly outside this retirement's
+approved compatibility boundary. Such a Guest may fail completion against the
+removed endpoint. This cleanup does not change rollback workflows or authorize
+production operations.
+
+The 122-minute private binding retention starts at terminal settlement to
+protect late proxy usage. It remains unchanged, along with ordinary
+pending-usage/callback cleanup blockers, provider-result usage, lifecycle
+observation and private checkpoint validation.
 
 #### Runner process drain
 
@@ -795,12 +797,12 @@ For the generation 4 reader-first release, see [Pi native provider preparation](
 
 ## Connector OAuth completion receipts
 
-Browser OAuth/OpenID start responses add an optional `oauthAttemptId`. A successful callback records a short-lived receipt only after credential persistence and required Agent authorization/linking finish. The authenticated, uncached `/api/connector-accounts/oauth-completions/:attemptId` lookup validates the current user, organization, connector target, and actual connected account. Receipts expire 15 minutes after success; account deletion cascades to receipts, and the existing OAuth-state cleanup cron removes expired receipts in bounded batches.
+Successful browser authorization start responses require `oauthAttemptId` for built-in OAuth/OpenID and custom HTTP/MCP OAuth. Custom automatic-no-auth `connected` responses do not start browser authorization and do not carry an attempt ID. A successful callback records a short-lived receipt only after credential persistence and required Agent authorization/linking finish. The authenticated, uncached `/api/connector-accounts/oauth-completions/:attemptId` lookup validates the current user, organization, connector target, and actual connected account. Receipts expire 15 minutes after success; account deletion cascades to receipts, and the existing OAuth-state cleanup cron removes expired receipts in bounded batches.
 
 The App uses the exact attempt receipt, not account timestamps, account counts, or sibling-account presence, to continue the flow. The callback's existing single-use state claim remains unchanged. Counts still determine the first-account Agent-grant policy, not OAuth success.
 
 - Old App → new API: existing requests remain valid; the new response field is additive. Already-loaded old pages retain their previous completion heuristic until refreshed.
-- New App → old API, or a new start handled by an old callback instance: absence of a receipt cannot prove success. The App does not automatically continue or grant access; credentials may have been saved and the user may need to retry after rollout.
+- New App → receipt-capable API: the start ID is required, but an ID alone does not prove completion. Pending, missing, expired, or inaccessible receipts and reconnect account mismatches never continue the flow or grant access.
 - The new table is additive and does not change existing OAuth-state or connector-account rows. No Runner protocol changes or immediate App minimum-version increase are required.
 
-Remove the optional field and absent-ID compatibility branch only after receipt-capable API versions are the serving and rollback floor. Track that contraction in [#32870](https://github.com/vm0-ai/vm0/issues/32870).
+The receipt-capable writer from [#32880](https://github.com/vm0-ai/vm0/pull/32880) shipped in release `3d58eaa4609967a4f655f7cd61d0d7cd454ba2a1`: API `1.575.2` completed [production promotion](https://github.com/vm0-ai/vm0/actions/runs/34335229479/job/102417239410) on 2026-09-09 at 09:48:46 UTC, followed by App `0.873.0` at 09:50:38 UTC. Cleanup [#32870](https://github.com/vm0-ai/vm0/issues/32870) retires the optional response field and absent-ID branch after that release. The maintainer explicitly excludes old API rollback compatibility; no rollback restriction is added or changed. Pre-receipt APIs are outside this cleanup's supported boundary. Existing App requests remain accepted, and already-loaded pre-receipt App bundles are not retired by this change; no App version floor increase is included.

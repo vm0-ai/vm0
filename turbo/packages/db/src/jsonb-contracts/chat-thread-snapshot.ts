@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
+
 export interface ChatThreadSnapshotProjection {
   readonly id: string;
   readonly agentId: string;
@@ -9,6 +11,8 @@ export interface ChatThreadSnapshotProjection {
   /** Absent in snapshots compacted before manual pin ordering. */
   readonly pinOrder?: string | null;
   readonly renamedAt: string | null;
+  /** Absent in snapshots created before effort selection. */
+  readonly reasoningEffort?: ReasoningEffort | null;
   readonly selectedModel: string | null;
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;

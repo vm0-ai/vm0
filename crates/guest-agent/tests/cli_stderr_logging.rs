@@ -18,10 +18,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let tmp = tempfile::tempdir()?;
     let secret = "super-secret-value";
     let multiline_secret = concat!(
-        "-----BEGIN VM0 TEST KEY-----\n",
+        "-----BEGIN TEST KEY-----\n",
         "alpha-multiline-secret-fragment\n",
         "beta-multiline-secret-fragment\n",
-        "-----END VM0 TEST KEY-----\n",
+        "-----END TEST KEY-----\n",
     );
     let short_unicode_multiline_secret = "密ab\n钥cd\n";
     let tail_only_secret = [
@@ -68,10 +68,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     stderr_payload.push_str(&format!("\n{overlong_secret_line}"));
     stderr_payload.push_str("\nafter-overlong-line");
     stderr_payload.push_str("\ncrlf multiline secret begins");
-    stderr_payload.push_str("\n-----BEGIN VM0 TEST KEY-----\r");
+    stderr_payload.push_str("\n-----BEGIN TEST KEY-----\r");
     stderr_payload.push_str("\nalpha-multiline-secret-fragment\r");
     stderr_payload.push_str("\nbeta-multiline-secret-fragment\r");
-    stderr_payload.push_str("\n-----END VM0 TEST KEY-----");
+    stderr_payload.push_str("\n-----END TEST KEY-----");
     stderr_payload.push_str("\nafter-multiline-secret");
     stderr_payload.push_str("\nshort unicode multiline fragments begin");
     stderr_payload.push_str("\n密ab");

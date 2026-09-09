@@ -8,11 +8,27 @@ export type OpenRouterFailureReason =
   | "provider_unavailable"
   | "invalid_request"
   | "auth"
+  // The model stopped at the token budget. Reasoning models draw thinking and
+  // visible output from one budget, so this is an expected capacity outcome
+  // rather than a defect in the request or the provider.
+  | "output_truncated"
+  // The completion terminated as a tool call although no tools were offered.
+  | "unexpected_tool_calls"
   | "invalid_output"
   | "unknown";
 
+/** Provider-reported token counts, bounded to integers; never payload data. */
+export interface OpenRouterTokenCounts {
+  readonly completionTokens?: number;
+  readonly reasoningTokens?: number;
+}
+
 const failureReasons = singleton(() => {
   return new WeakMap<object, OpenRouterFailureReason>();
+});
+
+const failureTokenCounts = singleton(() => {
+  return new WeakMap<object, OpenRouterTokenCounts>();
 });
 
 export function openRouterFailureReason(
@@ -30,6 +46,28 @@ export function recordOpenRouterFailure(
   if (typeof error === "object" && error !== null) {
     failureReasons().set(error, reason);
   }
+}
+
+/**
+ * Token counts belonging to the completion that produced this failure. A
+ * truncated completion still reports usage, and that usage is the only direct
+ * evidence of how much of the shared budget the model spent on thinking.
+ */
+export function recordOpenRouterFailureTokenCounts(
+  error: unknown,
+  counts: OpenRouterTokenCounts,
+): void {
+  if (typeof error === "object" && error !== null) {
+    failureTokenCounts().set(error, counts);
+  }
+}
+
+export function openRouterFailureTokenCounts(
+  error: unknown,
+): OpenRouterTokenCounts {
+  return typeof error === "object" && error !== null
+    ? (failureTokenCounts().get(error) ?? {})
+    : {};
 }
 
 function property(value: unknown, key: string): unknown {

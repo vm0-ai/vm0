@@ -420,14 +420,12 @@ type BootstrapThreadMetadataSource =
 interface BootstrapPhaseTimingState {
   readonly finalRoute?: string;
   readonly initialRoute?: string;
-  readonly initialVisibilityState: DocumentVisibilityState;
   readonly localeInitDurationMs?: number;
   readonly localeInitStartedAt?: number;
   readonly localThreadMetadataDurationMs?: number;
   readonly remoteThreadMetadataDurationMs?: number;
   readonly routeSetupStartedAt?: number;
   readonly threadMetadataSource?: BootstrapThreadMetadataSource;
-  readonly wasHidden: boolean;
 }
 
 const bootstrapPhaseTimingState$ = state<BootstrapPhaseTimingState | null>(
@@ -435,25 +433,9 @@ const bootstrapPhaseTimingState$ = state<BootstrapPhaseTimingState | null>(
 );
 const bootstrapPhaseTimingReported$ = state(false);
 
-export const initBootstrapPhaseTiming$ = command(
-  ({ set }, signal: AbortSignal) => {
-    set(bootstrapPhaseTimingState$, {
-      initialVisibilityState: document.visibilityState,
-      wasHidden: document.visibilityState !== "visible",
-    });
-    document.addEventListener(
-      "visibilitychange",
-      () => {
-        if (document.visibilityState !== "visible") {
-          set(bootstrapPhaseTimingState$, (current) => {
-            return current ? { ...current, wasHidden: true } : current;
-          });
-        }
-      },
-      { signal },
-    );
-  },
-);
+export const initBootstrapPhaseTiming$ = command(({ set }) => {
+  set(bootstrapPhaseTimingState$, {});
+});
 
 export const markBootstrapLocaleInitStarted$ = command(({ get, set }) => {
   const current = get(bootstrapPhaseTimingState$);
@@ -569,11 +551,7 @@ export const captureBootstrapPhaseTiming$ = command(({ get, set }) => {
     const properties: Record<string, string | number | boolean> = {
       final_route: current?.finalRoute ?? "unknown",
       initial_route: current?.initialRoute ?? "unknown",
-      initial_visibility_state:
-        current?.initialVisibilityState ?? document.visibilityState,
       standalone_pwa: isStandalonePwa(),
-      visibility_state: document.visibilityState,
-      was_hidden: current?.wasHidden ?? document.visibilityState !== "visible",
     };
     setDurationProperty(
       properties,

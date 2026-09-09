@@ -57,9 +57,13 @@ import {
 import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
 import { connectorAuthMethodFeatureSwitch } from "./connector-auth-method-feature-switches";
 import {
-  CONNECTOR_DISCOVERY_LIMIT,
-  FEATURED_CONNECTOR_SLUGS,
-} from "./connector-catalog-featured";
+  CONNECTOR_DISCOVERY_PER_CATEGORY,
+  CONNECTOR_SEARCH_LIMIT,
+  compareConnectorPopularity,
+  connectorPopularityRank,
+  createConnectorPopularityIndex,
+  isInternalConnector,
+} from "./connector-popularity";
 import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 
 const log = logger("connector-catalog:reader");
@@ -772,13 +776,22 @@ function authMethodDetailForCatalog(
 
 function connectorCatalogItem(
   effective: EffectiveConnector,
+  popularityIndex: ReadonlyMap<
+    string,
+    number
+  > = createConnectorPopularityIndex(),
 ): PublicConnectorCatalogItem {
+  const rank = connectorPopularityRank(
+    popularityIndex,
+    effective.connector.slug,
+  );
   return {
     slug: effective.connector.slug,
     label: effective.connector.label,
     description: effective.connector.description,
     icon: iconForCatalog(effective.connector),
     category: effective.connector.category,
+    ...(rank === Number.MAX_SAFE_INTEGER ? {} : { popularityRank: rank }),
     generation: [...effective.connector.generation],
     tags: [...effective.connector.tags],
     authMethods: effective.authMethods.map(authMethodSummaryForCatalog),
@@ -788,9 +801,10 @@ function connectorCatalogItem(
 
 function connectorCatalogDetail(
   effective: EffectiveConnector,
+  popularityIndex?: ReadonlyMap<string, number>,
 ): PublicConnectorCatalogDetail {
   return {
-    ...connectorCatalogItem(effective),
+    ...connectorCatalogItem(effective, popularityIndex),
     authMethods: effective.authMethods.map(authMethodDetailForCatalog),
   };
 }
@@ -900,8 +914,9 @@ function connectorCatalogStatusItem(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: EffectiveConnector;
   readonly connection: ConnectorCatalogConnection | null;
+  readonly popularityIndex: ReadonlyMap<string, number>;
 }): PublicConnectorCatalogStatusItem {
-  const detail = connectorCatalogDetail(args.effective);
+  const detail = connectorCatalogDetail(args.effective, args.popularityIndex);
   const response = args.connection?.response ?? null;
   const effectiveMethod = response
     ? args.effective.authMethods.find((method) => {
@@ -1006,9 +1021,10 @@ export async function listExternalPublicConnectorCatalog(
     catalog,
     featureStates: args.featureStates,
   });
+  const popularityIndex = createConnectorPopularityIndex();
   return {
     connectors: connectors.map((connector) => {
-      return connectorCatalogItem(connector);
+      return connectorCatalogItem(connector, popularityIndex);
     }),
     categoryMetadata: categoryMetadataForConnectors(catalog, connectors),
   };
@@ -1024,48 +1040,83 @@ function connectorMatchesKeyword(
   );
 }
 
-function featuredEffectiveConnectors(
+function sortedByPopularity(
   effective: readonly EffectiveConnector[],
 ): EffectiveConnector[] {
-  const bySlug = new Map(
-    effective.map((entry) => {
-      return [entry.connector.slug, entry];
-    }),
-  );
-  const featured = FEATURED_CONNECTOR_SLUGS.flatMap((slug) => {
-    const entry = bySlug.get(slug);
-    return entry ? [entry] : [];
+  const index = createConnectorPopularityIndex();
+  return [...effective].sort((left, right) => {
+    return compareConnectorPopularity(index, left.connector, right.connector);
   });
-  const selectedSlugs = new Set(
-    featured.map((entry) => {
-      return entry.connector.slug;
-    }),
-  );
-  for (const entry of effective) {
-    if (featured.length >= CONNECTOR_DISCOVERY_LIMIT) {
-      break;
+}
+
+function withoutInternalConnectors(
+  effective: readonly EffectiveConnector[],
+): EffectiveConnector[] {
+  return effective.filter((entry) => {
+    return !isInternalConnector(entry.connector.slug);
+  });
+}
+
+/**
+ * The keyword-free discovery response. Every category contributes its own top
+ * slice, so a category holding a quarter of the catalog cannot crowd out the
+ * eleven others, and each slice is ordered by rank rather than alphabetically.
+ *
+ * Only discovery browses this way. `/api/connectors/search` answers a
+ * keyword-free call with a ranked head of the whole catalog, because an agent
+ * asking that endpoint for "everything" wants the catalog, not a shelf layout.
+ */
+function browseEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+): EffectiveConnector[] {
+  const perCategory = new Map<string, EffectiveConnector[]>();
+  for (const entry of withoutInternalConnectors(
+    sortedByPopularity(effective),
+  )) {
+    const bucket = perCategory.get(entry.connector.category);
+    if (bucket) {
+      if (bucket.length < CONNECTOR_DISCOVERY_PER_CATEGORY) {
+        bucket.push(entry);
+      }
+      continue;
     }
-    if (!selectedSlugs.has(entry.connector.slug)) {
-      featured.push(entry);
-      selectedSlugs.add(entry.connector.slug);
-    }
+    perCategory.set(entry.connector.category, [entry]);
   }
-  return featured;
+  return [...perCategory.values()].flat();
 }
 
 function searchEffectiveConnectors(
   effective: readonly EffectiveConnector[],
   keyword: string | undefined,
+  options: { readonly excludeInternal: boolean } = { excludeInternal: false },
 ): EffectiveConnector[] {
+  const ranked = options.excludeInternal
+    ? withoutInternalConnectors(sortedByPopularity(effective))
+    : sortedByPopularity(effective);
   const normalizedKeyword = keyword?.trim().toLowerCase();
   if (!normalizedKeyword) {
-    return featuredEffectiveConnectors(effective);
+    return ranked.slice(0, CONNECTOR_SEARCH_LIMIT);
   }
-  return effective
+  return ranked
     .filter((entry) => {
       return connectorMatchesKeyword(entry, normalizedKeyword);
     })
-    .slice(0, CONNECTOR_DISCOVERY_LIMIT);
+    .slice(0, CONNECTOR_SEARCH_LIMIT);
+}
+
+/** How many connectors each category holds, before the per-category slice. */
+function categoryConnectorCounts(
+  effective: readonly EffectiveConnector[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const entry of effective) {
+    if (isInternalConnector(entry.connector.slug)) {
+      continue;
+    }
+    counts[entry.connector.category] =
+      (counts[entry.connector.category] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function discoveryEffectiveConnectors(
@@ -1073,7 +1124,9 @@ function discoveryEffectiveConnectors(
   args: Pick<ExternalCatalogDiscoveryArgs, "connections" | "keyword">,
 ): EffectiveConnector[] {
   if (args.keyword?.trim()) {
-    return searchEffectiveConnectors(effective, args.keyword);
+    return searchEffectiveConnectors(effective, args.keyword, {
+      excludeInternal: true,
+    });
   }
   const connectedSlugs = new Set(
     args.connections.map((connection) => {
@@ -1085,7 +1138,7 @@ function discoveryEffectiveConnectors(
   });
   return [
     ...connected,
-    ...featuredEffectiveConnectors(effective).filter((entry) => {
+    ...browseEffectiveConnectors(effective).filter((entry) => {
       return !connectedSlugs.has(entry.connector.slug);
     }),
   ];
@@ -1133,6 +1186,7 @@ export async function getExternalPublicConnectorCatalogStatus(
     catalog,
     effective: entry,
     connection: connection ?? null,
+    popularityIndex: createConnectorPopularityIndex(),
   });
 }
 
@@ -1171,6 +1225,7 @@ export async function discoverExternalPublicConnectorCatalogStatus(
     status: {
       ...read.status,
       totalConnectorCount: effective.length,
+      categoryConnectorCounts: categoryConnectorCounts(effective),
     },
   };
 }
@@ -1186,11 +1241,13 @@ function connectorCatalogStatusRead(args: {
       return [connection.response.slug, connection];
     }),
   );
+  const popularityIndex = createConnectorPopularityIndex();
   const connectors = args.effective.map((entry) => {
     return connectorCatalogStatusItem({
       catalog: args.catalog,
       effective: entry,
       connection: connectionsBySlug.get(entry.connector.slug) ?? null,
+      popularityIndex,
     });
   });
   return {

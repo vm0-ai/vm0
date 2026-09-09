@@ -1,5 +1,55 @@
 # Changelog
 
+## [8.645.0](https://github.com/vm0-ai/vm0/compare/core-v8.644.0...core-v8.645.0) (2026-09-09)
+
+
+### Features
+
+* **chat:** persist model-aware reasoning effort selections ([#32926](https://github.com/vm0-ai/vm0/issues/32926)) ([5802f5b](https://github.com/vm0-ai/vm0/commit/5802f5ba59d8d47865139dccd1f49acdf50a2a02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.0
+
+## [8.644.0](https://github.com/vm0-ai/vm0/compare/core-v8.643.0...core-v8.644.0) (2026-09-09)
+
+
+### Features
+
+* add email subscription management to morning brief preferences ([#32933](https://github.com/vm0-ai/vm0/issues/32933)) ([e114cb8](https://github.com/vm0-ai/vm0/commit/e114cb8c9be99fbaf0513bece90d02736ce43b2e))
+* **core:** enable thread activity summaries for the staff org ([#32951](https://github.com/vm0-ai/vm0/issues/32951)) ([c11c035](https://github.com/vm0-ai/vm0/commit/c11c03590d37b976619d6e37f5df12eaa51be20a))
+* display automation times in agent and browser timezones ([#32899](https://github.com/vm0-ai/vm0/issues/32899)) ([98d2ec1](https://github.com/vm0-ai/vm0/commit/98d2ec14f6f36170b904ebfd40204d58050e252d))
+* support fuzzy workflow command matching ([#32930](https://github.com/vm0-ai/vm0/issues/32930)) ([550b15a](https://github.com/vm0-ai/vm0/commit/550b15a978b97e0715f48304361679169f2bd87e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.421.0
+
+## [8.643.0](https://github.com/vm0-ai/vm0/compare/core-v8.642.1...core-v8.643.0) (2026-09-09)
+
+
+### Features
+
+* **web-chat:** lay out mobile follow-ups as a horizontal quick reply rail ([#32916](https://github.com/vm0-ai/vm0/issues/32916)) ([2a0245c](https://github.com/vm0-ai/vm0/commit/2a0245c5bfe062996a15400df5f625570f29c0db))
+
+
+### Bug Fixes
+
+* **ads:** route browser conversions by verified account ownership ([#32902](https://github.com/vm0-ai/vm0/issues/32902)) ([bb561b8](https://github.com/vm0-ai/vm0/commit/bb561b8ee07aa5c8ae4bcddfadc633e9900ad550))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.3
+
 ## [8.642.1](https://github.com/vm0-ai/vm0/compare/core-v8.642.0...core-v8.642.1) (2026-09-09)
 
 

@@ -1,7 +1,9 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore, type Store } from "ccstate";
-import { afterEach, beforeAll } from "vitest";
+import { afterEach, beforeAll, beforeEach } from "vitest";
+import { installPlatformLifecycle } from "../../test/platform-lifecycle.ts";
+import { installWebLocks } from "../../test/web-locks.ts";
 import { logger, resetLoggerForTest } from "../log";
 import { resetLocalStorageForTest$ } from "../external/local-storage";
 import { resetSessionStorageForTest$ } from "../external/session-storage.ts";
@@ -128,6 +130,11 @@ export function testContext(): TestContext {
       return workerStore;
     },
   };
+
+  beforeEach(() => {
+    installPlatformLifecycle(context.signal);
+    installWebLocks(context.signal);
+  });
 
   afterEach(() => {
     L.debug("cleanup context");

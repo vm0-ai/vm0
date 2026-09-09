@@ -36,9 +36,9 @@ const openRouterCompletionBodySchema = z.object({
 type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
 
 /**
- * A completion the upstream cut short. `generateTextWithUsage` rejects any
- * `finish_reason` other than `"stop"`, so tests use this to prove a starved
- * token budget discards the partial text instead of persisting it.
+ * A completion the upstream cut short. Whether the partial text survives is a
+ * per-caller decision: prose summaries keep it, while immutably persisted
+ * titles and JSON output reject it. Tests use this to prove both halves.
  */
 interface TruncatedOpenRouterCompletion {
   readonly content: string;

@@ -1672,7 +1672,6 @@
       "saving": "Speichern...",
       "send": "Senden",
       "stop": "Stoppen",
-      "undo": "Rückgängig",
       "view": "Anzeigen"
     },
     "actionUnavailable": {
@@ -2259,6 +2258,7 @@
       "thinking": {
         "assembling": "Teile werden zusammengesetzt...",
         "brewing": "Eine Antwort wird vorbereitet...",
+        "default": "Denke nach...",
         "mapping": "Schritte werden geplant...",
         "onIt": "Wird erledigt...",
         "piecingTogether": "Details werden zusammengefügt...",
@@ -2603,10 +2603,7 @@
     },
     "toasts": {
       "copied": "Kopiert",
-      "deleted": "Chat gelöscht",
-      "pinned": "Chat angeheftet",
-      "pinUpdateFailed": "Die Änderung konnte nicht bestätigt werden. Lade die Seite neu, um den gespeicherten Status zu prüfen.",
-      "unpinned": "Chat gelöst"
+      "deleted": "Chat gelöscht"
     },
     "translation": {
       "action": "Übersetzen",
@@ -2652,6 +2649,34 @@
       "transcribing": "Transkribieren",
       "transcribingProgress": "Transkribieren...",
       "transcriptionFailed": "Die Sprachtranskription ist fehlgeschlagen. Versuchen Sie es erneut."
+    },
+    "welcomeThread": {
+      "content": "# Hallo, ich bin {{assistantName}}\n\nIch bin dein KI-Teammitglied. Sag mir, welches Ergebnis du brauchst, und ich arbeite mit deinen Tools, um das fertige Ergebnis hierher zurückzubringen.\n\n## Das kann ich liefern\n\n### Bilder\n\nIch kann Kampagnenmotive, Produktillustrationen, Social-Media-Grafiken und Werbemittel erstellen.\n\n![Von {{assistantName}} geliefertes Kampagnenmotiv]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Präsentationen\n\nIch kann aus einem groben Briefing eine strukturierte, gestaltete und präsentationsfertige Präsentation machen.\n\n![Von {{assistantName}} gelieferte Präsentation]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} Folien\n\n### Videos\n\nIch kann geschnittene Produktdemos, Launchfilme, Erklärvideos und Social-Media-Clips mit Untertiteln liefern.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · bereit zum Teilen\n\n### Automatisierungsempfehlungen\n\nIch kann wiederkehrende Teamarbeit prüfen und eine priorisierte Liste der Aufgaben erstellen, deren Automatisierung sich lohnt.\n\n| Priorität | Aufgabe | Auslöser | Ergebnis |\n| --- | --- | --- | --- |\n| 1 | Eingehende Leads qualifizieren | Neue Formularantwort | Angereicherter CRM-Datensatz und Antwortentwurf |\n| 2 | Aus Meetings Follow-ups machen | Anruf beendet | Zusammenfassung, CRM-Notiz und E-Mail-Entwurf |\n| 3 | Wöchentlicher Wachstumsbericht | Montagmorgen | Kennzahlenübersicht und Anomaliebericht |\n\n## Warum Teams mehr aus {{assistantName}} herausholen\n\nEin gutes Ergebnis muss nicht im Chat einer einzigen Person bleiben. Speichere den funktionierenden Prozess als gemeinsamen Workflow, damit das nächste Teammitglied mit dem beginnt, was bereits funktioniert.\n\n```mermaid\nflowchart TB\n  A[\"1. Herausfinden, was funktioniert<br/>Ein Teammitglied und {{assistantName}} erledigen die Aufgabe gemeinsam\"]\n  B[\"2. Workflow teilen<br/>Prozess und Kontext werden wiederverwendbar\"]\n  C[\"3. Bewährtes wiederverwenden<br/>Andere beginnen mit dem erprobten Prozess\"]\n  D[\"4. Gemeinsam verbessern<br/>Feedback verbessert zukünftige Ausführungen\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Teile den Workflow, nicht nur die fertige Datei.**\n- Gib jedem Teammitglied denselben Ausgangskontext.\n- Verbessere einen Prozess einmal, damit das ganze Team profitiert.\n\n## So arbeiten Sie mit mir im Team\n\nEine gute Antwort hilft einer Person. Ein gespeicherter Workflow hilft allen, die diese Aufgabe nach Ihnen übernehmen.\n\n[Diagramm des Team-Workflows](<{{teamDiagramUrl}}>)\n\n1. **Erledigen Sie die Aufgabe einmal mit mir.** Beschreiben Sie das gewünschte Ergebnis statt der einzelnen Schritte, und korrigieren Sie mich, während die Arbeit noch läuft. Genau diese Korrektur lohnt sich zu bewahren.\n2. **Speichern Sie das Ergebnis als Workflow.** Wählen Sie unten im Eingabefeld **Workflow erstellen**. Ich frage nach dem gewünschten Ergebnis, dem Auslöser und dem, was mit dem Ergebnis geschehen soll, und schreibe daraus einen Workflow, den Sie erneut ausführen können.\n3. **Stellen Sie die Sichtweite auf Öffentlich.** Öffnen Sie den Workflow und ändern Sie **Sichtweite**. Ein **Privat** gestellter Workflow bleibt bei Ihnen, ein **Öffentlich** gestellter kann von allen im Workspace ausgeführt werden.\n4. **Starten Sie ihn über seinen Namen.** Geben Sie in einem beliebigen Chat `/` und den Namen des Workflows ein. Ergänzen Sie eine Automatisierung, wenn er nach Zeitplan oder Auslöser statt auf Zuruf laufen soll.\n\nBeginnen Sie mit der Aufgabe, die Ihr Team am häufigsten wiederholt, nicht mit der schwierigsten. Ein Workflow, der jede Woche läuft, ist mehr wert als ein raffinierter, der einmal läuft.\n\n## Sprechen Sie mit mir in Slack\n\nEin Großteil dieser Arbeit wird ohnehin in Slack besprochen. Sobald ich dort installiert bin, landet die Antwort im Thread statt in einem weiteren Tab.\n\n[Diagramm des Slack-Gesprächs](<{{slackDiagramUrl}}>)\n\n**Einmal einrichten**\n\n1. Öffnen Sie **Einsatzorte von {{assistantName}}** in der linken Seitenleiste.\n2. Wählen Sie auf der Slack-Karte **Auf Slack installieren** und bestätigen Sie die Berechtigungen. Nur Workspace-Admins können installieren; fragen Sie andernfalls Ihre Administration.\n3. Alle anderen öffnen dieselbe Karte und wählen **Verbinden**, um ihr eigenes Slack-Konto zu verknüpfen.\n\n**Danach nutzen Sie mich wie jedes andere Teammitglied**\n\n| In Slack | Was ich tue |\n| --- | --- |\n| Schreiben Sie mir eine Direktnachricht | Wir arbeiten privat in einem durchgehenden Gespräch |\n| `@{{assistantName}}` in einem Kanal | Ich antworte im Thread zu Ihrer Nachricht, wo das Team mitlesen kann |\n| `@{{assistantName}}` erneut in einem Thread | Ich nehme diesen Thread wieder auf und arbeite darin weiter |\n| `/okou` | Öffnet meine Befehlsliste: verbinden, Agent wechseln, Modell wechseln, trennen |\n\nZwei Dinge sind gut zu wissen. In einem Kanal antworte ich nur, wenn ich erwähnt werde, und halte mich aus Threads heraus, in die ich nicht gebeten wurde. Und Sie können einer Direktnachricht eine Datei anhängen, die ich vor meiner Antwort lese.\n\n[Slack einrichten]({{worksUrl}}), damit die oben gespeicherten Workflows gestartet werden können, ohne den Kanal zu verlassen.\n\n[Lade dein Team ein]({{inviteUrl}}), damit der nächste Workflow sofort von den Menschen wiederverwendet werden kann, die ihn brauchen.\n\nIn der [Dokumentation]({{docsUrl}}) erfährst du mehr über gemeinsame Workflows.",
+      "slackDiagram": {
+        "caption": "Wo eine Antwort in Slack landet: im Thread zu Ihrer Nachricht oder in einer privaten Direktnachricht",
+        "channelEyebrow": "In einem Kanal",
+        "channelNote": "Die Antwort bleibt an Ihrer Nachricht, der Kanal wird nicht geflutet und das Team liest trotzdem mit.",
+        "directEyebrow": "In einer Direktnachricht",
+        "directLabel": "Sie und {{assistantName}}",
+        "directNote": "Ein privates Gespräch, das seinen Kontext über Aufgaben hinweg behält.",
+        "mentionLabel": "Sie erwähnen {{assistantName}}",
+        "replyLabel": "{{assistantName}} antwortet im Thread"
+      },
+      "teamDiagram": {
+        "automationBody": "Startet ihn nach Zeitplan oder Auslöser, ganz ohne Nachfrage.",
+        "automationTitle": "Eine Automatisierung",
+        "caption": "Ein gelungener Chat wird zum Workflow, von dem das ganze Team und Ihr Zeitplan ausgehen",
+        "chatBody": "Sie und {{assistantName}} lösen die Aufgabe einmal richtig.",
+        "chatTitle": "Ein Chat, der funktioniert hat",
+        "savedEyebrow": "Einmal gespeichert",
+        "teamEyebrow": "Für alle",
+        "teammateBody": "Startet ihn über seinen Namen und beginnt bei dem, was schon funktioniert.",
+        "teammateTitle": "Jede Person im Team",
+        "workflowBody": "Der Ablauf samt Kontext, bewahrt und wiederverwendbar.",
+        "workflowTitle": "Ein Workflow",
+        "yoursEyebrow": "Ihres"
+      },
+      "title": "Willkommen bei {{assistantName}}"
     },
     "workflows": {
       "named": "Workflow {{title}}",
@@ -2859,6 +2884,14 @@
       "noConnectorsAlt": "Keine Integrationen",
       "otherCategory": "Andere",
       "search": "Finden Sie Integrationen",
+      "shelf": {
+        "browseAll": "Alle",
+        "moreCategories": "Weitere Kategorien",
+        "popular": "Beliebt",
+        "seeMore_one": "{{names}} und {{count}} weiteren ansehen",
+        "seeMore_other": "{{names}} und {{count}} weitere ansehen",
+        "yours": "Deine Konnektoren"
+      },
       "tabs": {
         "builtin": "Eingebaut",
         "custom": "Benutzerdefiniert"
@@ -5383,19 +5416,14 @@
         },
         "connectionDiagnostics": {
           "activeWaits": "Aktive Wartevorgänge",
-          "blurred": "nicht fokussiert",
           "channel": "Kanal",
           "clear": "Leeren",
           "connection": "Verbindung",
           "copyJson": "JSON kopieren",
-          "description": "Browser-Lebenszyklus, Authentifizierungswiederherstellung und Ably-Verbindungssignale prüfen.",
+          "description": "Authentifizierungs- und Ably-Verbindungssignale untersuchen.",
           "empty": "Keine Diagnoseereignisse aufgezeichnet.",
           "events": "Ereignisse",
-          "focused": "fokussiert",
           "log": "Ereignisprotokoll",
-          "offline": "offline",
-          "online": "online",
-          "recovery": "Wiederherstellung",
           "refresh": "Aktualisieren",
           "title": "Echtzeit-Verbindungsdiagnose",
           "unavailable": "nicht verfügbar",
@@ -5431,6 +5459,18 @@
           "unavailable": "Modell nicht verfügbar ({{model}})"
         }
       },
+      "emailSubscription": {
+        "description": "Optionale E-Mails mit Briefings und Erinnerungen für alle deine Workspaces.",
+        "loading": "E-Mail-Abonnement wird geprüft…",
+        "retryMessage": "Dein E-Mail-Abonnement konnte nicht gespeichert oder geladen werden. Versuche es erneut.",
+        "saving": "Wird gespeichert…",
+        "sectionTitle": "E-Mail-Abonnements",
+        "subscribed": "Abonniert",
+        "title": "E-Mails von Okou erhalten",
+        "unavailable": "E-Mail nicht verfügbar",
+        "unavailableDescription": "Prüfe deine E-Mail unter Konto & Sicherheit oder kontaktiere den Support, wenn die Zustellung blockiert ist.",
+        "unsubscribed": "Abgemeldet"
+      },
       "language": {
         "description": "Wählen Sie Ihre bevorzugte Sprache für die Benutzeroberfläche von {{brandName}}",
         "label": "Sprache",
@@ -5449,13 +5489,19 @@
         "title": "Sprache"
       },
       "morningBrief": {
+        "chatAndEmail": "Chat + E-Mail",
+        "chatOnly": "Nur Chat",
+        "checkEmailSubscription": "Prüfe oben dein E-Mail-Abonnement für den Zustellstatus.",
         "conflict": "Morning Brief ist vorübergehend nicht verfügbar, da der Installationsstatus inkonsistent ist. Versuchen Sie es erneut, wenn die Abstimmung abgeschlossen ist.",
-        "description": "Erhalten Sie täglich um 7:00 Uhr in Ihrer Zeitzone eine E-Mail mit Prioritäten aus Gmail, GitHub, Kalender und ungelesenen Chats.",
+        "description": "Erhalte die täglichen Prioritäten für diesen Workspace um 7 Uhr in deiner Zeitzone.",
+        "emailOff": "E-Mail ist deaktiviert. Dein Briefing erscheint weiterhin im Chat.",
+        "emailWhenReady": "Du erhältst eine E-Mail, sobald dein Briefing bereit ist.",
         "loading": "Morning-Brief-Einstellungen werden geladen...",
         "missingDefaultAgent": "Wählen Sie einen verwendbaren Standard-Agenten aus, bevor Sie Morning Brief aktivieren.",
         "missingTimezone": "Legen Sie eine gültige Zeitzone fest, bevor Sie Morning Brief aktivieren.",
         "multipleInstallations": "Es sind mehrere Morning-Brief-Installationen vorhanden. Beheben Sie den Konflikt, bevor Sie diese Einstellung ändern.",
-        "nextEmail": "Nächste E-Mail: {{date}} ({{timezone}})",
+        "nextBrief": "Nächstes Briefing {{date}} ({{timezone}})",
+        "paused": "Pausiert",
         "retry": "Erneut versuchen",
         "retryMessage": "Die Morning-Brief-Einstellungen konnten nicht geladen oder aktualisiert werden. Versuchen Sie es erneut.",
         "title": "Morgenbrief"

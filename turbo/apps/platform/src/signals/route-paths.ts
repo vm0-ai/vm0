@@ -14,6 +14,7 @@ export const ROUTES = {
   workflowDetailInfo: "/workflows/:workflowId/info",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",
+  welcomeThread: "/chats/welcome",
   chat: "/chats/:threadId",
   prompt: "/prompt",
   works: "/works",

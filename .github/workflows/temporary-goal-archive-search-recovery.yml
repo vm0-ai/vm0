@@ -28,7 +28,8 @@ jobs:
   recovery:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Three full scans at the observed 58m39s need ~176m, plus setup/variance.
+    timeout-minutes: 240
     environment: production
     steps:
       - name: Check out dispatched source
@@ -51,6 +52,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor 3e1544d55ac0dc54a1cdb21d6aee72d651a6808d HEAD
           git merge-base --is-ancestor cede9cbfb62872ddabb705de852dc6fd81a3cc6d HEAD
+          git merge-base --is-ancestor 04531239c7e796799f1dca20ab36f7af1d075f85 HEAD
           # Include the engine's local import closure and original SQL. A later
           # source change requires controller review, never an override input.
           git diff --quiet cede9cbfb62872ddabb705de852dc6fd81a3cc6d HEAD -- \
@@ -62,8 +64,11 @@ jobs:
             turbo/packages/api-contracts/src/contracts/chat-events.ts \
             turbo/packages/api-contracts/src/contracts/run-failure-reasons.ts \
             turbo/packages/api-contracts/src/contracts/retired-goal-archive.ts \
-            turbo/packages/api-contracts/src/contracts/pi-memory-citations.ts \
             turbo/packages/api-contracts/src/contracts/pi-memory-citation-literals.ts
+          # Only this import accepts #32891's reviewed vm0 -> Okou license
+          # comment. Every byte, including comments, remains protected.
+          git diff --quiet 04531239c7e796799f1dca20ab36f7af1d075f85 HEAD -- \
+            turbo/packages/api-contracts/src/contracts/pi-memory-citations.ts
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7

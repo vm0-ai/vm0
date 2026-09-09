@@ -14,7 +14,10 @@ import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
-import type { ComposerSlashWorkflow } from "../../signals/okou-page/workflow-composer-domain.ts";
+import type {
+  ComposerSlashWorkflow,
+  ComposerSlashWorkflowMatch,
+} from "../../signals/okou-page/workflow-composer-domain.ts";
 
 import {
   composerCreateCommandLabel,
@@ -127,22 +130,51 @@ function SlashCreateGroup({
   );
 }
 
+function SlashWorkflowName({
+  workflow,
+}: {
+  readonly workflow: ComposerSlashWorkflowMatch;
+}) {
+  return (
+    <span
+      className="w-full truncate font-mono text-sm text-foreground"
+      data-slot="slash-workflow-name"
+    >
+      <span className="text-brand-text">/</span>
+      {workflow.matchRanges.flatMap((range, index) => {
+        return [
+          workflow.name.slice(
+            workflow.matchRanges[index - 1]?.end ?? 0,
+            range.start,
+          ),
+          <span
+            key={range.start}
+            className="text-brand-text/60"
+            data-slot="workflow-query-match"
+          >
+            {workflow.name.slice(range.start, range.end)}
+          </span>,
+        ];
+      })}
+      {workflow.name.slice(workflow.matchRanges.at(-1)?.end ?? 0)}
+    </span>
+  );
+}
+
 export function SlashWorkflowMenu({
   anchor,
   workflows,
   createModes,
   onSelectCreate,
-  query,
   loading,
   selectedIndex,
   showWorkflowsPageLink,
   onSelect,
 }: {
   readonly anchor?: ComponentProps<typeof PopoverContent>["anchor"];
-  readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly workflows: readonly ComposerSlashWorkflowMatch[];
   readonly createModes: readonly ComposerCreateCommand[];
   readonly onSelectCreate: (mode: ComposerCreateCommand) => void;
-  readonly query: string;
   readonly loading: boolean;
   readonly selectedIndex: number;
   readonly showWorkflowsPageLink: boolean;
@@ -186,10 +218,6 @@ export function SlashWorkflowMenu({
           <div className="px-1.5 pb-1.5">
             {workflows.map((workflow, index) => {
               const selected = index + createModes.length === selectedIndex;
-              const matchStart = workflow.name
-                .toLowerCase()
-                .indexOf(query.toLowerCase());
-              const matchEnd = matchStart + query.length;
               return (
                 <button
                   id={slashWorkflowOptionId(workflow.id)}
@@ -204,16 +232,7 @@ export function SlashWorkflowMenu({
                     onSelect(workflow);
                   }}
                 >
-                  <span className="w-full truncate font-mono text-sm text-foreground">
-                    <span className="text-brand-text">/</span>
-                    {workflow.name.slice(0, matchStart)}
-                    {query && matchStart !== -1 && (
-                      <span className="text-brand-text/60">
-                        {workflow.name.slice(matchStart, matchEnd)}
-                      </span>
-                    )}
-                    {workflow.name.slice(query ? matchEnd : 0)}
-                  </span>
+                  <SlashWorkflowName workflow={workflow} />
                   {workflow.description && (
                     <span className="w-full truncate text-xs text-muted-foreground/70">
                       {workflow.description}

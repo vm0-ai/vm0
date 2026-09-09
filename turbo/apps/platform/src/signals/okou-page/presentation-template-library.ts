@@ -130,7 +130,6 @@ export const subscribePresentationTemplatesChanged$ = command(
           scope: "org",
           topic: "presentationTemplatesChanged",
           loopCommand$: refreshPresentationTemplatesFromRealtime$,
-          options: { runOnForegroundCatchUp: false },
         },
         signal,
       ),

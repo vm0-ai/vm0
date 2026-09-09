@@ -22,13 +22,9 @@ import { clerk$ } from "./auth.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { readClerkToken, waitForClerkSession } from "./clerk-token.ts";
 import { applyChatThreadReadCursorUpdated$ } from "./chat-thread-list-reload.ts";
-import {
-  syncActiveChatEvents$,
-  syncAllActiveChatEvents$,
-} from "./chat-page/chat-event-signal-registry.ts";
+import { syncActiveChatEvents$ } from "./chat-page/chat-event-signal-registry.ts";
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { reportForceUpgradeRequired } from "./force-upgrade.ts";
-import { notifySharedWorkerRealtimeReconnected$ } from "./realtime.ts";
 import {
   installSharedDatabaseBridge$,
   setBridgeConnected$,
@@ -134,16 +130,6 @@ const syncSharedDatabaseInvalidation$ = command(
   },
 );
 
-const syncSharedDatabaseReconnect$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
-    set(notifySharedWorkerRealtimeReconnected$);
-    await Promise.all([
-      set(syncAllActiveChatEvents$, signal),
-      set(syncEventDrivenChatThreads$, signal),
-    ]);
-  },
-);
-
 export const setSharedDatabaseBridgeHostForTest$ = command(
   ({ set }, host: SharedDatabaseBridgeHost): void => {
     set(sharedDatabaseBridgeHostState$, host);
@@ -191,9 +177,6 @@ const prepareSharedDatabaseBridge$ = command(
       events: {
         databaseInvalidated: async (dataKey) => {
           await set(syncSharedDatabaseInvalidation$, dataKey, signal);
-        },
-        databaseReconnected: async () => {
-          await set(syncSharedDatabaseReconnect$, signal);
         },
         workerUnavailable: (reason) => {
           handleSharedDatabaseWorkerUnavailable(reason);

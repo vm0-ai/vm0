@@ -8,6 +8,10 @@ import {
   type ConnectorCategorySection,
 } from "../../signals/okou-page/settings/connector-categories.ts";
 import {
+  buildConnectorShelves,
+  type ConnectorShelfLayout,
+} from "../../signals/okou-page/settings/connector-shelves.ts";
+import {
   connectorCurrentConnectionStatus,
   matchesConnectorDirectorySearch,
 } from "../../signals/okou-page/settings/connectors.ts";
@@ -22,6 +26,8 @@ export interface ConnectorDirectoryModel {
   readonly discover: readonly PlatformConnectorCatalogStatusItem[];
   readonly custom: readonly CustomConnectorResponse[];
   readonly categorySections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  /** Shelves for the default browse view: no search, no chosen category. */
+  readonly shelfLayout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly connectedCount: number;
   readonly yoursSlugs: readonly ConnectorSlug[];
   readonly discoverSlugs: readonly ConnectorSlug[];
@@ -78,6 +84,8 @@ export function buildConnectorDirectoryModel({
   category,
   categoryMetadata,
   otherCategoryLabel,
+  categoryCounts,
+  headShelfLabel,
 }: {
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
@@ -87,6 +95,8 @@ export function buildConnectorDirectoryModel({
   readonly category: string | null;
   readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly otherCategoryLabel: string;
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  readonly headShelfLabel: string;
 }): ConnectorDirectoryModel {
   const matchedConnected = connected.filter((connector) => {
     return matchesConnectorDirectorySearch(search, connector);
@@ -113,6 +123,11 @@ export function buildConnectorDirectoryModel({
   ).flatMap((group) => {
     return group.sections;
   });
+  const shelfLayout = buildConnectorShelves({
+    sections: categorySections,
+    categoryCounts,
+    headLabel: headShelfLabel,
+  });
   const categoryLabels = new Map(
     categorySections.map((section) => {
       return [section.category, section.label];
@@ -125,9 +140,13 @@ export function buildConnectorDirectoryModel({
     discover,
     custom,
     categorySections,
+    shelfLayout,
     connectedCount: connected.length,
     yoursSlugs: [...slugsOf(attention), ...slugsOf(healthy)],
-    discoverSlugs: slugsOf(discover),
+    discoverSlugs:
+      search.trim() || category !== null || shelfLayout.shelves.length === 0
+        ? slugsOf(discover)
+        : slugsOf(shelfLayout.connectors),
     bySlug: new Map(
       [...connected, ...unconnected].map((connector) => {
         return [connector.slug, connector];

@@ -41,7 +41,7 @@ export const orgDeleteRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        // Deleting a workspace is a session-only action. Sandbox and zero
+        // Deleting a workspace is a session-only action. Sandbox and agent
         // tokens are already refused because this route declares no
         // requiredCapability, so this closes the remaining hole: a CLI PAT.
         accept: ["session"],

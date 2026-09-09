@@ -65,13 +65,38 @@ gh workflow run temporary-goal-archive-search-recovery.yml \
 ```
 
 Use the returned GitHub run identity and its job summary as evidence. Only
-`workflow_dispatch` on `refs/heads/main` reaches the finite 90-minute protected
+`workflow_dispatch` on `refs/heads/main` reaches the finite 240-minute protected
 job. Both modes share one concurrency group with cancellation disabled. No push,
 PR, release, schedule, arbitrary SQL, command, ref, bucket, cursor, count or hash
 override is available. Checkout uses the dispatched `github.sha`, with credentials
 not persisted. Before binding production secrets, the job validates the mode,
 accepted merge ancestry and unchanged engine/import source, then installs frozen
 DB dependencies with install scripts disabled. Actions are pinned to full SHAs.
+
+### Exact accepted source
+
+The original archive merge `3e1544d55ac0dc54a1cdb21d6aee72d651a6808d` and repair
+merge `cede9cbfb62872ddabb705de852dc6fd81a3cc6d` must remain ancestors of the
+dispatched source. Every guarded path in the 014 engine/import closure and
+1093/1094 retains exact byte comparison to the repair merge, except one file:
+`turbo/packages/api-contracts/src/contracts/pi-memory-citations.ts` is compared
+only to reviewed branding merge `04531239c7e796799f1dca20ab36f7af1d075f85`
+([#32891](https://github.com/vm0-ai/vm0/pull/32891)), which must also be an ancestor.
+The single accepted difference is line 7's license comment, `vm0` to `Okou`.
+No runtime logic changed. Any further difference, including another comment
+edit, must fail before production secrets are bound. Do not advance the whole
+closure to a newer main, ignore comments, omit paths or add a source override.
+
+Implementation and controller acceptance must execute the workflow's actual
+`Validate mode and accepted operation source` shell step against real Git history
+at the exact reviewed HEAD, with `GITHUB_SHA` set to that HEAD, for both modes.
+This check needs all three ancestor commits locally and no production credentials.
+Record that full SHA and the byte/ancestry results alongside the executable
+workflow fixture's independent missing-ancestor, changed-path, invalid-mode and
+dispatch-SHA rejection results. Shallow-checkout synthetic fixtures alone cannot
+prove that the reviewed source matches either accepted baseline. Before each
+production approval, the operator validates the actual dispatched main source
+and accepted execution files again if main has advanced.
 
 The resolver reuses existing `NEON_API_KEY`, the expected
 `NEON_PROJECT_ID=hidden-lab-39609750`, and a unique `production` branch. It rejects
@@ -131,6 +156,54 @@ plus controller acceptance. A successful standalone dry-run can still report wor
 object request timeout. Its existing snapshot decompression/history accumulation
 is unchanged. The workflow timeout bounds the job; it is **not a per-thread
 memory bound**.
+
+## Measured job budget and operator continuation (#32978)
+
+The first apply [run 34333317500 / job 102406764659](https://github.com/vm0-ai/vm0/actions/runs/34333317500/job/102406764659),
+attempt 1, dispatched source `99bd2254849a4890c0bf7dc12c151b6463b34726`, was
+cancelled by GitHub at **2026-09-09 10:42:30 UTC**. Its annotation states
+`The job has exceeded the maximum execution time of 1h30m0s`. The
+[terminal evidence](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5600632181)
+contains a complete preflight from **09:13:00 to 10:11:39 UTC** (**58m39s**):
+4,162 processed, 4,153 unchanged, nine repairable and all other outcomes zero.
+Both before and immediately-before-apply cohorts matched all 4,162 Goals,
+distinct threads and complete receipts, the fixed hash and every prerequisite.
+Apply started **10:11:41 UTC**. No complete apply report, fresh final verification
+or after cohort was emitted. The committed repair count is **unknown**; nine
+repairable threads do not mean nine repaired threads or zero committed repairs.
+
+Apply requires three complete scans: fresh preflight, full apply and fresh full
+verification. Three scans at 58m39s take **175m57s**, about 176 minutes before
+setup/cohort reads. The finite **240-minute** budget adds about **64 minutes**
+for setup and timing variability; the earlier standalone dry-run took about
+41m15s. This is a measured allocation, not a completion guarantee. Preserve all
+three scans, the full cohort and all existing transaction, lock, statement,
+object-request and inventory bounds. There is no operator timeout override.
+
+A GitHub job can outlive an operator's **two-hour assistant run**. Before that
+assistant limit, the sole operator records a continuation checkpoint on the EPIC:
+
+1. Exact run and job URLs/IDs, attempt, dispatched full source SHA, mode,
+   observation UTC, actual job/check status and approval state.
+2. Only completed source/run/attempt-bound phase reports and count/hash records;
+   identify the last started phase and every absent report. The wrapper captures
+   child output until a complete phase validates, so a quiet active phase does
+   not expose a committed repair count.
+3. Stop the assistant run while leaving the GitHub job intact. Controller
+   `9faa0333-002f-418a-b47d-185aa32afa4a` continues the same sole operator,
+   `cacc99f2-1570-4e64-961c-40b3fe8db2cf`, to read the same run/job and attempt.
+   Resume observation of that job whether it is still active or became terminal
+   between assistant runs. Do not dispatch, rerun, cancel or add an executor to
+   cross the assistant runtime boundary.
+
+An assistant continuation is not a GitHub retry or a completion certificate.
+If the GitHub job actually times out or fails again, preserve safe per-thread
+commits, report only observed counts and missing evidence, and return to the
+controller before any retry. After this repair is merged and independently
+accepted, the existing operator first rechecks the terminal two-run inventory
+(dry-run `34329154556`, apply `34333317500`), the actual accepted dispatch source
+and current normal serving/projector prerequisites, then follows the full fresh
+dry-run and apply certification path. Prior reports never replace these scans.
 
 ## Failure, partial commits and disposal
 

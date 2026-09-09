@@ -43,6 +43,7 @@ const ONBOARDING_GUARDED_PATHS = [
   ROUTES.workflowDetailInfo,
   ROUTES.workflowDetailInstructions,
   ROUTES.workflows,
+  ROUTES.welcomeThread,
   ROUTES.works,
   "/team",
   "/team/:id",

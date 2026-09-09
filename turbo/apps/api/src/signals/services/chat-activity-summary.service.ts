@@ -318,7 +318,7 @@ async function generateSummary(
 ): Promise<ActivitySummaryResponse> {
   const claimed = await claimSummary(db, identity);
   if (claimed.kind === "response") {
-    log.debug("Activity summary cache", {
+    log.info("Activity summary cache", {
       runId: identity.runId,
       outcome: claimed.response.status,
     });
@@ -329,7 +329,7 @@ async function generateSummary(
     return emptyResponse(identity.runId, "ineligible");
   }
   signal.throwIfAborted();
-  log.debug("Activity summary attempt", { runId: identity.runId });
+  log.info("Activity summary attempt", { runId: identity.runId });
   const started = performance.now();
   const deadline = AbortSignal.timeout(SUMMARY_DEADLINE_MS);
   const result = await settleIncludingAbort(
@@ -359,7 +359,7 @@ async function generateSummary(
     MAX_COOLDOWN_MS,
     Math.max(FAILURE_COOLDOWN_MS, retryAfterMs ?? 0),
   );
-  log.debug("Activity summary completion", {
+  const completion = {
     runId: identity.runId,
     outcome: phrase
       ? "success"
@@ -370,7 +370,15 @@ async function generateSummary(
           : "invalid_or_unconfigured",
     durationMs: Math.round(performance.now() - started),
     cooldownMs: phrase ? 0 : cooldown,
-  });
+    ...(!result.ok && result.error instanceof OpenRouterRequestError
+      ? { providerStatus: result.error.status }
+      : {}),
+  };
+  if (phrase) {
+    log.info("Activity summary completion", completion);
+  } else {
+    log.warn("Activity summary completion", completion);
+  }
   const enabled = await activityEnabled(db, identity.orgId, identity.userId);
   if (!enabled) {
     return emptyResponse(identity.runId, "unavailable");
@@ -454,7 +462,7 @@ export async function requestActivitySummary(
   );
   signal.throwIfAborted();
   if (!result.ok) {
-    log.debug("Activity summary unavailable", {
+    log.warn("Activity summary unavailable", {
       runId: identity.runId,
       outcome: "storage_failed",
     });

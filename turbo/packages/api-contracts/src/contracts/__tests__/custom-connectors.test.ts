@@ -202,15 +202,18 @@ describe("Custom connector Automatic auth contracts", () => {
       startCustomConnectorOAuth2ResponseSchema.parse({
         result: "authorization",
         authorizationUrl: "https://issuer.example.com/authorize",
+        oauthAttemptId: "44444444-4444-4444-8444-444444444444",
       }),
     ).toMatchObject({ result: "authorization" });
     expect(
       startCustomConnectorOAuth2ResponseSchema.parse({
         authorizationUrl: "https://issuer.example.com/authorize",
+        oauthAttemptId: "44444444-4444-4444-8444-444444444444",
       }),
     ).toStrictEqual({
       result: "authorization",
       authorizationUrl: "https://issuer.example.com/authorize",
+      oauthAttemptId: "44444444-4444-4444-8444-444444444444",
     });
     expect(
       startCustomConnectorOAuth2ResponseSchema.parse({

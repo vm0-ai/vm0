@@ -12,10 +12,6 @@ export const okouDebugRealtimeIndicator$ = computed(
       return null;
     }
 
-    const { online } = diagnostics.snapshot;
-    if (!online) {
-      return "disconnected";
-    }
     const status = get(sharedDatabaseConnectionStatus$);
     if (status === "connected") {
       return null;

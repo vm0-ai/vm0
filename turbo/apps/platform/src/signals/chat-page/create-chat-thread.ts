@@ -4038,6 +4038,7 @@ function nextThinkingTypewriterFrame(args: {
 function createThinkingIndicatorSignals(
   thinkingText$: Computed<Promise<string | null>>,
   thinkingEventId$: Computed<Promise<string | null>>,
+  activitySummaryEnabled$: Computed<boolean>,
 ) {
   const blockColors = shuffleBlockColors();
   const blockColors$ = computed(() => {
@@ -4046,6 +4047,11 @@ function createThinkingIndicatorSignals(
   const thinkingPhraseIndex = Math.floor(Math.random() * THINKING_PHRASE_COUNT);
   const thinkingPhrase$ = computed((get) => {
     get(locale$);
+    if (get(activitySummaryEnabled$)) {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.default;
+      });
+    }
     return thinkingPhrase(thinkingPhraseIndex);
   });
   const thinkingTypewriterFrame$ = state<ThinkingTypewriterFrame>(
@@ -4508,7 +4514,11 @@ function createChatPanelSignalsWithDraft(
     thinkingText$,
     thinkingEventId$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    ...createThinkingIndicatorSignals(thinkingText$, thinkingEventId$),
+    ...createThinkingIndicatorSignals(
+      thinkingText$,
+      thinkingEventId$,
+      activity.enabled$,
+    ),
     artifacts$: messages.artifacts$,
     reloadArtifacts$: messages.reloadArtifacts$,
   };

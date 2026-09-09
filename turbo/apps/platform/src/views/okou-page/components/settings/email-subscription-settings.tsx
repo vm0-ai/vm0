@@ -1,0 +1,150 @@
+import type { EmailSubscriptionResponse } from "@okouai/api-contracts/contracts/email-subscription";
+import { Button } from "@okouai/ui/components/ui/button";
+import { Switch } from "@okouai/ui/components/ui/switch";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import { AlertCircle, Loader2, Mail, RotateCcw } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+import {
+  emailSubscription$,
+  retryEmailSubscription$,
+  updateEmailSubscription$,
+} from "../../../../signals/okou-page/settings/email-subscription.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+import { PreferenceCardRow } from "./preference-card-row.tsx";
+
+function EmailSubscriptionStatus({
+  preference,
+  pending,
+  failed,
+}: {
+  readonly preference: EmailSubscriptionResponse | undefined;
+  readonly pending: "loading" | "saving" | null;
+  readonly failed: boolean;
+}) {
+  const { t } = useTranslation();
+  const unavailable = preference && preference.deliveryStatus !== "available";
+  let status = preference?.subscribed
+    ? t(($) => {
+        return $.settings.preferences.emailSubscription.subscribed;
+      })
+    : t(($) => {
+        return $.settings.preferences.emailSubscription.unsubscribed;
+      });
+  if (pending) {
+    status =
+      pending === "loading"
+        ? t(($) => {
+            return $.settings.preferences.emailSubscription.loading;
+          })
+        : t(($) => {
+            return $.settings.preferences.emailSubscription.saving;
+          });
+  } else if (failed) {
+    status = t(($) => {
+      return $.settings.preferences.emailSubscription.retryMessage;
+    });
+  } else if (unavailable) {
+    status = t(($) => {
+      return $.settings.preferences.emailSubscription.unavailable;
+    });
+  }
+  return (
+    <div
+      className="flex flex-col gap-1 text-xs text-muted-foreground"
+      aria-live="polite"
+    >
+      {preference?.email && (
+        <span className="break-all">{preference.email}</span>
+      )}
+      <div className="flex items-center gap-1.5">
+        {pending && <Loader2 className="size-3.5 animate-spin" />}
+        {(failed || unavailable) && (
+          <AlertCircle className="size-3.5 shrink-0" />
+        )}
+        <span>{status}</span>
+      </div>
+      {unavailable && !pending && !failed && (
+        <span>
+          {t(($) => {
+            return $.settings.preferences.emailSubscription
+              .unavailableDescription;
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function EmailSubscriptionSettings() {
+  const { t } = useTranslation();
+  const loadable = useLoadable(emailSubscription$);
+  const preference = useLastResolved(emailSubscription$);
+  const [mutation, update] = useLoadableSet(updateEmailSubscription$);
+  const reload = useSet(retryEmailSubscription$);
+  const pageSignal = useGet(pageSignal$);
+  const loading = loadable.state === "loading";
+  const saving = mutation.state === "loading";
+  const loadFailed = loadable.state === "hasError";
+  const saveFailed = mutation.state === "hasError";
+  const handleToggle = (subscribed: boolean) => {
+    detach(update(subscribed, pageSignal), Reason.DomCallback);
+  };
+  const handleRetry = () => {
+    if (saveFailed && preference && !loadFailed) {
+      handleToggle(!preference.subscribed);
+    } else {
+      reload();
+    }
+  };
+
+  return (
+    <PreferenceCardRow
+      icon={Mail}
+      title={t(($) => {
+        return $.settings.preferences.emailSubscription.title;
+      })}
+      description={t(($) => {
+        return $.settings.preferences.emailSubscription.description;
+      })}
+      status={
+        <EmailSubscriptionStatus
+          preference={preference}
+          pending={loading ? "loading" : saving ? "saving" : null}
+          failed={loadFailed || saveFailed}
+        />
+      }
+    >
+      <div className="flex shrink-0 items-center gap-2">
+        {(loadFailed || saveFailed) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleRetry}
+            disabled={loading || saving}
+          >
+            <RotateCcw />
+            {t(($) => {
+              return $.settings.preferences.morningBrief.retry;
+            })}
+          </Button>
+        )}
+        {preference ? (
+          <Switch
+            aria-label={t(($) => {
+              return $.settings.preferences.emailSubscription.title;
+            })}
+            checked={preference.subscribed}
+            disabled={loading || saving || loadFailed}
+            onCheckedChange={handleToggle}
+          />
+        ) : (
+          <div className="h-6 w-11 rounded-full bg-muted" aria-hidden="true" />
+        )}
+      </div>
+    </PreferenceCardRow>
+  );
+}

@@ -26,19 +26,28 @@ const GMAIL_SLUG = "gmail" as ConnectorSlug;
 const NOTION_SLUG = "notion" as ConnectorSlug;
 
 function directoryCatalog() {
+  // Discovery ranks what it returns, so a fixture without ranks would describe
+  // a response the API does not produce.
   return [
-    builtinConnector({ slug: GITHUB_SLUG, label: "GitHub", connected: true }),
+    builtinConnector({
+      slug: GITHUB_SLUG,
+      label: "GitHub",
+      connected: true,
+      popularityRank: 0,
+    }),
     builtinConnector({
       slug: GMAIL_SLUG,
       label: "Gmail",
       connected: false,
       tags: ["email", "inbox"],
       hasPermissions: true,
+      popularityRank: 1,
     }),
     builtinConnector({
       slug: NOTION_SLUG,
       label: "Notion",
       connected: false,
+      popularityRank: 2,
     }),
   ];
 }
@@ -201,4 +210,127 @@ test("Keep the category chips the same width when the selection moves", async ()
   );
   expect(weights.size).toBe(1);
   expect(weights).not.toContain("none");
+});
+
+function rankedCatalog() {
+  // Four ranked connectors earn "mail" a shelf; "voice" has one, so it stays a
+  // counted chip rather than opening on the alphabet.
+  return [
+    ...[
+      "Gmail",
+      "Outlook Mail",
+      "Slack",
+      "Microsoft Teams Bot",
+      "Discord",
+      "Telegram",
+      "Lark",
+      "Zendesk",
+      "Intercom",
+      "Mailchimp",
+    ].map((label, index) => {
+      return builtinConnector({
+        slug: `mail-${index}` as ConnectorSlug,
+        label,
+        connected: false,
+        category: "mail",
+        popularityRank: index,
+      });
+    }),
+    builtinConnector({
+      slug: "voice-0" as ConnectorSlug,
+      label: "ElevenLabs",
+      connected: false,
+      category: "voice",
+      popularityRank: 40,
+    }),
+    builtinConnector({
+      slug: "voice-1" as ConnectorSlug,
+      label: "3Scribe",
+      connected: false,
+      category: "voice",
+    }),
+  ];
+}
+
+test("Close a shelf with the products behind it, and open that category", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({
+    catalog: rankedCatalog(),
+    categoryConnectorCounts: { mail: 327, voice: 50 },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  const dialog = await openDirectory(user);
+  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
+  await waitFor(() => {
+    expect(within(dialog).getByTestId("connector-shelf-mail")).toBeVisible();
+  });
+
+  // A count alone says nothing to someone who does not know the product names,
+  // so the closing cell has to name what it stands for.
+  const tail = dialogButton(dialog, "See Zendesk, Intercom and 321 more");
+  expect(tail).toBeVisible();
+
+  // A category with one ranked connector cannot fill a shelf and is offered as
+  // a chip instead.
+  expect(within(dialog).queryByTestId("connector-shelf-voice")).toBeNull();
+  expect(within(dialog).getByText("More categories")).toBeVisible();
+
+  await user.click(tail);
+  await waitFor(() => {
+    expect(within(dialog).queryByTestId("connector-shelf-mail")).toBeNull();
+  });
+  expect(within(dialog).getByText("Zendesk")).toBeVisible();
+});
+
+test("Show a connector on one shelf only", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({
+    catalog: rankedCatalog(),
+    categoryConnectorCounts: { mail: 327, voice: 50 },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  const dialog = await openDirectory(user);
+  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
+  await waitFor(() => {
+    expect(within(dialog).getByTestId("connector-shelf-head")).toBeVisible();
+  });
+
+  // Gmail leads the head shelf, so its own category has to start below it
+  // instead of repeating the same card two sections apart.
+  expect(within(dialog).getAllByText("Gmail")).toHaveLength(1);
+});
+
+test("List the catalog when it is too small for any category to fill a shelf", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({ catalog: directoryCatalog() });
+
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  const dialog = await openDirectory(user);
+  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
+  await waitFor(() => {
+    expect(within(dialog).getByText("Notion")).toBeVisible();
+  });
+
+  // Shelves need something to shelve. With two unconnected connectors no
+  // category earns one, and the reader must still get the catalog rather than
+  // an empty sheet.
+  expect(dialog.querySelector("[data-testid^='connector-shelf-']")).toBeNull();
+  expect(within(dialog).getByText("Gmail")).toBeVisible();
 });

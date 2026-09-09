@@ -46,7 +46,9 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
 
     When accepted, ``line`` is passed to the append worker without transformation.
     The caller owns JSON serialization and the terminating newline; this function
-    validates neither JSON nor record boundaries.
+    validates neither JSON nor record boundaries. Before a nonempty batch, the
+    worker adds a newline if the existing file tail is unterminated, isolating
+    subsequent records from a previous incomplete append.
 
     The call returns no admission or durability result. An empty ``log_path``,
     writer shutdown, pending-write or pending-byte saturation, or failure to start
@@ -304,8 +306,15 @@ def _report_append_recovery() -> None:
 
 
 def _append_lines(log_path: str, lines: list[bytes]) -> None:
-    fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+    fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_RDWR, 0o644)
     try:
+        if any(lines):
+            size = os.fstat(fd).st_size
+            if size and os.pread(fd, 1, size - 1) != b"\n":
+                # Only append: Rust can also write to the shared network log,
+                # so rolling back to an earlier offset could delete its records.
+                lines = [b"\n", *lines]
+
         line_index = 0
         line_offset = 0
         while line_index < len(lines):

@@ -72,6 +72,14 @@ interface ComposerConnectorData {
   readonly relatedCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
   readonly customConnectors: readonly CustomConnectorResponse[];
   readonly authorization: ComposerConnectorAuthorizationState;
+  /**
+   * How many connectors each category holds in total. Discovery returns a
+   * slice per category, so the directory needs this to say what a shelf's
+   * closing cell stands for without a second request.
+   */
+  readonly categoryConnectorCounts:
+    | Readonly<Record<string, number>>
+    | undefined;
 }
 
 export interface ComposerConnectorSignals {
@@ -369,13 +377,17 @@ export function createComposerConnectorSignals(
   const ui = createConnectorUiSignals();
   const authorization$ = createConnectorAuthorizationSignal(agentId);
   const data$ = computed(async (get): Promise<ComposerConnectorData> => {
-    const [relatedCatalogItems, customConnectors, authorization] =
-      await Promise.all([
-        get(composerRelatedCatalogItems$),
-        get(customConnectors$),
-        get(authorization$),
-      ]);
-    return { relatedCatalogItems, customConnectors, authorization };
+    const [catalog, customConnectors, authorization] = await Promise.all([
+      get(composerRelatedCatalog$),
+      get(customConnectors$),
+      get(authorization$),
+    ]);
+    return {
+      relatedCatalogItems: catalog.connectors,
+      customConnectors,
+      authorization,
+      categoryConnectorCounts: catalog.categoryConnectorCounts,
+    };
   });
   const addDialogKeyword$ = computed((get) => {
     return get(ui.connectorUiState$).addDialogSearch;

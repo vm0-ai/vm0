@@ -291,9 +291,11 @@ export default [
             "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states.",
         },
         {
-          selector: "ImportExpression",
+          // KaTeX is the sole optional runtime boundary. The production build
+          // separately enforces that it remains the only lazy JavaScript chunk.
+          selector: "ImportExpression:not([source.value='katex'])",
           message:
-            "Dynamic JavaScript imports are not allowed. Keep application code in the single bundle; locale resources remain separate JSON assets.",
+            'Dynamic JavaScript imports other than import("katex") are not allowed. Keep application code in the single bundle; locale resources remain separate JSON assets.',
         },
         {
           selector: "CallExpression[callee.property.name='then']",

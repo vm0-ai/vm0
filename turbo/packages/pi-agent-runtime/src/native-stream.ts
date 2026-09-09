@@ -11,7 +11,10 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 
 import { assertPiNativeCredential } from "./credential";
 import type { PiAgentModelConfig } from "./types";
-import type { PiAgentStreamOptions } from "./stream-options";
+import {
+  observePiResponseStatus,
+  type PiAgentStreamOptions,
+} from "./stream-options";
 
 function isMessages(model: Model<Api>): model is Model<"anthropic-messages"> {
   return model.api === "anthropic-messages";
@@ -48,7 +51,10 @@ export function streamPiNative(
   const nativeOptions = {
     ...options,
     maxRetries: 0,
-    fetch: options.fetch ?? nativePublicFetch,
+    fetch: observePiResponseStatus(
+      options.fetch ?? nativePublicFetch,
+      options.onObservedResponseStatus,
+    ),
     // Neither ambient cache policy nor provider authentication is inherited.
     cacheRetention: "short" as const,
     env: {},

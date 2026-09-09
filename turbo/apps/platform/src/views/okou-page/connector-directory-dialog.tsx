@@ -29,6 +29,11 @@ import {
   DIRECTORY_HAIRLINE,
   DIRECTORY_SURFACE,
 } from "./components/settings/connector-card.tsx";
+import {
+  ConnectorShelfChips,
+  ConnectorShelfRow,
+  ConnectorShelfSection,
+} from "./components/settings/connector-shelf.tsx";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import {
@@ -50,13 +55,15 @@ import {
 const SCROLL_EDGE_FADE =
   "[mask-image:linear-gradient(to_bottom,transparent_0,#000_18px,#000_calc(100%-44px),transparent_100%)]";
 
-const SECTION_PREVIEW_LIMIT = 6;
-
 type UpdateDirectoryState = (patch: Partial<ComposerConnectorUiState>) => void;
 
 type RenderConnectorCard = (
   connector: PlatformConnectorCatalogStatusItem,
   connected: boolean,
+) => React.ReactNode;
+
+type RenderShelfRow = (
+  connector: PlatformConnectorCatalogStatusItem,
 ) => React.ReactNode;
 
 function DirectorySection({
@@ -396,6 +403,7 @@ function DirectoryYoursPanel({
 function DirectoryDiscoverPanel({
   model,
   renderCard,
+  renderShelfRow,
   search,
   category,
   onSelectCategory,
@@ -403,6 +411,7 @@ function DirectoryDiscoverPanel({
 }: {
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
+  readonly renderShelfRow: RenderShelfRow;
   readonly search: string;
   readonly category: string | null;
   readonly onSelectCategory: (category: string) => void;
@@ -424,8 +433,14 @@ function DirectoryDiscoverPanel({
     );
   }
   // A query or a chosen category is already a filter: show what matched as one
-  // list instead of scattering the results back across category sections.
-  if (search.trim() || category !== null) {
+  // list instead of scattering the results back across category sections. A
+  // catalog too small for any category to fill a shelf takes the same path --
+  // shelves need something to shelve.
+  if (
+    search.trim() ||
+    category !== null ||
+    model.shelfLayout.shelves.length === 0
+  ) {
     return (
       <DirectorySection
         title={t(
@@ -443,26 +458,24 @@ function DirectoryDiscoverPanel({
   }
   return (
     <>
-      {model.categorySections.map((section) => {
+      {model.shelfLayout.shelves.map((shelf) => {
         return (
-          <DirectorySection
-            key={section.category}
-            title={section.label}
-            showAllCount={section.connectors.length}
-            onShowAll={
-              section.connectors.length > SECTION_PREVIEW_LIMIT
-                ? () => {
-                    onSelectCategory(section.category);
-                  }
-                : undefined
-            }
+          <ConnectorShelfSection
+            key={shelf.category ?? "head"}
+            shelf={shelf}
+            columns={2}
+            onOpenCategory={onSelectCategory}
           >
-            {section.connectors.slice(0, SECTION_PREVIEW_LIMIT).map((item) => {
-              return renderCard(item, false);
+            {shelf.connectors.map((item) => {
+              return renderShelfRow(item);
             })}
-          </DirectorySection>
+          </ConnectorShelfSection>
         );
       })}
+      <ConnectorShelfChips
+        chips={model.shelfLayout.chips}
+        onSelect={onSelectCategory}
+      />
     </>
   );
 }
@@ -591,6 +604,7 @@ function DirectoryBody({
   loading,
   model,
   renderCard,
+  renderShelfRow,
   search,
   category,
   onUpdateState,
@@ -600,6 +614,7 @@ function DirectoryBody({
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
+  readonly renderShelfRow: RenderShelfRow;
   readonly search: string;
   readonly category: string | null;
   readonly onUpdateState: UpdateDirectoryState;
@@ -625,6 +640,7 @@ function DirectoryBody({
       <DirectoryDiscoverPanel
         model={model}
         renderCard={renderCard}
+        renderShelfRow={renderShelfRow}
         search={search}
         category={category}
         onSelectCategory={(next) => {
@@ -651,6 +667,7 @@ function DirectoryBrowseView({
   loading,
   model,
   renderCard,
+  renderShelfRow,
   onUpdateState,
   onConnectCustom,
 }: {
@@ -660,6 +677,7 @@ function DirectoryBrowseView({
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
+  readonly renderShelfRow: RenderShelfRow;
   readonly onUpdateState: UpdateDirectoryState;
   readonly onConnectCustom: (connector: CustomConnectorResponse) => void;
 }) {
@@ -701,6 +719,7 @@ function DirectoryBrowseView({
           loading={loading}
           model={model}
           renderCard={renderCard}
+          renderShelfRow={renderShelfRow}
           search={search}
           category={category}
           onUpdateState={onUpdateState}
@@ -819,6 +838,47 @@ function createDirectoryKeyDownHandler({
   };
 }
 
+/**
+ * A shelf cell opens what the reader already has and connects what they don't,
+ * which is the same split the card grid makes; keeping it here leaves the
+ * dialog holding state rather than behaviour.
+ */
+function createDirectoryShelfRowRenderer({
+  connecting,
+  activeSlug,
+  connectHandlers,
+  onUpdateState,
+}: {
+  readonly connecting: boolean;
+  readonly activeSlug: ConnectorSlug | undefined;
+  readonly connectHandlers: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => ConnectorConnectHandlers;
+  readonly onUpdateState: UpdateDirectoryState;
+}): RenderShelfRow {
+  return (connector) => {
+    return (
+      <ConnectorShelfRow
+        key={connector.slug}
+        connector={connector}
+        connected={connector.connected}
+        busy={connecting}
+        active={activeSlug === connector.slug}
+        onActivate={() => {
+          if (connector.connected) {
+            onUpdateState({ directoryDetailSlug: connector.slug });
+            return;
+          }
+          launchConnectorConnect({
+            connector,
+            ...connectHandlers(connector),
+          });
+        }}
+      />
+    );
+  };
+}
+
 function DirectoryDetailSlot({
   connector,
   accountSummary,
@@ -858,6 +918,8 @@ function DirectoryDetailSlot({
 interface ConnectorDirectoryDialogProps {
   readonly state: ComposerConnectorUiState;
   readonly onUpdateState: UpdateDirectoryState;
+  /** Category totals from discovery; a shelf's closing cell stands for these. */
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
   readonly connectedCustom: readonly CustomConnectorResponse[];
@@ -895,6 +957,7 @@ function nextDirectoryIndex(
 export function ConnectorDirectoryDialog({
   state,
   onUpdateState,
+  categoryCounts,
   connected,
   unconnected,
   connectedCustom,
@@ -931,6 +994,10 @@ export function ConnectorDirectoryDialog({
     otherCategoryLabel: t(($) => {
       return $.chat.connectors.directory.otherCategory;
     }),
+    categoryCounts,
+    headShelfLabel: t(($) => {
+      return $.connectors.catalog.shelf.popular;
+    }),
   });
   const loading = catalogLoadable.state === "loading" && connected.length === 0;
   const navigableSlugs = navigableDirectorySlugs(tab, model);
@@ -956,6 +1023,13 @@ export function ConnectorDirectoryDialog({
       />
     );
   };
+
+  const renderShelfRow = createDirectoryShelfRowRenderer({
+    connecting,
+    activeSlug,
+    connectHandlers,
+    onUpdateState,
+  });
 
   const handleKeyDown = createDirectoryKeyDownHandler({
     activeIndex: state.directoryActiveIndex,
@@ -1002,6 +1076,7 @@ export function ConnectorDirectoryDialog({
             loading={loading}
             model={model}
             renderCard={renderCard}
+            renderShelfRow={renderShelfRow}
             onUpdateState={onUpdateState}
             onConnectCustom={onConnectCustom}
           />

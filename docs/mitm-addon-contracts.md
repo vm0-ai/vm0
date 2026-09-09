@@ -27,6 +27,23 @@ nested fields map. Runner-owned Axiom metadata (`_time`, `context`, `service`,
 `runner_hostname`, and `runner_version`) remains authoritative. Callers remain
 responsible for redaction and bounded values.
 
+### JSONL append recovery
+
+The asynchronous writer accepts caller-framed JSONL bytes and opens the
+Runner-owned regular log files for reading and appending. Before a nonempty
+batch, it inspects only the final byte and appends a newline if the existing
+tail is unterminated. The separator uses the same bounded short-write loop as
+the records. Inspection or write failures retire the batch through the existing
+warning and accounting path; flush completion still means processed, not
+persisted. Healthy files gain no extra separators.
+
+Recovery never truncates or rewrites existing bytes: Rust also appends to the
+per-run network file. This isolates subsequent addon records from a failed
+prefix, including after a writer restart, but cannot recover another producer's
+record already embedded in a malformed line or serialize independently
+interleaved short-write sequences. The existing Runner uploader continues to
+skip malformed physical lines and upload independently parseable records.
+
 ## WebSocket Framing Contract
 
 [`websocket_framing.py`](../crates/runner/mitm-addon/src/websocket_framing.py)

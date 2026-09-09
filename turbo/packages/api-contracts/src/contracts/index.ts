@@ -240,7 +240,6 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookUsageEventContract,
-  webhookPiMemoryPhase2UsageContract,
   type WebhookClerkContract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,

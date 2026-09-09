@@ -4009,7 +4009,7 @@
       "okou-color-theme-swatch": 1
     },
     "apps/platform/src/views/okou-page/components/settings/connection-diagnostics-block.tsx": {
-      "okou-badge": 5,
+      "okou-badge": 2,
       "okou-border": 1
     },
     "apps/platform/src/views/okou-page/components/settings/connector-account-manager-dialog.tsx": {

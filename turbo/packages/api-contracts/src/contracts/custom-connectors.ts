@@ -522,7 +522,7 @@ const startCustomConnectorOAuth2AuthorizationResponseSchema = z.object({
   result: z.literal("authorization"),
   authorizationUrl: z.string().url(),
   connectionId: z.uuid().optional(),
-  oauthAttemptId: z.uuid().optional(),
+  oauthAttemptId: z.uuid(),
 });
 
 const startCustomConnectorOAuth2ConnectedResponseSchema = z.object({

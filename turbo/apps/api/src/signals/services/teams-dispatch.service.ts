@@ -254,7 +254,7 @@ function modelLabel(option: TeamsModelPickerOption): string {
 function parseTeamsBotCommand(prompt: string): TeamsBotCommand | null {
   const parts = prompt.trim().split(/\s+/u);
   const first = parts[0]?.toLowerCase().replace(/^\//u, "") ?? "";
-  const prefixed = first === "zero" || first === "okou";
+  const prefixed = first === "okou";
   const command = prefixed
     ? (parts[1]?.toLowerCase().replace(/^\//u, "") ?? "")
     : first;

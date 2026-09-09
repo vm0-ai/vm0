@@ -3,21 +3,71 @@ import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows"
 export function findWorkflowQueryMatches(
   workflows: readonly ComposerSlashWorkflow[],
   query: string,
-): readonly ComposerSlashWorkflow[] {
+  fuzzy: boolean,
+): readonly ComposerSlashWorkflowMatch[] {
   const normalizedQuery = query.toLowerCase();
-  const prefixMatches: ComposerSlashWorkflow[] = [];
-  const substringMatches: ComposerSlashWorkflow[] = [];
+  const matches: {
+    workflow: ComposerSlashWorkflowMatch;
+    rank: number;
+  }[] = [];
 
   for (const workflow of workflows) {
     const normalizedName = workflow.name.toLowerCase();
-    if (normalizedName.startsWith(normalizedQuery)) {
-      prefixMatches.push(workflow);
-    } else if (normalizedName.includes(normalizedQuery)) {
-      substringMatches.push(workflow);
+    const start = normalizedName.indexOf(normalizedQuery);
+    if (start !== -1) {
+      matches.push({
+        workflow: {
+          ...workflow,
+          matchRanges: query ? [{ start, end: start + query.length }] : [],
+        },
+        rank:
+          fuzzy && normalizedName === normalizedQuery ? 0 : start === 0 ? 1 : 2,
+      });
+      continue;
+    }
+    if (fuzzy && normalizedQuery.length >= 3) {
+      const matchRanges = findWorkflowSubsequence(
+        normalizedName,
+        normalizedQuery,
+      );
+      if (matchRanges) {
+        matches.push({ workflow: { ...workflow, matchRanges }, rank: 3 });
+      }
     }
   }
 
-  return [...prefixMatches, ...substringMatches];
+  return matches
+    .sort((left, right) => {
+      return left.rank - right.rank;
+    })
+    .map((match) => {
+      return match.workflow;
+    });
+}
+
+function findWorkflowSubsequence(
+  name: string,
+  query: string,
+): readonly WorkflowMatchRange[] | null {
+  const ranges: WorkflowMatchRange[] = [];
+  let offset = 0;
+
+  // Keep numeric identifiers contiguous while allowing letters to skip ahead.
+  for (const [part] of query.matchAll(/\d+|\D/g)) {
+    const start = name.indexOf(part, offset);
+    if (start === -1) {
+      return null;
+    }
+    offset = start + part.length;
+    const previous = ranges.at(-1);
+    if (previous?.end === start) {
+      ranges[ranges.length - 1] = { start: previous.start, end: offset };
+    } else {
+      ranges.push({ start, end: offset });
+    }
+  }
+
+  return ranges;
 }
 
 export interface SlashWorkflowRange {
@@ -32,6 +82,15 @@ export interface ComposerSlashWorkflow {
   readonly displayName: string | null;
   readonly description: string | null;
   readonly token: string;
+}
+
+interface WorkflowMatchRange {
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface ComposerSlashWorkflowMatch extends ComposerSlashWorkflow {
+  readonly matchRanges: readonly WorkflowMatchRange[];
 }
 
 export function findActiveSlashWorkflowRange(

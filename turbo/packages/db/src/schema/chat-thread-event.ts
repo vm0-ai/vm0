@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import {
   bigint,
   boolean,
@@ -58,6 +59,10 @@ export const chatThreadEvents = pgTable(
     title: text("title"),
     pinOrder: text("pin_order"),
     selectedModel: varchar("selected_model", { length: 255 }),
+    // SQL NULL is an omitted legacy field; "default" is an explicit reset.
+    reasoningEffort: varchar("reasoning_effort", {
+      length: 20,
+    }).$type<ReasoningEffort | "default">(),
     serviceTier: varchar("service_tier", {
       length: 20,
     }).$type<ChatThreadServiceTier>(),

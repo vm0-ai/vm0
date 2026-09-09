@@ -13,10 +13,19 @@ import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { PublicConnectorCatalogDiscoveryResponse } from "@okouai/api-contracts/contracts/connector-catalog";
+import type {
+  PublicConnectorCatalogCategoryMetadata,
+  PublicConnectorCatalogDiscoveryResponse,
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
+import {
+  SegmentControl,
+  SegmentControlItem,
+} from "@okouai/ui/components/ui/segment-control";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import {
   connectorsPageTab$,
@@ -33,8 +42,10 @@ import {
   connectFlowConnectorSlug$,
   runConnectorConnectSuccess$,
   connectorsSearch$,
+  connectorsCategoryFilter$,
   connectorsConnectionFilter$,
   filteredConnectorCatalogItems$,
+  setConnectorsCategoryFilter$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
   pollingOAuthAuthCodeConnectorSlug$,
@@ -45,6 +56,10 @@ import {
   type ConnectorsConnectionFilter,
 } from "../../signals/okou-page/settings/connectors.ts";
 import {
+  buildConnectorShelves,
+  type ConnectorShelfLayout,
+} from "../../signals/okou-page/settings/connector-shelves.ts";
+import {
   activeConnectorCategoryId$,
   attachConnectorCategoryScrollTracking$,
   getConnectorCategorySectionId,
@@ -52,6 +67,7 @@ import {
   resetActiveConnectorCategory$,
   scrollToConnectorCategory,
   type ConnectorCategoryGroup,
+  type ConnectorCategorySection,
 } from "../../signals/okou-page/settings/connector-categories.ts";
 import { localizeConnectorCategoryMetadata } from "./components/settings/connector-category-labels.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -59,8 +75,14 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   ConnectorCard,
   connectorAccountSummaryStatus,
+  DIRECTORY_HAIRLINE,
   type ConnectorAccountSummaryStatus,
 } from "./components/settings/connector-card.tsx";
+import {
+  ConnectorShelfChips,
+  ConnectorShelfRow,
+  ConnectorShelfSection,
+} from "./components/settings/connector-shelf.tsx";
 import {
   launchConnectorConnect,
   type ConnectorConnectHandlers,
@@ -80,6 +102,7 @@ import {
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
+  cn,
   surfaceVariants,
   Button,
   DropdownMenu,
@@ -427,11 +450,131 @@ function ConnectorFilterDropdown({
   );
 }
 
+/**
+ * Status as its own control. The dropdown it replaces mixed three unrelated
+ * dimensions — everything, connection status, and one entry per agent — into a
+ * single mutually exclusive list that grew without bound as the account aged,
+ * while category, the only dimension that organises four thousand connectors,
+ * was not offered at all. Which agents may use a connector is answered on the
+ * connector's own card, where the question is actually asked.
+ */
+function ConnectorStatusSegment({
+  value,
+  onChange,
+}: {
+  readonly value: ConnectorsConnectionFilter;
+  readonly onChange: (value: ConnectorsConnectionFilter) => void;
+}) {
+  const { t } = useTranslation();
+  const selected =
+    value.kind === "connected" || value.kind === "not-connected"
+      ? value.kind
+      : "all";
+  return (
+    <SegmentControl
+      size="sm"
+      value={selected}
+      onValueChange={(next: string) => {
+        onChange(
+          next === "connected"
+            ? { kind: "connected" }
+            : next === "not-connected"
+              ? { kind: "not-connected" }
+              : { kind: "all" },
+        );
+      }}
+      aria-label={t(($) => {
+        return $.connectors.catalog.filters.status;
+      })}
+    >
+      <SegmentControlItem value="all">
+        {t(($) => {
+          return $.connectors.catalog.filters.all;
+        })}
+      </SegmentControlItem>
+      <SegmentControlItem value="connected">
+        {t(($) => {
+          return $.connectors.catalog.filters.connected;
+        })}
+      </SegmentControlItem>
+      <SegmentControlItem value="not-connected">
+        {t(($) => {
+          return $.connectors.catalog.filters.notConnected;
+        })}
+      </SegmentControlItem>
+    </SegmentControl>
+  );
+}
+
+/** Category chips: the browse dimension the filter dropdown never offered. */
+function ConnectorCategoryChipRow({
+  sections,
+  categoryCounts,
+  selected,
+  onSelect,
+}: {
+  readonly sections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  readonly selected: string | null;
+  readonly onSelect: (category: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  // Weight stays on the base class: the row is horizontal and every chip is
+  // auto-width, so a heavier selected label would shift every chip after it.
+  const chipClass = (active: boolean) => {
+    return cn(
+      "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-gray-50 px-2.5 text-xs font-medium transition-colors",
+      DIRECTORY_HAIRLINE,
+      active
+        ? "bg-state-selected text-foreground"
+        : "text-muted-foreground hover:text-foreground",
+    );
+  };
+  return (
+    <div className="overflow-x-auto [scrollbar-width:none]">
+      <div className="flex w-max gap-1.5 pb-1">
+        <button
+          type="button"
+          data-connector-category-chip=""
+          className={chipClass(selected === null)}
+          onClick={() => {
+            onSelect(null);
+          }}
+        >
+          {t(($) => {
+            return $.connectors.catalog.shelf.browseAll;
+          })}
+        </button>
+        {sections.map((section) => {
+          return (
+            <button
+              key={section.category}
+              type="button"
+              data-connector-category-chip=""
+              className={chipClass(selected === section.category)}
+              onClick={() => {
+                onSelect(section.category);
+              }}
+            >
+              {section.menuLabel}
+              <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                {categoryCounts?.[section.category] ??
+                  section.connectors.length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ConnectorsToolbarActions({
   activeTab,
   search,
   setSearch,
   showAccessManagement,
+  shelfEnabled,
   connectionFilter,
   agents,
   setConnectionFilter,
@@ -442,6 +585,7 @@ function ConnectorsToolbarActions({
   readonly search: string;
   readonly setSearch: (value: string) => void;
   readonly showAccessManagement: boolean;
+  readonly shelfEnabled: boolean;
   readonly connectionFilter: ConnectorsConnectionFilter;
   readonly agents: readonly AgentResponse[];
   readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
@@ -470,13 +614,20 @@ function ConnectorsToolbarActions({
           />
         </div>
       )}
-      {activeTab === "builtin" && showAccessManagement && (
-        <ConnectorFilterDropdown
-          value={connectionFilter}
-          agents={agents}
-          onChange={setConnectionFilter}
-        />
-      )}
+      {activeTab === "builtin" &&
+        showAccessManagement &&
+        (shelfEnabled ? (
+          <ConnectorStatusSegment
+            value={connectionFilter}
+            onChange={setConnectionFilter}
+          />
+        ) : (
+          <ConnectorFilterDropdown
+            value={connectionFilter}
+            agents={agents}
+            onChange={setConnectionFilter}
+          />
+        ))}
       {activeTab === "custom" && isAdmin && (
         <Button
           variant="outline"
@@ -550,6 +701,238 @@ function ConnectorCategoryGroupSection({
         {section.connectors.map(renderCard)}
       </div>
     </section>
+  );
+}
+
+/**
+ * The browse view: what you already connected in full, then a shelf per
+ * category six deep. Listing every discovered connector under twelve headings
+ * puts the same wall of cards in front of someone who came to add one thing.
+ */
+function ConnectorShelfBrowse({
+  connected,
+  layout,
+  busySlugs,
+  renderCard,
+  onOpenCategory,
+  onConnect,
+  onOpenConnected,
+}: {
+  readonly connected: readonly PlatformConnectorCatalogStatusItem[];
+  readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
+  readonly busySlugs: ReadonlySet<ConnectorSlug>;
+  readonly renderCard: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => ReactNode;
+  readonly onOpenCategory: (category: string) => void;
+  readonly onConnect: (connector: PlatformConnectorCatalogStatusItem) => void;
+  readonly onOpenConnected: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {connected.length > 0 && (
+        <section
+          className="flex flex-col gap-3"
+          data-testid="connector-shelf-yours"
+        >
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t(($) => {
+              return $.connectors.catalog.shelf.yours;
+            })}
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {connected.map(renderCard)}
+          </div>
+        </section>
+      )}
+      <section className="flex flex-col">
+        {layout.shelves.map((shelf) => {
+          return (
+            <ConnectorShelfSection
+              key={shelf.category ?? "head"}
+              shelf={shelf}
+              columns={3}
+              onOpenCategory={onOpenCategory}
+            >
+              {shelf.connectors.map((connector) => {
+                return (
+                  <ConnectorShelfRow
+                    key={connector.slug}
+                    connector={connector}
+                    connected={connector.connected}
+                    busy={busySlugs.has(connector.slug)}
+                    onActivate={() => {
+                      if (connector.connected) {
+                        onOpenConnected(connector);
+                        return;
+                      }
+                      onConnect(connector);
+                    }}
+                  />
+                );
+              })}
+            </ConnectorShelfSection>
+          );
+        })}
+        <ConnectorShelfChips chips={layout.chips} onSelect={onOpenCategory} />
+      </section>
+    </>
+  );
+}
+
+/** Category totals ride on the discovery response; absent while it loads. */
+function discoveryCategoryCounts(
+  catalogStatusLoadable: Loadable<PublicConnectorCatalogDiscoveryResponse>,
+): Readonly<Record<string, number>> | undefined {
+  return catalogStatusLoadable.state === "hasData"
+    ? catalogStatusLoadable.data.categoryConnectorCounts
+    : undefined;
+}
+
+/** The connectors a connect flow is currently in flight for. */
+function connectorBusySlugs(
+  slugs: readonly (ConnectorSlug | null)[],
+): ReadonlySet<ConnectorSlug> {
+  return new Set(
+    slugs.filter((slug): slug is ConnectorSlug => {
+      return slug !== null;
+    }),
+  );
+}
+
+interface ConnectorsBrowseModel {
+  readonly showShelves: boolean;
+  readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
+  readonly connected: readonly PlatformConnectorCatalogStatusItem[];
+  readonly chipSections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+}
+
+/**
+ * Splits what the page shows into "what you have" and "what you could add".
+ * Shelves are built from the unconnected half only, and stand down entirely
+ * once a keyword, a category or a status is chosen: that is already a filter,
+ * and a shelf on top of it would hide most of what was just asked for.
+ */
+function buildConnectorsBrowseModel({
+  catalogItems,
+  allConnectors,
+  categoryMetadata,
+  categoryCounts,
+  otherCategoryLabel,
+  headLabel,
+  search,
+  categoryFilter,
+  connectionFilter,
+  ready,
+}: {
+  readonly catalogItems: readonly PlatformConnectorCatalogStatusItem[];
+  readonly allConnectors: readonly PlatformConnectorCatalogStatusItem[];
+  readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  readonly otherCategoryLabel: string;
+  readonly headLabel: string;
+  readonly search: string;
+  readonly categoryFilter: string | null;
+  readonly connectionFilter: ConnectorsConnectionFilter;
+  readonly ready: boolean;
+}): ConnectorsBrowseModel {
+  const filtered =
+    search.trim().length > 0 ||
+    categoryFilter !== null ||
+    connectionFilter.kind !== "all";
+  const sectionsOf = (
+    items: readonly PlatformConnectorCatalogStatusItem[],
+  ): ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[] => {
+    return groupConnectorsByCategory(
+      items,
+      categoryMetadata,
+      otherCategoryLabel,
+    ).flatMap((group) => {
+      return group.sections;
+    });
+  };
+  const layout = buildConnectorShelves({
+    sections: sectionsOf(
+      catalogItems.filter((connector) => {
+        return !connector.connected;
+      }),
+    ),
+    categoryCounts,
+    headLabel,
+  });
+  return {
+    // Shelves need something to shelve: a catalog too small for any category to
+    // fill one falls through to the plain list.
+    showShelves: ready && !filtered && layout.shelves.length > 0,
+    layout,
+    connected: catalogItems.filter((connector) => {
+      return connector.connected;
+    }),
+    // Chips come from the whole catalog, not the filtered view: a chip row
+    // that empties itself when you pick a chip cannot be used to pick another.
+    chipSections: sectionsOf(allConnectors),
+    categoryCounts,
+  };
+}
+
+/**
+ * The built-in tab. Chips first, because category is the dimension that makes
+ * four thousand connectors browsable; then either the shelves or, once the
+ * reader has filtered, the plain result list.
+ */
+function ConnectorsBuiltinPanel({
+  browse,
+  shelfEnabled,
+  categoryFilter,
+  setCategoryFilter,
+  busySlugs,
+  renderCard,
+  fallback,
+  onConnect,
+  onOpenConnected,
+}: {
+  readonly browse: ConnectorsBrowseModel;
+  readonly shelfEnabled: boolean;
+  readonly categoryFilter: string | null;
+  readonly setCategoryFilter: (category: string | null) => void;
+  readonly busySlugs: ReadonlySet<ConnectorSlug>;
+  readonly renderCard: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => ReactNode;
+  readonly fallback: ReactNode;
+  readonly onConnect: (connector: PlatformConnectorCatalogStatusItem) => void;
+  readonly onOpenConnected: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => void;
+}) {
+  return (
+    <>
+      {shelfEnabled && (
+        <ConnectorCategoryChipRow
+          sections={browse.chipSections}
+          categoryCounts={browse.categoryCounts}
+          selected={categoryFilter}
+          onSelect={setCategoryFilter}
+        />
+      )}
+      {browse.showShelves ? (
+        <ConnectorShelfBrowse
+          connected={browse.connected}
+          layout={browse.layout}
+          busySlugs={busySlugs}
+          renderCard={renderCard}
+          onOpenCategory={setCategoryFilter}
+          onConnect={onConnect}
+          onOpenConnected={onOpenConnected}
+        />
+      ) : (
+        fallback
+      )}
+    </>
   );
 }
 
@@ -847,6 +1230,8 @@ export function ConnectorsPage() {
   const setScopeReviewSelection = useSet(setScopeReviewSelection$);
   const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
   const activeTab = useGet(connectorsPageTab$);
+  const shelfEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorDirectory] === true;
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
@@ -854,7 +1239,9 @@ export function ConnectorsPage() {
   const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
   const resetActiveCategory = useSet(resetActiveConnectorCategory$);
   const categoryTrackingEnabled =
-    activeTab === "builtin" && filteredCatalogItemsLoadable.state === "hasData";
+    !shelfEnabled &&
+    activeTab === "builtin" &&
+    filteredCatalogItemsLoadable.state === "hasData";
   const scrollContainerRef = useScrollTrackingRef(
     categoryTrackingEnabled,
     attachScrollTracking,
@@ -865,6 +1252,8 @@ export function ConnectorsPage() {
   const setSearch = useSet(setConnectorsSearch$);
   const connectionFilter = useGet(connectorsConnectionFilter$);
   const setConnectionFilter = useSet(setConnectorsConnectionFilter$);
+  const categoryFilter = useGet(connectorsCategoryFilter$);
+  const setCategoryFilter = useSet(setConnectorsCategoryFilter$);
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
@@ -978,13 +1367,33 @@ export function ConnectorsPage() {
     );
   };
 
+  const otherCategoryLabel = t(($) => {
+    return $.connectors.catalog.otherCategory;
+  });
   const grouped = groupConnectorsByCategory(
     filteredConnectors,
     categoryMetadata,
-    t(($) => {
-      return $.connectors.catalog.otherCategory;
-    }),
+    otherCategoryLabel,
   );
+  const browse = buildConnectorsBrowseModel({
+    catalogItems: filteredConnectors,
+    allConnectors,
+    categoryMetadata,
+    categoryCounts: discoveryCategoryCounts(catalogStatusLoadable),
+    otherCategoryLabel,
+    headLabel: t(($) => {
+      return $.connectors.catalog.shelf.popular;
+    }),
+    search,
+    categoryFilter,
+    connectionFilter,
+    ready: shelfEnabled && filteredCatalogItemsLoadable.state === "hasData",
+  });
+  const busySlugs = connectorBusySlugs([
+    pollingAuthCodeSlug,
+    pollingDeviceAuthSlug,
+    connectFlowSlug,
+  ]);
 
   const builtinList = renderBuiltinList({
     loadingState: filteredCatalogItemsLoadable.state,
@@ -1007,7 +1416,8 @@ export function ConnectorsPage() {
         className="flex-1 px-4 sm:px-6 pt-3 pb-[max(4rem,var(--sab))]"
       >
         <div className="relative mx-auto w-full max-w-[900px]">
-          {activeTab === "builtin" &&
+          {!shelfEnabled &&
+            activeTab === "builtin" &&
             filteredCatalogItemsLoadable.state === "hasData" && (
               <ConnectorCategoryMenu
                 activeCategoryId={activeCategoryId}
@@ -1040,6 +1450,7 @@ export function ConnectorsPage() {
                 activeTab={activeTab}
                 search={search}
                 setSearch={setSearch}
+                shelfEnabled={shelfEnabled}
                 showAccessManagement
                 connectionFilter={connectionFilter}
                 agents={agents}
@@ -1049,7 +1460,26 @@ export function ConnectorsPage() {
               />
             </div>
 
-            {activeTab === "builtin" && builtinList}
+            {activeTab === "builtin" && (
+              <ConnectorsBuiltinPanel
+                browse={browse}
+                shelfEnabled={shelfEnabled}
+                categoryFilter={categoryFilter}
+                setCategoryFilter={setCategoryFilter}
+                busySlugs={busySlugs}
+                renderCard={renderCard}
+                fallback={builtinList}
+                onConnect={(connector) => {
+                  launchConnectorConnect({
+                    connector,
+                    ...accountConnectHandlers(connector),
+                  });
+                }}
+                onOpenConnected={(connector) => {
+                  return openAccountManager(connector, signal);
+                }}
+              />
+            )}
 
             {activeTab === "custom" && <CustomConnectorsPanel />}
           </div>

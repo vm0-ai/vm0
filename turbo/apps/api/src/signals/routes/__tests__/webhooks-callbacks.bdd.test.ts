@@ -92,6 +92,22 @@ function successfulAxiomIngestStatus(ingested: number) {
   };
 }
 
+function collectorEvidence(stage: "initial" | "sample" | "cleanup") {
+  const fixture: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../../../../../crates/guest-control-server/tests/fixtures/oom-evidence-collector.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!isUnknownRecord(fixture)) {
+    throw new Error("Expected the production collector fixture");
+  }
+  return oomEvidenceSchema.parse(fixture[stage]);
+}
+
 async function createEventWebhookRun(prompt: string) {
   const bdd = createBddApi(context);
   const runs = createRunsApi(context);
@@ -2246,20 +2262,11 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ).toBeFalsy();
   });
 
-  it("ingests bounded OOM evidence from the Rust wire fixture and rejects cross-run or forged payloads", async () => {
+  it("ingests collector OOM evidence and fallback with the same identity and rejects cross-run or forged payloads", async () => {
     const { actor, runId, headers } = await createEventWebhookRun(
       `OOM evidence ${randomUUID()}`,
     );
-    const fixture: unknown = JSON.parse(
-      readFileSync(
-        new URL(
-          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    );
-    const evidence = oomEvidenceSchema.parse(fixture);
+    const evidence = collectorEvidence("sample");
     const ingested: unknown[][] = [];
     mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", `xaat-oom-${randomUUID()}`);
     server.use(
@@ -2298,6 +2305,23 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         kernel_status: "available",
         before_cleanup: true,
         after_observation: true,
+      }),
+    );
+    const fallback = collectorEvidence("cleanup");
+    const retried = await api.requestAgentTelemetry(
+      { runId, oomEvidence: fallback },
+      headers,
+      [200],
+    );
+    expect(retried.body).toMatchObject({ oomEvidenceVersion: 1 });
+    expect(fallback.incidents).toStrictEqual(evidence.incidents);
+    expect(ingested[1]).toContainEqual(
+      expect.objectContaining({
+        type: "guest_oom_incident",
+        operation_id: evidence.operation_id,
+        incident_id: evidence.incidents[0]?.id,
+        groups: evidence.incidents[0]?.groups,
+        kernel_events: evidence.incidents[0]?.kernel_events,
       }),
     );
     expect(ingested[0]).toContainEqual(
@@ -2339,29 +2363,135 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         [400],
       );
     }
-    expect(ingested).toHaveLength(1);
+    expect(ingested).toHaveLength(2);
   });
 
   it("does not acknowledge OOM evidence when the Axiom destination is unavailable", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `OOM unavailable ${randomUUID()}`,
     );
-    const fixture: unknown = JSON.parse(
-      readFileSync(
-        new URL(
-          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    );
     mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", undefined);
     const response = await api.requestAgentTelemetry(
-      { runId, oomEvidence: oomEvidenceSchema.parse(fixture) },
+      { runId, oomEvidence: collectorEvidence("cleanup") },
       headers,
       [200],
     );
     expect(response.body).toStrictEqual({ success: true, id: runId });
+  });
+
+  it.each(["failed", "partial"])(
+    "does not acknowledge collector OOM evidence after %s ingestion",
+    async (result) => {
+      const { runId, headers } = await createEventWebhookRun(
+        `OOM ingestion ${randomUUID()}`,
+      );
+      mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", `xaat-oom-${randomUUID()}`);
+      server.use(
+        http.post(
+          "https://api.axiom.co/v1/datasets/sandbox-telemetry-metrics/ingest",
+          () => {
+            return result === "failed"
+              ? new HttpResponse(null, { status: 500 })
+              : HttpResponse.json({
+                  ingested: 1,
+                  failed: 1,
+                  processedBytes: 123,
+                });
+          },
+        ),
+      );
+      const response = await api.requestAgentTelemetry(
+        { runId, oomEvidence: collectorEvidence("sample") },
+        headers,
+        [500],
+      );
+      expect(response.body).not.toHaveProperty("oomEvidenceVersion");
+    },
+  );
+
+  it("ingests collector memory in ordinary mixed telemetry and rejects relative paths before any ingestion", async () => {
+    const { actor, runId, headers } = await createEventWebhookRun(
+      `collector mixed telemetry ${randomUUID()}`,
+    );
+    const ingested = new Map<string, unknown>();
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", `xaat-mixed-${randomUUID()}`);
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/:dataset/ingest",
+        async ({ request, params }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected telemetry event array");
+          }
+          ingested.set(String(params.dataset), events);
+          return HttpResponse.json(successfulAxiomIngestStatus(events.length));
+        },
+      ),
+    );
+    const metrics = [
+      collectorEvidence("initial"),
+      collectorEvidence("sample"),
+    ].map((memory) => {
+      return {
+        ts: memory.sampled_at,
+        cpu: 1,
+        mem_used: 4096,
+        mem_total: 16_384,
+        disk_used: 1024,
+        disk_total: 8192,
+        memory,
+      };
+    });
+    const body = {
+      runId,
+      systemLog: "synthetic system event",
+      metrics,
+      sandboxOperations: [
+        {
+          ts: nowDate().toISOString(),
+          action_type: "cli",
+          duration_ms: 10,
+          success: true,
+        },
+      ],
+    };
+    context.mocks.axiom.sdkIngest.mockClear();
+    const response = await api.requestAgentTelemetry(body, headers, [200]);
+    expect(response.body).toStrictEqual({ success: true, id: runId });
+    expect(ingested.get("sandbox-telemetry-metrics")).toStrictEqual(
+      metrics.map(({ ts, ...metric }) => {
+        return { _time: ts, runId, userId: actor.userId, ...metric };
+      }),
+    );
+    expect(ingested.get("sandbox-telemetry-system")).toStrictEqual([
+      expect.objectContaining({
+        runId,
+        userId: actor.userId,
+        log: body.systemLog,
+      }),
+    ]);
+    await flushWaitUntilForTest();
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          run_id: runId,
+          op_type: "cli",
+          success: true,
+        }),
+      ],
+    );
+    ingested.clear();
+    context.mocks.axiom.sdkIngest.mockClear();
+    const malformed = structuredClone(body);
+    for (const metric of malformed.metrics) {
+      for (const group of metric.memory.groups) {
+        group.cgroup = group.cgroup.slice(1);
+      }
+    }
+    await api.requestAgentTelemetryUnchecked(malformed, headers, [400]);
+    expect(ingested.size).toBe(0);
+    expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
   });
 
   it("projects only present control-path metric fields", async () => {

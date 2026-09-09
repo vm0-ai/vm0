@@ -232,7 +232,7 @@ async function stored(
 
 async function workflowCli(
   name: string,
-  operation: "verify" | "migrate",
+  operation: "verify" | "verify-business" | "migrate",
   scenario = "success",
   overrides: Record<string, string> = {},
 ): Promise<Record<string, unknown> | null> {
@@ -286,7 +286,7 @@ async function workflowCli(
     GITHUB_EVENT_NAME: "workflow_dispatch",
     GITHUB_RUN_ID: "12345",
     GITHUB_SHA: "a".repeat(40),
-    GITHUB_WORKFLOW_REF: `vm0-ai/vm0/.github/workflows/kms-production-${operation === "verify" ? "preflight" : "migrate"}.yml@refs/heads/main`,
+    GITHUB_WORKFLOW_REF: `vm0-ai/vm0/.github/workflows/kms-production-${{ verify: "preflight", "verify-business": "business-verify", migrate: "migrate" }[operation]}.yml@refs/heads/main`,
     ACTIONS_ID_TOKEN_REQUEST_URL:
       "https://pipelines.actions.githubusercontent.com/oidc",
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "synthetic-github-token",
@@ -298,6 +298,11 @@ async function workflowCli(
     VERCEL_TOKEN: "synthetic-vercel-secret",
     NEON_PROJECT_ID: "hidden-lab-39609750",
     NEON_API_KEY: "synthetic-neon-secret",
+    CLERK_SECRET_KEY: "synthetic-clerk-secret",
+    CLERK_PUBLISHABLE_KEY: "synthetic-publishable-key",
+    BUSINESS_USER_ID: "user_fixture",
+    BUSINESS_ORG_ID: "org_fixture",
+    BUSINESS_AGENT_ID: "agent_fixture",
     AWS_ACCESS_KEY_ID: "target",
     AWS_SECRET_ACCESS_KEY: "synthetic-target-secret",
     AWS_SESSION_TOKEN: "",
@@ -343,6 +348,7 @@ async function workflowCli(
     "operation.json",
     "verification.json",
     "migration.json",
+    "business-verification.json",
   ]) {
     try {
       reportText += await readFile(join(reportDirectory, name), "utf8");
@@ -359,10 +365,11 @@ async function workflowCli(
     "synthetic-database-secret",
     "synthetic-doppler-token",
     "synthetic-provider-secret-must-not-be-logged",
+    "synthetic-clerk-secret",
   ]) {
     assert.ok(!(output + reportText).includes(value));
   }
-  if (operation === "verify" || scenario !== "success") {
+  if (operation !== "migrate" || scenario !== "success") {
     assert.equal(report?.migration, undefined);
   }
   return report;
@@ -396,6 +403,29 @@ try {
   );
   assert.equal(
     await stored("secrets", "encrypted_value", "workflow-1"),
+    workflowCiphertext,
+  );
+  const business = await workflowCli("workflow-business", "verify-business");
+  assert.equal(business?.businessVerification, "passed");
+  assert.equal(business.operatorReencryptAndRollback, "passed");
+  assert.equal(business.targetRuntimeVerification, undefined);
+  for (const scenario of [
+    "business-incomplete",
+    "wrong-operator",
+    "deployment-changed",
+  ]) {
+    await workflowCli(
+      "workflow-business-" + scenario,
+      "verify-business",
+      scenario,
+    );
+  }
+  assert.equal(
+    await stored("secrets", "encrypted_value", "workflow-1"),
+    workflowCiphertext,
+  );
+  assert.equal(
+    await stored("secrets", "encrypted_value", "workflow-2"),
     workflowCiphertext,
   );
   for (const scenario of [

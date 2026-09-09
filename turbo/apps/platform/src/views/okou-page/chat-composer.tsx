@@ -21,7 +21,6 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
 } from "react";
-import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -57,7 +56,6 @@ import type {
   PresentationTemplateDetail,
   PresentationTemplateSummary,
 } from "../../signals/okou-page/presentation-template-library.ts";
-import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
@@ -348,7 +346,6 @@ interface ChatComposerProps {
 
 interface ComposerComputerUseHost {
   id: string;
-  product: DesktopProduct;
   hostName: string;
   displayName: string;
   status: "online" | "offline";
@@ -7368,10 +7365,6 @@ function ComputerUseConnectorMenuSection({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">
                     <span>{host.displayName}</span>
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {" "}
-                      {desktopProductDisplayName(host.product)}
-                    </span>
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
@@ -10561,6 +10554,7 @@ function ComposerConnectorsSlot({
           <ConnectorDirectoryDialog
             state={connectorUi}
             onUpdateState={updateConnectorUi}
+            categoryCounts={connectorData?.categoryConnectorCounts}
             connected={agentConnectors}
             unconnected={unconnectedConnectors}
             connectedCustom={agentCustomConnectors}

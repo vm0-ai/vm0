@@ -10,16 +10,24 @@ const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
 const OVERSIZED_SYSTEM_LOG_LINE_MARKER_FRAGMENT: &str =
     "telemetry omitted oversized system log line";
 
-struct SandboxOpsOverrideGuard;
+// Only operation-producing tests install this process-global sink. Borrow both
+// owners so it is cleared before the files or the shared producer lock go away.
+struct SandboxOpsOverrideGuard<'a> {
+    _api: &'a SharedApiMock,
+    _files: &'a ExplicitTelemetryFiles,
+}
 
-impl SandboxOpsOverrideGuard {
-    fn set(path: &str) -> Self {
-        guest_telemetry::telemetry::set_sandbox_ops_log_file(path);
-        Self
+impl<'a> SandboxOpsOverrideGuard<'a> {
+    fn set(api: &'a SharedApiMock, files: &'a ExplicitTelemetryFiles) -> Self {
+        guest_telemetry::telemetry::set_sandbox_ops_log_file(files.paths.sandbox_ops_file());
+        Self {
+            _api: api,
+            _files: files,
+        }
     }
 }
 
-impl Drop for SandboxOpsOverrideGuard {
+impl Drop for SandboxOpsOverrideGuard<'_> {
     fn drop(&mut self) {
         guest_telemetry::telemetry::clear_sandbox_ops_log_file();
     }
@@ -28,20 +36,14 @@ impl Drop for SandboxOpsOverrideGuard {
 struct ExplicitTelemetryFiles {
     _tmp: tempfile::TempDir,
     paths: guest_agent::paths::GuestPaths,
-    _sandbox_ops_override: SandboxOpsOverrideGuard,
 }
 
 impl ExplicitTelemetryFiles {
     fn new(name: &str) -> std::io::Result<Self> {
         let tmp = tempfile::tempdir()?;
         let paths = guest_agent::paths::GuestPaths::from_runtime_dir(tmp.path().join(name));
-        let sandbox_ops_override = SandboxOpsOverrideGuard::set(paths.sandbox_ops_file());
         remove_telemetry_files(&paths);
-        Ok(Self {
-            _tmp: tmp,
-            paths,
-            _sandbox_ops_override: sandbox_ops_override,
-        })
+        Ok(Self { _tmp: tmp, paths })
     }
 }
 
@@ -114,6 +116,7 @@ async fn flush_is_incremental_between_calls() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("flush-incremental").unwrap();
+    let _sandbox_ops_override = SandboxOpsOverrideGuard::set(&api, &files);
     let paths = &files.paths;
 
     // Capture every telemetry request so the assertions below can verify
@@ -139,6 +142,16 @@ async fn flush_is_incremental_between_calls() {
         http_client!(),
     );
 
+    // Independent uploaders, such as the raw-listener OOM fixtures, must not
+    // redirect this producer's records when their private files are created.
+    let independent_files = ExplicitTelemetryFiles::new("independent-uploader").unwrap();
+    let independent_telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "independent-run".to_string(),
+        &independent_files.paths,
+        Arc::new(SecretMasker::from_raw("")),
+        http_client!(),
+    );
+
     // Pre-checkpoint record → first flush captures it.
     guest_telemetry::telemetry::record_sandbox_op(
         "first_op",
@@ -150,6 +163,14 @@ async fn flush_is_incremental_between_calls() {
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await
         .expect("first flush should succeed");
+
+    let independent_report = independent_telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("independent empty flush should succeed");
+    independent_telemetry.shutdown().await;
+    // Its teardown must not clear the active producer's destination either.
+    drop(independent_files);
 
     // Simulates a checkpoint sub-op written AFTER the parallel pass read
     // the sandbox_ops file. The catch-up flush must pick it up.
@@ -166,6 +187,7 @@ async fn flush_is_incremental_between_calls() {
 
     telemetry.shutdown().await;
 
+    assert!(!independent_report.uploaded);
     upload_mock.assert_calls_async(2).await;
 
     // Each flush is awaited before the next operation is recorded, so the
@@ -176,6 +198,7 @@ async fn flush_is_incremental_between_calls() {
 
         let first_payload: serde_json::Value = serde_json::from_slice(&request_bodies[0])
             .expect("first telemetry request should contain valid JSON");
+        assert_eq!(first_payload["runId"], "test-run-001");
         let first_operations = first_payload["sandboxOperations"]
             .as_array()
             .expect("first telemetry request should contain sandbox operations");
@@ -188,6 +211,7 @@ async fn flush_is_incremental_between_calls() {
 
         let catchup_payload: serde_json::Value = serde_json::from_slice(&request_bodies[1])
             .expect("catch-up telemetry request should contain valid JSON");
+        assert_eq!(catchup_payload["runId"], "test-run-001");
         let catchup_operations = catchup_payload["sandboxOperations"]
             .as_array()
             .expect("catch-up telemetry request should contain sandbox operations");
@@ -247,6 +271,7 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("runtime-session-mask").unwrap();
+    let _sandbox_ops_override = SandboxOpsOverrideGuard::set(&api, &files);
     let paths = &files.paths;
     let _session_files = SessionCheckpointFilesGuard::new();
 
@@ -428,6 +453,7 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("concurrent-flushes").unwrap();
+    let _sandbox_ops_override = SandboxOpsOverrideGuard::set(&api, &files);
     let paths = &files.paths;
     let ops_file = paths.sandbox_ops_file();
     let pos_file = paths.telemetry_sandbox_ops_pos_file();
@@ -491,6 +517,7 @@ async fn flush_propagates_error_then_loop_recovers() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("flush-error-recovery").unwrap();
+    let _sandbox_ops_override = SandboxOpsOverrideGuard::set(&api, &files);
     let paths = &files.paths;
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));

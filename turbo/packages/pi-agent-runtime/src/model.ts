@@ -20,7 +20,10 @@ import type {
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
 import type { PiAgentModelConfig } from "./types";
-import type { PiAgentStreamOptions } from "./stream-options";
+import {
+  observePiResponseStatus,
+  type PiAgentStreamOptions,
+} from "./stream-options";
 
 const PI_AGENT_USER_AGENT = "okou-pi-agent/1.0";
 
@@ -312,13 +315,22 @@ export function piAgentStreamForConfig(
     ) {
       return streamPiNative(config, model, context, configuredOptions);
     }
+    const responseOptions = configuredOptions.onObservedResponseStatus
+      ? {
+          ...configuredOptions,
+          fetch: observePiResponseStatus(
+            configuredOptions.fetch ?? globalThis.fetch,
+            configuredOptions.onObservedResponseStatus,
+          ),
+        }
+      : configuredOptions;
     if (config.dialect === "openai-responses") {
       if (!isResponsesModel(model)) {
         throw new Error(
           `Pi public Responses route received unexpected ${model.api} model`,
         );
       }
-      return piAgentStream(model, context, configuredOptions);
+      return piAgentStream(model, context, responseOptions);
     }
     if (!isCodexResponsesModel(model)) {
       throw new Error(
@@ -335,7 +347,7 @@ export function piAgentStreamForConfig(
       model,
       context,
       config.accountId,
-      configuredOptions,
+      responseOptions,
     );
   };
 }

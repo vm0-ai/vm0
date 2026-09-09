@@ -135,7 +135,7 @@ function providerBrowser(
         ? "https://live.browser-use.com/?wss=provider-live-token"
         : null,
     cdpUrl: status === "active" ? `https://${id}.cdp.browser-use.com/` : null,
-    // Zero buys the provider's longest lifetime and reclaims idle browsers
+    // The API buys the provider's longest lifetime and reclaims idle browsers
     // itself, so the provider deadline stays far away in these tests.
     timeoutAt: isoAt(240 * MINUTE_MS),
     startedAt: isoAt(0),

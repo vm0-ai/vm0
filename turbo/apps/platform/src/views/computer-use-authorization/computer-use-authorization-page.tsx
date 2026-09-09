@@ -27,7 +27,6 @@ import {
 } from "../components/authorization-error-state.tsx";
 import { locale$ } from "../../signals/locale.ts";
 import { i18n } from "../../i18n/index.ts";
-import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 
 function sourceLabel(source: ComputerUseAuthorizationSource): string {
   switch (source) {
@@ -73,10 +72,6 @@ function HostOption({
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
             <span>{host.displayName}</span>
-            <span className="ml-1 text-xs font-normal text-muted-foreground">
-              {" "}
-              {desktopProductDisplayName(host.product)}
-            </span>
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {t(

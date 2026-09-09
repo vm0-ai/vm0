@@ -29,7 +29,8 @@ import {
 import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
-  classifyPiApiProviderFailure,
+  PiApiModelRequestError,
+  type PiApiModelFailureDiagnostic,
   inspectPiSessionJsonl,
   PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
@@ -165,6 +166,17 @@ class PiApiFirstTurnCodexReconnectRequiredError extends PiApiFirstTurnError {
       "Pi API first-turn subscription access token is unavailable",
       { failureReason: "reconnect_required" },
     );
+  }
+}
+
+class PiApiFirstTurnModelFailureError extends PiApiFirstTurnError {
+  constructor(
+    readonly diagnostic: PiApiModelFailureDiagnostic,
+    failureReason?: RunFailureReasonToken,
+  ) {
+    super("PI_API_MODEL_FAILED", "Pi API first-turn model request failed", {
+      failureReason,
+    });
   }
 }
 
@@ -1284,10 +1296,8 @@ function validateApiModelTurnOutcome(turn: PiApiFirstTurnResult): void {
     turn.assistantMessage.stopReason === "error" ||
     turn.assistantMessage.stopReason === "aborted"
   ) {
-    throw piApiFirstTurnError(
-      "PI_API_MODEL_FAILED",
-      `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
-      undefined,
+    throw new PiApiFirstTurnModelFailureError(
+      turn.assistantMessage.failureDiagnostic,
       turn.assistantMessage.failureReason,
     );
   }
@@ -1398,6 +1408,15 @@ async function executeApiModelTurn(
         executed.error,
       );
     }
+    if (
+      !modelSignal.aborted &&
+      executed.error instanceof PiApiModelRequestError
+    ) {
+      throw new PiApiFirstTurnModelFailureError(
+        executed.error.diagnostic,
+        executed.error.failureReason,
+      );
+    }
     throw piApiFirstTurnError(
       modelSignal.aborted
         ? "PI_API_FIRST_TURN_DEADLINE_EXCEEDED"
@@ -1406,9 +1425,6 @@ async function executeApiModelTurn(
         ? "Pi API first-turn model deadline elapsed"
         : "Pi API first-turn model request failed",
       executed.error,
-      modelSignal.aborted || args.model.provider !== "openai-codex"
-        ? undefined
-        : classifyPiApiProviderFailure(executed.error),
     );
   }
   const turn = executed.value;
@@ -1498,6 +1514,7 @@ type PiSandboxFallbackReason =
 type PiSandboxFirstReason =
   | PiSandboxFallbackReason
   | "active_input"
+  | "api_model_failed"
   | "api_attempt_timed_out";
 
 function eligibleSandboxFallbackReason(
@@ -1572,9 +1589,8 @@ function materializeApiFirstTurnH0(args: {
 }
 
 /**
- * Intentional runtime ownership fallback for a real preparation failure. This
- * remains necessary while API preparation happens after durable activation;
- * parent issue #30564 owns that lifecycle boundary.
+ * Runtime ownership recovery for pre-commit preparation, model or deadline
+ * failure. Reconstruct validated H0; never publish a failed/partial API turn.
  */
 const publishSandboxFallback$ = command(async function publishSandboxFallback(
   { get, set },
@@ -2161,7 +2177,20 @@ async function canonicalApiFirstTurnCancellationWon(
 function logCanonicalApiFirstTurnCancellation(
   args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
+  failure?: unknown,
 ): void {
+  if (
+    failure instanceof PiApiFirstTurnCanonicalCancellationError &&
+    ownership.stage === "provider-may-have-started"
+  ) {
+    L.debug("Pi API first-turn outcome", {
+      runId: args.activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
+      outcome: "discarded_late_provider_result",
+      reason: "canonical_cancellation",
+      ownershipStage: ownership.stage,
+    });
+  }
   L.debug("Pi API first-turn outcome", {
     runId: args.activation.runId,
     ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
@@ -2196,10 +2225,11 @@ function sandboxFirstPublicationOutcome(reason: PiSandboxFirstReason): {
   readonly reason: string;
 } {
   switch (reason) {
+    case "api_model_failed":
     case "api_attempt_timed_out": {
       return {
         outcome: "sandbox_retry_started",
-        reason: "api_attempt_timed_out",
+        reason,
       };
     }
     case "active_input": {
@@ -2227,6 +2257,7 @@ function logSandboxFirstPublication(
   activation: PiApiFirstTurnActivation,
   ownership: PiApiFirstTurnOwnership,
   reason: PiSandboxFirstReason,
+  modelFailure: PiApiModelFailureDiagnostic | undefined,
 ): void {
   L.debug("Pi API first-turn outcome", {
     runId: activation.runId,
@@ -2234,6 +2265,67 @@ function logSandboxFirstPublication(
     handoffOwner: "sandbox",
     ...sandboxFirstPublicationOutcome(reason),
     ownershipStage: ownership.stage,
+    ...modelFailureTelemetry(modelFailure),
+  });
+}
+
+function modelFailureTelemetry(
+  diagnostic: PiApiModelFailureDiagnostic | undefined,
+) {
+  return diagnostic
+    ? {
+        modelFailureCategory: diagnostic.category,
+        ...(diagnostic.httpStatus === undefined
+          ? {}
+          : { modelFailureHttpStatus: diagnostic.httpStatus }),
+      }
+    : {};
+}
+
+function eligibleApiModelFailure(
+  failure: PiApiFirstTurnError,
+  commitStarted: boolean,
+  coordinationDeadlineAt: number,
+  signal: AbortSignal,
+): boolean {
+  return (
+    failure instanceof PiApiFirstTurnModelFailureError &&
+    !failure.failureReason &&
+    failure.diagnostic.httpStatus !== 401 &&
+    failure.diagnostic.httpStatus !== 403 &&
+    !commitStarted &&
+    !signal.aborted &&
+    now() < coordinationDeadlineAt
+  );
+}
+
+function logApiFirstTurnTerminalFailure(args: {
+  readonly activation: PiApiFirstTurnActivation;
+  readonly ownership: PiApiFirstTurnOwnership;
+  readonly failure: PiApiFirstTurnError;
+  readonly modelFailure: PiApiModelFailureDiagnostic | undefined;
+  readonly resourceFallbackReason: PiSandboxFallbackReason | null;
+  readonly sandboxFirstReason: PiSandboxFirstReason | null;
+}): void {
+  if (args.failure instanceof PiApiFirstTurnCodexReconnectRequiredError) {
+    return;
+  }
+  const recoveryReason =
+    args.sandboxFirstReason === "api_attempt_timed_out" ||
+    args.sandboxFirstReason === "api_model_failed"
+      ? args.sandboxFirstReason
+      : undefined;
+  L.warn("Pi API first-turn outcome", {
+    runId: args.activation.runId,
+    ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
+    outcome: "terminal_failure",
+    reason: args.failure.code,
+    ownershipStage: args.ownership.stage,
+    ...modelFailureTelemetry(args.modelFailure),
+    ...(args.resourceFallbackReason
+      ? { fallbackReason: args.resourceFallbackReason }
+      : {}),
+    ...(recoveryReason ? { recoveryReason } : {}),
   });
 }
 
@@ -2338,7 +2430,10 @@ const runPiApiFirstTurnCore$ = command(
     // Classify the failure before closing any residual attempt work. Aborting
     // the private controller first would misclassify every raw API failure as
     // an ownership deadline and incorrectly replay it in Sandbox.
-    apiAttemptController.abort(executed.error);
+    const modelFailure =
+      failure instanceof PiApiFirstTurnModelFailureError
+        ? failure.diagnostic
+        : undefined;
     const resourceFallbackReason = activeInputBeforeProvider
       ? null
       : eligibleSandboxFallbackReason(
@@ -2356,12 +2451,21 @@ const runPiApiFirstTurnCore$ = command(
       !signal.aborted;
     const apiAttemptTimedOut =
       apiOwnershipExpired && now() < coordinationDeadlineAt;
+    const apiModelFailed = eligibleApiModelFailure(
+      failure,
+      commitProgress.started,
+      coordinationDeadlineAt,
+      signal,
+    );
     const sandboxFirstReason: PiSandboxFirstReason | null =
       activeInputBeforeProvider
         ? "active_input"
         : apiAttemptTimedOut
           ? "api_attempt_timed_out"
-          : resourceFallbackReason;
+          : apiModelFailed
+            ? "api_model_failed"
+            : resourceFallbackReason;
+    apiAttemptController.abort(executed.error);
     if (sandboxFirstReason) {
       if (apiAttemptTimedOut) {
         logApiFirstTurnAttemptTimedOut(activation, ownership, failure);
@@ -2378,48 +2482,34 @@ const runPiApiFirstTurnCore$ = command(
         signal,
       );
       if (fallback.ok) {
-        logSandboxFirstPublication(activation, ownership, sandboxFirstReason);
+        logSandboxFirstPublication(
+          activation,
+          ownership,
+          sandboxFirstReason,
+          modelFailure,
+        );
         return undefined;
       }
       failure = normalizedSandboxFallbackFailure(fallback.error, handoffSignal);
     }
     if (await canonicalApiFirstTurnCancellationWon(context)) {
-      if (
-        executed.error instanceof PiApiFirstTurnCanonicalCancellationError &&
-        ownership.stage === "provider-may-have-started"
-      ) {
-        L.debug("Pi API first-turn outcome", {
-          runId: activation.runId,
-          ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
-          outcome: "discarded_late_provider_result",
-          reason: "canonical_cancellation",
-          ownershipStage: ownership.stage,
-        });
-      }
-      logCanonicalApiFirstTurnCancellation(context, ownership);
+      logCanonicalApiFirstTurnCancellation(context, ownership, executed.error);
       return undefined;
     }
-    if (!(failure instanceof PiApiFirstTurnCodexReconnectRequiredError)) {
-      L.warn("Pi API first-turn outcome", {
-        runId: activation.runId,
-        ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
-        outcome: "terminal_failure",
-        reason: failure.code,
-        ownershipStage: ownership.stage,
-        ...(resourceFallbackReason
-          ? { fallbackReason: resourceFallbackReason }
-          : {}),
-        ...(apiAttemptTimedOut
-          ? { recoveryReason: "api_attempt_timed_out" }
-          : {}),
-      });
-    }
+    logApiFirstTurnTerminalFailure({
+      activation,
+      ownership,
+      failure,
+      modelFailure,
+      resourceFallbackReason,
+      sandboxFirstReason,
+    });
     return set(
       failApiFirstTurn$,
       context,
       failure,
       ownership,
-      apiOwnershipExpired,
+      apiOwnershipExpired || apiModelFailed,
     );
   },
 );

@@ -17,6 +17,7 @@ fail() {
 
 printf 'javascript\n' > "${assets_directory}/app-AbCd1234.js"
 printf '{}\n' > "${assets_directory}/app-AbCd1234.js.map"
+printf 'lazy\n' > "${assets_directory}/lazy-Lazy1234.js"
 printf 'vendor\n' > "${assets_directory}/vendor-EfGh5678.js"
 printf '{}\n' > "${assets_directory}/vendor-EfGh5678.js.map"
 printf 'runtime\n' > "${assets_directory}/rolldown-runtime-IjKl9012.js"
@@ -53,12 +54,13 @@ grep -Fq \
   'App bundle layout: app=app-AbCd1234.js vendor=vendor-EfGh5678.js runtime=rolldown-runtime-IjKl9012.js worker=shared-database-worker-MnOp3456.js' \
   <<< "$output" || fail "bundle layout was not reported"
 grep -Fq \
-  'Verified 8 immutable app assets on https://static.test/okou-app/assets' \
+  'Verified 9 immutable app assets on https://static.test/okou-app/assets' \
   <<< "$output" || fail "verification summary is incorrect"
 
 for relative_path in \
   app-AbCd1234.js \
   app-AbCd1234.js.map \
+  lazy-Lazy1234.js \
   vendor-EfGh5678.js \
   vendor-EfGh5678.js.map \
   rolldown-runtime-IjKl9012.js \

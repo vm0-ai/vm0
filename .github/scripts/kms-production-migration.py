@@ -349,12 +349,12 @@ def read_verification(path):
 
 def main():
     mode = required_env("KMS_OPERATION")
-    require(mode in {"verify", "migrate"}, "invalid_operation")
-    workflow = (
-        "kms-production-preflight.yml"
-        if mode == "verify"
-        else "kms-production-migrate.yml"
-    )
+    require(mode in {"verify", "verify-business", "migrate"}, "invalid_operation")
+    workflow = {
+        "verify": "kms-production-preflight.yml",
+        "verify-business": "kms-production-business-verify.yml",
+        "migrate": "kms-production-migrate.yml",
+    }[mode]
     require(
         required_env("GITHUB_REPOSITORY") == "vm0-ai/vm0"
         and required_env("GITHUB_REF") == "refs/heads/main"
@@ -385,7 +385,7 @@ def main():
         re.fullmatch(r"[0-9]{1,6}", limit) and 1 <= int(limit) <= 100000,
         "invalid_migration_limit",
     )
-    if mode == "migrate":
+    if mode in {"migrate", "verify-business"}:
         require(
             required_env("KMS_MIGRATION_ROLE_ARN") == OPERATOR,
             "migration_role_not_configured",
@@ -426,6 +426,56 @@ def main():
         canary("verify-rollback", source_environment, fixture)
         metadata["runtimeCanaryAndRollback"] = "passed"
         target_environment["DATABASE_URL"] = database_url()
+        if mode == "verify-business":
+            operator = assume_operator(target_environment)
+            metadata["migrationOperator"] = canary("verify-operator", operator, fixture)
+            metadata["operatorReencryptAndRollback"] = "passed"
+            require(
+                production_deployment(expected) == deployment,
+                "deployment_changed_before_business_verification",
+            )
+            # The API verifier needs no AWS credentials or provider control-plane
+            # tokens. Only its dedicated Clerk login and scoped DB fixtures write.
+            business_environment = {
+                name: value
+                for name, value in target_environment.items()
+                if not name.startswith("AWS_") and name != "SECRETS_KMS_KEY_ID"
+            }
+            for name in [
+                "CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY",
+            ]:
+                business_environment[name] = required_env(name)
+            report_path = output / "business-verification.json"
+            run_tool(
+                [MIGRATION + "/verify-business.ts", str(fixture), str(report_path),
+                 required_env("BUSINESS_USER_ID"), required_env("BUSINESS_ORG_ID"),
+                 required_env("BUSINESS_AGENT_ID")],
+                business_environment,
+            )
+            business = json.loads(report_path.read_text())
+            require(
+                business["result"] == "passed"
+                and business["cleanup"] == "passed"
+                and business["cleanupFailures"] == []
+                and business["historicalCiphertextWrites"] == 0
+                and business["fixtureWrites"] == 4
+                and business["checks"] == [
+                    "deployed_webhook_create_and_reveal_target_key",
+                    "deployed_connector_add_and_shared_reader",
+                    "deployed_connector_reconnect_and_shared_reader",
+                    "deployed_source_envelope_read",
+                    "deployed_source_legacy_read",
+                ],
+                "business_verification_or_cleanup_incomplete",
+            )
+            require(
+                production_deployment(expected) == deployment,
+                "deployment_changed_during_business_verification",
+            )
+            metadata["businessVerification"] = "passed"
+            metadata["historicalCiphertextWrites"] = 0
+            metadata["result"] = "passed"
+            return
         verification_path = output / "verification.json"
         common = ["--source-key", SOURCE, "--target-key", TARGET, "--batch-size", "100"]
         run_tool(
