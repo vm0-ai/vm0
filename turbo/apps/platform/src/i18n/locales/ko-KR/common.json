@@ -2620,7 +2620,7 @@
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
       "cleanupFailed": "텍스트가 추가되었지만 저장된 녹음을 삭제하지 못했습니다.",
-      "confirmRecording": "OK",
+      "confirmRecording": "완료",
       "discarding": "음성 초안 삭제 중...",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",

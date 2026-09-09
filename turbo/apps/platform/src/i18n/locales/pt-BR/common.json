@@ -2673,7 +2673,7 @@
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
       "cleanupFailed": "O texto foi adicionado, mas não foi possível remover a gravação salva.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Concluído",
       "discarding": "Removendo rascunho de voz...",
       "input": "Entrada de voz",
       "inputLimitReached": "Limite de entrada de voz atingido. Faça upgrade para Pro ou Team para aumentar os limites.",

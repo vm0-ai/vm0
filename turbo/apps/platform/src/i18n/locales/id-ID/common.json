@@ -2620,7 +2620,7 @@
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
       "cleanupFailed": "Teks ditambahkan, tetapi rekaman yang tersimpan tidak dapat dihapus.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Selesai",
       "discarding": "Menghapus draf suara...",
       "input": "Input suara",
       "inputLimitReached": "Batas input suara tercapai. Upgrade ke Pro atau Team untuk batas yang lebih tinggi.",

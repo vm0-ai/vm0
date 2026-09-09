@@ -2628,7 +2628,7 @@
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "cleanupFailed": "Text was added, but the saved recording could not be removed.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Done",
       "discarding": "Removing voice draft...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",

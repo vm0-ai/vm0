@@ -2628,7 +2628,7 @@
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "cleanupFailed": "Der Text wurde eingefügt, aber die gespeicherte Aufnahme konnte nicht entfernt werden.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Erledigt",
       "discarding": "Sprachentwurf wird entfernt...",
       "input": "Spracheingabe",
       "inputLimitReached": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Pro oder Team.",

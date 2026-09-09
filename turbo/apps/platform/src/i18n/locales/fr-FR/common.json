@@ -2673,7 +2673,7 @@
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
       "cleanupFailed": "Le texte a été ajouté, mais l’enregistrement sauvegardé n’a pas pu être supprimé.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Terminé",
       "discarding": "Suppression du brouillon vocal...",
       "input": "Entrée vocale",
       "inputLimitReached": "Limite d'entrée vocale atteinte. Passez à Pro ou Team pour des limites plus élevées.",

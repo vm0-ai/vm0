@@ -102,7 +102,7 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
   await waitFor(() => {
     expect(stop).toBeEnabled();
   });
-  expect(stop).toHaveTextContent("OK");
+  expect(stop).toHaveTextContent("Done");
   expect(
     screen.getByText(/^\d{2}:\d{2}$/u, { selector: "time" }),
   ).toBeVisible();
@@ -598,7 +598,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   await findEnabledButton("Voice input");
 });
 
-test("Show recent voice levels at the end of the waveform", async () => {
+test("Show a longer history of recent voice levels", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   installRunChat();
@@ -619,7 +619,7 @@ test("Show recent voice levels at the end of the waveform", async () => {
 
   await waitFor(() => {
     const bars = Array.from(waveform.children);
-    expect(bars).toHaveLength(32);
+    expect(bars).toHaveLength(40);
     expect(bars[0]).toHaveStyle({ height: "4px" });
     expect(bars.at(-1)).toHaveStyle({ height: "16px" });
   });
