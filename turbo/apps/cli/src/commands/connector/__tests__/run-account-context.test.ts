@@ -110,81 +110,98 @@ describe("run connector account inspection", () => {
     );
   }
 
-  it("shows the exact built-in account selected for this run in list, status, and JSON", async () => {
-    const inspectedBodies: unknown[] = [];
-    writeContext([
-      {
-        kind: "builtin",
-        connectorSlug: "github",
-        connectionId: PINNED_CONNECTION_ID,
-      },
-    ]);
-    server.use(
-      stubConnectorCatalog([
-        catalogItem({ connectorSlug: "github", label: "GitHub" }),
-      ]),
-      stubCustomConnectors([]),
-      http.post(
-        "http://localhost:3000/api/connector-accounts/inspect",
-        async ({ request }) => {
-          const raw = await request.json();
-          inspectedBodies.push(raw);
-          const body = connectorAccountsContract.inspect.body.parse(raw);
-          return HttpResponse.json({
-            results: body.selections.map((selection) => {
-              if (selection.target.kind !== "builtin") {
-                throw new Error("Expected a built-in selection");
-              }
-              return accountMetadata(selection.connectionId, selection.target);
-            }),
-          });
+  it.each([
+    { selector: "omitted", args: [] },
+    { selector: "matching", args: ["--agent", AGENT_ID] },
+  ])(
+    "shows the exact run account in list, status, and JSON with $selector --agent",
+    async ({ args }) => {
+      const inspectedBodies: unknown[] = [];
+      writeContext([
+        {
+          kind: "builtin",
+          connectorSlug: "github",
+          connectionId: PINNED_CONNECTION_ID,
         },
-      ),
-    );
+      ]);
+      server.use(
+        stubConnectorCatalog([
+          catalogItem({ connectorSlug: "github", label: "GitHub" }),
+        ]),
+        stubCustomConnectors([]),
+        http.post(
+          "http://localhost:3000/api/connector-accounts/inspect",
+          async ({ request }) => {
+            const raw = await request.json();
+            inspectedBodies.push(raw);
+            const body = connectorAccountsContract.inspect.body.parse(raw);
+            return HttpResponse.json({
+              results: body.selections.map((selection) => {
+                if (selection.target.kind !== "builtin") {
+                  throw new Error("Expected a built-in selection");
+                }
+                return accountMetadata(
+                  selection.connectionId,
+                  selection.target,
+                );
+              }),
+            });
+          },
+        ),
+      );
 
-    await listCommand.parseAsync(["node", "cli"]);
-    let output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("ACCOUNT USED BY THIS RUN");
-    expect(output).toContain("Thread-selected work account");
-    expect(output).toContain(PINNED_CONNECTION_ID);
-    expect(output).not.toContain("CONNECTED AS");
+      await listCommand.parseAsync(["node", "cli", ...args]);
+      let output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("ACCOUNT USED BY THIS RUN");
+      expect(output).toContain("Thread-selected work account");
+      expect(output).toContain(PINNED_CONNECTION_ID);
+      expect(output).not.toContain("CONNECTED AS");
 
-    mockConsoleLog.mockClear();
-    await statusCommand.parseAsync(["node", "cli", "github"]);
-    output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("Account Used:");
-    expect(output).toContain("Thread-selected work account");
-    expect(output).toContain(PINNED_CONNECTION_ID);
-    expect(output).toContain("Current Status:");
+      mockConsoleLog.mockClear();
+      await statusCommand.parseAsync(["node", "cli", "github", ...args]);
+      output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("Account Used:");
+      expect(output).toContain("Thread-selected work account");
+      expect(output).toContain(PINNED_CONNECTION_ID);
+      expect(output).toContain("Current Status:");
 
-    mockConsoleLog.mockClear();
-    await statusCommand.parseAsync(["node", "cli", "github", "--json"]);
-    const json: unknown = JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]));
-    expect(json).toStrictEqual(
-      expect.objectContaining({
-        context: "run",
-        state: "available",
-        connector: expect.objectContaining({
-          target: { kind: "builtin", connectorSlug: "github" },
-          account: expect.objectContaining({
-            state: "available",
-            connectionId: PINNED_CONNECTION_ID,
-            label: "Thread-selected work account",
+      mockConsoleLog.mockClear();
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--json",
+        ...args,
+      ]);
+      const json: unknown = JSON.parse(
+        String(mockConsoleLog.mock.calls[0]?.[0]),
+      );
+      expect(json).toStrictEqual(
+        expect.objectContaining({
+          context: "run",
+          state: "available",
+          connector: expect.objectContaining({
+            target: { kind: "builtin", connectorSlug: "github" },
+            account: expect.objectContaining({
+              state: "available",
+              connectionId: PINNED_CONNECTION_ID,
+              label: "Thread-selected work account",
+            }),
           }),
         }),
-      }),
-    );
-    expect(JSON.stringify(json)).not.toContain("sk-");
-    expect(inspectedBodies).toHaveLength(3);
-    expect(inspectedBodies[0]).toStrictEqual({
-      selections: [
-        {
-          connectionId: PINNED_CONNECTION_ID,
-          target: { kind: "builtin", connectorSlug: "github" },
-        },
-      ],
-    });
-  });
+      );
+      expect(JSON.stringify(json)).not.toContain("sk-");
+      expect(inspectedBodies).toHaveLength(3);
+      expect(inspectedBodies[0]).toStrictEqual({
+        selections: [
+          {
+            connectionId: PINNED_CONNECTION_ID,
+            target: { kind: "builtin", connectorSlug: "github" },
+          },
+        ],
+      });
+    },
+  );
 
   it("retains deleted IDs and source-less targets without choosing a sibling", async () => {
     writeContext([
