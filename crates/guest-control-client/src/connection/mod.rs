@@ -1,6 +1,9 @@
 mod frame;
 mod listener;
 mod request;
+mod timing;
+
+pub use timing::GuestConnectionTiming;
 
 use std::collections::HashMap;
 use std::io;

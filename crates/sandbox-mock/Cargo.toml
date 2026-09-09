@@ -1,16 +1,16 @@
 [package]
 name = "sandbox-mock"
-version = "0.10.23"
+version = "0.10.28"
 edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
 guest-contracts.workspace = true
 sandbox = { workspace = true }
-tempfile.workspace = true
+tempfile = { workspace = true, features = ["getrandom"] }
 tokio = { workspace = true, features = ["sync", "time"] }
 tokio-util.workspace = true
-uuid = { workspace = true, features = ["v4"] }
+uuid = { workspace = true, features = ["std", "v4"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

@@ -1,3 +1,6 @@
+import { isRetiredGoalArchiveText } from "@okouai/api-contracts/contracts/retired-goal-archive";
+import { literalHistoryTree } from "../../lib/markdown/literal-history.ts";
+import { createChatComposerLayoutOnRef } from "./chat-layout.ts";
 import {
   command,
   computed,
@@ -185,7 +188,7 @@ import {
 import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
-} from "./run-group-folding.ts";
+} from "./run-group-visual-window.ts";
 import { selectedComputerUseHostId } from "../okou-page/computer-use-hosts.ts";
 import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import { isCodexFastModeAvailableForSelection } from "../okou-page/model-default-selection.ts";
@@ -220,12 +223,9 @@ import {
   type ComposerSignals,
   type ComposerSubmission,
 } from "../okou-page/composer-signals.ts";
-import {
-  openChatThreadGoalDialog$,
-  pauseChatThreadGoal$,
-} from "./chat-goal.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import { createChatThreadPinSignals } from "./chat-thread-pin.ts";
 import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 import type {
   ChatEventSignals,
@@ -773,28 +773,10 @@ function createThreadOwnedSignals(threadId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: per-thread UI state (timeline expansion, copy)
+// Sub-factory: per-thread UI state (copy)
 // ---------------------------------------------------------------------------
 
 function createThreadUIState() {
-  // Timeline expansion
-  const internalExpandedIds$ = state(new Set<string>());
-
-  const timelineExpandedIds$ = computed((get) => {
-    return get(internalExpandedIds$);
-  });
-
-  const toggleTimelineExpanded$ = command(({ get, set }, eventId: string) => {
-    const current = get(internalExpandedIds$);
-    const next = new Set(current);
-    if (next.has(eventId)) {
-      next.delete(eventId);
-    } else {
-      next.add(eventId);
-    }
-    set(internalExpandedIds$, next);
-  });
-
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);
   const resetCopiedSignal$ = resetSignal();
@@ -835,8 +817,6 @@ function createThreadUIState() {
   );
 
   return {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
     copiedEventId$,
     copyEvent$,
   };
@@ -1190,7 +1170,7 @@ interface UserMessagePartRegistries {
 const registerUserMessageRenderPart$ = command(
   (
     { set },
-    part: UserMessagePart,
+    part: Exclude<UserMessagePart, { type: "additional_info" }>,
     registries: UserMessagePartRegistries,
   ): UserMessageRenderPart => {
     const { artifactCardSignals, agentReferenceSignals } = registries;
@@ -1285,8 +1265,10 @@ const registerUserMessageRenderDocument$ = command(
     }
     return {
       document,
-      parts: document.parts.map((part) => {
-        return set(registerUserMessageRenderPart$, part, registries);
+      parts: document.parts.flatMap((part) => {
+        return part.type === "additional_info"
+          ? []
+          : [set(registerUserMessageRenderPart$, part, registries)];
       }),
     };
   },
@@ -1932,6 +1914,26 @@ function planEventTreeUpdates(
       content === null ||
       (previous?.content === content && previous.mathEnabled === mathEnabled)
     ) {
+      continue;
+    }
+    // Raw-row projection already checked every 1094 provenance field. Keep
+    // retained run coordinates here so real assistant output stays Markdown.
+    if (
+      event.eventType === "output.message" &&
+      event.runId === undefined &&
+      event.runGroupId === undefined &&
+      event.runEventId === undefined &&
+      event.sequenceNumber === null &&
+      event.revokesEventId === undefined &&
+      isRetiredGoalArchiveText(content)
+    ) {
+      next ??= new Map(current);
+      next.set(event.id, {
+        content,
+        mathEnabled,
+        tree: literalHistoryTree(content),
+        error: false,
+      });
       continue;
     }
     const plan = chatEventTreePlan(event, chatActionContext);
@@ -4146,7 +4148,6 @@ function createThreadPendingActionSignals(
   options: CreateChatThreadComposerSignalsOptions,
 ) {
   const { messageActions } = options;
-  const threadId = options.chatEvents.threadId;
   const removeQueuedMessage$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(messageActions.recallMessage$, eventId, signal);
@@ -4157,19 +4158,9 @@ function createThreadPendingActionSignals(
       await set(messageActions.skipAutomationEvent$, eventId, signal);
     },
   );
-  const cancelActiveGoal$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(pauseChatThreadGoal$, threadId, signal);
-    },
-  );
-  const openActiveGoal$ = command(({ set }): void => {
-    set(openChatThreadGoalDialog$, threadId);
-  });
   return {
     removeQueuedMessage$,
     removeAutomationEvent$,
-    cancelActiveGoal$,
-    openActiveGoal$,
   };
 }
 
@@ -4390,6 +4381,10 @@ function createChatPanelSignalsWithDraft(
     ...threadTitle,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
+    composerLayoutOnRef$: createChatComposerLayoutOnRef(
+      composer.editor.editor,
+      messages.scroll.restoreScrollPosition$,
+    ),
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
@@ -4398,10 +4393,12 @@ function createChatPanelSignalsWithDraft(
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,
+    restoreScrollPosition$: messages.scroll.restoreScrollPosition$,
     ...container,
     composer,
     feedback,
     sharing,
+    pin: createChatThreadPinSignals(threadId, threadMeta$),
     locator,
     ...threadOwned,
     sidebar: messages.sidebar,

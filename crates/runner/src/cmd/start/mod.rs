@@ -917,6 +917,11 @@ async fn run_start_with_home(
     ));
 
     // Create provider — handles discovery + claim + complete
+    let ssh = if local_group_dir.is_none() {
+        crate::ssh::SshRuntime::official(http.clone(), &server.token, runner_identity)?
+    } else {
+        None
+    };
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
     let (provider, group_name, connector_runtime_sync): (
         Arc<dyn JobProvider>,
@@ -934,6 +939,7 @@ async fn run_start_with_home(
             http.clone(),
             server.token,
             ApiProviderConfig {
+                ssh: ssh.clone(),
                 runner_identity,
                 runner_hostname: hostname.clone(),
                 group,
@@ -960,6 +966,7 @@ async fn run_start_with_home(
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle()),
         connector_runtime_sync,
+        ssh,
         session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),

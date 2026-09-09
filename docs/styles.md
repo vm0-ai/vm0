@@ -39,6 +39,19 @@ New tokens must represent a reusable semantic decision, have a documented consum
 
 Token and variant changes are reviewed at their owning layer together with affected consumers and theme behavior. A rename or semantic change must update those consumers; deprecated names are removed when their consumers have migrated, rather than being copied into component-local registries. A change to ownership, naming, or theme mapping must update this guide in the same PR.
 
+Large editable surfaces use `border-surface-focus` to emphasize their existing border on focus: neutral gray in light themes and muted amber in dark themes. Keep the border width constant across interaction states. A shadow-only focus overlay may fade through opacity, but must not duplicate the surface border or depend on a negative inset to align its edge. The chat composer uses the default `border` width for its surface and connector circles; intentional badge overlap remains independent of border geometry. `data-slot="chat-composer-card"` identifies the editable card for keyboard positioning and page tests.
+
+Standalone selectable controls use the shared `ChoiceButton` and its required
+`selected` prop. It retains native button/ref behavior and owns `aria-pressed`,
+the selected primary treatment, focus ring, and disabled appearance. The shared
+`control-surface` and `control-border` colors map to the runtime gray-50 and
+gray-400 ramps in both light and dark themes, including palette overrides.
+`bg-state-hover-overlay` layers the existing hover state over an opaque fill.
+The choice variant keeps this overlay's unconditional `:hover` behavior for
+touch compatibility; it preserves the existing media-aware text hover utility.
+Migrate consumers individually and retain the legacy definition until its last
+consumer is removed.
+
 ## Exception boundary
 
 Only two exception kinds exist:
@@ -57,6 +70,36 @@ The baseline is not an allowlist and has no command that expands it. A new selec
 Commands run from `turbo`. An invalid Git reference, unreadable baseline, or malformed JSON fails with a nonzero exit status and a pointer to this guide. Only a reference commit genuinely predating the baseline file permits its initial introduction. That bootstrap case applies to local/CI repository history, not production version compatibility; once the target base contains the baseline, the ratchet is mandatory.
 
 ## Enforcement and feedback
+
+### Dialog viewport ownership
+
+`DialogContent` owns the Base UI viewport and popup. Windowed dialogs are
+centered inside the four safe-area insets plus a 24 px gutter. Fullscreen
+dialogs paint to the viewport edges while their content and close control stay
+inside the safe-area insets. The environment values come from the existing
+`--sat`, `--sar`, `--sab`, `--sal`, and `--okou-viewport-height` properties;
+the shared primitive also works with native `env()` insets outside Platform.
+
+Callers select `maxWidth`, `smMaxWidth`, `height`, and `mode`. The popup fills
+the available safe width and is capped by `maxWidth` (default `lg`);
+`smMaxWidth` changes that upper bound only from the shared `sm` breakpoint.
+Width caps never set a fixed width or determine height. Preserve existing
+breakpoints and units when migrating: `sm:max-w-[480px]` becomes
+`smMaxWidth={480}`, and `max-w-[25rem]` becomes `maxWidth="25rem"`.
+The artifact preview uses `maxWidth={1440} height={1000}`. Every variant is
+capped by the available viewport, so increasing a cap cannot increase the
+safe boundary.
+
+The popup does not accept `className`, `style`, or `render`. Use
+`contentClassName` for the inner layout and `DialogBody` for a scrolling body
+below a fixed header. `contentClassName` remains subject to the style policy.
+The shared inner container protects vertical scrolling even when caller layout
+classes include `overflow-hidden`. Short panels must keep their footer actions
+reachable by scrolling; clipping the popup to its safe boundary is not enough.
+Use `showCloseButton` instead of CSS selectors that hide the close control.
+Business code must import the shared dialog rather than Base UI's dialog
+primitives; ESLint enforces this boundary. Preserve Base UI's focus, nested
+portal, outside-press, and animation-completion ownership when changing it.
 
 Run the complete check from `turbo`:
 

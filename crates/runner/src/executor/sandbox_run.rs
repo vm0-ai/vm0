@@ -8,9 +8,9 @@ use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
-    SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
-    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxStartObserver,
-    SandboxStartStage,
+    SandboxFactory, SandboxGuestConnectionPhase, SandboxGuestDnsReadinessReason, SandboxId,
+    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
+    SandboxStartObserver, SandboxStartStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -200,6 +200,10 @@ struct FreshSandboxStartObserver<'a> {
 }
 
 impl SandboxStartObserver for FreshSandboxStartObserver<'_> {
+    fn record_dns_readiness_attempt(&mut self, attempt: sandbox::SandboxDnsReadinessAttempt) {
+        self.telemetry.record_dns_readiness_attempt(attempt);
+    }
+
     fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool) {
         let error = (!success).then_some(SANDBOX_START_STAGE_FAILED);
         self.telemetry.record(
@@ -208,6 +212,59 @@ impl SandboxStartObserver for FreshSandboxStartObserver<'_> {
             success,
             error,
         );
+    }
+
+    fn record_guest_connection_phase(
+        &mut self,
+        phase: SandboxGuestConnectionPhase,
+        duration: Duration,
+        remaining: Duration,
+        success: bool,
+    ) {
+        let (full_action, remaining_action) = guest_connection_phase_actions(phase);
+        let error = (!success).then_some(SANDBOX_START_STAGE_FAILED);
+        self.telemetry.record(full_action, duration, success, error);
+        self.telemetry
+            .record(remaining_action, remaining, success, error);
+    }
+}
+
+fn guest_connection_phase_actions(
+    phase: SandboxGuestConnectionPhase,
+) -> (&'static str, &'static str) {
+    match phase {
+        SandboxGuestConnectionPhase::TaskSchedule => (
+            "runner_fresh_sandbox_start_guest_connection_task_schedule_full",
+            "runner_fresh_sandbox_start_guest_connection_task_schedule_remaining",
+        ),
+        SandboxGuestConnectionPhase::ListenerSetup => (
+            "runner_fresh_sandbox_start_guest_connection_listener_setup_full",
+            "runner_fresh_sandbox_start_guest_connection_listener_setup_remaining",
+        ),
+        SandboxGuestConnectionPhase::Accept => (
+            "runner_fresh_sandbox_start_guest_connection_accept_full",
+            "runner_fresh_sandbox_start_guest_connection_accept_remaining",
+        ),
+        SandboxGuestConnectionPhase::Ready => (
+            "runner_fresh_sandbox_start_guest_connection_ready_full",
+            "runner_fresh_sandbox_start_guest_connection_ready_remaining",
+        ),
+        SandboxGuestConnectionPhase::Ping => (
+            "runner_fresh_sandbox_start_guest_connection_ping_full",
+            "runner_fresh_sandbox_start_guest_connection_ping_remaining",
+        ),
+        SandboxGuestConnectionPhase::Pong => (
+            "runner_fresh_sandbox_start_guest_connection_pong_full",
+            "runner_fresh_sandbox_start_guest_connection_pong_remaining",
+        ),
+        SandboxGuestConnectionPhase::ClientSetup => (
+            "runner_fresh_sandbox_start_guest_connection_client_setup_full",
+            "runner_fresh_sandbox_start_guest_connection_client_setup_remaining",
+        ),
+        SandboxGuestConnectionPhase::TaskHandoff => (
+            "runner_fresh_sandbox_start_guest_connection_task_handoff_full",
+            "runner_fresh_sandbox_start_guest_connection_task_handoff_remaining",
+        ),
     }
 }
 
@@ -389,6 +446,7 @@ pub(super) async fn execute_new_sandbox(
         params,
         telemetry,
         NewSandboxHooks {
+            preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
             controls: RunControls::new(cancel, None),
             prepared_run_payload,
             sandbox_prepared: None,
@@ -397,7 +455,7 @@ pub(super) async fn execute_new_sandbox(
     .await
 }
 
-async fn prepare_storage(
+pub(super) async fn prepare_storage(
     context: &ExecutionContext,
     previous_storage: Option<&StorageFingerprints>,
     config: &ExecutorConfig,
@@ -433,7 +491,10 @@ async fn prepare_storage(
     result
 }
 
-async fn cancel_prepared_storage(controls: &mut RunControls, telemetry: &mut JobTelemetry) {
+pub(super) async fn cancel_prepared_storage(
+    controls: &mut RunControls,
+    telemetry: &mut JobTelemetry,
+) {
     if let Some(mut prepared) = controls.prepared_storage.take() {
         prepared.delivery.cancel_and_drain(telemetry).await;
     }
@@ -453,6 +514,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         reuse_result,
     } = dispatch;
     let NewSandboxHooks {
+        preparation,
         mut controls,
         prepared_run_payload,
         sandbox_prepared,
@@ -489,6 +551,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 false,
                 Some(&error.to_string()),
             );
+            std::mem::take(&mut controls.session_history_restore_plan)
+                .cancel_and_drain()
+                .await;
             return Err(error);
         }
     };
@@ -523,6 +588,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 false,
                 Some(&error.to_string()),
             );
+            std::mem::take(&mut controls.session_history_restore_plan)
+                .cancel_and_drain()
+                .await;
             return Err(error);
         }
     }
@@ -535,11 +603,18 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         telemetry,
     )
     .await;
-    let mut used_retry = false;
+    let mut used_retry = preparation == FreshPreparation::WithoutCodexPrefetchReplacement;
     let mut used_workspace_fallback = false;
-    let mut codex_model_catalog_prefetch = true;
+    let mut codex_model_catalog_prefetch = preparation == FreshPreparation::Initial;
     let mut dns_replacement: Option<DnsReadinessReplacement> = None;
     let prepared = loop {
+        if controls.cancel.is_cancelled() {
+            cancel_prepared_storage(&mut controls, telemetry).await;
+            std::mem::take(&mut controls.session_history_restore_plan)
+                .cancel_and_drain()
+                .await;
+            return Err(RunnerError::Cancelled);
+        }
         let result = create_started_sandbox(
             factory,
             context,
@@ -566,17 +641,6 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             Ok(prepared) => break prepared,
             Err(failure) => failure,
         };
-        if used_retry {
-            let error = failure.error;
-            telemetry.record(
-                "runner_fresh_sandbox_prepare",
-                prepare_started.elapsed(),
-                false,
-                Some(&error.to_string()),
-            );
-            cancel_prepared_storage(&mut controls, telemetry).await;
-            return Err(error);
-        }
 
         let cache_hit = workspace_image
             .as_ref()
@@ -592,6 +656,20 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 "sandbox_prepare_failed",
             )
             .await;
+        }
+        if used_retry {
+            let error = failure.error;
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            cancel_prepared_storage(&mut controls, telemetry).await;
+            std::mem::take(&mut controls.session_history_restore_plan)
+                .cancel_and_drain()
+                .await;
+            return Err(error);
         }
         let retry_guest_dns = failure.retry == SandboxPrepareRetry::GuestDnsReadiness;
         let retry_without_workspace =
@@ -644,6 +722,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 Some(&error.to_string()),
             );
             cancel_prepared_storage(&mut controls, telemetry).await;
+            std::mem::take(&mut controls.session_history_restore_plan)
+                .cancel_and_drain()
+                .await;
             return Err(error);
         }
         if !retry_guest_dns && !retry_without_workspace && !retry_without_codex_prefetch {
@@ -655,6 +736,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 Some(&error.to_string()),
             );
             cancel_prepared_storage(&mut controls, telemetry).await;
+            std::mem::take(&mut controls.session_history_restore_plan)
+                .cancel_and_drain()
+                .await;
             return Err(error);
         }
 
@@ -669,7 +753,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         }
 
         if retry_without_codex_prefetch {
-            warn!(
+            info!(
                 run_id = %context.run_id,
                 sandbox_id = %sandbox_id,
                 error = %failure.error,
@@ -727,6 +811,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                         false,
                         Some(&error.to_string()),
                     );
+                    std::mem::take(&mut controls.session_history_restore_plan)
+                        .cancel_and_drain()
+                        .await;
                     return Err(error);
                 }
             }
@@ -788,9 +875,17 @@ enum SandboxPrepareRetry {
 }
 
 pub(super) struct NewSandboxHooks<'a> {
+    pub(super) preparation: FreshPreparation,
     pub(super) controls: RunControls,
     pub(super) prepared_run_payload: PreparedRunPayload,
     pub(super) sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum FreshPreparation {
+    Initial,
+    /// The blank has already consumed the only replacement attempt.
+    WithoutCodexPrefetchReplacement,
 }
 
 struct StartSandboxOptions<'a> {
@@ -1482,7 +1577,7 @@ pub(super) enum DestroySandboxOutcome {
 }
 
 impl DestroySandboxOutcome {
-    fn is_completed(self) -> bool {
+    pub(super) fn is_completed(self) -> bool {
         matches!(self, Self::Completed)
     }
 }
@@ -1501,93 +1596,6 @@ pub(super) async fn destroy_sandbox_panic_safe(
     } else {
         DestroySandboxOutcome::Completed
     }
-}
-
-/// Run a job inside a reused (kept-alive) sandbox.
-///
-/// Skips create + start. Starts bounded archive delivery, re-registers the
-/// proxy, fixes clock/entropy, then runs.
-pub(super) async fn execute_reused_sandbox(
-    sandbox: Box<dyn Sandbox>,
-    source_ip: &str,
-    context: &ExecutionContext,
-    config: &ExecutorConfig,
-    start: RunStart<'_>,
-    telemetry: &mut JobTelemetry,
-    mut inputs: PreparedRunInputs,
-) -> ExecuteOutcome {
-    info!(
-        run_id = %context.run_id,
-        sandbox_id = %sandbox.id(),
-        "reusing kept-alive sandbox"
-    );
-
-    let source_ip = source_ip.to_string();
-    let prepare_started = Instant::now();
-    let prepared_storage = prepare_storage(
-        context,
-        start.prev_storage,
-        config,
-        &inputs.controls.cancel,
-        telemetry,
-    )
-    .await;
-    match prepared_storage {
-        Ok(prepared_storage) => inputs.controls.prepared_storage = prepared_storage,
-        Err(error) => {
-            telemetry.record(
-                "runner_reused_sandbox_prepare",
-                prepare_started.elapsed(),
-                false,
-                Some(&error.to_string()),
-            );
-            return ExecuteOutcome::reused_sandbox_failure(
-                ExecutionFailure::from_error(error.to_string()),
-                sandbox,
-                source_ip,
-                None,
-            );
-        }
-    }
-    let network_log_session = match register_proxy(config, context, &source_ip).await {
-        Ok(session) => session,
-        Err(error) => {
-            cancel_prepared_storage(&mut inputs.controls, telemetry).await;
-            telemetry.record(
-                "runner_reused_sandbox_prepare",
-                prepare_started.elapsed(),
-                false,
-                Some(&error.to_string()),
-            );
-            return ExecuteOutcome::reused_sandbox_failure(
-                ExecutionFailure::from_error(error.to_string()),
-                sandbox,
-                source_ip,
-                None,
-            );
-        }
-    };
-    telemetry.record(
-        "runner_reused_sandbox_prepare",
-        prepare_started.elapsed(),
-        true,
-        None,
-    );
-
-    execute_prepared_sandbox_run(
-        PreparedSandboxRun {
-            sandbox,
-            source_ip,
-            network_log_session,
-            prepared_guest_runtime: None,
-        },
-        context,
-        config,
-        start,
-        telemetry,
-        inputs,
-    )
-    .await
 }
 
 pub(super) async fn execute_prepared_sandbox_run(
@@ -1626,6 +1634,10 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
         prepared_guest_runtime,
     } = run;
     let cleanup_cancel = inputs.controls.cancel.clone();
+    let ssh = config
+        .ssh
+        .as_ref()
+        .and_then(|runtime| runtime.install(sandbox.as_ref(), context.run_id, &cleanup_cancel));
     let reuse_result = start.reuse_result;
     let workspace_reuse_result = start.workspace_reuse_result;
 
@@ -1641,6 +1653,10 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
         process_cancel_timeouts,
     )
     .await;
+
+    if let Some(ssh) = ssh {
+        ssh.shutdown().await;
+    }
 
     let pre_process_resource_diagnostics = match result.as_ref() {
         Err(error) if explicit_enospc_evidence([error.to_string().as_str()]) => {

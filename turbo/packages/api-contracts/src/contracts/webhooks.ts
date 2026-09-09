@@ -1,3 +1,4 @@
+import { oomEvidenceSchema } from "./oom-evidence";
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
@@ -875,6 +876,7 @@ export const webhookHeartbeatContract = c.router({
  * Metric data point schema
  */
 const metricDataSchema = z.object({
+  memory: oomEvidenceSchema.optional(),
   ts: z.string(),
   cpu: z.number(),
   cpu_steal_percent: z.number().optional(),
@@ -988,6 +990,18 @@ const sandboxOperationSchema = z.object({
   error: z.string().optional(),
   outcome: z.string().max(64).optional(),
   reason: z.string().max(64).optional(),
+  dns_readiness_attempt: z.number().int().min(1).max(3).optional(),
+  dns_readiness_final_attempt: z.boolean().optional(),
+  dns_readiness_guest_duration_ms: z
+    .number()
+    .int()
+    .min(0)
+    .max(4_294_967_295)
+    .optional(),
+  dns_readiness_host_residual_ms: z.number().int().nonnegative().optional(),
+  dns_readiness_timing: z
+    .enum(["paired", "unavailable", "inconsistent"])
+    .optional(),
   runner_startup_path: runnerStartupPathSchema.optional(),
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   runner_pre_spawn_concurrency_bucket:
@@ -1032,6 +1046,8 @@ export const webhookTelemetryContract = c.router({
       runnerHostname: runnerHostnameSchema.optional(),
       runnerVersion: runnerVersionSchema.optional(),
       systemLog: z.string().optional(),
+      oomEvidence: oomEvidenceSchema.optional(),
+      sandboxId: z.uuid().optional(),
       metrics: z.array(metricDataSchema).optional(),
       networkLogs: z.array(networkLogEntrySchema).optional(),
       sandboxOperations: z.array(sandboxOperationSchema).optional(),
@@ -1040,6 +1056,7 @@ export const webhookTelemetryContract = c.router({
       200: z.object({
         success: z.boolean(),
         id: z.string(),
+        oomEvidenceVersion: z.literal(1).optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

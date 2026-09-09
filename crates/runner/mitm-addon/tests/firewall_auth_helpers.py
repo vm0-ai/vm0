@@ -70,6 +70,46 @@ def firewall_auth_success(
     )
 
 
+def firewall_auth_response(
+    *,
+    headers: Mapping[str, str] | None = None,
+    resolved_secrets: list[str] | None = None,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+    cache_hit: bool = False,
+    cache_entry_identity: auth.FirewallAuthCacheEntryIdentity | None = None,
+    base: str | None = None,
+    query: Mapping[str, str] | None = None,
+    aws_sigv4: AwsSigV4Credentials | None = None,
+) -> dict:
+    """Build a successful cache-to-handler response for ``get_firewall_headers``.
+
+    Unlike ``firewall_auth_success``, this includes the cache-owned identity.
+    Each call owns fresh containers and a fresh identity unless a caller passes
+    the identity of the same cached entry. Malformed-response tests should
+    explicitly corrupt the result instead of making this builder accept errors.
+    """
+    response: dict = {
+        "headers": dict(headers or {}),
+        "resolved_secrets": list(resolved_secrets or []),
+        "refreshed_connectors": list(refreshed_connectors or []),
+        "refreshed_secrets": list(refreshed_secrets or []),
+        "cache_hit": cache_hit,
+        "cache_entry_identity": (
+            cache_entry_identity
+            if cache_entry_identity is not None
+            else auth.FirewallAuthCacheEntryIdentity()
+        ),
+    }
+    if base is not None:
+        response["base"] = base
+    if query is not None:
+        response["query"] = dict(query)
+    if aws_sigv4 is not None:
+        response["aws_sigv4"] = aws_sigv4
+    return response
+
+
 def _allow_current_firewall_authorization() -> bool:
     return True
 

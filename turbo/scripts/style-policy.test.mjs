@@ -475,6 +475,24 @@ test("the command matches scope adapters exactly without leaking context to sibl
   }
 });
 
+test("dialog content styling remains subject to the legacy class ratchet", (t) => {
+  const file = "apps/platform/src/view.tsx";
+  const root = createCommandWorkspace(
+    t,
+    {
+      [file]:
+        'export const View = () => <DialogContent contentClassName="flex" />;',
+    },
+    emptyBaseline(["legacy"]),
+  );
+  assert.equal(runPolicy(root).status, 0);
+  writeFileSync(
+    join(root, file),
+    'const CONTENT = "legacy"; export const View = () => <DialogContent contentClassName={CONTENT} />;',
+  );
+  assertRejected(runPolicy(root), /usage grew from 0 to 1/);
+});
+
 test("the command counts local and re-exported class aliases at each consumer", (t) => {
   const file = "apps/platform/src/view.tsx";
   const root = createCommandWorkspace(

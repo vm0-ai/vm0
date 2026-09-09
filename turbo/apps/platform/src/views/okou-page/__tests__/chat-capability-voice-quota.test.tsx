@@ -27,6 +27,7 @@ type WorkspaceRole = "admin" | "member";
 function billingStatus(tier: VoicePlan): BillingStatusResponse {
   const paid = tier !== "free";
   return {
+    showUsagePack: false,
     tier,
     credits: paid ? 20_000 : 500,
     onboardingPaymentPending: false,

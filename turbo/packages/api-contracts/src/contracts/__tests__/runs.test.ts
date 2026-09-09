@@ -75,28 +75,19 @@ describe("unified run request contract", () => {
     ).toBe(false);
   });
 
-  it.each(["vm0", "built-in"])(
-    "rejects the %s built-in alias for direct runs",
-    (modelProviderType) => {
-      expect(
-        unifiedRunRequestSchema.safeParse({
-          prompt: "run directly",
-          modelProviderType,
-        }).success,
-      ).toBe(false);
-    },
-  );
-
-  it("accepts only the canonical provider on internal agent run requests", () => {
+  it("rejects built-in models for direct runs without credit admission", () => {
     expect(
-      runCreateBodySchema.safeParse({
-        prompt: "run through Zero",
-        modelProvider: "vm0",
+      unifiedRunRequestSchema.safeParse({
+        prompt: "run directly",
+        modelProviderType: "built-in",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts the built-in provider on internal agent run requests", () => {
     expect(
       runCreateBodySchema.parse({
-        prompt: "run through Zero",
+        prompt: "run through Okou",
         modelProvider: "built-in",
       }).modelProvider,
     ).toBe("built-in");

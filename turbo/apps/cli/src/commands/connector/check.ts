@@ -5,13 +5,13 @@ import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/conne
 
 import {
   buildDiagnosticRequest,
+  connectorCheckRetryCommand,
+  connectorPermissionRequestCommand,
   diagnosticEnvironmentNames,
   isComputerUseCheckTarget,
   printDiagnosticSummary,
   requireUrlRequest,
   resolveConnectorCheckDiagnostic,
-  shellQuoteArg,
-  stripUrlQueryAndFragment,
   validateCheckConnectorOptions,
   type CheckConnectorOptions,
   type ResolvedDiagnostic,
@@ -26,6 +26,7 @@ import {
   printCustomConnectorCheckStatus,
 } from "./check-custom";
 import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
+import { printConnectorCheckJson } from "./check-json";
 import {
   diagnoseConnectorCheck,
   getConnector,
@@ -34,7 +35,10 @@ import { getAgentUserConnectors } from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../lib/okou-env";
 import { toPlatformUrl } from "../doctor/platform-url";
-import { printComputerUsePermissionGuidance } from "./computer-use-guidance";
+import {
+  computerUsePermissionGuidance,
+  printComputerUsePermissionGuidance,
+} from "./computer-use-guidance";
 import {
   CALLBACK_PROMPT_PLACEHOLDER,
   connectorActionUrl,
@@ -433,14 +437,6 @@ function printNamedPolicyResult(
   }
 }
 
-function permissionRequestCommand(
-  connectorSlug: string,
-  permission: string,
-  request: UrlDiagnosticRequest,
-): string {
-  return `okou connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
-}
-
 function printPermissionRequestCommands(
   target: ConnectorRuntimeTarget,
   permission: string,
@@ -465,7 +461,7 @@ function printPermissionRequestCommands(
     );
     return;
   }
-  const command = permissionRequestCommand(
+  const command = connectorPermissionRequestCommand(
     target.connectorSlug,
     permission,
     request,
@@ -608,42 +604,16 @@ function printEnvironmentPermissionDiagnostic(
   console.log("");
 }
 
-function printRediagnoseHint(
-  opts: CheckConnectorOptions,
-  method: string,
-): void {
-  const args: string[] = [];
-  if (opts.url !== undefined) {
-    args.push(`--url ${shellQuoteArg(stripUrlQueryAndFragment(opts.url))}`);
-    if (opts.connector !== undefined) {
-      args.push(`--connector ${shellQuoteArg(opts.connector)}`);
-    }
-    if (opts.envName !== undefined) {
-      args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
-    }
-    if (method !== "GET") {
-      args.push(`--method ${shellQuoteArg(method)}`);
-    }
-  } else if (opts.envName !== undefined) {
-    args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
-  }
-  if (opts.checkPermission !== undefined) {
-    args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
-  }
-  console.log(
-    `To re-diagnose after changes, run: okou connector check ${args.join(" ")}`,
-  );
-}
-
 export const checkConnectorCommand = new Command()
   .name("check")
   .description(
-    "Diagnose connector health: environment names, connector configuration, and permission policies",
+    "Diagnose builtin/custom routing, account configuration, and run permissions",
   )
+  .option("--json", "Output connector diagnostics and next actions as JSON")
   .addOption(
     new Option(
       "--env-name <ENV_NAME>",
-      "The connector environment name to check (e.g. GITHUB_TOKEN)",
+      "Builtin connector environment name (e.g. GITHUB_TOKEN)",
     ),
   )
   .addOption(
@@ -667,12 +637,25 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--check-permission <name>",
-      "Check whether a specific permission is allowed or denied (e.g. contents:read)",
+      "Permission to check with --env-name only (e.g. contents:read)",
     ),
   )
   .addHelpText(
     "after",
     `
+Scope:
+  --env-name diagnoses a builtin environment binding; --check-permission can
+  select a permission in this mode. Custom HTTP/MCP routes use --url; this checks
+  HTTP routing, not MCP tool discovery or execution.
+  URL mode discovers builtin and custom route owners. Use --connector with a
+  builtin slug or custom:<uuid> to disambiguate; custom public slugs are not
+  accepted here. Find UUIDs with connector custom list.
+  --connector and --method require --url. URL permissions are derived from the
+  request, so --check-permission cannot be combined with --url.
+  Inside a run, account identity comes from that run's admitted accounts.
+  Outside a run, run routing/policy checks may be unavailable. Unavailable
+  policy data is not an allow decision.
+
 Examples:
   okou connector check --env-name GITHUB_TOKEN
   okou connector check --url https://api.github.com/repos/owner/repo
@@ -682,23 +665,52 @@ Examples:
   okou connector check --env-name SLACK_TOKEN --check-permission chat:write
 
 How connectors work:
-  A Connector holds the real credentials for an external service. These credentials
-  are never injected into the sandbox. Instead, when the sandbox sends an HTTP
-  request to a base URL registered by the Connector, the network boundary intercepts
-  the request and replaces the auth headers with real credentials.
+  Authenticated connectors resolve credentials at the network boundary for
+  matching registered URLs. No-auth connectors do not inject credentials.
+  This command diagnoses configuration and intended routing/permission state;
+  it does not replay the failed request or confirm the runner applied an update.
 
-  This command checks each part of that pipeline and reports what it finds.`,
+Permission recovery:
+  For builtin deny/ask outcomes, use the exact permission-request command printed
+  for the failed URL and method. Custom HTTP permission bundles use Connectors
+  > agent access > Permissions. MCP connectors have no HTTP permission bundle.
+  Custom unknown endpoints require an administrator to review routing/permission
+  definitions; there is no custom approval control.
+  Callback examples are for a single supported action in the current web chat
+  for its current Agent. Custom settings guidance has no callback approval flow.`,
   )
   .action(
     withErrorHandler(async (opts: CheckConnectorOptions, command: Command) => {
       validateCheckConnectorOptions(opts, command);
       if (isComputerUseCheckTarget(opts)) {
-        printComputerUsePermissionGuidance();
+        if (opts.json) {
+          console.log(
+            JSON.stringify(
+              {
+                context: isRunBoundConnectorContext() ? "run" : "current",
+                diagnostic: {
+                  outcome: "not-a-connector",
+                  capability: "computer-use:write",
+                },
+                guidance: computerUsePermissionGuidance,
+                actions: [{ kind: "command", command: "okou whoami" }],
+              },
+              null,
+              2,
+            ),
+          );
+        } else {
+          printComputerUsePermissionGuidance();
+        }
         return;
       }
       const method = opts.method.toUpperCase();
       const request = buildDiagnosticRequest(opts, method);
       const diagnostic = await diagnoseConnectorCheck(request);
+      if (opts.json) {
+        await printConnectorCheckJson(request, diagnostic);
+        return;
+      }
       const resolved = resolveConnectorCheckDiagnostic(request, diagnostic);
       const target = resolved.connector.target;
       const custom =
@@ -771,6 +783,8 @@ How connectors work:
         );
       }
 
-      printRediagnoseHint(opts, method);
+      console.log(
+        `To re-diagnose after changes, run: ${connectorCheckRetryCommand(request)}`,
+      );
     }),
   );

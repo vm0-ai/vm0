@@ -12,7 +12,6 @@ import {
   teamsConnectStatus,
 } from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function errorResponse(
   status: 403 | 404,
@@ -29,13 +28,11 @@ function errorResponse(
 
 const getTeamsConnectStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
   const body = await get(
     teamsConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       isAdmin: "orgRole" in auth && auth.orgRole === "admin",
-      publicBrand,
     }),
   );
   return { status: 200 as const, body };
@@ -43,7 +40,6 @@ const getTeamsConnectStatusInner$ = computed(async (get) => {
 
 const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
   signal.throwIfAborted();
 
   const bodyResult = await get(bodyResultOf(teamsConnectContract.connect));
@@ -61,7 +57,6 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgRole:
         "orgRole" in auth && auth.orgRole === "admin" ? "admin" : "member",
       tenantId: body.tenantId,
-      publicBrand,
       teamsUserId: body.teamsUserId,
       teamsAadObjectId: body.teamsAadObjectId,
       teamsUserDisplayName: body.teamsUserDisplayName,

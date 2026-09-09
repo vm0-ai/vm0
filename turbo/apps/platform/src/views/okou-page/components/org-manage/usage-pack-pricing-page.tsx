@@ -58,7 +58,6 @@ import {
   memberUsageSelections$,
   MINIMUM_USAGE_PACK_USD,
   selectedUsagePackPlan$,
-  resetUsagePackPricing$,
   setMemberUsageSelection$,
   setMemberUsageSelections$,
   setSelectedUsagePackPlan$,
@@ -1119,6 +1118,8 @@ function PricingStepDialog({
   flush = false,
   onBack,
   onClose,
+  onOpenChangeComplete,
+  open = true,
   step,
   title,
   total,
@@ -1127,6 +1128,8 @@ function PricingStepDialog({
   readonly flush?: boolean;
   readonly onBack?: () => void;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly step: PricingStep;
   readonly title?: string;
   readonly total: PricingStepTotal;
@@ -1134,17 +1137,20 @@ function PricingStepDialog({
   const { t } = useTranslation();
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(next) => {
         if (!next) {
           onClose();
         }
       }}
+      onOpenChangeComplete={onOpenChangeComplete}
     >
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className="flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        maxWidth={860}
+        height={688}
+        contentClassName="flex flex-col gap-0 overflow-hidden p-0"
       >
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share
@@ -3088,6 +3094,8 @@ export function UsagePackMigrationDialogs({
   migrationTargetTier,
   onBack,
   onClose,
+  onOpenChangeComplete,
+  open,
   onSelect,
 }: {
   readonly currentTier: BillingTier;
@@ -3096,9 +3104,10 @@ export function UsagePackMigrationDialogs({
   readonly migrationTargetTier: UsagePackPlanTier | null;
   readonly onBack: () => void;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly onSelect: (tier: UsagePackPlanTier) => void;
 }) {
-  const resetPricing = useSet(resetUsagePackPricing$);
   const migrationPreview = useGet(usagePackMigrationPreview$);
   const migrationRevisionPreview = useGet(usagePackMigrationRevisionPreview$);
   const closeMigrationPreview = useSet(closeUsagePackMigrationPreview$);
@@ -3121,10 +3130,6 @@ export function UsagePackMigrationDialogs({
   const reviewing =
     configuring &&
     (revising ? migrationRevisionPreview !== null : migrationPreview !== null);
-  const closeFlow = () => {
-    resetPricing();
-    onClose();
-  };
   return (
     <PricingStepDialog
       flush={!configuring}
@@ -3137,6 +3142,8 @@ export function UsagePackMigrationDialogs({
           : undefined
       }
       total={3}
+      open={open}
+      onOpenChangeComplete={onOpenChangeComplete}
       onBack={
         reviewing
           ? revising
@@ -3146,14 +3153,14 @@ export function UsagePackMigrationDialogs({
             ? onBack
             : undefined
       }
-      onClose={closeFlow}
+      onClose={onClose}
     >
       {configurationStep ? (
         <UsagePackMigrationPage
           configuration={migration.configuration ?? null}
           effectiveAt={configurationStep.effectiveAt}
           migrationId={migration.migrationId}
-          onComplete={closeFlow}
+          onComplete={onClose}
           sourceTier={migration.tier}
           targetTier={configurationStep.targetTier}
         />
@@ -3173,12 +3180,16 @@ export function UsagePackPricingDialogs({
   currentTier,
   grantedPlanCheckoutAllowed,
   onClose,
+  onOpenChangeComplete,
+  open,
   onReplaceCancellationWithPro,
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly grantedPlanCheckoutAllowed: boolean;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly onReplaceCancellationWithPro?: () => void;
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
@@ -3216,6 +3227,8 @@ export function UsagePackPricingDialogs({
       flush={!selectedPlan}
       step={reviewing ? 3 : selectedPlan ? 2 : 1}
       total={management === null ? 2 : 3}
+      open={open}
+      onOpenChangeComplete={onOpenChangeComplete}
       onBack={
         reviewing
           ? closePreview
@@ -3225,11 +3238,7 @@ export function UsagePackPricingDialogs({
               }
             : undefined
       }
-      onClose={() => {
-        closePreview();
-        setSelectedPlan(null);
-        onClose();
-      }}
+      onClose={onClose}
     >
       {!catalog || !managementLoaded ? (
         <div

@@ -663,7 +663,6 @@ export const launchQueuedWorkflowAutomation$ = command(
           ...workflowModelProviderBody(effectiveModelProvider),
         },
         apiStartTime: args.apiStartTime,
-        publicBrand: args.publicBrand,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         ...(args.connectorSourceId

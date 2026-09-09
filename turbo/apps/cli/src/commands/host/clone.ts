@@ -29,7 +29,10 @@ function jsonOption(options: CloneOptions, command: Command): boolean {
 export const cloneHostedSiteCommand = new Command()
   .name("clone")
   .description("Clone an owned hosted-site version to a local directory")
-  .argument("<site>", "Hosted site public slug or URL")
+  .argument(
+    "<site>",
+    "Hosted site slug, public URL, or authenticated artifact URL",
+  )
   .argument("[destination]", "Destination directory (default: public slug)")
   .option(
     "--version <number>",
@@ -50,6 +53,7 @@ Examples:
 Notes:
   - Authenticates via OKOU_TOKEN (requires host:read capability)
   - Only hosted sites owned by the active org can be cloned
+  - Private deployments also require their original owner's credentials
   - Downloads files directly from R2 and verifies size/hash
   - The destination directory must be empty or not exist`,
   )
@@ -62,7 +66,7 @@ Notes:
         command: Command,
       ) => {
         const json = jsonOption(options, command);
-        const targetDir = destination ?? publicSlugFromSite(site);
+        const targetDir = destination ?? (await publicSlugFromSite(site));
         const result = await cloneHostedSite({
           site,
           destination: targetDir,

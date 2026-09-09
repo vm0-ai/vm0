@@ -19,6 +19,10 @@ type ChatDatabaseEventListener = (message: {
   readonly data: unknown;
 }) => void;
 type UserRealtimeEventListener = ChatDatabaseEventListener;
+type NamedRealtimeEventListener = (
+  channelName: string,
+  message: { readonly name: string; readonly data: unknown },
+) => void;
 type ChatDatabaseRecoveryListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
@@ -85,7 +89,9 @@ let nextSubscribeGate: {
 const realtimeInstances = new Set<Realtime>();
 const chatDatabaseEventListeners = new Set<ChatDatabaseEventListener>();
 const userRealtimeEventListeners = new Set<UserRealtimeEventListener>();
+const namedRealtimeEventListeners = new Set<NamedRealtimeEventListener>();
 const chatDatabaseRecoveryListeners = new Set<ChatDatabaseRecoveryListener>();
+const directRealtimeSubscriptions = new Map<string, Map<string, number>>();
 const subscribeErrors = new Map<
   string,
   {
@@ -553,11 +559,31 @@ export function triggerAblyChannelEvent(
   topic: string,
   data?: unknown,
 ): void {
+  const message = { name: topic, data };
+  for (const listener of namedRealtimeEventListeners) {
+    listener(channelName, message);
+  }
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       realtime.getExistingChannel(channelName)?.trigger(topic, data);
     }
   }
+}
+
+/** Forward named-channel publishes to a direct worker test host. */
+export function subscribeNamedRealtimeEvents(
+  listener: NamedRealtimeEventListener,
+  signal: AbortSignal,
+): void {
+  signal.throwIfAborted();
+  namedRealtimeEventListeners.add(listener);
+  signal.addEventListener(
+    "abort",
+    () => {
+      namedRealtimeEventListeners.delete(listener);
+    },
+    { once: true },
+  );
 }
 
 /** Re-invoke the newest client's auth callback to simulate token renewal. */
@@ -740,8 +766,46 @@ export function rejectAblySubscribe(
   return observed.promise;
 }
 
-/** Debug: check if a topic has an active subscription. */
+/** Track a topic subscribed through the in-process direct worker bridge. */
+export function registerDirectRealtimeSubscription(
+  channelName: string,
+  topic: string,
+): () => void {
+  let topics = directRealtimeSubscriptions.get(channelName);
+  if (!topics) {
+    topics = new Map();
+    directRealtimeSubscriptions.set(channelName, topics);
+  }
+  topics.set(topic, (topics.get(topic) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    const currentTopics = directRealtimeSubscriptions.get(channelName);
+    const count = currentTopics?.get(topic);
+    if (!currentTopics || count === undefined) {
+      return;
+    }
+    if (count > 1) {
+      currentTopics.set(topic, count - 1);
+      return;
+    }
+    currentTopics.delete(topic);
+    if (currentTopics.size === 0) {
+      directRealtimeSubscriptions.delete(channelName);
+    }
+  };
+}
+
+/** Debug: check if a topic has an active transport subscription. */
 export function hasSubscription(topic: string): boolean {
+  for (const topics of directRealtimeSubscriptions.values()) {
+    if ((topics.get(topic) ?? 0) > 0) {
+      return true;
+    }
+  }
   for (const realtime of realtimeInstances) {
     for (const channel of realtime.allChannels()) {
       if (channel.hasSubscription(topic)) {
@@ -756,6 +820,9 @@ export function hasSubscriptionOnChannel(
   channelName: string,
   topic: string,
 ): boolean {
+  if ((directRealtimeSubscriptions.get(channelName)?.get(topic) ?? 0) > 0) {
+    return true;
+  }
   for (const realtime of realtimeInstances) {
     if (realtime.getExistingChannel(channelName)?.hasSubscription(topic)) {
       return true;
@@ -799,7 +866,9 @@ export function resetAblySubscriptions(): void {
   triggerAblyConnectionClosed();
   chatDatabaseEventListeners.clear();
   userRealtimeEventListeners.clear();
+  namedRealtimeEventListeners.clear();
   chatDatabaseRecoveryListeners.clear();
+  directRealtimeSubscriptions.clear();
   capturedAuthCallback = null;
   tokenBodies = [];
   nextSubscribeError = null;

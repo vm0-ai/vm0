@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 /**
  * Tests for okou generate video command
  *
@@ -73,6 +74,7 @@ function stubBillingStatus(
 ) {
   return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
+      showUsagePack: false,
       tier,
       canBuyCredits: videoGenerationAllowed,
       videoGenerationAllowed,
@@ -289,6 +291,67 @@ describe("okou generate video command", () => {
     );
     expect(mockConsoleLog).not.toHaveBeenCalled();
   });
+
+  it.each([true, false])(
+    "validates frame dimensions without sending credentials to a foreign origin (owned API=%s)",
+    async (ownedApi) => {
+      const origin = ownedApi
+        ? "http://localhost:3000"
+        : "https://foreign.example";
+      const frame = ownedApi
+        ? artifactReferencePath(
+            "00000000-0000-4000-8000-000000000021",
+            "frame.png",
+          )
+        : `${origin}/api/web/download-file?file_id=private-frame&filename=frame.png`;
+      let authorization: string | null = null;
+      let videoInput: unknown;
+      server.use(
+        http.get(`${origin}/api/web/download-file`, ({ request }) => {
+          authorization = request.headers.get("authorization");
+          return imageResponse(1080, 1920);
+        }),
+        http.post(VIDEO_URL, async ({ request }) => {
+          videoInput = await request.json();
+          const { sourceUrl: _sourceUrl, ...result } = VIDEO_RESULT;
+          return HttpResponse.json({
+            ...result,
+            url: artifactReferencePath(
+              "00000000-0000-4000-8000-000000000022",
+              "video.mp4",
+            ),
+          });
+        }),
+      );
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "video",
+        "--prompt",
+        "Animate this private frame",
+        "--aspect-ratio",
+        "9:16",
+        "--first-frame-image-url",
+        frame,
+        "--json",
+      ]);
+      expect(authorization).toBe(ownedApi ? "Bearer test-token" : null);
+      expect(videoInput).toMatchObject({ firstFrameImageUrl: frame });
+      const output = mockConsoleLog.mock.calls
+        .map(([value]) => {
+          return String(value);
+        })
+        .join("\n");
+      expect(output).toContain(
+        artifactReferencePath(
+          "00000000-0000-4000-8000-000000000022",
+          "video.mp4",
+        ),
+      );
+      expect(output).not.toContain(VIDEO_RESULT.sourceUrl);
+      expect(output).not.toContain("test-token");
+    },
+  );
 
   it("should reject frame images that do not match --aspect-ratio before generating", async () => {
     const postVideo = vi.fn();

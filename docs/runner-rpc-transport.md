@@ -1,10 +1,10 @@
-# Guest-to-Runner RPC (no production methods)
+# Guest-to-Runner RPC
 
-The transport delivered by #32012 is infrastructure under #31932, independent
-of its first planned consumer, SSH. It installs no production dispatcher or
-handler, performs no API calls, and has no business validators. Local/mock
-sandbox providers expose no capability. Keep SSH disabled until the later
-execution, Agent/UI and activation slices are complete.
+The transport delivered by #32012 is infrastructure under #31932. Its first
+consumer is the [Runner SSH dispatcher](runner-ssh-execution.md), installed by
+#32387 for official API-backed Runs. The generic transport itself has no API
+calls or business validators. Local/mock sandbox providers expose no capability.
+SSH remains disabled until the Agent/UI and activation slices are complete.
 
 ## Guest boundary
 
@@ -22,10 +22,11 @@ terminated by EOF:
 }
 ```
 
-This is the planned SSH adapter's request, not a method installed by this PR.
+This is the SSH adapter's request; availability still depends on current API authority.
 Transport validates version 1, a nonempty method of at most 64 ASCII letters,
 digits, dots, underscores or hyphens, and object-valued params. Unknown envelope
-fields, duplicate envelope keys, invalid types and extra request bytes fail.
+fields, duplicate envelope keys, invalid types and extra JSON within the request
+frame fail. The helper also rejects extra JSON on its stdin.
 Transport does not interpret params or validate SSH UUIDs/commands. Raw JSON
 preserves nested fields, duplicate business keys and numeric tokens without
 rounding; the method schema decides whether those values are acceptable.
@@ -49,8 +50,18 @@ Each frame is a big-endian u32 length followed by JSON:
 
 Frame and remaining aggregate limits are checked before body allocation.
 Outgoing messages are checked before wire writes. Events must leave capacity
-for one maximum-sized terminal frame. The guest half-closes after the request;
-the host reads through EOF before dispatch. Drop request I/O on cancellation or
+for one maximum-sized terminal frame. The first complete request frame is the
+request boundary: the host validates it and dispatches at most once per connection,
+without waiting for EOF. Bytes after that frame are outside the one-shot request;
+they are never consumed as another request and cannot trigger another operation.
+The host does not drain or wait for trailing input and drops the connection after
+all handler work ends. This replaces connection-wide trailing-byte rejection,
+not strict JSON validation inside the frame.
+
+The guest helper half-closes after sending, but dispatch does not depend on that
+half-close. Firecracker v1.15.1 records guest send shutdown without forwarding it
+as EOF on its host Unix stream. Waiting for it before replying stalls until the
+guest's deadline. Drop request I/O on cancellation or
 failure; stateful response readers/writers cannot resume after partial I/O.
 
 ## Responses, completion and ambiguity
@@ -73,6 +84,10 @@ The helper emits events as single-line NDJSON. Only JSON whitespace outside
 strings is removed; raw numeric tokens, duplicate keys and escapes survive.
 The terminal is withheld until EOF proves there is no duplicate/trailing data.
 The stateful host writer half-closes after terminal, but retains its stream.
+Unlike guest send shutdown, Firecracker forwards host stream EOF to the guest.
+Native fresh/restored tests verify terminal delivery while the host still owns
+the stream. Do not replace terminal-plus-EOF verification with first-terminal
+success: duplicate/trailing response data remains a protocol error.
 
 A valid result means RPC completion, **not business success**. The helper exits
 zero only after delivering that result. The caller must interpret business
@@ -89,6 +104,13 @@ The total helper budget is 60 seconds over stdin, connect, request/response I/O
 and stdout, with the last 100 ms reserved for terminal reporting. Failed or
 cancelled partial stdout writes exit unsuccessfully without appending a corrupt
 replacement terminal. A broken pipe cannot guarantee terminal delivery.
+
+After stdin and connect, the bundled helper adds internal `remaining_ms` metadata
+to the wire envelope. Callers cannot supply that field, including null. The host
+clamps it to 60 seconds, includes request reading in that budget, and reserves
+the final second for its terminal response. The metadata is an untrusted deadline
+hint, never authority. It contains no method-specific data. Helper and official
+Runner ship together; no fallback or protocol negotiation is added.
 
 ## Host ownership and lifecycle
 
@@ -153,3 +175,18 @@ Local tests use real sockets, files, the real control handshake and operation
 tracker, plus unrelated external test methods. They require no web server.
 Actual fresh/restored KVM boot and packaged-helper execution remain separate
 metal-host CI/E2E checks before activation.
+
+The `guest-rpc-firecracker-test` CI job runs the native `guest_rpc` integration
+test against the matching runner-build rootfs and snapshot. It covers a generic
+echo result, an unknown-method rejection, response EOF, and park/reassignment in
+both fresh and snapshot-restored guests. Its test-only consumer does not enable
+methods in local/PAT Runners or establish SSH authorization. Unix parser/helper
+and actual Runner dispatcher tests separately protect bounds, corruption handling
+and one execution even when more request frames arrive.
+
+For #32804, Runner and bundled helper remain one artifact; guest binary bytes
+participate in rootfs identity and the snapshot identity includes that rootfs.
+There is no cross-version helper negotiation, fallback or replay. CLI stdin/stdout
+and API contracts are unchanged. Keep #32014's owner-authorized packaged CLI/SSH,
+TOFU, live inventory, revoke/invalidation and non-chat acceptance outstanding until
+actually exercised; generic native success alone does not enable #32015.

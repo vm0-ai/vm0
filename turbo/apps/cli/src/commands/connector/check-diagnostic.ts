@@ -8,6 +8,7 @@ import { isComputerUsePermissionTarget } from "./computer-use-guidance";
 import { customConnectorIdFromSelector } from "./custom-connector-guidance";
 
 export interface CheckConnectorOptions {
+  readonly json?: boolean;
   readonly connector?: string;
   readonly envName?: string;
   readonly url?: string;
@@ -38,7 +39,7 @@ export type UrlDiagnosticRequest = Extract<
   { readonly mode: "url" }
 >;
 
-export function stripUrlQueryAndFragment(url: string): string {
+function stripUrlQueryAndFragment(url: string): string {
   const queryIndex = url.indexOf("?");
   const fragmentIndex = url.indexOf("#");
   let end = url.length;
@@ -62,7 +63,7 @@ function rawUrlAuthorityHasUserinfo(url: string): boolean {
   return url.slice(authorityStart, authorityEnd).includes("@");
 }
 
-export function shellQuoteArg(value: string): string {
+function shellQuoteArg(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
@@ -326,29 +327,40 @@ export function resolveConnectorCheckDiagnostic(
   request: ConnectorCheckRequestBody,
   result: ConnectorCheckTargetAwareDiagnosticResult,
 ): ResolvedDiagnostic {
+  if (result.outcome === "resolved") {
+    return result;
+  }
+  throw connectorCheckDiagnosticError(request, result);
+}
+
+export function connectorCheckDiagnosticError(
+  request: ConnectorCheckRequestBody,
+  result: Exclude<
+    ConnectorCheckTargetAwareDiagnosticResult,
+    ResolvedDiagnostic
+  >,
+): Error {
   switch (result.outcome) {
-    case "resolved":
-      return result;
     case "unsafe-input":
-      throw unsafeInputError(result.reason);
+      return unsafeInputError(result.reason);
     case "unknown-connector":
-      throw unknownConnectorError(request);
+      return unknownConnectorError(request);
     case "unknown-environment":
-      throw new Error(
+      return new Error(
         `Unknown environment name: ${requestedEnvironmentName(request)} — not managed by any connector`,
       );
     case "no-match":
-      throw noMatchError(result);
+      return noMatchError(result);
     case "ambiguous":
-      throw ambiguousConnectorError(requireUrlRequest(request), result);
+      return ambiguousConnectorError(requireUrlRequest(request), result);
     case "connector-mismatch":
-      throw connectorMismatchError(requireUrlRequest(request), result);
+      return connectorMismatchError(requireUrlRequest(request), result);
     case "environment-not-owned":
-      throw environmentNotOwnedError(request, result);
+      return environmentNotOwnedError(request, result);
     case "environment-not-used":
-      throw environmentNotUsedError(request, result);
+      return environmentNotUsedError(request, result);
     case "unresolved-dynamic-base":
-      throw new Error(
+      return new Error(
         `No authoritative ${result.connector.label} base URL is available for this diagnostic. Verify the ${connectorSelector(result.connector.target)} connector configuration for the affected context and retry.`,
       );
     case "target-unavailable": {
@@ -362,15 +374,54 @@ export function resolveConnectorCheckDiagnostic(
         "runtime-configuration-unavailable":
           "has unavailable runtime configuration. Review its required fields and the account selected for this run",
       };
-      throw new Error(
+      return new Error(
         `Connector ${connectorSelector(result.target)} ${reasons[result.reason]}.`,
       );
     }
     case "run-context-unavailable":
-      throw new Error(
+      return new Error(
         "The current run context is unavailable for connector diagnosis. Retry from an active run or start a new run.",
       );
   }
+}
+
+export function connectorPermissionRequestCommand(
+  connectorSlug: string,
+  permission: string,
+  request: UrlDiagnosticRequest,
+): string {
+  return `okou connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
+}
+
+export function connectorCheckRetryCommand(
+  request: ConnectorCheckRequestBody,
+): string {
+  const args: string[] = [];
+  if (request.mode === "url") {
+    args.push(`--url ${shellQuoteArg(request.url)}`);
+    if ("target" in request && request.target) {
+      args.push(
+        `--connector ${shellQuoteArg(connectorSelector(request.target))}`,
+      );
+    } else if (
+      "connectorSlug" in request &&
+      request.connectorSlug !== undefined
+    ) {
+      args.push(`--connector ${shellQuoteArg(request.connectorSlug)}`);
+    }
+    if (request.environmentName !== undefined) {
+      args.push(`--env-name ${shellQuoteArg(request.environmentName)}`);
+    }
+    if (request.method !== "GET") {
+      args.push(`--method ${shellQuoteArg(request.method)}`);
+    }
+  } else {
+    args.push(`--env-name ${shellQuoteArg(request.environmentName)}`);
+    if (request.permission !== undefined) {
+      args.push(`--check-permission ${shellQuoteArg(request.permission)}`);
+    }
+  }
+  return `okou connector check ${args.join(" ")}`;
 }
 
 export function printDiagnosticSummary(

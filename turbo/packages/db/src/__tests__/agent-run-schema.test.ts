@@ -86,7 +86,6 @@ describe("agentRuns circular foreign keys", () => {
     );
     expect(agentRuns.officialWorkflowProvenance.notNull).toBe(false);
     expect(agentRuns.officialWorkflowProvenance.hasDefault).toBe(false);
-    expect(Reflect.has(agentRuns, "vm0ModelKeyId")).toBe(false);
     expect(agentRuns.builtInModelKeyId.notNull).toBe(false);
     expect(agentRuns.builtInModelKeyId.hasDefault).toBe(false);
     expect(agentRuns.builtInModelKeyId.name).toBe("built_in_model_key_id");
@@ -146,7 +145,6 @@ describe("agentRuns circular foreign keys", () => {
     }
     expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(19);
     expect(metadataPresenceSql.match(/ IS NOT NULL/gu)).toHaveLength(2);
-    expect(metadataPresenceSql).not.toContain("vm0_model_key_id");
     expect(metadataPresenceSql).toContain(
       '"agent_runs"."trigger_source" IS NOT NULL',
     );

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  artifactReferenceSchema,
+  artifactUrlSchema,
+} from "./artifact-references";
 
 import { authHeadersSchema, initContract } from "./base";
 import {
@@ -17,20 +21,26 @@ const c = initContract();
 const orientationSchema = z.enum(["landscape", "portrait"]);
 
 // The API additionally resolves every URL against the current user's managed
-// files and validates its actual MIME type before passing it to HeyGen.
-const fileUrlSchema = z
-  .url({ protocol: /^https$/, hostname: z.regexes.domain })
-  .pipe(
-    z.string().refine((value) => {
-      const url = new URL(value);
-      return (
-        !url.username &&
-        !url.password &&
-        !url.port &&
-        !/\.(?:localhost|local|internal)$/.test(url.hostname)
-      );
-    }, "Use a managed HTTPS file URL without credentials or custom ports"),
-  );
+// files and validates its actual MIME type before passing it to HeyGen. Stable
+// API references may use a local HTTP origin; the API verifies that origin and
+// ownership before converting them to signed R2 URLs.
+const fileUrlSchema = z.url({ protocol: /^https?$/ }).pipe(
+  z.string().refine((value) => {
+    const url = new URL(value);
+    if (url.username || url.password) {
+      return false;
+    }
+    if (url.pathname === "/api/web/download-file") {
+      return z.uuid().safeParse(url.searchParams.get("file_id")).success;
+    }
+    return (
+      url.protocol === "https:" &&
+      z.regexes.domain.test(url.hostname) &&
+      !url.port &&
+      !/\.(?:localhost|local|internal)$/.test(url.hostname)
+    );
+  }, "Use a managed HTTPS file URL or an authenticated artifact reference without credentials"),
+);
 
 export const introVideoAgentGenerateRequestSchema = z.object({
   requestId: z.uuid(),
@@ -40,7 +50,10 @@ export const introVideoAgentGenerateRequestSchema = z.object({
   avatarGroupId: introVideoAvatarGroupIdSchema.optional(),
   voiceId: introVideoVoiceIdSchema.optional(),
   orientation: orientationSchema,
-  fileUrls: z.array(fileUrlSchema).max(20).optional(),
+  fileUrls: z
+    .array(z.union([fileUrlSchema, artifactReferenceSchema]))
+    .max(20)
+    .optional(),
 });
 
 /**
@@ -56,7 +69,7 @@ export const introVideoAgentResponseSchema = z.object({
   providerStatus: z.string().optional(),
   notice: z.string().optional(),
   error: builtInGenerationErrorSchema.optional(),
-  url: z.url().optional(),
+  url: artifactUrlSchema.optional(),
   filename: z.string().optional(),
   contentType: z.literal("video/mp4").optional(),
   size: z.number().nonnegative().optional(),

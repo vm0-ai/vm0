@@ -32,9 +32,15 @@ import {
   ComputerUseDriverController,
   type ComputerUseDriver,
 } from "./computer-use-driver";
-import { createComputerUseNativeBackend } from "./computer-use-native";
+import {
+  createComputerUseNativeBackend,
+  type ComputerUseNativeRuntimeErrorContext,
+} from "./computer-use-native";
 import { createComputerUsePermissions } from "./computer-use-permissions";
-import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
+import {
+  ComputerUseRuntimeController,
+  type ComputerUsePermissionRecoveryDiagnostic,
+} from "./computer-use-runtime-controller";
 import {
   SUPPORTED_COMPUTER_USE_CAPABILITIES,
   type ComputerUseCommand,
@@ -116,6 +122,11 @@ interface NativeRequest {
 }
 
 function nativeProcesses(events: string[]) {
+  let permissionReply: {
+    status: string;
+    result?: unknown;
+    error?: { code: string };
+  } | null = null;
   const pauses = new Map<string, ReturnType<typeof pause>>();
   const active = new Set<ChildProcess>();
   const closeReached = deferred<void>();
@@ -178,8 +189,11 @@ function nativeProcesses(events: string[]) {
               },
             ],
           };
+        const reply = request.kind.startsWith("permissions.")
+          ? permissionReply
+          : null;
         output.write(
-          `${JSON.stringify({ id: request.id, status: "succeeded", result })}\n`,
+          `${JSON.stringify({ id: request.id, ...(reply ?? { status: "succeeded", result }) })}\n`,
         );
       };
       void reply();
@@ -195,6 +209,23 @@ function nativeProcesses(events: string[]) {
     return child;
   });
   return {
+    failNextWrite: (mode: "throw" | "callback") => {
+      for (const child of active) {
+        if (!child.stdin) throw new Error("Fixture has no stdin");
+        if (mode === "throw")
+          vi.spyOn(child.stdin, "write").mockImplementationOnce(() => {
+            throw new Error("fixture write failure");
+          });
+        else
+          vi.spyOn(child.stdin, "_write").mockImplementationOnce(
+            (_chunk, _encoding, done) =>
+              done(new Error("fixture pipe failure")),
+          );
+      }
+    },
+    permissions: (reply: typeof permissionReply) => {
+      permissionReply = reply;
+    },
     pause,
     closeReached,
     holdClose: () => {
@@ -219,11 +250,14 @@ function desktop(
     commandClock?: ComputerUseCommandClock;
     transitionTimeoutMs?: number;
     nativeShutdownGraceMs?: number;
+    nativeRequestTimeoutMs?: number;
     expectedQuitError?: string;
     plugin?: DesktopMcpPluginManager;
   } = {},
 ) {
   const events: string[] = [];
+  const nativeErrors: ComputerUseNativeRuntimeErrorContext[] = [];
+  const recoveries: ComputerUsePermissionRecoveryDiagnostic[] = [];
   const native = nativeProcesses(events);
   const timers = controlledTimers();
   const config = resolveDesktopConfig(undefined, "okou");
@@ -231,6 +265,10 @@ function desktop(
     clientVersion: "1.2.3",
   });
   const authSession = new DesktopAuthSession({
+    onChange: () => {
+      controller.cancelPermissionRefresh();
+      permissions.resetComputerUsePermissionState();
+    },
     apiBaseUrl: api,
     addClientHeaders,
     tokenUrl: buildDesktopAuthTokenUrl(config.authUrl),
@@ -245,11 +283,14 @@ function desktop(
       createComputerUseNativeBackend({
         helperPath: "/test/computer-use-helper",
         shutdownGraceMs: options.nativeShutdownGraceMs ?? 100,
+        requestTimeoutMs: options.nativeRequestTimeoutMs,
+        onRuntimeError: (_error, context) => nativeErrors.push(context),
       }),
   };
   const driver = new ComputerUseDriverController(driverDefinition, "darwin");
-  const permissions = createComputerUsePermissions((read) =>
-    driver.withPermissionProvider(read),
+  const permissions = createComputerUsePermissions(
+    (read) => driver.withPermissionProvider(read),
+    (query) => controller.refreshNativePermissions(query),
   );
   const requests: {
     path: string;
@@ -291,6 +332,7 @@ function desktop(
     for (const resolve of stateWaiters.splice(0)) resolve();
   };
   const controller = new ComputerUseRuntimeController({
+    onPermissionRecovery: (diagnostic) => recoveries.push(diagnostic),
     driver,
     createRuntime: () =>
       createDesktopComputerUseHostRuntime(
@@ -321,6 +363,7 @@ function desktop(
       ),
     refreshPermissions: permissions.refreshComputerUsePermissionState,
     getAuthState: () => authSession.getAuthState(),
+    getAuthAuthority: () => authSession.getAuthority(),
     setHostRuntimeOnline: (value) => {
       online.push(value);
       options.plugin?.setHostRuntimeOnline(value);
@@ -386,6 +429,9 @@ function desktop(
     controller,
     driver,
     driverDefinition,
+    authSession,
+    nativeErrors,
+    recoveries,
     permissions,
     native,
     events,
@@ -487,6 +533,40 @@ const action: ComputerUseCommand = {
 };
 
 describe("production driver generation and admission wiring", () => {
+  it.each(["switch", "drain"] as const)(
+    "drains a healthy claimed action when %s cancels a concurrent permission refresh",
+    async (mode) => {
+      const app = desktop();
+      await app.controller.start();
+      const write = app.native.pause("keyboard.type_text");
+      const command = app.claim(action);
+      app.timers.run(5_000);
+      command.response.resolve();
+      await write.reached.promise;
+      const refresh = app.permissions.refreshComputerUsePermissionState();
+      const rejected = expect(refresh).rejects.toThrow();
+      const transition =
+        mode === "switch"
+          ? app.controller.transitionDriver(app.driverDefinition)
+          : app.controller.drainAndStop();
+      write.resume.resolve();
+      const completed = await command.completed.promise;
+      command.completeResponse.resolve();
+      await transition;
+      await rejected;
+      expect(completed).toMatchObject({ status: "succeeded" });
+      expect(app.events.indexOf("completion")).toBeLessThan(
+        app.events.indexOf("dispose:1"),
+      );
+      expect(app.driver.getCapabilities()).toEqual(
+        mode === "switch" ? SUPPORTED_COMPUTER_USE_CAPABILITIES : [],
+      );
+      expect(app.controller.getHostState().status).toBe(
+        mode === "switch" ? "online" : "offline",
+      );
+    },
+  );
+
   it("drains delayed claim, permission, action, capture and completion on the original generation while the host stays alive", async () => {
     const app = desktop();
     await app.controller.start();
@@ -951,3 +1031,397 @@ it.each(["permissions.state", "apps.list", "app.open", "app.state"])(
     await app.driver.retire();
   },
 );
+
+describe("native permission recovery through the runtime owner", () => {
+  it("coalesces a hung read, retires before one fresh probe, and preserves the host", async () => {
+    const app = desktop({ nativeRequestTimeoutMs: 100 });
+    await app.controller.start();
+    const generation = app.driver.generation;
+    const pause = app.native.pause("permissions.state");
+    const first = app.permissions.refreshComputerUsePermissionState();
+    const second = app.permissions.refreshComputerUsePermissionState();
+    await pause.reached.promise;
+    const permissions = await Promise.all([first, second]);
+    expect(permissions).toEqual([
+      expect.objectContaining({ accessibility: true }),
+      expect.objectContaining({ accessibility: true }),
+    ]);
+    expect(app.native.created).toBe(2);
+    expect(app.driver.generation).not.toBe(generation);
+    expect(app.driver.getCapabilities()).toEqual(
+      SUPPORTED_COMPUTER_USE_CAPABILITIES,
+    );
+    expect(app.events.indexOf("dispose:1")).toBeLessThan(
+      app.events.indexOf("create:2"),
+    );
+    expect(
+      app.events.filter((event) => event === "2:permissions.state"),
+    ).toHaveLength(1);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(1);
+    expect(app.recoveries).toEqual([
+      expect.objectContaining({ generation, outcome: "recovered" }),
+    ]);
+    pause.resume.resolve();
+    await app.permissions.refreshComputerUsePermissionState();
+    expect(app.native.created).toBe(2);
+  });
+
+  it("ends a second hung probe without a third generation", async () => {
+    const app = desktop({ nativeRequestTimeoutMs: 100 });
+    await app.controller.start();
+    const first = app.native.pause("permissions.state");
+    const result = app.permissions.refreshComputerUsePermissionState();
+    const rejected = expect(result).rejects.toThrow();
+    await first.reached.promise;
+    const second = app.native.pause("permissions.state");
+    await second.reached.promise;
+    await rejected;
+    await app.driver.retire();
+    expect(app.native.created).toBe(2);
+    expect(app.driver.getCapabilities()).toEqual([]);
+    expect(app.controller.getDriverState()).toMatchObject({
+      phase: "error",
+      canRetry: true,
+    });
+    expect(app.recoveries).toEqual([
+      expect.objectContaining({ outcome: "failed" }),
+    ]);
+    first.resume.resolve();
+    second.resume.resolve();
+  });
+
+  it.each([
+    [
+      "denied",
+      {
+        status: "succeeded",
+        result: { accessibility: false, screenRecording: true },
+      },
+    ],
+    [
+      "native denial",
+      { status: "failed", error: { code: "permission_denied" } },
+    ],
+    ["malformed", { status: "succeeded", result: [] }],
+  ])(
+    "does not retry %s or reinterpret persistent permission grants",
+    async (_label, reply) => {
+      const app = desktop();
+      await app.controller.start();
+      app.native.permissions(reply);
+      await Promise.allSettled([
+        app.permissions.refreshComputerUsePermissionState(),
+      ]);
+      expect(app.native.created).toBe(1);
+      expect(app.driver.getCapabilities()).toEqual([]);
+      expect(app.recoveries).toEqual([]);
+      if (_label !== "denied")
+        expect(
+          app.permissions.getComputerUsePermissionState().accessibility,
+        ).toBe(true);
+    },
+  );
+
+  it.each([
+    "stop",
+    "auth",
+    "workspace",
+    "quit",
+    "update",
+    "cancel",
+    "switch",
+  ] as const)(
+    "%s supersedes cleanup and prevents a fresh probe",
+    async (action) => {
+      const app = desktop({ nativeRequestTimeoutMs: 100 });
+      await app.controller.start();
+      app.native.holdClose();
+      const pause = app.native.pause("permissions.state");
+      const abort = new AbortController();
+      const refresh = app.permissions.refreshComputerUsePermissionState({
+        signal: abort.signal,
+      });
+      const rejected = expect(refresh).rejects.toThrow();
+      await pause.reached.promise;
+      await app.native.closeReached.promise;
+      let supersede: Promise<void> = Promise.resolve();
+      if (action === "stop") supersede = app.controller.stop();
+      if (action === "auth") {
+        app.authSession.signOut();
+        supersede = app.controller.stopForAuthChange();
+      }
+      if (action === "workspace")
+        supersede = app.authSession.selectOrganization();
+      if (action === "quit" || action === "update")
+        supersede = app.controller.stopForQuit(
+          action === "quit" ? "app_quit" : "update_relaunch",
+        );
+      if (action === "cancel") abort.abort();
+      if (action === "switch")
+        supersede = app.controller.transitionDriver({
+          ...app.driverDefinition,
+          id: "replacement",
+        });
+      const settledSupersede = Promise.allSettled([supersede]);
+      app.native.close();
+      pause.resume.resolve();
+      await rejected;
+      await settledSupersede;
+      expect(
+        app.recoveries.filter((event) => event.outcome === "recovered"),
+      ).toEqual([]);
+      if (action === "switch") {
+        expect(app.driver.selectedDriver.id).toBe("replacement");
+        expect(app.native.created).toBe(2);
+      } else {
+        expect(
+          app.events.filter((event) => event === "2:permissions.state"),
+        ).toEqual([]);
+        expect(app.driver.getCapabilities()).toEqual([]);
+      }
+    },
+  );
+
+  it("leaves cleanup owned when old helper exit cannot be proven", async () => {
+    const app = desktop({
+      nativeRequestTimeoutMs: 100,
+      nativeShutdownGraceMs: 5,
+      expectedQuitError: "did not exit after SIGKILL",
+    });
+    await app.controller.start();
+    app.native.holdClose();
+    const pause = app.native.pause("permissions.state");
+    const result = app.permissions.refreshComputerUsePermissionState();
+    const rejected = expect(result).rejects.toThrow("did not exit");
+    await pause.reached.promise;
+    await rejected;
+    expect(app.native.created).toBe(1);
+    expect(app.driver.cleanupPending).toBe(true);
+    expect(app.nativeErrors).toContainEqual(
+      expect.objectContaining({ stage: "shutdown", exitKnown: false }),
+    );
+    expect(app.driver.getCapabilities()).toEqual([]);
+    pause.resume.resolve();
+  });
+
+  it("does not recover a stopped passive probe or a permission prompt", async () => {
+    const app = desktop({ nativeRequestTimeoutMs: 100 });
+    const pause = app.native.pause("permissions.state");
+    const passive = app.permissions.refreshComputerUsePermissionState();
+    const rejected = expect(passive).rejects.toThrow("timed out");
+    await pause.reached.promise;
+    await rejected;
+    expect(app.native.created).toBe(1);
+    expect(app.recoveries).toEqual([]);
+    pause.resume.resolve();
+    await app.controller.start({ userInitiated: true });
+    const prompt = app.native.pause("permissions.request_accessibility");
+    const request = app.permissions.requestComputerUseAccessibilityPermission();
+    const promptRejected = expect(request).rejects.toThrow("timed out");
+    await prompt.reached.promise;
+    await promptRejected;
+    expect(app.native.created).toBe(2);
+    expect(app.recoveries).toEqual([]);
+    prompt.resume.resolve();
+  });
+});
+
+describe("permission recovery ownership and deadlines", () => {
+  it.each([
+    "stop",
+    "sign-out",
+    "workspace",
+    "quit",
+    "update",
+    "cancel",
+  ] as const)(
+    "%s withdraws a pending fresh probe before a late success",
+    async (action) => {
+      const app = desktop({ nativeRequestTimeoutMs: 100 });
+      await app.controller.start();
+      const first = app.native.pause("permissions.state");
+      const abort = new AbortController();
+      const refresh = app.permissions.refreshComputerUsePermissionState({
+        signal: abort.signal,
+      });
+      const rejected = expect(refresh).rejects.toThrow();
+      await first.reached.promise;
+      const fresh = app.native.pause("permissions.state");
+      await fresh.reached.promise;
+      // The original process's buffered result is not fresh-generation readiness.
+      first.resume.resolve();
+      expect(app.driver.getCapabilities()).toEqual([]);
+      let change: Promise<void> = Promise.resolve();
+      if (action === "stop") change = app.controller.stop();
+      if (action === "sign-out") {
+        app.authSession.signOut();
+        change = app.controller.stopForAuthChange();
+      }
+      if (action === "workspace") change = app.authSession.selectOrganization();
+      if (action === "quit" || action === "update")
+        change = app.controller.stopForQuit(
+          action === "quit" ? "app_quit" : "update_relaunch",
+        );
+      if (action === "cancel") abort.abort();
+      const changed = Promise.allSettled([change]);
+      fresh.resume.resolve();
+      await rejected;
+      await changed;
+      expect(app.native.created).toBe(2);
+      expect(app.driver.getCapabilities()).toEqual([]);
+      expect(
+        app.recoveries.filter((value) => value.outcome === "recovered"),
+      ).toEqual([]);
+    },
+  );
+
+  it("uses the caller deadline before retry dispatch even when its timer has not run", async () => {
+    const app = desktop({ nativeRequestTimeoutMs: 100 });
+    await app.controller.start();
+    const pause = app.native.pause("permissions.state");
+    const deadline = performance.now() + 50;
+    const refresh = app.permissions.refreshComputerUsePermissionState({
+      deadline,
+    });
+    const rejected = expect(refresh).rejects.toThrow();
+    await pause.reached.promise;
+    // Native's real 100ms timer fires; the host's controlled deadline callback
+    // stays undelivered. The monotonic deadline must still reject replacement.
+    await rejected;
+    expect(app.native.created).toBe(1);
+    expect(app.driver.getCapabilities()).toEqual([]);
+    pause.resume.resolve();
+  });
+
+  it("keeps a claimed command in its failed generation through completion reporting", async () => {
+    const app = desktop({ nativeRequestTimeoutMs: 100 });
+    await app.controller.start();
+    const generation = app.driver.generation;
+    const pause = app.native.pause("permissions.state");
+    const claim = app.claim({
+      ...action,
+      id: "claimed-before-permission-recovery",
+    });
+    app.timers.run(5_000);
+    claim.response.resolve();
+    await pause.reached.promise;
+    const refresh = app.permissions.refreshComputerUsePermissionState();
+    const completed = await claim.completed.promise;
+    expect(completed).toMatchObject({ status: "failed" });
+    expect(app.driver.getCapabilities()).toEqual([]);
+    expect(app.native.created).toBe(1);
+    expect(app.events).not.toContain("1:keyboard.type_text");
+    claim.completeResponse.resolve();
+    await refresh;
+    expect(app.driver.generation).not.toBe(generation);
+    expect(app.events).not.toContain("2:keyboard.type_text");
+    expect(app.events.indexOf("completion")).toBeLessThan(
+      app.events.indexOf("create:2"),
+    );
+    pause.resume.resolve();
+  });
+
+  it("rejects an old snapshot after automatic permission recovery", async () => {
+    const app = desktop({ nativeRequestTimeoutMs: 100 });
+    await app.controller.start();
+    const capture = app.claim({
+      id: "capture-before-recovery",
+      kind: "app.state",
+      payload: { app: "test.app" },
+    });
+    app.timers.run(5_000);
+    capture.response.resolve();
+    const completed = await capture.completed.promise;
+    const result = completed.result as { snapshotId: string };
+    const pause = app.native.pause("permissions.state");
+    const refresh = app.permissions.refreshComputerUsePermissionState();
+    await pause.reached.promise;
+    capture.completeResponse.resolve();
+    await refresh;
+    const stale = app.claim({
+      ...action,
+      id: "stale-after-recovery",
+      payload: { ...action.payload, snapshotId: result.snapshotId },
+    });
+    app.timers.run(0);
+    stale.response.resolve();
+    expect(await stale.completed.promise).toMatchObject({
+      status: "failed",
+      error: { code: "unsupported_command" },
+    });
+    expect(app.events).not.toContain("2:keyboard.type_text");
+    stale.completeResponse.resolve();
+    pause.resume.resolve();
+  });
+});
+
+it("recovers only the correlated native permission execution deadline", async () => {
+  const app = desktop();
+  await app.controller.start();
+  app.native.holdClose();
+  app.native.permissions({
+    status: "failed",
+    error: { code: "target_app_unresponsive" },
+  });
+  const refresh = app.permissions.refreshComputerUsePermissionState();
+  await app.native.closeReached.promise;
+  expect(app.driver.getCapabilities()).toEqual([]);
+  app.native.permissions(null);
+  app.native.close();
+  await expect(refresh).resolves.toMatchObject({
+    accessibility: true,
+    screenRecording: true,
+  });
+  expect(app.native.created).toBe(2);
+  expect(app.nativeErrors).toEqual([
+    expect.objectContaining({
+      stage: "timeout",
+      requestKind: "permissions.state",
+    }),
+  ]);
+  expect(app.nativeErrors[0]?.timerDelayMs).toBeUndefined();
+});
+
+it.each(["throw", "callback"] as const)(
+  "settles %s write failures and queued probes without recovery",
+  async (mode) => {
+    const app = desktop();
+    await app.controller.start();
+    app.native.failNextWrite(mode);
+    const results = await Promise.allSettled([
+      app.permissions.refreshComputerUsePermissionState(),
+      app.permissions.refreshComputerUsePermissionState(),
+    ]);
+    expect(results.map((value) => value.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    app.native.close();
+    expect(app.native.created).toBe(1);
+    expect(app.driver.getCapabilities()).toEqual([]);
+    expect(app.nativeErrors).toEqual([
+      expect.objectContaining({ stage: "write", pendingRequestCount: 1 }),
+    ]);
+    expect(app.recoveries).toEqual([]);
+  },
+);
+
+it("cancels a native heartbeat probe at the existing host deadline", async () => {
+  const app = desktop();
+  await app.controller.start();
+  const pause = app.native.pause("permissions.state");
+  app.timers.run(2_000);
+  await pause.reached.promise;
+  app.timers.run(10_000);
+  await app.waitForHostState("recovering");
+  expect(app.driver.getCapabilities()).toEqual([]);
+  expect(app.native.created).toBe(1);
+  expect(app.nativeErrors.filter((error) => error.stage === "timeout")).toEqual(
+    [],
+  );
+  expect(app.recoveries).toEqual([]);
+  pause.resume.resolve();
+  await app.driver.retire();
+});

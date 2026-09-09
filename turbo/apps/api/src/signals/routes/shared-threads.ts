@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { setResHeader$ } from "../context/hono";
+import { requestSignal$, setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   createSharedThread$,
@@ -38,10 +38,12 @@ const sharedThreadTooLarge = Object.freeze({
 
 const createSharedThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const creationSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const auth = get(organizationAuthContext$);
     const publicBrand = PUBLIC_BRAND;
     const body = await get(createBody$);
     signal.throwIfAborted();
+    creationSignal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
@@ -56,9 +58,10 @@ const createSharedThreadInner$ = command(
         eventIds: body.data.eventIds,
         publicBrand,
       },
-      signal,
+      creationSignal,
     );
     signal.throwIfAborted();
+    creationSignal.throwIfAborted();
     if (result.kind === "thread-not-found") {
       return notFound("Chat thread not found");
     }

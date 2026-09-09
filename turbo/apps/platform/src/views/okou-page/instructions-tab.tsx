@@ -8,6 +8,7 @@ interface InstructionsTabProps {
   loading: boolean;
   fetchError: string | null;
   editedContent: string | null;
+  editorRevision: number;
   isDirty: boolean;
   isBuilding: boolean;
   buildError: string | null;
@@ -21,6 +22,7 @@ export function InstructionsTab({
   loading,
   fetchError,
   editedContent,
+  editorRevision,
   isDirty,
   isBuilding,
   buildError,
@@ -32,10 +34,9 @@ export function InstructionsTab({
   const rawContent = instructions?.content ?? "";
   const displayContent = editedContent ?? rawContent;
 
-  // Use rawContent as key so the editor remounts when saved content changes
-  // (initial fetch or after discard). During typing, editedContent changes
-  // but rawContent stays the same, so the editor keeps its internal state.
-  const editorKey = rawContent;
+  // Discard must reset the document, undo history, and focus even though the
+  // saved content has not changed. Keep the key stable while the user types.
+  const editorKey = `${editorRevision}:${rawContent}`;
 
   return (
     <div className="mx-auto max-w-[900px]">

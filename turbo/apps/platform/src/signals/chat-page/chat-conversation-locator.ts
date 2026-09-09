@@ -19,30 +19,20 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, timeout } from "signal-timers";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
-  applyCompletedWorkExpansion,
-  buildCompletedWorkFolding,
   chatEventDisplayError,
-  completedWorkExpandedKeys$,
-  completedWorkExpandedKeysForScrollTarget,
   isRenderableAssistantEvent,
-} from "./completed-work-folding.ts";
+} from "./chat-event-display.ts";
 import {
   applyRunWorkExpansion,
   buildRunWorkFolding,
   runWorkExpandedKeys$,
   runWorkExpandedKeysForScrollTarget,
 } from "./run-work-folding.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
-import {
-  buildRunGroupFolding,
-  runGroupExpansionOverrides$,
-} from "./run-group-folding.ts";
 import type {
   ScrollToEventOptions,
   ThreadScrollPosition,
@@ -94,6 +84,7 @@ export const BAND_BASE_WIDTH_PX = 32;
 
 const GROUP_SELECTOR = '[data-role="user"], [data-role="assistant"]';
 const SCROLL_ANCHOR_SELECTOR = "[data-chat-scroll-anchor-event-id]";
+const RUN_WORK_MAIN_SCROLL_ANCHOR_SELECTOR = `[data-chat-run-work-main] ${SCROLL_ANCHOR_SELECTOR}`;
 
 export type LocatorRole = keyof typeof TICK_METRICS;
 
@@ -237,9 +228,13 @@ function readTurns(container: HTMLElement): DomTurn[] {
     if (rect.height === 0) {
       continue;
     }
+    // Expanded work history precedes the main result in the DOM, while the
+    // locator still represents the result as the assistant turn.
     const anchor = element.matches(SCROLL_ANCHOR_SELECTOR)
       ? element
-      : element.querySelector<HTMLElement>(SCROLL_ANCHOR_SELECTOR);
+      : (element.querySelector<HTMLElement>(
+          RUN_WORK_MAIN_SCROLL_ANCHOR_SELECTOR,
+        ) ?? element.querySelector<HTMLElement>(SCROLL_ANCHOR_SELECTOR));
     const eventId = anchor?.dataset.chatScrollAnchorEventId;
     if (!eventId) {
       continue;
@@ -354,46 +349,14 @@ function createVisibleTurns(
   return computed((get): readonly LocatorTurn[] => {
     const activeGroups = activeGroupsForLocator(get(allChatGroups$));
     const targetEventId = get(threadScrollPosition$)?.targetEventId ?? null;
-    const runWorkFoldingEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
-    const runGroupFolding = buildRunGroupFolding(
-      activeGroups,
-      get(runGroupExpansionOverrides$),
-      targetEventId,
-      { preserveRunGroupsForWorkFolding: runWorkFoldingEnabled },
-    );
-    const runGroupVisibleGroups =
-      runGroupFolding?.visibleGroups ?? activeGroups;
-    if (!runWorkFoldingEnabled) {
-      const completedWorkFolding = buildCompletedWorkFolding(
-        runGroupVisibleGroups,
-      );
-      const completedWorkExpandedKeys =
-        completedWorkExpandedKeysForScrollTarget(
-          completedWorkFolding,
-          get(completedWorkExpandedKeys$),
-          targetEventId,
-        );
-      return turnsFromGroups(
-        applyCompletedWorkExpansion(
-          runGroupVisibleGroups,
-          completedWorkFolding,
-          completedWorkExpandedKeys,
-        ),
-      );
-    }
-    const runWorkFolding = buildRunWorkFolding(runGroupVisibleGroups);
+    const runWorkFolding = buildRunWorkFolding(activeGroups);
     const runWorkExpandedKeys = runWorkExpandedKeysForScrollTarget(
       runWorkFolding,
       get(runWorkExpandedKeys$),
       targetEventId,
     );
     return turnsFromGroups(
-      applyRunWorkExpansion(
-        runGroupVisibleGroups,
-        runWorkFolding,
-        runWorkExpandedKeys,
-      ),
+      applyRunWorkExpansion(activeGroups, runWorkFolding, runWorkExpandedKeys),
     );
   });
 }

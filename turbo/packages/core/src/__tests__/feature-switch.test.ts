@@ -22,11 +22,9 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.CodexFastMode).toBe("_fastModel");
     expect(FeatureSwitchKey.ChatPreference).toBe("chatPreference");
     expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
-    expect(FeatureSwitchKey.SharedWorkerRealtime).toBe("sharedWorkerRealtime");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
     expect(FeatureSwitchKey.SshAccess).toBe("sshAccess");
-    expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
     expect(FeatureSwitchKey.AgentMessageMath).toBe("agentMessageMath");
     expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
       "progressiveArtifactPreview",
@@ -37,9 +35,6 @@ describe("FeatureSwitchKey", () => {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {})).toBe(
-      true,
-    );
     expect(isFeatureEnabled(FeatureSwitchKey.AvatarNeckSweater, {})).toBe(true);
   });
 
@@ -52,9 +47,6 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.SshAccess, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.SharedWorkerRealtime, {})).toBe(
-      false,
-    );
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.SshAccess]).toEqual({
       maintainer: "liangyou@okou.ai",
       description: "Enable standalone Runner-mediated SSH configuration",
@@ -192,8 +184,8 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.OkouDebug]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       true,
@@ -201,12 +193,10 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatPreference]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SharedWorkerRealtime]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
@@ -220,8 +210,8 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.OkouDebug]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       false,
@@ -229,14 +219,12 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatPreference]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SharedWorkerRealtime]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -278,7 +266,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
-    expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
+    expect(states[FeatureSwitchKey.TestOauthConnector]).toBe(false);
   });
 
   it("should apply overrides to disable enabled features", () => {
@@ -302,24 +290,16 @@ describe("getAllFeatureStates", () => {
 });
 
 describe("feature switch override filtering", () => {
-  it("keeps overrides for every registered switch", () => {
+  it("keeps registered overrides when the input also contains unknown keys", () => {
     const switches = Object.fromEntries(
       Object.values(FeatureSwitchKey).map((key) => {
         return [key, true];
       }),
     );
 
-    expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
-  });
-
-  it("ignores removed Pi memory overrides while retaining the PiLoop control", () => {
     expect(
-      filterFeatureSwitchOverrides({
-        piMemoryRecall: false,
-        piMemoryGeneration: false,
-        [FeatureSwitchKey.PiLoop]: true,
-      }),
-    ).toStrictEqual({ [FeatureSwitchKey.PiLoop]: true });
+      filterFeatureSwitchOverrides({ ...switches, unknownFeature: true }),
+    ).toStrictEqual(switches);
   });
 });
 
@@ -366,9 +346,6 @@ describe("getFeatureSwitchMetadata", () => {
   it("should classify non-internal switches by rollout audience", () => {
     const metadata = getFeatureSwitchMetadata();
 
-    expect(metadata[FeatureSwitchKey.PresentationTemplates].rolloutStage).toBe(
-      "released",
-    );
     expect(metadata[FeatureSwitchKey.AvatarNeckSweater].rolloutStage).toBe(
       "released",
     );
@@ -399,7 +376,7 @@ describe("overrides", () => {
 
   it("should not affect keys without overrides", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.DropboxConnector, {
+      isFeatureEnabled(FeatureSwitchKey.TestOauthConnector, {
         overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
       }),
     ).toBe(false);

@@ -21,6 +21,7 @@ import {
   getOkouConnectorAccountContextFile,
 } from "../../lib/okou-env";
 import { connectorAccountCliLabel } from "./account-label";
+import { connectorInspectionType } from "./inspection";
 
 export const RUN_CONNECTOR_ACCOUNT_CONTEXT_MAX_BYTES = 1024 * 1024;
 
@@ -90,6 +91,8 @@ export type RunConnectorAccountLookup =
 
 export interface RunConnectorAccountEntry {
   readonly target: ConnectorAccountTarget;
+  readonly connectorType: ReturnType<typeof connectorInspectionType>;
+  readonly definitionAvailable: boolean;
   readonly slug: string;
   readonly connectorLabel: string;
   readonly account: RunConnectorAccountState;
@@ -275,7 +278,12 @@ function connectorIdentity(
   target: ConnectorAccountTarget,
   catalog: readonly ConnectorCatalogItem[],
   customConnectors: readonly CustomConnectorResponse[],
-): { readonly slug: string; readonly label: string } {
+): {
+  readonly slug: string;
+  readonly label: string;
+  readonly connectorType: ReturnType<typeof connectorInspectionType>;
+  readonly definitionAvailable: boolean;
+} {
   if (target.kind === "builtin") {
     const definition = catalog.find((connector) => {
       return connector.slug === target.connectorSlug;
@@ -283,6 +291,8 @@ function connectorIdentity(
     return {
       slug: target.connectorSlug,
       label: definition?.label ?? target.connectorSlug,
+      connectorType: "builtin",
+      definitionAvailable: definition !== undefined,
     };
   }
   const definition = customConnectors.find((connector) => {
@@ -291,6 +301,8 @@ function connectorIdentity(
   return {
     slug: definition?.slug ?? `custom:${target.customConnectorId}`,
     label: definition?.displayName ?? target.customConnectorId,
+    connectorType: connectorInspectionType(target, definition ?? null),
+    definitionAvailable: definition !== undefined,
   };
 }
 
@@ -353,6 +365,8 @@ export async function resolveRunConnectorAccountView(): Promise<RunConnectorAcco
       const identity = connectorIdentity(target, catalog, customConnectors);
       return {
         target,
+        connectorType: identity.connectorType,
+        definitionAvailable: identity.definitionAvailable,
         slug: identity.slug,
         connectorLabel: identity.label,
         account: accountState(projected, metadata),

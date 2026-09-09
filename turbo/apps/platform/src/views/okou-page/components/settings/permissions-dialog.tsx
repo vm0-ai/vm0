@@ -601,13 +601,7 @@ function PermissionAllowDurationDropdown({
           <ChevronDown size={12} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="w-40"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-        }}
-      >
+      <DropdownMenuContent align="start" className="w-40" finalFocus={false}>
         {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
           return (
             <DropdownMenuItem
@@ -1679,7 +1673,11 @@ export function PermissionsDialog(props: PermissionsDrawerProps) {
         return !open && handleClose();
       }}
     >
-      <DialogContent className="!flex h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[760px] !flex-col !overflow-hidden">
+      <DialogContent
+        maxWidth={760}
+        height={720}
+        contentClassName="flex flex-col overflow-hidden"
+      >
         <PermissionsContent
           props={props}
           surface="dialog"

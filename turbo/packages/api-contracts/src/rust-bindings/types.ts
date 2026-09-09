@@ -1,4 +1,6 @@
+import { piNativeTypeBindings } from "./pi-native-types";
 import type { z } from "zod";
+import { sshTypeBindings } from "./ssh-types";
 import { knownRunFailureReasonSchema } from "../contracts/run-failure-reasons";
 import { modelProviderCodexRuntimeConfigSchema } from "../contracts/model-providers";
 import {
@@ -30,6 +32,8 @@ export interface RustTypeBinding {
   readonly rustTypeName: string;
   readonly direction: "request" | "response";
   readonly fieldTypeOverrides?: Readonly<Record<string, string>>;
+  /** Decode sensitive responses directly, without Debug/Clone/Serialize or tagged buffering. */
+  readonly sensitive?: boolean;
   readonly declarations: readonly RustTypeDeclarationDoc[];
 }
 
@@ -52,6 +56,10 @@ export const rustTypeRootDoc = [
 ] as const;
 
 export const rustTypeModuleDocs = [
+  {
+    rustModulePath: ["runners", "ssh"],
+    rustDoc: ["Private Runner SSH authority DTOs."],
+  },
   {
     rustModulePath: ["webhooks", "agent", "pi_memory_phase2"],
     rustDoc: ["Private Pi memory maintenance control."],
@@ -129,6 +137,8 @@ export const rustTypeModuleDocs = [
 ] satisfies readonly RustTypeModuleDoc[];
 
 export const rustTypeBindings = [
+  ...sshTypeBindings,
+  ...piNativeTypeBindings,
   {
     schema: webhookPiMemoryPhase2UsageContract.send.body,
     rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],

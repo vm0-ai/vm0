@@ -354,8 +354,15 @@ async fn execute_reused_sandbox_drains_archive_when_guest_state_restore_fails() 
     let task = tokio::spawn(async move {
         let mut telemetry = test_telemetry(&config, &context);
         let outcome = execute_reused_sandbox(
-            sandbox,
-            &source_ip,
+            ReusedSandboxRun {
+                sandbox_id: sandbox.id().parse().unwrap(),
+                factory: &MockSandboxFactory::new(),
+                params: &default_params(),
+                sandbox,
+                source_ip,
+                workspace_image: None,
+                kind: crate::idle_pool::IdleSandboxKind::Exact,
+            },
             &context,
             &config,
             RunStart {
@@ -750,10 +757,9 @@ async fn execute_job_reuse_skips_workspace_mount_validation() {
     assert!(outcome.error().is_none());
     assert!(outcome.sandbox.is_some());
     assert!(
-        overrides
-            .exec_calls()
-            .iter()
-            .all(|call| !call.cmd.contains("workspace_device=")),
+        overrides.exec_calls().iter().all(|call| !call
+            .cmd
+            .contains(guest_contracts::guest_binary::WORKSPACE_MOUNT_PATH)),
         "reused execution must rely on the idle-admission mount proof"
     );
 }

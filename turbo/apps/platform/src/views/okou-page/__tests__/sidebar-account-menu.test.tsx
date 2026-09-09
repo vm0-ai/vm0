@@ -292,6 +292,7 @@ function mockAdminBillingStatus(
         });
       }
       return respond(200, {
+        showUsagePack: false,
         tier: "pro",
         credits,
         onboardingPaymentPending: false,
@@ -505,6 +506,7 @@ test("Show a member’s latest package credits in the account menu", async () =>
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
+      showUsagePack: true,
       credits: 12_500,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -1222,7 +1224,7 @@ test("Restore page interaction after closing Settings", async () => {
     ).not.toBeInTheDocument();
   });
 
-  expect(document.querySelector(".okou-dialog-overlay")).toBeNull();
+  expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
   expect(document.body.style.pointerEvents).not.toBe("none");
 
   const chatList = await screen.findByTestId("chat-list-column");

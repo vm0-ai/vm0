@@ -1374,129 +1374,149 @@ test("Create and connect an MCP server with automatic authentication", async () 
   });
 });
 
-test("Reconnect the selected MCP account without changing Agent access", async () => {
-  const connector = mcpCustomConnector({
-    authMode: "automatic",
-    fields: [],
-    headerInjections: [],
-    configuredFieldKeys: [],
-  });
-  const work = customAccount(connector.id, crypto.randomUUID(), {
-    displayName: "Work",
-  });
-  let personal = customAccount(connector.id, crypto.randomUUID(), {
-    displayName: "Personal",
-    isDefault: false,
-    authMethod: "oauth",
-    connectionStatus: "reconnect-required",
-    reconnectReason: "authorization_expired_or_revoked",
-  });
-  context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
-    listAgent(RESEARCH_ID, "Research"),
-  ]);
-  mockCustomAgentAccess();
-  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
-    return respond(200, { connectors: [connector] });
-  });
-  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
-    return respond(200, {
-      summaries: [
-        {
-          target: work.target,
-          accountCount: 2,
-          attentionCount:
-            personal.connectionStatus === "reconnect-required" ? 1 : 0,
-          defaultConnection: work,
-        },
-      ],
+test.each([false, true])(
+  "Reconnect an MCP account with a reusable dialog (close while pending: %s)",
+  async (dismiss) => {
+    const connector = mcpCustomConnector({
+      authMode: "automatic",
+      fields: [],
+      headerInjections: [],
+      configuredFieldKeys: [],
     });
-  });
-  context.mocks.api(
-    connectorAccountsContract.connection,
-    ({ params, respond }) => {
-      return params.connectionId === personal.id
-        ? respond(200, personal)
-        : respond(404, {
-            error: { code: "NOT_FOUND", message: "Account not found" },
-          });
-    },
-  );
-  context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
-    return respond(200, { connections: [work, personal], nextCursor: null });
-  });
-  context.mocks.api(
-    customConnectorOAuth2Contract.start,
-    ({ body, respond }) => {
-      expect(body.account).toStrictEqual({
-        intent: "reconnect",
-        connectionId: personal.id,
-      });
+    const work = customAccount(connector.id, crypto.randomUUID(), {
+      displayName: "Work",
+    });
+    let personal = customAccount(connector.id, crypto.randomUUID(), {
+      displayName: "Personal",
+      isDefault: false,
+      authMethod: "oauth",
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
+    context.mocks.data.agents([
+      listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+      listAgent(RESEARCH_ID, "Research"),
+    ]);
+    mockCustomAgentAccess();
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
       return respond(200, {
-        result: "authorization",
-        connectionId: personal.id,
-        authorizationUrl: "https://oauth.acme.test/reconnect",
+        summaries: [
+          {
+            target: work.target,
+            accountCount: 2,
+            attentionCount:
+              personal.connectionStatus === "reconnect-required" ? 1 : 0,
+            defaultConnection: work,
+          },
+        ],
       });
-    },
-  );
-  await setupCustomPage({ mcp: true });
-  const manageAccounts = await waitFor(() => {
-    return getConnectorAction("button", "Manage Acme MCP accounts");
-  });
-  click(manageAccounts);
-  const manager = await screen.findByRole("dialog", {
-    name: "Manage Acme MCP accounts",
-  });
-  const personalRow = await within(manager).findByRole("group", {
-    name: "Personal",
-  });
-  click(getConnectorAction("button", "Reconnect", personalRow));
-  const dialog = await screen.findByRole("dialog", {
-    name: "Connect Acme MCP",
-  });
-
-  const cancelledWindow = createAuthWindow();
-  context.mocks.browser.open(cancelledWindow);
-  click(getConnectorAction("button", "Continue", dialog));
-  await waitFor(() => {
-    expect(cancelledWindow.location.href).toBe(
-      "https://oauth.acme.test/reconnect",
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        return params.connectionId === personal.id
+          ? respond(200, personal)
+          : respond(404, {
+              error: { code: "NOT_FOUND", message: "Account not found" },
+            });
+      },
     );
-  });
-  cancelledWindow.close();
-  await waitFor(() => {
-    expect(getConnectorAction("button", "Continue", dialog)).toBeEnabled();
-  });
-  expect(dialog).toBeInTheDocument();
-  await waitFor(() => {
-    expect(getConnectorCard("Acme MCP")).toHaveTextContent("Add access");
-  });
-
-  const completedWindow = createAuthWindow();
-  context.mocks.browser.open(completedWindow);
-  click(getConnectorAction("button", "Continue", dialog));
-  await waitFor(() => {
-    expect(completedWindow.location.href).toBe(
-      "https://oauth.acme.test/reconnect",
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: [work, personal], nextCursor: null });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, respond }) => {
+        expect(body.account).toStrictEqual({
+          intent: "reconnect",
+          connectionId: personal.id,
+        });
+        return respond(200, {
+          result: "authorization",
+          connectionId: personal.id,
+          authorizationUrl: "https://oauth.acme.test/reconnect",
+        });
+      },
     );
-  });
-  personal = {
-    ...personal,
-    connectionStatus: "connected",
-    reconnectReason: null,
-    updatedAt: "2026-01-01T00:00:01.000Z",
-  };
-  completedWindow.close();
-  await waitFor(() => {
+    await setupCustomPage({ mcp: true });
+    const manageAccounts = await waitFor(() => {
+      return getConnectorAction("button", "Manage Acme MCP accounts");
+    });
+    click(manageAccounts);
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage Acme MCP accounts",
+    });
+    const personalRow = await within(manager).findByRole("group", {
+      name: "Personal",
+    });
+    click(getConnectorAction("button", "Reconnect", personalRow));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Acme MCP",
+    });
+
+    const cancelledWindow = createAuthWindow();
+    context.mocks.browser.open(cancelledWindow);
+    click(getConnectorAction("button", "Continue", dialog));
+    await waitFor(() => {
+      expect(cancelledWindow.location.href).toBe(
+        "https://oauth.acme.test/reconnect",
+      );
+    });
+    await expect(
+      within(dialog).findByText("Connecting…"),
+    ).resolves.toBeVisible();
+    expect(getConnectorAction("button", "Connecting…", dialog)).toBeDisabled();
+    expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+    expect(within(dialog).getByLabelText("Close")).toBeEnabled();
+    cancelledWindow.close();
+    await waitFor(() => {
+      expect(getConnectorAction("button", "Continue", dialog)).toBeEnabled();
+    });
+    expect(dialog).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getConnectorCard("Acme MCP")).toHaveTextContent("Add access");
+    });
+
+    const completedWindow = createAuthWindow();
+    context.mocks.browser.open(completedWindow);
+    click(getConnectorAction("button", "Continue", dialog));
+    await waitFor(() => {
+      expect(completedWindow.location.href).toBe(
+        "https://oauth.acme.test/reconnect",
+      );
+    });
+    await expect(
+      within(dialog).findByText("Connecting…"),
+    ).resolves.toBeVisible();
+    expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+    if (dismiss) {
+      click(within(dialog).getByLabelText("Close"));
+    }
+    await waitFor(() => {
+      expect(screen.queryAllByRole("dialog")).toHaveLength(dismiss ? 0 : 1);
+    });
+    expect(completedWindow.closed).toBeFalsy();
+    personal = {
+      ...personal,
+      connectionStatus: "connected",
+      reconnectReason: null,
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    };
+    completedWindow.close();
+    await waitFor(() => {
+      expect(
+        getConnectorAction("button", "Manage Acme MCP access"),
+      ).toHaveTextContent("Add access");
+      expect(dialog).not.toBeInTheDocument();
+    });
     expect(
-      getConnectorAction("button", "Manage Acme MCP access"),
-    ).toHaveTextContent("Add access");
-    expect(dialog).not.toBeInTheDocument();
-  });
-  expect(
-    screen.queryByRole("dialog", { name: "Name your Acme MCP account" }),
-  ).not.toBeInTheDocument();
-});
+      screen.queryByRole("dialog", { name: "Name your Acme MCP account" }),
+    ).not.toBeInTheDocument();
+  },
+);
 
 test("Create, edit, and connect an OAuth MCP connector", async () => {
   let connector: CustomConnectorMcpResponse | null = null;

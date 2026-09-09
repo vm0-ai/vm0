@@ -20,6 +20,10 @@ import {
   type ConnectorPermissionInfo,
 } from "./shared/firewall-permissions";
 import {
+  loadCustomConnectorPermissionInfos,
+  type CustomConnectorPermissionInfo,
+} from "./shared/custom-connector-permissions";
+import {
   resolveRunConnectorAccountView,
   runConnectorAccountUnavailableMessage,
   type RunConnectorAccountEntry,
@@ -99,6 +103,81 @@ function printConnectorPermissions(info: ConnectorPermissionInfo): void {
   );
 }
 
+function printCustomConnectorPermissions(
+  info: CustomConnectorPermissionInfo | undefined,
+): void {
+  const authorization = info?.authorization;
+  const enablement =
+    authorization?.state === "enabled"
+      ? "enabled"
+      : authorization?.state === "not-enabled"
+        ? "not enabled"
+        : "unavailable";
+  console.log(`    Agent enablement: ${enablement}`);
+
+  if (!info || info.model.kind === "unavailable") {
+    console.log(chalk.dim("    Permission information unavailable"));
+    return;
+  }
+  if (info.model.kind === "connector") {
+    console.log(
+      chalk.dim("    Connector-level authorization (no named permissions)"),
+    );
+    return;
+  }
+
+  const { bundle } = info.model;
+  const selected =
+    authorization?.state === "enabled"
+      ? new Set(authorization.permissionNames)
+      : null;
+  const nameWidth = Math.max(
+    "unknown endpoints".length,
+    ...bundle.permissions.map((permission) => {
+      return permission.name.length;
+    }),
+  );
+  console.log(chalk.dim("    Named permissions:"));
+  for (const permission of bundle.permissions) {
+    const name = permission.name.padEnd(nameWidth);
+    const description = permission.description ?? "";
+    if (selected === null) {
+      console.log(`      ${name}  ${description}`);
+      continue;
+    }
+    const isSelected = selected.has(permission.name);
+    const policy = isSelected
+      ? "allow"
+      : (bundle.defaultPolicies[permission.name] ?? "deny");
+    const source = isSelected ? "selected" : "default";
+    console.log(
+      `    ${policyIcon(policy)} ${name}  ${description} (${source})`,
+    );
+  }
+  if (selected !== null) {
+    console.log(
+      `    ${policyIcon("deny")} ${"unknown endpoints".padEnd(nameWidth)}  Endpoints not matching any rule`,
+    );
+  }
+}
+
+function printRunConnectorPermissions(
+  connector: RunConnectorAccountEntry,
+  builtinPermissions: ReadonlyMap<string, ConnectorPermissionInfo>,
+  customPermissions: ReadonlyMap<string, CustomConnectorPermissionInfo>,
+): void {
+  if (connector.target.kind === "custom") {
+    printCustomConnectorPermissions(
+      customPermissions.get(connector.target.customConnectorId),
+    );
+    return;
+  }
+  const info = builtinPermissions.get(connector.slug);
+  if (info) {
+    printConnectorPermissions(info);
+  }
+}
+
 /**
  * Workspace identity is supplementary: whoami must still print the agent
  * identity, capabilities, and connectors when the org lookup fails or 404s.
@@ -173,29 +252,45 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
     if (view.connectors.length === 0) return;
 
     let permissionInfoBySlug = new Map<string, ConnectorPermissionInfo>();
-    let permissionDataAvailable = false;
+    let customPermissionInfoById = new Map<
+      string,
+      CustomConnectorPermissionInfo
+    >();
     if (permissionSources) {
       const [grantsResult, enabledResult] = permissionSources;
-
-      if (
+      const [builtinResult, customResult] = await Promise.allSettled([
         grantsResult.status === "fulfilled" &&
         enabledResult.status === "fulfilled"
-      ) {
-        permissionDataAvailable = true;
-        const permissionInfos = await loadConnectorPermissionInfos({
-          displayConnectorSlugs: view.connectors.map((connector) => {
-            return connector.slug;
+          ? loadConnectorPermissionInfos({
+              displayConnectorSlugs: view.connectors.flatMap((connector) => {
+                return connector.target.kind === "builtin"
+                  ? [connector.slug]
+                  : [];
+              }),
+              defaultPolicyConnectorSlugs: enabledResult.value,
+              storedPolicies: connectorPermissionGrantsToFirewallPolicies(
+                grantsResult.value,
+              ),
+            })
+          : Promise.resolve([]),
+        loadCustomConnectorPermissionInfos({
+          agentId: agentId!,
+          customConnectorIds: view.connectors.flatMap((connector) => {
+            return connector.target.kind === "custom"
+              ? [connector.target.customConnectorId]
+              : [];
           }),
-          defaultPolicyConnectorSlugs: enabledResult.value,
-          storedPolicies: connectorPermissionGrantsToFirewallPolicies(
-            grantsResult.value,
-          ),
-        });
+        }),
+      ]);
+      if (builtinResult.status === "fulfilled") {
         permissionInfoBySlug = new Map(
-          permissionInfos.map((info) => {
+          builtinResult.value.map((info) => {
             return [info.connectorSlug, info];
           }),
         );
+      }
+      if (customResult.status === "fulfilled") {
+        customPermissionInfoById = customResult.value;
       }
     }
 
@@ -205,11 +300,12 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       const identity = formatRunConnectorIdentity(connector);
       console.log(`  ${connector.slug.padEnd(14)}${identity}`);
 
-      if (permissionDataAvailable) {
-        const info = permissionInfoBySlug.get(connector.slug);
-        if (info) {
-          printConnectorPermissions(info);
-        }
+      if (showPermissions) {
+        printRunConnectorPermissions(
+          connector,
+          permissionInfoBySlug,
+          customPermissionInfoById,
+        );
       }
     }
   } catch {
@@ -250,7 +346,10 @@ async function showLocalInfo(): Promise<void> {
 export const whoamiCommand = new Command()
   .name("whoami")
   .description("Show agent identity, run ID, and capabilities")
-  .option("--permissions", "Show full permission details for each connector")
+  .option(
+    "--permissions",
+    "Show connector enablement and permission details in a sandbox",
+  )
   .addHelpText(
     "after",
     `
@@ -260,7 +359,14 @@ Examples:
 
 Notes:
   - Inside sandbox: shows agent ID, run ID, org ID, and granted capabilities
-  - Use --permissions to see detailed permission breakdown per connector
+  - Connector account identity comes from the current run's admitted accounts
+  - --permissions shows builtin permission rules and custom connector Agent enablement
+  - Custom HTTP permission bundles also show selections and effective policies
+    when available. MCP connectors and custom HTTP connectors without bundles
+    use connector-level authorization. Missing details do not establish access.
+  - Manage custom HTTP permissions in Connectors > agent access > Permissions
+  - Outside a sandbox, shows authentication and org information;
+    --permissions does not expand connector permissions
   - Your agent ID is also available as $OKOU_AGENT_ID`,
   )
   .action(

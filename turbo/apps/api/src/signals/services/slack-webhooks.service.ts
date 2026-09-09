@@ -376,10 +376,7 @@ function buildOrgConnectUrl(
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
-function buildNotInstalledMessage(
-  publicBrand: PublicBrand,
-  detail?: string,
-): unknown[] {
+function buildNotInstalledMessage(detail?: string): unknown[] {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
@@ -428,11 +425,10 @@ async function installationForWebhook(
 
 function buildOfficialSlackHelpMessage(args: {
   readonly installation: SlackInstallation | undefined;
-  readonly publicBrand: PublicBrand;
   readonly canSwitch: boolean;
   readonly canModel: boolean;
 }): SlackAnyBlock[] {
-  return buildHelpMessage(args.publicBrand, {
+  return buildHelpMessage({
     canSwitch: args.canSwitch,
     canModel: args.canModel,
     botUserId: args.installation?.botUserId,
@@ -1098,7 +1094,6 @@ const refreshOrgAppHome$ = command(
       await client.publishAppHome(
         slackUserId,
         buildAppHomeView({
-          publicBrand: installation.publicBrand,
           botUserId: installation.botUserId,
           isLinked: false,
           loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, "", undefined),
@@ -1159,7 +1154,6 @@ const refreshOrgAppHome$ = command(
     await client.publishAppHome(
       slackUserId,
       buildAppHomeView({
-        publicBrand: installation.publicBrand,
         botUserId: installation.botUserId,
         isLinked: true,
         userId: connection.userId,
@@ -1368,7 +1362,6 @@ export const handleSlackCommands$ = command(
       return ephemeral(
         buildOfficialSlackHelpMessage({
           installation,
-          publicBrand,
           canSwitch: canSwitchAgents,
           canModel: await canModel(),
         }),
@@ -1379,7 +1372,6 @@ export const handleSlackCommands$ = command(
       if (!installation) {
         return ephemeral(
           buildNotInstalledMessage(
-            publicBrand,
             `The ${OFFICIAL_SLACK_APP_NAME} Slack app hasn't been set up for this workspace yet. An org admin can complete the setup from the platform.`,
           ),
         );
@@ -1405,7 +1397,7 @@ export const handleSlackCommands$ = command(
     }
 
     if (!installation) {
-      return ephemeral(buildNotInstalledMessage(publicBrand));
+      return ephemeral(buildNotInstalledMessage());
     }
 
     if (subCommand === "disconnect") {
@@ -1457,7 +1449,6 @@ export const handleSlackCommands$ = command(
     return ephemeral(
       buildOfficialSlackHelpMessage({
         installation,
-        publicBrand,
         canSwitch: canSwitchAgents,
         canModel: await canModel(),
       }),

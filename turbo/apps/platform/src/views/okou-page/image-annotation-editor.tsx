@@ -1016,31 +1016,6 @@ function ArrowEndpointHandles({
 }
 
 /**
- * What "selected" looks like on a freehand stroke.
- *
- * A stroke has no rectangle and no ends worth grabbing, so there is nothing for
- * grips to sit on and no state left to show. A dashed box around its extent is
- * the whole affordance: it says which stroke the ink swatch, the note and
- * Delete are now aimed at. It must not take the pointer — the band around the
- * stroke itself is what the drag is grabbed by.
- */
-function PenSelectionOutline({ mark }: { mark: ImageAnnotationMark }) {
-  const bounds = markBounds(mark);
-  return (
-    <span
-      style={{
-        left: percent(bounds.x),
-        top: percent(bounds.y),
-        width: percent(bounds.width),
-        height: percent(bounds.height),
-      }}
-      className="pointer-events-none absolute -m-1 rounded-md border border-dashed border-muted-foreground/70 p-1"
-      data-testid="annotation-pen-outline"
-    />
-  );
-}
-
-/**
  * Handles only appear for marks that have a rectangle. A freehand stroke or an
  * arrow can still be selected and deleted; resizing them would mean editing
  * every point, which is not what a handle promises.
@@ -1135,9 +1110,10 @@ function NoteLayer({
 /**
  * What the selected mark shows, which depends on what it can be reshaped into.
  *
- * A box has eight grips, an arrow has its two ends, and a stroke has neither —
- * so it gets an outline instead of nothing at all, which is what "selected"
- * used to look like on one.
+ * A box has eight grips and an arrow has its two ends. A stroke has neither, so
+ * it draws nothing: the only geometry available to mark it out is its bounding
+ * box, and a rectangle that is not part of the drawing reads as an accidental
+ * mark on the user's screenshot.
  */
 function SelectionLayer({
   mark,
@@ -1160,8 +1136,12 @@ function SelectionLayer({
   if (mark.shape === "arrow") {
     return <ArrowEndpointHandles mark={mark} onGrab={onGrabEndpoint} />;
   }
+  // A freehand stroke shows nothing extra. It briefly carried a dashed box
+  // around its extent, which read as a stray rectangle drawn on the screenshot
+  // rather than as a state — Tong: *"不需要有这个虚线，去掉虚线"*. Picking one
+  // already opens its note popover, so the selection is not silent.
   if (mark.shape === "pen") {
-    return <PenSelectionOutline mark={mark} />;
+    return null;
   }
   return <ResizeHandles mark={mark} onGrab={onGrabHandle} />;
 }

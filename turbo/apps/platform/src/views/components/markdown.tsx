@@ -89,7 +89,7 @@ export function MarkdownEventBody({
 }: {
   readonly onRetry?: () => void;
   readonly tree: Root | undefined;
-  readonly mediaPreview: boolean;
+  readonly mediaPreview: boolean | "link";
 }) {
   if (tree === undefined) {
     if (onRetry !== undefined) {

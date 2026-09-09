@@ -243,6 +243,75 @@ pub mod runners {
                     crate::ResolvedRoute::new(REPORT.method, path(params))
                 }
             }
+
+            /// Generated route bindings under `runners::runs::by_run_id::ssh`.
+            pub mod ssh {
+                /// Generated route bindings under `runners::runs::by_run_id::ssh::pin`.
+                pub mod pin {
+                    /// Atomically learn an SSH host key under current Run authority.
+                    /// Route contract: `POST /api/runners/runs/:runId/ssh/pin`.
+                    pub const PIN: crate::RouteTemplate = crate::RouteTemplate {
+                        method: crate::Method::Post,
+                        path: "/api/runners/runs/:runId/ssh/pin",
+                    };
+
+                    /// Path parameters for `POST /api/runners/runs/:runId/ssh/pin`.
+                    #[derive(Debug, Clone, Copy)]
+                    pub struct Params<'a> {
+                        /// Value for the `:runId` path parameter.
+                        pub run_id: &'a str,
+                    }
+
+                    /// Build the concrete path for `POST /api/runners/runs/:runId/ssh/pin`.
+                    /// Percent-encodes each path parameter as a URL path segment.
+                    #[must_use]
+                    pub fn path(params: Params<'_>) -> String {
+                        format!(
+                            "/api/runners/runs/{}/ssh/pin",
+                            crate::route::encode_path_segment(params.run_id),
+                        )
+                    }
+
+                    /// Build a resolved route for `POST /api/runners/runs/:runId/ssh/pin`.
+                    #[must_use]
+                    pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                        crate::ResolvedRoute::new(PIN.method, path(params))
+                    }
+                }
+
+                /// Generated route bindings under `runners::runs::by_run_id::ssh::resolve`.
+                pub mod resolve {
+                    /// Resolve one current SSH credential for the winning official Runner.
+                    /// Route contract: `POST /api/runners/runs/:runId/ssh/resolve`.
+                    pub const RESOLVE: crate::RouteTemplate = crate::RouteTemplate {
+                        method: crate::Method::Post,
+                        path: "/api/runners/runs/:runId/ssh/resolve",
+                    };
+
+                    /// Path parameters for `POST /api/runners/runs/:runId/ssh/resolve`.
+                    #[derive(Debug, Clone, Copy)]
+                    pub struct Params<'a> {
+                        /// Value for the `:runId` path parameter.
+                        pub run_id: &'a str,
+                    }
+
+                    /// Build the concrete path for `POST /api/runners/runs/:runId/ssh/resolve`.
+                    /// Percent-encodes each path parameter as a URL path segment.
+                    #[must_use]
+                    pub fn path(params: Params<'_>) -> String {
+                        format!(
+                            "/api/runners/runs/{}/ssh/resolve",
+                            crate::route::encode_path_segment(params.run_id),
+                        )
+                    }
+
+                    /// Build a resolved route for `POST /api/runners/runs/:runId/ssh/resolve`.
+                    #[must_use]
+                    pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                        crate::ResolvedRoute::new(RESOLVE.method, path(params))
+                    }
+                }
+            }
         }
     }
 }

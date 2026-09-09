@@ -126,6 +126,7 @@ function billingStatus(
   capabilities: Partial<BillingStatusResponse> = {},
 ): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier,
     credits: 20_000,
     onboardingPaymentPending: false,
@@ -156,7 +157,7 @@ function mockBillingTier(
 async function findComposerEditor(): Promise<HTMLElement> {
   return await waitFor(() => {
     const editor = document.querySelector(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!(editor instanceof HTMLElement)) {
       throw new Error("Composer editor not found");
@@ -3830,7 +3831,12 @@ function mockCalendarReconnect(
   return {
     submittedAccounts,
     open: async () => {
-      await setupWorkflowDetailPage(workflowDetailPath("automations"));
+      mockBillingTier("team");
+      await setupPage({
+        context,
+        path: workflowDetailPath("automations"),
+        sharedWorkerTestTransport: "message-port",
+      });
 
       const warning = await screen.findByRole("alert");
       expect(warning).toHaveTextContent(
@@ -3951,6 +3957,11 @@ test("Converge Calendar recovery after the first stale summary without another c
   oauthCompleted = true;
   reconnect.complete();
   await firstRead.promise;
+  const recovery = await screen.findByRole("region", {
+    name: "Google Calendar recovery",
+  });
+  expect(within(recovery).getByRole("status")).toBeVisible();
+  expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
   expect(screen.getByRole("alert")).toHaveTextContent("delivery paused");
   workflow.automations[0] = googleCalendarWorkflowAutomation();
   watchRecovery.resolve();
@@ -4169,6 +4180,7 @@ test.each(["cancel", "navigate"] as const)(
     const recovery = await screen.findByRole("region", {
       name: "Google Calendar recovery",
     });
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
     if (action === "cancel") {
       click(buttonByText("Cancel", recovery));
     } else {

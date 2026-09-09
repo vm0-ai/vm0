@@ -7,7 +7,6 @@ import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -427,7 +426,6 @@ async function resolveTelegramPresentation(
     readonly run: TelegramChatRunContext;
     readonly runId: string;
     readonly installationId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -536,7 +534,6 @@ async function deliverClaimedTelegramChatCallback(
       run,
       runId: args.callback.runId,
       installationId: payload.installationId,
-      publicBrand: payload.publicBrand,
     },
     signal,
   );

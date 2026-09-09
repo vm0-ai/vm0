@@ -8272,7 +8272,6 @@ describe.sequential("Official Workflow Run admission", () => {
       scenario.actor,
       sessionRun.body.runId,
       ["agent:write"],
-      "vm0",
     );
     const agentRun = await accept(
       automationClient().run({

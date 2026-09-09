@@ -1,3 +1,5 @@
+import { clerk$, type ClerkClient } from "../external/clerk";
+import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
 
 import { command, createStore } from "ccstate";
@@ -164,7 +166,6 @@ import {
 } from "./chat-title.service";
 import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { shouldUsePiExecution } from "./pi-sandbox-config";
-import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
@@ -510,7 +511,6 @@ interface ChatCallbackDependencies {
       readonly chatThreadId: string;
       readonly runId: string;
       readonly errorMessage: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<string>;
@@ -532,7 +532,6 @@ interface ChatCallbackDependencies {
       readonly userId: string;
       readonly code: string;
       readonly message: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<string>;
@@ -546,7 +545,6 @@ interface ChatCallbackDependencies {
       readonly threadTs: string;
       readonly routeThreadTs?: string;
       readonly chatEventId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -559,7 +557,6 @@ interface ChatCallbackDependencies {
       readonly chatThreadId: string;
       readonly userId: string;
       readonly orgId: string;
-      readonly publicBrand: PublicBrand;
       readonly target: FeishuDeliveryTarget;
       readonly chatEventId: string;
     },
@@ -853,9 +850,7 @@ interface TerminalChatCallbackWork {
   readonly telegramDeliveryCallbackId?: string;
   readonly agentphoneDeliveryCallbackId?: string;
   readonly githubDeliveryCallbackId?: string;
-  readonly deferredSideEffects?: (
-    suppressChatRunFinishedForActiveGoal: boolean,
-  ) => Promise<void>;
+  readonly deferredSideEffects?: () => Promise<void>;
 }
 
 type DrainOutcome =
@@ -948,7 +943,6 @@ function buildQueuedCreateAgentRunArgs(
     triggerSource: input.triggerSource,
     agentRunPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
-    publicBrand: input.publicBrand,
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     queueFirstAssociation: {
@@ -1915,10 +1909,13 @@ async function generateRecommendedFollowupsForCompletedRun(
   signal: AbortSignal,
 ): Promise<readonly ChatRecommendedFollowup[] | undefined> {
   signal.throwIfAborted();
-  const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
-    messages: args.followupContext,
-    threadId: args.threadId,
-  });
+  const suggestions = await generateChatThreadRecommendedFollowupsFromContext(
+    {
+      messages: args.followupContext,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   return suggestions.length > 0 ? suggestions : undefined;
 }
@@ -2109,8 +2106,6 @@ async function runCompletedChatCallbackSideEffects(
     readonly runId: string;
     readonly run: ChatRunInfo;
     readonly chatThread: ChatThreadForRunRow;
-    readonly suppressWebPushForActiveGoal: boolean;
-    readonly suppressChatRunFinishedForActiveGoal: boolean;
     readonly lastResultText: string | null;
     readonly followupContext: readonly ChatCompletionContextMessage[];
     readonly saveRunSummary: (resultText: string) => Promise<void>;
@@ -2122,19 +2117,17 @@ async function runCompletedChatCallbackSideEffects(
   // auto-send so LLM/push latency does not delay the next run.
   const saveSummaryStep = args.saveRunSummary(args.lastResultText ?? "");
 
-  const chatRunFinishedStep = args.suppressChatRunFinishedForActiveGoal
-    ? Promise.resolve()
-    : args.dispatchChatRunFinishedAutomations(
-        {
-          chatThreadId: args.chatThread.chatThreadId,
-          runId: args.runId,
-          runStatus: "completed",
-          lastResultText: args.lastResultText,
-          sourceAgentId: args.chatThread.agentId,
-          sourceThreadTitle: args.chatThread.title,
-        },
-        signal,
-      );
+  const chatRunFinishedStep = args.dispatchChatRunFinishedAutomations(
+    {
+      chatThreadId: args.chatThread.chatThreadId,
+      runId: args.runId,
+      runStatus: "completed",
+      lastResultText: args.lastResultText,
+      sourceAgentId: args.chatThread.agentId,
+      sourceThreadTitle: args.chatThread.title,
+    },
+    signal,
+  );
 
   const followupsStep = (async () => {
     signal.throwIfAborted();
@@ -2158,24 +2151,19 @@ async function runCompletedChatCallbackSideEffects(
   })();
 
   const pushStep = (async () => {
-    if (args.suppressWebPushForActiveGoal) {
-      return;
-    }
-
     let summary: string | null = null;
     if (args.lastResultText) {
-      summary =
-        (await tapError(
-          generateChatNotificationSummary(args.run.prompt, args.lastResultText),
-          (error) => {
-            log.warn("Failed to generate notification summary", {
-              runId: args.runId,
-              error,
-            });
-          },
-        )) ?? null;
+      summary = await generateChatNotificationSummary(
+        {
+          prompt: args.run.prompt,
+          resultText: args.lastResultText,
+          runId: args.runId,
+        },
+        signal,
+      );
     }
 
+    signal.throwIfAborted();
     await sendUserPushNotifications({
       db: args.db,
       userId: args.chatThread.userId,
@@ -2256,35 +2244,27 @@ async function runFailedChatCallbackSideEffects(
     readonly runId: string;
     readonly run: ChatRunInfo;
     readonly chatThread: ChatThreadForRunRow;
-    readonly suppressWebPushForActiveGoal: boolean;
-    readonly suppressChatRunFinishedForActiveGoal: boolean;
     readonly displayErrorMessage: string;
     readonly runStatus: "failed" | "cancelled";
     readonly dispatchChatRunFinishedAutomations: ChatCallbackDependencies["dispatchChatRunFinishedAutomations"];
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const chatRunFinishedStep = args.suppressChatRunFinishedForActiveGoal
-    ? Promise.resolve()
-    : args.dispatchChatRunFinishedAutomations(
-        {
-          chatThreadId: args.chatThread.chatThreadId,
-          runId: args.runId,
-          runStatus: args.runStatus,
-          // Failed runs surface their error separately; patterns only ever match
-          // assistant output, so terminal errors dispatch with no matchable text.
-          lastResultText: null,
-          sourceAgentId: args.chatThread.agentId,
-          sourceThreadTitle: args.chatThread.title,
-        },
-        signal,
-      );
+  const chatRunFinishedStep = args.dispatchChatRunFinishedAutomations(
+    {
+      chatThreadId: args.chatThread.chatThreadId,
+      runId: args.runId,
+      runStatus: args.runStatus,
+      // Failed runs surface their error separately; patterns only ever match
+      // assistant output, so terminal errors dispatch with no matchable text.
+      lastResultText: null,
+      sourceAgentId: args.chatThread.agentId,
+      sourceThreadTitle: args.chatThread.title,
+    },
+    signal,
+  );
 
   await chatRunFinishedStep;
-  if (args.suppressWebPushForActiveGoal) {
-    return;
-  }
-
   await sendUserPushNotifications({
     db: args.db,
     userId: args.chatThread.userId,
@@ -2548,18 +2528,6 @@ async function chatThreadForRunFromDb(
   };
 }
 
-async function runHasActiveGoal(db: Db, runId: string): Promise<boolean> {
-  const chatThread = await chatThreadForRunFromDb(db, runId);
-  if (!chatThread) {
-    return false;
-  }
-  const goal = await loadActiveGoalForThread(db, {
-    orgId: chatThread.orgId,
-    threadId: chatThread.chatThreadId,
-  });
-  return goal !== null;
-}
-
 async function loadAgentForAutoSend(
   db: Db,
   agentId: string,
@@ -2706,6 +2674,7 @@ async function resolveQueuedMessageModelRoute(args: {
 
 interface CreateQueuedChatRunInputArgs {
   readonly db: Db;
+  readonly clerk: ClerkClient;
   readonly threadId: string;
   readonly userId: string;
   readonly agent: AgentForAutoSend;
@@ -3071,7 +3040,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly presentationTemplatesEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
   return measureChatCallbackPreCreateTiming(
@@ -3080,9 +3049,9 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
+        introVideoEnabled: args.introVideoEnabled,
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
-        presentationTemplatesEnabled: args.presentationTemplatesEnabled,
         mountedUserPresentationTemplateIds:
           args.mountedUserPresentationTemplateIds,
       });
@@ -3127,8 +3096,11 @@ async function resolveQueuedMessageTemplateContext(args: {
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
-      presentationTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.PresentationTemplates,
+      introVideoEnabled: await loadIntroVideoTemplateAccess(
+        args.db,
+        args.input.clerk,
+        args.userId,
+        args.userMessageProjection?.templates ?? [],
         args.featureSwitchContext,
       ),
       mountedUserPresentationTemplateIds,
@@ -3475,7 +3447,6 @@ async function handleWebQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3519,7 +3490,6 @@ async function handleFeishuQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3551,7 +3521,6 @@ async function handleFeishuQueuedMessageAdmissionFailure(
         chatThreadId: args.failure.threadId,
         userId: args.failure.userId,
         orgId: args.failure.orgId,
-        publicBrand: args.failure.publicBrand,
         target: args.failure.feishuDelivery,
         chatEventId: failed.assistantEventId,
       },
@@ -3590,7 +3559,6 @@ async function handleSlackQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3629,7 +3597,6 @@ async function handleSlackQueuedMessageAdmissionFailure(
           ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
           : {}),
         chatEventId: failed.assistantEventId,
-        publicBrand: args.failure.publicBrand,
       },
       signal,
     ),
@@ -3657,7 +3624,6 @@ async function handleTeamsQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3719,7 +3685,6 @@ async function handleTelegramQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3781,7 +3746,6 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3844,7 +3808,6 @@ async function handleGitHubQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -4001,6 +3964,7 @@ interface AutoSendQueuedMessageArgs {
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
   readonly db: Db;
+  readonly clerk: ClerkClient;
   readonly chatThreadId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -4029,6 +3993,7 @@ async function prepareAutoSendQueuedMessageRunInput(input: {
     () => {
       return buildCreateQueuedChatRunInput({
         db: args.db,
+        clerk: args.clerk,
         threadId: args.chatThreadId,
         userId: args.userId,
         agent,
@@ -4292,7 +4257,6 @@ async function prepareCompletedTerminalChatCallbackWork(
     readonly runId: string;
     readonly run: ChatRunInfo;
     readonly chatThread: ChatThreadForRunRow;
-    readonly suppressWebPushForActiveGoal: boolean;
     readonly dependencies: ChatCallbackDependencies;
     readonly timing: ChatCallbackPreCreateTimingCollector;
     readonly slackDelivery?: SlackDeliveryTarget;
@@ -4357,15 +4321,13 @@ async function prepareCompletedTerminalChatCallbackWork(
     telegramDeliveryCallbackId: completed.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: completed.agentphoneDeliveryCallbackId,
     githubDeliveryCallbackId: completed.githubDeliveryCallbackId,
-    deferredSideEffects: (suppressChatRunFinishedForActiveGoal) => {
+    deferredSideEffects: () => {
       return runCompletedChatCallbackSideEffects(
         {
           db: args.db,
           runId: args.runId,
           run: args.run,
           chatThread: args.chatThread,
-          suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
-          suppressChatRunFinishedForActiveGoal,
           lastResultText: completed.lastResultText,
           followupContext: completed.followupContext,
           saveRunSummary: (resultText) => {
@@ -4391,7 +4353,6 @@ async function prepareFailedTerminalChatCallbackWork(
     readonly runId: string;
     readonly run: ChatRunInfo;
     readonly chatThread: ChatThreadForRunRow;
-    readonly suppressWebPushForActiveGoal: boolean;
     readonly errorMessage: string;
     readonly publicBrand: PublicBrand;
     readonly dependencies: ChatCallbackDependencies;
@@ -4425,7 +4386,6 @@ async function prepareFailedTerminalChatCallbackWork(
               chatThreadId: args.chatThread.chatThreadId,
               runId: args.runId,
               errorMessage: args.errorMessage,
-              publicBrand: args.publicBrand,
             },
             signal,
           );
@@ -4453,15 +4413,13 @@ async function prepareFailedTerminalChatCallbackWork(
     telegramDeliveryCallbackId: failed.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: failed.agentphoneDeliveryCallbackId,
     githubDeliveryCallbackId: failed.githubDeliveryCallbackId,
-    deferredSideEffects: (suppressChatRunFinishedForActiveGoal) => {
+    deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects(
         {
           db: args.db,
           runId: args.runId,
           run: args.run,
           chatThread: args.chatThread,
-          suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
-          suppressChatRunFinishedForActiveGoal,
           displayErrorMessage: failed.displayErrorMessage,
           runStatus:
             args.errorMessage.trim().toLowerCase() === "run cancelled"
@@ -4724,7 +4682,6 @@ interface TerminalChatCallbackArgs {
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
   readonly goalContinuationAdmitted: boolean;
-  readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
 }
 
@@ -4863,7 +4820,6 @@ async function processTerminalChatCallback(
             runId,
             run,
             chatThread,
-            suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
             dependencies: args.dependencies,
             timing,
             publicBrand: args.payload.publicBrand ?? "vm0",
@@ -4878,7 +4834,6 @@ async function processTerminalChatCallback(
             runId,
             run,
             chatThread,
-            suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
             errorMessage: terminalCallbackErrorMessage(
               args.callback.error,
               run.error,
@@ -4938,18 +4893,11 @@ async function processTerminalChatCallback(
 
   const deferredSideEffects = work.deferredSideEffects;
   if (deferredSideEffects) {
-    // Decide after queue drain so the final real run fires only when the goal
-    // stops, while intermediate runs stay quiet.
-    const suppressChatRunFinishedForActiveGoal = await runHasActiveGoal(
-      args.db,
-      runId,
-    );
-    signal.throwIfAborted();
     await runTerminalChatCallbackSideEffects({
       runId,
       status: callbackStatus,
       run: () => {
-        return deferredSideEffects(suppressChatRunFinishedForActiveGoal);
+        return deferredSideEffects();
       },
     });
   }
@@ -5033,8 +4981,6 @@ function buildQueuedChatDispatchFailedCallbacks(
       agentphoneDelivery: args.runInput.agentphoneDelivery,
       githubDelivery: args.runInput.githubDelivery,
     };
-    const suppressForActiveGoal = await runHasActiveGoal(db, runId);
-    signal.throwIfAborted();
     await processTerminalChatCallback(
       {
         db,
@@ -5046,7 +4992,6 @@ function buildQueuedChatDispatchFailedCallbacks(
         },
         payload,
         goalContinuationAdmitted: false,
-        suppressWebPushForActiveGoal: suppressForActiveGoal,
         dependencies: withoutQueuedRunDependency(args.dependencies),
       },
       signal,
@@ -5189,14 +5134,6 @@ async function handleChatInternalCallback(
     return { success: true };
   }
 
-  // Terminal goal handling below may pause a failed goal before background
-  // notifications start. Snapshot first so the Push decision reflects the
-  // moment the run ended.
-  const suppressWebPushForActiveGoal = await runHasActiveGoal(
-    args.db,
-    args.callback.runId,
-  );
-  signal.throwIfAborted();
   const goalContinuationAdmitted =
     (await args.dependencies.handleTerminalGoal?.(
       args.callback.runId,
@@ -5206,7 +5143,7 @@ async function handleChatInternalCallback(
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
-  // this HTTP response. After the durable goal action above, acknowledge before
+  // this HTTP response. Acknowledge before
   // running heavy terminal processing (message persistence, LLM generation,
   // and push delivery) in the background, mirroring webhooks-agent-complete.
   // Use a detached signal so request cancellation cannot interrupt the
@@ -5220,7 +5157,6 @@ async function handleChatInternalCallback(
           callback: args.callback,
           payload: payload.data,
           goalContinuationAdmitted,
-          suppressWebPushForActiveGoal,
           dependencies: args.dependencies,
         },
         backgroundSignal,
@@ -5512,7 +5448,7 @@ const buildChatCallbackDependencies$ = command(
 /** User-message drain used by the shared event-backed thread scheduler. */
 export const drainQueuedUserMessagesForThread$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
@@ -5551,6 +5487,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     await autoSendQueuedMessageForThread(
       {
         db,
+        clerk: get(clerk$),
         chatThreadId: args.chatThreadId,
         admissionTime,
         userId: thread.userId,

@@ -278,7 +278,7 @@ function DowngradeConfirmDialogContent({
         handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent smMaxWidth={440}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -503,7 +503,7 @@ function RestorePlanConfirmDialogContent({
         return !v && close();
       }}
     >
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent smMaxWidth={440}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(
@@ -1435,7 +1435,7 @@ function ConcurrencyConfirmDialogContent({
     dialog.canReduce;
 
   return (
-    <DialogContent className="sm:max-w-[480px]">
+    <DialogContent smMaxWidth={480}>
       <DialogHeader>
         <DialogTitle>{copy.title}</DialogTitle>
         {copy.description ? (
@@ -1498,7 +1498,7 @@ function ConcurrencyPurchaseReviewDialogContent({
   const loading = checkoutLoadable.state === "loading";
 
   return (
-    <DialogContent className="sm:max-w-[420px]">
+    <DialogContent smMaxWidth={420}>
       <DialogHeader>
         <DialogTitle>
           {i18n.t(($) => {
@@ -1620,7 +1620,7 @@ function ConcurrencyPurchaseDialog({
         return !v && close();
       }}
     >
-      <DialogContent className="sm:max-w-[420px]">
+      <DialogContent smMaxWidth={420}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -1922,23 +1922,30 @@ function UsagePackMigrationProgressPage({
 
 function StandaloneBillingPricingDialog({
   children,
+  open,
   onClose,
+  onOpenChangeComplete,
 }: {
   readonly children: React.ReactNode;
+  readonly open: boolean;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
 }) {
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) {
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           onClose();
         }
       }}
+      onOpenChangeComplete={onOpenChangeComplete}
     >
       <DialogContent
         aria-describedby={undefined}
-        className="okou-app flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        maxWidth={860}
+        height={688}
+        contentClassName="okou-app flex flex-col gap-0 overflow-hidden p-0"
       >
         <DialogTitle className="sr-only">
           {i18n.t(($) => {
@@ -1955,16 +1962,20 @@ function StandaloneBillingPricingDialog({
 
 function billingPricingReplacement({
   onStandaloneClose,
+  onStandaloneOpenChangeComplete,
   pricingFlow,
   pricingOpen,
   pricingPage,
+  standaloneOpen,
   standalonePlans,
   usagePackPlanDialogs,
 }: {
   readonly onStandaloneClose: () => void;
+  readonly onStandaloneOpenChangeComplete?: (open: boolean) => void;
   readonly pricingFlow: React.ReactNode;
   readonly pricingOpen: boolean;
   readonly pricingPage: React.ReactNode;
+  readonly standaloneOpen: boolean;
   readonly standalonePlans: boolean;
   readonly usagePackPlanDialogs: boolean;
 }): React.ReactNode | null {
@@ -1973,7 +1984,11 @@ function billingPricingReplacement({
   }
   if (!usagePackPlanDialogs) {
     return standalonePlans ? (
-      <StandaloneBillingPricingDialog onClose={onStandaloneClose}>
+      <StandaloneBillingPricingDialog
+        open={standaloneOpen}
+        onClose={onStandaloneClose}
+        onOpenChangeComplete={onStandaloneOpenChangeComplete}
+      >
         {pricingPage}
       </StandaloneBillingPricingDialog>
     ) : (
@@ -2103,6 +2118,8 @@ function UsagePackPricingFlowDialogs({
   migrationTargetTier,
   onMigrationBack,
   onClose,
+  onOpenChangeComplete,
+  open,
   onReplaceCancellationWithPro,
   onSelectMigration,
 }: {
@@ -2114,6 +2131,8 @@ function UsagePackPricingFlowDialogs({
   readonly migrationTargetTier: "pro" | "team" | null;
   readonly onMigrationBack: () => void;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open: boolean;
   readonly onReplaceCancellationWithPro?: () => void;
   readonly onSelectMigration: (tier: "pro" | "team") => void;
 }) {
@@ -2126,6 +2145,8 @@ function UsagePackPricingFlowDialogs({
         migrationTargetTier={migrationTargetTier}
         onBack={onMigrationBack}
         onClose={onClose}
+        onOpenChangeComplete={onOpenChangeComplete}
+        open={open}
         onSelect={onSelectMigration}
       />
     );
@@ -2136,6 +2157,8 @@ function UsagePackPricingFlowDialogs({
       currentTier={currentTier}
       grantedPlanCheckoutAllowed={grantedPlanCheckoutAllowed}
       onClose={onClose}
+      onOpenChangeComplete={onOpenChangeComplete}
+      open={open}
       onReplaceCancellationWithPro={onReplaceCancellationWithPro}
     />
   );
@@ -2167,8 +2190,12 @@ function BillingSubPage({
 
 export function OrgBillingTab({
   standalonePlans = false,
+  standaloneOpen,
+  onStandaloneOpenChangeComplete,
 }: {
   readonly standalonePlans?: boolean;
+  readonly standaloneOpen: boolean;
+  readonly onStandaloneOpenChangeComplete?: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const pricingOpen = useGet(billingSubPage$);
@@ -2287,6 +2314,8 @@ export function OrgBillingTab({
       migrationTargetTier={migrationTargetTier}
       onMigrationBack={closeMigrationSubPage}
       onClose={dismissPlans}
+      onOpenChangeComplete={onStandaloneOpenChangeComplete}
+      open={standaloneOpen}
       onReplaceCancellationWithPro={replaceCancellationWithPro}
       onSelectMigration={openMigrationPage}
     />
@@ -2300,9 +2329,11 @@ export function OrgBillingTab({
   );
   const pricingReplacement = billingPricingReplacement({
     onStandaloneClose: dismissPlans,
+    onStandaloneOpenChangeComplete,
     pricingFlow,
     pricingOpen,
     pricingPage,
+    standaloneOpen,
     standalonePlans,
     usagePackPlanDialogs,
   });

@@ -36,6 +36,7 @@ interface DriverGeneration {
   leases: number;
   disposal: Promise<void> | null;
   permissionsReady: boolean;
+  permissionRead: Promise<ComputerUsePermissionState> | null;
 }
 
 export interface ComputerUseCommandSession {
@@ -156,6 +157,7 @@ export class ComputerUseDriverController {
         leases: 0,
         disposal: null,
         permissionsReady: false,
+        permissionRead: null,
       };
       this.onChange();
     }
@@ -187,7 +189,9 @@ export class ComputerUseDriverController {
         ...context.backend,
         getPermissions: () => this.readPermissions(context),
       });
-      return this.context === context && this.authorized(context)
+      return this.context === context &&
+        !this.permissionsPaused &&
+        this.authorized(context)
         ? result
         : null;
     } finally {
@@ -265,7 +269,20 @@ export class ComputerUseDriverController {
       : [];
   }
 
-  private async readPermissions(
+  private readPermissions(
+    context: DriverGeneration,
+  ): Promise<ComputerUsePermissionState> {
+    if (context.permissionRead) return context.permissionRead;
+    const read = this.readGenerationPermissions(context);
+    context.permissionRead = read;
+    const finish = () => {
+      if (context.permissionRead === read) context.permissionRead = null;
+    };
+    void read.then(finish, finish);
+    return read;
+  }
+
+  private async readGenerationPermissions(
     context: DriverGeneration,
   ): Promise<ComputerUsePermissionState> {
     try {
@@ -282,10 +299,12 @@ export class ComputerUseDriverController {
       this.onChange();
       return permissions;
     } catch (error) {
-      this.failure =
-        "Native driver permission check failed. Explicit recovery is required.";
       context.permissionsReady = false;
-      if (this.context === context) void this.forceRetire().catch(() => {});
+      if (this.context === context) {
+        this.failure =
+          "Native driver permission check failed. Explicit recovery is required.";
+        void this.forceRetire().catch(() => {});
+      }
       throw error;
     }
   }
@@ -295,7 +314,9 @@ export class ComputerUseDriverController {
     if (context?.backend.forceStop) {
       this.active = false;
       context.snapshots.clear();
-      context.disposal ??= context.backend.forceStop();
+      context.disposal ??= Promise.resolve().then(() =>
+        context.backend.forceStop?.(),
+      );
       // Observe a bounded cleanup rejection even while an old lease is hung.
       // Keep the original rejected promise as the replacement gate.
       void context.disposal.catch(() => {});
@@ -331,11 +352,11 @@ export class ComputerUseDriverController {
     if (!context) return Promise.resolve();
     this.retiringContext = context;
     if (context.leases === 0) context.resolveDrained();
-    const retirement = (async () => {
+    const retirement = Promise.resolve().then(async () => {
       // Quit may terminate native work; a healthy replacement must drain it.
       if (reason === "dispose") await context.drained;
       await this.dispose(context, reason);
-    })();
+    });
     this.retirement = retirement;
     this.onChange();
     void retirement.then(
@@ -357,9 +378,11 @@ export class ComputerUseDriverController {
     context: DriverGeneration,
     reason: ComputerUseNativeShutdownReason,
   ): Promise<void> {
-    context.disposal ??= context.backend.dispose(reason).then(() => {
-      context.snapshots.clear();
-    });
+    context.disposal ??= Promise.resolve()
+      .then(() => context.backend.dispose(reason))
+      .then(() => {
+        context.snapshots.clear();
+      });
     return context.disposal;
   }
 

@@ -486,6 +486,7 @@ impl ExecStreamPermit {
 
 pub(in crate::exec_operation) struct ExecOperationRegistrationInput<'a> {
     pub(in crate::exec_operation) label: &'a str,
+    pub(in crate::exec_operation) timeout_is_expected: bool,
     pub(in crate::exec_operation) stdout: ExecOutputPolicy,
     pub(in crate::exec_operation) stderr: ExecOutputPolicy,
     pub(in crate::exec_operation) stream_queue_capacity: Option<usize>,
@@ -644,6 +645,7 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
 ) -> io::Result<ExecOperationRegistration> {
     let ExecOperationRegistrationInput {
         label,
+        timeout_is_expected,
         stdout,
         stderr,
         stream_queue_capacity,
@@ -680,7 +682,13 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
             lifecycle,
             ExecOperationLifecycle::SupervisedAwaitingStart { .. }
         );
-        let diagnostic = ExecOperationDiagnostic::new(route_id.wire_seq(), label, role, supervised);
+        let diagnostic = ExecOperationDiagnostic::new(
+            route_id.wire_seq(),
+            label,
+            role,
+            supervised,
+            timeout_is_expected,
+        );
         let operation = ExecOperation {
             route_id,
             normal_operation,

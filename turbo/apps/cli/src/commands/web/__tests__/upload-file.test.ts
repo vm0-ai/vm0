@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 /**
  * Tests for okou web upload-file command
  *
@@ -49,6 +50,7 @@ describe("okou web upload-file command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    uploadFileCommand.setOptionValue("json", undefined);
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
@@ -63,22 +65,25 @@ describe("okou web upload-file command", () => {
   });
 
   describe("successful upload", () => {
-    it("should prepare + PUT + complete and print JSON result", async () => {
+    it("should prepare + PUT + complete and print artifact presentation context", async () => {
       const filePath = join(tmpDir, "report.pdf");
       writeFileSync(filePath, Buffer.from("%PDF-1.4 fake"));
 
       const prepared = {
-        id: "file-uuid-1",
+        id: "00000000-0000-4000-8000-000000000027",
         filename: "report.pdf",
         contentType: "application/pdf",
         size: 13,
         uploadUrl: PUT_URL,
         uploadHeaders: {
-          "x-amz-meta-artifact-id": "file-uuid-1",
+          "x-amz-meta-artifact-id": "00000000-0000-4000-8000-000000000027",
           "x-amz-meta-filename": "report.pdf",
           "x-amz-meta-user-id": "user-test",
         },
-        url: "https://presigned.example.com/file-uuid-1/report.pdf?sig=abc",
+        url: artifactReferencePath(
+          "00000000-0000-4000-8000-000000000027",
+          "report.pdf",
+        ),
       };
 
       let putReceivedContentType: string | null = null;
@@ -108,6 +113,7 @@ describe("okou web upload-file command", () => {
             contentType: string;
             size: number;
           };
+          expect(body).toMatchObject({ purpose: "artifact" });
           expect(body.filename).toBe("report.pdf");
           expect(body.contentType).toBe("application/pdf");
           expect(body.size).toBe(13);
@@ -117,7 +123,7 @@ describe("okou web upload-file command", () => {
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
           expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
-            "file-uuid-1",
+            "00000000-0000-4000-8000-000000000027",
           );
           expect(request.headers.get("x-amz-meta-filename")).toBe("report.pdf");
           expect(request.headers.get("x-amz-meta-user-id")).toBe("user-test");
@@ -159,14 +165,19 @@ describe("okou web upload-file command", () => {
       expect(putReceivedContentType).toBe("application/pdf");
       expect(completed).toBe(true);
       const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-      const parsed = JSON.parse(stdout) as Record<string, unknown>;
-      expect(parsed).toMatchObject({
-        id: "file-uuid-1",
-        filename: "report.pdf",
-        contentType: "application/pdf",
-        size: 13,
-        url: prepared.url,
-      });
+      expect(stdout).toContain("The artifact upload completed successfully.");
+      expect(stdout).toContain("Artifact presentation context:");
+      expect(stdout).toContain(`[report.pdf](<${prepared.url}>)`);
+      expect(stdout).toContain("This form remains a link in normal prose.");
+      expect(stdout).toContain(`\n\n![report.pdf](<${prepared.url}>)\n\n`);
+      expect(stdout).toContain(
+        "occupies its own Markdown paragraph, with a blank line before and after it, and is outside a code fence",
+      );
+      expect(stdout).toContain(
+        "Both forms reference the same artifact. Including both in one response creates two user-facing references.",
+      );
+      expect(stdout).not.toContain("Return this artifact");
+      expect(stdout).not.toContain("Choose one form");
     });
 
     it("should use prepared content type for PUT after override normalization", async () => {
@@ -214,12 +225,23 @@ describe("okou web upload-file command", () => {
         filePath,
         "--content-type",
         "Text/CSV; charset=utf-8",
+        "--json",
       ]);
 
       expect(putReceivedContentType).toBe("text/csv");
       const stdout = mockConsoleLog.mock.calls.flat().join("\n");
       const parsed = JSON.parse(stdout) as Record<string, unknown>;
-      expect(parsed.contentType).toBe("text/csv");
+      expect(parsed).toMatchObject({
+        id: "csv-uuid",
+        filename: "data.bin",
+        contentType: "text/csv",
+        size: 13,
+        url: "https://presigned.example.com/csv-uuid/data.bin?sig=xyz",
+        inlineMarkdownLink:
+          "[data.bin](<https://presigned.example.com/csv-uuid/data.bin?sig=xyz>)",
+        previewMarkdownBlock:
+          "![data.bin](<https://presigned.example.com/csv-uuid/data.bin?sig=xyz>)",
+      });
     });
 
     it("should infer text/html for html files", async () => {
@@ -264,7 +286,13 @@ describe("okou web upload-file command", () => {
         }),
       );
 
-      await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+      await uploadFileCommand.parseAsync([
+        "node",
+        "cli",
+        "-f",
+        filePath,
+        "--json",
+      ]);
 
       expect(putReceivedContentType).toBe("text/html");
       const stdout = mockConsoleLog.mock.calls.flat().join("\n");
@@ -320,7 +348,13 @@ describe("okou web upload-file command", () => {
         }),
       );
 
-      await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+      await uploadFileCommand.parseAsync([
+        "node",
+        "cli",
+        "-f",
+        filePath,
+        "--json",
+      ]);
 
       expect(putReceivedContentType).toBe(expectedContentType);
       const stdout = mockConsoleLog.mock.calls.flat().join("\n");

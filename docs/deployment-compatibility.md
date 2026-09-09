@@ -193,7 +193,71 @@ raises the frontend compatibility floor, rolling the frontend below that floor
 also requires rolling back the backend floor. Rolling the backend back to the
 dual-protocol preparation release remains safe for canonical clients.
 
+### Pi native session history
+
+Pi checkpoint persistence shares the Runner's 128 MiB raw and encoded history
+bound. The API-first execution budget remains 16 MiB. Before resource loading or
+provider ownership, a larger saved checkpoint selects sandbox-first execution
+from blob metadata. A V4 ownership-transfer manifest carries a presigned history
+reference; only the sandbox downloads and decompresses H0 for the next turn. The
+API still validates complete H2 history at checkpoint time, so its peak memory
+and validation work can exceed the raw file size.
+
+V3 manifests remain the active format for API-produced H1 and small
+sandbox-first H0. The CLI accepts both formats and retains the same V2 Guest
+boundary control; Runner job and launch-config schemas are unchanged. API and
+CLI changes must ship through the same commit-addressed CLI artifact selection.
+Previously captured contexts retain their package and history reference; new
+contexts select the new reader. Old Runners already support 128 MiB history.
+
+Pi remains staff-only behind `PiLoop`. Rolling the API back below this change
+restores its 16 MiB validation and resume limit: larger saved histories stay in
+storage, but continuing those sessions requires the fixed API and CLI again.
+There is no history truncation, migration, or alternate reader for that rollback.
+
 ### Runner
+
+#### Pi maintenance usage journal retirement
+
+Producer retirement in [#32787](https://github.com/vm0-ai/vm0/issues/32787)
+removes the CLI's private usage journal and Guest forwarding. The existing
+runner proxy remains the accounting authority established by
+[#32639](https://github.com/vm0-ai/vm0/pull/32639). The independent private
+checkpoint validation marker remains required for publication.
+
+The API keeps the authenticated, immutable-binding-validated journal ACK while
+old reporters remain supported:
+
+| CLI artifact | Guest artifact | Completion behavior                                            |
+| ------------ | -------------- | -------------------------------------------------------------- |
+| Old          | Old            | Reports to the retained validated ACK.                         |
+| New          | Old            | Old Guest accepts the missing journal.                         |
+| Old          | New            | Guest completes without reading the old CLI's private journal. |
+| New          | New            | Consolidation and checkpoint publication use no journal.       |
+
+The runtime package is bundled into the CLI artifact; removing its journal-only
+usage observer does not change already-pinned CLI packages. Aggregate provider
+results and lifecycle observation remain independent of that observer.
+
+Endpoint removal is tracked by
+[#32788](https://github.com/vm0-ai/vm0/issues/32788), under delivery parent
+[#32783](https://github.com/vm0-ai/vm0/issues/32783). Before removing the ACK,
+record the exact CLI commit-addressed and Runner/Guest artifacts, serving
+deployment times, last possible old-context creation/admission cutoff, and
+supported rollback floor. Verify zero old queued/running contexts, zero live
+reporting processes, and completed bounded finalization/retries. Reconcile
+context and artifact identities, terminal/process evidence, and content-free
+endpoint traffic across up to two hours queued plus two hours executing plus
+bounded finalization. Elapsed time or missing telemetry alone is not proof.
+Keep the ACK while supported rollback can restore an incompatible reporter.
+
+This source change does not establish those production cutoffs or alter rollback
+policy. Verify the proxy accounting prerequisite for supported API/Runner
+artifacts separately. The 122-minute private binding retention starts at terminal
+settlement to protect late proxy usage; it is not the journal drain gate and
+remains unchanged, along with ordinary pending-usage/callback cleanup blockers.
+
+#### Runner process drain
 
 Runner deployment is draining, not instant. The production promote playbook
 starts the new runner service, verifies it, and then sends a soft-drain signal
@@ -428,6 +492,59 @@ recovery must restore compatibility first or roll forward.
 Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
+
+### Okou Goal retirement rollback floor
+
+The production rollback resolver requires the release/API target to contain
+Goal retirement commit `6d391117e4fead19e2105136fb2792a6e77801d8`. The first
+compatible release is `1f68f182a2457ec3aea52d8063be2bd2d2263abd` (API 1.571.1).
+This permanent floor prevents canonical rollback from restoring Goal creation,
+reactivation, or continuation. It rejects pre-boundary targets before API or
+Runner artifact resolution and output publication, even if the rollback
+dashboard still lists those historical releases.
+
+Apply this floor only to the release/API target: the first compatible release
+retained an older Runner tag. All independent Runner ancestry, reader, host
+architecture, and release-asset checks still apply. The rollback workflow loads
+the resolver from current `main`, so merging the guard constrains future
+canonical executions without a release or test rollback.
+
+The accepted S1 gate verifies the currently serving normal production version
+rejects Goal creation/reactivation and cannot continue Goal work. Historical
+Vercel/fixed-deployment inventory is outside that gate under the
+[user decision](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5595137042);
+this does not claim those deployments were disabled. Keep the rollback floor,
+[archival and settlement checks](goal-retirement-archival.md), and the requirement
+to deploy consumer removal before a later physical schema drop in
+[EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
+
+### Usage pack visibility compatibility retirement
+
+`showUsagePack` has an explicit API writer and billing response starting with
+commit `65ac0518bde2310887470cb0874aeae06c0c0397`, first released in
+`api-v1.570.0` (`22c62b9e92f42078ae314e505b983a62eda35dac`). Its
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34227208941/job/102068385804)
+completed on 2026-09-08 at 12:54:51 UTC. The later `api-v1.572.1` artifact
+(`561b7d6bf0da6ccca2542c0f9cd053d67151ba31`) also completed
+[API production promotion](https://github.com/vm0-ai/vm0/actions/runs/34297728653/job/102298538957)
+on 2026-09-09 at 01:11:34 UTC.
+
+Migration `1092` removes the temporary legacy-writer trigger and function after
+this rollout. The billing response now requires the flag, and the frontend
+reads it directly. The existing Okou Goal retirement rollback floor requires
+commit `6d391117e4fead19e2105136fb2792a6e77801d8`, which descends from the
+explicit usage-pack writer commit. Its first compatible release is API 1.571.1,
+so every permitted rollback target also contains the required writer and
+response. The resolver runs from current `main` and rejects older targets before
+artifact resolution, including entries still retained in the rollback dashboard.
+Keep this enforced boundary when retiring the usage-pack compatibility bridge;
+all other deployment and Runner rollback checks continue to apply.
+
+The cleanup retains existing visibility values, the physical
+`member_invite_usage_pack_required` column and its ORM declaration, and all
+existing admin requirements. It does not change usage-pack balances or purchase
+eligibility. Further legacy-column retirement remains tracked in
+[issue #32575](https://github.com/vm0-ai/vm0/issues/32575).
 
 ### Workflow automation connector-account projections
 
@@ -671,3 +788,7 @@ For persisted state changes:
 Do not add broad defensive fallbacks just to hide incompatibility. The goal is a
 specific compatibility contract for the rollout window, with clear deletion
 criteria after the old version is gone.
+
+## Pi native provider reader preparation
+
+For the generation 4 reader-first release, see [Pi native provider preparation](pi-native-provider-preparation.md). Its model generation is independent of launch snapshot V3. Native writers remain absent until the controller verifies compatible API readers and rollback targets, Runner capabilities, pinned CLI artifacts and existing-route health. The preparation merge alone does not close these gates.

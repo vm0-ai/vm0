@@ -1,3 +1,9 @@
+import { dispatchGoalRetirementEffects$ } from "../services/goal-retirement-effects.service";
+import {
+  retirePendingGoalRunInTransaction,
+  type RetiredGoalRun,
+} from "../services/goal-retirement.service";
+import { clerk$ } from "../external/clerk";
 import { command } from "ccstate";
 import {
   claimCompatibleStoredExecutionContextSchema,
@@ -88,7 +94,10 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
-import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
+import {
+  dispatchCompleteSideEffects$,
+  drainOrgQueue$,
+} from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
 import { reportBuiltInModelProviderFailure } from "../services/built-in-model-provider-failure.service";
@@ -1166,7 +1175,10 @@ async function transitionClaimedJobToRunning(
   runnerAttribution: RunnerClaimAttribution | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
+): Promise<
+  | ClaimTransitionResult
+  | { readonly status: "retired"; readonly run: RetiredGoalRun }
+> {
   const query = buildClaimTransitionSql(
     runId,
     runnerAttribution?.runnerIdentity.runnerId ?? null,
@@ -1175,6 +1187,10 @@ async function transitionClaimedJobToRunning(
     runnerAttribution?.runnerVersion ?? null,
   );
   return await db.transaction(async (tx) => {
+    const retired = await retirePendingGoalRunInTransaction(tx, runId);
+    if (retired) {
+      return { status: "retired" as const, run: retired };
+    }
     const result = await timing.measure(
       "claim_route_transition_execute",
       "nested",
@@ -2498,6 +2514,8 @@ async function resolveStoredExecutionContextForClaim(
     cliAgentType: storedContextResult.data.cliAgentType,
     modelConfig: storedContextResult.data.piModelConfig,
     capabilities: args.capabilities,
+    environment: storedContextResult.data.environment,
+    firewalls: storedContextResult.data.firewalls,
   });
   if (piModelConfigResolution.status === "unsupported") {
     return {
@@ -2523,6 +2541,13 @@ async function resolveStoredExecutionContextForClaim(
     }),
   };
 }
+
+const finishRetiredGoalClaim$ = command(
+  async ({ set }, run: RetiredGoalRun, signal: AbortSignal): Promise<void> => {
+    await set(dispatchGoalRetirementEffects$, run, signal);
+    await set(drainOrgQueue$, { orgId: run.orgId }, signal);
+  },
+);
 
 const claimAuthorizedJob$ = command(
   async (
@@ -2612,6 +2637,16 @@ const claimAuthorizedJob$ = command(
         );
       },
     );
+    if (signal.aborted) {
+      L.debug("Runner claim request aborted after committed transition", {
+        runId,
+      });
+    }
+    if (claimResult.status === "retired") {
+      const committedSignal = new AbortController().signal;
+      waitUntil(set(finishRetiredGoalClaim$, claimResult.run, committedSignal));
+      return notFound("Job not found in queue");
+    }
     signal.throwIfAborted();
     if (claimResult.status !== "claimed") {
       return claimTransitionErrorResponse(claimResult);
@@ -2743,12 +2778,26 @@ const modelProviderFailureInner$ = command(
     });
     signal.throwIfAborted();
     if (transition.outcome === "recorded" && transition.cooldown) {
-      L.error("Built-in model provider failure report recorded", {
-        type: "built_in_model_provider_cooldown",
-        runId,
-        ...transition.cooldown,
-        unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
-      });
+      const logLevels = {
+        authentication: "warn",
+        billing: "warn",
+        rate_limit: "info",
+        provider_unavailable: "info",
+        timeout: "info",
+        connection: "info",
+      } as const satisfies Record<
+        typeof transition.cooldown.failureKind,
+        "info" | "warn"
+      >;
+      L[logLevels[transition.cooldown.failureKind]](
+        "Built-in model provider failure report recorded",
+        {
+          type: "built_in_model_provider_cooldown",
+          runId,
+          ...transition.cooldown,
+          unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
+        },
+      );
     }
     return { status: 200 as const, body: { outcome: transition.outcome } };
   },
@@ -2910,6 +2959,7 @@ const reserveActiveInputsInner$ = command(
     }
     const result = await reserveActiveInputDelivery(
       set(writeDb$),
+      get(clerk$),
       {
         runId,
         userId: auth.userId,

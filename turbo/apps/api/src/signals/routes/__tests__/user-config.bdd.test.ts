@@ -584,7 +584,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
       runId: sandbox.runId,
     });
 
-    const memberOkou = cfg.okouBearer(okouMember, ["file:read"], "okou");
+    const memberOkou = cfg.okouBearer(okouMember, ["file:read"]);
     cfg.mockMembership(okouMember, "org:member");
     const memberProbe = await cfg.probeAuth(
       { authorization: `Bearer ${memberOkou.token}` },

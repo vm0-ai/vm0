@@ -18,6 +18,8 @@ export const ROUTES = {
   prompt: "/prompt",
   works: "/works",
   artifacts: "/artifacts",
+  sharedArtifact: "/artifacts/:artifactShareId",
+  legacySharedArtifact: "/share/artifacts/:artifactShareId",
   sharedThread: "/share/threads/:id",
   browser: "/browsers/:browserThreadId",
   browserAuthorize: "/browser/authorize/:requestToken",

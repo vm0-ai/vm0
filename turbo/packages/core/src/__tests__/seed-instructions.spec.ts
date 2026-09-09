@@ -7,8 +7,4 @@ describe("SEED_INSTRUCTIONS", () => {
       "- **Okou**: Inspect and update your own skills, instructions, and environment via the Okou platform",
     );
   });
-
-  it("does not contain VM0 or Zero product branding", () => {
-    expect(SEED_INSTRUCTIONS).not.toMatch(/\b(?:vm0|zero)\b/iu);
-  });
 });

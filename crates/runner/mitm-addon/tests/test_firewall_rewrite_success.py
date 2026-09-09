@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, patch
 import auth
 import flow_metadata_keys as metadata_keys
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
-from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
+from tests.firewall_auth_helpers import (
+    firewall_auth_response,
+    handle_firewall_request_without_upstream_admission,
+)
 from tests.firewall_rewrite_helpers import make_allow, make_success_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
@@ -40,14 +43,10 @@ class TestAuthBaseUrlRewriteSuccess:
             permission="repo-read",
             rule="GET /repos/{owner}/{repo}",
         )
-        token_meta = {
-            "headers": {"Authorization": "Bearer real-token"},
-            "resolved_secrets": ["GITHUB_TOKEN"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-        }
+        token_meta = firewall_auth_response(
+            headers={"Authorization": "Bearer real-token"},
+            resolved_secrets=["GITHUB_TOKEN"],
+        )
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
@@ -139,12 +138,10 @@ class TestAuthBaseUrlRewriteSuccess:
         allow = make_allow(
             api_entry, name="gh", permission="read", rule="GET /repos/{owner}/{repo}"
         )
-        token_meta = {
-            "headers": {"Authorization": "Bearer real"},
-            "resolved_secrets": ["TOKEN"],
-            "cache_hit": False,
-            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-        }
+        token_meta = firewall_auth_response(
+            headers={"Authorization": "Bearer real"},
+            resolved_secrets=["TOKEN"],
+        )
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),

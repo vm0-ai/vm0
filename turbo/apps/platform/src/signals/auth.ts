@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { normalizeGoogleAdsAttributionParams } from "../lib/google-ads-attribution.ts";
 import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import {
   derivePlatformServiceOrigin,
@@ -167,8 +168,9 @@ export function getAllowedAuthRedirectOriginsForCurrentPage(): AllowedAuthRedire
 }
 
 function hasAdTraffic(params: URLSearchParams): boolean {
+  const normalized = normalizeGoogleAdsAttributionParams(params);
   return AD_TRAFFIC_MARKERS.some((param) => {
-    return params.has(param);
+    return normalized.has(param);
   });
 }
 
@@ -176,7 +178,9 @@ function appendHomepageAttributionParams(
   url: URLSearchParams,
   landingSearch: string,
 ): void {
-  const landingParams = new URLSearchParams(landingSearch);
+  const landingParams = normalizeGoogleAdsAttributionParams(
+    new URLSearchParams(landingSearch),
+  );
   url.set(ATTRIBUTION_SOURCE_PARAM, HOMEPAGE_ATTRIBUTION_VALUE);
   for (const param of AD_ATTRIBUTION_PARAMS) {
     for (const value of landingParams.getAll(param)) {
@@ -195,7 +199,9 @@ function setCurrentLandingContext(params: URLSearchParams): void {
 }
 
 function buildOnboardingEntryUrl(paramsInit?: URLSearchParams): string {
-  const params = new URLSearchParams(paramsInit);
+  const params = normalizeGoogleAdsAttributionParams(
+    new URLSearchParams(paramsInit),
+  );
   setCurrentLandingContext(params);
   const url = new URL(ONBOARDING_PATH, resolveAppOrigin());
   url.search = params.toString();

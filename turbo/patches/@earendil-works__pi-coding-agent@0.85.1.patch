@@ -1,0 +1,821 @@
+diff --git a/dist/core/agent-session.d.ts b/dist/core/agent-session.d.ts
+index 89f96e8..c2305bf 100644
+--- a/dist/core/agent-session.d.ts
++++ b/dist/core/agent-session.d.ts
+@@ -345,6 +345,8 @@ export declare class AgentSession {
+     private _normalizePromptSnippet;
+     private _normalizePromptGuidelines;
+     private _rebuildSystemPrompt;
++    /** Resume unresolved tools; settlement extensions prepare once before native cancellation/input reconciliation and public settlement. */
++    continuePendingTools(options?: Pick<PromptOptions, "preflightResult">): Promise<void>;
+     private _runAgentPrompt;
+     private _handlePostAgentRun;
+     /**
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index 66e874e..0362807 100644
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -271,7 +271,8 @@ export class AgentSession {
+             };
+         };
+     }
+-    async _compactBeforeNextAssistantResponse(context) {
++    async _compactBeforeNextAssistantResponse(context, signal) {
++        signal?.throwIfAborted();
+         const model = this.model;
+         const settings = this.settingsManager.getCompactionSettings();
+         if (!model ||
+@@ -279,7 +280,8 @@ export class AgentSession {
+             !shouldCompact(estimateContextTokens(context.messages).tokens, model.contextWindow, settings)) {
+             return context;
+         }
+-        await this._runAutoCompaction("threshold", false);
++        await this._runAutoCompaction("threshold", false, signal);
++        signal?.throwIfAborted();
+         return {
+             ...context,
+             messages: this.agent.state.messages.slice(),
+@@ -291,8 +293,10 @@ export class AgentSession {
+                 ? async (_turn, signal) => await this.agent.prepareNextTurn?.(signal)
+                 : undefined);
+         this.agent.prepareNextTurnWithContext = async (turn, signal) => {
+-            const context = await this._compactBeforeNextAssistantResponse(turn.context);
++            const context = await this._compactBeforeNextAssistantResponse(turn.context, signal);
++            signal?.throwIfAborted();
+             const previousSnapshot = await previousPrepareNextTurnWithContext?.({ ...turn, context }, signal);
++            signal?.throwIfAborted();
+             const nextContext = previousSnapshot?.context ?? context;
+             return {
+                 ...previousSnapshot,
+@@ -769,6 +773,38 @@ export class AgentSession {
+     // =========================================================================
+     // Prompting
+     // =========================================================================
++    /** Local pinned API for an API-owned assistant's unresolved tools. */
++    async continuePendingTools(options) {
++        if (this.isStreaming || this.agent.state.isStreaming || this.isCompacting) {
++            throw new Error("Agent is already processing. Wait for completion before continuing.");
++        }
++        await this.agent.continuePendingTools({
++            onStart: () => {
++                this._isAgentRunActive = true;
++                options?.preflightResult?.(true);
++            },
++            afterRun: (signal) => this._handlePostAgentRun(signal),
++            beforeSettled: async () => {
++                this._flushPendingBashMessages();
++                this._flushPendingCustomMessages();
++                await this._extensionRunner.emit({ type: "agent_settled" });
++                this._flushPendingCustomMessages();
++            },
++            onSettled: () => {
++                this._lastAssistantMessage = undefined;
++                this._systemPromptOverride = undefined;
++                this._flushPendingBashMessages();
++                this._flushPendingCustomMessages();
++                try {
++                    this._emit({ type: "agent_settled" });
++                }
++                finally {
++                    this._isAgentRunActive = false;
++                    this._resolveIdleWaitIfIdle();
++                }
++            },
++        });
++    }
+     async _runAgentPrompt(messages) {
+         this._isAgentRunActive = true;
+         try {
+@@ -784,13 +820,14 @@ export class AgentSession {
+             await this._emitAgentSettled();
+         }
+     }
+-    async _handlePostAgentRun() {
++    async _handlePostAgentRun(signal) {
++        signal?.throwIfAborted();
+         const msg = this._lastAssistantMessage;
+         this._lastAssistantMessage = undefined;
+         if (!msg) {
+             return false;
+         }
+-        if (this._isRetryableError(msg) && (await this._prepareRetry(msg))) {
++        if (this._isRetryableError(msg) && (await this._prepareRetry(msg, signal))) {
+             return true;
+         }
+         if (msg.stopReason === "error" && this._retryAttempt > 0) {
+@@ -802,7 +839,8 @@ export class AgentSession {
+             });
+             this._retryAttempt = 0;
+         }
+-        if (await this._checkCompaction(msg)) {
++        signal?.throwIfAborted();
++        if (await this._checkCompaction(msg, true, signal)) {
+             return true;
+         }
+         // The agent loop drains both queues before emitting agent_end. Any messages
+@@ -1044,8 +1082,6 @@ export class AgentSession {
+      * Internal: Queue a steering message (already expanded, no extension command check).
+      */
+     async _queueSteer(text, images) {
+-        this._steeringMessages.push(text);
+-        this._emitQueueUpdate();
+         const content = [{ type: "text", text }];
+         if (images) {
+             content.push(...images);
+@@ -1055,13 +1091,13 @@ export class AgentSession {
+             content,
+             timestamp: Date.now(),
+         });
++        this._steeringMessages.push(text);
++        this._emitQueueUpdate();
+     }
+     /**
+      * Internal: Queue a follow-up message (already expanded, no extension command check).
+      */
+     async _queueFollowUp(text, images) {
+-        this._followUpMessages.push(text);
+-        this._emitQueueUpdate();
+         const content = [{ type: "text", text }];
+         if (images) {
+             content.push(...images);
+@@ -1071,6 +1107,8 @@ export class AgentSession {
+             content,
+             timestamp: Date.now(),
+         });
++        this._followUpMessages.push(text);
++        this._emitQueueUpdate();
+     }
+     /**
+      * Throw an error if the text is an extension command.
+@@ -1227,10 +1265,10 @@ export class AgentSession {
+         await this.waitForIdle();
+     }
+     async waitForIdle() {
+-        if (this.isIdle) {
+-            return;
++        if (!this.isIdle) {
++            await this._getIdleWaitPromise();
+         }
+-        await this._getIdleWaitPromise();
++        await this.agent.waitForIdle();
+     }
+     // =========================================================================
+     // Model Management
+@@ -1631,7 +1669,8 @@ export class AgentSession {
+      * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
+      * @returns Whether the post-run loop should call `agent.continue()` for overflow recovery or queued messages
+      */
+-    async _checkCompaction(assistantMessage, skipAbortedCheck = true) {
++    async _checkCompaction(assistantMessage, skipAbortedCheck = true, signal) {
++        signal?.throwIfAborted();
+         const settings = this.settingsManager.getCompactionSettings();
+         if (!settings.enabled)
+             return false;
+@@ -1662,7 +1701,7 @@ export class AgentSession {
+             // Case 2: the response completed successfully. Compact, but do not retry because
+             // agent.continue() cannot continue from a completed assistant response.
+             if (!willRetry) {
+-                return await this._runAutoCompaction("overflow", false);
++                return await this._runAutoCompaction("overflow", false, signal);
+             }
+             if (this._overflowRecoveryAttempted) {
+                 const errorMessage = contextOverflow
+@@ -1692,7 +1731,7 @@ export class AgentSession {
+             if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
+                 this.agent.state.messages = messages.slice(0, -1);
+             }
+-            return await this._runAutoCompaction("overflow", willRetry);
++            return await this._runAutoCompaction("overflow", willRetry, signal);
+         }
+         // Case 3: threshold compaction without retry.
+         // For error messages or all-zero usage messages, estimate from the last valid response.
+@@ -1722,7 +1761,7 @@ export class AgentSession {
+             contextTokens = directContextTokens;
+         }
+         if (shouldCompact(contextTokens, contextWindow, settings)) {
+-            return await this._runAutoCompaction("threshold", false);
++            return await this._runAutoCompaction("threshold", false, signal);
+         }
+         return false;
+     }
+@@ -1736,7 +1775,8 @@ export class AgentSession {
+      * @param willRetry Whether to continue the interrupted turn after overflow compaction
+      * @returns Whether the post-run loop should call `agent.continue()`
+      */
+-    async _runAutoCompaction(reason, willRetry) {
++    async _runAutoCompaction(reason, willRetry, signal) {
++        signal?.throwIfAborted();
+         const settings = this.settingsManager.getCompactionSettings();
+         let started = false;
+         let fromExtension = false;
+@@ -1745,6 +1785,7 @@ export class AgentSession {
+                 return false;
+             }
+             const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
++            signal?.throwIfAborted();
+             const pathEntries = this.sessionManager.getBranch();
+             const preparation = prepareCompaction(pathEntries, settings);
+             if (!preparation) {
+@@ -1753,6 +1794,8 @@ export class AgentSession {
+             this._emit({ type: "compaction_start", reason });
+             this._autoCompactionAbortController = new AbortController();
+             started = true;
++            const compactionSignal = signal ? AbortSignal.any([signal, this._autoCompactionAbortController.signal]) : this._autoCompactionAbortController.signal;
++            compactionSignal.throwIfAborted();
+             let extensionCompaction;
+             if (this._extensionRunner.hasHandlers("session_before_compact")) {
+                 const extensionResult = (await this._extensionRunner.emit({
+@@ -1762,7 +1805,7 @@ export class AgentSession {
+                     customInstructions: undefined,
+                     reason,
+                     willRetry,
+-                    signal: this._autoCompactionAbortController.signal,
++                    signal: compactionSignal,
+                 }));
+                 if (extensionResult?.cancel) {
+                     this._emit({
+@@ -1785,6 +1828,7 @@ export class AgentSession {
+                     fromExtension = true;
+                 }
+             }
++            compactionSignal.throwIfAborted();
+             let summary;
+             let firstKeptEntryId;
+             let tokensBefore;
+@@ -1800,14 +1844,14 @@ export class AgentSession {
+             }
+             else {
+                 // Shared default summary generator, also used by manual compaction.
+-                const compactResult = await this._runDefaultCompaction(preparation, requestModel, apiKey, headers, undefined, this._autoCompactionAbortController.signal, env, reason);
++                const compactResult = await this._runDefaultCompaction(preparation, requestModel, apiKey, headers, undefined, compactionSignal, env, reason);
+                 summary = compactResult.summary;
+                 firstKeptEntryId = compactResult.firstKeptEntryId;
+                 tokensBefore = compactResult.tokensBefore;
+                 usage = compactResult.usage;
+                 details = compactResult.details;
+             }
+-            if (this._autoCompactionAbortController.signal.aborted) {
++            if (compactionSignal.aborted) {
+                 this._emit({
+                     type: "compaction_end",
+                     reason,
+@@ -1874,14 +1918,14 @@ export class AgentSession {
+                     type: "compaction_end",
+                     reason,
+                     result: undefined,
+-                    aborted: false,
++                    aborted: signal?.aborted === true,
+                     willRetry: false,
+                     errorMessage: formattedErrorMessage,
+                 });
+                 await this._emitSessionCompactFailed({
+                     reason,
+                     errorMessage: formattedErrorMessage,
+-                    aborted: false,
++                    aborted: signal?.aborted === true,
+                     willRetry: false,
+                     fromExtension,
+                 });
+@@ -2283,7 +2327,8 @@ export class AgentSession {
+      * Prepare a retryable error for continuation with exponential backoff.
+      * @returns true if the caller should continue the agent, false otherwise
+      */
+-    async _prepareRetry(message) {
++    async _prepareRetry(message, signal) {
++        signal?.throwIfAborted();
+         const settings = this.settingsManager.getRetrySettings();
+         if (!settings.enabled) {
+             return false;
+@@ -2310,7 +2355,7 @@ export class AgentSession {
+         // Wait with exponential backoff (abortable)
+         this._retryAbortController = new AbortController();
+         try {
+-            await sleep(delayMs, this._retryAbortController.signal);
++            await sleep(delayMs, signal ? AbortSignal.any([signal, this._retryAbortController.signal]) : this._retryAbortController.signal);
+         }
+         catch {
+             // Aborted during sleep - emit end event so UI can clean up
+@@ -2828,4 +2873,4 @@ export class AgentSession {
+         return this._extensionRunner;
+     }
+ }
+-//# sourceMappingURL=agent-session.js.map
+\ No newline at end of file
++//# sourceMappingURL=agent-session.js.map
+diff --git a/dist/core/tools/bash.d.ts b/dist/core/tools/bash.d.ts
+index c3d9348..dd2b935 100644
+--- a/dist/core/tools/bash.d.ts
++++ b/dist/core/tools/bash.d.ts
+@@ -30,6 +30,8 @@ export interface BashOperations {
+      */
+     exec: (command: string, cwd: string, options: {
+         onData: (data: Buffer) => void;
++        /** Local execution pauses both pipes until this optional spool wait settles. */
++        waitForDrain?: (signal: AbortSignal) => Promise<void> | undefined;
+         signal?: AbortSignal;
+         timeout?: number;
+         env?: NodeJS.ProcessEnv;
+diff --git a/dist/core/tools/bash.js b/dist/core/tools/bash.js
+index b71057d..187a008 100644
+--- a/dist/core/tools/bash.js
++++ b/dist/core/tools/bash.js
+@@ -34,7 +34,7 @@ export const bashToolSystemPromptContribution = {
+ /** Shared process execution used by the built-in shell tools. */
+ export function createLocalShellOperations(shellName, resolveShellConfig) {
+     return {
+-        exec: async (command, cwd, { onData, signal, timeout, env }) => {
++        exec: async (command, cwd, { onData, waitForDrain, signal, timeout, env }) => {
+             const timeoutMs = resolveTimeoutMs(timeout);
+             if (signal?.aborted) {
+                 throw new Error("aborted");
+@@ -46,6 +46,7 @@ export function createLocalShellOperations(shellName, resolveShellConfig) {
+             catch {
+                 throw new Error(`Working directory does not exist: ${cwd}\nCannot execute ${shellName} commands.`);
+             }
++            if (signal?.aborted) throw new Error("aborted");
+             const commandFromStdin = shellConfig.commandTransport === "stdin";
+             const child = spawn(shellConfig.shell, commandFromStdin ? shellConfig.args : [...shellConfig.args, command], {
+                 cwd,
+@@ -60,49 +61,75 @@ export function createLocalShellOperations(shellName, resolveShellConfig) {
+             }
+             if (child.pid)
+                 trackDetachedChildPid(child.pid);
+-            let timedOut = false;
++            const execution = new AbortController();
+             let timeoutHandle;
+-            const onAbort = () => {
+-                if (child.pid)
+-                    killProcessTree(child.pid);
++            let outputPaused = false;
++            let pendingOutput;
++            const onAbort = () => execution.abort(new Error("aborted"));
++            const stopChild = () => {
++                if (child.pid) killProcessTree(child.pid);
+             };
+-            try {
+-                // Set timeout if provided.
+-                if (timeoutMs !== undefined) {
+-                    timeoutHandle = setTimeout(() => {
+-                        timedOut = true;
+-                        if (child.pid)
+-                            killProcessTree(child.pid);
+-                    }, timeoutMs);
++            const onResume = () => {
++                // Node flushStdio() resumes child pipes after exit. Reassert the
++                // shared pause before its resume event can start flowing data.
++                if (outputPaused) {
++                    child.stdout?.pause();
++                    child.stderr?.pause();
+                 }
+-                // Stream stdout and stderr.
+-                child.stdout?.on("data", onData);
+-                child.stderr?.on("data", onData);
+-                // Handle abort signal by killing the entire process tree.
+-                if (signal) {
+-                    if (signal.aborted)
+-                        onAbort();
+-                    else
+-                        signal.addEventListener("abort", onAbort, { once: true });
++            };
++            const handleData = (data) => {
++                if (execution.signal.aborted) return;
++                try {
++                    onData(data);
++                    const drain = waitForDrain?.(execution.signal);
++                    if (drain) {
++                        outputPaused = true;
++                        child.stdout?.pause();
++                        child.stderr?.pause();
++                        // Pausing both streams synchronously admits only one wait,
++                        // not an output-sized chain of async EventEmitter callbacks.
++                        pendingOutput = drain.then(() => {
++                            outputPaused = false;
++                            if (!execution.signal.aborted) {
++                                child.stdout?.resume();
++                                child.stderr?.resume();
++                            }
++                        }, (error) => execution.abort(error));
++                    }
+                 }
+-                // Handle shell spawn errors and wait for the process to terminate without hanging
+-                // on inherited stdio handles held by detached descendants.
+-                const exitCode = await waitForChildProcess(child);
+-                if (signal?.aborted) {
+-                    throw new Error("aborted");
++                catch (error) {
++                    execution.abort(error);
+                 }
+-                if (timedOut) {
+-                    throw new Error(`timeout:${timeout}`);
++            };
++            try {
++                execution.signal.addEventListener("abort", stopChild, { once: true });
++                if (timeoutMs !== undefined) {
++                    timeoutHandle = setTimeout(() => execution.abort(new Error(`timeout:${timeout}`)), timeoutMs);
+                 }
++                child.stdout?.on("resume", onResume);
++                child.stderr?.on("resume", onResume);
++                child.stdout?.on("data", handleData);
++                child.stderr?.on("data", handleData);
++                const completion = waitForChildProcess(child, {
++                    signal: execution.signal,
++                    isOutputPaused: () => outputPaused,
++                });
++                signal?.addEventListener("abort", onAbort, { once: true });
++                if (signal?.aborted) onAbort();
++                const exitCode = await completion;
++                await pendingOutput;
++                execution.signal.throwIfAborted();
+                 return { exitCode };
+             }
+             finally {
+-                if (child.pid)
+-                    untrackDetachedChildPid(child.pid);
+-                if (timeoutHandle)
+-                    clearTimeout(timeoutHandle);
+-                if (signal)
+-                    signal.removeEventListener("abort", onAbort);
++                child.stdout?.off("resume", onResume);
++                child.stderr?.off("resume", onResume);
++                child.stdout?.off("data", handleData);
++                child.stderr?.off("data", handleData);
++                execution.signal.removeEventListener("abort", stopChild);
++                if (child.pid) untrackDetachedChildPid(child.pid);
++                if (timeoutHandle) clearTimeout(timeoutHandle);
++                signal?.removeEventListener("abort", onAbort);
+             }
+         },
+     };
+@@ -155,7 +182,14 @@ export function createShellToolDefinition(cwd, config, options) {
+         async execute(_toolCallId, { command, timeout }, signal, onUpdate, ctx) {
+             const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
+             const spawnContext = resolveSpawnContext(resolvedCommand, ctx?.cwd || cwd, spawnHook, exposeSessionEnvironment, ctx);
+-            const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix });
++            const timeoutMs = resolveTimeoutMs(timeout);
++            const execution = new AbortController();
++            const onAbort = () => execution.abort(new Error("aborted"));
++            const output = new OutputAccumulator({
++                tempFilePrefix: config.tempFilePrefix,
++                onError: (error) => execution.abort(error),
++            });
++            let timeoutHandle;
+             let acceptingOutput = true;
+             let updateTimer;
+             let updateDirty = false;
+@@ -192,12 +226,10 @@ export function createShellToolDefinition(cwd, config, options) {
+                 }
+                 updateTimer ??= setTimeout(() => {
+                     updateTimer = undefined;
+-                    emitOutputUpdate();
++                    try { emitOutputUpdate(); }
++                    catch (error) { execution.abort(error); }
+                 }, delay);
+             };
+-            if (onUpdate) {
+-                onUpdate({ content: [], details: undefined });
+-            }
+             const handleData = (data) => {
+                 if (!acceptingOutput)
+                     return;
+@@ -210,7 +242,7 @@ export function createShellToolDefinition(cwd, config, options) {
+                 clearUpdateTimer();
+                 emitOutputUpdate();
+                 const snapshot = output.snapshot({ persistIfTruncated: true });
+-                await output.closeTempFile();
++                await output.closeTempFile(execution.signal);
+                 return snapshot;
+             };
+             const formatOutput = (snapshot, emptyText = "(no output)") => {
+@@ -236,37 +268,48 @@ export function createShellToolDefinition(cwd, config, options) {
+             };
+             const appendStatus = (text, status) => `${text ? `${text}\n\n` : ""}${status}`;
+             try {
+-                let exitCode;
+-                try {
+-                    const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
+-                        onData: handleData,
+-                        signal,
+-                        timeout,
+-                        env: spawnContext.env,
+-                    });
+-                    exitCode = result.exitCode;
+-                }
+-                catch (err) {
+-                    const snapshot = await finishOutput();
+-                    const { text } = formatOutput(snapshot, "");
+-                    if (err instanceof Error && err.message === "aborted") {
+-                        throw new Error(appendStatus(text, "Command aborted"));
+-                    }
+-                    if (err instanceof Error && err.message.startsWith("timeout:")) {
+-                        const timeoutSecs = err.message.split(":")[1];
+-                        throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));
+-                    }
+-                    throw err;
++                signal?.addEventListener("abort", onAbort, { once: true });
++                if (signal?.aborted) onAbort();
++                if (timeoutMs !== undefined) {
++                    // The caller's existing deadline also owns the final file flush.
++                    timeoutHandle = setTimeout(() => execution.abort(new Error(`timeout:${timeout}`)), timeoutMs);
+                 }
++                execution.signal.throwIfAborted();
++                onUpdate?.({ content: [], details: undefined });
++                const { exitCode } = await ops.exec(spawnContext.command, spawnContext.cwd, {
++                    onData: handleData,
++                    waitForDrain: (drainSignal) => output.waitForDrain(drainSignal),
++                    signal: execution.signal,
++                    timeout,
++                    env: spawnContext.env,
++                });
+                 const snapshot = await finishOutput();
++                execution.signal.throwIfAborted();
+                 const { text: outputText, details } = formatOutput(snapshot);
+                 if (exitCode !== 0 && exitCode !== null) {
+                     throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
+                 }
+                 return { content: [{ type: "text", text: outputText }], details };
+             }
++            catch (error) {
++                const err = execution.signal.aborted ? execution.signal.reason : error;
++                acceptingOutput = false;
++                output.finish({ persist: false });
++                const text = output.snapshot().content;
++                if (err instanceof Error && err.message === "aborted") {
++                    throw new Error(appendStatus(text, "Command aborted"));
++                }
++                if (err instanceof Error && err.message.startsWith("timeout:")) {
++                    throw new Error(appendStatus(text, `Command timed out after ${err.message.split(":")[1]} seconds`));
++                }
++                throw err;
++            }
+             finally {
++                acceptingOutput = false;
+                 clearUpdateTimer();
++                if (timeoutHandle) clearTimeout(timeoutHandle);
++                signal?.removeEventListener("abort", onAbort);
++                output.destroyTempFile();
+             }
+         },
+         ...createShellRenderers(config.prompt),
+diff --git a/dist/core/tools/output-accumulator.d.ts b/dist/core/tools/output-accumulator.d.ts
+index fbd581f..6ecae28 100644
+--- a/dist/core/tools/output-accumulator.d.ts
++++ b/dist/core/tools/output-accumulator.d.ts
+@@ -3,6 +3,7 @@ export interface OutputAccumulatorOptions {
+     maxLines?: number;
+     maxBytes?: number;
+     tempFilePrefix?: string;
++    onError?: (error: Error) => void;
+ }
+ export interface OutputSnapshot {
+     content: string;
+@@ -35,13 +36,18 @@ export declare class OutputAccumulator {
+     private finished;
+     private tempFilePath;
+     private tempFileStream;
++    private tempFileError;
++    private onError;
++    private disposed;
+     constructor(options?: OutputAccumulatorOptions);
+     append(data: Buffer): void;
+-    finish(): void;
++    finish(options?: { persist?: boolean }): void;
+     snapshot(options?: {
+         persistIfTruncated?: boolean;
+     }): OutputSnapshot;
+-    closeTempFile(): Promise<void>;
++    waitForDrain(signal?: AbortSignal): Promise<void> | undefined;
++    closeTempFile(signal?: AbortSignal): Promise<void>;
++    destroyTempFile(): void;
+     getLastLineBytes(): number;
+     private appendDecodedText;
+     private trimTail;
+diff --git a/dist/core/tools/output-accumulator.js b/dist/core/tools/output-accumulator.js
+index 7241668..293d1f1 100644
+--- a/dist/core/tools/output-accumulator.js
++++ b/dist/core/tools/output-accumulator.js
+@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
+ import { createWriteStream } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { finished } from "node:stream/promises";
+ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail } from "./truncate.js";
+ function defaultTempFilePath(prefix) {
+     const id = randomBytes(8).toString("hex");
+@@ -36,7 +37,11 @@ export class OutputAccumulator {
+     finished = false;
+     tempFilePath;
+     tempFileStream;
++    tempFileError;
++    onError;
++    disposed = false;
+     constructor(options = {}) {
++        this.onError = options.onError;
+         this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
+         this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+         this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
+@@ -56,13 +61,13 @@ export class OutputAccumulator {
+             this.rawChunks.push(data);
+         }
+     }
+-    finish() {
++    finish(options = {}) {
+         if (this.finished) {
+             return;
+         }
+         this.finished = true;
+         this.appendDecodedText(this.decoder.decode());
+-        if (this.shouldUseTempFile()) {
++        if (options.persist !== false && this.shouldUseTempFile()) {
+             this.ensureTempFile();
+         }
+     }
+@@ -93,26 +98,43 @@ export class OutputAccumulator {
+             fullOutputPath: this.tempFilePath,
+         };
+     }
+-    async closeTempFile() {
+-        if (!this.tempFileStream) {
+-            return;
+-        }
++    // The producer must stop both pipes while this single wait is pending.
++    waitForDrain(signal) {
++        signal?.throwIfAborted();
++        if (this.tempFileError) throw this.tempFileError;
+         const stream = this.tempFileStream;
+-        this.tempFileStream = undefined;
+-        await new Promise((resolve, reject) => {
+-            const onError = (error) => {
+-                stream.off("finish", onFinish);
+-                reject(error);
+-            };
+-            const onFinish = () => {
++        if (!stream?.writableNeedDrain) return;
++        return new Promise((resolve, reject) => {
++            const cleanup = () => {
++                stream.off("drain", onDrain);
+                 stream.off("error", onError);
+-                resolve();
++                stream.off("close", onClose);
++                signal?.removeEventListener("abort", onAbort);
+             };
++            const onDrain = () => { cleanup(); resolve(); };
++            const onError = (error) => { cleanup(); reject(error); };
++            const onClose = () => onError(new Error("Output file closed before draining"));
++            const onAbort = () => onError(signal.reason);
++            stream.once("drain", onDrain);
+             stream.once("error", onError);
+-            stream.once("finish", onFinish);
+-            stream.end();
++            stream.once("close", onClose);
++            signal?.addEventListener("abort", onAbort, { once: true });
+         });
+     }
++    async closeTempFile(signal) {
++        signal?.throwIfAborted();
++        if (this.tempFileError) throw this.tempFileError;
++        const stream = this.tempFileStream;
++        if (!stream) return;
++        const completion = finished(stream, { cleanup: true, signal });
++        stream.end();
++        await completion;
++    }
++    destroyTempFile() {
++        this.disposed = true;
++        this.rawChunks = [];
++        this.tempFileStream?.destroy();
++    }
+     getLastLineBytes() {
+         return this.currentLineBytes;
+     }
+@@ -174,10 +196,23 @@ export class OutputAccumulator {
+             return;
+         }
+         this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
+-        this.tempFileStream = createWriteStream(this.tempFilePath);
+-        for (const chunk of this.rawChunks) {
+-            this.tempFileStream.write(chunk);
+-        }
++        const stream = createWriteStream(this.tempFilePath, { highWaterMark: 64 * 1024 });
++        this.tempFileStream = stream;
++        const onError = (error) => {
++            if (this.tempFileError || this.disposed) return;
++            this.tempFileError = error;
++            this.onError?.(error);
++        };
++        stream.on("error", onError);
++        stream.once("close", () => {
++            if (!stream.writableFinished && !this.disposed) {
++                onError(new Error("Output file closed before finishing"));
++            }
++            stream.off("error", onError);
++        });
++        // The pre-spool prefix is at most maxBytes. Flush it as one bounded
++        // write, then include it in writableNeedDrain before admitting more data.
++        if (this.rawChunks.length > 0) stream.write(Buffer.concat(this.rawChunks));
+         this.rawChunks = [];
+     }
+ }
+diff --git a/dist/utils/child-process.d.ts b/dist/utils/child-process.d.ts
+index c75b42d..a554d3e 100644
+--- a/dist/utils/child-process.d.ts
++++ b/dist/utils/child-process.d.ts
+@@ -14,5 +14,5 @@ export declare function spawnProcessSync(command: string, args: string[], option
+  * us reading, while a quiet inherited handle (e.g. a Windows daemonized descendant
+  * that never lets `close` fire) still releases us after the grace elapses.
+  */
+-export declare function waitForChildProcess(child: ChildProcess): Promise<number | null>;
++export declare function waitForChildProcess(child: ChildProcess, options?: { signal?: AbortSignal; isOutputPaused?: () => boolean }): Promise<number | null>;
+ //# sourceMappingURL=child-process.d.ts.map
+\ No newline at end of file
+diff --git a/dist/utils/child-process.js b/dist/utils/child-process.js
+index 48e5724..fcdd8fe 100644
+--- a/dist/utils/child-process.js
++++ b/dist/utils/child-process.js
+@@ -20,7 +20,7 @@ export function spawnProcessSync(command, args, options) {
+  * us reading, while a quiet inherited handle (e.g. a Windows daemonized descendant
+  * that never lets `close` fire) still releases us after the grace elapses.
+  */
+-export function waitForChildProcess(child) {
++export function waitForChildProcess(child, options = {}) {
+     return new Promise((resolve, reject) => {
+         let settled = false;
+         let exited = false;
+@@ -33,9 +33,12 @@ export function waitForChildProcess(child) {
+                 clearTimeout(postExitTimer);
+                 postExitTimer = undefined;
+             }
++            options.signal?.removeEventListener("abort", onAbort);
+             child.removeListener("error", onError);
+             child.removeListener("exit", onExit);
+             child.removeListener("close", onClose);
++            child.stdout?.removeListener("resume", onResume);
++            child.stderr?.removeListener("resume", onResume);
+             child.stdout?.removeListener("end", onStdoutEnd);
+             child.stderr?.removeListener("end", onStderrEnd);
+             child.stdout?.removeListener("data", onData);
+@@ -58,10 +61,16 @@ export function waitForChildProcess(child) {
+             }
+         };
+         const armIdleTimer = () => {
+-            if (postExitTimer)
+-                clearTimeout(postExitTimer);
++            if (postExitTimer) clearTimeout(postExitTimer);
++            postExitTimer = undefined;
++            // Paused disk consumers accrue no idle time. Resume starts a fresh
++            // grace window, including when an inherited pipe remains quiet.
++            if (options.isOutputPaused?.()) return;
+             postExitTimer = setTimeout(() => finalize(exitCode), EXIT_STDIO_GRACE_MS);
+         };
++        const onResume = () => {
++            if (exited && !settled) armIdleTimer();
++        };
+         const onData = () => {
+             // Output is still arriving after exit; defer finalizing so we don't
+             // destroy the stream mid-write and truncate the tail.
+@@ -81,8 +90,11 @@ export function waitForChildProcess(child) {
+                 return;
+             settled = true;
+             cleanup();
++            child.stdout?.destroy();
++            child.stderr?.destroy();
+             reject(err);
+         };
++        const onAbort = () => onError(options.signal.reason);
+         const onExit = (code) => {
+             exited = true;
+             exitCode = code;
+@@ -94,6 +106,10 @@ export function waitForChildProcess(child) {
+         const onClose = (code) => {
+             finalize(code);
+         };
++        if (options.isOutputPaused) {
++            child.stdout?.on("resume", onResume);
++            child.stderr?.on("resume", onResume);
++        }
+         child.stdout?.once("end", onStdoutEnd);
+         child.stderr?.once("end", onStderrEnd);
+         child.stdout?.on("data", onData);
+@@ -101,6 +117,8 @@ export function waitForChildProcess(child) {
+         child.once("error", onError);
+         child.once("exit", onExit);
+         child.once("close", onClose);
++        options.signal?.addEventListener("abort", onAbort, { once: true });
++        if (options.signal?.aborted) onAbort();
+     });
+ }
+ //# sourceMappingURL=child-process.js.map
+\ No newline at end of file
+diff --git a/dist/utils/photon.js b/dist/utils/photon.js
+index 3078895..d67667b 100644
+--- a/dist/utils/photon.js
++++ b/dist/utils/photon.js
+@@ -105,7 +105,8 @@ export async function loadPhoton() {
+     loadPromise = (async () => {
+         const restoreReadFileSync = patchPhotonWasmRead();
+         try {
+-            photonModule = await import("@silvia-odwyer/photon-node");
++            const imported = await import("@silvia-odwyer/photon-node");
++            photonModule = imported.default;
+             return photonModule;
+         }
+         catch {

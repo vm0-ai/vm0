@@ -13,10 +13,7 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import {
-  CANCELLATION_RECOVERY_STALE_AFTER_MS,
-  executionContextSchema,
-} from "@okouai/api-contracts/contracts/runners";
+import { executionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -55,6 +52,7 @@ import {
   PI_MEMORY_PHASE2_LEASE_DURATION_MS,
 } from "../pi-memory-phase2-job.service";
 import { executePiMemoryPhase2Work$ } from "../pi-memory-phase2-worker.service";
+import { PI_MEMORY_PHASE2_USAGE_DRAIN_MS } from "../pi-memory-phase2-usage.service";
 import {
   piMemoryPhase2MaintenanceCallbackPayloadSchema,
   handlePiMemoryPhase2MaintenanceCallback,
@@ -491,7 +489,8 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
   if (result.outcome !== "dispatched") {
     throw new Error("Maintenance dispatch failed");
   }
-  cleanup.runId = result.runId;
+  const runId = result.runId;
+  cleanup.runId = runId;
   const [maintenanceRunIdentity] = await db()
     .select({
       sessionId: agentRuns.sessionId,
@@ -603,6 +602,7 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
     );
   }
   const requests: { path: string; body: string; status: number }[] = [];
+  const proxyUsageBodies: string[] = [];
   let providerCount = 0;
   let commitCount = 0;
   let baseUrl = "";
@@ -627,6 +627,36 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
       process.kill(pid, "SIGKILL");
       response.destroy();
       return;
+    }
+    // This harness runs the real CLI/Guest but has no runner proxy. Model its
+    // canonical usage ingress from each observed provider response and retain
+    // the exact request so retries exercise the same idempotency keys.
+    if (fault !== "provider" || providerCount === 0) {
+      const body = JSON.stringify({
+        runId,
+        events: [
+          { category: "tokens.input", quantity: 8 },
+          { category: "tokens.output", quantity: 5 },
+          { category: "tokens.cache_read", quantity: 2 },
+        ].map((entry) => {
+          return {
+            ...entry,
+            idempotencyKey: randomUUID(),
+            kind: "model",
+            provider: "gpt-5.6-terra",
+          };
+        }),
+      });
+      const proxyUsage = await app.request("/api/webhooks/agent/usage-event", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body,
+      });
+      expect(proxyUsage.status).toBe(200);
+      proxyUsageBodies.push(body);
     }
     sse(response, providerCount++, fault === "provider");
     return;
@@ -659,7 +689,7 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
           response.end("unavailable");
           return;
         }
-        if (path.endsWith("/pi-memory-phase2/usage")) {
+        if (path === "/test/maintenance-completed") {
           if (fault === "revoked") {
             const replacement = randomUUID();
             await db()
@@ -674,10 +704,14 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
               runtime,
               "pi-launch-payload/maintenance-validation.json",
             );
-            // The HTTP usage boundary is after the real child exits, before Guest
-            // checkpoint preparation. This mutation never injects valid evidence.
+            // The fixture awaits this barrier after mounted validation and
+            // before exiting, so Guest has not started checkpoint preparation.
+            // This mutation never injects valid evidence.
             await writeFile(marker, "{}", { mode: 0o600 });
           }
+          response.writeHead(204);
+          response.end();
+          return;
         }
         const headers = new Headers();
         for (const [key, value] of Object.entries(request.headers)) {
@@ -785,7 +819,10 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
     repo,
     "turbo/apps/cli/src/test/fixtures/pi-agent-loop-rpc-host.ts",
   );
-  const shim = `#!/bin/sh\nprintf '%s' "$$" > ${quote(join(root, "child.pid"))}\nexec ${[process.execPath, "--import", import.meta.resolve("tsx"), fixture, join(root, "agent"), join(root, "sessions"), memory].map(quote).join(" ")}\n`;
+  const completionBarrier = ["revoked", "invalid_marker"].includes(fault)
+    ? [`${baseUrl}/test/maintenance-completed`]
+    : [];
+  const shim = `#!/bin/sh\nprintf '%s' "$$" > ${quote(join(root, "child.pid"))}\nexec ${[process.execPath, "--import", import.meta.resolve("tsx"), fixture, join(root, "agent"), join(root, "sessions"), memory, ...completionBarrier].map(quote).join(" ")}\n`;
   await writeFile(join(bin, "npx"), shim, { mode: 0o700 });
   const payloadFile = join(runtime, "run-payload/payload.json");
   const userEnvFile = join(runtime, "user-env/env.json");
@@ -898,6 +935,7 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
     usage,
     run,
     requests,
+    proxyUsageBodies,
     providerCount,
     objects,
     memory,
@@ -929,31 +967,28 @@ async function assertUsageReplay(
         .every((entry) => {
           return (
             entry.quantity === quantity &&
-            entry.runId === null &&
+            entry.runId === run.runId &&
             entry.provider === "gpt-5.6-terra"
           );
         }),
     ).toBeTruthy();
   }
-  const usage = run.requests.find((request) => {
-    return request.path.endsWith("/pi-memory-phase2/usage");
-  });
-  if (!usage) {
-    throw new Error("Missing actual private usage report");
-  }
+  expect(run.proxyUsageBodies).toHaveLength(billedResponses);
   for (let retry = 0; retry < 2; retry++) {
-    expect(
-      (
-        await run.app.request(usage.path, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${run.token}`,
-            "content-type": "application/json",
-          },
-          body: usage.body,
-        })
-      ).status,
-    ).toBe(200);
+    for (const body of run.proxyUsageBodies) {
+      expect(
+        (
+          await run.app.request("/api/webhooks/agent/usage-event", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${run.token}`,
+              "content-type": "application/json",
+            },
+            body,
+          })
+        ).status,
+      ).toBe(200);
+    }
   }
   const replayUsage = await db()
     .select()
@@ -1013,7 +1048,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
       expect(run.usage.length).toBeGreaterThan(0);
       expect(
         run.usage.every((entry) => {
-          return entry.runId === null;
+          return entry.runId === run.runId;
         }),
       ).toBeTruthy();
       await expect(
@@ -1185,7 +1220,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
           .where(
             eq(piMemoryPhase2Jobs.memoryStorageId, run.scope.memoryStorageId),
           );
-        mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+        mockNow(completedAt.getTime() + PI_MEMORY_PHASE2_USAGE_DRAIN_MS);
         const cleanupResult = await cleanupMaintenanceRun(run.runId, run.scope);
         expect(cleanupResult.threadlessRuns).toStrictEqual({
           discovered: 1,
@@ -1269,7 +1304,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
         if (!completedAt) {
           throw new Error("Cleanup no-diff run did not complete");
         }
-        mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+        mockNow(completedAt.getTime() + PI_MEMORY_PHASE2_USAGE_DRAIN_MS);
         const cleanupResult = await cleanupMaintenanceRun(run.runId, run.scope);
         expect(cleanupResult.threadlessRuns).toStrictEqual({
           discovered: 1,
@@ -1320,7 +1355,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
       );
       expect(
         run.usage.every((entry) => {
-          return entry.runId === null;
+          return entry.runId === run.runId;
         }),
       ).toBeTruthy();
       const [storage] = await db()

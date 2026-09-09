@@ -87,6 +87,7 @@ const billingStatusResponseSchema = z.object({
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
+  showUsagePack: z.boolean(),
   memberInvitationAllowed: z.boolean().optional(),
   autoRechargeAllowed: z.boolean().optional(),
   supportByok: z.boolean().optional(),

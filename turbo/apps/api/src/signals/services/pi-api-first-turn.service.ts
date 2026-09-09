@@ -1,9 +1,15 @@
+import {
+  retirePendingGoalRun,
+  type GoalRunRetirement,
+} from "./goal-retirement.service";
 import { createHash } from "node:crypto";
 
 import {
   CANONICAL_WORKING_DIR,
   PI_AGENT_DIR,
   PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
+  type StoredResumeSession,
   type PiApiFirstTurnManifest,
   type PiApiFirstTurnOwnershipTransferMode,
   type PiResourceSnapshot,
@@ -46,6 +52,7 @@ import { writeDb$, type Db } from "../external/db";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import {
   downloadS3BufferWithMaxBytes,
+  generatePresignedGetUrl,
   putImmutableS3Object,
   putS3Object,
 } from "../external/s3";
@@ -56,6 +63,7 @@ import {
 } from "./agent-webhook-complete.service";
 import { createPiApiFirstTurnCheckpoint$ } from "./agent-webhook-checkpoints.service";
 import {
+  isTerminalChatgptRefreshErrorCode,
   resolveCurrentModelProviderRuntimeSecretForApi,
   resolveModelProviderRuntimeSecretForApi,
 } from "./agent-webhook-firewall-auth.service";
@@ -78,6 +86,7 @@ import {
 } from "./session-history-blobs";
 import {
   PI_API_FIRST_TURN_API_OWNERSHIP_TIMEOUT_MS,
+  PI_API_FIRST_TURN_URL_TTL_SECONDS,
   piApiFirstTurnObjectKey,
   type PiApiFirstTurnActivation,
 } from "./pi-api-first-turn-config";
@@ -146,6 +155,16 @@ class PiApiFirstTurnError extends Error {
     this.name = "PiApiFirstTurnError";
     this.code = code;
     this.failureReason = options?.failureReason;
+  }
+}
+
+class PiApiFirstTurnCodexReconnectRequiredError extends PiApiFirstTurnError {
+  constructor() {
+    super(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription access token is unavailable",
+      { failureReason: "reconnect_required" },
+    );
   }
 }
 
@@ -233,6 +252,62 @@ function loadInlineResumeSession(sessionHistory: string): LoadedResumeSession {
   return { jsonl: sessionHistory, sha256: sha256(bytes) };
 }
 
+async function readResumeSessionMetadata(
+  db: Db,
+  historyRef: Extract<
+    StoredResumeSession,
+    { historyRef: unknown }
+  >["historyRef"],
+  signal: AbortSignal,
+) {
+  const hash = historyRef.hash;
+  const [metadata] = await db
+    .select({
+      rawSize: blobs.rawSize,
+      encoding: blobs.encoding,
+      encodedSize: blobs.encodedSize,
+    })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!metadata || metadata.rawSize <= 0 || metadata.encodedSize <= 0) {
+    throw piApiFirstTurnError(
+      "PI_H0_METADATA_INVALID",
+      "Pi H0 metadata is unavailable or invalid",
+    );
+  }
+  if (
+    metadata.rawSize > RESUME_SESSION_HISTORY_MAX_BYTES ||
+    metadata.encodedSize > RESUME_SESSION_HISTORY_MAX_BYTES
+  ) {
+    throw piApiFirstTurnError(
+      "PI_H0_TOO_LARGE",
+      "Pi H0 exceeds the native session size limit",
+    );
+  }
+  const normalizedEncoding = safeSync(() => {
+    return normalizeSessionHistoryBlobEncoding(metadata.encoding);
+  });
+  if ("error" in normalizedEncoding) {
+    throw piApiFirstTurnError(
+      "PI_H0_ENCODING_UNSUPPORTED",
+      "Pi H0 uses an unsupported encoding",
+      normalizedEncoding.error,
+    );
+  }
+  const encoding = normalizedEncoding.ok;
+  const referencedEncoding =
+    historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+  if (encoding !== referencedEncoding) {
+    throw piApiFirstTurnError(
+      "PI_H0_METADATA_INVALID",
+      "Pi H0 encoding does not match the stored checkpoint reference",
+    );
+  }
+  return { ...metadata, encoding };
+}
+
 const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
   { get },
   args: {
@@ -250,22 +325,11 @@ const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
   }
 
   const hash = resumeSession.historyRef.hash;
-  const [metadata] = await args.db
-    .select({
-      rawSize: blobs.rawSize,
-      encoding: blobs.encoding,
-      encodedSize: blobs.encodedSize,
-    })
-    .from(blobs)
-    .where(eq(blobs.hash, hash))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!metadata || metadata.rawSize <= 0 || metadata.encodedSize <= 0) {
-    throw piApiFirstTurnError(
-      "PI_H0_METADATA_INVALID",
-      "Pi H0 metadata is unavailable or invalid",
-    );
-  }
+  const metadata = await readResumeSessionMetadata(
+    args.db,
+    resumeSession.historyRef,
+    signal,
+  );
   if (
     metadata.rawSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES ||
     metadata.encodedSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES
@@ -275,25 +339,7 @@ const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
       "Pi H0 exceeds the API first-turn limit",
     );
   }
-  const normalizedEncoding = safeSync(() => {
-    return normalizeSessionHistoryBlobEncoding(metadata.encoding);
-  });
-  if ("error" in normalizedEncoding) {
-    throw piApiFirstTurnError(
-      "PI_H0_ENCODING_UNSUPPORTED",
-      "Pi H0 uses an unsupported encoding",
-      normalizedEncoding.error,
-    );
-  }
-  const encoding = normalizedEncoding.ok;
-  const referencedEncoding =
-    resumeSession.historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
-  if (encoding !== referencedEncoding) {
-    throw piApiFirstTurnError(
-      "PI_H0_METADATA_INVALID",
-      "Pi H0 encoding does not match the stored checkpoint reference",
-    );
-  }
+  const encoding = metadata.encoding;
   const key = resumeSessionHistoryBlobKey(hash, encoding);
   const downloaded = await settle(
     get(
@@ -1025,6 +1071,14 @@ async function resolveCodexSubscriptionCredentials(
   }
   const accessToken = accessTokenResolution.value;
   if (accessToken.status === "unavailable") {
+    if (
+      accessToken.reconnectState?.needsReconnect &&
+      isTerminalChatgptRefreshErrorCode(
+        accessToken.reconnectState.lastRefreshErrorCode,
+      )
+    ) {
+      throw new PiApiFirstTurnCodexReconnectRequiredError();
+    }
     const reconnectRequired =
       accessToken.reconnectState === null ||
       accessToken.reconnectState.needsReconnect;
@@ -1115,6 +1169,16 @@ async function apiFirstTurnModelConfig(
         executionContext.secretConnectorMap?.[binding.secretName];
       const metadata =
         executionContext.secretConnectorMetadataMap?.[binding.secretName];
+      if (
+        "schemaVersion" in modelConfig &&
+        modelConfig.schemaVersion === 4 &&
+        providerKey === "claude-code-oauth-token"
+      ) {
+        throw piApiFirstTurnError(
+          "PI_API_MODEL_CREDENTIAL_INVALID",
+          "Claude subscription credentials cannot be used by Pi",
+        );
+      }
       if (!value && providerKey && metadata) {
         const resolved = await settle(
           resolveModelProviderRuntimeSecretForApi({
@@ -1162,7 +1226,15 @@ async function recordApiFirstTurnUsage(
     billableFirewalls: activation.executionContext.billableFirewalls,
     modelUsageProvider: activation.executionContext.modelUsageProvider,
     piProvider: activation.executionContext.piModelConfig.provider,
-    requestedServiceTier: activation.executionContext.piModelConfig.serviceTier,
+    nativeModelConfig:
+      "schemaVersion" in activation.executionContext.piModelConfig &&
+      activation.executionContext.piModelConfig.schemaVersion === 4
+        ? activation.executionContext.piModelConfig
+        : undefined,
+    requestedServiceTier:
+      "serviceTier" in activation.executionContext.piModelConfig
+        ? activation.executionContext.piModelConfig.serviceTier
+        : undefined,
     turn,
   });
 }
@@ -1880,6 +1952,105 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
   });
 });
 
+// This is an execution-budget decision before API-first resource or history IO.
+// The original checkpoint remains authoritative; the sandbox validates its bytes.
+const publishLargeHistoryTransfer$ = command(
+  async function publishLargeHistoryTransfer(
+    { get, set },
+    args: ApiFirstTurnContext,
+    commitProgress: ApiFirstTurnCommitProgress,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const { executionContext, launchConfig, sessionId } =
+      validateApiFirstTurnLaunch(args);
+    const resumeSession = executionContext.resumeSession;
+    if (!resumeSession || !("historyRef" in resumeSession)) {
+      return false;
+    }
+    const metadata = await readResumeSessionMetadata(
+      args.db,
+      resumeSession.historyRef,
+      signal,
+    );
+    if (
+      metadata.rawSize <= PI_API_FIRST_TURN_SESSION_MAX_BYTES &&
+      metadata.encodedSize <= PI_API_FIRST_TURN_SESSION_MAX_BYTES
+    ) {
+      return false;
+    }
+    const hash = resumeSession.historyRef.hash;
+    if (
+      resumeSession.sessionId !== sessionId ||
+      launchConfig.baseSession.sessionId !== sessionId ||
+      launchConfig.baseSession.sha256 !== hash
+    ) {
+      throw piApiFirstTurnError(
+        "PI_H0_HASH_MISMATCH",
+        "Pi H0 does not match the launch base checkpoint",
+      );
+    }
+    const commitIdentity = apiFirstTurnCommitIdentity(args);
+    return await withApiFirstTurnLifecycle(args, async (tx) => {
+      signal.throwIfAborted();
+      const state = validateApiFirstTurnHandoffCommit(
+        args,
+        await readApiFirstTurnLifecycleState(tx, args.activation.runId),
+        commitIdentity,
+        "Pi large-history transfer lost commit eligibility",
+      );
+      const url = await get(
+        generatePresignedGetUrl(
+          env("R2_USER_STORAGES_BUCKET_NAME"),
+          resumeSessionHistoryBlobKey(hash, metadata.encoding),
+          PI_API_FIRST_TURN_URL_TTL_SECONDS,
+          undefined,
+          true,
+        ),
+      );
+      signal.throwIfAborted();
+      validateApiFirstTurnHandoffCommit(
+        args,
+        state,
+        commitIdentity,
+        "Pi large-history transfer lost commit eligibility before publication",
+      );
+      // Publication may transfer ownership even if its response is lost.
+      commitProgress.started = true;
+      await set(
+        writeManifest$,
+        {
+          runId: args.activation.runId,
+          manifest: {
+            schemaVersion: 4,
+            outcome: "ownership-transfer",
+            mode: "sandbox-first",
+            baseSession: launchConfig.baseSession,
+            session: { sessionId, sha256: hash, rawSize: metadata.rawSize },
+            history: {
+              url,
+              encoding: metadata.encoding,
+              encodedSize: metadata.encodedSize,
+            },
+            sandboxEventSequenceStart: launchConfig.sandboxEventSequenceStart,
+          },
+        },
+        signal,
+      );
+      L.debug("Pi API first-turn outcome", {
+        runId: args.activation.runId,
+        ...piApiFirstTurnOutcomeTelemetry(executionContext),
+        outcome: "ownership_transfer",
+        reason: "history_exceeds_api_budget",
+        handoffOwner: "sandbox",
+        ownershipStage: "pre-provider",
+        rawSize: metadata.rawSize,
+        encodedSize: metadata.encodedSize,
+      });
+      return true;
+    });
+  },
+);
+
 const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
@@ -1887,6 +2058,9 @@ const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
   commitProgress: ApiFirstTurnCommitProgress,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
+  if (await set(publishLargeHistoryTransfer$, args, commitProgress, signal)) {
+    return undefined;
+  }
   const prepared = await set(prepareApiFirstTurn$, args, ownership, signal);
   const committed = await settle(
     set(commitApiFirstTurn$, args, prepared, commitProgress, signal),
@@ -2118,7 +2292,7 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
   });
 });
 
-export const runPiApiFirstTurn$ = command(
+const runPiApiFirstTurnCore$ = command(
   async (
     { set },
     activation: PiApiFirstTurnActivation,
@@ -2225,19 +2399,21 @@ export const runPiApiFirstTurn$ = command(
       logCanonicalApiFirstTurnCancellation(context, ownership);
       return undefined;
     }
-    L.warn("Pi API first-turn outcome", {
-      runId: activation.runId,
-      ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
-      outcome: "terminal_failure",
-      reason: failure.code,
-      ownershipStage: ownership.stage,
-      ...(resourceFallbackReason
-        ? { fallbackReason: resourceFallbackReason }
-        : {}),
-      ...(apiAttemptTimedOut
-        ? { recoveryReason: "api_attempt_timed_out" }
-        : {}),
-    });
+    if (!(failure instanceof PiApiFirstTurnCodexReconnectRequiredError)) {
+      L.warn("Pi API first-turn outcome", {
+        runId: activation.runId,
+        ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
+        outcome: "terminal_failure",
+        reason: failure.code,
+        ownershipStage: ownership.stage,
+        ...(resourceFallbackReason
+          ? { fallbackReason: resourceFallbackReason }
+          : {}),
+        ...(apiAttemptTimedOut
+          ? { recoveryReason: "api_attempt_timed_out" }
+          : {}),
+      });
+    }
     return set(
       failApiFirstTurn$,
       context,
@@ -2245,5 +2421,28 @@ export const runPiApiFirstTurn$ = command(
       ownership,
       apiOwnershipExpired,
     );
+  },
+);
+
+/** Captured pending contexts must pass retirement before API-owned execution. */
+export const runPiApiFirstTurn$ = command(
+  async (
+    { set },
+    activation: PiApiFirstTurnActivation,
+    signal: AbortSignal,
+  ): Promise<
+    DispatchCompleteSideEffectsInput | GoalRunRetirement | undefined
+  > => {
+    const retired = await retirePendingGoalRun(set(writeDb$), activation.runId);
+    if (signal.aborted) {
+      L.debug("Pi activation aborted after Goal retirement check", {
+        runId: activation.runId,
+      });
+    }
+    if (retired) {
+      return { kind: "goal-retired", run: retired };
+    }
+    signal.throwIfAborted();
+    return await set(runPiApiFirstTurnCore$, activation, signal);
   },
 );

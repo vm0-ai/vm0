@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact-references";
 import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/host";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
@@ -44,7 +45,8 @@ interface RecordHostedSiteArtifactArgs {
   readonly deploymentVersion: number | null;
   readonly site: string;
   readonly publicSlug: string;
-  readonly aliasUrl: string;
+  readonly aliasUrl: string | undefined;
+  readonly access: "owner-private-v1" | undefined;
   readonly url: string;
   readonly fileCount: number;
   readonly sizeBytes: number;
@@ -120,7 +122,11 @@ function videoArtifactPreviewArgs(
     row.previewImageUrl ||
     !args.orgId ||
     !args.url ||
-    !args.contentType?.startsWith("video/")
+    !args.contentType?.startsWith("video/") ||
+    // The public thumbnail pipeline cannot read authenticated sources.
+    // Private derivatives join the generation slice in #32492.
+    parseArtifactReference(args.url) !== null ||
+    new URL(args.url).pathname === "/api/web/download-file"
   ) {
     return null;
   }
@@ -179,6 +185,7 @@ export const recordHostedSiteArtifact$ = command(
           deploymentId: args.deploymentId,
           deploymentVersion: args.deploymentVersion,
           aliasUrl: args.aliasUrl,
+          access: args.access,
           publicSlug: args.publicSlug,
           fileCount: args.fileCount,
           entrypoint: args.entrypoint,
@@ -206,6 +213,7 @@ export const recordHostedSiteArtifact$ = command(
             deploymentId: args.deploymentId,
             deploymentVersion: args.deploymentVersion,
             aliasUrl: args.aliasUrl,
+            access: args.access,
             publicSlug: args.publicSlug,
             fileCount: args.fileCount,
             entrypoint: args.entrypoint,

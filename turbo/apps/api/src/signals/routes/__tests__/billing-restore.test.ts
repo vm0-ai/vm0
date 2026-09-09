@@ -271,7 +271,6 @@ describe("POST /api/billing/restore", () => {
     const subId = `sub-restore-card-${randomUUID().slice(0, 8)}`;
     const customerId = `cus-restore-card-${randomUUID().slice(0, 8)}`;
     const okouFallbackReturnUrl = "https://app.okou.ai";
-    const vm0FallbackReturnUrl = "https://app.okou.ai";
     const explicitReturnUrl = "https://app.okou.ai/settings/billing";
     const checkoutUrl = "https://checkout.stripe.com/setup/restore";
     const fixture = await track(
@@ -340,22 +339,6 @@ describe("POST /api/billing/restore", () => {
         },
       },
     });
-    context.mocks.stripe.checkout.sessions.create.mockClear();
-    const vm0Response = await accept(
-      client.create({
-        body: {},
-        headers: { authorization: "Bearer clerk-session" },
-        extraHeaders: { origin: "https://app.okou.ai" },
-      }),
-      [200],
-    );
-    expect(vm0Response.body).toStrictEqual(response.body);
-    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success_url: vm0FallbackReturnUrl,
-        cancel_url: vm0FallbackReturnUrl,
-      }),
-    );
     context.mocks.stripe.checkout.sessions.create.mockClear();
     const explicitResponse = await accept(
       client.create({

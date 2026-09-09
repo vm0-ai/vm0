@@ -11,7 +11,11 @@ const compactChatThreadSnapshotsRoute$ = command(
       return cronUnauthorized();
     }
 
-    const result = await set(compactChatThreadSnapshots$, signal);
+    const result = await set(
+      compactChatThreadSnapshots$,
+      { kind: "global" },
+      signal,
+    );
     signal.throwIfAborted();
     return {
       status: 200 as const,

@@ -15,8 +15,10 @@ use tracing::Level;
 use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 
+mod guest_connection_timing;
 mod guest_rpc;
 mod private_write_diagnostics;
+mod process_timeout_logging;
 mod process_write;
 
 struct TestNormalOperationFence;
@@ -189,6 +191,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         destroyed: true,
         is_parked: false,
         park_outcome: None,
+        park_memory_policy: ParkMemoryPolicy::Reclaim,
         park_fence: None,
         guest_rpc_endpoint: None,
         runtime_cancel: CancellationToken::new(),
@@ -332,6 +335,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
     let start_task = tokio::spawn(async move {
         start_host
             .start_supervised_exec(SupervisedExecRequest {
+                timeout_is_expected: false,
                 role: guest_control_proto::ExecProcessRole::Agent,
                 timeout: ExecTimeoutPolicy::Duration { timeout_ms: 60_000 },
                 command: "sleep 60",
@@ -531,13 +535,16 @@ async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     stream.write_all(&response).await.unwrap();
 }
 
-async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+async fn send_exec_started(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
     let started = guest_control_proto::encode_exec_started(pid).unwrap();
     let started =
         guest_control_proto::encode(guest_control_proto::MSG_EXEC_STARTED, exec_seq, &started)
             .unwrap();
     stream.write_all(&started).await.unwrap();
+}
 
+async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+    send_exec_started(stream, exec_seq, pid).await;
     let ready =
         guest_control_proto::encode_exec_agent_ready(guest_control_proto::ExecAgentReadyTiming {
             containment_create_us: 11,
@@ -2331,6 +2338,7 @@ async fn start_process_output_rejects_invalid_stream_configuration() {
     ] {
         let error = match sandbox
             .start_process(&StartProcessRequest {
+                timeout_is_expected: false,
                 cmd: "agent",
                 start_timeout: sandbox::DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
@@ -2369,6 +2377,7 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
         stderr_capture_limit_bytes: None,
     };
     let request = StartProcessRequest {
+        timeout_is_expected: false,
         cmd: "agent",
         start_timeout: sandbox::DEFAULT_PROCESS_START_TIMEOUT,
         timeout: Duration::from_secs(5),
@@ -2422,6 +2431,7 @@ async fn start_process_timeout_before_write_preserves_guest_connection() {
     let sandbox = test_sandbox_with_state(SandboxState::Running);
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
     let timed_out_request = StartProcessRequest {
+        timeout_is_expected: true,
         cmd: "prefetch",
         timeout: Duration::from_secs(5),
         start_timeout: Duration::ZERO,
@@ -2501,6 +2511,7 @@ async fn start_process_timeout_after_write_rejects_later_guest_operation() {
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
     let start_timeout = Duration::from_millis(20);
     let request = StartProcessRequest {
+        timeout_is_expected: true,
         cmd: "prefetch",
         timeout: Duration::from_secs(5),
         start_timeout,
@@ -2549,11 +2560,77 @@ async fn start_process_timeout_after_write_rejects_later_guest_operation() {
         Ok(_) => panic!("post-write timeout connection must reject later operations"),
         Err(error) => error,
     };
-    assert!(
-        later_error
-            .to_string()
-            .contains("normal operations are not available on this connection"),
-        "got: {later_error}"
+    assert_operation_error(
+        later_error,
+        SandboxOperation::Exec,
+        SandboxOperationReason::GuestConnectionUnavailable,
+    );
+}
+
+#[tokio::test]
+async fn cancelled_guest_write_classifies_later_admission_without_another_frame() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    {
+        let write = sandbox.write_file("/tmp/cancelled-write", b"contents");
+        tokio::pin!(write);
+        tokio::select! {
+            result = &mut write => panic!("write completed without guest acknowledgement: {result:?}"),
+            request = read_vsock_message(&mut guest) => {
+                assert_eq!(request.msg_type, guest_control_proto::MSG_WRITE_FILE);
+            }
+        }
+        // Dropping this in-flight request abandons its terminal proof.
+    }
+
+    let error = sandbox
+        .write_file("/tmp/later-write", b"later")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::GuestConnectionUnavailable,
+    );
+    assert_eq!(
+        guest.try_read(&mut [0_u8; 1]).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock
+    );
+}
+
+#[tokio::test]
+async fn closed_guest_connection_is_distinct_from_temporary_fencing() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let guest = attach_mock_shutdown_guest(&sandbox).await;
+    let host = sandbox.guest.lock().await.as_ref().unwrap().clone();
+    let fence = host.try_fence_normal_operations().unwrap();
+    assert_operation_error(
+        sandbox
+            .write_file("/tmp/fenced", b"contents")
+            .await
+            .unwrap_err(),
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+    );
+    drop(fence);
+    drop(guest);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !matches!(
+            host.try_fence_normal_operations(),
+            Err(guest_control_client::NormalOperationFenceRejection::Closed)
+        ) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_operation_error(
+        sandbox
+            .write_file("/tmp/closed", b"contents")
+            .await
+            .unwrap_err(),
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::GuestConnectionUnavailable,
     );
 }
 
@@ -3577,6 +3654,12 @@ async fn process_control_preserves_guest_statuses_and_legacy_errors() {
             ProcessControlGuestStatus::SinkError,
             io::ErrorKind::BrokenPipe,
             "exec control sink error",
+        ),
+        (
+            ExecControlStatus::SinkClosed,
+            ProcessControlGuestStatus::SinkClosed,
+            io::ErrorKind::BrokenPipe,
+            "exec control sink closed",
         ),
     ];
 
@@ -5832,7 +5915,11 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
             &mut controller,
             api.socket_path(),
             "stats-error",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         ))
         .await;
@@ -5886,6 +5973,7 @@ async fn exact_handoff_skips_balloon_target_but_still_pauses() {
             PhysicalParkRequest {
                 guest: Arc::new(tokio::sync::Mutex::new(None)),
                 handoff: Some(&handoff),
+                memory_policy: ParkMemoryPolicy::Reclaim,
             },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
@@ -5947,6 +6035,7 @@ async fn exact_handoff_interrupts_in_flight_balloon_settle() {
             PhysicalParkRequest {
                 guest: Arc::new(tokio::sync::Mutex::new(None)),
                 handoff: Some(&handoff),
+                memory_policy: ParkMemoryPolicy::Reclaim,
             },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         );
@@ -6298,7 +6387,11 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
             &mut controller,
             api.socket_path(),
             "test-park-small",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
@@ -6782,7 +6875,11 @@ async fn park_balloon_failure_leaves_flag_false() {
             &mut controller,
             api.socket_path(),
             "test-park-fail",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
@@ -7336,7 +7433,11 @@ async fn severe_park_collects_terminal_guest_memory_before_pause() {
             &mut controller,
             &socket_path,
             "terminal-memory-snapshot",
-            guest,
+            PhysicalParkRequest {
+                guest,
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(None),
         )
         .await;
@@ -7403,7 +7504,11 @@ async fn reusable_park_does_not_request_terminal_guest_memory() {
             &mut controller,
             api.socket_path(),
             "reusable-no-memory-snapshot",
-            guest,
+            PhysicalParkRequest {
+                guest,
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;
@@ -7459,7 +7564,11 @@ async fn park_small_vm_pause_failure_preserves_controller() {
             &mut controller,
             api.socket_path(),
             "small-fail",
-            Arc::new(tokio::sync::Mutex::new(None)),
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: None,
+                memory_policy: ParkMemoryPolicy::Reclaim,
+            },
             SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
         )
         .await;

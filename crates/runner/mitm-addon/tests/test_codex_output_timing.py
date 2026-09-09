@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 from mitmproxy import http
+from mitmproxy.flow import Error
 
 import codex_output_timing
 import flow_metadata_keys as metadata_keys
@@ -155,6 +156,188 @@ def test_default_codex_excludes_prewarm_and_reports_content_free_milestones(
     serialized_requests = b"".join(request.body for request in requests)
     assert secret.encode() not in serialized_requests
     assert secret not in read_jsonl_text_after_flush(proxy_log)
+
+
+@pytest.mark.parametrize(
+    "interleaving",
+    ["single-flow", "before-output", "terminal-before-output", "before-text"],
+)
+def test_concurrent_prewarm_preserves_generated_response_timing(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+    interleaving: str,
+) -> None:
+    first = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    prewarm = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    first_sent_at = 1_700_000_000.125
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.responseheaders(first)
+        mitm_addon.responseheaders(prewarm)
+        _feed_client_event(first, _event("response.create"), received_at=first_sent_at)
+        before_created = datetime.now(UTC)
+        feed_websocket_server_message(
+            first, b'{"type":"response.created","response":{"id":"first-response"}}'
+        )
+        after_created = datetime.now(UTC)
+        if interleaving == "before-text":
+            feed_websocket_server_message(first, _event("response.output_item.added"))
+
+        if interleaving != "single-flow":
+            _feed_client_event(
+                prewarm,
+                b'{"type":"response.create","generate":false}',
+                received_at=first_sent_at + 10,
+            )
+            feed_websocket_server_message(
+                prewarm, b'{"type":"response.created","response":{"id":"prewarm-response"}}'
+            )
+            if interleaving != "before-output":
+                feed_websocket_server_message(
+                    prewarm,
+                    b'{"type":"response.completed","response":{"id":"prewarm-response"}}',
+                )
+
+        if interleaving != "before-text":
+            feed_websocket_server_message(first, _event("response.output_item.added"))
+        feed_websocket_server_message(first, _event("response.output_text.delta"))
+
+    operations = _operations(_timing_requests(usage_webhook_server))
+    assert [operation["action_type"] for operation in operations] == [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
+        _FIRST_GENERATED_RESPONSE_CREATED,
+        _FIRST_OUTPUT_ITEM_ADDED,
+        _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE,
+    ]
+    assert operations[0]["ts"] == datetime.fromtimestamp(first_sent_at, UTC).isoformat()
+    assert before_created <= datetime.fromisoformat(str(operations[1]["ts"])) <= after_created
+
+
+@pytest.mark.parametrize("first_output_index", [0, 1])
+@pytest.mark.parametrize("first_text_index", [0, 1])
+def test_concurrent_generated_responses_select_their_own_timestamps_and_text_path(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+    first_output_index: int,
+    first_text_index: int,
+) -> None:
+    flows = [make_openai_responses_websocket_flow(real_flow, tmp_path) for _ in range(2)]
+    sent_at = [1_700_000_000.125, 1_700_000_010.125]
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        for index, flow in enumerate(flows):
+            mitm_addon.responseheaders(flow)
+            _feed_client_event(flow, _event("response.create"), received_at=sent_at[index])
+            feed_websocket_server_message(flow, _event("response.created"))
+
+        feed_websocket_server_message(
+            flows[first_output_index], _event("response.output_item.added")
+        )
+        feed_websocket_server_message(
+            flows[1 - first_output_index], _event("response.output_item.added")
+        )
+        feed_websocket_server_message(flows[first_text_index], _event("response.output_text.delta"))
+        feed_websocket_server_message(
+            flows[1 - first_text_index], _event("response.output_text.delta")
+        )
+
+    operations = _operations(_timing_requests(usage_webhook_server))
+    text_path = (
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE
+        if first_text_index == first_output_index
+        else _FIRST_TEXT_IN_LATER_GENERATED_RESPONSE
+    )
+    assert [operation["action_type"] for operation in operations] == [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
+        _FIRST_GENERATED_RESPONSE_CREATED,
+        _FIRST_OUTPUT_ITEM_ADDED,
+        _FIRST_OUTPUT_TEXT_DELTA,
+        text_path,
+    ]
+    assert (
+        operations[0]["ts"] == datetime.fromtimestamp(sent_at[first_output_index], UTC).isoformat()
+    )
+
+
+@pytest.mark.parametrize("text_response", ["first", "next"])
+def test_queued_request_does_not_replace_active_response_timing(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+    text_response: str,
+) -> None:
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    first_sent_at = 1_700_000_000.125
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.responseheaders(flow)
+        _feed_client_event(flow, _event("response.create"), received_at=first_sent_at)
+        feed_websocket_server_message(flow, _event("response.created"))
+        _feed_client_event(flow, _event("response.create"), received_at=first_sent_at + 10)
+        feed_websocket_server_message(flow, _event("response.output_item.added"))
+        if text_response == "next":
+            feed_websocket_server_message(flow, _event("response.completed"))
+            feed_websocket_server_message(flow, _event("response.created"))
+            feed_websocket_server_message(flow, _event("response.output_item.added"))
+        feed_websocket_server_message(flow, _event("response.output_text.delta"))
+
+    operations = _operations(_timing_requests(usage_webhook_server))
+    assert [operation["action_type"] for operation in operations] == [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
+        _FIRST_GENERATED_RESPONSE_CREATED,
+        _FIRST_OUTPUT_ITEM_ADDED,
+        _FIRST_OUTPUT_TEXT_DELTA,
+        (
+            _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE
+            if text_response == "first"
+            else _FIRST_TEXT_IN_LATER_GENERATED_RESPONSE
+        ),
+    ]
+    assert operations[0]["ts"] == datetime.fromtimestamp(first_sent_at, UTC).isoformat()
+
+
+@pytest.mark.parametrize("terminal_hook", ["websocket_end", "error"])
+def test_terminated_flow_does_not_supply_unconfirmed_timing_to_reconnect(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+    terminal_hook: str,
+) -> None:
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    reconnect = make_openai_responses_websocket_flow(real_flow, tmp_path)
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.responseheaders(flow)
+        _feed_client_event(flow, _event("response.create"))
+        feed_websocket_server_message(flow, _event("response.created"))
+        if terminal_hook == "websocket_end":
+            mitm_addon.websocket_end(flow)
+        else:
+            flow.error = Error("connection closed")
+            mitm_addon.error(flow)
+        mitm_addon.responseheaders(reconnect)
+        feed_websocket_server_message(reconnect, _event("response.output_item.added"))
+        feed_websocket_server_message(reconnect, _event("response.output_text.delta"))
+
+    assert [
+        operation["action_type"]
+        for operation in _operations(_timing_requests(usage_webhook_server))
+    ] == [
+        _FIRST_OUTPUT_ITEM_ADDED,
+        _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE,
+    ]
 
 
 @pytest.mark.parametrize("terminal_event", sorted(openai_responses_events.TERMINAL_EVENTS))

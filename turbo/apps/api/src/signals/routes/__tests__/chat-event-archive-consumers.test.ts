@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 import AdmZip from "adm-zip";
+import { HttpResponse } from "msw";
 import {
   PI_MEMORY_CITATION_OPEN,
   PI_MEMORY_CITATION_CLOSE,
@@ -42,6 +43,7 @@ import {
 } from "./helpers/fake-chat-event-r2";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRouteMocks } from "./helpers/route-test";
+import { auxiliaryResults } from "./helpers/auxiliary-generation";
 
 const context = testContext();
 const store = createStore();
@@ -255,6 +257,61 @@ describe("archived chat event consumers", () => {
       { role: "assistant", content: tailVisible },
     ]);
   }, 60_000);
+
+  it("shares archived selections with a fixed title when the title provider is unavailable", async () => {
+    const fixture = await createArchiveFixture("sharing-provider-failure");
+    // Expired, physically removed events are historical state with no public
+    // write API. Reuse this archive harness, then observe the public share API.
+    const eventId = await store.set(
+      seedRetentionOutputEvent$,
+      {
+        chatThreadId: fixture.threadId,
+        content: "A completed answer to share",
+        offsetMs: -180_000,
+      },
+      context.signal,
+    );
+    await archiveAndRetain(fixture.threadId, [eventId]);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-sharing-key");
+    chatCallbacks.mockOpenRouterCompletions(() => {
+      return new HttpResponse(null, { status: 503 });
+    });
+    const created = await accept(
+      sharedThreadClient().create({
+        params: { threadId: fixture.threadId },
+        headers: authenticate(fixture.actor),
+        body: { eventIds: [eventId] },
+      }),
+      [201],
+    );
+    await flushWaitUntilForTest();
+    const shared = await accept(
+      sharedThreadClient().get({ params: { id: created.body.id } }),
+      [200],
+    );
+    expect(shared.body).toStrictEqual({
+      id: created.body.id,
+      publicBrand: "okou",
+      title: "Shared conversation",
+      messages: [
+        {
+          messageIndex: 0,
+          role: "assistant",
+          content: "A completed answer to share",
+        },
+      ],
+    });
+    expect(auxiliaryResults(context)).toStrictEqual([
+      expect.objectContaining({
+        feature: "shared_thread_title",
+        outcome: "degraded",
+        reason: "provider_unavailable",
+      }),
+    ]);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
 
   it("shares an archived selection while excluding archived revoked and invisible messages", async () => {
     const fixture = await createArchiveFixture("sharing");

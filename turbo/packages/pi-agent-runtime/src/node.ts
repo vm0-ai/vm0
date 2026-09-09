@@ -60,7 +60,6 @@ export type {
   PiMemoryPhase2PreparedResult,
   PiMemoryPhase2ProviderUsage,
   PiMemoryPhase2SelectedSnapshot,
-  PiMemoryPhase2UsageEvent,
 } from "./phase2-memory-types";
 export {
   PiApiFirstTurnCompactionRequiredError,

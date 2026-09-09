@@ -12,7 +12,8 @@ use api_contracts::generated::{
     constants::runners::{
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
         PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
-        PI_MODEL_CONFIG_LEGACY_GENERATION, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        PI_MODEL_CONFIG_LEGACY_GENERATION, PI_MODEL_CONFIG_NATIVE_GENERATION,
+        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -42,7 +43,9 @@ use super::{
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
-use crate::error::{ApiFailureKind, ApiStatusError, ApiTransportError, RunnerError, RunnerResult};
+use crate::error::{
+    ApiBodyReadError, ApiFailureKind, ApiStatusError, ApiTransportError, RunnerError, RunnerResult,
+};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
@@ -71,7 +74,7 @@ struct ClaimRequestBody<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunnerClaimCapabilities {
-    pi_model_config_generations: [u32; 3],
+    pi_model_config_generations: [u32; 4],
 }
 
 #[derive(Serialize)]
@@ -222,32 +225,32 @@ struct DegradationEpisode {
 }
 
 #[derive(Clone, Copy)]
-struct DegradationObservation {
-    consecutive_failures: u64,
-    failure_elapsed: Duration,
-    degraded: bool,
-    emit_degradation: bool,
+pub(super) struct DegradationObservation {
+    pub(super) consecutive_failures: u64,
+    pub(super) failure_elapsed: Duration,
+    pub(super) degraded: bool,
+    pub(super) emit_degradation: bool,
 }
 
 #[derive(Clone, Copy)]
-struct DegradationRecovery {
-    recovered_after_failures: u64,
-    failure_elapsed: Duration,
-    was_degraded: bool,
+pub(super) struct DegradationRecovery {
+    pub(super) recovered_after_failures: u64,
+    pub(super) failure_elapsed: Duration,
+    pub(super) was_degraded: bool,
 }
 
-struct DegradationEpisodeTracker {
+pub(super) struct DegradationEpisodeTracker {
     active_episode: Mutex<Option<DegradationEpisode>>,
 }
 
 impl DegradationEpisodeTracker {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             active_episode: Mutex::new(None),
         }
     }
 
-    async fn observe_failure(
+    pub(super) async fn observe_failure(
         &self,
         now: Instant,
         degraded_after: Duration,
@@ -273,7 +276,7 @@ impl DegradationEpisodeTracker {
         }
     }
 
-    async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
+    pub(super) async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
         self.active_episode
             .lock()
             .await
@@ -341,6 +344,7 @@ pub struct ApiProvider {
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: RunCancellationRegistry,
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
+    ssh: Option<Arc<crate::ssh::SshRuntime>>,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
     poll_degradation_tracker: DegradationEpisodeTracker,
@@ -355,6 +359,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 pub struct ApiProviderConfig {
+    pub(crate) ssh: Option<Arc<crate::ssh::SshRuntime>>,
     pub(crate) runner_identity: RunnerProcessIdentity,
     pub(crate) runner_hostname: Option<String>,
     pub group: String,
@@ -372,6 +377,7 @@ impl ApiProvider {
         cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
+            ssh,
             runner_identity,
             runner_hostname,
             group,
@@ -403,6 +409,7 @@ impl ApiProvider {
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
             connector_runtime_sync,
+            ssh,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
             poll_degradation_tracker: DegradationEpisodeTracker::new(),
@@ -562,6 +569,7 @@ impl ApiProvider {
             direct_candidates: Arc::clone(&self.direct_candidates),
             cancel_tokens: self.cancel_tokens.clone(),
             connector_runtime_sync: self.connector_runtime_sync.clone(),
+            ssh: self.ssh.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
             provider_cancel: self.cancel.clone(),
         }));
@@ -1598,9 +1606,31 @@ impl ApiClient {
                 Ok(None) => break,
                 Err(_) if !status.is_success() => return Err(api_status_error(LABEL, status, "")),
                 Err(error) => {
-                    return Err(RunnerError::Api(format!(
-                        "{LABEL} decode read body: {error}"
-                    )));
+                    let content_type = match resp.headers().get(reqwest::header::CONTENT_TYPE) {
+                        None => "missing",
+                        Some(value) => match value.to_str() {
+                            Err(_) => "invalid",
+                            Ok(value) => {
+                                let media_type = value
+                                    .split_once(';')
+                                    .map_or(value, |(media_type, _)| media_type)
+                                    .trim();
+                                if media_type.eq_ignore_ascii_case("application/json") {
+                                    "application/json"
+                                } else {
+                                    "other"
+                                }
+                            }
+                        },
+                    };
+                    return Err(RunnerError::ApiBodyRead(Box::new(ApiBodyReadError {
+                        endpoint_label: LABEL,
+                        status,
+                        content_type,
+                        content_length,
+                        received_bytes: body_len,
+                        failure_cause: crate::http::api_transport_cause(&error),
+                    })));
                 }
             };
             let chunk_len = u64::try_from(chunk.len()).map_err(|error| {
@@ -1675,6 +1705,7 @@ fn claim_request_body<'a>(
                 PI_MODEL_CONFIG_LEGACY_GENERATION,
                 PI_MODEL_CONFIG_CURRENT_GENERATION,
                 PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+                PI_MODEL_CONFIG_NATIVE_GENERATION,
             ],
         },
         telemetry: ClaimRequestTelemetry {
@@ -2363,6 +2394,7 @@ mod tests {
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
+            ssh: None,
             connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
@@ -3223,7 +3255,7 @@ mod tests {
         assert!(!body.to_string().contains("path"));
         assert_eq!(
             body["capabilities"]["piModelConfigGenerations"],
-            serde_json::json!([1, 2, 3])
+            serde_json::json!([1, 2, 3, 4])
         );
 
         let runner_identity = test_runner_identity();

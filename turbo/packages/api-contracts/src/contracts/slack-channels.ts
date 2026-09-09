@@ -11,7 +11,7 @@ const slackChannelSchema = z.object({
 
 /**
  * Slack channels contract (GET /api/slack/channels)
- * Lists Slack channels where the bot is a member.
+ * Lists Slack channels shared by the connected user and bot.
  */
 export const slackChannelsContract = c.router({
   list: {
@@ -23,7 +23,7 @@ export const slackChannelsContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "List Slack channels where bot is a member",
+    summary: "List Slack channels shared by connected user and bot",
   },
 });
 

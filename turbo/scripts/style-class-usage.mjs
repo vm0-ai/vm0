@@ -33,13 +33,13 @@ function propertyName(node) {
 function classArguments(node) {
   if (
     ts.isJsxAttribute(node) &&
-    ["class", "className"].includes(node.name.getText())
+    ["class", "className", "contentClassName"].includes(node.name.getText())
   ) {
     return node.initializer === undefined ? [] : [node.initializer];
   }
   if (
     ts.isPropertyAssignment(node) &&
-    ["class", "className"].includes(propertyName(node.name))
+    ["class", "className", "contentClassName"].includes(propertyName(node.name))
   ) {
     return [node.initializer];
   }

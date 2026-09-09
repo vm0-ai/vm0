@@ -1,0 +1,51 @@
+name: KMS Production Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deployment_id:
+        description: "Current production API Vercel deployment ID, recorded before approval"
+        required: true
+        type: string
+
+concurrency:
+  group: kms-production-backup-32264
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  npm_config_audit: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Back up and verify the effective production KMS configuration
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DOPPLER_SERVICE_IDENTITY_ID: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          EXPECTED_DEPLOYMENT_ID: ${{ inputs.expected_deployment_id }}
+        run: python3 .github/scripts/kms-production-backup.py
+      - name: Retain sanitized backup verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kms-production-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/kms-production-backup.json
+          if-no-files-found: error
+          retention-days: 7

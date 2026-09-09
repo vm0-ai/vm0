@@ -7,11 +7,11 @@ import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage$ } from "./loggers";
 
 const L = logger("GlobalMethod");
-const ENABLE_DEBUG_LOGGER_EVENT = "vm0:enable-debug-logger";
+const ENABLE_DEBUG_LOGGER_EVENT = "okou:enable-debug-logger";
 
 export const setupGlobalMethod$ = command(
   ({ get, set }, signal: AbortSignal) => {
-    L.debug("Setting up global method vm0");
+    L.debug("Setting up global method _okou");
     const appVersion = get(appVersion$);
 
     window.addEventListener(
@@ -46,7 +46,7 @@ export const setupGlobalMethod$ = command(
     };
 
     signal.addEventListener("abort", () => {
-      L.debug("Cleaning up global method vm0");
+      L.debug("Cleaning up global method _okou");
       delete window._okou;
     });
   },

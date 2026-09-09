@@ -262,6 +262,12 @@ pub struct SupervisedExecRequest<'a> {
     /// `ExecTimeoutPolicy::None` lets the process run until it exits, is
     /// cancelled, or the connection closes.
     pub timeout: ExecTimeoutPolicy,
+    /// Whether a clean Workload execution timeout should be logged at info.
+    ///
+    /// Host-only diagnostic intent, registered before writing the start frame.
+    /// Does not affect Agent timeouts, deadlines, start/wait errors, result
+    /// semantics, or warnings for diagnostics, truncation, or output overflow.
+    pub timeout_is_expected: bool,
     /// Shell command to run in the guest.
     pub command: &'a str,
     /// Environment variables injected into the guest shell command.
@@ -378,7 +384,7 @@ fn exec_control_status_error_kind(status: ExecControlStatus) -> io::ErrorKind {
         ExecControlStatus::SinkUnavailable => io::ErrorKind::NotConnected,
         ExecControlStatus::SinkTimeout => io::ErrorKind::TimedOut,
         ExecControlStatus::QueueFull => io::ErrorKind::WouldBlock,
-        ExecControlStatus::SinkError => io::ErrorKind::BrokenPipe,
+        ExecControlStatus::SinkError | ExecControlStatus::SinkClosed => io::ErrorKind::BrokenPipe,
     }
 }
 
@@ -393,5 +399,6 @@ fn default_exec_control_status_message(status: ExecControlStatus) -> &'static st
         ExecControlStatus::SinkTimeout => "exec control sink timed out",
         ExecControlStatus::QueueFull => "exec control queue is full",
         ExecControlStatus::SinkError => "exec control sink error",
+        ExecControlStatus::SinkClosed => "exec control sink closed",
     }
 }

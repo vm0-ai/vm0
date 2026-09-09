@@ -76,7 +76,6 @@ async function reconcileDequeueTarget(
     orgId: target.automation.orgId,
     member: { userId: target.automation.ownerUserId, role: "member" },
     workflowId: target.automation.workflowId,
-    publicBrand: event.publicBrand,
     targetAutomationId: target.automation.id,
   });
   signal.throwIfAborted();

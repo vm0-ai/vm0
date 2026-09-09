@@ -1,4 +1,6 @@
+import { clerk$, type ClerkClient } from "../external/clerk";
 /** Canonical ChatEvent write commands. */
+import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
@@ -146,7 +148,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
-import { buildVideoRunOptionsPrompt } from "../../lib/video-run-options-prompt";
+import { buildVideoRunOptionsPrompt } from "@okouai/core/video-run-options-prompt";
 import {
   additionalVolumesForRun,
   authorizedUserPresentationTemplateIds,
@@ -455,7 +457,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   /**
    * Carried whole so downstream checks can read it without reloading the
    * switches this request already read.
@@ -1067,14 +1069,19 @@ async function resolveExplicitRunConfiguration(params: {
 
 async function resolveNormalSendFeatureSwitches(
   db: Db,
+  clerk: ClerkClient,
   orgId: string,
   userId: string,
+  templates: readonly GenerationTemplateRequest[],
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
     codexFastModeEnabled: isCodexFastModeEnabled(context),
-    presentationTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplates,
+    introVideoEnabled: await loadIntroVideoTemplateAccess(
+      db,
+      clerk,
+      userId,
+      templates,
       context,
     ),
     featureSwitchContext: context,
@@ -1095,9 +1102,9 @@ function resolveSelectedTemplateContext(
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
 } {
   const resolved = resolveThreadGenerationTemplatePrompt({
+    introVideoEnabled: featureSwitches.introVideoEnabled,
     explicit: runtimeBody.primaryTemplate,
     explicitTemplates: runtimeBody.templates,
-    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds,
   });
   return {
@@ -1127,13 +1134,11 @@ async function validateGenerationTemplatePrompt(
     return { userPresentationTemplateIds: [] };
   }
   // Syntax first: every selection this message names is a candidate mount, so
-  // the builder can reject a malformed or switched-off private id here without
-  // the database having been consulted yet.
+  // the builder can reject a malformed private id before consulting the database.
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
+      introVideoEnabled: featureSwitches.introVideoEnabled,
       mountedUserPresentationTemplateIds: selectedIds,
     });
     if (validation.status === "invalid") {
@@ -1919,7 +1924,6 @@ async function appendAssociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly appendQueueMarker: boolean;
   readonly triggerSource: "web" | "agent";
-  readonly publicBrand: PublicBrand;
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
@@ -2428,13 +2432,22 @@ function resolveTimedExplicitRunConfiguration(
 function resolveTimedNormalSendFeatureSwitches(
   args: NormalSendArgs,
   db: Db,
+  clerk: ClerkClient,
 ): ReturnType<typeof resolveNormalSendFeatureSwitches> {
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
     "nested",
     () => {
-      return resolveNormalSendFeatureSwitches(db, args.orgId, args.userId);
+      return resolveNormalSendFeatureSwitches(
+        db,
+        clerk,
+        args.orgId,
+        args.userId,
+        args.body.userMessage.parts.flatMap((part) => {
+          return part.type === "template" ? [part.template] : [];
+        }),
+      );
     },
   );
 }
@@ -2675,7 +2688,7 @@ function usesPi(
 
 const prepareNormalSend$ = command(
   async (
-    { set },
+    { get, set },
     args: NormalSendArgs,
     signal: AbortSignal,
   ): Promise<
@@ -2694,6 +2707,7 @@ const prepareNormalSend$ = command(
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
       db,
+      get(clerk$),
     );
     signal.throwIfAborted();
     const agentRunSourceResult = await resolveTimedNormalSendAgentRunSource(
@@ -2901,7 +2915,6 @@ function scheduleAssociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly triggerSource: "web" | "agent";
-  readonly publicBrand: PublicBrand;
 }): void {
   waitUntil(
     (async () => {
@@ -2920,7 +2933,6 @@ function scheduleAssociatedUserMessage(params: {
         userMessage: params.body.userMessage,
         appendQueueMarker: params.appendQueueMarker,
         triggerSource: params.triggerSource,
-        publicBrand: params.publicBrand,
         clearDraft: true,
       });
       if (inserted) {
@@ -2964,7 +2976,6 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
   readonly triggerSource: "web" | "agent";
-  readonly publicBrand: PublicBrand;
   readonly queueFirstClaim:
     | {
         readonly createdAt: Date;
@@ -3009,7 +3020,6 @@ function scheduleCreatedChatRunSideEffects(params: {
     touchThreadSort: params.touchThreadSort,
     attachFileMetadata: params.attachFileMetadata,
     triggerSource: params.triggerSource,
-    publicBrand: params.publicBrand,
   });
 }
 
@@ -3064,7 +3074,6 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
 async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   const appUrl = env("APP_URL");
@@ -3174,14 +3183,12 @@ async function appendInsufficientCreditsEvents(params: {
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
   readonly touchThreadSort: boolean;
   readonly queueFirstEventId?: string;
 }): Promise<CreatedChatEventResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
     orgId: params.orgId,
-    publicBrand: params.publicBrand,
   });
   if (params.queueFirstEventId) {
     return appendQueueFirstInsufficientCreditsEvents({
@@ -3361,7 +3368,6 @@ function buildCreateAgentRunArgs(params: {
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
-    publicBrand: args.publicBrand,
     chatThreadId: prepared.thread.threadId,
     computerUseHostId: prepared.computerUseHostGrant?.hostId,
     modelProviderId: modelPin.modelProviderId ?? undefined,
@@ -3500,7 +3506,6 @@ function scheduleNormalChatRunSideEffects(params: {
       params.prepared.thread.isNewThread,
     ),
     triggerSource: params.prepared.triggerSource,
-    publicBrand: params.args.publicBrand,
     queueFirstClaim: {
       createdAt: params.queueFirstClaimedAt,
     },
@@ -3554,7 +3559,6 @@ const createNormalChatRun$ = command(
         body: prepared.body,
         userId: args.userId,
         orgId: args.orgId,
-        publicBrand: args.publicBrand,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
           args.agentRunPreCreateSource,
           prepared.thread.isNewThread,

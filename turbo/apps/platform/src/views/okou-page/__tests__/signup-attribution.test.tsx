@@ -310,3 +310,43 @@ test("A temporary attribution failure does not block Platform", async () => {
     screen.findByRole("heading", { name: /^Where .+ works$/u }),
   ).resolves.toBeInTheDocument();
 });
+
+test.each(["url", "cookie"])(
+  "Okou campaign IDs from the %s reach signup in the stable API fields",
+  async (source) => {
+    mockNow(NOW, context.signal);
+    let recordedAttribution: AdAttributionMetadata | undefined;
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        recordedAttribution = body.attribution;
+        return respond(200, { recorded: true });
+      },
+    );
+    const attribution =
+      "gclid=original-click&okou_campaign_id=24220469665&okou_ad_group_id=123456";
+    if (source === "cookie") {
+      context.mocks.browser.cookie(
+        `vm0_attribution=${encodeURIComponent(attribution)}`,
+      );
+    }
+    await setupPage({
+      context,
+      path: source === "url" ? `/agents?${attribution}` : "/agents",
+      auth: {
+        user: {
+          id: "test-user-123",
+          fullName: "Test User",
+          email: "test@example.com",
+          createdAt: new Date(NOW),
+        },
+      },
+    });
+    await waitForAgentsPage();
+    expect(recordedAttribution).toMatchObject({
+      gclid: "original-click",
+      vm0_campaign_id: "24220469665",
+      vm0_ad_group_id: "123456",
+    });
+  },
+);

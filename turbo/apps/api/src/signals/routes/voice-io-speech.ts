@@ -1,3 +1,4 @@
+import { privateArtifactCreationEnabled } from "../services/private-artifact-storage.service";
 import { command } from "ccstate";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
@@ -49,7 +50,15 @@ interface GenerateSpeechResponseArgs {
 }
 
 const generateSpeechResponse$ = command(
-  async ({ set }, args: GenerateSpeechResponseArgs, signal: AbortSignal) => {
+  async (
+    { get, set },
+    args: GenerateSpeechResponseArgs,
+    signal: AbortSignal,
+  ) => {
+    const privateArtifacts = await get(
+      privateArtifactCreationEnabled(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     const openaiResponse = await fetch(OPENAI_AUDIO_SPEECH_URL, {
       method: "POST",
       headers: {
@@ -110,6 +119,7 @@ const generateSpeechResponse$ = command(
         userId: args.userId,
         runId: args.runId,
         publicBrand: args.publicBrand,
+        privateArtifacts,
         voice: args.voice,
         audioBytes,
         durationSeconds: Math.ceil(durationSeconds),

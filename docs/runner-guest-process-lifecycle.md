@@ -20,6 +20,14 @@ bounded-helper placement, or an arbitrary containment policy.
 
 ## Process Map
 
+The fixed workspace mount executable is `/sbin/guest-workspace-mount`. It performs
+path, block-device and visible-mount checks plus nonrecursive ownership repair
+directly, and launches only `/usr/bin/mount -t ext4` when a mount is needed. The
+typed startup operation and final reuse preparation select the same executable.
+Its mount child inherits the existing owned process group; timeouts, disconnects,
+output bounds and quiesce accounting are unchanged. The helper is part of the
+guest binary inventory, so changing it invalidates the rootfs and snapshot hash.
+
 | Process or operation                                                                                 | Class and selecting authority                                               | Input and trust boundary                                                                                                               | Placement and resource policy                                                                       | Completion and cleanup owner                                                                                                                                                        | Relationship to Agent start                                                                                                   |
 | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `guest-init` (PID 1)                                                                                 | Sandbox service selected by the guest image entry point                     | Fixed image program and boot configuration                                                                                             | Guest root; sandbox-lifetime VM policy                                                              | VM lifetime; PID 1 owns guest shutdown                                                                                                                                              | Required and serial before guest readiness                                                                                    |
@@ -70,6 +78,35 @@ Controlled processes deny process inspection across the boundary.
 
 ## Ownership and Reuse
 
+### Direct cgroup creation
+
+Guest-control-server uses one contained-command launcher for typed storage,
+ordinary Workload exec (including oversized storage fallback), and controlled
+Agent startup. It prepares the operation hierarchy and resource policy, then
+uses `clone3(CLONE_INTO_CGROUP)` to create the child in its target leaf:
+`workload` for Workload, or `control` for Agent. It does not create an
+uncontained child and migrate it afterward. The outer cgroup directory
+descriptor remains private and close-on-exec; runtime/tool brokers retain
+their separate authenticated, write-only placement capabilities.
+
+The launcher prepares arguments, environment, credentials and descriptors in
+the parent. Its copied child performs only the audited pre-exec setup, with
+signals masked during that setup. Startup errors are reported through a
+close-on-exec error pipe; a failed or timed-out handshake kills and reaps the
+owned child before containment cleanup. Unsupported or denied syscalls fail
+the launch instead of retrying without containment. Agent readiness observes
+exit without reaping, so the terminal owner retains the PID through cleanup.
+
+Direct placement requires cgroup v2 and Linux 5.7; the launcher's
+`close_range(CLOSE_RANGE_CLOEXEC)` additionally requires Linux 5.11. The
+committed guest kernel is 6.1.155. Fixed process-group-only helpers and explicit
+local TestNoop backends still use standard process creation. Guest Agent's
+internal CLI launcher and the managed tool's migrate-self/exec boundary are
+unchanged. There is no persistent cgroup pool, resident launcher or cgroup
+mount-policy change.
+
+### Operation lifetime
+
 All fixed helpers and workload operations hold operation guards. Agent
 readiness keeps the exec operation, placement brokers, and containment owner
 active, so reuse cannot quiesce or park during bootstrap. Reuse first fences
@@ -77,6 +114,12 @@ new operations, waits for active ownership to reach zero, and verifies that
 the `vm0-exec` hierarchy is empty before parking. A terminal result does not
 replace descendant cleanup: the operation's containment owner remains
 responsible for graceful or forced cleanup and hierarchy removal.
+
+Output drains retain their 64 KiB read capacity but allocate the read buffer
+uninitialized on the heap. This avoids faulting every page of a large stack
+buffer when a short-lived helper emits little or no output. Only the bytes
+initialized by a successful read are exposed to capture or streaming; output
+limits, cancellation wakeups and terminal drain deadlines are unchanged.
 
 Storage remains contained even though it has a typed entry point because its
 download, extraction, cache, and filesystem work is user influenced. The DNS,
@@ -105,9 +148,25 @@ Possible partial writes and start deadlines during/after writing stop further
 workspace, storage, and Agent preparation on that sandbox. Fresh preparation
 destroys it and may retry once with prefetch disabled, only after cleanup is
 confirmed. This consumes the existing shared preparation retry budget; uncertain
-cleanup or an already-consumed retry prevents another attempt. A direct run on
-an already-owned sandbox fails through its existing cleanup owner instead of
-replacing the sandbox in place.
+cleanup or an already-consumed retry prevents another attempt.
+
+Blank-pool runs inspect the same typed result before handing inputs to Agent
+execution. An unusable blank drains its prepared storage, unregisters its proxy,
+closes its network-log session and is destroyed before one fresh replacement
+with prefetch disabled. The replacement keeps the run/sandbox identity and caller
+budget ownership, acquires ordinary fresh pre-spawn admission, and cannot spend
+another DNS, workspace or prefetch retry. Run-scoped remote history work remains
+owned across replacement and is drained on terminal failure or cancellation.
+The retired blank's workspace lease is released without guest freeze or cache
+publication; guest-log copying and session-ID discovery are also skipped on that
+known-unusable connection. Cleanup uncertainty or cancellation suppresses creation.
+
+Successful fresh and blank paths keep their existing prefetch deadline and guest
+operations; already-prepared guest state is not restored twice. Exact reuse does
+not prefetch or enter this replacement path. A direct Agent-lifecycle invocation
+without the enclosing preparation owner still returns the typed start failure.
+Recoverable unsafe-prefetch/retirement messages are informational; final failure
+or uncertain cleanup remains a warning/error with unsuccessful telemetry.
 
 Ordinary write failures retain `start_failed` prefetch telemetry; typed request
 deadlines retain `start_timed_out`. The original write cause remains available

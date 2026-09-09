@@ -23,6 +23,7 @@ pub(crate) use session_history::{
     SessionHistoryTransferEncodingState, session_history_prefix_extension_action_type,
 };
 
+mod dns_readiness;
 mod session_history;
 
 /// How long before we auto-flush pending ops (matching TS: 30s).
@@ -219,6 +220,8 @@ struct SandboxOp {
     runner_resource_budget_lease_count_bucket: Option<RunnerResourceBudgetLeaseCountBucket>,
     #[serde(flatten)]
     session_history: Option<SessionHistoryTelemetryFields>,
+    #[serde(flatten)]
+    dns_readiness: Option<dns_readiness::DnsReadinessTelemetryFields>,
 }
 
 #[derive(Serialize)]
@@ -396,6 +399,48 @@ impl JobTelemetry {
             run_id: self.run_id,
             sandbox_token: self.sandbox_token.clone(),
             runner_hostname: self.runner_hostname.clone(),
+        }
+    }
+
+    pub(crate) async fn upload_oom_evidence(
+        &self,
+        evidence: &guest_contracts::oom_evidence::OomEvidence,
+        sandbox_id: &str,
+    ) {
+        let payload = serde_json::json!({
+            "runId": self.run_id.to_string(), "sandboxId": sandbox_id,
+            "oomEvidence": evidence,
+        });
+        let send = async {
+            let mut response = self
+                .http
+                .request_route(
+                    routes::webhooks::agent::telemetry::SEND,
+                    &self.sandbox_token,
+                )
+                .timeout(Duration::from_secs(2))
+                .json(&payload)
+                .send("oom-evidence")
+                .await
+                .ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.ok()? {
+                if bytes.len() + chunk.len() > 1024 {
+                    return None;
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            let body: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+            (body.get("oomEvidenceVersion")?.as_u64() == Some(1)).then_some(())
+        };
+        if !matches!(
+            tokio::time::timeout(Duration::from_secs(2), send).await,
+            Ok(Some(()))
+        ) {
+            warn!(run_id = %self.run_id, "guest oom evidence upload unacknowledged; host evidence retained");
         }
     }
 
@@ -702,6 +747,7 @@ fn sandbox_op_at(
         runner_resource_budget_memory_utilization_bucket: None,
         runner_resource_budget_lease_count_bucket: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
+        dns_readiness: None,
     }
 }
 
@@ -780,7 +826,7 @@ mod tests {
         http_client_for_api_url("http://localhost")
     }
 
-    fn http_client_for_api_url(api_url: &str) -> HttpClient {
+    pub(super) fn http_client_for_api_url(api_url: &str) -> HttpClient {
         HttpClient::new(HttpClientConfig {
             api_url: api_url.to_string(),
             vercel_bypass: None,
@@ -818,6 +864,7 @@ mod tests {
             runner_resource_budget_memory_utilization_bucket: None,
             runner_resource_budget_lease_count_bucket: None,
             session_history: None,
+            dns_readiness: None,
         };
         let json = serde_json::to_value(&op).unwrap();
         assert_eq!(
@@ -1043,6 +1090,7 @@ mod tests {
                 runner_resource_budget_memory_utilization_bucket: None,
                 runner_resource_budget_lease_count_bucket: None,
                 session_history: Some(metadata.into()),
+                dns_readiness: None,
             }],
         };
         let json = serde_json::to_value(&payload).unwrap();

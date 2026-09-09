@@ -109,8 +109,8 @@ type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
 
 function teamsIdentity(installation: TeamsInstallation | null | undefined): {
-  readonly assistantName: "Zero" | "Okou";
-  readonly brandName: "VM0" | "Okou";
+  readonly assistantName: "Okou";
+  readonly brandName: "Okou";
   readonly botName: string;
 } {
   const presentation = PUBLIC_BRAND_PRESENTATION;
@@ -275,7 +275,6 @@ function isTeamsBotGreeting(prompt: string): boolean {
 function commandHelpNotice(args: {
   readonly canSwitch: boolean;
   readonly canModel: boolean;
-  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
   const { assistantName, botName } = teamsIdentity(args.installation);
@@ -1494,14 +1493,12 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
 function teamsValidationFallbackNotice(args: {
   readonly command: TeamsBotCommand | null;
   readonly isGreeting: boolean;
-  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult | null {
   if (args.command === "help") {
     return commandHelpNotice({
       canSwitch: false,
       canModel: false,
-      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
@@ -1839,12 +1836,10 @@ const runAgentForTeams$ = command(
 function connectNotice(
   activity: TeamsMessageActivity,
   installation: TeamsInstallation | null,
-  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
   const { assistantName } = teamsIdentity(installation);
   const connectUrl = buildTeamsConnectUrlForActivity({
     activity,
-    publicBrand,
     installation,
   });
   return {
@@ -1887,13 +1882,11 @@ function unboundInstallationNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation | null;
-  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
       canSwitch: false,
       canModel: false,
-      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
@@ -1903,7 +1896,7 @@ function unboundInstallationNotice(args: {
   if (args.isGreeting) {
     return greetingNotice(args.installation);
   }
-  return connectNotice(args.activity, args.installation, args.publicBrand);
+  return connectNotice(args.activity, args.installation);
 }
 
 function missingConnectionNotice(args: {
@@ -1911,20 +1904,18 @@ function missingConnectionNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
-  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
       canSwitch: true,
       canModel: false,
-      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
   if (args.isGreeting) {
     return greetingNotice(args.installation);
   }
-  return connectNotice(args.activity, args.installation, args.publicBrand);
+  return connectNotice(args.activity, args.installation);
 }
 
 interface ConnectedCommandBeforeComposeArgs {
@@ -1932,7 +1923,6 @@ interface ConnectedCommandBeforeComposeArgs {
   readonly command: TeamsBotCommand | null;
   readonly installation: BoundTeamsInstallation;
   readonly connection: TeamsConnection;
-  readonly publicBrand: PublicBrand;
 }
 
 const connectedCommandBeforeCompose$ = command(
@@ -1946,7 +1936,6 @@ const connectedCommandBeforeCompose$ = command(
         return commandHelpNotice({
           canSwitch: true,
           canModel: true,
-          publicBrand: args.publicBrand,
           installation: args.installation,
         });
       }
@@ -2301,7 +2290,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         teamsValidationFallbackNotice({
           command,
           isGreeting,
-          publicBrand: args.publicBrand,
           installation: args.installation,
         }) ?? {
           kind: "ignored",
@@ -2331,7 +2319,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
-        publicBrand: args.publicBrand,
       });
     }
     const boundInstallation: BoundTeamsInstallation = {
@@ -2353,7 +2340,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
-        publicBrand: args.publicBrand,
       });
     }
 
@@ -2378,7 +2364,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         command,
         installation: boundInstallation,
         connection,
-        publicBrand: args.publicBrand,
       },
       signal,
     );

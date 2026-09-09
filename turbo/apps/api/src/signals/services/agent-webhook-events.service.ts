@@ -1,3 +1,4 @@
+import { captureRunActivity$ } from "./run-activity-snapshot.service";
 import { command, type Command } from "ccstate";
 
 import { eventConsumerPayloadState$ } from "../../lib/event-consumer/route";
@@ -57,6 +58,7 @@ export interface AcceptedAgentEvents {
 }
 
 const OPTIONAL_EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
+  { name: "activity-snapshot", command$: captureRunActivity$ },
   {
     name: "telegram-typing",
     command$: refreshTelegramTypingEvents$,

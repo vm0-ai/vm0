@@ -290,7 +290,7 @@ describe("POST /api/billing/portal", () => {
       context.mocks.stripe.billingPortal.configurations.create,
     ).toHaveBeenCalledWith(
       {
-        name: "VM0 payment methods",
+        name: "Okou payment methods",
         features: {
           customer_update: { enabled: false },
           invoice_history: { enabled: false },
@@ -368,7 +368,7 @@ describe("POST /api/billing/portal", () => {
       context.mocks.stripe.billingPortal.configurations.update,
     ).toHaveBeenCalledWith(PORTAL_CONFIGURATION_ID, {
       active: true,
-      name: "VM0 payment methods",
+      name: "Okou payment methods",
       features: {
         customer_update: { enabled: false },
         invoice_history: { enabled: false },

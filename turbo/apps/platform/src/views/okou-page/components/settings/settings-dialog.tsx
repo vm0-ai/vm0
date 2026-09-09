@@ -33,9 +33,11 @@ import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { billingPlansStandalone$ } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
   closeSettingsModal$,
+  completeSettingsModalClose$,
   resolveAvailableSettingsSection,
   settingsActiveSection$,
   settingsDialogOpen$,
+  settingsDialogSessionActive$,
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/okou-page/settings/settings-dialog.ts";
@@ -53,7 +55,9 @@ import { InvoicesSection } from "./sections/invoices-section.tsx";
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 interface SettingsDialogProps {
-  onOpenChange: (open: boolean) => void;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onOpenChangeComplete: (open: boolean) => void;
 }
 
 interface SidebarItem {
@@ -88,26 +92,55 @@ function SectionContent({ section }: { section: SettingsSection }) {
 }
 
 export function SettingsDialogMount() {
-  const open = useGet(settingsDialogOpen$);
-  const close = useSet(closeSettingsModal$);
+  const sessionActive = useGet(settingsDialogSessionActive$);
 
-  if (!open) {
+  if (!sessionActive) {
     return null;
+  }
+
+  return <SettingsDialogSession />;
+}
+
+function SettingsDialogSession() {
+  const open = useGet(settingsDialogOpen$);
+  const standalonePlans = useGet(billingPlansStandalone$);
+  const close = useSet(closeSettingsModal$);
+  const completeClose = useSet(completeSettingsModalClose$);
+  const onOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      close();
+    }
+  };
+  const onOpenChangeComplete = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      completeClose();
+    }
+  };
+
+  if (standalonePlans) {
+    return (
+      <BillingSection
+        standalonePlans
+        standaloneOpen={open}
+        onStandaloneOpenChangeComplete={onOpenChangeComplete}
+      />
+    );
   }
 
   return (
     <SettingsDialog
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          close();
-        }
-      }}
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
     />
   );
 }
 
-function SettingsDialog({ onOpenChange }: SettingsDialogProps) {
-  const standalonePlans = useGet(billingPlansStandalone$);
+function SettingsDialog({
+  open,
+  onOpenChange,
+  onOpenChangeComplete,
+}: SettingsDialogProps) {
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
@@ -117,10 +150,6 @@ function SettingsDialog({ onOpenChange }: SettingsDialogProps) {
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.OkouDebug] ?? false;
   const showChat = features[FeatureSwitchKey.ChatPreference] ?? false;
-
-  if (standalonePlans) {
-    return <BillingSection standalonePlans />;
-  }
 
   const sectionMeta = {
     preference: {
@@ -302,12 +331,18 @@ function SettingsDialog({ onOpenChange }: SettingsDialogProps) {
   };
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       <DialogContent
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="okou-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden okou-border rounded-xl bg-card"
+        maxWidth={1200}
+        height="fill"
+        contentClassName="okou-app flex flex-col p-0 gap-0 overflow-hidden bg-card"
       >
         <DialogTitle className="sr-only">
           {t(($) => {

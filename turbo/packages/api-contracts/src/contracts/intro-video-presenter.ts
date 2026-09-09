@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactUrlSchema } from "./artifact-references";
 
 import { authHeadersSchema, initContract } from "./base";
 import { builtInGenerationAcceptedResponseSchema } from "./built-in-generation";
@@ -122,7 +123,7 @@ export const introVideoVoiceGenerateResponseSchema = z.object({
 export const introVideoPresenterGenerateRequestSchema = z.object({
   avatarId: introVideoPresenterAvatarIdSchema,
   avatarGroupId: introVideoAvatarGroupIdSchema.optional(),
-  audioUrl: z.url(),
+  audioUrl: artifactUrlSchema,
   videoName: z.string().trim().min(1).optional(),
 });
 

@@ -19,6 +19,7 @@ import type {
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
+import { orgPlanCapabilities$ } from "../org-plan-capabilities.ts";
 import { apiClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
@@ -323,6 +324,14 @@ export const invitePurchasePreview$ = computed((get) => {
 
 export const closeInvitePurchasePreview$ = command(({ set }) => {
   set(internalInvitePurchasePreview$, null);
+});
+
+export const showMemberUsagePack$ = computed(async (get) => {
+  const [isAdmin, capabilities] = await Promise.all([
+    get(isOrgAdmin$),
+    get(orgPlanCapabilities$),
+  ]);
+  return isAdmin && capabilities.showUsagePack;
 });
 
 export const memberUsagePackManagement$ = computed((get) => {

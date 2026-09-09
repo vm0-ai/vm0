@@ -1,4 +1,3 @@
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import type {
@@ -12,7 +11,6 @@ import {
 } from "./slack-official-app";
 
 interface AppHomeViewOptions {
-  readonly publicBrand: PublicBrand;
   readonly appUrl: string;
   readonly isLinked: boolean;
   readonly userId?: string;

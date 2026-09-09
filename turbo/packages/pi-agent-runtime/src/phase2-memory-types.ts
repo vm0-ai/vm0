@@ -59,16 +59,6 @@ export interface PiMemoryPhase2LifecycleEvent {
   readonly contentIdentity?: string;
 }
 
-export interface PiMemoryPhase2UsageEvent {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly memoryStorageId: string;
-  readonly claimedRevision: number;
-  readonly selectionDigest: string;
-  readonly responseId: string;
-  readonly usage: PiMemoryPhase2ProviderUsage;
-}
-
 export interface PiMemoryPhase2ConsolidationArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -80,7 +70,6 @@ export interface PiMemoryPhase2ConsolidationArgs {
   readonly model: PiAgentModelConfig;
   readonly heartbeat: () => Promise<boolean>;
   readonly onLifecycle?: (event: PiMemoryPhase2LifecycleEvent) => void;
-  readonly onUsage?: (event: PiMemoryPhase2UsageEvent) => Promise<void> | void;
 }
 
 export interface PiMemoryPhase2PreparedFile {

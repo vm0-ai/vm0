@@ -37,9 +37,8 @@ pub(super) use environment::{
 };
 pub(super) use exit::{
     AgentBootstrapAbnormalExitLogContext, explicit_enospc_evidence,
-    failure_diagnostic_reports_workload_memory_oom, log_agent_abnormal_exit_env_diagnostics,
-    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
-    should_collect_agent_abnormal_exit_diagnostics,
+    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
+    log_agent_process_exit_summary, should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
@@ -51,9 +50,7 @@ pub(super) use guest_logs::copy_guest_logs;
 pub(super) use guest_logs::{GuestLogCopyFailureKind, guest_log_copy_failure_kind};
 #[cfg(test)]
 pub(super) use oom::host_dmesg_indicates_oom;
-pub(super) use oom::{
-    HostOomEvidenceSince, check_host_oom, dmesg_indicates_oom, host_oom_evidence_since_now,
-};
+pub(super) use oom::{HostOomEvidenceSince, check_host_oom, host_oom_evidence_since_now};
 pub(super) use resource::collect_agent_abnormal_exit_diagnostics;
 #[cfg(test)]
 pub(super) use resource::parse_agent_abnormal_exit_resource_diagnostics;

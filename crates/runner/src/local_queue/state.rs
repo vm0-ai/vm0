@@ -499,6 +499,51 @@ impl LocalQueue {
         self.cleanup_active_inputs_sync(run_id);
     }
 
+    /// Read the retained request for a run without assuming its profile partition.
+    pub(crate) fn read_job_request_sync(&self, run_id: RunId) -> std::io::Result<JobRequest> {
+        let paths = match self.collect_job_file_paths(run_id) {
+            JobFileScan::Complete(paths) => paths,
+            JobFileScan::ScanFailed(_) => {
+                return Err(std::io::Error::other(format!(
+                    "cannot scan local job requests for {run_id}"
+                )));
+            }
+        };
+        let path = match paths.as_slice() {
+            [path] => path,
+            [] => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("no local job request found for {run_id}"),
+                ));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("multiple local job requests found for {run_id}"),
+                ));
+            }
+        };
+        let bytes =
+            super::read_private_file_with_max(path, "local job file", super::LOCAL_JOB_MAX_BYTES)?;
+        let request: JobRequest = serde_json::from_slice(&bytes).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid local job request for {run_id}: {e}"),
+            )
+        })?;
+        if request.job_id != run_id {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "job id mismatch: request={}, filename={run_id}",
+                    request.job_id
+                ),
+            ));
+        }
+        Ok(request)
+    }
+
     pub(crate) fn write_active_input_sync(&self, entry: &ActiveInputEntry) -> std::io::Result<()> {
         if entry.sequence == 0 {
             return Err(std::io::Error::new(

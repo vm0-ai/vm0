@@ -1,4 +1,3 @@
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import type {
@@ -37,7 +36,6 @@ interface ModelPickerOption {
 }
 
 interface AppHomeOptions {
-  readonly publicBrand: PublicBrand;
   readonly isLinked: boolean;
   readonly isInstalled?: boolean;
   readonly userId?: string;
@@ -314,14 +312,11 @@ export function buildLoginPromptMessage(loginUrl: string): SlackBlocks {
   ];
 }
 
-export function buildHelpMessage(
-  publicBrand: PublicBrand,
-  opts?: {
-    readonly canSwitch?: boolean;
-    readonly canModel?: boolean;
-    readonly botUserId?: string;
-  },
-): SlackBlocks {
+export function buildHelpMessage(opts?: {
+  readonly canSwitch?: boolean;
+  readonly canModel?: boolean;
+  readonly botUserId?: string;
+}): SlackBlocks {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const botMention = opts?.botUserId
     ? officialSlackBotMention(opts.botUserId)

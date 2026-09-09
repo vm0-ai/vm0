@@ -370,7 +370,8 @@ export function AgentDeleteDialog({
                 closeLabel={t(($) => {
                   return $.actions.close;
                 })}
-                className="max-w-3xl gap-0 overflow-hidden p-0"
+                maxWidth="3xl"
+                contentClassName="gap-0 overflow-hidden p-0"
               >
                 {canReconcile ? (
                   <AgentDeleteReconcileView

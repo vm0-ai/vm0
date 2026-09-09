@@ -1,3 +1,4 @@
+import { chatThreadActivitySummaryRoutes } from "./chat-threads-activity-summary";
 import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
 import {
@@ -365,13 +366,12 @@ const searchChatInner$ = computed(async (get) => {
       keyword: query.keyword,
       agentId: query.agentId,
       since: query.since,
-      limit: query.limit,
     }),
   );
 
   return {
     status: 200 as const,
-    body: { results: [...result.results], hasMore: result.hasMore },
+    body: { results: [...result.results] },
   };
 });
 
@@ -464,6 +464,7 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
       searchChatInner$,
     ),
   },
+  ...chatThreadActivitySummaryRoutes,
   ...chatThreadsArtifactsSyncRoutes,
   ...chatThreadComputerUseHostRoutes,
   ...chatThreadConnectorSelectionRoutes,

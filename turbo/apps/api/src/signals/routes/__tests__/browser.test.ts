@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
@@ -183,14 +182,11 @@ function browserHeadersForRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
   runId: string,
-  publicBrand?: PublicBrand,
 ): { readonly authorization: string } {
-  const browserToken = runs.okouTokenForRunWithCapabilities(
-    actor,
-    runId,
-    ["browser:read", "browser:write"],
-    publicBrand,
-  );
+  const browserToken = runs.okouTokenForRunWithCapabilities(actor, runId, [
+    "browser:read",
+    "browser:write",
+  ]);
   return { authorization: `Bearer ${browserToken}` };
 }
 
@@ -198,7 +194,6 @@ async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
   runId: string,
-  publicBrand: PublicBrand = "vm0",
 ) {
   await flushWaitUntilForTest();
   const claim = await runs.claimRunnerJob(runId);
@@ -207,7 +202,7 @@ async function claimChatRun(
     throw new Error("Expected the runner claim to include OKOU_TOKEN");
   }
   return {
-    browserHeaders: browserHeadersForRun(runs, actor, runId, publicBrand),
+    browserHeaders: browserHeadersForRun(runs, actor, runId),
     sandboxHeaders: {
       authorization: `Bearer ${claim.sandboxToken}`,
     },
@@ -266,19 +261,16 @@ async function createClaimedChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
   agentId: string,
-  prompt: string | { readonly text: string; readonly publicBrand: PublicBrand },
+  prompt: string,
 ) {
-  const promptText = typeof prompt === "string" ? prompt : prompt.text;
-  const publicBrand = typeof prompt === "string" ? "vm0" : prompt.publicBrand;
   const sent = await chat.requestSendEvent(
     actor,
     {
       agentId,
-      prompt: promptText,
+      prompt,
       cloudBrowserEnabled: true,
     },
     [201],
-    { publicBrand },
   );
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected a chat run");
@@ -287,7 +279,7 @@ async function createClaimedChatRun(
     sent,
     runId: sent.body.runId,
     threadId: sent.body.threadId,
-    claim: await claimChatRun(runs, actor, sent.body.runId, publicBrand),
+    claim: await claimChatRun(runs, actor, sent.body.runId),
   };
 }
 
@@ -306,21 +298,19 @@ async function reconcileBrowsers(
 }
 
 describe("okou browser route", () => {
-  it("reports run-required errors as Okou for current and legacy tokens", async () => {
+  it("requires a chat thread when starting a managed browser", async () => {
     const { runs, actor } = await setupBrowserScenario();
 
-    for (const publicBrand of [undefined, "vm0", "okou"] as const) {
-      const rejected = await requestBrowserUse({
-        ...browserHeadersForRun(runs, actor, randomUUID(), publicBrand),
-      });
-      expect(rejected.status).toBe(400);
-      await expect(rejected.json()).resolves.toStrictEqual({
-        error: {
-          code: "BROWSER_CHAT_THREAD_REQUIRED",
-          message: "Managed browsers can only be started from an Okou chat run",
-        },
-      });
-    }
+    const rejected = await requestBrowserUse(
+      browserHeadersForRun(runs, actor, randomUUID()),
+    );
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toStrictEqual({
+      error: {
+        code: "BROWSER_CHAT_THREAD_REQUIRED",
+        message: "Managed browsers can only be started from an Okou chat run",
+      },
+    });
   });
 
   it("keeps managed browser access off for a default chat thread", async () => {
@@ -426,7 +416,7 @@ describe("okou browser route", () => {
     });
   });
 
-  it("uses the run token brand for browser access requested through the Okou API", async () => {
+  it("uses the configured app URL for browser authorization from run tokens", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const sent = await chat.requestSendEvent(
@@ -440,38 +430,21 @@ describe("okou browser route", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected a chat run");
     }
-    const legacySandboxToken = runs.sandboxTokenForRun(actor, sent.body.runId);
-    const legacyCreated = await accept(
+    const sandboxRunToken = runs.sandboxTokenForRun(actor, sent.body.runId);
+    const sandboxCreated = await accept(
       authorizationClient().create({
-        headers: { authorization: `Bearer ${legacySandboxToken}` },
+        headers: { authorization: `Bearer ${sandboxRunToken}` },
         body: {},
       }),
       [200],
     );
-    expect(new URL(legacyCreated.body.authorizationUrl).origin).toBe(
-      "https://app.okou.ai",
-    );
-    const vm0RunToken = runs.okouTokenForRunWithCapabilities(
-      actor,
-      sent.body.runId,
-      [],
-      "vm0",
-    );
-    const vm0CreatedOnOkouApi = await accept(
-      authorizationClient("https://api.okou.ai").create({
-        headers: { authorization: `Bearer ${vm0RunToken}` },
-        body: {},
-      }),
-      [200],
-    );
-    expect(new URL(vm0CreatedOnOkouApi.body.authorizationUrl).origin).toBe(
+    expect(new URL(sandboxCreated.body.authorizationUrl).origin).toBe(
       "https://app.okou.ai",
     );
     const okouRunToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       [],
-      "okou",
     );
     const createdOnOkouApi = await accept(
       authorizationClient("https://api.okou.ai").create({
@@ -542,12 +515,7 @@ describe("okou browser route", () => {
       agent.agentId,
       "Open a managed browser",
     );
-    const firstBrowserHeaders = browserHeadersForRun(
-      runs,
-      actor,
-      first.runId,
-      "okou",
-    );
+    const firstBrowserHeaders = browserHeadersForRun(runs, actor, first.runId);
     const other = await createClaimedChatRun(
       chat,
       runs,
@@ -2203,10 +2171,7 @@ describe("okou browser route", () => {
       runs,
       actor,
       agent.agentId,
-      {
-        text: "Open a managed browser for screenshot capture",
-        publicBrand: "okou",
-      },
+      "Open a managed browser for screenshot capture",
     );
     const providerId = randomUUID();
     acceptBrowserUseCdpSessions([providerId]);

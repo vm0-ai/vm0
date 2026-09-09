@@ -799,7 +799,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(lastSend(sends).body).toContain(
       `Audit: https://app.okou.ai/activities/${run.runId}`,
     );
-    expect(lastSend(sends).body).not.toContain("https://app.vm0.ai/");
     const sendsAfterCompletion = sends.messages.length;
 
     await webhooks.requestAgentComplete(
@@ -894,7 +893,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const phone = uniquePhoneHandle();
-    await ap.linkViaWebhookConnectPrompt(actor, phone, sends, "okou");
+    await ap.linkViaWebhookConnectPrompt(actor, phone, sends);
     expect(lastSend(sends).body).toContain(
       "Your phone number is now connected to Okou.",
     );

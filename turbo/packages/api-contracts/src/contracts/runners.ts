@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { piCredentialHeaderSchema } from "./pi-credential";
+import { piModelConfigV4Schema } from "./pi-native";
 
 import { authHeadersSchema, initContract } from "./base";
 import {
@@ -25,12 +27,18 @@ import {
 } from "./runner-primitives";
 import { eventSequenceNumberSchema } from "./runs";
 
+export {
+  PI_MODEL_CONFIG_NATIVE_GENERATION,
+  piModelConfigV4Schema,
+} from "./pi-native";
+
 export { BUILTIN_FIREWALL_CATALOG_MAX_BYTES } from "@okouai/connectors/connector-catalog/contracts";
 
 export {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   RUNNER_HOSTNAME_MAX_LENGTH,
+  OFFICIAL_RUNNER_TOKEN_PREFIX,
   RUNNER_VERSION_MAX_LENGTH,
   runnerGroupSchema,
   runnerHeartbeatGenerationSchema,
@@ -894,7 +902,7 @@ export const piApiFirstTurnOwnershipTransferModeSchema = z.enum([
   "settled-session-continuation",
 ]);
 
-export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
+const piApiFirstTurnManifestV3Schema = z.discriminatedUnion("mode", [
   z
     .object({
       ...piApiFirstTurnOwnershipTransferManifestShape,
@@ -918,6 +926,42 @@ export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
     .readonly(),
 ]);
 
+// Large H0 checkpoints bypass API materialization. The sandbox verifies the
+// original blob before starting the turn; API-produced H1 stays bounded at 16 MiB.
+export const piApiFirstTurnManifestSchema = z.union([
+  piApiFirstTurnManifestV3Schema,
+  z
+    .object({
+      ...piApiFirstTurnOwnershipTransferManifestShape,
+      schemaVersion: z.literal(4),
+      mode: z.literal("sandbox-first"),
+      session: piApiFirstTurnSessionSchema
+        .unwrap()
+        .extend({
+          rawSize: z
+            .number()
+            .int()
+            .positive()
+            .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+        })
+        .readonly(),
+      history: z
+        .object({
+          url: z.url(),
+          encoding: sessionHistoryEncodingSchema,
+          encodedSize: z
+            .number()
+            .int()
+            .positive()
+            .max(RESUME_SESSION_HISTORY_MAX_BYTES),
+        })
+        .strict()
+        .readonly(),
+    })
+    .strict()
+    .readonly(),
+]);
+
 export const piApiFirstTurnConfigSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -936,30 +980,6 @@ export const piApiFirstTurnConfigSchema = z
  * runtime environment entry used by the Sandbox, while `credentialSecretName`
  * names the API-owned encrypted secret that backs that entry.
  */
-const piCredentialHeaderSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1)
-      .max(128)
-      .regex(/^[A-Za-z][A-Za-z0-9-]*$/),
-    valueTemplate: z
-      .string()
-      .min(1)
-      .max(1024)
-      .refine((value) => {
-        const staticTemplate = value.replace("{{secret}}", "");
-        return (
-          !value.includes("\r") &&
-          !value.includes("\n") &&
-          value.split("{{secret}}").length === 2 &&
-          !staticTemplate.includes("{{") &&
-          !staticTemplate.includes("}}")
-        );
-      }, "Credential header template must contain {{secret}} exactly once, no other template references, and no line breaks"),
-  })
-  .strict()
-  .readonly();
 
 export const piModelConfigLegacySchema = z
   .object({
@@ -1158,6 +1178,7 @@ export const piModelConfigSchema = z.union([
   piModelConfigLegacySchema,
   piModelConfigV2Schema,
   piModelConfigV3Schema,
+  piModelConfigV4Schema,
 ]);
 
 const lowercaseSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);

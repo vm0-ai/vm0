@@ -7,7 +7,6 @@ import { expect, test } from "vitest";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   AGENT_ID,
-  TEMPLATE_FEATURES,
   THREAD_ID,
   context,
   mockTemplateChat,
@@ -48,7 +47,6 @@ test("Do not send a presentation that failed to upload", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await importDeck(
@@ -80,7 +78,6 @@ test("Import a presentation deck into chat", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await importDeck(
@@ -114,7 +111,6 @@ test("Import a legacy presentation deck into an existing chat", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await importDeck(
@@ -148,7 +144,6 @@ test("Import a presentation deck from a new chat", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await importDeck(

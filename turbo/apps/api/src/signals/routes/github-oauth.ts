@@ -4,7 +4,6 @@ import {
   type GithubAppSetupCallbackQuery,
   type GithubOauthConnectQuery,
 } from "@okouai/api-contracts/contracts/github-oauth";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 import {
   exchangeGitHubCode,
@@ -109,7 +108,6 @@ function replayGithubAppSetupCallbackAt(
 
 function replayPersistedGithubAppSetupCallback(args: {
   readonly request: Request;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const requestOrigin = new URL(args.request.url).origin;
   const apiOrigins = new Set([githubApiOrigin(args.request)]);
@@ -255,7 +253,6 @@ type GithubCallbackStateResolution =
   | {
       readonly ok: false;
       readonly response: Response;
-      readonly publicBrand: PublicBrand;
     };
 
 type GithubCallbackAccessResolution =
@@ -353,7 +350,6 @@ async function resolveGithubCallbackState(args: {
   if (!state) {
     return {
       ok: false,
-      publicBrand: "vm0",
       response: worksErrorRedirect(
         "Invalid OAuth state. Please try installing again from the Platform.",
       ),
@@ -368,7 +364,6 @@ async function resolveGithubCallbackState(args: {
   ) {
     return {
       ok: false,
-      publicBrand: "vm0",
       response: worksErrorRedirect(
         "Invalid state signature. Please try installing again from the Platform.",
       ),
@@ -376,14 +371,6 @@ async function resolveGithubCallbackState(args: {
   }
 
   return { ok: true, state };
-}
-
-function githubCallbackPublicBrand(
-  stateResolution: GithubCallbackStateResolution,
-): PublicBrand {
-  return stateResolution.ok
-    ? stateResolution.state.publicBrand
-    : stateResolution.publicBrand;
 }
 
 function signedGithubCallbackReplayResponse(args: {
@@ -410,7 +397,6 @@ async function githubAppUpdateCallbackResponse(
     readonly db: Db;
     readonly request: Request;
     readonly installationId: string | undefined;
-    readonly fallbackPublicBrand: PublicBrand;
     readonly usePersistedBrand: boolean;
   },
   signal: AbortSignal,
@@ -434,7 +420,6 @@ async function githubAppUpdateCallbackResponse(
 
   const replayUrl = replayPersistedGithubAppSetupCallback({
     request: args.request,
-    publicBrand: installation.setupPublicBrand,
   });
   return replayUrl
     ? noStoreRedirect(replayUrl)
@@ -857,7 +842,6 @@ const connectGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
     const query = get(queryOf(githubOauthContract.connect));
-    const publicBrand = PUBLIC_BRAND;
     const auth = await set(
       requiredAuthContext$,
       { requireOrganization: true },
@@ -947,7 +931,6 @@ const connectGithubUserOauth$ = command(
         userId: auth.userId,
         orgId,
         origin,
-        publicBrand,
         authMethodId: resolvedMethod.authMethodId,
         method: resolvedMethod.method,
         readEnv: optionalEnv,
@@ -1067,7 +1050,6 @@ const callbackGithubOauth$ = command(
       secretsEncryptionKey,
     });
     signal.throwIfAborted();
-    const callbackPublicBrand = githubCallbackPublicBrand(stateResolution);
     const replayResponse = signedGithubCallbackReplayResponse({
       request,
       stateString: query.state,
@@ -1095,7 +1077,6 @@ const callbackGithubOauth$ = command(
           db: set(writeDb$),
           request,
           installationId: query.installation_id,
-          fallbackPublicBrand: callbackPublicBrand,
           usePersistedBrand: !query.state || !stateResolution.ok,
         },
         signal,

@@ -196,7 +196,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
       orgId,
       runId: run.runId,
       capabilities: ["connector:read"],
-      publicBrand: "okou",
     }).token;
 
     const created = await api.createComputerUseAuthorizationRequest({

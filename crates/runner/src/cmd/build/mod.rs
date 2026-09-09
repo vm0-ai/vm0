@@ -104,6 +104,15 @@ pub struct BuildArgs {
     guest_write_file: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
+        arg(long, help = "Path to guest-workspace-mount binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-workspace-mount binary (required)")
+    )]
+    guest_workspace_mount: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
         arg(long, help = "Path to guest-tool-exec binary [default: bundled]")
     )]
     #[cfg_attr(
@@ -141,6 +150,7 @@ impl BuildArgs {
             "codex-mock" => self.codex_mock.take(),
             "guest-state-restore" => self.guest_state_restore.take(),
             "guest-write-file" => self.guest_write_file.take(),
+            "guest-workspace-mount" => self.guest_workspace_mount.take(),
             "guest-tool-exec" => self.guest_tool_exec.take(),
             "runner-rpc-client" => self.runner_rpc_client.take(),
             _ => None,

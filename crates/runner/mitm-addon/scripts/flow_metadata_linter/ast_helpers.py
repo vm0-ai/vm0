@@ -164,6 +164,20 @@ def _static_iterable_first_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
             and not node.keywords
         ):
             return _static_mapping_first_key_outcomes(node.func.value)
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in {"iter", "list", "tuple"}
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            return _merge_static_alternatives(
+                [
+                    _static_iterable_first_outcomes(argument)
+                    if argument is not None
+                    else _static_outcomes((), may_be_empty=True)
+                    for argument in _static_first_call_argument_outcomes(node.args).ordered
+                ]
+            )
     if not isinstance(node, ast.List | ast.Tuple):
         return _static_outcomes((), may_be_empty=True)
     return _static_ordered_sequence_first_outcomes(node.elts)

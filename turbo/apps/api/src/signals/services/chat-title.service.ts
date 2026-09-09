@@ -33,6 +33,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
+import { generateAuxiliary } from "./auxiliary-generation.service";
 import { chatEventTextCondition } from "./chat-event-type.service";
 import { visibleChatEventCondition } from "./chat-event-shared.service";
 import {
@@ -46,7 +47,7 @@ import {
   requiredUserMessageForEvent,
 } from "./chat-user-message.service";
 import {
-  canonicalChatEventContent,
+  canonicalChatEventVisibleContent,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
 
@@ -189,11 +190,18 @@ async function generateFastPathText(
   options?: {
     readonly stripMarkdown?: boolean;
   },
+  signal?: AbortSignal,
 ): Promise<string | null> {
-  const content = await generateText(FAST_PATH_MODEL, messages, maxTokens, {
-    reasoning: { effort: "low" },
-    temperature: 0.3,
-  });
+  const content = await generateText(
+    FAST_PATH_MODEL,
+    messages,
+    maxTokens,
+    {
+      reasoning: { effort: "low" },
+      temperature: 0.3,
+    },
+    signal,
+  );
   if (content === null) {
     return null;
   }
@@ -235,6 +243,7 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
 /** Generate the immutable title stored with a public shared-thread snapshot. */
 export async function generateSharedThreadTitle(
   messages: readonly SharedMessage[],
+  signal: AbortSignal,
 ): Promise<string> {
   const recent = messages.slice(-TITLE_PRIOR_MESSAGE_CAP);
   const conversation = recent
@@ -242,21 +251,35 @@ export async function generateSharedThreadTitle(
       return `${message.role}: ${message.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
     })
     .join("\n");
-  const title = await generateFastPathText([
+  const title = await generateAuxiliary(
     {
-      role: "system",
-      content:
-        "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+      feature: "shared_thread_title",
+      generate: () => {
+        return generateFastPathText(
+          [
+            {
+              role: "system",
+              content:
+                "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+            },
+            {
+              role: "user",
+              content: conversation,
+            },
+          ],
+          512,
+          undefined,
+          signal,
+        );
+      },
+      usable: (value) => {
+        return Boolean(value);
+      },
     },
-    {
-      role: "user",
-      content: conversation,
-    },
-  ]);
-  if (!title) {
-    throw new Error("Shared thread title generation returned no title");
-  }
-  return title;
+    signal,
+  );
+  // Optional presentation only: never disclose the unshared source title.
+  return title || "Shared conversation";
 }
 
 async function getLatestTitleContextMessages(
@@ -266,7 +289,7 @@ async function getLatestTitleContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
+      content: canonicalChatEventVisibleContent(),
       userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
@@ -363,9 +386,18 @@ async function generateAndPersistChatThreadTitle(args: {
       const priorRounds = args.includePriorRounds
         ? await getLatestTitleContextMessages(args.db, args.threadId)
         : [];
-      const title = await generateChatTitle({
-        currentUserMessage: args.prompt,
-        priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+      const title = await generateAuxiliary({
+        feature: "chat_title",
+        generate: () => {
+          return generateChatTitle({
+            currentUserMessage: args.prompt,
+            priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+          });
+        },
+        usable: (value) => {
+          return Boolean(value);
+        },
+        diagnosticContext: { threadId: args.threadId },
       });
       if (title) {
         await updateChatThreadTitle(
@@ -378,7 +410,7 @@ async function generateAndPersistChatThreadTitle(args: {
       }
     })(),
     (err) => {
-      log.warn("Chat title generation failed", {
+      log.warn("Chat title persistence failed", {
         threadId: args.threadId,
         err,
       });
@@ -406,23 +438,43 @@ export function scheduleChatThreadTitleGeneration(args: {
   waitUntil(generateAndPersistChatThreadTitle(args));
 }
 
-export function generateChatNotificationSummary(
-  prompt: string,
-  resultText: string,
+export async function generateChatNotificationSummary(
+  args: {
+    readonly prompt: string;
+    readonly resultText: string;
+    readonly runId: string;
+  },
+  signal?: AbortSignal,
 ): Promise<string | null> {
-  return generateFastPathText(
-    [
+  return (
+    (await generateAuxiliary(
       {
-        role: "system",
-        content:
-          "Summarize this completed task in one short notification sentence, max 90 chars. Plain text only.",
+        feature: "notification_summary",
+        diagnosticContext: { runId: args.runId },
+        usable: (value) => {
+          return Boolean(value);
+        },
+        generate: () => {
+          return generateFastPathText(
+            [
+              {
+                role: "system",
+                content:
+                  "Summarize this completed task in one short notification sentence, max 90 chars. Plain text only.",
+              },
+              {
+                role: "user",
+                content: `User request:\n${args.prompt.slice(0, TITLE_CONTEXT_CHAR_CAP)}\n\nAssistant reply:\n${args.resultText.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
+              },
+            ],
+            512,
+            undefined,
+            signal,
+          );
+        },
       },
-      {
-        role: "user",
-        content: `User request:\n${prompt.slice(0, TITLE_CONTEXT_CHAR_CAP)}\n\nAssistant reply:\n${resultText.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
-      },
-    ],
-    512,
+      signal,
+    )) ?? null
   );
 }
 
@@ -443,7 +495,7 @@ async function getLatestFollowupContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
+      content: canonicalChatEventVisibleContent(),
       userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
@@ -467,12 +519,8 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
+  signal?: AbortSignal,
 ): Promise<ChatRecommendedFollowup[]> {
-  const last = messages[messages.length - 1];
-  if (last?.role !== "assistant" || last.content.trim().length === 0) {
-    return [];
-  }
-
   const context = messages
     .map((message) => {
       return `${message.role}: ${message.content.slice(0, FOLLOWUP_CONTEXT_CHAR_CAP)}`;
@@ -492,6 +540,7 @@ async function generateRecommendedFollowups(
     ],
     1024,
     { stripMarkdown: false },
+    signal,
   );
 
   return text === null ? [] : parseRecommendedFollowups(text);
@@ -504,16 +553,32 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
   return await getLatestFollowupContextMessages(args.db, args.threadId);
 }
 
-export async function generateChatThreadRecommendedFollowupsFromContext(args: {
-  readonly messages: readonly ChatCompletionContextMessage[];
-  readonly threadId?: string;
-}): Promise<ChatRecommendedFollowup[]> {
+export async function generateChatThreadRecommendedFollowupsFromContext(
+  args: {
+    readonly messages: readonly ChatCompletionContextMessage[];
+    readonly threadId?: string;
+  },
+  signal?: AbortSignal,
+): Promise<ChatRecommendedFollowup[]> {
+  const last = args.messages[args.messages.length - 1];
+  if (last?.role !== "assistant" || last.content.trim().length === 0) {
+    return [];
+  }
   return (
-    (await tapError(generateRecommendedFollowups(args.messages), (err) => {
-      log.warn("Recommended follow-up generation failed", {
-        ...(args.threadId ? { threadId: args.threadId } : {}),
-        err,
-      });
-    })) ?? []
+    (await generateAuxiliary(
+      {
+        feature: "recommended_followups",
+        generate: () => {
+          return generateRecommendedFollowups(args.messages, signal);
+        },
+        usable: (value) => {
+          return value.length > 0;
+        },
+        diagnosticContext: args.threadId
+          ? { threadId: args.threadId }
+          : undefined,
+      },
+      signal,
+    )) ?? []
   );
 }

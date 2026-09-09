@@ -549,6 +549,34 @@ describe("AWS external-code provider", () => {
     });
   });
 
+  it.each(["error", "code", "Code", "__type"])(
+    "preserves the AWS %s error code independently of OAuth normalization",
+    async (field) => {
+      server.use(
+        http.post(AWS_TOKEN_URL, () => {
+          return HttpResponse.json(
+            { [field]: "TOKEN_EXPIRED", message: "Refresh token expired" },
+            { status: 401 },
+          );
+        }),
+      );
+
+      await expect(
+        refreshConnectorAuthProviderAccessToken({
+          connectorSlug: "aws",
+          authMethod: "cli",
+          authClient: awsAuthClient(),
+          inputs: awsRefreshInputs(),
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({
+        status: 401,
+        oauthError: "invalid_grant",
+        providerErrorCode: "TOKEN_EXPIRED",
+      });
+    },
+  );
+
   it("redacts AWS token exchange sensitive values from provider errors", async () => {
     const start = await startConnectorExternalCodeAuthorization({
       connectorSlug: "aws",
@@ -604,7 +632,7 @@ describe("AWS external-code provider", () => {
       http.post(AWS_TOKEN_URL, () => {
         return HttpResponse.json(
           {
-            error: "invalid_grant",
+            error: "aws-refresh-token",
             error_description: "Refresh token aws-refresh-token expired",
           },
           { status: 400 },
@@ -623,7 +651,8 @@ describe("AWS external-code provider", () => {
     ).rejects.toSatisfy((error: unknown) => {
       return (
         isOAuthProviderHttpError(error) &&
-        !error.message.includes("aws-refresh-token")
+        !error.message.includes("aws-refresh-token") &&
+        error.providerErrorCode === "[REDACTED]"
       );
     });
   });

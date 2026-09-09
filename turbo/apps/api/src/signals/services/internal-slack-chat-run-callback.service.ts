@@ -9,7 +9,6 @@ import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation"
 import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
@@ -234,7 +233,6 @@ async function deliverClaimedSlackChatCallback(
         userId: run.userId,
         runId: args.callback.runId,
         agentId: run.agentId,
-        publicBrand: payload.publicBrand,
         replyToMention:
           mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
         getFeatureOverrides: () => {
@@ -331,7 +329,6 @@ export async function deliverSlackChatAdmissionFailure(
     readonly threadTs: string;
     readonly routeThreadTs?: string;
     readonly chatEventId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {

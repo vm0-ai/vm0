@@ -7,7 +7,8 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use guest_contracts::workspace_mount::{WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS, WORKSPACE_MOUNT_SCRIPT};
+use guest_contracts::guest_binary::WORKSPACE_MOUNT_PATH;
+use guest_contracts::workspace_mount::WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS;
 use guest_control_proto::{
     ExecCapturedOutput, ExecTermination, WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES,
 };
@@ -16,7 +17,6 @@ use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancella
 use crate::error::to_io_error;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::quiesce::OperationGuard;
-use crate::shell_command::{EnvScriptGuard, PreparedShellCommand, build_shell_command_with_env};
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
@@ -24,9 +24,6 @@ pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as Works
 use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
-const WORKSPACE_DIR: &str = "/home/user/workspace";
-const WORKSPACE_DEVICE: &str = "/dev/vdb";
-const WORKSPACE_MOUNTINFO_PATH: &str = "/proc/self/mountinfo";
 const THREAD_WORKER: &str = "gctl-mount";
 const THREAD_STDOUT: &str = "gctl-mount-out";
 const THREAD_STDERR: &str = "gctl-mount-err";
@@ -54,38 +51,21 @@ impl WorkspaceDriveMountProgram {
         }
     }
 
-    fn spawn(&self) -> io::Result<SpawnedWorkspaceMountCommand> {
-        let command = workspace_mount_command();
+    fn spawn(&self) -> io::Result<Child> {
         // This empty typed operation fixes every execution choice. An owned
         // process group keeps timeout, disconnect, and pre-reap descendant
         // cleanup without creating a generic workload cgroup for each mount.
-        let (mut command, env_script) = match self {
-            Self::Production => {
-                let PreparedShellCommand {
-                    command,
-                    env_script,
-                } = build_shell_command_with_env(&command, &[], true)?;
-                (command, env_script)
-            }
-            Self::Test { path, .. } => {
-                let mut program = Command::new(path);
-                program.arg("-c").arg(command);
-                (program, None)
-            }
+        let mut command = match self {
+            Self::Production => Command::new(WORKSPACE_MOUNT_PATH),
+            Self::Test { path, .. } => Command::new(path),
         };
         command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         crate::user::apply_command_identity(&mut command, true)?;
-        let child = spawn_in_own_process_group(&mut command)?;
-        Ok(SpawnedWorkspaceMountCommand { child, env_script })
+        spawn_in_own_process_group(&mut command)
     }
-}
-
-struct SpawnedWorkspaceMountCommand {
-    child: Child,
-    env_script: Option<EnvScriptGuard>,
 }
 
 struct WorkspaceDriveMountRequest {
@@ -228,10 +208,7 @@ fn run_mount(input: RunMountInput<'_>) -> WorkspaceDriveMountOutput {
             );
         }
     };
-    let SpawnedWorkspaceMountCommand {
-        mut child,
-        env_script,
-    } = match program.spawn() {
+    let mut child = match program.spawn() {
         Ok(spawned) => spawned,
         Err(error) => {
             return failed_output(
@@ -241,7 +218,6 @@ fn run_mount(input: RunMountInput<'_>) -> WorkspaceDriveMountOutput {
             );
         }
     };
-    let _env_script = env_script;
     let Some(stdout) = child.stdout.take() else {
         return abort_spawned(child, started, "workspace mount helper stdout pipe missing");
     };
@@ -337,12 +313,6 @@ fn run_mount(input: RunMountInput<'_>) -> WorkspaceDriveMountOutput {
         stderr,
         diagnostic: truncate_utf8(diagnostic, MAX_DIAGNOSTIC_BYTES),
     }
-}
-
-fn workspace_mount_command() -> String {
-    format!(
-        "workspace_dir='{WORKSPACE_DIR}'\nworkspace_device='{WORKSPACE_DEVICE}'\nworkspace_mountinfo_path='{WORKSPACE_MOUNTINFO_PATH}'\n{WORKSPACE_MOUNT_SCRIPT}"
-    )
 }
 
 fn abort_spawned(child: Child, started: Instant, diagnostic: &str) -> WorkspaceDriveMountOutput {

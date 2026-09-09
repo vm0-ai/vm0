@@ -10,6 +10,7 @@ import auth
 import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import (
     apply_requestheaders_auth_without_upstream_admission,
+    firewall_auth_response,
     handle_firewall_request_without_upstream_admission,
     make_allow,
 )
@@ -53,15 +54,11 @@ def make_query_inputs(
     if match_overrides:
         allow_kwargs.update(match_overrides)
     allow = make_allow(api_entry, **allow_kwargs)
-    token_meta = {
-        "headers": {},
-        "resolved_secrets": ["SERPAPI_TOKEN"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-        "query": {"api_key": "resolved-key-123"},
-    }
+    token_meta = firewall_auth_response(
+        headers={},
+        resolved_secrets=["SERPAPI_TOKEN"],
+        query={"api_key": "resolved-key-123"},
+    )
     if token_overrides:
         token_meta.update(token_overrides)
     return flow, allow, sandbox_info, token_meta
@@ -396,12 +393,10 @@ class TestAuthQueryInjection:
         allow = make_allow(
             api_entry, name="gh", permission="read", rule="GET /repos/{owner}/{repo}"
         )
-        token_meta = {
-            "headers": {"Authorization": "Bearer real"},
-            "resolved_secrets": ["TOKEN"],
-            "cache_hit": False,
-            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-        }
+        token_meta = firewall_auth_response(
+            headers={"Authorization": "Bearer real"},
+            resolved_secrets=["TOKEN"],
+        )
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),

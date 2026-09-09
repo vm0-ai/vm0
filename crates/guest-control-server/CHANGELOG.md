@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.20.5](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.4...guest-control-server-v0.20.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+
+## [0.20.4](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.3...guest-control-server-v0.20.4) (2026-09-08)
+
+
+### Performance Improvements
+
+* **guest-control-server:** spawn contained processes directly with clone3 ([#32717](https://github.com/vm0-ai/vm0/issues/32717)) ([cf9f8a4](https://github.com/vm0-ai/vm0/commit/cf9f8a440730a16c6697dfeb051b5bf2f3c16f09))
+* **runner:** reduce workspace mount helper process fanout ([#32704](https://github.com/vm0-ai/vm0/issues/32704)) ([6948274](https://github.com/vm0-ai/vm0/commit/69482746ed271dfbce548e7a32ec86869d144172))
+
+## [0.20.3](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.2...guest-control-server-v0.20.3) (2026-09-08)
+
+## [0.20.2](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.1...guest-control-server-v0.20.2) (2026-09-08)
+
 ## [0.20.1](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.0...guest-control-server-v0.20.1) (2026-09-08)
 
 

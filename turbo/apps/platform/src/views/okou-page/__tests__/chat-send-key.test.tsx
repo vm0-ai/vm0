@@ -41,7 +41,7 @@ async function editableComposer(): Promise<HTMLElement> {
 
 function mountedComposer(): HTMLElement {
   const editor = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(editor instanceof HTMLElement)) {
     throw new Error("Editable message composer not found");

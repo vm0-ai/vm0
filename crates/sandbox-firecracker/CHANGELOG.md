@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.40.6](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.5...sandbox-firecracker-v0.40.6) (2026-09-09)
+
+
+### Bug Fixes
+
+* **rpc:** dispatch complete request frames without waiting for eof ([#32821](https://github.com/vm0-ai/vm0/issues/32821)) ([cb025d6](https://github.com/vm0-ai/vm0/commit/cb025d643f9348b2f2a5f8ebc2725fb353c1524f))
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+* **runner:** defer blank memory reclamation until agent readiness ([#32824](https://github.com/vm0-ai/vm0/issues/32824)) ([29040ac](https://github.com/vm0-ai/vm0/commit/29040ac3b52f14bfb415bc5eeb0adcb7383b17d5))
+
+
+### Documentation
+
+* **rust:** correct codex snapshot prewarm runtime claims ([#32850](https://github.com/vm0-ai/vm0/issues/32850)) ([ededc02](https://github.com/vm0-ai/vm0/commit/ededc0210e5c4b55e6bb03c75060d03d41091111))
+
+## [0.40.5](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.4...sandbox-firecracker-v0.40.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify cancelled workspace promotion skips ([#32793](https://github.com/vm0-ai/vm0/issues/32793)) ([5b45464](https://github.com/vm0-ai/vm0/commit/5b4546424e912fee5831a284ea9a54ead5311c1b))
+* **runner:** classify expected catalog prefetch timeouts ([#32791](https://github.com/vm0-ai/vm0/issues/32791)) ([b508e1b](https://github.com/vm0-ai/vm0/commit/b508e1b63883c0fb4519330ca0070e10e61e231e))
+
+## [0.40.4](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.3...sandbox-firecracker-v0.40.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+* **runner:** attribute guest dns readiness attempts ([#32697](https://github.com/vm0-ai/vm0/issues/32697)) ([7558632](https://github.com/vm0-ai/vm0/commit/7558632c0eea9bded6c831fdba33a76c369677aa)), closes [#32445](https://github.com/vm0-ai/vm0/issues/32445)
+
+
+### Performance Improvements
+
+* **runner:** attribute guest connection startup phases ([#32705](https://github.com/vm0-ai/vm0/issues/32705)) ([176ca98](https://github.com/vm0-ai/vm0/commit/176ca98235eee2d021f23448aef8158d51ecb43f))
+
+## [0.40.3](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.2...sandbox-firecracker-v0.40.3) (2026-09-08)
+
+## [0.40.2](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.1...sandbox-firecracker-v0.40.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **sandbox-firecracker:** retain pool index ownership through creation cleanup ([#32617](https://github.com/vm0-ai/vm0/issues/32617)) ([6ea0882](https://github.com/vm0-ai/vm0/commit/6ea088213e105b590ca7fa533e4eaf7e9a4e71fc))
+
 ## [0.40.1](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.0...sandbox-firecracker-v0.40.1) (2026-09-08)
 
 ## [0.40.0](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.39.6...sandbox-firecracker-v0.40.0) (2026-09-08)

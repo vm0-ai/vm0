@@ -25,6 +25,7 @@ control and RPC services, shared contracts, and developer/test support.
 | guest-storage-apply      | Storage/artifact manifest application: cleanup, preparation, extraction and instruction normalization |
 | guest-state-restore      | Entropy/clock restoration and timezone configuration, including timezone-only mode                    |
 | guest-write-file         | Direct stdin-to-file writes, including private and batch modes                                        |
+| guest-workspace-mount    | Fixed workspace mount checks and ownership repair, with one ext4 mount child                          |
 | session-history-selector | Selects retained native history candidates without rewriting live sessions                            |
 | claude-mock              | Claude test double, currently emitting CLI JSONL and session artifacts                                |
 | codex-mock               | Codex test double, currently implementing app-server JSON-RPC and session artifacts                   |
@@ -102,6 +103,18 @@ binary overrides must use flags and environment keys matching the runner revisio
 - [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
   build, deploy, and validate architecture-specific runner artifacts.
 
+### Local active input
+
+`runner local input` requires a claimed local job with active-input forwarding
+enabled. Ordinary submissions leave forwarding disabled. Enable it when submitting
+the job with `runner local submit --active-input after=1s,text=hello` and the other
+required submission arguments. An already-running job cannot enable forwarding
+retroactively; resubmit it with the option when input is needed.
+
+The input command rejects disabled forwarding or unavailable job metadata without
+creating an input entry. A successful command reports file publication, not an
+acknowledgement that the running agent consumed the input.
+
 ### Orphan sandbox termination
 
 `runner kill --sandbox <ID>` first asks the owning runner to terminate the
@@ -172,7 +185,7 @@ TARGET_TRIPLE=aarch64-unknown-linux-musl
 
 # Step 1: build guest binaries
 cargo build --target "$TARGET_TRIPLE" \
-  -p guest-agent -p guest-storage-apply -p guest-init -p claude-mock -p codex-mock -p guest-state-restore -p guest-tool-exec -p guest-write-file -p runner-rpc-client \
+  -p guest-agent -p guest-storage-apply -p guest-init -p claude-mock -p codex-mock -p guest-state-restore -p guest-tool-exec -p guest-write-file -p guest-workspace-mount -p runner-rpc-client \
   --profile ci
 
 # Step 2: build runner with embedded guests
@@ -184,6 +197,7 @@ CODEX_MOCK_PATH="target/$TARGET_TRIPLE/ci/codex-mock" \
 GUEST_STATE_RESTORE_PATH="target/$TARGET_TRIPLE/ci/guest-state-restore" \
 GUEST_TOOL_EXEC_PATH="target/$TARGET_TRIPLE/ci/guest-tool-exec" \
 GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
+GUEST_WORKSPACE_MOUNT_PATH="target/$TARGET_TRIPLE/ci/guest-workspace-mount" \
 RUNNER_RPC_CLIENT_PATH="target/$TARGET_TRIPLE/ci/runner-rpc-client" \
 cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```

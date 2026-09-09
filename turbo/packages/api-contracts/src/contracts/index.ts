@@ -26,7 +26,6 @@ export {
   CHAT_GOAL_MARKER_EVENT_TYPES,
   chatEventCompatibilityRole,
   chatEventTypeSchema,
-  foldActiveChatGoalObjective,
   foldPendingChatQueueEvents,
   foldRunnableChatQueueEvents,
   foldChatRunStates,
@@ -1895,3 +1894,9 @@ export {
   type SharedThreadResponse,
   type SharedThreadsContract,
 } from "./shared-threads";
+
+export {
+  chatThreadActivitySummaryContract,
+  activitySummaryResponseSchema,
+  type ActivitySummaryResponse,
+} from "./chat-thread-activity-summary";

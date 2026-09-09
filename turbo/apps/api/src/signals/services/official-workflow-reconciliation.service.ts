@@ -5,7 +5,6 @@ import type {
   OfficialWorkflowAcceptedDefinition,
   OfficialWorkflowParameterBinding,
 } from "@okouai/api-contracts/contracts/official-workflow-catalog";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   googleFormsResponseSubmittedEventConfigSchema,
   stripeInvoicePaidEventConfigSchema,
@@ -918,7 +917,6 @@ async function pauseForReconfiguration(
 interface ExistingAutomationReconciliationArgs {
   readonly orgId: string;
   readonly member: WorkflowMember;
-  readonly publicBrand: PublicBrand;
   readonly definitionName: string;
   readonly blueprint: OfficialWorkflowAcceptedBlueprint;
   readonly activeDefinitionOnly: boolean;
@@ -2305,7 +2303,6 @@ interface DormantBlueprintReconciliationArgs {
     | undefined;
   readonly overrides: readonly OfficialWorkflowParameterBinding[];
   readonly userTimezone: string | null;
-  readonly publicBrand: PublicBrand;
   readonly createAutomation: (
     input: CreateAutomationInput,
   ) => Promise<AutomationResult>;
@@ -3017,7 +3014,6 @@ async function reconcileReservedDormantMaterialization(
       identity,
       overrides,
       userTimezone,
-      publicBrand: args.publicBrand,
       createAutomation: operations.createAutomation,
       enableAutomation: operations.enableAutomation,
       enableMaterializingAutomation: operations.enableMaterializingAutomation,
@@ -3112,7 +3108,6 @@ async function reconcileDesiredBlueprint(
         {
           orgId: args.orgId,
           member: args.member,
-          publicBrand: args.publicBrand,
           definitionName: context.definition.name,
           blueprint,
           activeDefinitionOnly: args.activeDefinitionOnly === true,
@@ -3135,7 +3130,6 @@ async function reconcileDesiredBlueprint(
           identity: indexes.identityByKey.get(blueprint.key),
           overrides,
           userTimezone,
-          publicBrand: args.publicBrand,
           createAutomation: operations.createAutomation,
           enableAutomation: operations.enableAutomation,
           enableMaterializingAutomation:
@@ -3237,17 +3231,12 @@ export const reconcileOfficialWorkflowInstallation$ = command(
           prepareEvent: async (automationId, input) => {
             return await set(
               prepareOfficialAutomationReconfiguration$,
-              { automationId, input, publicBrand: args.publicBrand },
+              { automationId, input },
               signal,
             );
           },
           createAutomation: async (input) => {
-            return await set(
-              createWorkflowAutomation$,
-              input,
-              args.publicBrand,
-              signal,
-            );
+            return await set(createWorkflowAutomation$, input, signal);
           },
           enableAutomation: async (automationId) => {
             return await set(

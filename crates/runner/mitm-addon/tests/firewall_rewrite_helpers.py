@@ -2,9 +2,8 @@
 
 from urllib.parse import urlparse
 
-import auth
 import flow_metadata_keys as metadata_keys
-from tests.firewall_auth_helpers import make_allow
+from tests.firewall_auth_helpers import firewall_auth_response, make_allow
 
 
 def _make_rewrite_inputs(
@@ -74,15 +73,11 @@ def _make_rewrite_inputs(
     if match_overrides:
         allow_kwargs.update(match_overrides)
     allow = make_allow(api_entry, **allow_kwargs)
-    token_meta = {
-        "headers": {},
-        "base": resolved_base,
-        "resolved_secrets": ["WEBHOOK"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-    }
+    token_meta = firewall_auth_response(
+        headers={},
+        base=resolved_base,
+        resolved_secrets=["WEBHOOK"],
+    )
     if token_overrides:
         token_meta.update(token_overrides)
     return flow, allow, sandbox_info, token_meta

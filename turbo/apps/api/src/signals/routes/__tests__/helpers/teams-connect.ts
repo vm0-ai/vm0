@@ -6,8 +6,6 @@ import {
 } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { mockEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
@@ -231,7 +229,6 @@ function teamsBotRemovedActivity(
 export async function postTeamsActivityForTest(args: {
   readonly signal: AbortSignal;
   readonly activity: Record<string, unknown>;
-  readonly publicBrand?: PublicBrand;
 }): Promise<Response> {
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   botFrameworkHandlers();
@@ -240,9 +237,7 @@ export async function postTeamsActivityForTest(args: {
     signal: appSignal,
     routes: teamsBotRoutes,
   });
-  const apiOrigin =
-    args.publicBrand === "okou" ? "https://api.okou.ai" : "http://api.test";
-  return await app.request(`${apiOrigin}/api/webhooks/teams/bot`, {
+  return await app.request("https://api.okou.ai/api/webhooks/teams/bot", {
     method: "POST",
     headers: {
       authorization: `Bearer ${teamsToken()}`,
@@ -255,11 +250,9 @@ export async function postTeamsActivityForTest(args: {
 export async function installTeamsForTest(
   signal: AbortSignal,
   fixture: TeamsConnectFixture,
-  publicBrand: PublicBrand = "vm0",
 ): Promise<void> {
   const response = await postTeamsActivityForTest({
     signal,
-    publicBrand,
     activity: teamsMessageActivityForTest(fixture, {
       id: teamsFixtureExternalId(fixture, "activity-install-seed"),
       text: "installation seed",

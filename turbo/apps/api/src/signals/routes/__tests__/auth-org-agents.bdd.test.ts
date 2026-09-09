@@ -234,7 +234,7 @@ describe("AUTH-03", () => {
 });
 
 describe("ORG-01 and ORG-02", () => {
-  it("projects direct invitation redirects by request brand", async () => {
+  it("projects direct invitation redirects to Okou", async () => {
     mockEnv("APP_URL", "https://app.okou.ai");
     const admin = api.user();
     await upsertOrgPlanEntitlementFixture({
@@ -243,31 +243,16 @@ describe("ORG-01 and ORG-02", () => {
       memberInviteUsagePackRequired: false,
     });
 
-    const vm0Email = `vm0-invite-${shortId()}@example.test`;
+    const inviteEmail = `okou-invite-${shortId()}@example.test`;
     context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
       { id: `inv_${shortId()}` },
     );
-    await api.inviteMember(admin, { email: vm0Email, role: "member" });
+    await api.inviteMember(admin, { email: inviteEmail, role: "member" });
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).toHaveBeenLastCalledWith({
       organizationId: admin.orgId,
-      emailAddress: vm0Email,
-      inviterUserId: admin.userId,
-      role: "org:member",
-      redirectUrl: "https://app.okou.ai",
-    });
-
-    const okouEmail = `okou-invite-${shortId()}@example.test`;
-    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
-      { id: `inv_${shortId()}` },
-    );
-    await api.inviteMember(admin, { email: okouEmail, role: "member" }, "okou");
-    expect(
-      context.mocks.clerk.organizations.createOrganizationInvitation,
-    ).toHaveBeenLastCalledWith({
-      organizationId: admin.orgId,
-      emailAddress: okouEmail,
+      emailAddress: inviteEmail,
       inviterUserId: admin.userId,
       role: "org:member",
       redirectUrl: "https://app.okou.ai",
@@ -501,94 +486,65 @@ describe("ORG-03 onboarding status mapping", () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
 
-    const okouOnboarding = await api.readOnboardingStatus(admin, "okou");
-    expect(okouOnboarding.defaultAgentMetadata?.displayName).toBe("Okou");
-    const defaultAgentId = okouOnboarding.defaultAgentId;
+    const onboarding = await api.readOnboardingStatus(admin);
+    expect(onboarding.defaultAgentMetadata?.displayName).toBe("Okou");
+    const defaultAgentId = onboarding.defaultAgentId;
     if (!defaultAgentId) {
       throw new Error("Expected lazy onboarding to create the default agent");
     }
 
-    const vm0Onboarding = await api.readOnboardingStatus(admin, "vm0");
-    expect(vm0Onboarding.defaultAgentMetadata?.displayName).toBe("Okou");
-    await expect(
-      api.readAgent(admin, defaultAgentId, "okou"),
-    ).resolves.toMatchObject({ displayName: "Okou" });
-    await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({ displayName: "Okou" });
+    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
+      displayName: "Okou",
+    });
 
-    const okouAgents = await api.listAgents(admin, "okou");
+    const agents = await api.listAgents(admin);
     expect(
-      okouAgents.find((agent) => {
+      agents.find((agent) => {
         return agent.agentId === defaultAgentId;
       })?.displayName,
     ).toBe("Okou");
-    const customZero = await api.createAgent(
-      admin,
-      { displayName: "Zero" },
-      "okou",
-    );
+    const customZero = await api.createAgent(admin, { displayName: "Zero" });
     expect(customZero.displayName).toBe("Zero");
     await expect(
-      api.readAgent(admin, customZero.agentId, "okou"),
+      api.readAgent(admin, customZero.agentId),
     ).resolves.toMatchObject({ displayName: "Zero" });
 
-    const patched = await api.updateAgentMetadata(
-      admin,
-      defaultAgentId,
-      {
-        displayName: "Renamed default agent",
-        description: "Patched from Okou",
-        avatarUrl: "preset:4",
-      },
-      "okou",
-    );
+    const patched = await api.updateAgentMetadata(admin, defaultAgentId, {
+      displayName: "Renamed default agent",
+      description: "Patched from Okou",
+      avatarUrl: "preset:4",
+    });
     expect(patched).toMatchObject({
       displayName: "Okou",
       description: "Patched from Okou",
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
-    await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({
+    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
       displayName: "Okou",
       description: "Patched from Okou",
     });
 
-    const replaced = await api.updateAgent(
-      admin,
-      defaultAgentId,
-      {
-        displayName: "Another default name",
-        description: "Replaced from Okou",
-        avatarUrl: "preset:3",
-      },
-      "okou",
-    );
+    const replaced = await api.updateAgent(admin, defaultAgentId, {
+      displayName: "Another default name",
+      description: "Replaced from Okou",
+      avatarUrl: "preset:3",
+    });
     expect(replaced).toMatchObject({
       displayName: "Okou",
       description: "Replaced from Okou",
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
-    await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({
+    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
       displayName: "Okou",
       description: "Replaced from Okou",
     });
 
-    await api.updateAgentMetadata(
-      admin,
-      defaultAgentId,
-      { displayName: "Research Lead" },
-      "okou",
-    );
-    await expect(
-      api.readAgent(admin, defaultAgentId, "okou"),
-    ).resolves.toMatchObject({ displayName: "Okou" });
-    await expect(
-      api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({ displayName: "Okou" });
+    await api.updateAgentMetadata(admin, defaultAgentId, {
+      displayName: "Research Lead",
+    });
+    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
+      displayName: "Okou",
+    });
   });
 
   it("maps onboarding status across the setup, payment, entitlement, and agent-deletion journey", async () => {

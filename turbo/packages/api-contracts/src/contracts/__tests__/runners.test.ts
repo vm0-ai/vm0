@@ -614,6 +614,52 @@ describe("Pi sandbox execution contract", () => {
     });
   });
 
+  it("bounds referenced sandbox history at 128 MiB while retaining the V3 API budget", () => {
+    const manifest = {
+      schemaVersion: 4,
+      outcome: "ownership-transfer",
+      mode: "sandbox-first",
+      baseSession: { sessionId: piSessionId, sha256: handoffSession.sha256 },
+      session: { ...handoffSession, rawSize: RESUME_SESSION_HISTORY_MAX_BYTES },
+      history: {
+        url: "https://history.example/checkpoint",
+        encoding: "zstd",
+        encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES,
+      },
+      sandboxEventSequenceStart: 1,
+    };
+    expect(piApiFirstTurnManifestSchema.safeParse(manifest).success).toBe(true);
+    for (const invalid of [
+      { ...manifest, mode: "pending-tool-continuation" },
+      {
+        ...manifest,
+        session: {
+          ...manifest.session,
+          rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+        },
+      },
+      {
+        ...manifest,
+        history: {
+          ...manifest.history,
+          encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+        },
+      },
+      {
+        schemaVersion: 3,
+        outcome: manifest.outcome,
+        mode: manifest.mode,
+        baseSession: manifest.baseSession,
+        session: manifest.session,
+        sandboxEventSequenceStart: manifest.sandboxEventSequenceStart,
+      },
+    ]) {
+      expect(piApiFirstTurnManifestSchema.safeParse(invalid).success).toBe(
+        false,
+      );
+    }
+  });
+
   it.each([
     {
       name: "legacy outcome",
@@ -629,7 +675,7 @@ describe("Pi sandbox execution contract", () => {
     },
     {
       name: "future manifest version",
-      overrides: { schemaVersion: 4 },
+      overrides: { schemaVersion: 5 },
     },
   ])("rejects a V3 manifest with $name", ({ overrides }) => {
     expect(

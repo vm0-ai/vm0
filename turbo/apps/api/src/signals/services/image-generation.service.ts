@@ -11,6 +11,7 @@ import {
 } from "@okouai/core/image-model-catalog";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { and, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -34,6 +35,7 @@ import {
 
 const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
 const FAL_BILLABLE_UNITS_HEADER = "x-fal-billable-units";
+const OPENAI_IMAGES_URL_PREFIX = "https://api.openai.com/v1/images";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
@@ -97,6 +99,11 @@ const IDEOGRAM_4_PRICING_CATEGORIES = [
   "output_megapixel.balanced",
   "output_megapixel.quality",
 ] as const;
+const OPENAI_IMAGE_PRICING_CATEGORIES = [
+  "tokens.input.text",
+  "tokens.input.image",
+  "tokens.output.image",
+] as const;
 const IMAGE_PRICING_CATEGORIES = [
   FAL_OUTPUT_IMAGE_CATEGORY,
   FAL_OUTPUT_MEGAPIXEL_CATEGORY,
@@ -105,9 +112,11 @@ const IMAGE_PRICING_CATEGORIES = [
   ...FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
   ...FLUX_2_PRO_PRICING_CATEGORIES,
   ...IDEOGRAM_4_PRICING_CATEGORIES,
+  ...OPENAI_IMAGE_PRICING_CATEGORIES,
 ] as const;
 
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
+const OPENAI_IMAGE_QUALITIES = [...IMAGE_QUALITIES, "xhigh", "max"] as const;
 const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
 const IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
 const IMAGE_MODERATIONS = ["auto", "low"] as const;
@@ -142,7 +151,42 @@ const IMAGE_MODEL_ALIASES = {
   "clarity-upscaler": CLARITY_UPSCALER_MODEL,
 } as const;
 
+const OPENAI_IMAGE_MODEL_CONFIG = {
+  promptless: false,
+  sourceImageInput: "image_urls",
+  provider: "openai",
+  sizeMode: "flexible",
+  sizeParameter: undefined,
+  outputFormats: IMAGE_OUTPUT_FORMATS,
+  pricingCategories: OPENAI_IMAGE_PRICING_CATEGORIES,
+  billingMode: "tokens",
+  supportsTransparentBackground: true,
+  supportsOutputCompression: true,
+  supportsModeration: true,
+  supportsQuality: true,
+  supportsBackground: true,
+  usesOpenAiByok: false,
+  supportsSeed: false,
+  supportsSafetyTolerance: false,
+  supportsEnhancePrompt: false,
+  supportsMaskImage: true,
+  supportsInputFidelity: false,
+  supportsImagePromptStrength: false,
+} as const;
+
 const IMAGE_GENERATION_MODEL_CONFIGS = {
+  "gpt-image-2.5-flare": {
+    ...OPENAI_IMAGE_MODEL_CONFIG,
+    alias: "gpt-image-2.5-flare",
+    endpointId: "gpt-image-2.5-flare",
+    imageToImageEndpointId: "gpt-image-2.5-flare",
+  },
+  "gpt-image-2.5-sunburst": {
+    ...OPENAI_IMAGE_MODEL_CONFIG,
+    alias: "gpt-image-2.5-sunburst",
+    endpointId: "gpt-image-2.5-sunburst",
+    imageToImageEndpointId: "gpt-image-2.5-sunburst",
+  },
   "gpt-image-2": {
     alias: "gpt-image-2",
     promptless: false,
@@ -531,7 +575,7 @@ const IMAGE_MODEL_CONFIGS = {
 const IMAGE_MODELS = Object.keys(IMAGE_MODEL_CONFIGS) as ImageModel[];
 const L = logger("ImageGeneration");
 
-type ImageQuality = (typeof IMAGE_QUALITIES)[number];
+type ImageQuality = (typeof OPENAI_IMAGE_QUALITIES)[number];
 type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 type ImageOutputFormat = (typeof IMAGE_OUTPUT_FORMATS)[number];
 type ImageModeration = (typeof IMAGE_MODERATIONS)[number];
@@ -539,7 +583,7 @@ type ImageSafetyTolerance = (typeof IMAGE_SAFETY_TOLERANCES)[number];
 type ImageInputFidelity = (typeof IMAGE_INPUT_FIDELITIES)[number];
 type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 export type ImageModel = keyof typeof IMAGE_MODEL_CONFIGS;
-export type ImageProvider = "fal" | "byteplus";
+export type ImageProvider = "fal" | "byteplus" | "openai";
 type ImageModelConfig = (typeof IMAGE_MODEL_CONFIGS)[ImageModel];
 
 type ErrorStatus = 400 | 402 | 500 | 502 | 503;
@@ -616,7 +660,7 @@ interface RecordedImage {
   readonly contentType: string;
   readonly size: number;
   readonly url: string;
-  readonly embedUrl: string;
+  readonly embedUrl: string | undefined;
   readonly creditsCharged: number;
   readonly model: string;
   readonly provider: ImageProvider;
@@ -1023,9 +1067,14 @@ function parseImageModel(
 
 function parseImageQuality(
   body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
 ): ImageQuality | ErrorResponse {
   const quality = readString(body, "quality", "medium");
-  if (!includesString(IMAGE_QUALITIES, quality)) {
+  const qualities =
+    modelConfig.provider === "openai"
+      ? OPENAI_IMAGE_QUALITIES
+      : IMAGE_QUALITIES;
+  if (!includesString(qualities, quality)) {
     return badRequest(`Unsupported image quality: ${quality}`);
   }
 
@@ -1209,16 +1258,18 @@ function parseSourceImageUrls(
     return sourceImageUrls;
   }
   const maxSourceImageUrls =
-    modelConfig.alias === "nano-banana-2" ||
-    modelConfig.alias === "nano-banana-2-lite"
-      ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
-      : modelConfig.alias === "flux-2-pro"
-        ? FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS
-        : modelConfig.alias === "seedream5-lite"
-          ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
-          : modelConfig.alias === "qwen-image-3"
-            ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
-            : MAX_SOURCE_IMAGE_URLS;
+    modelConfig.provider === "openai"
+      ? 16
+      : modelConfig.alias === "nano-banana-2" ||
+          modelConfig.alias === "nano-banana-2-lite"
+        ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
+        : modelConfig.alias === "flux-2-pro"
+          ? FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS
+          : modelConfig.alias === "seedream5-lite"
+            ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
+            : modelConfig.alias === "qwen-image-3"
+              ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
+              : MAX_SOURCE_IMAGE_URLS;
   if (sourceImageUrls.length > maxSourceImageUrls) {
     return badRequest(
       `imageUrls supports at most ${maxSourceImageUrls} images`,
@@ -1363,7 +1414,7 @@ export function parseImageOptions(
     return sizeError;
   }
 
-  const quality = parseImageQuality(body);
+  const quality = parseImageQuality(body, modelConfig);
   if (typeof quality === "object") {
     return quality;
   }
@@ -1964,6 +2015,137 @@ export async function generateBytePlusImage(
   return await downloadBytePlusImage(result, options, signal);
 }
 
+const openAiImageResponseSchema = z.object({
+  data: z.tuple([
+    z.object({
+      b64_json: z.string().min(1),
+      revised_prompt: z.string().optional(),
+    }),
+  ]),
+  size: z.string().optional(),
+  quality: z.enum(OPENAI_IMAGE_QUALITIES).optional(),
+  background: z.enum(IMAGE_BACKGROUNDS).optional(),
+  output_format: z.enum(IMAGE_OUTPUT_FORMATS).optional(),
+  usage: z.object({
+    input_tokens_details: z.object({
+      text_tokens: z.number().int().nonnegative(),
+      image_tokens: z.number().int().nonnegative(),
+    }),
+    output_tokens: z.number().int().positive(),
+    output_tokens_details: z
+      .object({
+        image_tokens: z.number().int().positive(),
+      })
+      .optional(),
+  }),
+});
+
+export async function generateOpenAiImage(
+  options: ImageOptions,
+  references: ImageProviderReferences,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<ParsedImageGeneration | ErrorResponse> {
+  const editing = references.sourceImageUrls.length > 0;
+  const response = await fetch(
+    `${OPENAI_IMAGES_URL_PREFIX}/${editing ? "edits" : "generations"}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: options.model,
+        prompt: options.prompt,
+        n: 1,
+        size: options.size,
+        quality: options.quality,
+        background: options.background,
+        output_format: options.outputFormat,
+        output_compression: options.outputCompression,
+        moderation: options.moderation,
+        ...(editing
+          ? {
+              images: references.sourceImageUrls.map((imageUrl) => {
+                return { image_url: imageUrl };
+              }),
+              ...(references.maskImageUrl
+                ? {
+                    mask: { image_url: references.maskImageUrl },
+                  }
+                : {}),
+            }
+          : {}),
+      }),
+      signal,
+    },
+  );
+  if (!response.ok) {
+    const responseBody = await readImageProviderErrorBody(response, signal);
+    L.error("OpenAI image generation request failed", {
+      model: options.model,
+      status: response.status,
+      body: responseBody,
+    });
+    return badGateway("Image generation failed", "OPENAI_IMAGE_REQUEST_FAILED");
+  }
+
+  const responseText = await response.text();
+  signal.throwIfAborted();
+  const parsed = openAiImageResponseSchema.safeParse(
+    safeJsonParse(responseText),
+  );
+  if (!parsed.success) {
+    return badGateway(
+      "OpenAI returned invalid image data or token usage",
+      "OPENAI_IMAGE_BAD_RESPONSE",
+    );
+  }
+  const result = parsed.data;
+  const image = result.data[0];
+  const imageBytes = Buffer.from(image.b64_json, "base64");
+  if (imageBytes.byteLength === 0) {
+    return badGateway("Model returned empty image", "NO_IMAGE_RETURNED");
+  }
+
+  return {
+    model: options.model,
+    provider: "openai",
+    imageBytes,
+    revisedPrompt: image.revised_prompt,
+    imageSize: result.size ?? options.size,
+    quality: result.quality ?? options.quality,
+    background: result.background ?? options.background,
+    outputFormat: result.output_format ?? options.outputFormat,
+    outputCompression: options.outputCompression,
+    moderation: options.moderation,
+    safetyTolerance: undefined,
+    billing: [
+      {
+        category: "tokens.input.text",
+        quantity: result.usage.input_tokens_details.text_tokens,
+      },
+      {
+        category: "tokens.input.image",
+        quantity: result.usage.input_tokens_details.image_tokens,
+      },
+      {
+        category: "tokens.output.image",
+        quantity:
+          result.usage.output_tokens_details?.image_tokens ??
+          result.usage.output_tokens,
+      },
+    ],
+    sourceUrl: undefined,
+    seed: undefined,
+    sourceImageUrls: options.sourceImageUrls,
+    maskImageUrl: options.maskImageUrl,
+    inputFidelity: undefined,
+    imagePromptStrength: undefined,
+  };
+}
+
 function parseFalImageFile(value: unknown): FalImageFile | null {
   if (!isRecord(value) || typeof value.url !== "string") {
     return null;
@@ -2297,6 +2479,32 @@ async function downloadBytePlusImage(
   };
 }
 
+function generatedImageMetadata(
+  generation: ParsedImageGeneration,
+  isPrivate: boolean,
+) {
+  return {
+    generatedBy: "zero-official-image",
+    model: generation.model,
+    provider: generation.provider,
+    imageSize: generation.imageSize,
+    quality: generation.quality,
+    background: generation.background,
+    outputFormat: generation.outputFormat,
+    ...(generation.outputCompression !== undefined
+      ? { outputCompression: generation.outputCompression }
+      : {}),
+    moderation: generation.moderation,
+    safetyTolerance: generation.safetyTolerance,
+    sourceUrl: isPrivate ? undefined : generation.sourceUrl,
+    seed: generation.seed,
+    sourceImageUrls: generation.sourceImageUrls,
+    maskImageUrl: generation.maskImageUrl,
+    inputFidelity: generation.inputFidelity,
+    imagePromptStrength: generation.imagePromptStrength,
+  };
+}
+
 export const recordGeneratedImage$ = command(
   async (
     { set },
@@ -2305,6 +2513,7 @@ export const recordGeneratedImage$ = command(
       readonly userId: string;
       readonly runId: string | undefined;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly pricing: ImagePricing;
       readonly generation: ParsedImageGeneration;
       readonly recordArtifact?: boolean;
@@ -2317,6 +2526,8 @@ export const recordGeneratedImage$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "image",
         extension: extensionForFormat(params.generation.outputFormat),
         body: params.generation.imageBytes,
@@ -2342,26 +2553,10 @@ export const recordGeneratedImage$ = command(
           url,
           s3Key,
           publicBrand: params.publicBrand,
-          metadata: {
-            generatedBy: "zero-official-image",
-            model: params.generation.model,
-            provider: params.generation.provider,
-            imageSize: params.generation.imageSize,
-            quality: params.generation.quality,
-            background: params.generation.background,
-            outputFormat: params.generation.outputFormat,
-            ...(params.generation.outputCompression !== undefined
-              ? { outputCompression: params.generation.outputCompression }
-              : {}),
-            moderation: params.generation.moderation,
-            safetyTolerance: params.generation.safetyTolerance,
-            sourceUrl: params.generation.sourceUrl,
-            seed: params.generation.seed,
-            sourceImageUrls: params.generation.sourceImageUrls,
-            maskImageUrl: params.generation.maskImageUrl,
-            inputFidelity: params.generation.inputFidelity,
-            imagePromptStrength: params.generation.imagePromptStrength,
-          },
+          metadata: generatedImageMetadata(
+            params.generation,
+            artifact.isPrivate,
+          ),
         },
         signal,
       );
@@ -2406,7 +2601,7 @@ export const recordGeneratedImage$ = command(
       // Models such as seedream4 only emit PNG. Serving the stored object
       // through Cloudflare Image Resizing negotiates AVIF/WebP per request, so
       // pages embedding this image download a fraction of the PNG bytes.
-      embedUrl: r2ImageTransformUrl(url, {}),
+      embedUrl: artifact.isPrivate ? undefined : r2ImageTransformUrl(url, {}),
       creditsCharged: estimateImageCredits(
         params.generation.model,
         params.generation.billing,
@@ -2424,7 +2619,7 @@ export const recordGeneratedImage$ = command(
       revisedPrompt: params.generation.revisedPrompt,
       billingCategory: params.generation.billing[0]?.category,
       billingQuantity: params.generation.billing[0]?.quantity,
-      sourceUrl: params.generation.sourceUrl,
+      sourceUrl: artifact.isPrivate ? undefined : params.generation.sourceUrl,
       seed: params.generation.seed,
       sourceImageUrls: params.generation.sourceImageUrls,
       maskImageUrl: params.generation.maskImageUrl,

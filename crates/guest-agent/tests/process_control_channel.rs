@@ -181,6 +181,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let mut handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
+            timeout_is_expected: false,
             role: guest_control_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
             command: "",
@@ -325,6 +326,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     let handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
+            timeout_is_expected: false,
             role: guest_control_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
             command: "",

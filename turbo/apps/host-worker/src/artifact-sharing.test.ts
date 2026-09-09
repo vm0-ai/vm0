@@ -1,0 +1,559 @@
+import {
+  artifactDeliveryKey,
+  artifactDeliveryRegistrationKey,
+} from "@okouai/api-contracts/contracts/artifact-delivery";
+import { afterEach, expect, test, vi, onTestFinished } from "vitest";
+import { type ArtifactSharePolicy } from "@okouai/api-contracts/contracts/artifact-shares";
+import worker from "./index";
+import { fetchWorker, memoryCache } from "./test-helpers";
+
+type Env = Parameters<typeof worker.fetch>[1];
+const id = "00000000-0000-4000-8000-000000000010";
+const fileId = "00000000-0000-4000-8000-000000000011";
+const snapshotId = "00000000-0000-4000-8000-000000000012";
+const siteId = "00000000-0000-4000-8000-000000000013";
+const publicToken = "a".repeat(24);
+const origin = `https://f.okou.io/${publicToken}.pdf`;
+const siteOrigin = `https://${publicToken}.okou.app`;
+const policyKey = `artifact-shares/okou/${id}.json`;
+
+function fixture(html = false) {
+  const files = {
+    "/index.html": {
+      path: "/index.html",
+      size: 16,
+      sha256: "a",
+      contentType: "text/html",
+    },
+    "/style.css": {
+      path: "/style.css",
+      size: 12,
+      sha256: "b",
+      contentType: "text/css",
+    },
+    "/app.js": {
+      path: "/app.js",
+      size: 8,
+      sha256: "c",
+      contentType: "application/javascript",
+    },
+    "/image.png": {
+      path: "/image.png",
+      size: 3,
+      sha256: "d",
+      contentType: "image/png",
+    },
+    "/download.csv": {
+      path: "/download.csv",
+      size: 3,
+      sha256: "e",
+      contentType: "text/csv",
+    },
+  };
+  const policy: ArtifactSharePolicy = {
+    version: 1,
+    revision: snapshotId,
+    shareId: id,
+    ownerId: "owner",
+    orgId: "org",
+    publicBrand: "okou",
+    audience: "public",
+    status: "active",
+    publicToken,
+    target: html
+      ? {
+          kind: "html",
+          id: fileId,
+          siteId,
+          snapshotId,
+          deploymentVersion: 1,
+          manifest: {
+            version: 1,
+            access: "owner-private-v1",
+            publicBrand: "okou",
+            deploymentId: fileId,
+            siteId,
+            publicSlug: "private-report",
+            createdAt: "2026-09-08T00:00:00Z",
+            spaFallback: true,
+            files,
+          },
+        }
+      : {
+          kind: "file",
+          id: fileId,
+          key: `private-artifacts/${fileId}/shares/${snapshotId}/report.pdf`,
+          filename: "report.pdf",
+          contentType: "application/pdf",
+        },
+  };
+  const prefix = `shared-artifacts/okou/${snapshotId}/${fileId}`;
+  const objects = new Map<string, string>([
+    [policyKey, JSON.stringify(policy)],
+    [
+      artifactDeliveryKey(
+        "okou",
+        html ? "html" : "file",
+        html ? publicToken : `${publicToken}.pdf`,
+      ),
+      JSON.stringify({
+        version: 1,
+        kind: "publication",
+        publicBrand: "okou",
+        shareId: id,
+        publicToken,
+        targetKind: html ? "html" : "file",
+      }),
+    ],
+  ]);
+  if (policy.target.kind === "html") {
+    objects.set(
+      `${prefix}/manifest.json`,
+      JSON.stringify(policy.target.manifest),
+    );
+    for (const path of Object.keys(files))
+      objects.set(`${prefix}${path}`, `Content ${path}`);
+  } else objects.set(policy.target.key, "Private PDF bytes");
+  const reads: string[] = [];
+  const bucket: Env["HOSTED_SITES_BUCKET"] = {
+    head: async (key) => {
+      const value = objects.get(key);
+      return value === undefined
+        ? null
+        : { size: new TextEncoder().encode(value).length, httpEtag: '"file"' };
+    },
+    get: async (key, options) => {
+      reads.push(key);
+      const value = objects.get(key);
+      return value === undefined
+        ? null
+        : {
+            size: new TextEncoder().encode(value).length,
+            body: new Response(
+              options
+                ? new TextEncoder()
+                    .encode(value)
+                    .slice(
+                      options.range.offset,
+                      options.range.offset + options.range.length,
+                    )
+                : value,
+            ).body!,
+            httpEtag: '"file"',
+            writeHttpMetadata() {},
+          };
+    },
+  };
+  const env: Env = {
+    HOST_DOMAIN: "sites.vm0.io",
+    OKOU_HOST_DOMAIN: "okou.app",
+    HOSTED_SITES_BUCKET: bucket,
+    PRIVATE_ARTIFACTS_BUCKET: bucket,
+    PUBLIC_ARTIFACT_HOST: "f.okou.io",
+  };
+  const bytes = new Map<string, Response>();
+  const cache = {
+    match: vi.fn(async (key: Request) => {
+      return bytes.get(key.url)?.clone();
+    }),
+    put: vi.fn(async (key: Request, response: Response) => {
+      bytes.set(key.url, response);
+    }),
+  };
+  const registryCache = memoryCache();
+  vi.stubGlobal("caches", {
+    default: cache,
+    open: async () => {
+      return registryCache;
+    },
+  });
+  return { env, objects, reads, policy, cache };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+test.each([false, true])(
+  "previously emitted public links remain policy-checked after the URL change (html=%s)",
+  async (html) => {
+    const f = fixture(html);
+    const legacy = `https://sh-${id.replaceAll("-", "")}-${publicToken}.okou.app/`;
+    const request = new Request(legacy);
+    const response = await fetchWorker(request, f.env);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    f.objects.set(
+      policyKey,
+      JSON.stringify({
+        ...f.policy,
+        audience: "organization",
+        publicToken: null,
+      }),
+    );
+    expect((await fetchWorker(request, f.env)).status).toBe(404);
+  },
+);
+
+test("warm public bytes still require authoritative permission, and revocation defeats cache hits", async () => {
+  const f = fixture();
+  const request = () => {
+    return new Request(origin);
+  };
+  expect(await (await fetchWorker(request(), f.env)).text()).toBe(
+    "Private PDF bytes",
+  );
+  f.reads.length = 0;
+  const warm = await fetchWorker(request(), f.env);
+  expect(await warm.text()).toBe("Private PDF bytes");
+  expect(warm.headers.get("cache-control")).toBe("private, no-store");
+  expect(f.reads).toStrictEqual([policyKey]);
+  expect(f.reads).not.toContain(
+    f.policy.target.kind === "file" ? f.policy.target.key : "",
+  );
+  const cacheReads = f.cache.match.mock.calls.length;
+  f.objects.set(
+    policyKey,
+    JSON.stringify({
+      ...f.policy,
+      audience: "organization",
+      publicToken: null,
+    }),
+  );
+  const denied = await fetchWorker(request(), f.env);
+  expect(denied.status).toBe(404);
+  expect(await denied.text()).not.toContain("Private PDF");
+  expect(f.cache.match).toHaveBeenCalledTimes(cacheReads);
+});
+
+test("missing, malformed and unavailable publication state never serve cached bytes", async () => {
+  const f = fixture();
+  await fetchWorker(new Request(origin), f.env);
+  f.objects.set(policyKey, "broken");
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(503);
+  f.objects.delete(policyKey);
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(404);
+  f.env.HOSTED_SITES_BUCKET.get = async () => {
+    throw new Error("Storage unavailable");
+  };
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(503);
+  expect(f.cache.match).toHaveBeenCalledTimes(1);
+});
+
+test("republishing does not reactivate earlier public URLs or canonical private aliases", async () => {
+  const f = fixture();
+  f.objects.set(
+    policyKey,
+    JSON.stringify({ ...f.policy, publicToken: "b".repeat(24) }),
+  );
+  f.objects.set(
+    artifactDeliveryKey("okou", "file", `${"b".repeat(24)}.pdf`),
+    JSON.stringify({
+      version: 1,
+      kind: "publication",
+      publicBrand: "okou",
+      shareId: id,
+      publicToken: "b".repeat(24),
+      targetKind: "file",
+    }),
+  );
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(404);
+  expect(
+    (await fetchWorker(new Request(`https://dpl-${fileId}.okou.app/`), f.env))
+      .status,
+  ).toBe(404);
+  expect(
+    (
+      await fetchWorker(
+        new Request(origin.replace(publicToken, "b".repeat(24))),
+        f.env,
+      )
+    ).status,
+  ).toBe(200);
+});
+
+test("html snapshots protect every resource and navigation on an isolated origin", async () => {
+  const f = fixture(true);
+  for (const path of [
+    "/",
+    "/style.css",
+    "/app.js",
+    "/image.png",
+    "/download.csv",
+    "/nested/route",
+  ]) {
+    const response = await fetchWorker(
+      new Request(`${siteOrigin}${path}`, { headers: { accept: "text/html" } }),
+      f.env,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain(
+      "worker-src 'none'",
+    );
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  }
+  const head = await fetchWorker(
+    new Request(`${siteOrigin}/app.js`, { method: "HEAD" }),
+    f.env,
+  );
+  expect(head.status).toBe(200);
+  expect(await head.text()).toBe("");
+  f.objects.set(
+    policyKey,
+    JSON.stringify({
+      ...f.policy,
+      audience: "private",
+      status: "revoked",
+      publicToken: null,
+    }),
+  );
+  for (const path of [
+    "/",
+    "/style.css",
+    "/app.js",
+    "/image.png",
+    "/download.csv",
+    "/nested/route",
+  ]) {
+    expect(
+      (await fetchWorker(new Request(`${siteOrigin}${path}`), f.env)).status,
+    ).toBe(404);
+  }
+});
+
+test("organization snapshot credentials remain bearer capabilities only until their exact expiry", async () => {
+  const f = fixture(true);
+  const token = "c".repeat(48);
+  const key = `shared-previews/okou/${token}.json`;
+  const grant = {
+    version: 1,
+    publicBrand: "okou",
+    deploymentId: fileId,
+    snapshotId,
+    expiresAt: "2099-01-01T00:00:00Z",
+  };
+  f.objects.set(key, JSON.stringify(grant));
+  const request = (path: string) => {
+    return new Request(`https://ps-${token}.okou.app${path}`);
+  };
+  expect((await fetchWorker(request("/"), f.env)).status).toBe(200);
+  const rewritten = new Request(`https://pv-${token}.okou.app/`);
+  expect((await fetchWorker(rewritten, f.env)).status).toBe(404);
+  expect(f.objects.has(`private-previews/okou/${token}.json`)).toBeFalsy();
+  // Stopping the share does not promise invalidation of previously issued credentials.
+  f.objects.set(
+    policyKey,
+    JSON.stringify({
+      ...f.policy,
+      audience: "private",
+      status: "revoked",
+      publicToken: null,
+    }),
+  );
+  expect((await fetchWorker(request("/style.css"), f.env)).status).toBe(200);
+  f.objects.set(
+    key,
+    JSON.stringify({ ...grant, expiresAt: "2000-01-01T00:00:00Z" }),
+  );
+  expect((await fetchWorker(request("/"), f.env)).status).toBe(404);
+  expect((await fetchWorker(request("/style.css"), f.env)).status).toBe(404);
+});
+
+test("a cold cache write runs in the Worker lifetime without delaying content delivery", async () => {
+  const f = fixture();
+  const gate = Promise.withResolvers<void>();
+  onTestFinished(() => {
+    return gate.resolve();
+  });
+  f.cache.put.mockImplementation(async () => {
+    await gate.promise;
+  });
+  const pending: Promise<unknown>[] = [];
+  const response = await worker.fetch(new Request(origin), f.env, {
+    waitUntil(promise) {
+      pending.push(promise);
+    },
+  });
+  expect(await response.text()).toBe("Private PDF bytes");
+  expect(pending).toHaveLength(2);
+  gate.resolve();
+  await Promise.all(pending);
+});
+
+test("an unregistered public hash cannot use a private object or bypass a revoked record", async () => {
+  const f = fixture();
+  f.objects.delete(artifactDeliveryKey("okou", "file", `${publicToken}.pdf`));
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(404);
+  expect(
+    (
+      await fetchWorker(
+        new Request(`https://f.okou.io/private-artifacts/${fileId}/report.pdf`),
+        f.env,
+      )
+    ).status,
+  ).toBe(404);
+  expect(f.cache.match).not.toHaveBeenCalled();
+});
+
+test("a publication registry cannot change a policy's delivery type", async () => {
+  const f = fixture(true);
+  f.objects.set(
+    artifactDeliveryKey("okou", "file", `${publicToken}.html`),
+    JSON.stringify({
+      version: 1,
+      kind: "publication",
+      publicBrand: "okou",
+      shareId: id,
+      publicToken,
+      targetKind: "file",
+    }),
+  );
+  const response = await fetchWorker(
+    new Request(`https://f.okou.io/${publicToken}.html`),
+    f.env,
+  );
+  expect(response.status).toBe(404);
+  expect(f.cache.match).not.toHaveBeenCalled();
+});
+
+test("malformed alias and registration state fails closed", async () => {
+  const f = fixture();
+  f.objects.set(
+    artifactDeliveryKey("okou", "file", `${publicToken}.pdf`),
+    "null",
+  );
+  expect((await fetchWorker(new Request(origin), f.env)).status).toBe(503);
+  f.objects.set(artifactDeliveryRegistrationKey("okou"), "null");
+  expect(
+    (await fetchWorker(new Request("https://unknown.okou.app/"), f.env)).status,
+  ).toBe(503);
+  expect(f.cache.match).not.toHaveBeenCalled();
+});
+
+test("explicit historical Public file registration preserves bytes without enabling unknown aliases", async () => {
+  const f = fixture();
+  const legacy = "0123456789.pdf";
+  const key = `artifacts/${legacy}`;
+  f.objects.set(key, "Historical public PDF");
+  f.objects.set(
+    artifactDeliveryKey("okou", "file", legacy),
+    JSON.stringify({
+      version: 1,
+      kind: "legacy-file",
+      publicBrand: "okou",
+      audience: "public",
+      key,
+      filename: "old.pdf",
+      contentType: "application/pdf",
+    }),
+  );
+  const env = { ...f.env, PUBLIC_ARTIFACTS_BUCKET: f.env.HOSTED_SITES_BUCKET };
+  const response = await fetchWorker(
+    new Request(`https://f.okou.io/${legacy}`),
+    env,
+  );
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe("Historical public PDF");
+  expect(
+    (await fetchWorker(new Request("https://f.okou.io/unregistered.pdf"), env))
+      .status,
+  ).toBe(404);
+});
+
+test("media byte ranges remain authorized after a full response warms the cache", async () => {
+  const f = fixture();
+  await fetchWorker(new Request(origin), f.env);
+  for (const [range, content, contentRange] of [
+    ["bytes=0-6", "Private", "bytes 0-6/17"],
+    ["bytes=-5", "bytes", "bytes 12-16/17"],
+  ]) {
+    const response = await fetchWorker(
+      new Request(origin, { headers: { Range: range! } }),
+      f.env,
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Range")).toBe(contentRange);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.text()).toBe(content);
+  }
+  expect(
+    (
+      await fetchWorker(
+        new Request(origin, { headers: { Range: "bytes=99-" } }),
+        f.env,
+      )
+    ).status,
+  ).toBe(416);
+  f.objects.set(
+    policyKey,
+    JSON.stringify({
+      ...f.policy,
+      status: "revoked",
+      audience: "private",
+      publicToken: null,
+    }),
+  );
+  expect(
+    (
+      await fetchWorker(
+        new Request(origin, { headers: { Range: "bytes=0-6" } }),
+        f.env,
+      )
+    ).status,
+  ).toBe(404);
+});
+
+test("registered historical sites preserve mutable aliases after the migration closes unknown lookup", async () => {
+  const f = fixture(true);
+  const alias = "legacy-report";
+  const prefix = `sites/${alias}/deployments/${fileId}`;
+  const pointerKey = `sites/brands/okou/${alias}/active.json`;
+  const registryKey = artifactDeliveryKey("okou", "html", alias);
+  if (f.policy.target.kind !== "html") throw new Error("Expected HTML fixture");
+  const { access: _access, ...manifest } = f.policy.target.manifest;
+  f.objects.set(`${prefix}/manifest.json`, JSON.stringify(manifest));
+  f.objects.set(`${prefix}/index.html`, "Historical site one");
+  f.objects.set(
+    pointerKey,
+    JSON.stringify({
+      version: 1,
+      publicBrand: "okou",
+      publicSlug: alias,
+      deploymentId: fileId,
+      siteId,
+      prefix,
+      manifestKey: `${prefix}/manifest.json`,
+      spaFallback: true,
+    }),
+  );
+  f.objects.set(
+    registryKey,
+    JSON.stringify({
+      version: 1,
+      kind: "legacy-site",
+      publicBrand: "okou",
+      audience: "public",
+      pointerKey,
+    }),
+  );
+  f.objects.set(
+    artifactDeliveryRegistrationKey("okou"),
+    JSON.stringify({ version: 1, complete: true }),
+  );
+  const url = `https://${alias}.okou.app/`;
+  expect(await (await fetchWorker(new Request(url), f.env)).text()).toBe(
+    "Historical site one",
+  );
+  f.objects.set(`${prefix}/index.html`, "Historical site two");
+  expect(await (await fetchWorker(new Request(url), f.env)).text()).toBe(
+    "Historical site two",
+  );
+  f.objects.set(
+    "sites/brands/okou/unregistered/active.json",
+    f.objects.get(pointerKey)!,
+  );
+  expect(
+    (await fetchWorker(new Request("https://unregistered.okou.app/"), f.env))
+      .status,
+  ).toBe(404);
+});

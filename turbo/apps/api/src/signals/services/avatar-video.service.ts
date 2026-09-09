@@ -147,7 +147,7 @@ interface RecordedAvatarVideo {
   readonly aspectRatio: "portrait" | "landscape" | "square";
   readonly screenStyle: 1 | 2 | 3;
   readonly caption: boolean;
-  readonly sourceUrl: string;
+  readonly sourceUrl: string | undefined;
 }
 
 function errorBody(message: string, code: string): ErrorBody {
@@ -741,6 +741,7 @@ export const recordGeneratedAvatarVideo$ = command(
       readonly userId: string;
       readonly runId: string | undefined;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly pricing: AvatarVideoPricingRow;
       readonly generation: ParsedAvatarVideoGeneration;
       readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
@@ -752,6 +753,8 @@ export const recordGeneratedAvatarVideo$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "avatar-video",
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,
@@ -778,8 +781,10 @@ export const recordGeneratedAvatarVideo$ = command(
           provider: "joggai",
           model: JOGGAI_AVATAR_VIDEO_MODEL,
           providerVideoId: params.generation.providerVideoId,
-          sourceUrl: params.generation.sourceUrl,
-          coverUrl: params.generation.coverUrl,
+          sourceUrl: artifact.isPrivate
+            ? undefined
+            : params.generation.sourceUrl,
+          coverUrl: artifact.isPrivate ? undefined : params.generation.coverUrl,
           durationSeconds: params.generation.durationSeconds,
           avatarId: params.generation.options.avatarId,
           voiceId: params.generation.options.voiceId,
@@ -836,7 +841,7 @@ export const recordGeneratedAvatarVideo$ = command(
       aspectRatio: params.generation.options.aspectRatio,
       screenStyle: params.generation.options.screenStyle,
       caption: params.generation.options.caption,
-      sourceUrl: params.generation.sourceUrl,
+      sourceUrl: artifact.isPrivate ? undefined : params.generation.sourceUrl,
     };
   },
 );

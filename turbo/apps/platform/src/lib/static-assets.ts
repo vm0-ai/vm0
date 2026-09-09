@@ -2,10 +2,6 @@ import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 const PLATFORM_RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
 
-export function platformPublicStaticUrl(url: string): string {
-  return url;
-}
-
 export function platformStaticAssetUrl(path: string) {
   return `${PLATFORM_RUNTIME_CONFIG.publicStaticAssetsBaseUrl}/platform/${path.replace(/^\/+/u, "")}`;
 }
@@ -13,12 +9,10 @@ export function platformStaticAssetUrl(path: string) {
 export const platformEmptyPrivateAgentsImg = platformStaticAssetUrl(
   "views/agents-page/assets/empty-private-agents-9a8d7e3750b6.png",
 );
-export const platformOkouWordmarkDarkImg = platformPublicStaticUrl(
-  "https://static.okou.io/public/okou-logo-wordmark-dark-40e256bb155e.svg",
-);
-export const platformOkouWordmarkLightImg = platformPublicStaticUrl(
-  "https://static.okou.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg",
-);
+export const platformOkouWordmarkDarkImg =
+  "https://static.okou.io/public/okou-logo-wordmark-dark-40e256bb155e.svg";
+export const platformOkouWordmarkLightImg =
+  "https://static.okou.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg";
 export const platformFeishuAppIconImg = platformStaticAssetUrl(
   "views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
 );

@@ -7,7 +7,7 @@ import {
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test, vi } from "vitest";
 
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -111,7 +111,7 @@ function installReadingPositionGeometry(
       }
       if (this.dataset.chatScrollAnchorEventId === eventId) {
         const insertedFoldRows = container.querySelectorAll(
-          "[data-chat-run-group-fold], [data-chat-completed-work-fold]",
+          "[data-chat-run-work]",
         ).length;
         return new DOMRect(
           0,
@@ -294,6 +294,8 @@ test("Keep the work being read expanded as conversation groups change", async ()
   });
 
   await screen.findByRole("textbox", { name: "Message" });
+  await screen.findByText("Current rollout conclusion");
+  click(fastButton("Expand work history"));
   const visibleResponse = await screen.findByText(
     "Response the reader is reviewing",
   );
@@ -332,33 +334,32 @@ test("Keep the work being read expanded as conversation groups change", async ()
 
   await waitFor(() => {
     expect(screen.getByText("Later grouped response")).toBeVisible();
-    expect(fastButton("Collapse grouped run history", container)).toBeVisible();
+    expect(fastButton("Collapse work history", container)).toBeVisible();
   });
-  const groupedHistory = fastButton("Collapse grouped run history", container);
-  expect(groupedHistory).toHaveAttribute("aria-expanded", "true");
+  const workHistory = fastButton("Collapse work history", container);
+  expect(workHistory).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText("Response the reader is reviewing")).toBeVisible();
   expect(
     eventAnchor(container, responseBeingRead.id).getBoundingClientRect().top,
   ).toBe(initialResponseTop);
   expect(scroller.scrollTop).toBe(540);
 
-  rows = [...rows, completedRow(33, 6, thread.id, firstRunId)];
+  rows = [...rows, completedRow(33, 6, thread.id, laterRunId)];
   workspace.setChatEventRows(rows);
   createChatEvent(thread.id);
 
   await waitFor(() => {
+    const laterResponse = screen
+      .getByText("Later grouped response")
+      .closest('[data-role="assistant"]');
+    expect(laterResponse).toHaveTextContent("Worked for");
     expect(fastButton("Collapse work history", container)).toBeVisible();
   });
   const completedWork = fastButton("Collapse work history", container);
-  const regroupedHistory = fastButton(
-    "Collapse grouped run history",
-    container,
-  );
   expect(completedWork).toHaveAttribute("aria-expanded", "true");
-  expect(regroupedHistory).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText("Response the reader is reviewing")).toBeVisible();
   expect(
     eventAnchor(container, responseBeingRead.id).getBoundingClientRect().top,
   ).toBe(initialResponseTop);
-  expect(scroller.scrollTop).toBe(580);
+  expect(scroller.scrollTop).toBe(540);
 });

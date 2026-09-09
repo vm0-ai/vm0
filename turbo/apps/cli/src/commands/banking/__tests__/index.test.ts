@@ -1,26 +1,10 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import chalk from "chalk";
-import { mkdtempSync } from "fs";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { bankingCommand } from "../index";
-
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "banking-home-"));
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
-
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
 
 describe("okou banking command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -31,8 +15,7 @@ describe("okou banking command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
@@ -41,12 +24,11 @@ describe("okou banking command", () => {
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
   it("posts transaction requests with the default limit and prints JSON", async () => {

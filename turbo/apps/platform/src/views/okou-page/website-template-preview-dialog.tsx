@@ -1,25 +1,32 @@
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@okouai/ui/components/ui/dialog";
+import { Button } from "@okouai/ui/components/ui/button";
+import { X } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
-import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
+import {
+  type WebsiteTemplateItem,
+  findWebsiteTemplateItem,
+} from "@okouai/core/website-template-items";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
-import { findWebsiteTemplateItem } from "../../lib/platform-template-items.ts";
 
 function WebsiteTemplatePreviewDialog({
   item,
   open,
   onOpenChange,
+  onOpenChangeComplete,
   signals,
 }: {
   item: WebsiteTemplateItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete: (open: boolean) => void;
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
@@ -33,16 +40,22 @@ function WebsiteTemplatePreviewDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       <DialogContent
         aria-describedby={undefined}
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 data-open:!animate-none [&>button]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
-        overlayClassName="okou-dialog-overlay-instant"
+        maxWidth={1120}
+        height={760}
+        showCloseButton={false}
+        contentClassName="flex flex-col gap-0 overflow-hidden p-0"
       >
-        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:pr-16">
+        <DialogHeader className="relative shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:pr-16">
           <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
             <button
               type="button"
@@ -60,6 +73,21 @@ function WebsiteTemplatePreviewDialog({
               {item.title}
             </span>
           </DialogTitle>
+          <DialogClose
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                iconSize="lg"
+                className="absolute right-4 top-[7px] opacity-70 hover:opacity-100"
+                aria-label={t(($) => {
+                  return $.artifacts.actions.close;
+                })}
+              />
+            }
+          >
+            <X />
+          </DialogClose>
         </DialogHeader>
         <div className="min-h-0 flex-1 bg-muted/20 p-3 sm:p-5">
           <div className="relative h-full overflow-hidden rounded-lg border border-border bg-background">
@@ -106,7 +134,11 @@ export function WebsiteTemplatePreviewDialogSlot({
   signals: ComposerSignals;
 }) {
   const previewId = useGet(signals.template.websiteTemplatePreviewId$);
+  const open = useGet(signals.template.websiteTemplatePreviewOpen$);
   const closePreview = useSet(signals.template.closeWebsiteTemplatePreview$);
+  const completeClose = useSet(
+    signals.template.completeWebsiteTemplatePreviewClose$,
+  );
   const item =
     previewId === null ? null : (findWebsiteTemplateItem(previewId) ?? null);
 
@@ -117,11 +149,16 @@ export function WebsiteTemplatePreviewDialogSlot({
   return (
     <WebsiteTemplatePreviewDialog
       item={item}
-      open
+      open={open}
       signals={signals}
-      onOpenChange={(open) => {
-        if (!open) {
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           closePreview();
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
         }
       }}
     />

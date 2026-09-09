@@ -1,6 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentAvatarUrlForDefaultAgent } from "@okouai/core/agent-avatar";
 import { agentDisplayName } from "@okouai/core/public-brand";
 import { isValidTimeZone } from "@okouai/core/timezone";
@@ -100,7 +99,6 @@ async function preserveOrStoreTimezoneFallback(
 interface CompleteOnboardingArgs {
   readonly orgId: string;
   readonly member: WorkflowMember;
-  readonly publicBrand: PublicBrand;
   readonly timezone?: string;
 }
 
@@ -251,7 +249,6 @@ export const completeOnboarding$ = command(
               {
                 orgId: args.orgId,
                 member: args.member,
-                publicBrand: args.publicBrand,
               },
               signal,
             )

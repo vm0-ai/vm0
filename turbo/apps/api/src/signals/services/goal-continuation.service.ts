@@ -1,212 +1,39 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
 import { command } from "ccstate";
-import { and, eq, isNotNull } from "drizzle-orm";
 
-import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { admitGoalQueueEvent } from "./chat-goal-queue.service";
-import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
-import {
-  loadActiveGoalForThread,
-  pauseActiveGoalForThread,
-  type GoalBootstrap,
-} from "./goal.service";
+import type { GoalBootstrap } from "./goal.service";
 
-const log = logger("api:goal-continuation");
-
-type TerminalRunStatus = "completed" | "failed" | "timeout" | "cancelled";
-
-interface TerminatingRunContext {
-  readonly runId: string;
-  readonly status: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly chatThreadId: string | null;
-}
-
-type GoalEnqueueResult =
-  | {
-      readonly kind: "enqueued";
-      readonly goalId: string;
-      readonly eventId: string;
-    }
-  | { readonly kind: "coalesced"; readonly goalId: string }
-  | {
-      readonly kind: "failed-to-enqueue";
-      readonly goalId: string;
-      readonly error: string;
-    };
-
-type GoalContinuationResult =
-  | { readonly kind: "skipped"; readonly reason: string }
-  | GoalEnqueueResult
-  | { readonly kind: "paused"; readonly goalId: string };
-
-function isTerminalStatus(status: string): status is TerminalRunStatus {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled"
-  );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function loadTerminatingRun(
-  db: Db,
-  runId: string,
-): Promise<TerminatingRunContext | null> {
-  const [row] = await db
-    .select({
-      runId: agentRuns.id,
-      status: agentRuns.status,
-      orgId: agentRuns.orgId,
-      userId: agentRuns.userId,
-      chatThreadId: agentRuns.chatThreadId,
-    })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
-    .limit(1);
-
-  return row ?? null;
-}
-
-const admitGoalContinuation$ = command(
-  async (
-    _context,
-    args: {
-      readonly db: Db;
-      readonly goal: GoalBootstrap;
-    },
-    signal: AbortSignal,
-  ): Promise<GoalEnqueueResult> => {
-    const admission = await settle(
-      admitGoalQueueEvent(args.db, {
-        chatThreadId: args.goal.threadId,
-        goalId: args.goal.goalId,
-        objectiveBrief: args.goal.objectiveBrief,
-      }),
-    );
-    signal.throwIfAborted();
-    if (!admission.ok) {
-      const paused = await pauseActiveGoalForThread(args.db, {
-        orgId: args.goal.orgId,
-        userId: args.goal.userId,
-        threadId: args.goal.threadId,
-      });
-      signal.throwIfAborted();
-      const message = errorMessage(admission.error);
-      log.warn("Goal continuation enqueue failed; goal paused", {
-        goalId: args.goal.goalId,
-        error: message,
-        pauseResult: paused.kind,
-      });
-      return {
-        kind: "failed-to-enqueue",
-        goalId: args.goal.goalId,
-        error: message,
-      };
-    }
-
-    return admission.value.kind === "inserted"
-      ? {
-          kind: "enqueued",
-          goalId: args.goal.goalId,
-          eventId: admission.value.eventId,
-        }
-      : { kind: "coalesced", goalId: args.goal.goalId };
-  },
-);
-
+// Compatibility entry points for old bootstrap/callback callers. Remove after
+// outgoing API contexts and callbacks drain under the #32653 cutoff gate.
 export const handleTerminalGoalContinuation$ = command(
-  async (
-    { set },
-    args: {
-      readonly db: Db;
-      readonly runId: string;
-    },
+  (
+    _context,
+    _args: { readonly db: Db; readonly runId: string },
     signal: AbortSignal,
-  ): Promise<GoalContinuationResult> => {
-    const run = await loadTerminatingRun(args.db, args.runId);
+  ): Promise<{ readonly kind: "skipped"; readonly reason: "goal-retired" }> => {
     signal.throwIfAborted();
-    if (!run?.chatThreadId) {
-      return { kind: "skipped", reason: "run-not-linked-to-chat-thread" };
-    }
-    if (!isTerminalStatus(run.status)) {
-      return { kind: "skipped", reason: "run-not-terminal" };
-    }
-    const goal = await loadActiveGoalForThread(args.db, {
-      orgId: run.orgId,
-      threadId: run.chatThreadId,
-    });
-    signal.throwIfAborted();
-    if (!goal) {
-      return { kind: "skipped", reason: "no-active-goal" };
-    }
-
-    if (
-      run.status === "cancelled" ||
-      run.status === "failed" ||
-      run.status === "timeout"
-    ) {
-      const paused = await pauseActiveGoalForThread(args.db, {
-        orgId: run.orgId,
-        userId: run.userId,
-        threadId: run.chatThreadId,
-      });
-      signal.throwIfAborted();
-      if (paused.kind !== "ok") {
-        return { kind: "skipped", reason: `pause-${paused.kind}` };
-      }
-      return { kind: "paused", goalId: goal.id };
-    }
-
-    return await set(
-      admitGoalContinuation$,
-      {
-        db: args.db,
-        goal: {
-          goalId: goal.id,
-          orgId: goal.orgId,
-          userId: goal.ownerUserId,
-          threadId: goal.chatThreadId,
-          objectiveBrief: goal.objectiveBrief,
-        },
-      },
-      signal,
-    );
+    return Promise.resolve({ kind: "skipped", reason: "goal-retired" });
   },
 );
 
 export const bootstrapGoalRun$ = command(
-  async (
-    { set },
-    args: {
+  (
+    _context,
+    _args: {
       readonly db: Db;
       readonly goal: GoalBootstrap;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
-  ): Promise<GoalEnqueueResult> => {
-    const result = await set(admitGoalContinuation$, args, signal);
+  ): Promise<{
+    readonly kind: "failed-to-enqueue";
+    readonly reason: "goal-retired";
+  }> => {
     signal.throwIfAborted();
-    if (result.kind === "failed-to-enqueue") {
-      return result;
-    }
-    await set(
-      drainChatThreadQueueForThread$,
-      {
-        chatThreadId: args.goal.threadId,
-        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return result;
+    return Promise.resolve({
+      kind: "failed-to-enqueue",
+      reason: "goal-retired",
+    });
   },
 );

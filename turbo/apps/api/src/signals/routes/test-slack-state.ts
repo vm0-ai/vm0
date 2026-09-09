@@ -58,6 +58,7 @@ const SLACK_BOT_SCOPES = JSON.stringify([
   "groups:read",
   "groups:history",
   "im:history",
+  "im:read",
   "im:write",
   "commands",
   "users:read",

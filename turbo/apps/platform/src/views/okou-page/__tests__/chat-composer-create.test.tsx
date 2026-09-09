@@ -19,11 +19,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-} from "../../../lib/platform-template-items.ts";
+  readClipboardItemText,
+  readSingleRichClipboardWrite,
+} from "./chat-lifecycle-test-helpers.ts";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 import {
   AGENT_ID,
+  THREAD_ID,
   composerInlineTemplates,
   context,
   findComposerEditor,
@@ -88,7 +91,7 @@ test("Create commands stay hidden until enabled", async () => {
   expect(screen.queryByTestId("composer-create-mode")).toBeNull();
 });
 
-test("Choose a video command with the keyboard and submit the selected video settings", async () => {
+test("Choose a video through the consolidated Create entry with the keyboard and submit its settings", async () => {
   setupModels();
   const submissions: {
     userMessage?: UserMessageDocument;
@@ -101,14 +104,25 @@ test("Choose a video command with the keyboard and submit the selected video set
   });
   const editor = await setupComposer();
   const user = userEvent.setup({ delay: null });
-  await fill(editor, "A train crossing the mountains /create video");
-  await screen.findByTestId("slash-workflow-menu");
+  await fill(editor, "A train crossing the mountains /create");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  expect(button("Create", menu)).toBeInTheDocument();
   await user.keyboard("{Enter}");
+  const types = await screen.findByRole("group", { name: "Choose a type" });
+  expect(
+    queryAllByRoleFast("button", types).map((item) => {
+      return item.textContent?.trim();
+    }),
+  ).toStrictEqual(["Presentation", "Video", "Image"]);
+  expect(button("Presentation", types)).toHaveFocus();
+  expect(button("Send")).toBeDisabled();
+  await user.keyboard("{ArrowRight}{Enter}");
   await waitFor(() => {
     expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
       "Create video",
     );
   });
+  expect(types).not.toBeInTheDocument();
   expect(editor).toHaveTextContent("A train crossing the mountains");
   expect(editor).not.toHaveTextContent("/create");
   expect(submissions).toHaveLength(0);
@@ -132,14 +146,131 @@ test("Choose a video command with the keyboard and submit the selected video set
     expect.arrayContaining([
       expect.objectContaining({
         type: "text",
-        text: expect.stringContaining("Create a video."),
+        text: expect.stringMatching(/^A train crossing the mountains\s*$/),
       }),
+      {
+        type: "additional_info",
+        text: expect.stringContaining("Create a video."),
+      },
     ]),
   );
   expect(JSON.stringify(sent?.userMessage)).toContain(
     "A train crossing the mountains",
   );
-  expect(sent?.runOptions?.video).toMatchObject({ aspectRatio: "9:16" });
+  expect(sent?.userMessage?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining("- Aspect ratio: 9:16"),
+  });
+  expect(sent?.runOptions).toBeUndefined();
+  await expect(
+    screen.findByText("A train crossing the mountains"),
+  ).resolves.toBeVisible();
+});
+
+test.each(["presentation", "video", "image"] as const)(
+  "Persisted %s additional info stays out of the message and copied text",
+  async (mode) => {
+    setupModels();
+    const clipboard = context.mocks.browser.clipboardWrite();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "additional_info",
+                text: `Create ${mode === "image" ? "an" : "a"} ${mode}.\nAdditional generation settings.`,
+              },
+              { type: "text", text: "Our launch brief" },
+            ],
+          },
+          createdAt: "2026-09-07T00:00:00.000Z",
+        },
+      ],
+    });
+    await setupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: true },
+    });
+    const text = await screen.findByText("Our launch brief");
+    const message = text.closest<HTMLElement>('[data-role="user"]');
+    if (!message) {
+      throw new Error("Expected the user message");
+    }
+    expect(message).toBeVisible();
+    expect(message).not.toHaveTextContent("Create");
+    expect(message).not.toHaveTextContent("Additional generation settings");
+    click(button("Copy message", message));
+    const item = await readSingleRichClipboardWrite(clipboard);
+    await expect(readClipboardItemText(item, "text/plain")).resolves.toBe(
+      "Our launch brief",
+    );
+  },
+);
+
+test("A queued Create message keeps its intent separate from user-authored text", async () => {
+  setupModels();
+  const queued: UserMessageDocument[] = [];
+  const runId = crypto.randomUUID();
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    activeRunIds: [runId],
+    chatEvents: [
+      {
+        role: "user",
+        content: "Review the launch brief",
+        runId,
+        createdAt: "2026-09-07T00:00:00.000Z",
+      },
+    ],
+    onQueuedEventAppend: (body) => {
+      if (body.userMessage) {
+        queued.push(body.userMessage);
+      }
+    },
+  });
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: true },
+  });
+  await screen.findByText("Review the launch brief");
+
+  const followupEditor = await findComposerEditor();
+  const prompt = "Create a presentation. Keep these words in my message.";
+  await chooseCommand(
+    followupEditor,
+    `${prompt} /create presentation`,
+    "Create presentation",
+  );
+  await waitFor(() => {
+    expect(button("Send")).toBeEnabled();
+  });
+  click(button("Send"));
+  await waitFor(() => {
+    expect(queued).toHaveLength(1);
+  });
+  expect(queued[0]?.parts).toContainEqual({
+    type: "additional_info",
+    text: "Create a presentation.",
+  });
+  expect(
+    queued[0]?.parts
+      .filter((part) => {
+        return part.type === "text";
+      })
+      .map((part) => {
+        return part.text;
+      })
+      .join("")
+      .trim(),
+  ).toBe(prompt);
+  await expect(screen.findByText(prompt)).resolves.toBeVisible();
 });
 
 test("Image mode combines styles and image models while preserving the prompt", async () => {
@@ -287,6 +418,10 @@ test.each([
       expect(submissions).toHaveLength(1);
     });
     const parts = submissions[0]?.parts;
+    expect(parts).toContainEqual({
+      type: "additional_info",
+      text: `Create ${mode === "image" ? "an" : "a"} ${mode}.`,
+    });
     expect(
       parts?.flatMap((part) => {
         return part.type === "template" ? [part.titleSnapshot] : [];
@@ -366,17 +501,26 @@ test("Presentation adds another template when the draft already has one", async 
   });
 });
 
-test("Create suggestions expose one image command that opens the style gallery", async () => {
+test("The slash menu exposes one Create entry that opens the image style flow", async () => {
   setupModels();
   const editor = await setupComposer();
-  await fill(editor, "/create");
+  const user = userEvent.setup({ delay: null });
+  await user.click(editor);
+  await user.keyboard("/");
   const menu = await screen.findByTestId("slash-workflow-menu");
   expect(
     queryAllByRoleFast("button", menu).filter((item) => {
-      return item.textContent?.trim() === "Create image";
+      return item.getAttribute("aria-label")?.startsWith("Create");
     }),
   ).toHaveLength(1);
-  click(button("Create image", menu));
+  click(button("Create", menu));
+  const types = await screen.findByRole("group", { name: "Choose a type" });
+  click(button("Image", types));
+  await waitFor(() => {
+    expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
+      "Create image",
+    );
+  });
   click(button("Add style"));
   const dialog = await screen.findByRole("dialog");
   await waitFor(() => {
@@ -385,4 +529,80 @@ test("Create suggestions expose one image command that opens the style gallery",
     });
     expect(tab).toHaveAttribute("aria-selected", "true");
   });
+});
+
+test("Canceling and switching Create preserve slash text and template references", async () => {
+  setupModels();
+  const submissions: UserMessageDocument[] = [];
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      if (body.userMessage) {
+        submissions.push(body.userMessage);
+      }
+    },
+  });
+  const editor = await setupComposer();
+  const user = userEvent.setup({ delay: null });
+  const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
+  if (!template) {
+    throw new Error("Expected a presentation template");
+  }
+  await selectTemplate(user, template);
+  await user.click(editor);
+  await user.paste("Our launch /create");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  click(button("Create", menu));
+  const chooser = await screen.findByRole("group", {
+    name: "Choose a type",
+  });
+  await user.click(editor);
+  await user.keyboard("{Enter}");
+  expect(chooser).toBeInTheDocument();
+  expect(button("Send")).toBeDisabled();
+  expect(submissions).toHaveLength(0);
+  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(chooser).not.toBeInTheDocument();
+  });
+  expect(editor).toHaveTextContent("Our launch");
+  expect(composerInlineTemplates()).toHaveLength(1);
+
+  await user.paste(" /create");
+  const reopened = await screen.findByTestId("slash-workflow-menu");
+  click(button("Create", reopened));
+  const types = await screen.findByRole("group", { name: "Choose a type" });
+  click(button("Presentation", types));
+  const chip = await screen.findByTestId("composer-create-mode");
+  expect(chip).toHaveTextContent("Create presentation");
+  expect(types).not.toBeInTheDocument();
+  await user.paste(" /notes");
+  click(screen.getByRole("combobox", { name: "Choose a type" }));
+  click(await screen.findByRole("option", { name: "Image" }));
+  await waitFor(() => {
+    expect(chip).toHaveTextContent("Create image");
+    expect(editor).toHaveFocus();
+  });
+  expect(editor).toHaveTextContent("Our launch /notes");
+  expect(composerInlineTemplates()).toHaveLength(1);
+  click(button("Exit create mode", chip));
+  await waitFor(() => {
+    expect(chip).not.toBeInTheDocument();
+  });
+  expect(editor).toHaveFocus();
+  expect(editor).toHaveTextContent("Our launch /notes");
+  expect(composerInlineTemplates()).toHaveLength(1);
+  click(button("Send"));
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+  });
+  expect(JSON.stringify(submissions[0])).toContain("Our launch");
+  expect(submissions[0]?.parts).not.toContainEqual(
+    expect.objectContaining({ type: "additional_info" }),
+  );
+  expect(submissions[0]?.parts).toContainEqual(
+    expect.objectContaining({
+      type: "template",
+      titleSnapshot: template.title,
+    }),
+  );
 });

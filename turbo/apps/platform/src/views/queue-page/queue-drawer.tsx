@@ -802,9 +802,7 @@ export function QueueDrawer() {
       <SheetContent
         side="right"
         className="w-[400px] sm:max-w-[400px] flex flex-col"
-        onOpenAutoFocus={(e) => {
-          e.preventDefault();
-        }}
+        initialFocus={false}
       >
         <SheetHeader className="shrink-0">
           <SheetTitle>

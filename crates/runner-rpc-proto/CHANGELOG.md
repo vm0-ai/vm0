@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/runner-rpc-proto-v0.3.0...runner-rpc-proto-v0.3.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **rpc:** dispatch complete request frames without waiting for eof ([#32821](https://github.com/vm0-ai/vm0/issues/32821)) ([cb025d6](https://github.com/vm0-ai/vm0/commit/cb025d643f9348b2f2a5f8ebc2725fb353c1524f))
+
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/runner-rpc-proto-v0.2.1...runner-rpc-proto-v0.3.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/runner-rpc-proto-v0.2.0...runner-rpc-proto-v0.2.1) (2026-09-07)
 
 

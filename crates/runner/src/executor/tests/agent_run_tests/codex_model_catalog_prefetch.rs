@@ -803,6 +803,65 @@ async fn codex_catalog_prefetch_is_cancelled_on_pre_spawn_exit() {
 }
 
 #[tokio::test]
+async fn codex_catalog_prefetch_guest_timeout_preserves_successful_agent_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(process_exit(ExecTermination::TimedOut, Some(10_075)));
+    let start_gate = MockLifecycleGate::new();
+    start_gate.release_one();
+    overrides.set_start_process_lifecycle_gate(start_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let (result, ()) = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        tokio::join!(
+            run_in_sandbox(
+                &*sandbox,
+                &context,
+                &config,
+                RunStart {
+                    restore_guest_state: false,
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                    workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                    prev_storage: None,
+                },
+                &mut telemetry,
+                RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            ),
+            async {
+                start_gate
+                    .wait_entered(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
+                    .await
+                    .unwrap();
+                // The Agent cannot consume the queued result while its start is
+                // held. Let the prefetch's ready terminal wait complete first.
+                while overrides.wait_process_calls().is_empty() {
+                    tokio::task::yield_now().await;
+                }
+                start_gate.release_one();
+            },
+        )
+    })
+    .await
+    .expect("prefetch timeout must not block the main run");
+
+    assert!(result.unwrap().failure.is_none());
+    assert_prefetch_outcome(
+        &telemetry,
+        false,
+        Some("process_timed_out"),
+        "guest timeout",
+    );
+    let prefetch = overrides.start_process_calls();
+    assert_eq!(prefetch.len(), 1);
+    assert!(prefetch[0].timeout_is_expected);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
+    assert!(overrides.process_cancel_calls().is_empty());
+}
+
+#[tokio::test]
 async fn fresh_codex_oauth_run_prefetches_catalog_while_agent_prepares() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

@@ -1,4 +1,3 @@
-import { screen } from "@testing-library/react";
 import {
   chatEventSchema,
   serializeChatFollowupsContent,
@@ -438,13 +437,4 @@ export function mockChatEventRows(
       createdAt: event.createdAt,
     });
   });
-}
-
-/** A collapsed preview is visible text, but does not mount the message body. */
-export function queryMessageBody(text: string | RegExp): HTMLElement | null {
-  return (
-    screen.queryAllByText(text).find((element) => {
-      return element.closest("[data-chat-run-work-preview]") === null;
-    }) ?? null
-  );
 }

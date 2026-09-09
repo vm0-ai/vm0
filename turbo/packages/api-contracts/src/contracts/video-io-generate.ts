@@ -46,7 +46,7 @@ export const videoIoGenerateResponseSchema = z.object({
   duration: z.string(),
   resolution: z.string(),
   generateAudio: z.boolean(),
-  sourceUrl: z.string(),
+  sourceUrl: z.string().optional(),
   requestId: z.string().optional(),
 });
 

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createStore } from "ccstate";
 
 import { HttpResponse, http } from "msw";
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -19,6 +19,7 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
+import { seedRun$ } from "./helpers/usage-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -166,9 +167,8 @@ async function sendChatRun(
     readonly prompt: string;
     readonly threadId?: string;
   },
-  publicBrand: PublicBrand = "vm0",
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendEvent(actor, body, [201], { publicBrand });
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected chat send to create a run");
   }
@@ -244,7 +244,6 @@ async function createHostedArtifact(args: {
   readonly runnerGroup: string;
   readonly site: string;
   readonly artifactKind?: "hosted-site" | "presentation-html";
-  readonly publicBrand?: PublicBrand;
 }): Promise<{
   readonly threadId: string;
   readonly url: string;
@@ -252,14 +251,10 @@ async function createHostedArtifact(args: {
   readonly deploymentId: string;
   readonly bearer: string;
 }> {
-  const run = await sendChatRun(
-    args.actor,
-    {
-      agentId: args.agentId,
-      prompt: `create ${args.site}`,
-    },
-    args.publicBrand,
-  );
+  const run = await sendChatRun(args.actor, {
+    agentId: args.agentId,
+    prompt: `create ${args.site}`,
+  });
   const { claim, sandboxHeaders } = await claimChatRun(
     args.runnerGroup,
     run.runId,
@@ -396,7 +391,7 @@ describe("video Artifact previews", () => {
       "Artifacts API concurrent video preview agent",
     );
     mockCloudflareVideoFrame(owner.actor.userId);
-    owner.objectStore.rejectNextImmutablePutAsExisting();
+    owner.objectStore.rejectNextImmutablePutAsExisting("image/jpeg");
 
     await createRunUploadedFile({
       owner,
@@ -410,6 +405,13 @@ describe("video Artifact previews", () => {
       owner.actor,
       "concurrent-poster.mp4",
     );
+    expect(owner.objectStore.rejectedPuts).toStrictEqual([
+      expect.objectContaining({
+        bucket: "test-user-artifacts",
+        contentType: "image/jpeg",
+        key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.jpg$/u),
+      }),
+    ]);
     expect(previewedArtifact?.thumbnail?.url).toMatch(
       /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
     );
@@ -456,14 +458,32 @@ describe("artifact upload provenance", () => {
       const owner = await artifactActor(
         `Artifacts API ${triggerSource} source agent`,
       );
-      const run = await api.createDirectRun(owner.actor, {
-        agentId: owner.agentId,
-        prompt: `create ${triggerSource} artifact`,
-        modelProviderType: "anthropic-api-key",
-        triggerSource,
-        vars: { OKOU_AGENT_ID: owner.agentId },
-        secrets: { OKOU_TOKEN: "bdd-artifact-okou-token" },
-      });
+      if (!owner.actor.orgId) {
+        throw new Error("Artifact provenance requires an org-scoped actor");
+      }
+      // An in-flight legacy Goal may still upload its result after retirement.
+      const run =
+        triggerSource === "goal"
+          ? await createStore().set(
+              seedRun$,
+              {
+                orgId: owner.actor.orgId,
+                userId: owner.actor.userId,
+                composeId: owner.agentId,
+                triggerSource,
+                status: "running",
+                startedAt: new Date(now()),
+              },
+              context.signal,
+            )
+          : await api.createDirectRun(owner.actor, {
+              agentId: owner.agentId,
+              prompt: `create ${triggerSource} artifact`,
+              modelProviderType: "anthropic-api-key",
+              triggerSource,
+              vars: { OKOU_AGENT_ID: owner.agentId },
+              secrets: { OKOU_TOKEN: "bdd-artifact-okou-token" },
+            });
       const fileId = randomUUID();
       owner.objectStore.addObject({
         bucket: "test-user-artifacts",
@@ -556,7 +576,6 @@ describe("hosted Artifact previews", () => {
       agentId: owner.agentId,
       runnerGroup: owner.runnerGroup,
       site,
-      publicBrand: "okou",
     });
     await flushWaitUntilForTest();
 

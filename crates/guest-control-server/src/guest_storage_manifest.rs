@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::ChildStdin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -11,10 +11,13 @@ use guest_control_proto::{
     ExecCapturedOutput, ExecTermination, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES,
 };
 
+use crate::contained_command::{
+    CommandStdio, ContainedChild as Child, ContainedCommand as Command,
+};
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
-use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
+use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::process_containment::{
     ExecProcessContainment, ProcessContainmentCleanupMode, ProcessContainmentError,
     ProcessContainmentMode,
@@ -255,17 +258,6 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             );
         }
     };
-    let mut prepared_containment = match process_containment.prepare_command() {
-        Ok(prepared) => prepared,
-        Err(error) => {
-            let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
-            return failed_output(
-                ExecTermination::StartFailed,
-                started,
-                format!("Failed to prepare storage helper process containment: {error}"),
-            );
-        }
-    };
     let mut command = Command::new(program);
     command
         .arg("--manifest-stdin")
@@ -274,20 +266,10 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir,
         )
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    prepared_containment.configure_placement(&mut command);
-    if let Err(error) = crate::user::apply_command_identity(&mut command, false) {
-        let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
-        return failed_output(
-            ExecTermination::StartFailed,
-            started,
-            format!("Failed to select sandbox user for storage helper: {error}"),
-        );
-    }
-    prepared_containment.configure_process_inspection(&mut command);
-    let mut child = match spawn_in_own_process_group(&mut command) {
+        .stdin(CommandStdio::Piped)
+        .stdout(CommandStdio::Piped)
+        .stderr(CommandStdio::Piped);
+    let mut child = match command.spawn(false, &process_containment) {
         Ok(child) => child,
         Err(error) => {
             let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);

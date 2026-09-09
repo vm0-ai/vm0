@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { registerLegacyArtifactFile$ } from "./artifact-delivery.service";
 
 import { command, computed, type Computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -26,6 +27,10 @@ import {
   tryListMultipartS3Parts,
 } from "../external/s3";
 import { safeUriComponentDecode, safeUrlParse } from "../utils";
+import {
+  allocatePrivateArtifact$,
+  completePrivateArtifact$,
+} from "./private-artifact-storage.service";
 
 const MAX_ARTIFACT_KEY_ATTEMPTS = 5;
 const ARTIFACT_ID_METADATA_KEY = "artifact-id";
@@ -48,6 +53,7 @@ type StoredGeneratedArtifactObject = Omit<
   "metadata"
 > & {
   readonly filename: string;
+  readonly isPrivate: boolean;
   readonly metadata: Readonly<Record<string, string>>;
 };
 
@@ -275,6 +281,8 @@ export const storeGeneratedArtifactObject$ = command(
     { get, set },
     args: {
       readonly userId: string;
+      readonly orgId: string;
+      readonly privateArtifacts: boolean;
       readonly identity?: { readonly id: string; readonly variant: string };
       readonly filenamePrefix: string;
       readonly extension: string;
@@ -289,6 +297,46 @@ export const storeGeneratedArtifactObject$ = command(
     const filenameFor = (id: string) => {
       return `${args.filenamePrefix}-${id.slice(0, 8)}.${extension}`;
     };
+    if (args.privateArtifacts) {
+      const artifact = await set(
+        allocatePrivateArtifact$,
+        {
+          id: proposedId,
+          userId: args.userId,
+          orgId: args.orgId,
+          filename: filenameFor(proposedId),
+          contentType: args.contentType,
+          size: args.body.byteLength,
+          publicBrand: args.publicBrand,
+        },
+        signal,
+      );
+      await get(
+        putS3Object(
+          artifact.bucket,
+          artifact.key,
+          args.body,
+          args.contentType,
+          { signal, metadata: artifact.metadata },
+        ),
+      );
+      signal.throwIfAborted();
+      await set(
+        completePrivateArtifact$,
+        {
+          id: artifact.id,
+          url: artifact.url,
+          contentType: args.contentType,
+          size: args.body.byteLength,
+        },
+        signal,
+      );
+      return {
+        ...artifact,
+        filename: filenameFor(proposedId),
+        isPrivate: true,
+      };
+    }
     const artifact = await set(
       allocateArtifactObject$,
       {
@@ -317,7 +365,17 @@ export const storeGeneratedArtifactObject$ = command(
       ),
     );
     signal.throwIfAborted();
-    return { ...artifact, filename, metadata };
+    await set(
+      registerLegacyArtifactFile$,
+      {
+        key: artifact.key,
+        filename,
+        contentType: args.contentType,
+        publicBrand: args.publicBrand,
+      },
+      signal,
+    );
+    return { ...artifact, filename, metadata, isPrivate: false };
   },
 );
 

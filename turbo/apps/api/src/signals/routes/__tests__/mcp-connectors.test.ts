@@ -585,15 +585,11 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
         connector.id,
       ]);
-      const run = await runs.createRun(
-        actor,
-        {
-          agentId: agent.agentId,
-          prompt: "Use the MCP connector with incremental scope",
-          modelProvider: "anthropic-api-key",
-        },
-        "okou",
-      );
+      const run = await runs.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: "Use the MCP connector with incremental scope",
+        modelProvider: "anthropic-api-key",
+      });
       expect(run.status).toBe("pending");
       await runs.heartbeatRunner(runnerGroup);
       const claim = await runs.claimRunnerJob(run.runId);
@@ -713,15 +709,11 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
     await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
       connector.id,
     ]);
-    const run = await runs.createRun(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Use the no-auth MCP connector",
-        modelProvider: "anthropic-api-key",
-      },
-      "okou",
-    );
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "Use the no-auth MCP connector",
+      modelProvider: "anthropic-api-key",
+    });
     expect(run.status).toBe("pending");
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);

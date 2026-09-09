@@ -124,9 +124,8 @@ impl ApiRequestBuilder {
         })
     }
 
-    #[cfg(test)]
-    pub fn build(self) -> RunnerResult<Request> {
-        Ok(self.finalize("test")?.request)
+    pub(crate) fn build(self) -> RunnerResult<Request> {
+        Ok(self.finalize("build")?.request)
     }
 
     #[cfg(test)]
@@ -364,7 +363,7 @@ fn api_failure_kind(error: &reqwest::Error) -> ApiFailureKind {
     }
 }
 
-fn api_transport_cause(error: &reqwest::Error) -> ApiTransportCause {
+pub(crate) fn api_transport_cause(error: &reqwest::Error) -> ApiTransportCause {
     if error.is_timeout() {
         return ApiTransportCause::Timeout;
     }

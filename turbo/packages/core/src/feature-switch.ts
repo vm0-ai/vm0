@@ -45,6 +45,18 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ThreadActivitySummary]: {
+    maintainer: "lancy@okou.ai",
+    description:
+      "Generate short public activity summaries on visible-thread demand.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ComposerTaskChips]: {
+    maintainer: "bingjie@okou.ai",
+    description: "Lightweight chat task chips and contextual starting ideas",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerCreateCommands]: {
     maintainer: "bingjie@okou.ai",
     description: "Create commands and mode-specific composer controls",
@@ -104,7 +116,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Dropbox file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@okou.ai",
@@ -196,12 +208,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@okou.ai",
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
-    enabled: false,
-  },
-  [FeatureSwitchKey.SharedWorkerRealtime]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Route application realtime subscriptions through the SharedWorker",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -301,16 +307,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationTemplates]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Enable owner-scoped presentation template imports and catalog APIs.",
-    enabled: true,
-  },
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Show the prompt, file, HeyGen style, avatar, and voice intro-video flow in new chat.",
+      "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
@@ -319,6 +319,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
     enabled: true,
+  },
+  [FeatureSwitchKey.AvatarFraming]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Center every avatar's visible artwork in its box and move it halfway to a shared fill, so hair volume stops changing how large an avatar looks.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@okou.ai",
@@ -330,8 +337,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@okou.ai",
     description:
       "Offer desktop passage actions for selections anywhere within one assistant reply.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@okou.ai",
@@ -349,7 +355,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
+      "Enable Okou Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -360,12 +366,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatRunWorkFolding]: {
-    maintainer: "ethan@okou.ai",
+  // Every artifact privacy slice in #32492 uses this same rollout switch.
+  [FeatureSwitchKey.PrivateArtifacts]: {
+    maintainer: "yuma@okou.ai",
     description:
-      "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
+      "Use private storage and authenticated previews for CLI artifact uploads and managed generation.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AgentMessageMath]: {
     maintainer: "bingjie@okou.ai",
@@ -400,7 +406,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+      "Render recommended follow-ups as a stack of tappable quick replies on touch devices.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -418,13 +424,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
-  },
-  [FeatureSwitchKey.SharedThreadSharing]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Create immutable public snapshots from explicitly selected chat messages.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@okou.ai",
@@ -464,6 +463,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SshAccess]: {
     maintainer: "liangyou@okou.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ConnectorDirectory]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Connector directory in the chat composer: connected connectors separated from discovery, category browsing, per-connector detail, and keyboard navigation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatThreadHeaderActions]: {
+    maintainer: "lancy@okou.ai",
+    description:
+      "Pin chats from the desktop title and keep Pin, Share, and More visible in the mobile thread header.",
     enabled: false,
   },
 };

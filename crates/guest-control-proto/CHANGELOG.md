@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.1](https://github.com/vm0-ai/vm0/compare/guest-control-proto-v0.20.0...guest-control-proto-v0.20.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-control-proto-v0.19.0...guest-control-proto-v0.20.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-control-proto-v0.18.49...guest-control-proto-v0.19.0) (2026-09-08)
 
 

@@ -747,7 +747,11 @@ test("Reconnect the selected non-default account", async () => {
   });
   let authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
-  await setupAccountsPage();
+  await setupPage({
+    context,
+    path: "/connectors",
+    sharedWorkerTestTransport: "message-port",
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Manage Stripe accounts");

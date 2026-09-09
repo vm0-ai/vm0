@@ -1,0 +1,146 @@
+import { command } from "ccstate";
+import {
+  artifactDeliveryKey,
+  artifactDeliveryRecordSchema,
+  type ArtifactDeliveryRecord,
+} from "@okouai/api-contracts/contracts/artifact-delivery";
+import { env } from "../../lib/env";
+import {
+  readArtifactSharePolicyObject,
+  writeArtifactSharePolicyObject,
+} from "../external/s3";
+import { settle } from "../utils";
+
+/** Immutable alias ownership survives revocation; only the share policy changes. */
+export const registerArtifactDelivery$ = command(
+  async (
+    { get },
+    args: {
+      readonly alias: string;
+      readonly targetKind: "file" | "html";
+      readonly record: ArtifactDeliveryRecord;
+    },
+    signal: AbortSignal,
+  ) => {
+    const record = artifactDeliveryRecordSchema.parse(args.record);
+    const bucket = env("R2_HOSTED_SITES_BUCKET_NAME");
+    if (!bucket) {
+      throw new Error("Artifact delivery registry storage is not configured");
+    }
+    const key = artifactDeliveryKey(
+      record.publicBrand,
+      args.targetKind,
+      args.alias,
+    );
+    if (record.kind === "publication" && args.targetKind === "html") {
+      const namespace =
+        record.publicBrand === "okou" ? "sites/brands/okou" : "sites";
+      const legacy = await settle(
+        get(
+          readArtifactSharePolicyObject(
+            bucket,
+            `${namespace}/${args.alias}/active.json`,
+            signal,
+          ),
+        ),
+        signal,
+      );
+      if (legacy.ok) {
+        throw new Error(
+          "Publication hash conflicts with a historical site alias",
+        );
+      }
+      if (
+        !(legacy.error instanceof Error) ||
+        legacy.error.name !== "NoSuchKey"
+      ) {
+        throw legacy.error;
+      }
+    }
+    const body = JSON.stringify(record);
+    const written = await settle(
+      get(writeArtifactSharePolicyObject(bucket, key, body, null, signal)),
+      signal,
+    );
+    if (written.ok) {
+      return;
+    }
+    if (
+      !(written.error instanceof Error) ||
+      written.error.name !== "PreconditionFailed"
+    ) {
+      throw written.error;
+    }
+    const existing = await get(
+      readArtifactSharePolicyObject(bucket, key, signal),
+    );
+    signal.throwIfAborted();
+    const previous = artifactDeliveryRecordSchema.parse(
+      JSON.parse(existing.buffer.toString("utf8")),
+    );
+    if (JSON.stringify(previous) !== body) {
+      throw new Error("Artifact delivery alias is already allocated");
+    }
+  },
+);
+
+export const registerLegacyArtifactFile$ = command(
+  async (
+    { set },
+    args: {
+      readonly key: string;
+      readonly filename: string;
+      readonly contentType: string;
+      readonly publicBrand: "vm0" | "okou";
+    },
+    signal: AbortSignal,
+  ) => {
+    if (!args.key.startsWith("artifacts/")) {
+      throw new Error(
+        "A private object cannot be registered as a legacy public file",
+      );
+    }
+    await set(
+      registerArtifactDelivery$,
+      {
+        alias: args.key.slice("artifacts/".length),
+        targetKind: "file",
+        record: {
+          version: 1,
+          kind: "legacy-file",
+          audience: "public",
+          ...args,
+        },
+      },
+      signal,
+    );
+  },
+);
+
+export const registerLegacyHostedSite$ = command(
+  (
+    { set },
+    args: {
+      readonly alias: string;
+      readonly publicBrand: "vm0" | "okou";
+      readonly pointerKey: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    return set(
+      registerArtifactDelivery$,
+      {
+        alias: args.alias,
+        targetKind: "html",
+        record: {
+          version: 1,
+          kind: "legacy-site",
+          audience: "public",
+          publicBrand: args.publicBrand,
+          pointerKey: args.pointerKey,
+        },
+      },
+      signal,
+    );
+  },
+);

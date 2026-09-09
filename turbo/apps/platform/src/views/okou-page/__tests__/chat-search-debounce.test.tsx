@@ -51,7 +51,6 @@ function installMessageSearch(threadId: string): string[] {
           matchedRanges: [{ start: 0, end: query.keyword.length }],
         },
       ],
-      hasMore: false,
     });
   });
   return keywords;

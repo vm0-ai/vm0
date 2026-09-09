@@ -1,10 +1,13 @@
 use std::fmt;
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use guest_control_client::{GuestControlClient, GuestDnsReadinessResult};
 use guest_control_proto::GuestDnsReadinessTermination;
-use sandbox::SandboxGuestDnsReadinessReason;
+use sandbox::{
+    SandboxDnsReadinessAttempt, SandboxDnsReadinessOutcome, SandboxGuestDnsReadinessReason,
+    SandboxStartObserver,
+};
 use tokio::time::Instant;
 
 use crate::guest_dns_probe::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
@@ -59,6 +62,20 @@ impl fmt::Display for GuestDnsReadinessFailure {
 }
 
 impl GuestDnsReadinessFailure {
+    fn outcome(self) -> SandboxDnsReadinessOutcome {
+        match self {
+            Self::Deadline => SandboxDnsReadinessOutcome::Deadline,
+            Self::Transport(_) => SandboxDnsReadinessOutcome::Transport,
+            Self::TimedOut => SandboxDnsReadinessOutcome::ProcessTimeout,
+            Self::Cancelled => SandboxDnsReadinessOutcome::ProcessCancelled,
+            Self::StartFailed => SandboxDnsReadinessOutcome::StartFailed,
+            Self::WaitFailed => SandboxDnsReadinessOutcome::WaitFailed,
+            Self::ExitNonZero(_) => SandboxDnsReadinessOutcome::ExitNonZero,
+            Self::OutputTruncated => SandboxDnsReadinessOutcome::OutputTruncated,
+            Self::UnexpectedAnswer => SandboxDnsReadinessOutcome::UnexpectedAnswer,
+        }
+    }
+
     fn retryable(self) -> bool {
         matches!(
             self,
@@ -104,30 +121,87 @@ impl fmt::Display for GuestDnsReadinessError {
 
 impl std::error::Error for GuestDnsReadinessError {}
 
+// Buffer observations so observer work cannot delay a retry or alter its budget
+// decision. Drop also preserves the completed prefix on host cancellation, but
+// never owns guest cancellation, connection fencing or process cleanup.
+struct AttemptObservations<'a> {
+    observer: &'a mut dyn SandboxStartObserver,
+    records: Vec<SandboxDnsReadinessAttempt>,
+    current_started: Instant,
+    in_flight: bool,
+}
+
+impl AttemptObservations<'_> {
+    fn finish(
+        &mut self,
+        guest_duration_ms: Option<u32>,
+        outcome: SandboxDnsReadinessOutcome,
+        final_attempt: bool,
+    ) {
+        self.records.push(SandboxDnsReadinessAttempt {
+            attempt: self.records.len() as u16 + 1,
+            final_attempt,
+            duration: self.current_started.elapsed(),
+            guest_duration_ms,
+            outcome,
+            completed_at: SystemTime::now(),
+        });
+        self.in_flight = false;
+    }
+}
+
+impl Drop for AttemptObservations<'_> {
+    fn drop(&mut self) {
+        if self.in_flight {
+            self.finish(None, SandboxDnsReadinessOutcome::HostCancelled, true);
+        }
+        for record in &self.records {
+            self.observer.record_dns_readiness_attempt(*record);
+        }
+    }
+}
+
 pub(crate) async fn wait_for_guest_dns_readiness(
     guest: &GuestControlClient,
+    observer: &mut dyn SandboxStartObserver,
 ) -> Result<(), GuestDnsReadinessError> {
-    wait_for_guest_dns_readiness_with_policy(guest, PRODUCTION_POLICY).await
+    wait_for_guest_dns_readiness_with_policy(guest, PRODUCTION_POLICY, observer).await
 }
 
 async fn wait_for_guest_dns_readiness_with_policy(
     guest: &GuestControlClient,
     policy: ReadinessPolicy,
+    observer: &mut dyn SandboxStartObserver,
 ) -> Result<(), GuestDnsReadinessError> {
     let started = Instant::now();
     let deadline = started + policy.total_timeout;
     let mut attempts = 0;
+    let mut observations = AttemptObservations {
+        observer,
+        records: Vec::with_capacity(usize::from(policy.max_attempts)),
+        current_started: started,
+        in_flight: false,
+    };
 
     loop {
         attempts += 1;
-        let failure = match probe_guest_dns_once(guest, policy.attempt_timeout).await {
-            Ok(()) => return Ok(()),
+        observations.current_started = Instant::now();
+        observations.in_flight = true;
+        let (result, guest_duration_ms) = probe_guest_dns_once(guest, policy.attempt_timeout).await;
+        let failure = match result {
+            Ok(()) => {
+                observations.finish(guest_duration_ms, SandboxDnsReadinessOutcome::Success, true);
+                return Ok(());
+            }
             Err(failure) => failure,
         };
 
         let complete_retry_fits =
             deadline.saturating_duration_since(Instant::now()) >= policy.attempt_timeout;
-        if !failure.retryable() || attempts >= policy.max_attempts || !complete_retry_fits {
+        let final_attempt =
+            !failure.retryable() || attempts >= policy.max_attempts || !complete_retry_fits;
+        observations.finish(guest_duration_ms, failure.outcome(), final_attempt);
+        if final_attempt {
             return Err(GuestDnsReadinessError {
                 attempts,
                 elapsed: started.elapsed(),
@@ -137,19 +211,22 @@ async fn wait_for_guest_dns_readiness_with_policy(
     }
 }
 
-pub(crate) async fn probe_guest_dns_once(
+async fn probe_guest_dns_once(
     guest: &GuestControlClient,
     wait_timeout: Duration,
-) -> Result<(), GuestDnsReadinessFailure> {
+) -> (Result<(), GuestDnsReadinessFailure>, Option<u32>) {
     match guest
         .guest_dns_readiness(DNS_READINESS_HOSTNAME, PROCESS_TIMEOUT_MS, wait_timeout)
         .await
     {
-        Ok(result) => validate_result(result),
-        Err(error) if error.kind() == io::ErrorKind::TimedOut => {
-            Err(GuestDnsReadinessFailure::Deadline)
+        Ok(result) => {
+            let duration_ms = result.duration_ms;
+            (validate_result(result), Some(duration_ms))
         }
-        Err(error) => Err(GuestDnsReadinessFailure::Transport(error.kind())),
+        Err(error) if error.kind() == io::ErrorKind::TimedOut => {
+            (Err(GuestDnsReadinessFailure::Deadline), None)
+        }
+        Err(error) => (Err(GuestDnsReadinessFailure::Transport(error.kind())), None),
     }
 }
 
@@ -201,6 +278,8 @@ fn validate_result(result: GuestDnsReadinessResult) -> Result<(), GuestDnsReadin
 
 #[cfg(test)]
 mod tests {
+    mod attribution;
+
     use std::sync::Arc;
 
     use guest_control_proto::{
@@ -212,6 +291,21 @@ mod tests {
     use tokio::net::UnixStream;
 
     use super::*;
+
+    #[derive(Default)]
+    struct RecordingObserver {
+        attempts: Vec<SandboxDnsReadinessAttempt>,
+    }
+
+    impl SandboxStartObserver for RecordingObserver {
+        fn record_stage(&mut self, _: sandbox::SandboxStartStage, _: Duration, _: bool) {
+            panic!("attempt observations must not synthesize a parent stage");
+        }
+
+        fn record_dns_readiness_attempt(&mut self, attempt: SandboxDnsReadinessAttempt) {
+            self.attempts.push(attempt);
+        }
+    }
 
     const TEST_POLICY: ReadinessPolicy = ReadinessPolicy {
         total_timeout: Duration::from_secs(1),
@@ -315,7 +409,12 @@ mod tests {
     async fn guest_dns_readiness_uses_fixed_guest_resolver_request() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
-            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                TEST_POLICY,
+                &mut RecordingObserver::default(),
+            )
+            .await
         });
         let request = read_message(&mut guest).await;
         assert_readiness_request(&request);
@@ -335,7 +434,12 @@ mod tests {
     async fn guest_dns_readiness_recovers_after_transient_failure() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
-            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                TEST_POLICY,
+                &mut RecordingObserver::default(),
+            )
+            .await
         });
         let first = read_message(&mut guest).await;
         send_result(
@@ -363,7 +467,12 @@ mod tests {
     async fn guest_dns_readiness_retries_late_guest_process_timeout() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
-            wait_for_guest_dns_readiness_with_policy(&host, PRODUCTION_POLICY).await
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                PRODUCTION_POLICY,
+                &mut RecordingObserver::default(),
+            )
+            .await
         });
         let first = read_message(&mut guest).await;
 
@@ -399,10 +508,14 @@ mod tests {
             attempt_timeout: Duration::from_millis(300),
             max_attempts: 3,
         };
-        let task =
-            tokio::spawn(
-                async move { wait_for_guest_dns_readiness_with_policy(&host, policy).await },
-            );
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                policy,
+                &mut RecordingObserver::default(),
+            )
+            .await
+        });
         let first = read_message(&mut guest).await;
 
         tokio::time::pause();
@@ -426,7 +539,12 @@ mod tests {
     async fn guest_dns_readiness_stops_at_attempt_limit() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
-            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                TEST_POLICY,
+                &mut RecordingObserver::default(),
+            )
+            .await
         });
         for _ in 0..TEST_POLICY.max_attempts {
             let request = read_message(&mut guest).await;
@@ -457,8 +575,14 @@ mod tests {
             attempt_timeout: Duration::from_millis(50),
             max_attempts: 3,
         };
-        let readiness =
-            async move { wait_for_guest_dns_readiness_with_policy(&host, policy).await };
+        let readiness = async move {
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                policy,
+                &mut RecordingObserver::default(),
+            )
+            .await
+        };
         let task = tokio::spawn(readiness);
         let request = read_message(&mut guest).await;
         assert_readiness_request(&request);
@@ -509,7 +633,12 @@ mod tests {
     async fn guest_dns_readiness_rejects_truncated_output() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
-            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                TEST_POLICY,
+                &mut RecordingObserver::default(),
+            )
+            .await
         });
         let request = read_message(&mut guest).await;
         send_result(
@@ -533,7 +662,12 @@ mod tests {
     async fn guest_dns_readiness_rejects_malformed_dedicated_result() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
-            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                TEST_POLICY,
+                &mut RecordingObserver::default(),
+            )
+            .await
         });
         let request = read_message(&mut guest).await;
         guest

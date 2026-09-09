@@ -91,7 +91,7 @@ export function queryFastControl(
 export async function findComposer(): Promise<HTMLElement> {
   return await waitFor(() => {
     const editor = document.querySelector<HTMLElement>(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!editor) {
       throw new Error("Composer editor not found");

@@ -1,28 +1,30 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createStore } from "ccstate";
-import { HttpResponse, http } from "msw";
-import {
-  cronCompactChatThreadSnapshotsContract,
-  cronProjectChatEventSearchContract,
-} from "@okouai/api-contracts/contracts/cron";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import AdmZip from "adm-zip";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   chatThreadConnectorSelectionContract,
   chatThreadsContract,
-  type ChatThreadArtifactGoogleDriveSync,
   type ChatEvent,
+  type ChatThreadArtifactGoogleDriveSync,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { cronProjectChatEventSearchContract } from "@okouai/api-contracts/contracts/cron";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { testChatThreadSnapshotCompactionContract } from "@okouai/api-contracts/contracts/test-chat-thread-snapshot-compaction";
+import { createStore } from "ccstate";
+import { HttpResponse, http } from "msw";
+import { createHash, randomUUID } from "node:crypto";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
   clearMockNow,
@@ -30,13 +32,7 @@ import {
   now,
   withMockNowForTest,
 } from "../../../lib/time";
-import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import {
-  seedOrgMetadata,
-  seedUsagePricingRows,
-} from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
@@ -51,9 +47,19 @@ import {
   setChatThreadSnapshotBoundaryFixture,
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
+import { seedGoalForRunFixture } from "../../../test-fixtures/goal-queue";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { chatThreadRoutes } from "../chat-threads";
+import { testChatThreadSnapshotCompactionRoutes } from "../test-chat-thread-snapshot-compaction";
+import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
+import { goalsRoutes } from "../goals";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import {
   createBddApi,
   expectApiError,
@@ -63,7 +69,6 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
@@ -71,6 +76,7 @@ import {
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
@@ -85,14 +91,8 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/usage-state";
-import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
-import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
-import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
-import { chatThreadRoutes } from "../chat-threads";
-import { goalsRoutes } from "../goals";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...chatThreadRoutes,
   ...goalsRoutes,
@@ -122,7 +122,6 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const routeMocks = createRouteMocks(context);
 const store = createStore();
-const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
@@ -153,15 +152,23 @@ type UserMessage = Extract<
 type AssistantMessage = Exclude<ChatEvent, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
-async function compactChatThreadSnapshots() {
+async function compactChatThreadSnapshots(
+  actor: ApiTestUser,
+  ...otherActors: readonly ApiTestUser[]
+) {
   const client = setupApp({
     context,
-    routes: cronCompactChatThreadSnapshotsRoutes,
-  })(cronCompactChatThreadSnapshotsContract);
+    routes: testChatThreadSnapshotCompactionRoutes,
+  })(testChatThreadSnapshotCompactionContract);
   const response = await accept(
     client.compact({
-      headers: {
-        authorization: `Bearer ${CHAT_THREAD_SNAPSHOT_CRON_SECRET}`,
+      body: {
+        scopes: [actor, ...otherActors].map((ownedActor) => {
+          if (!ownedActor.orgId) {
+            throw new Error("Expected an organization-scoped snapshot actor");
+          }
+          return { user_id: ownedActor.userId, org_id: ownedActor.orgId };
+        }),
       },
     }),
     [200],
@@ -423,7 +430,6 @@ async function allThreadEvents(actor: ApiTestUser) {
 }
 
 async function createSnapshotCursorScenario(label: string) {
-  mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected an organization-scoped chat actor");
@@ -452,7 +458,7 @@ async function createSnapshotCursorScenario(label: string) {
     throw new Error("Expected snapshot cursor lifecycle events");
   }
 
-  await compactChatThreadSnapshots();
+  await compactChatThreadSnapshots(actor);
   const snapshot = await chat.getThreadSnapshot(actor);
   const { latestEventId, latestSeqId } = snapshot;
   expect(latestEventId).toBe(markerEvent.id);
@@ -623,17 +629,11 @@ function goalHeaders(
 }
 
 async function createThreadGoal(
-  actor: ApiTestUser,
+  _actor: ApiTestUser,
   runId: string,
   objective: string,
 ): Promise<void> {
-  await accept(
-    goalsClient().create({
-      headers: goalHeaders(actor, runId),
-      body: { objective },
-    }),
-    [201],
-  );
+  await seedGoalForRunFixture(runId, objective);
 }
 
 async function completeThreadGoal(
@@ -1216,7 +1216,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       eventId: removedThreadEventId,
     });
 
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const boundary = await chat.getThreadSnapshot(actor);
     expect(boundary.latestEventId).toBe(removedThreadEventId);
     expect(boundary.chatThreads).toContainEqual(
@@ -1257,10 +1257,26 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       threadEventPage(actor, boundary.latestSeqId),
     ).resolves.toStrictEqual({ events: [], hasMore: false });
 
+    const unrelatedActor = bdd.user();
+    const unrelatedAgent = await bdd.createAgent(unrelatedActor, {
+      displayName: "Unrelated snapshot compaction agent",
+    });
+    await chat.createThread(unrelatedActor, {
+      agentId: unrelatedAgent.agentId,
+      title: "Unrelated event arriving before stale compaction",
+    });
+
     mockNow(snapshotAt + DAY_MS + 1);
-    const staleCompact = await compactChatThreadSnapshots();
+    const staleCompact = await compactChatThreadSnapshots(actor);
     expect(staleCompact.eventsApplied).toBe(0);
     expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
+    await expect(chat.getThreadSnapshot(unrelatedActor)).resolves.toStrictEqual(
+      {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+    );
     const preserved = await chat.getThreadSnapshot(actor);
     expect({
       latestEventId: preserved.latestEventId,
@@ -1311,7 +1327,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(laterEvent.seqId).toBe(boundary.latestSeqId + 2);
     await expectExpiredThreadEventCursor(actor, firstEvent.seqId);
 
-    const advancedCompact = await compactChatThreadSnapshots();
+    const advancedCompact = await compactChatThreadSnapshots(actor);
     expect(advancedCompact.eventsApplied).toBeGreaterThanOrEqual(1);
     const advanced = await chat.getThreadSnapshot(actor);
     expect({
@@ -1322,7 +1338,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: laterEvent.seqId,
     });
 
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const repeated = await chat.getThreadSnapshot(actor);
     expect({
       latestEventId: repeated.latestEventId,
@@ -1333,8 +1349,100 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
   }, 90_000);
 
+  it("isolates snapshot refresh and retention by both user and organization", async () => {
+    const createdAt = now();
+    mockNow(createdAt);
+    const actor = bdd.user();
+    const otherOrg = bdd.user({ userId: actor.userId });
+    const otherUser = bdd.user({ orgId: actor.orgId });
+    const fixtures = [];
+    for (const owner of [actor, otherOrg, otherUser]) {
+      const agent = await bdd.createAgent(owner, {
+        displayName: "Scoped snapshot retention agent",
+      });
+      const createdEventId = randomUUID();
+      const thread = await chat.createThread(owner, {
+        agentId: agent.agentId,
+        title: "Before scoped compaction",
+        eventId: createdEventId,
+      });
+      fixtures.push({
+        owner,
+        thread,
+        createdEventId,
+        renamedEventId: randomUUID(),
+      });
+    }
+    await compactChatThreadSnapshots(actor, otherOrg, otherUser);
+
+    for (const fixture of fixtures) {
+      await chat.renameThread(
+        fixture.owner,
+        fixture.thread.id,
+        "After scoped compaction",
+        fixture.renamedEventId,
+      );
+    }
+
+    mockNow(createdAt + 8 * DAY_MS);
+    await expect(compactChatThreadSnapshots(actor)).resolves.toStrictEqual({
+      success: true,
+      scopes: 1,
+      eventsApplied: 1,
+      removedDeletedAgentThreads: 0,
+      eventsPruned: 2,
+    });
+    for (const fixture of fixtures) {
+      const selected = fixture.owner === actor;
+      const snapshot = await chat.getThreadSnapshot(fixture.owner);
+      expect(snapshot.latestEventId).toBe(
+        selected ? fixture.renamedEventId : fixture.createdEventId,
+      );
+      expect(snapshot.chatThreads).toStrictEqual([
+        expect.objectContaining({
+          id: fixture.thread.id,
+          title: selected
+            ? "After scoped compaction"
+            : "Before scoped compaction",
+        }),
+      ]);
+      const events = await allThreadEvents(fixture.owner);
+      expect(
+        events.map((event) => {
+          return event.id;
+        }),
+      ).toStrictEqual(
+        selected ? [] : [fixture.createdEventId, fixture.renamedEventId],
+      );
+    }
+  });
+
+  it("rejects snapshot compaction test requests in production", async () => {
+    mockEnv("ENV", "production");
+    const client = setupApp({
+      context,
+      routes: testChatThreadSnapshotCompactionRoutes,
+    })(testChatThreadSnapshotCompactionContract);
+    const response = await client.compact({
+      body: {
+        scopes: [
+          { user_id: `user_${randomUUID()}`, org_id: `org_${randomUUID()}` },
+        ],
+      },
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("rejects snapshot compaction without explicitly owned scopes", async () => {
+    const client = setupApp({
+      context,
+      routes: testChatThreadSnapshotCompactionRoutes,
+    })(testChatThreadSnapshotCompactionContract);
+    const response = await client.compact({ body: { scopes: [] } });
+    expect(response.status).toBe(400);
+  });
+
   it("prunes covered lifecycle events in retry-safe deterministic batches", async () => {
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     mockOptionalEnv("CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE", "2");
     const actor = bdd.user();
     if (!actor.orgId) {
@@ -1421,15 +1529,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     mockNow(snapshotAt);
-    let boundaryCompact = await compactChatThreadSnapshots();
-    for (
-      let attempt = 0;
-      attempt < 4 && boundaryCompact.scopes > 0;
-      attempt++
-    ) {
-      expect(boundaryCompact.eventsPruned).toBe(0);
-      boundaryCompact = await compactChatThreadSnapshots();
-    }
+    const boundaryCompact = await compactChatThreadSnapshots(actor);
     expect(boundaryCompact).toMatchObject({ scopes: 0, eventsPruned: 0 });
     await expect(
       readChatThreadEventIdsFixture({
@@ -1455,8 +1555,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     mockNow(snapshotAt.getTime() + 1);
     const overlappingCompactions = await Promise.all([
-      compactChatThreadSnapshots(),
-      compactChatThreadSnapshots(),
+      compactChatThreadSnapshots(actor),
+      compactChatThreadSnapshots(actor),
     ]);
     expect(
       overlappingCompactions
@@ -1475,7 +1575,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       }),
     ).resolves.toStrictEqual([nullAgentMarker.id]);
 
-    const converged = await compactChatThreadSnapshots();
+    const converged = await compactChatThreadSnapshots(actor);
     expect(converged.eventsPruned).toBe(1);
     await expect(
       readChatThreadEventIdsFixture({
@@ -1484,7 +1584,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         eventIds: coveredEventIds,
       }),
     ).resolves.toStrictEqual([]);
-    const retry = await compactChatThreadSnapshots();
+    const retry = await compactChatThreadSnapshots(actor);
     expect(retry.eventsPruned).toBe(0);
 
     concurrentAppend.release();
@@ -1539,7 +1639,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       title: "Keep the retention scope out of this snapshot batch",
     });
 
-    const aboveWatermarkCompact = await compactChatThreadSnapshots();
+    const aboveWatermarkCompact = await compactChatThreadSnapshots(
+      actor,
+      isolatedActor,
+      compactionBlocker,
+    );
     expect(aboveWatermarkCompact.eventsPruned).toBe(0);
     const unchangedBoundary = await chat.getThreadSnapshot(actor);
     expect({
@@ -1711,7 +1815,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       clearMockNow();
       stubTestTimezone("UTC");
     });
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     const actor = bdd.user();
     await api.ensureOrgModelProvider(actor);
     const liveAgent = await bdd.createAgent(actor, {
@@ -1750,7 +1853,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         Date.parse(deletedCreateEvent.createdAt),
       ) + 1000;
     mockNow(initialSnapshotAt);
-    const initialCompact = await compactChatThreadSnapshots();
+    const initialCompact = await compactChatThreadSnapshots(actor);
     expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
 
     const baselineSnapshot = await chat.getThreadSnapshot(actor);
@@ -1787,14 +1890,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const incrementalSnapshotAt = initialSnapshotAt + 1000;
     mockNow(incrementalSnapshotAt);
-    const incrementalCompact = await compactChatThreadSnapshots();
+    const incrementalCompact = await compactChatThreadSnapshots(actor);
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
 
     chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
     mockNow(incrementalSnapshotAt + DAY_MS);
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const boundarySnapshot = await chat.getThreadSnapshot(actor);
     expect(
       boundarySnapshot.chatThreads.map((thread) => {
@@ -1803,7 +1906,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     ).toContain(deletedAgentThread.id);
 
     mockNow(incrementalSnapshotAt + DAY_MS + 1);
-    const staleCompact = await compactChatThreadSnapshots();
+    const staleCompact = await compactChatThreadSnapshots(actor);
     expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).not.toBeNull();
@@ -1825,7 +1928,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const retentionBoundary =
       Date.parse(liveCreateEvent.createdAt) + 7 * DAY_MS;
     mockNow(retentionBoundary);
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     expect(
       (await allThreadEvents(actor)).some((event) => {
         return event.id === liveCreateEvent.id;
@@ -1844,7 +1947,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     mockNow(retentionBoundary + 1);
-    const retentionCompact = await compactChatThreadSnapshots();
+    const retentionCompact = await compactChatThreadSnapshots(actor);
     expect(retentionCompact.eventsPruned).toBeGreaterThanOrEqual(1);
     const prunedCursor = await chat.requestThreadEvents(
       actor,
@@ -1859,7 +1962,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     mockNow(Date.parse(deletedCreateEvent.createdAt) + 7 * DAY_MS + 1);
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const coveredDeletedAgentCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: deletedCreateEvent.seqId },
@@ -3406,8 +3509,7 @@ describe("CHAT-01 chat search", () => {
     });
 
     const emptyResults = await chat.searchChat(owner, "quokka");
-    expect(emptyResults.results).toStrictEqual([]);
-    expect(emptyResults.hasMore).toBeFalsy();
+    expect(emptyResults).toStrictEqual({ results: [] });
 
     const blankKeyword = await chat.requestSearchChat(owner, "   ", {}, [400]);
     expectApiError(blankKeyword.body);
@@ -3570,24 +3672,6 @@ describe("CHAT-01 chat search", () => {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-
-    // hasMore flips when matches exceed the limit.
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "capybara sighting one",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "capybara sighting two",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "capybara sighting three",
-    });
-    await projectChatEventSearch();
-    const limited = await chat.searchChat(owner, "capybara", { limit: 2 });
-    expect(limited.results).toHaveLength(2);
-    expect(limited.hasMore).toBeTruthy();
   }, 60_000);
 
   it("returns batched matched messages without context across threads", async () => {
@@ -3620,10 +3704,7 @@ describe("CHAT-01 chat search", () => {
     });
 
     await projectChatEventSearch();
-    const contextual = await chat.searchChat(owner, `${marker} needle`, {
-      limit: 3,
-    });
-    expect(contextual.hasMore).toBeFalsy();
+    const contextual = await chat.searchChat(owner, `${marker} needle`);
     expect(
       contextual.results
         .map((result) => {
@@ -3851,7 +3932,7 @@ describe("CHAT-01 chat search index", () => {
     expectApiError(deleted.body);
   }, 60_000);
 
-  it("applies agent, since and limit filters inside the projection", async () => {
+  it("applies agent and since filters inside the projection", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     bdd.acceptAgentStorageWrites();
@@ -3912,18 +3993,113 @@ describe("CHAT-01 chat search index", () => {
     });
     expect(byAgent.results).toHaveLength(1);
     expect(byAgent.results[0]?.chatThreadId).toBe(threadB);
-
-    // The limit and its hasMore probe are applied while matching.
-    const limited = await chat.searchChat(owner, "水豚", { limit: 2 });
-    expect(limited.results).toHaveLength(2);
-    expect(limited.hasMore).toBeTruthy();
-    const exact = await chat.searchChat(owner, "水豚", { limit: 4 });
-    expect(exact.results).toHaveLength(4);
-    expect(exact.hasMore).toBeFalsy();
   }, 60_000);
 });
 
 describe("CHAT-03 thread artifacts and google drive status", () => {
+  it.each(["hosted-site", "presentation-html"] as const)(
+    "exports private %s as an owned bundle to Google Drive",
+    async (artifactKind) => {
+      const { actor, agentId } = await entitledChatActor(
+        "Private HTML Drive owner",
+      );
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      await createBillingMediaApi(context).updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PrivateArtifacts]: true,
+      });
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Create a private HTML artifact",
+      });
+      const objectStore = chatCallbacks.acceptChatObjectStorage();
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        "https://r2.example.com/hosted-upload?sig=test",
+      );
+      const index =
+        '<!doctype html><link rel="stylesheet" href="/assets/style.css"><h1>Private report</h1>';
+      const css = "h1 { color: green }";
+      const bearer = okouCapabilityHeaders(actor, run.runId, [
+        "host:write",
+      ]).authorization;
+      const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
+        site: `private-drive-${randomUUID().slice(0, 8)}`,
+        artifactKind,
+        spaFallback: false,
+        files: [
+          hostedTextFile("/index.html", index),
+          hostedTextFile("/assets/style.css", css),
+        ],
+      });
+      for (const [path, body] of [
+        ["/index.html", index],
+        ["/assets/style.css", css],
+      ] as const) {
+        objectStore.addObject({
+          bucket: "test-hosted-sites",
+          key: `private-sites/okou/${prepared.deploymentId}${path}`,
+          size: Buffer.byteLength(body),
+          body: Buffer.from(body),
+        });
+      }
+      await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
+      const artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+      const artifact = artifacts.runs
+        .flatMap((item) => {
+          return item.files;
+        })
+        .find((file) => {
+          return file.url === prepared.url;
+        });
+      if (!artifact) {
+        throw new Error("Expected private hosted artifact");
+      }
+      mockGoogleDriveConnectorOAuth();
+      const start = await connectorsApi.startOauth(
+        actor,
+        "google-drive",
+        "oauth",
+      );
+      await connectorsApi.completeOauthCallback("google-drive", {
+        code: "drive-ok",
+        state: stateFromAuthorizationUrl(start.authorizationUrl),
+      });
+      await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
+      const upload = mockGoogleDriveArtifactUpload({
+        id: "private-drive-file",
+        name: "private-report.zip",
+      });
+      const synced = await chat.requestSyncThreadArtifact(
+        actor,
+        run.threadId,
+        { runId: run.runId, fileId: artifact.id },
+        [200],
+      );
+      expect(synced.body).toMatchObject({ id: "private-drive-file" });
+      const multipart = Buffer.from(upload.bodies[0]!);
+      expect(multipart.toString("utf8")).toContain("application/zip");
+      const zip = new AdmZip(
+        multipart.subarray(
+          multipart.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
+        ),
+      );
+      expect(
+        zip
+          .getEntries()
+          .map((entry) => {
+            return entry.entryName;
+          })
+          .sort(),
+      ).toStrictEqual(["assets/style.css", "index.html"]);
+      expect(zip.readAsText("index.html")).toBe(index);
+      expect(zip.readAsText("assets/style.css")).toBe(css);
+      expect(
+        objectStore.puts.filter((put) => {
+          return put.key.startsWith("artifacts/");
+        }),
+      ).toStrictEqual([]);
+    },
+  );
+
   it("groups run uploads and reports google drive sync status", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Artifacts drive status agent",

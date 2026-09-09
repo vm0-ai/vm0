@@ -223,6 +223,7 @@ export const recordGeneratedIntroVideoPresenter$ = command(
       readonly userId: string;
       readonly runId: string;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly pricing: IntroVideoPresenterPricingRow;
       readonly generation: ParsedIntroVideoPresenterGeneration;
       readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
@@ -234,6 +235,8 @@ export const recordGeneratedIntroVideoPresenter$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "intro-video-presenter",
         extension: "webm",
         body: params.generation.videoBytes,
@@ -260,7 +263,9 @@ export const recordGeneratedIntroVideoPresenter$ = command(
           provider: "heygen",
           model: HEYGEN_INTRO_VIDEO_PRESENTER_MODEL,
           providerVideoId: params.generation.providerVideoId,
-          sourceUrl: params.generation.sourceUrl,
+          sourceUrl: artifact.isPrivate
+            ? undefined
+            : params.generation.sourceUrl,
           durationSeconds: params.generation.durationSeconds,
           avatarId: params.generation.options.avatarId,
           avatarGroupId: params.generation.options.avatarGroupId,

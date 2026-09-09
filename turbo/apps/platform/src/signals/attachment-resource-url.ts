@@ -1,13 +1,56 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
+import { timeout } from "signal-timers";
+import {
+  artifactReferencesContract,
+  parseArtifactReference,
+} from "@okouai/api-contracts/contracts/artifact-references";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { hostContract } from "@okouai/api-contracts/contracts/host";
+import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import { accept } from "../lib/accept.ts";
 import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
 import { apiClient$ } from "./api-client.ts";
 
+const resourceRevision$ = state(0);
+
+const refreshAttachmentUrls$ = command(({ set }) => {
+  set(resourceRevision$, (revision) => {
+    return revision + 1;
+  });
+});
+
+const scheduleAttachmentUrlRefresh$ = command(
+  ({ set }, signal: AbortSignal) => {
+    timeout(
+      () => {
+        set(refreshAttachmentUrls$);
+        set(scheduleAttachmentUrlRefresh$, signal);
+      },
+      10 * 60 * 1000,
+      { signal },
+    );
+  },
+);
+
+export const setupAttachmentUrlRefresh$ = command(
+  ({ set }, signal: AbortSignal) => {
+    set(scheduleAttachmentUrlRefresh$, signal);
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState === "visible") {
+          set(refreshAttachmentUrls$);
+        }
+      },
+      { signal },
+    );
+  },
+);
+
 const AUTHENTICATED_FILE_PATH = "/api/web/download-file";
 
-function isAuthenticatedAttachmentUrl(url: string): boolean {
+export function isAuthenticatedAttachmentUrl(url: string): boolean {
   if (!URL.canParse(url)) {
     return false;
   }
@@ -21,15 +64,15 @@ function isAuthenticatedAttachmentUrl(url: string): boolean {
 export interface AttachmentUrls {
   /**
    * URL this browser can load right now. Presigned for a private attachment,
-   * so it expires and is scoped to the viewer.
+   * so it expires and grants access only to that object.
    */
   readonly resourceUrl: string;
   /**
    * URL that still works for whoever receives it. Never the canonical API URL:
    * that one answers only to the owner's credentials, so a recipient gets a 401
-   * instead of the file.
+   * instead of the file. Null until a private artifact is published.
    */
-  readonly shareUrl: string;
+  readonly shareUrl: string | null;
 }
 
 /**
@@ -42,6 +85,38 @@ function createAttachmentResourceUrl$(
   url: string,
 ): Computed<Promise<AttachmentUrls>> {
   return computed(async (get) => {
+    const reference = parseArtifactReference(url, location.origin);
+    if (reference) {
+      get(resourceRevision$);
+      const signal = get(pageSignal$);
+      const response = await accept(
+        get(apiClient$)(artifactReferencesContract).resolve({
+          params: { reference: `${reference.hash}${reference.extension}` },
+          fetchOptions: { signal, cache: "no-store" },
+        }),
+        [200],
+        signal,
+      );
+      const resourceUrl = new URL(response.body.url);
+      resourceUrl.hash = reference.fragment;
+      return { resourceUrl: resourceUrl.href, shareUrl: null };
+    }
+    const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
+    if (deploymentId) {
+      get(resourceRevision$);
+      const signal = get(pageSignal$);
+      const response = await accept(
+        get(apiClient$)(hostContract).privatePreview({
+          params: { deploymentId },
+          fetchOptions: { signal },
+        }),
+        [200],
+        signal,
+      );
+      const resourceUrl = new URL(response.body.url);
+      resourceUrl.hash = new URL(url).hash;
+      return { resourceUrl: resourceUrl.href, shareUrl: null };
+    }
     if (!isAuthenticatedAttachmentUrl(url)) {
       // Already a public address, so it both renders and shares as-is.
       return { resourceUrl: url, shareUrl: url };
@@ -62,6 +137,12 @@ function createAttachmentResourceUrl$(
       [200],
       signal,
     );
+    if (response.body.publicUrl === null) {
+      // Only confirmed private resources follow the page's refresh clock.
+      // Their recorded policy survives disabling creation; public attachments
+      // keep their existing resolution lifetime.
+      get(resourceRevision$);
+    }
     return {
       resourceUrl: response.body.url,
       shareUrl: response.body.publicUrl,

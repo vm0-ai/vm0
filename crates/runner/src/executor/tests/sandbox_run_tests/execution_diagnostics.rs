@@ -194,7 +194,7 @@ async fn execute_prepared_marks_stdout_incomplete_when_terminal_grace_expires() 
 }
 
 #[tokio::test]
-async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
+async fn execute_inner_preserves_raw_sigkill_with_unrelated_kernel_tail() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -217,20 +217,14 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
         .await
         .unwrap();
 
-    let failure = outcome.failure.as_ref().expect("expected OOM failure");
-    assert_eq!(outcome.exit_code(), 1);
-    assert_eq!(failure.error.as_str(), "Agent process killed by OOM killer");
+    let failure = outcome.failure.as_ref().expect("expected signal failure");
+    assert_eq!(outcome.exit_code(), EXIT_SIGKILL);
+    assert_eq!(failure.error.as_str(), "Agent exited with code 137");
     assert_eq!(
         outcome.sandbox_reuse_disposition,
-        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure),
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
     );
-    assert_eq!(
-        failure
-            .resource_diagnostics
-            .expect("expected OOM resource diagnostics")
-            .failure_kind,
-        Some(ResourceFailureKind::GuestMemoryOomKilled)
-    );
+    assert!(failure.resource_diagnostics.is_none());
     let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
     let mut expected = b"partial stdout\n".to_vec();
     expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
@@ -238,7 +232,7 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
 }
 
 #[tokio::test]
-async fn execute_inner_preserves_workload_oom_diagnostic_before_dmesg_rewrite() {
+async fn execute_inner_preserves_workload_oom_diagnostic_and_exit_code() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -289,36 +283,6 @@ async fn execute_inner_preserves_workload_oom_diagnostic_before_dmesg_rewrite() 
             .iter()
             .all(|call| !call.cmd.contains("dmesg") && !call.cmd.contains("guest-agent-binary"))
     );
-}
-
-#[tokio::test]
-async fn execute_inner_ignores_non_exited_dmesg_oom_output() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_wait_process_exit(ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new()));
-    overrides.add_exec_result_matcher(
-        "dmesg",
-        ExecResult {
-            termination: ExecTermination::TimedOut,
-            guest_duration_ms: None,
-            stdout: b"Out of memory: Killed process 1234".to_vec(),
-            stderr: b"Timeout".to_vec(),
-            diagnostic: String::new(),
-            stdout_truncated: false,
-            stderr_truncated: false,
-        },
-    );
-    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
-    let ctx = minimal_context();
-    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
-        .await
-        .unwrap();
-
-    let failure = outcome.failure.as_ref().expect("expected failure");
-    assert_eq!(outcome.exit_code(), EXIT_SIGKILL);
-    assert_eq!(failure.error.as_str(), "Agent exited with code 137");
-    assert!(failure.resource_diagnostics.is_none());
 }
 
 #[tokio::test]
@@ -1401,4 +1365,70 @@ async fn execute_inner_nonzero_records_agent_execute_error() {
         .expect("agent_execute telemetry should be recorded");
     assert!(!agent_execute.1);
     assert_eq!(agent_execute.2.as_deref(), Some("Agent exited with code 7"));
+}
+
+#[tokio::test]
+async fn execute_inner_retains_trusted_oom_evidence_without_changing_terminal_semantics() {
+    let evidence =
+        include_str!("../../../../../guest-contracts/tests/fixtures/oom-evidence-v1.json");
+    let parsed: guest_contracts::oom_evidence::OomEvidence =
+        serde_json::from_str(evidence).unwrap();
+    for (code, termination) in [
+        (0, ExecTermination::Exited { exit_code: 0 }),
+        (137, ExecTermination::Exited { exit_code: 137 }),
+        (124, ExecTermination::TimedOut),
+        (1, ExecTermination::Cancelled),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut exit = ProcessExit::new(1, code, Vec::new(), Vec::new());
+        exit.termination = termination;
+        exit.diagnostic = format!(
+            "{}{}",
+            guest_contracts::oom_evidence::EVIDENCE_PREFIX,
+            serde_json::to_string(&parsed).unwrap()
+        );
+        overrides.push_wait_process_exit(exit);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_new_sandbox_outcome(&factory, &ctx, &config, &default_params()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(outcome.exit_code(), code);
+        let retained = tokio::fs::read(config.log_paths.oom_evidence_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<guest_contracts::oom_evidence::OomEvidence>(&retained)
+                .unwrap(),
+            parsed
+        );
+        if code == 0 {
+            assert!(
+                outcome.failure.is_none(),
+                "recovered tool OOM must preserve success"
+            );
+        } else {
+            assert!(
+                !outcome
+                    .failure
+                    .as_ref()
+                    .unwrap()
+                    .error
+                    .as_str()
+                    .contains("OKOU_OOM_EVIDENCE")
+            );
+        }
+        if termination == ExecTermination::TimedOut {
+            assert!(matches!(
+                outcome.failure.as_ref().unwrap().kind,
+                ExecutionFailureKind::RunnerJobTimeout { .. }
+            ));
+        }
+    }
 }

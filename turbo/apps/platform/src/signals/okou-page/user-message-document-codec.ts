@@ -18,6 +18,7 @@ import type { RestorableAttachment } from "./chat-draft.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 import { avatarTemplateSelection } from "./avatar-template-selection.ts";
+import { explainerVideoTemplateOptions } from "@okouai/core/explainer-video-template";
 import {
   serializeAgentMention,
   splitAgentMentionSegments,
@@ -446,13 +447,25 @@ export function editorDocToMessageDocument(
  */
 export function createEditorDocumentSnapshot(
   document: ProseMirrorNode,
+  additionalInfo?: string,
 ): EditorDocumentSnapshot {
   return Object.freeze({
     toEditorDocument() {
       return document.toJSON();
     },
-    toMessageDocument(context: EditorDocumentContext = {}) {
-      return editorDocToMessageDocument(document, context);
+    toMessageDocument(
+      context: EditorDocumentContext = {},
+    ): UserMessageInputDocument | null {
+      const message = editorDocToMessageDocument(document, context);
+      return message && additionalInfo
+        ? {
+            ...message,
+            parts: [
+              { type: "additional_info", text: additionalInfo },
+              ...message.parts,
+            ],
+          }
+        : message;
     },
     toDraft(context: EditorDocumentContext = {}) {
       return editorDocToDraftDocument(document, context);
@@ -488,6 +501,9 @@ function templateAttachmentType(template: GenerationTemplateRequest): string {
 }
 
 function templateCategory(template: GenerationTemplateRequest): string {
+  if (explainerVideoTemplateOptions(template)) {
+    return "explainer";
+  }
   const type = templateAttachmentType(template);
   return type === "presentation" ? "slides" : type;
 }
@@ -495,6 +511,10 @@ function templateCategory(template: GenerationTemplateRequest): string {
 function templatePreviewImageUrl(
   template: GenerationTemplateRequest,
 ): string | null {
+  const explainer = explainerVideoTemplateOptions(template);
+  if (explainer?.style.kind === "catalog") {
+    return explainer.style.style.thumbnailUrl ?? null;
+  }
   if (template.type === "presentation") {
     return template.selection.previewUrl ?? null;
   }
@@ -860,7 +880,8 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
       part.type === "source" ||
       part.type === "automation" ||
       part.type === "goal" ||
-      part.type === "model"
+      part.type === "model" ||
+      part.type === "additional_info"
     ) {
       continue;
     }

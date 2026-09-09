@@ -95,6 +95,8 @@ import { featureSwitchesRoutes } from "./routes/feature-switches";
 import { financeRoutes } from "./routes/finance";
 import { seoRoutes } from "./routes/seo";
 import { goalsRoutes } from "./routes/goals";
+import { artifactShareRoutes } from "./routes/artifact-shares";
+import { artifactReferenceRoutes } from "./routes/artifact-references";
 import { hostRoutes } from "./routes/host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { imageIoGenerateRoutes } from "./routes/image-io-generate";
@@ -295,6 +297,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...seoRoutes,
   ...goalsRoutes,
   ...hostRoutes,
+  ...artifactShareRoutes,
+  ...artifactReferenceRoutes,
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
   ...avatarVideoRoutes,

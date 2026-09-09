@@ -1681,7 +1681,7 @@ function OfficialWorkflowReconfigureDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
+      <DialogContent smMaxWidth={680} contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -2383,7 +2383,7 @@ function WorkflowCopyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent smMaxWidth={560}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -4547,7 +4547,7 @@ function AutomationCreateMenu({
           </span>
         </button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[880px]">
+      <DialogContent smMaxWidth={880}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -6669,7 +6669,7 @@ function CreateGmailNewMessageAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -7685,7 +7685,7 @@ function CreateGithubWorkflowRunCompletedAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -7826,7 +7826,7 @@ function CreateGithubWebhookAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{copy.description}</DialogDescription>
@@ -8092,7 +8092,7 @@ function CreateWebhookAutomationDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent className="max-w-2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -8250,7 +8250,7 @@ function RevealWebhookSecretDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -9249,13 +9249,13 @@ function EditWorkflowAutomationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={
+        maxWidth={
           automation.kind === "event" &&
           (automation.eventType === "gmail-new-message" ||
             automation.eventType === "github-workflow-run-completed" ||
             isGithubWebhookWorkflowAutomation(automation))
-            ? "max-w-2xl"
-            : ""
+            ? "2xl"
+            : "lg"
         }
       >
         <DialogHeader>

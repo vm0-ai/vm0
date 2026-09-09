@@ -11,7 +11,6 @@ import {
 } from "../services/browser-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function expired() {
   return {
@@ -58,15 +57,12 @@ const createAuthorizationRequestInner$ = command(
         "Cloud browser authorization requires a run token",
       );
     }
-    const publicBrand = PUBLIC_BRAND;
-
     const result = await set(
       createBrowserAuthorizationRequest$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
         runId: auth.runId,
-        publicBrand,
       },
       signal,
     );

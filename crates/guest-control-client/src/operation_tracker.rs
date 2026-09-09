@@ -137,12 +137,28 @@ pub(crate) enum NormalOperationReadiness {
     Closed,
 }
 
+/// Admission failure for a normal guest operation, carried by `io::Error`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NormalOperationRejection {
+pub enum NormalOperationRejection {
+    /// A temporary fence excludes new normal operations.
     Fenced,
+    /// Prior operation ownership is uncertain; this connection cannot be reused.
     NotParkable,
+    /// The connection has closed.
     Closed,
 }
+
+impl std::fmt::Display for NormalOperationRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Fenced => "normal operations are currently fenced",
+            Self::NotParkable => "normal operations are not available on this connection",
+            Self::Closed => "connection closed",
+        })
+    }
+}
+
+impl std::error::Error for NormalOperationRejection {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NormalOperationFenceRejection {

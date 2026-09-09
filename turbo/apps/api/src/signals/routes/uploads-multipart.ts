@@ -1,8 +1,8 @@
 import { command } from "ccstate";
+import { registerLegacyArtifactFile$ } from "../services/artifact-delivery.service";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
-import { env } from "../../lib/env";
-import { badRequestMessage } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -11,9 +11,9 @@ import {
   completeMultipartS3Upload,
 } from "../external/s3";
 import {
-  resolveArtifactMultipartUpload$,
-  resolveArtifactObject$,
-} from "../services/artifact-storage.service";
+  resolveUploadedMultipart$,
+  uploadedArtifactObject,
+} from "../services/uploaded-artifact.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -36,11 +36,11 @@ const completeMultipartInner$ = command(
     }
 
     const { id, filename, uploadId, partCount } = bodyResult.data;
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const upload = await set(
-      resolveArtifactMultipartUpload$,
+      resolveUploadedMultipart$,
       {
         userId: auth.userId,
+        orgId: auth.orgId,
         id,
         filename,
         uploadId,
@@ -48,9 +48,9 @@ const completeMultipartInner$ = command(
       signal,
     );
     if (!upload) {
-      throw new Error("R2 multipart upload was not found");
+      return notFound("Multipart upload not found");
     }
-    const { key, parts } = upload;
+    const { key, parts, bucket } = upload;
     const completePartSet =
       parts.length === partCount &&
       parts.every((part, index) => {
@@ -63,15 +63,26 @@ const completeMultipartInner$ = command(
     await get(completeMultipartS3Upload(bucket, key, uploadId, parts));
     signal.throwIfAborted();
 
-    const completed = await set(
-      resolveArtifactObject$,
-      { userId: auth.userId, id },
-      signal,
+    const completed = await get(
+      uploadedArtifactObject({ userId: auth.userId, orgId: auth.orgId, id }),
     );
+    signal.throwIfAborted();
     if (!completed) {
       throw new Error("Completed R2 multipart upload was not found");
     }
 
+    if (!completed.isPrivate) {
+      await set(
+        registerLegacyArtifactFile$,
+        {
+          key: completed.key,
+          filename: completed.filename,
+          contentType: completed.contentType,
+          publicBrand: completed.publicBrand,
+        },
+        signal,
+      );
+    }
     return {
       status: 200 as const,
       body: {
@@ -93,9 +104,10 @@ const abortMultipartInner$ = command(
 
     const { id, filename, uploadId } = bodyResult.data;
     const upload = await set(
-      resolveArtifactMultipartUpload$,
+      resolveUploadedMultipart$,
       {
         userId: auth.userId,
+        orgId: auth.orgId,
         id,
         filename,
         uploadId,
@@ -103,15 +115,9 @@ const abortMultipartInner$ = command(
       signal,
     );
     if (!upload) {
-      throw new Error("R2 multipart upload was not found");
+      return notFound("Multipart upload not found");
     }
-    await get(
-      abortMultipartS3Upload(
-        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-        upload.key,
-        uploadId,
-      ),
-    );
+    await get(abortMultipartS3Upload(upload.bucket, upload.key, uploadId));
     signal.throwIfAborted();
 
     return {

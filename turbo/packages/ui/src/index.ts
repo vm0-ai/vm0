@@ -13,6 +13,7 @@ export {
   CardContent,
 } from "./components/ui/card";
 export { Checkbox } from "./components/ui/checkbox";
+export { ChoiceButton } from "./components/ui/choice-button";
 export { CopyButton, type CopyButtonProps } from "./components/ui/copy-button";
 export { Input } from "./components/ui/input";
 export { Kbd, KbdGroup } from "./components/ui/kbd";
@@ -23,11 +24,10 @@ export {
 } from "./components/ui/multi-select-combobox";
 export {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogClose,
   DialogTrigger,
   DialogContent,
+  DialogBody,
   DialogHeader,
   DialogFooter,
   DialogTitle,
@@ -60,7 +60,6 @@ export {
   Popover,
   PopoverTrigger,
   PopoverContent,
-  PopoverAnchor,
   PopoverClose,
 } from "./components/ui/popover";
 export {

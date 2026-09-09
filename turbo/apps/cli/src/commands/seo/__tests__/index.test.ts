@@ -1,8 +1,3 @@
-import { mkdtempSync } from "node:fs";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import {
@@ -17,17 +12,6 @@ import {
 
 import { server } from "../../../mocks/server";
 import { seoCommand } from "../index";
-
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "seo-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
 
 function dataForSeoResponse(operation: string, result: unknown) {
   return {
@@ -55,8 +39,7 @@ describe("okou seo command", () => {
     throw new Error("process.exit called");
   }) as never);
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-okou-token");
@@ -78,21 +61,19 @@ describe("okou seo command", () => {
     }
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     mockStderrWrite.mockClear();
     mockExit.mockClear();
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
-  afterAll(async () => {
+  afterAll(() => {
     mockConsoleLog.mockRestore();
     mockConsoleError.mockRestore();
     mockStderrWrite.mockRestore();
     mockExit.mockRestore();
-    await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
   it("posts DataForSEO SERP options and prints the JSON response", async () => {
@@ -260,5 +241,63 @@ describe("okou seo command", () => {
     expect(help).toContain("provider-reported cost +25%");
     expect(help).toContain("google_news  desktop only");
     expect(help).toContain("google_maps returns at most 20 results on mobile");
+  });
+
+  it.each(["keyword-ideas", "ranked-keywords"])(
+    "explains supported locations in %s help",
+    (operation) => {
+      const command = seoCommand.commands.find((candidate) => {
+        return candidate.name() === operation;
+      });
+      if (!command) {
+        throw new Error(`Okou SEO ${operation} command is missing`);
+      }
+      let help = "";
+      command.configureOutput({
+        writeOut: (value) => {
+          help += value;
+        },
+      });
+
+      command.outputHelp();
+
+      expect(help).toContain("country or region");
+      expect(help).toContain("US/USA");
+      expect(help).toContain("GB/UK");
+      expect(help).toContain("City and state locations are not supported");
+      expect(help).toContain(
+        "https://docs.dataforseo.com/v3/dataforseo_labs_locations_and_languages/",
+      );
+    },
+  );
+
+  it("shows the API location guidance and exits unsuccessfully", async () => {
+    const message =
+      'Use a supported country or region, such as "United States" or "US". City and state locations are not supported.';
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/seo/keyword-ideas", () => {
+        apiRequests += 1;
+        return HttpResponse.json(
+          { error: { code: "DATAFORSEO_INVALID_REQUEST", message } },
+          { status: 400 },
+        );
+      }),
+    );
+
+    await expect(
+      seoCommand.parseAsync([
+        "node",
+        "okou",
+        "keyword-ideas",
+        "technical seo",
+        "--location",
+        "Austin, Texas, United States",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(message);
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(apiRequests).toBe(1);
   });
 });

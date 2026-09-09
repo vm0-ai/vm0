@@ -266,7 +266,7 @@ async function fetchOverpass(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "vm0-zero-maps/1.0 (https://vm0.ai)",
+      "User-Agent": "okou-maps/1.0 (https://okou.ai)",
     },
     body: new URLSearchParams({ data: buildOverpassQuery(bbox, layers) }),
     signal,

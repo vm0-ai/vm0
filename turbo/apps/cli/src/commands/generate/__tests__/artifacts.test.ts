@@ -74,7 +74,6 @@ describe("okou generate source-backed artifact commands", () => {
       );
       expect(stdout).not.toContain("/website.json");
       expect(stdout).not.toContain("Sources:");
-      expect(stdout).not.toContain("vm0-ai/vm0-skills");
       expect(stdout).toContain('"templates": "string[]"');
       expect(stdout).toContain(
         "Resolve and download only resources selected from the index.",

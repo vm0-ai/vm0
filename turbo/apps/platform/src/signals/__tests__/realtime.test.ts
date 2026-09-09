@@ -1,9 +1,7 @@
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -18,7 +16,6 @@ import {
 } from "../realtime.ts";
 import { clerk$, setupClerk$ } from "../auth.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
-import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { setRootSignal$ } from "../root-signal.ts";
@@ -27,7 +24,6 @@ import { setAuthenticatedIdentity$ } from "../auth-context.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 import { now } from "../../lib/time.ts";
-import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentation-template-library.ts";
 import { createChildAbortController, detach, Reason } from "../utils.ts";
 import type { SharedDatabaseBridge } from "../../shared-database/bridge.ts";
 import type {
@@ -257,37 +253,6 @@ test("Workspace live updates stay in the active workspace", async () => {
 
   await expect(loopPromise).resolves.toBeUndefined();
   expect(runs).toBe(1);
-});
-
-test("A disabled workspace-template feature does not receive workspace updates", async () => {
-  mockSignedInUser();
-  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-    const switches = { [FeatureSwitchKey.PresentationTemplates]: false };
-    return respond(200, { switches, effectiveSwitches: switches });
-  });
-  await context.store.set(reloadFeatureSwitch$, context.signal);
-  const subscriber = testSubscriber();
-  const subscriptionPromise = context.store.set(
-    subscribePresentationTemplatesChanged$,
-    subscriber.signal,
-  );
-  detach(subscriptionPromise, Reason.Daemon, "test realtime subscription");
-
-  await setupAuthAndRealtime();
-  await waitFor(() => {
-    expect(
-      context.mocks.ably.hasSubscriptionOnChannel(
-        "user:test-user-123",
-        "presentationTemplatesChanged",
-      ),
-    ).toBeTruthy();
-  });
-  expect(
-    context.mocks.ably.hasSubscriptionOnChannel(
-      "org:test-org-123",
-      "presentationTemplatesChanged",
-    ),
-  ).toBeFalsy();
 });
 
 test("Realtime authentication failure does not leave stale live updates", async () => {

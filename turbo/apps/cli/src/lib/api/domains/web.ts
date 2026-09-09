@@ -1,3 +1,4 @@
+import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact-references";
 import { createWriteStream, readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Readable } from "node:stream";
@@ -156,15 +157,38 @@ interface DownloadWebFileResult {
   size: number;
 }
 
-/**
- * Download a web-uploaded file to a local path, streaming the response body
- * to disk. Authenticates via OKOU_TOKEN. Response is binary, so this bypasses
- * the typed contract client.
- */
-export async function downloadWebFile(
-  fileId: string,
-  outPath: string,
-): Promise<DownloadWebFileResult> {
+/** Only the configured API origin may receive the CLI credential. */
+export async function webFileReferenceId(
+  value: string,
+): Promise<string | null> {
+  const reference = parseArtifactReference(value);
+  if (reference) return reference.id;
+  if (!URL.canParse(value)) return null;
+  const url = new URL(value);
+  const baseUrl = new URL(await getBaseUrl());
+  if (
+    url.origin !== baseUrl.origin ||
+    url.pathname !== "/api/web/download-file" ||
+    url.username ||
+    url.password
+  ) {
+    return null;
+  }
+  const id = url.searchParams.get("file_id");
+  if (!id) {
+    throw new Error("Artifact reference is missing file_id");
+  }
+  return id;
+}
+
+export async function fetchGenerationReference(
+  url: string | URL,
+): Promise<Response> {
+  const id = await webFileReferenceId(String(url));
+  return id ? fetchWebFile(id) : fetch(url);
+}
+
+async function fetchWebFile(fileId: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const token = await getActiveToken();
   if (!token) {
@@ -181,6 +205,21 @@ export async function downloadWebFile(
   const response = await fetch(url, {
     headers: headersWithCliClientHeaders(headers),
   });
+  return response;
+}
+
+/**
+ * Download a web-uploaded file to a local path, streaming the response body
+ * to disk. Authenticates via OKOU_TOKEN. Response is binary, so this bypasses
+ * the typed contract client.
+ */
+export async function downloadWebFile(
+  fileId: string,
+  outPath: string,
+): Promise<DownloadWebFileResult> {
+  const response = await fetchWebFile(
+    parseArtifactReference(fileId)?.id ?? fileId,
+  );
 
   if (!response.ok) {
     let message = `Failed to download web file (HTTP ${response.status})`;
@@ -734,7 +773,7 @@ async function readBuiltInGenerationResponse<T>(args: {
 }
 
 /**
- * Upload a local file and receive back metadata including a public CDN URL.
+ * Upload a local file and receive metadata including its stable file URL.
  * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
@@ -749,7 +788,7 @@ async function readBuiltInGenerationResponse<T>(args: {
  */
 export async function uploadWebFile(
   localPath: string,
-  options?: { contentType?: string },
+  options?: { contentType?: string; purpose?: "artifact" },
 ): Promise<UploadWebFileResult> {
   const stats = statSync(localPath);
   if (!stats.isFile()) {
@@ -783,6 +822,7 @@ export async function uploadWebFile(
       filename,
       contentType,
       size: stats.size,
+      purpose: options?.purpose,
     }),
   });
 

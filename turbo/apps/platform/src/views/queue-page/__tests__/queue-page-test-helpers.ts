@@ -24,6 +24,7 @@ export function billingStatus(
   overrides: Partial<BillingStatusResponse>,
 ): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier: "team",
     credits: 10_000,
     onboardingPaymentPending: false,

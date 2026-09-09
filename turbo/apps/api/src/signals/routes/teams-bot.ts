@@ -235,7 +235,6 @@ const sendTeamsInstallWelcome$ = command(
     args: {
       readonly activity: TeamsInboundActivity;
       readonly installation: TeamsInstallation;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -429,7 +428,6 @@ const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
           {
             activity: normalized.activity,
             installation: activityResult.installation,
-            publicBrand,
           },
           signal,
         ),
@@ -447,7 +445,6 @@ const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
       activity: normalized.activity,
       connectUrl: buildTeamsConnectUrlForActivity({
         activity: normalized.activity,
-        publicBrand,
         installation,
       }),
     },

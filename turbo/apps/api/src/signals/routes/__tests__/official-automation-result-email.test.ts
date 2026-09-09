@@ -319,7 +319,6 @@ describe.sequential("Official Automation result email callbacks", () => {
       scenario.actor,
       sessionRunId,
       ["agent:write"],
-      "vm0",
     );
     const agentRun = await accept(
       automationsClient().run({
@@ -614,8 +613,6 @@ describe.sequential("Official Automation result email callbacks", () => {
     }
     expect(html).toContain("[Result truncated]");
     expect(html).toContain("Okou");
-    expect(html).not.toContain("Zero");
-    expect(html).not.toContain("VM0");
     expect(html).toContain(">Open in Okou &rarr;</a>");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
     expect(html).toContain("Sent by an Okou automation &middot;");

@@ -3,6 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ConnectorAccountInspectionResult } from "@okouai/api-contracts/contracts/connector-accounts";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
+import type {
+  CustomConnectorMcpResponse,
+  CustomConnectorPermissionBundleResponse,
+  CustomConnectorResponse,
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -14,7 +20,11 @@ import {
   stubConnectorCatalog,
   stubConnectorCatalogPermissions,
 } from "./helpers/connector-catalog";
-import { stubCustomConnectors } from "./helpers/custom-connectors";
+import {
+  customConnector,
+  stubAgentCustomConnectors,
+  stubCustomConnectors,
+} from "./helpers/custom-connectors";
 import {
   stubRunConnectorAccountInspection,
   writeRunConnectorAccountContext,
@@ -1067,7 +1077,7 @@ describe("okou whoami command", () => {
       ).toBe(false);
     });
 
-    it("should omit supplementary connectors when permission metadata fails", async () => {
+    it("should retain exact account identity when permission metadata fails", async () => {
       const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
@@ -1125,7 +1135,8 @@ describe("okou whoami command", () => {
         output.some((line) => {
           return line.includes("Connectors:");
         }),
-      ).toBe(false);
+      ).toBe(true);
+      expect(output.join("\n")).toContain("@octocat");
     });
 
     it("should show identity only when connector access API fails with --permissions", async () => {
@@ -1237,6 +1248,472 @@ describe("okou whoami command", () => {
           return line.includes("axiom") && line.includes("Account #22222222");
         }),
       ).toBe(true);
+    });
+  });
+
+  describe("custom connector authorization", () => {
+    const ordinaryHttp = customConnector({
+      permissionBundleRef: null,
+      connected: true,
+      connectedAccountId: "11111111-1111-4111-8111-111111111111",
+      missingRequiredFields: [],
+      configuredFieldKeys: ["apiKey"],
+    });
+    const mcp: CustomConnectorMcpResponse = {
+      kind: "mcp",
+      id: "44444444-4444-4444-8444-444444444444",
+      slug: "_acme-mcp",
+      displayName: "Acme MCP",
+      endpoint: "https://mcp.acme.test/server",
+      transport: "streamable-http",
+      prefixTemplates: [],
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      permissionBundleRef: null,
+      authMode: "none",
+      storageVersion: 1,
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const bundledHttp = customConnector({
+      ...ordinaryHttp,
+      permissionBundleRef: "builtin:airtable@1",
+    });
+    const bundle: CustomConnectorPermissionBundleResponse = {
+      ref: "builtin:airtable@1",
+      permissions: [
+        { name: "records:read", description: "Read records" },
+        { name: "records:write", description: "Write records" },
+        { name: "records:delete", description: "Delete records" },
+        { name: "schema:write", description: "Change the schema" },
+        { name: "records:export", description: "Export records" },
+      ],
+      defaultPolicies: {
+        "records:read": "allow",
+        "records:write": "deny",
+        "records:delete": "deny",
+        "schema:write": "ask",
+      },
+    };
+
+    beforeEach(() => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildOkouToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "okou",
+          capabilities: ["agent:read", "connector:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+    });
+
+    function setCustomRunConnectors(
+      definitions: readonly CustomConnectorResponse[],
+      grants: readonly AgentCustomConnectorGrant[],
+    ): void {
+      const accounts: AvailableConnectorAccount[] = [
+        {
+          kind: "available",
+          target: { kind: "builtin", connectorSlug: "github" },
+          connectionId: "22222222-2222-4222-8222-222222222222",
+          authMethod: "oauth",
+          displayName: null,
+          externalId: "github-run-account",
+          externalUsername: "octocat",
+          externalEmail: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        },
+        ...definitions.map((definition, index): AvailableConnectorAccount => {
+          return {
+            kind: "available",
+            target: { kind: "custom", customConnectorId: definition.id },
+            connectionId: `00000000-0000-4000-8000-${(index + 100).toString().padStart(12, "0")}`,
+            authMethod: "api-token",
+            displayName: "Run account B",
+            externalId: "run-account-b",
+            externalUsername: "run-account-b",
+            externalEmail: null,
+            connectionStatus: "connected",
+            reconnectReason: null,
+          };
+        }),
+      ];
+      writeRunConnectorAccountContext(
+        contextPath,
+        accounts.map((account) => {
+          return { ...account.target, connectionId: account.connectionId };
+        }),
+      );
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: "github" })]),
+        stubCustomConnectors(definitions),
+        stubRunConnectorAccountInspection(accounts),
+        stubAgentCustomConnectors(grants),
+        mockUserPermissionGrantsHandler(),
+        http.get(
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
+          },
+        ),
+        http.get(
+          "http://localhost:3000/api/custom-connectors/:id",
+          ({ params }) => {
+            const definition = definitions.find((item) => {
+              return item.id === params.id;
+            });
+            return definition
+              ? HttpResponse.json(definition)
+              : HttpResponse.json({}, { status: 404 });
+          },
+        ),
+        http.get(
+          "http://localhost:3000/api/custom-connectors/:id/permissions",
+          () => {
+            return HttpResponse.json(bundle);
+          },
+        ),
+      );
+    }
+
+    function connectorOutput(slug: string): string {
+      const lines = getAllOutput();
+      const start = lines.findIndex((line) => {
+        return line.startsWith(`  ${slug}`);
+      });
+      expect(start).toBeGreaterThanOrEqual(0);
+      const following = lines.slice(start + 1);
+      const next = following.findIndex((line) => {
+        return /^ {2}\S/u.test(line);
+      });
+      return [
+        lines[start],
+        ...following.slice(0, next === -1 ? undefined : next),
+      ].join("\n");
+    }
+
+    it.each([
+      { name: "ordinary HTTP", definition: ordinaryHttp },
+      { name: "MCP", definition: mcp },
+    ])(
+      "shows $name enablement with an empty permission selection",
+      async ({ definition }) => {
+        setCustomRunConnectors(
+          [definition],
+          [{ customConnectorId: definition.id, permissionNames: [] }],
+        );
+
+        await runWhoami(["--permissions"]);
+
+        const output = connectorOutput(definition.slug);
+        expect(output).toContain("@run-account-b");
+        expect(output).toContain("Agent enablement: enabled");
+        expect(output).toContain(
+          "Connector-level authorization (no named permissions)",
+        );
+        expect(output).not.toContain("full access");
+        expect(output).not.toContain("Named permissions:");
+        expect(output).not.toContain(ordinaryHttp.connectedAccountId);
+        expect(connectorOutput("github")).toContain("@octocat");
+      },
+    );
+
+    it.each([ordinaryHttp, mcp])(
+      "shows $slug as not enabled despite a connected account",
+      async (definition) => {
+        setCustomRunConnectors([definition], []);
+
+        await runWhoami(["--permissions"]);
+
+        const output = connectorOutput(definition.slug);
+        expect(output).toContain("@run-account-b");
+        expect(output).toContain("Agent enablement: not enabled");
+        expect(output).toContain("Connector-level authorization");
+      },
+    );
+
+    it("shows selected permissions and effective bundle defaults", async () => {
+      setCustomRunConnectors(
+        [bundledHttp],
+        [
+          {
+            customConnectorId: bundledHttp.id,
+            permissionNames: ["records:write"],
+          },
+        ],
+      );
+
+      await runWhoami(["--permissions"]);
+
+      const output = connectorOutput(bundledHttp.slug);
+      expect(output).toContain("Agent enablement: enabled");
+      expect(output).toMatch(/✓ records:write\s+Write records \(selected\)/u);
+      expect(output).toMatch(/✓ records:read\s+Read records \(default\)/u);
+      expect(output).toMatch(/✗ records:delete\s+Delete records \(default\)/u);
+      expect(output).toMatch(
+        /\? schema:write\s+Change the schema \(default\)/u,
+      );
+      expect(output).toMatch(/✗ records:export\s+Export records \(default\)/u);
+      expect(output).toContain("✗ unknown endpoints");
+    });
+
+    it("uses server-resolved Feishu defaults with an empty explicit selection", async () => {
+      const feishu = customConnector({
+        ...ordinaryHttp,
+        slug: "_feishu-managed",
+        permissionBundleRef: "builtin:feishu@1",
+      });
+      setCustomRunConnectors(
+        [feishu],
+        [{ customConnectorId: feishu.id, permissionNames: [] }],
+      );
+      server.use(
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${feishu.id}/permissions`,
+          () => {
+            return HttpResponse.json({
+              ref: "builtin:feishu@1",
+              permissions: [
+                { name: "messages:read", description: "Read messages" },
+                { name: "messages:send-as-user", description: "Send as user" },
+              ],
+              defaultPolicies: {
+                "messages:read": "allow",
+                "messages:send-as-user": "deny",
+              },
+            } satisfies CustomConnectorPermissionBundleResponse);
+          },
+        ),
+      );
+
+      await runWhoami(["--permissions"]);
+
+      const output = connectorOutput(feishu.slug);
+      expect(output).toContain("Agent enablement: enabled");
+      expect(output).toMatch(/✓ messages:read\s+Read messages \(default\)/u);
+      expect(output).toMatch(
+        /✗ messages:send-as-user\s+Send as user \(default\)/u,
+      );
+      expect(output).not.toContain("(selected)");
+    });
+
+    it("keeps bundled permission names visible without granting defaults to a disabled Agent", async () => {
+      setCustomRunConnectors([bundledHttp], []);
+
+      await runWhoami(["--permissions"]);
+
+      const output = connectorOutput(bundledHttp.slug);
+      expect(output).toContain("Agent enablement: not enabled");
+      expect(output).toContain("records:read");
+      expect(output).toContain("Read records");
+      expect(output).not.toMatch(/[✓✗?]/u);
+      expect(output).not.toContain("(default)");
+    });
+
+    it.each([
+      { name: "forbidden", status: 403, body: {} },
+      { name: "server error", status: 500, body: {} },
+      {
+        name: "malformed grants",
+        status: 200,
+        body: {
+          grants: [
+            { customConnectorId: bundledHttp.id, permissionNames: null },
+          ],
+        },
+      },
+    ])(
+      "reports $name as unavailable enablement while retaining bundle metadata",
+      async ({ status, body }) => {
+        setCustomRunConnectors([bundledHttp], []);
+        server.use(
+          http.get(
+            "http://localhost:3000/api/agents/agent-123/custom-connectors",
+            () => {
+              return HttpResponse.json(body, { status });
+            },
+          ),
+        );
+
+        await runWhoami(["--permissions"]);
+
+        const output = connectorOutput(bundledHttp.slug);
+        expect(output).toContain("@run-account-b");
+        expect(output).toContain("Agent enablement: unavailable");
+        expect(output).toContain("records:read");
+        expect(output).not.toContain("not enabled");
+        expect(output).not.toContain("(default)");
+        expect(output).not.toMatch(/[✓✗?]/u);
+        expect(connectorOutput("github")).toContain("unknown endpoints");
+      },
+    );
+
+    it.each([
+      { name: "missing definition", path: "", status: 404, body: {} },
+      { name: "failed definition", path: "", status: 500, body: {} },
+      {
+        name: "mismatched definition",
+        path: "",
+        status: 200,
+        body: { ...bundledHttp, id: mcp.id },
+      },
+      {
+        name: "incomplete HTTP metadata",
+        path: "",
+        status: 200,
+        body: { ...bundledHttp, permissionBundleRef: undefined },
+      },
+      { name: "missing bundle", path: "/permissions", status: 404, body: {} },
+      { name: "failed bundle", path: "/permissions", status: 500, body: {} },
+      {
+        name: "malformed bundle",
+        path: "/permissions",
+        status: 200,
+        body: { ...bundle, defaultPolicies: null },
+      },
+      {
+        name: "changed bundle reference",
+        path: "/permissions",
+        status: 200,
+        body: { ...bundle, ref: "builtin:feishu@1" },
+      },
+    ])(
+      "reports $name as unavailable metadata while retaining Agent enablement",
+      async ({ path, status, body }) => {
+        setCustomRunConnectors(
+          [bundledHttp],
+          [{ customConnectorId: bundledHttp.id, permissionNames: [] }],
+        );
+        server.use(
+          http.get(
+            `http://localhost:3000/api/custom-connectors/${bundledHttp.id}${path}`,
+            () => {
+              return HttpResponse.json(body, { status });
+            },
+          ),
+        );
+
+        await runWhoami(["--permissions"]);
+
+        const output = connectorOutput(bundledHttp.slug);
+        expect(output).toContain("@run-account-b");
+        expect(output).toContain("Agent enablement: enabled");
+        expect(output).toContain("Permission information unavailable");
+        expect(output).not.toContain("Connector-level authorization");
+        expect(output).not.toContain("full access");
+        expect(connectorOutput("github")).toContain("unknown endpoints");
+      },
+    );
+
+    it("retains healthy custom siblings when one definition read fails", async () => {
+      setCustomRunConnectors(
+        [ordinaryHttp, mcp],
+        [
+          { customConnectorId: ordinaryHttp.id, permissionNames: [] },
+          { customConnectorId: mcp.id, permissionNames: [] },
+        ],
+      );
+      server.use(
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${mcp.id}`,
+          () => {
+            return HttpResponse.json({}, { status: 500 });
+          },
+        ),
+      );
+
+      await runWhoami(["--permissions"]);
+
+      expect(connectorOutput(ordinaryHttp.slug)).toContain(
+        "Connector-level authorization",
+      );
+      expect(connectorOutput(mcp.slug)).toContain(
+        "Permission information unavailable",
+      );
+      expect(connectorOutput(mcp.slug)).toContain("Agent enablement: enabled");
+      expect(connectorOutput("github")).toContain("unknown endpoints");
+    });
+
+    it("retains custom authorization and account identity when builtin metadata fails", async () => {
+      setCustomRunConnectors(
+        [ordinaryHttp],
+        [{ customConnectorId: ordinaryHttp.id, permissionNames: [] }],
+      );
+      server.use(
+        http.get(
+          "http://localhost:3000/api/connector-catalog/github/permissions",
+          () => {
+            return HttpResponse.json({}, { status: 500 });
+          },
+        ),
+      );
+
+      await runWhoami(["--permissions"]);
+
+      expect(connectorOutput(ordinaryHttp.slug)).toContain(
+        "Agent enablement: enabled",
+      );
+      expect(connectorOutput("github")).toContain("@octocat");
+    });
+
+    it("keeps enablement independent from unavailable exact accounts", async () => {
+      setCustomRunConnectors(
+        [ordinaryHttp],
+        [{ customConnectorId: ordinaryHttp.id, permissionNames: [] }],
+      );
+      server.use(stubRunConnectorAccountInspection([]));
+
+      await runWhoami(["--permissions"]);
+
+      const output = connectorOutput(ordinaryHttp.slug);
+      expect(output).toContain("metadata unavailable or deleted");
+      expect(output).toContain("Agent enablement: enabled");
+      expect(output).not.toContain(ordinaryHttp.connectedAccountId);
+    });
+
+    it("does not read custom authorization details for ordinary whoami", async () => {
+      setCustomRunConnectors([bundledHttp], []);
+      const requests: string[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agents/agent-123/custom-connectors",
+          ({ request }) => {
+            requests.push(request.url);
+            return HttpResponse.json({ grants: [] });
+          },
+        ),
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${bundledHttp.id}`,
+          ({ request }) => {
+            requests.push(request.url);
+            return HttpResponse.json(bundledHttp);
+          },
+        ),
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${bundledHttp.id}/permissions`,
+          ({ request }) => {
+            requests.push(request.url);
+            return HttpResponse.json(bundle);
+          },
+        ),
+      );
+
+      await runWhoami();
+
+      const output = connectorOutput(bundledHttp.slug);
+      expect(output).toContain("@run-account-b");
+      expect(output).not.toContain("Agent enablement:");
+      expect(requests).toEqual([]);
     });
   });
 

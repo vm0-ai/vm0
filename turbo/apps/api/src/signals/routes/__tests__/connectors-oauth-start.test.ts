@@ -417,6 +417,7 @@ const LAUNCH_GATED_DIRECT_OKOU_CASES: readonly LaunchGatedDirectOkouCase[] = [
     clientEnvPrefix: "MERCURY",
     authorizationEndpoint: "https://oauth2.mercury.com/oauth2/auth",
     tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+    pkce: true,
     tokenResponse: {
       access_token: "mercury-test-token",
       refresh_token: "mercury-refresh-token",

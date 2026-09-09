@@ -84,14 +84,7 @@ async function openInstructionsThenChat(): Promise<void> {
 
 test("Opening Instructions preserves literal plus signs in streamed chat Markdown", async () => {
   const chat = createMarkdownChatFixture(context);
-  const rows = [
-    chat.outputMessage("++Plain message++", { seqId: 1 }),
-    chat.outputMessage("**Streaming:** ++Reply", {
-      id: "streamed-markdown",
-      runEventId: "streamed-markdown",
-      seqId: 2,
-    }),
-  ];
+  const rows = [chat.outputMessage("++Plain message++", { seqId: 1 })];
   chat.install({
     rows: () => {
       return rows;
@@ -100,10 +93,20 @@ test("Opening Instructions preserves literal plus signs in streamed chat Markdow
 
   await openInstructionsThenChat();
 
+  await expect(screen.findByText("++Plain message++")).resolves.toBeVisible();
+
+  rows.push(
+    chat.outputMessage("**Streaming:** ++Reply", {
+      id: "streamed-markdown",
+      runEventId: "streamed-markdown",
+      seqId: 2,
+    }),
+  );
+  context.mocks.ably.trigger(chat.realtimeTopic);
+
   const streaming = await screen.findByText("Streaming:");
   expect(streaming.tagName).toBe("STRONG");
   expect(markdownFrameFor(streaming)).toHaveTextContent("++Reply");
-  expect(screen.getByText("++Plain message++")).toBeVisible();
 
   rows[1] = chat.outputMessage("**Streaming:** ++Reply+", {
     id: "streamed-markdown",

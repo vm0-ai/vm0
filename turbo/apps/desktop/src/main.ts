@@ -1,4 +1,7 @@
-import { captureDesktopNativeHelperError } from "./sentry-main";
+import {
+  captureDesktopNativeHelperError,
+  captureDesktopNativePermissionRecovery,
+} from "./sentry-main";
 import { openAsBlob, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -211,6 +214,8 @@ const {
   probeComputerUseAutomationPermission,
   recordComputerUseAutomationPermissionDenied,
 } = createDesktopComputerUsePermissions({
+  refreshNative: (query) =>
+    computerUseController.refreshNativePermissions(query),
   driver: computerUseDriver,
   requestedDriver: () => driverPreferences.getState().selectedDriver,
   transitioning: () => computerUseController.isTransitioning(),
@@ -347,6 +352,7 @@ const applicationMenu = new DesktopApplicationMenu({
   quit: requestDesktopQuit,
 });
 const computerUseController = new ComputerUseRuntimeController({
+  onPermissionRecovery: captureDesktopNativePermissionRecovery,
   driver: computerUseDriver,
   createRuntime: createComputerUseHostRuntime,
   refreshPermissions: refreshComputerUsePermissionState,
@@ -360,6 +366,7 @@ const computerUseController = new ComputerUseRuntimeController({
     ]);
   },
   getAuthState: () => getAuthSession().getAuthState(),
+  getAuthAuthority: () => getAuthSession().getAuthority(),
   setHostRuntimeOnline: (online) => {
     filesystemPluginManager?.setHostRuntimeOnline(online);
     mcpPluginManager?.setHostRuntimeOnline(online);
@@ -490,6 +497,7 @@ function notifyAuthChanged(): void {
   const authority = authSession?.getAuthority() ?? null;
   if (lastSessionAuthority !== authority) {
     lastSessionAuthority = authority;
+    computerUseController.cancelPermissionRefresh();
     resetComputerUsePermissionState();
     if (
       driverSelection.requestedDriver().id === "cua" ||
@@ -1056,11 +1064,11 @@ function refreshComputerUsePermissionsForState(): void {
 }
 
 async function prepareForQuitAndInstall(): Promise<void> {
+  await computerUseController.stopForQuit("update_relaunch");
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
   applicationMenu.dispose();
   releaseKeepAwake();
-  await computerUseController.stopForQuit("update_relaunch");
 }
 
 // Bootstrap contract: the auto-updater is owned by bootstrap.ts so it keeps
@@ -1553,10 +1561,6 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
-    appIsQuitting = true;
-    applicationMenu.dispose();
-    releaseKeepAwake();
-    globalShortcut.unregisterAll();
     if (computerUseQuitPreparationComplete) {
       return;
     }
@@ -1571,10 +1575,14 @@ if (!hasSingleInstanceLock) {
           }
         } catch (error) {
           console.error("Unable to prepare Computer Use for app quit", error);
-        } finally {
-          computerUseQuitPreparationComplete = true;
-          app.quit();
+          return;
         }
+        appIsQuitting = true;
+        applicationMenu.dispose();
+        releaseKeepAwake();
+        globalShortcut.unregisterAll();
+        computerUseQuitPreparationComplete = true;
+        app.quit();
       })();
     }
   });
@@ -1596,12 +1604,14 @@ if (!hasSingleInstanceLock) {
       cuaProbeRuntime = new CuaEmbeddedRuntime({
         runtimeRoot: path.join(process.resourcesPath, "cua"),
         hostBundleId: config.identity.bundleId,
+        probeBlockCleanup: process.env.OKOU_DESKTOP_CUA_FORCE_PROBE === "1",
       });
       try {
         const result = await runCuaHostProbe(
           cuaProbeRuntime,
           process.env.OKOU_DESKTOP_CUA_CAPTURE === "1",
           app.getPath("userData"),
+          process.env.OKOU_DESKTOP_CUA_FORCE_PROBE === "1",
         );
         writeSync(
           1,

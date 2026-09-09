@@ -5,7 +5,9 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { normalizeWebUploadContentType } from "../../lib/uploads-constants";
-import { resolveArtifactObject$ } from "../services/artifact-storage.service";
+import { uploadedArtifactObject } from "../services/uploaded-artifact.service";
+import { registerLegacyArtifactFile$ } from "../services/artifact-delivery.service";
+import { completePrivateArtifact$ } from "../services/private-artifact-storage.service";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
@@ -34,11 +36,10 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
   }
 
-  const s3Object = await set(
-    resolveArtifactObject$,
-    { userId: auth.userId, id },
-    signal,
+  const s3Object = await get(
+    uploadedArtifactObject({ userId: auth.userId, orgId: auth.orgId, id }),
   );
+  signal.throwIfAborted();
   if (!s3Object) {
     return {
       status: 404 as const,
@@ -49,13 +50,28 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const filename = s3Object.filename;
-  const contentType = requestedContentType
-    ? normalizeWebUploadContentType(requestedContentType)
-    : s3Object.contentType;
+  const contentType =
+    !s3Object.isPrivate && requestedContentType
+      ? normalizeWebUploadContentType(requestedContentType)
+      : s3Object.contentType;
   const size = s3Object.size;
   const url = s3Object.url;
   const lastModified = s3Object.lastModified?.toISOString();
 
+  if (s3Object.isPrivate) {
+    await set(completePrivateArtifact$, { id, url, contentType, size }, signal);
+  } else {
+    await set(
+      registerLegacyArtifactFile$,
+      {
+        key: s3Object.key,
+        filename,
+        contentType,
+        publicBrand: s3Object.publicBrand,
+      },
+      signal,
+    );
+  }
   const runId = "runId" in auth ? auth.runId : undefined;
 
   await set(

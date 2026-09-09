@@ -30,6 +30,10 @@ import type {
   WorkspaceReuseResult,
 } from "@okouai/api-contracts/contracts/runner-primitives";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  getFrameworkDisplayName,
+  isSupportedFramework,
+} from "@okouai/core/frameworks";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -793,14 +797,29 @@ interface RunnerAttribution {
 
 function RunnerAttributionGrid({
   runner,
+  framework,
   missing,
 }: {
   readonly runner: RunnerAttribution | null;
+  readonly framework: string | null;
   readonly missing: string;
 }) {
   const { t } = useTranslation();
+  const frameworkDisplayName =
+    framework !== null && isSupportedFramework(framework)
+      ? getFrameworkDisplayName(framework)
+      : framework;
   return (
-    <dl className="grid grid-cols-1 overflow-hidden rounded-lg border bg-card sm:grid-cols-2 lg:grid-cols-4">
+    <dl className="grid grid-cols-1 overflow-hidden rounded-lg border bg-card sm:grid-cols-2 lg:grid-cols-5">
+      <RunnerAttributionCell
+        label={t(($) => {
+          return $.activity.detail.runner.framework;
+        })}
+        value={frameworkDisplayName}
+        missing={t(($) => {
+          return $.activity.detail.runner.unavailable;
+        })}
+      />
       <RunnerAttributionCell
         label={t(($) => {
           return $.activity.detail.runner.hostname;
@@ -833,7 +852,7 @@ function RunnerAttributionGrid({
   );
 }
 
-function ActivityRunnerTab({ detailId }: { detailId: string }) {
+function ActivityRunnerTab({ detail }: { detail: LogDetail }) {
   const { t } = useTranslation();
   const runnerLoadable = useLastLoadable(activityRunner$);
 
@@ -841,7 +860,7 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
     runnerLoadable.state === "loading" ||
     runnerLoadable.state === "hasError" ||
     (runnerLoadable.state === "hasData" &&
-      runnerLoadable.data?.runId !== detailId)
+      runnerLoadable.data?.runId !== detail.id)
   ) {
     return (
       <div className="flex flex-col gap-2 py-4">
@@ -975,7 +994,11 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      <RunnerAttributionGrid runner={runner} missing={missing} />
+      <RunnerAttributionGrid
+        runner={runner}
+        framework={detail.framework}
+        missing={missing}
+      />
       <section>
         <SectionHeader
           title={t(($) => {
@@ -1080,7 +1103,7 @@ function ActivityTabContent({
     return <ActivityContextTab detail={detail} />;
   }
   if (activeTab === "runner") {
-    return <ActivityRunnerTab detailId={detail.id} />;
+    return <ActivityRunnerTab detail={detail} />;
   }
   return <ActivityNetworkTab detailId={detail.id} />;
 }

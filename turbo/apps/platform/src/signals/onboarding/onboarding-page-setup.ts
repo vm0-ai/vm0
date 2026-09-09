@@ -1,10 +1,8 @@
 import { command, type Command } from "ccstate";
 import { createElement, type ComponentType } from "react";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-} from "../../lib/platform-template-items.ts";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 import {
   CUSTOM_WORKFLOW_ID,
   hasOnboardingWorkflow,

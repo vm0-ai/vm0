@@ -17,9 +17,12 @@ async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution
     let calls = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    assert_eq!(calls.blank_park_call_count(), 1);
     assert_eq!(calls.workspace_drive_mount_calls(), 1);
     let create_configs = calls.create_configs();
     assert_eq!(create_configs.len(), 1);

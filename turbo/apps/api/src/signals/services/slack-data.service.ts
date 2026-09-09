@@ -1,5 +1,4 @@
 import { computed, type Computed } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -8,7 +7,6 @@ import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
-import { listConversations } from "../../lib/slack-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import type { ApiOrgRole } from "../../types/auth";
 import { userFeatureSwitchContext } from "./feature-switches.service";
@@ -21,6 +19,7 @@ export const SLACK_BOT_SCOPES: readonly string[] = [
   "groups:read",
   "groups:history",
   "im:history",
+  "im:read",
   "im:write",
   "commands",
   "users:read",
@@ -47,7 +46,6 @@ function buildSlackInstallUrl(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly reinstall: boolean;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
@@ -66,7 +64,6 @@ function buildSlackConnectUrl(args: {
   readonly apiOrigin: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
@@ -95,7 +92,6 @@ export function slackOrgStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole?: ApiOrgRole;
-  readonly publicBrand: PublicBrand;
 }): Computed<Promise<SlackOrgStatusResult>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -142,7 +138,6 @@ export function slackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: true,
-            publicBrand: args.publicBrand,
           })
         : null;
       return { scopeMismatch, reinstallUrl };
@@ -155,7 +150,6 @@ export function slackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: false,
-            publicBrand: args.publicBrand,
           })
         : null;
       return {
@@ -191,7 +185,6 @@ export function slackOrgStatus(args: {
         apiOrigin: args.apiOrigin,
         orgId: args.orgId,
         userId: args.userId,
-        publicBrand: args.publicBrand,
       });
 
       return {
@@ -259,22 +252,60 @@ export function slackOrgInstallation(args: {
   });
 }
 
-interface SlackChannel {
-  readonly id: string;
-  readonly name: string;
-}
-
-export function slackChannels(args: {
+export function slackUserInstallation(args: {
   readonly orgId: string;
-  readonly userId?: string;
-}): Computed<Promise<readonly SlackChannel[] | null>> {
+  readonly userId: string;
+}): Computed<
+  Promise<
+    | {
+        readonly kind: "connected";
+        readonly workspaceId: string;
+        readonly botToken: string;
+        readonly workspaceName: string | null;
+        readonly slackUserId: string;
+      }
+    | { readonly kind: "not-installed" }
+    | { readonly kind: "not-connected" }
+  >
+> {
   return computed(async (get) => {
-    const installation = await get(slackOrgInstallation(args));
+    const db = get(db$);
+    const [installation] = await db
+      .select()
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.orgId, args.orgId))
+      .limit(1);
     if (!installation) {
-      return null;
+      return { kind: "not-installed" } as const;
     }
 
-    const channels = await listConversations(installation.botToken);
-    return channels;
+    const [connection] = await db
+      .select({ slackUserId: slackOrgConnections.slackUserId })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.userId, args.userId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        ),
+      )
+      .limit(1);
+    if (!connection) {
+      return { kind: "not-connected" } as const;
+    }
+
+    const botToken = await decryptPersistentSecretValue(
+      installation.encryptedBotToken,
+      await get(userFeatureSwitchContext(args.orgId, args.userId)),
+    );
+    return {
+      kind: "connected",
+      workspaceId: installation.slackWorkspaceId,
+      botToken,
+      workspaceName: installation.slackWorkspaceName ?? null,
+      slackUserId: connection.slackUserId,
+    } as const;
   });
 }

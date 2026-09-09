@@ -402,6 +402,7 @@ describe("GET /api/integrations/slack", () => {
       "groups:read",
       "groups:history",
       "im:history",
+      "im:read",
       "im:write",
       "commands",
       "users:read",

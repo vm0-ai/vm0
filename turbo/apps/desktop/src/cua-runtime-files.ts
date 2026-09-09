@@ -3,6 +3,7 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import artifacts from "../cua/artifacts.json";
+import type { CuaProcessOwner } from "./cua-process-owner";
 import type {
   CuaDriver,
   EmbeddedCuaDriverHost,
@@ -12,6 +13,7 @@ import type {
 } from "@trycua/cua-driver";
 
 export interface CuaSdk {
+  readonly processOwner?: Pick<CuaProcessOwner, "retire">;
   readonly standardPermissionMode: EmbeddedPermissionMode;
   readonly stoppedState: EmbeddedDriverHostState;
   createHost(
@@ -34,6 +36,10 @@ export interface CuaSdk {
 }
 
 let sdkLoadAttempted = false;
+
+export function recordCuaLaunch(): void {
+  sdkLoadAttempted = true;
+}
 
 export function assertCuaDormant(): void {
   if (sdkLoadAttempted)
@@ -85,7 +91,7 @@ export async function loadPackagedCuaSdk(runtimeRoot: string) {
 
   process.env.CUA_DRIVER_RS_TELEMETRY_ENABLED = "0";
   process.env.CUA_TELEMETRY_ENABLED = "0";
-  // Keep import() native in the CJS main bundle: CUA is ESM and resolves its
+  // Keep import() native in the isolated CJS helper: CUA is ESM and resolves its
   // own .node/dylib through package-relative paths outside root node_modules.
   const sdk: typeof import("@trycua/cua-driver") = await import(
     pathToFileURL(

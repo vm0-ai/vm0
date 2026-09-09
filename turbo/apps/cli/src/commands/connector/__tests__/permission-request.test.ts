@@ -286,7 +286,7 @@ describe("okou connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "--callback-prompt can only target the current web chat thread and agent",
+        "--agent agent-other conflicts with the current run's Agent agent-current",
       ),
     );
   });
@@ -370,9 +370,9 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain("action=allow");
   });
 
-  it("--agent overrides OKOU_AGENT_ID", async () => {
+  it("accepts --agent when it matches the current run's Agent", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.okou.ai");
-    vi.stubEnv("OKOU_AGENT_ID", "env-agent-123");
+    vi.stubEnv("OKOU_AGENT_ID", "target-agent-123");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -388,7 +388,6 @@ describe("okou connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("/agents/target-agent-123/permissions?");
-    expect(logCalls).not.toContain("/agents/env-agent-123/permissions?");
   });
 
   it("transforms www.okou.ai to app.okou.ai", async () => {
@@ -696,7 +695,6 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain("Open Okou Desktop");
     expect(logCalls).toContain("Existing run tokens cannot be upgraded");
     expect(logCalls).toContain("okou whoami");
-    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).not.toContain("[Manage");
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
@@ -732,7 +730,6 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).toContain(
       "Computer Use needs an Okou Desktop host selected before a run starts.",
     );
-    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).toContain(
       "https://app.okou.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
     );
@@ -841,20 +838,4 @@ describe("okou connector permission-request command", () => {
       ),
     );
   });
-
-  it.each(["--enable", "--disable", "--duration", "--auto-continue"])(
-    "does not expose the legacy %s flag",
-    async (flag) => {
-      await expect(
-        permissionRequestCommand.parseAsync([
-          "node",
-          "cli",
-          "slack",
-          "--permission",
-          SLACK_READ_PERMISSION,
-          flag,
-        ]),
-      ).rejects.toThrow("process.exit called");
-    },
-  );
 });

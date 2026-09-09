@@ -43,3 +43,38 @@ for (const helperName of helperNames) {
     stdio: "inherit",
   });
 }
+
+const supervisorRoot = path.join(appRoot, "native", "cua-supervisor");
+const nodeInclude = path.resolve(
+  path.dirname(process.execPath),
+  "..",
+  "include",
+  "node",
+);
+for (const [source, output, flags] of [
+  ["guardian.c", "cua-guardian", []],
+  [
+    "owner.c",
+    "cua-owner.node",
+    ["-bundle", "-undefined", "dynamic_lookup", `-I${nodeInclude}`],
+  ],
+]) {
+  execFileSync(
+    "cc",
+    [
+      "-std=c11",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-arch",
+      "arm64",
+      "-mmacosx-version-min=14.0",
+      ...flags,
+      path.join(supervisorRoot, source),
+      "-o",
+      path.join(distDir, output),
+    ],
+    { stdio: "inherit" },
+  );
+}

@@ -15,6 +15,7 @@ import { Command, InvalidArgumentError } from "commander";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { generateWebImage } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { generatedImageAsset } from "../shared/generated-image-asset";
 
 const MAX_CONCURRENCY = 3;
 const DEFAULT_SIZE = "816x816";
@@ -116,7 +117,7 @@ function shouldRetry(error: unknown): boolean {
   );
 }
 
-async function generateOne(job: ImageBatchJob): Promise<string> {
+async function generateOne(job: ImageBatchJob) {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const result = await generateWebImage({
@@ -130,7 +131,7 @@ async function generateOne(job: ImageBatchJob): Promise<string> {
         safetyTolerance: "4",
         imageUrls: [],
       });
-      return result.embedUrl ?? result.url;
+      return result;
     } catch (error) {
       if (attempt === 2 || !shouldRetry(error)) throw error;
       console.log(`Retrying image batch job ${job.id} once`);
@@ -170,7 +171,12 @@ async function runBatch(
         throw new Error(`Image batch job ${index} is missing`);
       }
       try {
-        results[index] = await generateOne(job);
+        const result = await generateOne(job);
+        results[index] = await generatedImageAsset(
+          result,
+          job.id,
+          stateDirectory,
+        );
       } catch (error) {
         failures.push(`${job.id}: ${errorMessage(error)}`);
       }
@@ -368,5 +374,5 @@ export const imageBatchCommand = new Command("image-batch")
   .addCommand(runCommand, { hidden: true })
   .addHelpText(
     "after",
-    `\nManifest format:\n  asset-id<TAB>raw prompt[<TAB>size]\n  Size is optional per image and defaults to ${DEFAULT_SIZE}; the image API validates it.\n\nResult format:\n  asset-id<TAB>image URL\n\nExamples:\n  okou generate image-batch start images.tsv .image-batch\n  okou generate image-batch wait .image-batch`,
+    `\nManifest format:\n  asset-id<TAB>raw prompt[<TAB>size]\n  Size is optional per image and defaults to ${DEFAULT_SIZE}; the image API validates it.\n\nResult format:\n  asset-id<TAB>image URL or relative asset path\n  Private images are downloaded to <state-dir>/assets/ and optimized as WebP without resizing. Requires ffmpeg with libwebp on PATH. Resolve relative paths against <state-dir>, then copy assets into the authored bundle. Never embed preview signatures in HTML.\n\nExamples:\n  okou generate image-batch start images.tsv .image-batch\n  okou generate image-batch wait .image-batch`,
   );
