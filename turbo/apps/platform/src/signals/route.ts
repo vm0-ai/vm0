@@ -5,7 +5,6 @@ import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { hash, pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
-import { setupAttachmentUrlRefresh$ } from "./attachment-resource-url.ts";
 import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
@@ -343,7 +342,6 @@ export const setupPageWrapper = (
 ) => {
   return command(async ({ set }, signal: AbortSignal) => {
     set(setPageSignal$, signal);
-    set(setupAttachmentUrlRefresh$, signal);
     await set(fn, signal);
   });
 };

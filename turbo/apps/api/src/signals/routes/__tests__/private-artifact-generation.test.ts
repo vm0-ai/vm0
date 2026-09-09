@@ -357,10 +357,11 @@ describe("managed artifact privacy", () => {
         expect(preview.body).toStrictEqual({
           url: signedReference,
           publicUrl: null,
+          expiresAt: expect.any(String),
         });
         expect(
           context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[2],
-        ).toMatchObject({ expiresIn: 900 });
+        ).toMatchObject({ expiresIn: 172_800 });
         const downloaded = await accept(
           fixture
             .api(webFilesContract)

@@ -5730,6 +5730,7 @@ function MessageAttachment({
   if (a.kind === "video") {
     return (
       <ChatVideoPreviewButton
+        display={a.signals.display}
         posterLoad={a.signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
