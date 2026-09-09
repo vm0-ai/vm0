@@ -27,6 +27,10 @@ import {
   openSshDialog$,
   closeSshDialog$,
   saveSsh$,
+  cancelSshPrivateKeyFile$,
+  importSshPrivateKeyFile$,
+  mountSshPrivateKey$,
+  sshPrivateKeyFileResult$,
 } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -103,6 +107,11 @@ function EndpointFields({
 
 function CredentialFields() {
   const { t } = useTranslation();
+  const importFile = useSet(importSshPrivateKeyFile$);
+  const cancelRead = useSet(cancelSshPrivateKeyFile$);
+  const mountPrivateKey = useSet(mountSshPrivateKey$);
+  const result = useLoadable(sshPrivateKeyFileResult$);
+  const signal = useGet(pageSignal$);
   return (
     <>
       <p className="text-sm text-muted-foreground">
@@ -110,18 +119,76 @@ function CredentialFields() {
           return $.ssh.credentialsHelp;
         })}
       </p>
-      <label className="grid gap-2">
-        {t(($) => {
-          return $.ssh.privateKey;
-        })}
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="ssh-private-key">
+            {t(($) => {
+              return $.ssh.privateKey;
+            })}
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={(event) => {
+              const input = event.currentTarget
+                .closest("form")
+                ?.elements.namedItem("ssh-private-key-file");
+              if (!(input instanceof HTMLInputElement)) {
+                throw new Error(
+                  "SSH credential form is missing its file input",
+                );
+              }
+              input.click();
+            }}
+          >
+            {t(($) => {
+              return $.ssh.chooseFile;
+            })}
+          </Button>
+        </div>
+        <input
+          id="ssh-private-key-file"
+          type="file"
+          className="hidden"
+          aria-label={t(($) => {
+            return $.ssh.choosePrivateKeyFile;
+          })}
+          onChange={(event) => {
+            detach(importFile(event.currentTarget, signal), Reason.DomCallback);
+          }}
+        />
         <Textarea
+          id="ssh-private-key"
+          ref={mountPrivateKey}
           name="privateKey"
           required
           maxLength={SSH_PRIVATE_KEY_MAX_LENGTH}
           autoComplete="off"
           spellCheck={false}
+          onInput={() => {
+            cancelRead();
+          }}
         />
-      </label>
+        {result.state === "loading" && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t(($) => {
+              return $.ssh.fileReading;
+            })}
+          </p>
+        )}
+        {result.state === "hasData" && result.data !== null && (
+          <p role="alert" className="text-sm text-destructive">
+            {result.data === "size"
+              ? t(($) => {
+                  return $.ssh.fileSizeError;
+                })
+              : t(($) => {
+                  return $.ssh.fileReadError;
+                })}
+          </p>
+        )}
+      </div>
       <label className="grid gap-2">
         {t(($) => {
           return $.ssh.passphrase;
@@ -143,6 +210,8 @@ function SshDialog() {
   const close = useSet(closeSshDialog$);
   const [saving, save] = useLoadableSet(saveSsh$);
   const signal = useGet(pageSignal$);
+  const cancelRead = useSet(cancelSshPrivateKeyFile$);
+  const fileResult = useLoadable(sshPrivateKeyFileResult$);
   const dialog = data.state === "hasData" ? data.data : null;
   if (!dialog) {
     return null;
@@ -203,6 +272,9 @@ function SshDialog() {
         <form
           className="grid gap-4"
           autoComplete="off"
+          onReset={() => {
+            cancelRead();
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             const form = event.currentTarget;
@@ -233,7 +305,7 @@ function SshDialog() {
             </Button>
             <Button
               type="submit"
-              disabled={saving.state === "loading"}
+              disabled={[saving.state, fileResult.state].includes("loading")}
               variant={
                 dialog.kind === "delete" || dialog.kind === "reset"
                   ? "destructive"

@@ -12,7 +12,8 @@ import {
 } from "@okouai/api-contracts/contracts/ssh-connections";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import { expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { expect, test, vi } from "vitest";
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -168,66 +169,193 @@ test("Allows adding a host when more than 64 hosts are configured", async () => 
   expect(screen.getByText("Additional host")).toBeInTheDocument();
 });
 
-test("Create a configured host with write-only credentials, then edit without replacing them", async () => {
-  let hosts: SshConnectionResponse[] = [];
-  const requests: unknown[] = [];
-  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
-    return respond(200, { connections: hosts });
-  });
-  context.mocks.api(sshConnectionsContract.create, ({ body, respond }) => {
-    requests.push(body);
-    hosts = [base];
-    return respond(201, base);
-  });
-  context.mocks.api(sshConnectionsContract.update, ({ body, respond }) => {
-    requests.push(body);
-    hosts = [{ ...base, displayName: "Renamed", generation: 2 }];
-    return respond(200, hosts[0]!);
-  });
-  await page();
-  await screen.findByText(
-    "No SSH hosts configured. Add a host to make it available to Agents with SSH access.",
-  );
-  click(getAction("button", "Add host"));
-  const dialog = await screen.findByRole("dialog");
-  await fill(within(dialog).getByLabelText("Display name"), "Deployment");
-  await fill(
-    within(dialog).getByLabelText("Public hostname or IP address"),
-    "ssh.example.com",
-  );
-  await fill(within(dialog).getByLabelText("SSH username"), "deploy");
-  await fill(within(dialog).getByLabelText("Private key"), " key-canary\n");
-  await fill(
-    within(dialog).getByLabelText("Passphrase (optional)"),
-    " passphrase-canary ",
-  );
-  click(getAction("button", "Save", dialog));
-  await screen.findByText("Configured · connectivity not tested");
-  expect(requests).toStrictEqual([
-    {
-      displayName: "Deployment",
+test.each(["paste", "file"])(
+  "Create with %s credentials, then edit without replacing them",
+  async (source) => {
+    let hosts: SshConnectionResponse[] = [];
+    const requests: unknown[] = [];
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: hosts });
+    });
+    context.mocks.api(sshConnectionsContract.create, ({ body, respond }) => {
+      requests.push(body);
+      hosts = [base];
+      return respond(201, base);
+    });
+    context.mocks.api(sshConnectionsContract.update, ({ body, respond }) => {
+      requests.push(body);
+      hosts = [{ ...base, displayName: "Renamed", generation: 2 }];
+      return respond(200, hosts[0]!);
+    });
+    await page();
+    await screen.findByText(
+      "No SSH hosts configured. Add a host to make it available to Agents with SSH access.",
+    );
+    click(getAction("button", "Add host"));
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Display name"), "Deployment");
+    await fill(
+      within(dialog).getByLabelText("Public hostname or IP address"),
+      "ssh.example.com",
+    );
+    await fill(within(dialog).getByLabelText("SSH username"), "deploy");
+    if (source === "file") {
+      await userEvent.upload(
+        within(dialog).getByLabelText("Choose private key file"),
+        new File([" key-canary\n"], "id_ed25519"),
+      );
+    } else {
+      await fill(within(dialog).getByLabelText("Private key"), " key-canary\n");
+    }
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText("Private key")).toHaveValue(
+        " key-canary\n",
+      );
+    });
+    await fill(
+      within(dialog).getByLabelText("Passphrase (optional)"),
+      " passphrase-canary ",
+    );
+    click(getAction("button", "Save", dialog));
+    await screen.findByText("Configured · connectivity not tested");
+    expect(requests).toStrictEqual([
+      {
+        displayName: "Deployment",
+        host: "ssh.example.com",
+        port: 22,
+        username: "deploy",
+        privateKey: " key-canary\n",
+        passphrase: " passphrase-canary ",
+      },
+    ]);
+    expect(document.body.textContent).not.toContain("canary");
+    click(getAction("button", "Edit host"));
+    const edit = await screen.findByRole("dialog");
+    expect(
+      within(edit).queryByLabelText("Private key"),
+    ).not.toBeInTheDocument();
+    await fill(within(edit).getByLabelText("Display name"), "Renamed");
+    click(getAction("button", "Save", edit));
+    await screen.findByText("Renamed");
+    expect(requests[1]).toStrictEqual({
+      displayName: "Renamed",
       host: "ssh.example.com",
       port: 22,
       username: "deploy",
-      privateKey: " key-canary\n",
-      passphrase: " passphrase-canary ",
-    },
-  ]);
-  expect(document.body.textContent).not.toContain("canary");
-  click(getAction("button", "Edit host"));
-  const edit = await screen.findByRole("dialog");
-  expect(within(edit).queryByLabelText("Private key")).not.toBeInTheDocument();
-  await fill(within(edit).getByLabelText("Display name"), "Renamed");
-  click(getAction("button", "Save", edit));
-  await screen.findByText("Renamed");
-  expect(requests[1]).toStrictEqual({
-    displayName: "Renamed",
-    host: "ssh.example.com",
-    port: 22,
-    username: "deploy",
-    expectedGeneration: 1,
-  });
-});
+      expectedGeneration: 1,
+    });
+  },
+);
+
+test.each(["empty", "oversized", "unreadable"])(
+  "A %s key file shows a recoverable error without submitting credentials",
+  async (kind) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [] });
+    });
+    const file = new File(
+      [
+        kind === "empty"
+          ? ""
+          : kind === "oversized"
+            ? "x".repeat(65_537)
+            : "file-canary",
+      ],
+      "id_rsa",
+    );
+    if (kind === "unreadable") {
+      vi.spyOn(file, "text").mockRejectedValue(
+        new DOMException("file-read-canary", "NotReadableError"),
+      );
+    }
+    await page();
+    await screen.findByText("0 hosts configured");
+    click(getAction("button", "Add host"));
+    const dialog = await screen.findByRole("dialog");
+    const input = within(dialog).getByLabelText("Choose private key file");
+    const key = within(dialog).getByLabelText("Private key");
+    await fill(key, "previous-key");
+    await userEvent.upload(input, file);
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(
+      kind === "unreadable"
+        ? "Could not read this file. Choose it again or paste the private key."
+        : "Choose a non-empty private key file no larger than 64 KiB.",
+    );
+    expect(key).toHaveValue("");
+    expect(key).toBeInvalid();
+    expect(document.body.textContent).not.toContain("canary");
+    await fill(key, "pasted-key");
+    await waitFor(() => {
+      expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(key).toHaveValue("pasted-key");
+    const replacement = new File(["  replacement-key\n"], "key.pem");
+    await userEvent.upload(input, replacement);
+    await waitFor(() => {
+      expect(key).toHaveValue("  replacement-key\n");
+    });
+    await fill(key, "edited-key");
+    await userEvent.upload(input, replacement);
+    await waitFor(() => {
+      expect(key).toHaveValue("  replacement-key\n");
+    });
+  },
+);
+
+test.each(["another file", "manual input", "close"])(
+  "A pending file read cannot overwrite %s",
+  async (action) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [] });
+    });
+    const pending = context.mocks.deferred<string>();
+    const file = new File(["delayed-key"], "id_ed25519");
+    vi.spyOn(file, "text").mockReturnValue(pending.promise);
+    await page();
+    await screen.findByText("0 hosts configured");
+    click(getAction("button", "Add host"));
+    let dialog = await screen.findByRole("dialog");
+    const originalKey = within(dialog).getByLabelText("Private key");
+    await userEvent.upload(
+      within(dialog).getByLabelText("Choose private key file"),
+      file,
+    );
+    await within(dialog).findByText("Reading private key file…");
+    expect(getAction("button", "Save", dialog)).toBeDisabled();
+    if (action === "close") {
+      click(getAction("button", "Cancel", dialog));
+    }
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog") !== null).toBe(action !== "close");
+    });
+    expect(originalKey).toHaveValue("");
+    if (action === "close") {
+      click(getAction("button", "Add host"));
+      dialog = await screen.findByRole("dialog");
+    }
+    expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
+    if (action === "another file") {
+      await userEvent.upload(
+        within(dialog).getByLabelText("Choose private key file"),
+        new File(["current-key"], "id_rsa"),
+      );
+    } else {
+      await fill(within(dialog).getByLabelText("Private key"), "current-key");
+    }
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText("Private key")).toHaveValue(
+        "current-key",
+      );
+      expect(getAction("button", "Save", dialog)).toBeEnabled();
+    });
+    pending.resolve("obsolete-key");
+    await pending.promise;
+    expect(within(dialog).getByLabelText("Private key")).toHaveValue(
+      "current-key",
+    );
+  },
+);
 
 test.each(["Display name", "Public hostname or IP address", "SSH username"])(
   "Whitespace-only %s is rejected visibly before submission and can be corrected",
@@ -298,7 +426,15 @@ test("Credential replacement is explicit and fields clear before the request fin
   click(getAction("button", "Replace credentials"));
   dialog = await screen.findByRole("dialog");
   expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
-  await fill(within(dialog).getByLabelText("Private key"), " new-key\n");
+  await userEvent.upload(
+    within(dialog).getByLabelText("Choose private key file"),
+    new File([" new-key\n"], "encrypted-key.pem"),
+  );
+  await waitFor(() => {
+    expect(within(dialog).getByLabelText("Private key")).toHaveValue(
+      " new-key\n",
+    );
+  });
   click(getAction("button", "Save", dialog));
   await waitFor(() => {
     return expect(requests).toStrictEqual([

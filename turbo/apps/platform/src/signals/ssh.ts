@@ -6,6 +6,7 @@ import {
   type SshConnectionResponse,
   createSshConnectionRequestSchema,
   updateSshConnectionRequestSchema,
+  SSH_PRIVATE_KEY_MAX_LENGTH,
 } from "@okouai/api-contracts/contracts/ssh-connections";
 import { clerk$, currentOrgInfo$, currentUserInfo$ } from "./auth.ts";
 import { readClerkToken } from "./clerk-token.ts";
@@ -13,6 +14,85 @@ import { featureSwitch$ } from "./external/feature-switch.ts";
 import { apiClient$ } from "./api-client.ts";
 import { currentAgent$ } from "./agent.ts";
 import { accept } from "../lib/accept.ts";
+import {
+  createDeferredPromise,
+  onRef,
+  resetSignal,
+  settle,
+  withCleanup,
+} from "./utils.ts";
+
+type PrivateKeyFileError = "size" | "read";
+const privateKeyFileRead$ = state<Promise<PrivateKeyFileError | null> | null>(
+  null,
+);
+const resetPrivateKeyRead$ = resetSignal();
+export const sshPrivateKeyFileResult$ = computed(async (get) => {
+  return await get(privateKeyFileRead$);
+});
+export const cancelSshPrivateKeyFile$ = command(({ set }) => {
+  set(resetPrivateKeyRead$);
+  set(privateKeyFileRead$, null);
+});
+export const mountSshPrivateKey$ = onRef(
+  command(({ set }, input: HTMLTextAreaElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      input.value = "";
+      set(cancelSshPrivateKeyFile$);
+    });
+  }),
+);
+
+const readPrivateKeyFile$ = command(
+  async (
+    { set },
+    input: HTMLInputElement,
+    parentSignal: AbortSignal,
+  ): Promise<PrivateKeyFileError | null> => {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) {
+      return null;
+    }
+    set(cancelSshPrivateKeyFile$);
+    const signal = set(resetPrivateKeyRead$, parentSignal);
+    signal.throwIfAborted();
+    const privateKey = input.form?.elements.namedItem("privateKey");
+    if (!(privateKey instanceof HTMLTextAreaElement)) {
+      throw new Error("SSH credential form is missing its private key field");
+    }
+    privateKey.value = "";
+    if (file.size === 0 || file.size > SSH_PRIVATE_KEY_MAX_LENGTH) {
+      return "size";
+    }
+    const aborted = createDeferredPromise<never>(signal);
+    const result = await withCleanup(
+      settle(Promise.race([file.text(), aborted.promise]), signal),
+      () => {
+        if (!aborted.settled()) {
+          aborted.reject(new DOMException("File read finished", "AbortError"));
+        }
+      },
+    );
+    signal.throwIfAborted();
+    if (!result.ok) {
+      return "read";
+    }
+    if (result.value.length === 0) {
+      return "size";
+    }
+    privateKey.value = result.value;
+    return null;
+  },
+);
+export const importSshPrivateKeyFile$ = command(
+  ({ set }, input: HTMLInputElement, signal: AbortSignal) => {
+    // Persist only the non-secret outcome, never the File or decoded key.
+    const result = set(readPrivateKeyFile$, input, signal);
+    set(privateKeyFileRead$, result);
+    return result;
+  },
+);
 
 const sshIdentity$ = computed(async (get) => {
   const enabled = get(featureSwitch$)[FeatureSwitchKey.SshAccess];
@@ -92,9 +172,11 @@ export const sshSummary$ = computed(async (get) => {
   return result.status === 200 ? result.body : null;
 });
 export const closeSshDialog$ = command(({ set }) => {
+  set(cancelSshPrivateKeyFile$);
   return set(dialog$, null);
 });
 export const refreshSsh$ = command(({ set }) => {
+  set(cancelSshPrivateKeyFile$);
   set(dialog$, null);
   set(conflict$, false);
   set(reload$, (value) => {
@@ -114,6 +196,7 @@ export const openSshDialog$ = command(
       return;
     }
     set(conflict$, false);
+    set(cancelSshPrivateKeyFile$);
     set(dialog$, { identity, kind, connection });
   },
 );

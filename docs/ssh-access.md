@@ -25,7 +25,10 @@ breadcrumb to return to the directory. Host management remains independent of
 Agent grants.
 
 Supply a display name, public hostname or IP, port, SSH username, and
-private key with an optional passphrase. Credentials are write-only and stay
+private key with an optional passphrase. Paste the key or use **Choose file** in
+Add host or Replace credentials to read a non-empty key file up to 64 KiB locally.
+File selection does not upload anything; Save submits the existing credential
+request. The browser does not parse the key format. Credentials are write-only and stay
 outside the sandbox. Preserve complete key material, including whitespace.
 Use a least-privilege remote SSH user for the Agent's intended work.
 The form clears credentials on submission, close and navigation; unsuccessful
