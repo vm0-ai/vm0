@@ -403,12 +403,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
-  [FeatureSwitchKey.BuiltInWelcomeThread]: {
+  [FeatureSwitchKey.OnboardingChat]: {
     maintainer: "ming@okou.ai",
     description:
-      "Show a built-in welcome chat that introduces Okou through native rich-text deliverables and team collaboration education.",
+      "Show the built-in onboarding chat with Artifact examples and team collaboration guidance.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",

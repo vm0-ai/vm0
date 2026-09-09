@@ -47,7 +47,7 @@ describe("built-in welcome thread", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.BuiltInWelcomeThread]: true,
+        [FeatureSwitchKey.OnboardingChat]: true,
       },
     });
 
@@ -183,7 +183,7 @@ describe("built-in welcome thread", () => {
       context,
       path: "/chats/welcome",
       featureSwitches: {
-        [FeatureSwitchKey.BuiltInWelcomeThread]: false,
+        [FeatureSwitchKey.OnboardingChat]: false,
       },
     });
 

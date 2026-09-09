@@ -1030,8 +1030,7 @@ function ResolvedAgentChatThreadsContent({
   const unreadOnly = useGet(chatThreadOnlyUnread$);
   const featureSwitches = useGet(featureSwitch$);
   const showBuiltInWelcomeThread =
-    !unreadOnly &&
-    (featureSwitches[FeatureSwitchKey.BuiltInWelcomeThread] ?? false);
+    !unreadOnly && (featureSwitches[FeatureSwitchKey.OnboardingChat] ?? false);
   const scrollCurrentChatThreadOnRef = useSet(
     scrollSignals.scrollCurrentChatThreadOnRef$,
   );

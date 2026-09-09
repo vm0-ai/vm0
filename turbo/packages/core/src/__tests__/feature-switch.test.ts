@@ -29,6 +29,7 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
       "progressiveArtifactPreview",
     );
+    expect(FeatureSwitchKey.OnboardingChat).toBe("onboarding-chat");
   });
 });
 
@@ -191,7 +192,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.BuiltInWelcomeThread]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.OnboardingChat]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatPreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
@@ -218,7 +219,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.BuiltInWelcomeThread]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.OnboardingChat]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatPreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
@@ -260,6 +261,20 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(otherStaffStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
+  });
+
+  it("should enable onboarding chat for Ming only", () => {
+    const mingStates = getAllFeatureStates({
+      email: "MING@VM0.AI",
+      orgId: "org_nonexistent",
+    });
+    expect(mingStates[FeatureSwitchKey.OnboardingChat]).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.OnboardingChat]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

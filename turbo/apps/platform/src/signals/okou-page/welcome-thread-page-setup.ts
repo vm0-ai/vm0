@@ -25,7 +25,7 @@ import {
 
 export const setupWelcomeThreadPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!get(featureSwitch$)[FeatureSwitchKey.BuiltInWelcomeThread]) {
+    if (!get(featureSwitch$)[FeatureSwitchKey.OnboardingChat]) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
       return;
     }

@@ -56,7 +56,7 @@ export enum FeatureSwitchKey {
   AgentMessageMath = "agentMessageMath",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
-  BuiltInWelcomeThread = "builtInWelcomeThread",
+  OnboardingChat = "onboarding-chat",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   StableChatThreadNavigation = "stableChatThreadNavigation",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
