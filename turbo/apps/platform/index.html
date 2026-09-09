@@ -136,14 +136,6 @@
             }
           }
         } catch (_) {}
-        if (!p) {
-          try {
-            var saved = localStorage.getItem("theme");
-            if (saved === "light" || saved === "dark" || saved === "system") {
-              p = saved;
-            }
-          } catch (_) {}
-        }
         if (!p) p = "system";
         var t =
           p === "dark" || p === "light"

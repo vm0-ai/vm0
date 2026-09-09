@@ -1,4 +1,3 @@
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
@@ -127,48 +126,6 @@ test("Touch passages keep native selection and quote actions by default", async 
   expect(
     screen.queryByLabelText("Adjust selection start"),
   ).not.toBeInTheDocument();
-  await quoteSelectedPassage();
-  expect(feedbackItems()[0]).toHaveTextContent("launch plan");
-});
-
-test("Disabling touch selection removes an active selection and restores native actions", async () => {
-  mockTouchLayout(PASSAGE);
-  installCapabilityChat({ events: completedConversation(PASSAGE) });
-  const releaseFeatures = context.mocks.deferred<void>();
-  context.mocks.api(
-    featureSwitchesContract.get,
-    async ({ respond, withSignal }) => {
-      await withSignal(releaseFeatures.promise);
-      return respond(200, {
-        switches: { [FeatureSwitchKey.ChatTouchSelection]: false },
-        effectiveSwitches: { [FeatureSwitchKey.ChatTouchSelection]: false },
-      });
-    },
-  );
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
-  });
-  await readyChat();
-  const passage = await screen.findByText(PASSAGE);
-
-  await longPress(passage, PASSAGE.indexOf("launch"));
-  expect(screen.getByLabelText("Adjust selection end")).toBeVisible();
-  expect(fireEvent.contextMenu(passage)).toBeFalsy();
-
-  releaseFeatures.resolve(undefined);
-  await waitFor(() => {
-    expect(
-      screen.queryByLabelText("Adjust selection end"),
-    ).not.toBeInTheDocument();
-  });
-
-  fireEvent.pointerDown(passage, touchAt(PASSAGE.indexOf("launch")));
-  expect(fireEvent.contextMenu(passage)).toBeTruthy();
-  await selectPassage("launch plan");
-  fireEvent.pointerUp(passage, touchAt(PASSAGE.indexOf(" has")));
-  expect(window.getSelection()?.toString()).toBe("launch plan");
   await quoteSelectedPassage();
   expect(feedbackItems()[0]).toHaveTextContent("launch plan");
 });

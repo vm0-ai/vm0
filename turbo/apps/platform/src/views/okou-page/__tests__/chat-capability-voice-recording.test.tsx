@@ -342,7 +342,6 @@ test("Restore audio when voice input v2 enables after the composer mounts", asyn
   await setupPage({
     context: secondContext,
     path: RUN_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.VoiceInputV2]: false },
   });
   await expect(findEnabledButton("Voice input")).resolves.not.toHaveAttribute(
     "aria-keyshortcuts",

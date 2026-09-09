@@ -20,6 +20,7 @@ import {
   search as locationSearch,
 } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setMockConnectorFeatureSwitches } from "../../../mocks/handlers/api-connectors.ts";
 import {
   getConnectorAction,
   getConnectorCard,
@@ -188,13 +189,15 @@ test("Update connector visibility when availability changes", async () => {
   await setupPage({
     context,
     path: "/connectors?keywords=mailchimp",
-    cachedFeatureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
   });
 
   await expect(
     screen.findByText(/No connectors matching/u),
   ).resolves.toBeInTheDocument();
 
+  setMockConnectorFeatureSwitches({
+    [FeatureSwitchKey.MailchimpConnector]: true,
+  });
   switchesReady.resolve();
 
   await waitFor(() => {

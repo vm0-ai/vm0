@@ -3,11 +3,7 @@ import {
   type ConnectorOauthCallbackResult,
 } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
-import {
-  publicConnectorCatalogIconSchema,
-  type PublicConnectorCatalogIcon,
-} from "@okouai/api-contracts/contracts/connector-catalog";
-import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/connectors/app-oauth-callback";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
@@ -19,11 +15,11 @@ import { ConnectorCallbackPage } from "../../views/okou-page/connector-callback-
 import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
+import { loadConnectorCatalogItem$ } from "../external/connectors.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$, replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { jsonParseOr, settle } from "../utils.ts";
+import { settle } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 import { connectorIconFromSearchParams } from "./connector-redirecting-page-setup.ts";
@@ -32,11 +28,6 @@ type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
   | ConnectorOauthCallbackResult;
 type ConnectorCallbackSlug = ConnectorSlug | "custom";
-
-const {
-  get$: connectorAppOauthCallbackMetadataRaw$,
-  clear$: clearConnectorAppOauthCallbackMetadata$,
-} = localStorageSignals(CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY);
 
 function connectorSlugFromPath(
   value: string | undefined,
@@ -88,36 +79,6 @@ function addConnectorIconSearchParams(
   if (icon.scale !== undefined) {
     searchParams.set("iconScale", String(icon.scale));
   }
-}
-
-function connectorIconFromStorage(
-  raw: string | null,
-  connectorSlug: ConnectorSlug | null,
-): PublicConnectorCatalogIcon | undefined {
-  if (!raw || !connectorSlug) {
-    return undefined;
-  }
-  const value = jsonParseOr<unknown>(raw, null);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("connectorSlug" in value) ||
-    !("icon" in value)
-  ) {
-    return undefined;
-  }
-  const parsedConnectorSlug = connectorSlugSchema.safeParse(
-    value.connectorSlug,
-  );
-  const parsedIcon = publicConnectorCatalogIconSchema.safeParse(value.icon);
-  if (
-    !parsedConnectorSlug.success ||
-    parsedConnectorSlug.data !== connectorSlug ||
-    !parsedIcon.success
-  ) {
-    return undefined;
-  }
-  return parsedIcon.data;
 }
 
 function resultFromPath(
@@ -213,12 +174,14 @@ export const setupConnectorCallbackPage$ = command(
       callbackConnectorSlug === "custom" ? null : callbackConnectorSlug;
     const label = connectorLabel(callbackConnectorSlug);
     const searchParams = get(searchParams$);
-    const storedConnectorIcon = connectorIconFromStorage(
-      get(connectorAppOauthCallbackMetadataRaw$),
-      connectorSlug,
-    );
-    const connectorIcon =
-      connectorIconFromSearchParams(searchParams) ?? storedConnectorIcon;
+    let connectorIcon = connectorIconFromSearchParams(searchParams);
+    if (!connectorIcon && connectorSlug) {
+      const catalogItem = await settle(
+        set(loadConnectorCatalogItem$, connectorSlug, signal),
+        signal,
+      );
+      connectorIcon = catalogItem.ok ? catalogItem.value?.icon : undefined;
+    }
     const pathResult = resultFromPath(
       typeof params?.status === "string" ? params.status : undefined,
       searchParams,
@@ -282,8 +245,5 @@ export const setupConnectorCallbackPage$ = command(
       { connectorSlug: callbackConnectorSlug, status: result.status },
       resultSearchParams,
     );
-    if (storedConnectorIcon) {
-      set(clearConnectorAppOauthCallbackMetadata$);
-    }
   },
 );

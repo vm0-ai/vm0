@@ -11,7 +11,6 @@ import {
   click,
   queryAllByRoleFast,
   setupPage,
-  startPage,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockNow, now } from "../../../lib/time.ts";
@@ -220,7 +219,6 @@ test("Authoritative switch activation replaces the legacy fallback in the mounte
   await setupPage({
     context,
     path: RUN_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
   });
   await expect(screen.findByText(LEGACY_FALLBACK)).resolves.toBeVisible();
   featureResponse.resolve(undefined);
@@ -695,59 +693,4 @@ test("A new app with an unavailable or malformed API retains a usable current-ru
   changeVisibility(visibility, "visible");
   await malformed.promise;
   expect(screen.getByText(PREPARATION)).toBeVisible();
-});
-
-test("Authoritative switch rollback aborts a request started from cached feature state", async () => {
-  context.mocks.browser.visibilityState("visible");
-  const events = installActiveRun();
-  const featureResponse = createDeferredPromise<void>(context.signal);
-  const summaryResponse = createDeferredPromise<void>(context.signal);
-  const started = createDeferredPromise<AbortSignal>(context.signal);
-  context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
-    await featureResponse.promise;
-    return respond(200, {
-      switches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
-      effectiveSwitches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
-    });
-  });
-  context.mocks.api(
-    chatThreadActivitySummaryContract.summarize,
-    async ({ signal, respond }) => {
-      started.resolve(signal);
-      await summaryResponse.promise;
-      return respond(200, summary());
-    },
-  );
-  const page = startPage({
-    context,
-    path: RUN_PATH,
-    cachedFeatureSwitches: featureSwitches,
-  });
-  const requestSignal = await started.promise;
-  await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
-  featureResponse.resolve(undefined);
-  await (
-    await page
-  ).ready;
-  await readyChat();
-  await expect(screen.findByText(LEGACY_FALLBACK)).resolves.toBeVisible();
-  expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
-  await waitFor(() => {
-    expect(requestSignal.aborted).toBeTruthy();
-  });
-  summaryResponse.resolve(undefined);
-  expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
-  events.push(
-    assistantEvent({
-      id: "after-switch-rollback",
-      runId: RUN_ID,
-      seqId: 2,
-      text: "The run continues with the original indicator.",
-    }),
-  );
-  publishRunUpdate();
-  await expect(
-    screen.findByText("The run continues with the original indicator."),
-  ).resolves.toBeVisible();
-  expect(screen.getByText(LEGACY_FALLBACK)).toBeVisible();
 });

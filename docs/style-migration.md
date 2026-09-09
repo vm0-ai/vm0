@@ -37,9 +37,9 @@ appearance, hover, keyboard focus, send mode, delayed saving, successful saving,
 and Escape dismissal. Authentication uses an isolated TEST account prepared
 through the existing preview onboarding flow after both deployment jobs finish
 (redeployment can reset the preview database). The runner uses its private
-Playwright storage state; it never archives that state. Theme cookie,
-localStorage, system color scheme and controlled preference responses agree
-before each page load.
+Playwright storage state; it never archives that state. The shared theme cookie,
+system color scheme, and controlled preference responses agree before each page
+load.
 
 Only the exact API origin's user-preferences endpoint is replaced with explicit
 deterministic responses. This verifies rendered states and client interaction,

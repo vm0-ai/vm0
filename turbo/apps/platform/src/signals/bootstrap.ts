@@ -573,7 +573,7 @@ const completeBootstrap$ = command(
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
-    set(initTheme$);
+    set(initTheme$, signal);
 
     render();
 
@@ -643,10 +643,9 @@ export const bootstrap$ = command(
     set(initBootstrapSkeleton$);
     set(setupLoggers$);
 
-    // The cached effective switches already drive the first rendered frame.
-    // Install capture from that same snapshot before bootstrap starts the
-    // authenticated services, so their initial Clerk and Ably waits are kept
-    // even while remote feature-switch hydration is still pending.
+    // Feature switches start from repository defaults until the API responds.
+    // Install diagnostics before authenticated services so an enabled default
+    // can capture their initial Clerk and Ably waits.
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",

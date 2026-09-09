@@ -189,13 +189,10 @@ describe("built-in welcome thread", () => {
     await closeArtifactPreview();
   });
 
-  it("uses the authoritative switch when a direct route has a stale disabled cache", async () => {
+  it("uses the authoritative switch when loading a direct route", async () => {
     await setupPage({
       context,
       path: "/chats/welcome",
-      cachedFeatureSwitches: {
-        [FeatureSwitchKey.OnboardingChat]: false,
-      },
       featureSwitches: {
         [FeatureSwitchKey.OnboardingChat]: true,
       },
@@ -248,9 +245,6 @@ describe("built-in welcome thread", () => {
     await setupPage({
       context,
       path: "/chats/welcome",
-      cachedFeatureSwitches: {
-        [FeatureSwitchKey.OnboardingChat]: true,
-      },
       featureSwitches: {
         [FeatureSwitchKey.OnboardingChat]: false,
       },

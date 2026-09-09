@@ -16,9 +16,9 @@ import {
 } from "./google-ads-conversion.ts";
 
 const PAID_IN_ONBOARDING_CONVERSION_KEY =
-  "vm0.googleAds.18407336975.paidInOnboardingConversion";
+  "googleAds.18407336975.paidInOnboardingConversion";
 const PAID_AFTER_ONBOARDING_CONVERSION_KEY =
-  "vm0.googleAds.18407336975.paidAfterOnboardingConversion";
+  "googleAds.18407336975.paidAfterOnboardingConversion";
 const CHECKOUT_POLL_LIMIT = IN_VITEST ? 2 : 90;
 const CHECKOUT_POLL_INTERVAL_MS = 1000;
 

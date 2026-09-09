@@ -233,11 +233,7 @@ test("Ideas fall back to All when the selected category becomes unavailable", as
     ]),
   );
 
-  await setupPage({
-    context,
-    path: IDEAS_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.OkouDebug]: false },
-  });
+  await setupPage({ context, path: IDEAS_PATH });
   await screen.findByText("Daily standup report");
   const engineering = await waitFor(() => {
     return categoryButton("Engineering");
@@ -277,11 +273,7 @@ test("Ideas remain stable while connector availability reloads", async () => {
     catalogResponse([catalogItem("github", "GitHub")]),
   );
 
-  await setupPage({
-    context,
-    path: IDEAS_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.OkouDebug]: false },
-  });
+  await setupPage({ context, path: IDEAS_PATH });
   await screen.findByText("GitHub progress weekly");
 
   refresh.finishFeatureRefresh();

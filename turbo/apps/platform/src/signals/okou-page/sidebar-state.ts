@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { debounceCommand } from "../command-scheduling.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
 import { resetSignal } from "../utils.ts";
 import { hideKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 
@@ -138,44 +137,28 @@ export const closeChatThreadEmojiMenu$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Session list collapse state (RecentChatSection) — persisted in localStorage
+// Session list collapse state (RecentChatSection)
 // ---------------------------------------------------------------------------
-const {
-  get$: sessionListCollapsedRaw$,
-  set$: setSessionListCollapsedRaw$,
-  clear$: clearSessionListCollapsed$,
-} = localStorageSignals("sessionListCollapsed");
+const internalSessionListCollapsed$ = state(false);
 export const sessionListCollapsed$ = computed((get) => {
-  return get(sessionListCollapsedRaw$) !== null;
+  return get(internalSessionListCollapsed$);
 });
 export const setSessionListCollapsed$ = command(
   ({ set }, collapsed: boolean) => {
-    if (collapsed) {
-      set(setSessionListCollapsedRaw$, "1");
-    } else {
-      set(clearSessionListCollapsed$);
-    }
+    set(internalSessionListCollapsed$, collapsed);
   },
 );
 
 // ---------------------------------------------------------------------------
-// Manage section collapse state (Sidebar) — persisted in localStorage
+// Manage section collapse state (Sidebar)
 // ---------------------------------------------------------------------------
-const {
-  get$: manageSectionCollapsedRaw$,
-  set$: setManageSectionCollapsedRaw$,
-  clear$: clearManageSectionCollapsed$,
-} = localStorageSignals("manageCollapsed");
+const internalManageSectionCollapsed$ = state(false);
 export const manageSectionCollapsed$ = computed((get) => {
-  return get(manageSectionCollapsedRaw$) !== null;
+  return get(internalManageSectionCollapsed$);
 });
 export const setManageSectionCollapsed$ = command(
   ({ set }, collapsed: boolean) => {
-    if (collapsed) {
-      set(setManageSectionCollapsedRaw$, "1");
-    } else {
-      set(clearManageSectionCollapsed$);
-    }
+    set(internalManageSectionCollapsed$, collapsed);
   },
 );
 
@@ -273,22 +256,14 @@ export const endPinnedAgentDrag$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Agent card / pinned section collapse state — persisted in localStorage
+// Agent card / pinned section collapse state
 // ---------------------------------------------------------------------------
-const {
-  get$: agentCardCollapsedRaw$,
-  set$: setAgentCardCollapsedRaw$,
-  clear$: clearAgentCardCollapsed$,
-} = localStorageSignals("pinnedCollapsed");
+const internalAgentCardCollapsed$ = state(false);
 export const agentCardCollapsed$ = computed((get) => {
-  return get(agentCardCollapsedRaw$) !== null;
+  return get(internalAgentCardCollapsed$);
 });
 export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
-  if (collapsed) {
-    set(setAgentCardCollapsedRaw$, "1");
-  } else {
-    set(clearAgentCardCollapsed$);
-  }
+  set(internalAgentCardCollapsed$, collapsed);
 });
 
 // ---------------------------------------------------------------------------

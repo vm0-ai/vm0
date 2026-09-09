@@ -2,7 +2,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { now } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -149,50 +148,3 @@ test.each(platforms)(
     ).toHaveFocus();
   },
 );
-
-test("Hide thread hints when stable chat navigation is disabled and preserve action tooltips", async () => {
-  context.mocks.browser.matchMedia((query) => {
-    return (
-      query === "(min-width: 48rem)" || query === "(display-mode: standalone)"
-    );
-  });
-  const workspace = installContinuityWorkspace(context, {
-    caseId: 62,
-    threads: [chatListThread(1, "Thread hints")],
-  });
-  const response = context.mocks.deferred<void>();
-  context.mocks.api(
-    featureSwitchesContract.get,
-    async ({ respond, withSignal }) => {
-      await withSignal(response.promise);
-      return respond(200, {
-        switches: { [FeatureSwitchKey.StableChatThreadNavigation]: false },
-        effectiveSwitches: {
-          [FeatureSwitchKey.StableChatThreadNavigation]: false,
-        },
-      });
-    },
-  );
-  await setupPage({
-    context,
-    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    ...workspace.pageOptions,
-    cachedFeatureSwitches: featureSwitches,
-  });
-  await screen.findByRole("textbox", { name: "Message" });
-  const list = screen.getByTestId("chat-list-column");
-  const user = userEvent.setup();
-  await user.keyboard("{Control>}");
-  await waitFor(() => {
-    expect(within(list).getByText("Ctrl+1")).toBeVisible();
-  });
-  response.resolve(undefined);
-  await waitFor(() => {
-    expect(list.querySelectorAll("kbd")).toHaveLength(0);
-  });
-  await user.keyboard("{/Control}");
-  await user.hover(fastButton("New chat", list));
-  await expect(
-    screen.findByRole("tooltip", { name: "New chat Ctrl+Shift+O" }),
-  ).resolves.toBeVisible();
-});

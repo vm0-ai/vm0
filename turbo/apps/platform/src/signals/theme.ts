@@ -1,20 +1,19 @@
 import { command, computed, state } from "ccstate";
-import {
-  COLOR_THEMES,
-  type ColorTheme,
-  type ThemePreference,
+import type {
+  ColorTheme,
+  ThemePreference,
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { localStorageSignals } from "./external/local-storage.ts";
-import { featureSwitchCacheState$ } from "./external/feature-switch-state.ts";
+import { cookieSignals, refreshCookies$ } from "./external/cookie.ts";
+import { featureSwitchState$ } from "./external/feature-switch-state.ts";
 import { clerk$ } from "./auth.ts";
 import {
   updateUserPreference$,
   userPreferences$,
 } from "./okou-page/settings/user-preferences.ts";
 import {
-  readOkouThemePreferenceFromDocument,
-  writeOkouThemePreferenceToDocument,
+  decodeOkouThemePreference,
+  encodeOkouThemePreference,
 } from "../lib/okou-theme-cookie.ts";
 import { onRef } from "./utils.ts";
 
@@ -22,25 +21,12 @@ export type { ColorTheme, ThemePreference };
 
 const DEFAULT_COLOR_THEME: ColorTheme = "blue-horizon";
 
-function isThemePreference(v: string | null): v is ThemePreference {
-  return v === "light" || v === "dark" || v === "system";
-}
-
-function isColorTheme(value: string | null): value is ColorTheme {
-  return COLOR_THEMES.some((theme) => {
-    return theme === value;
-  });
-}
-
 const internalPreference$ = state<ThemePreference>("system");
 const internalResolved$ = state<"light" | "dark">("light");
 const internalColorTheme$ = state<ColorTheme>(DEFAULT_COLOR_THEME);
 const shellDocumentAttributesMounted$ = state(false);
 
-const { get$: themeStorageGet$, set$: themeStorageSet$ } =
-  localStorageSignals("theme");
-const { get$: colorThemeStorageGet$, set$: colorThemeStorageSet$ } =
-  localStorageSignals("colorTheme");
+const { get$: themeCookieGet$, set$: themeCookieSet$ } = cookieSignals("theme");
 
 /**
  * Current resolved theme value (always "light" or "dark").
@@ -89,31 +75,15 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
   applyTheme(resolved);
-  /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
-  // eslint-disable-next-line no-restricted-syntax -- localStorage may be blocked; the cookie and in-memory theme remain valid fallbacks.
-  try {
-    set(themeStorageSet$, preference);
-  } catch {
-    // Storage can be blocked; the in-memory and document themes still apply.
-  }
-  /* eslint-enable ccstate/no-catch-abort */
-  writeOkouThemePreferenceToDocument(preference);
+  set(themeCookieSet$, encodeOkouThemePreference(preference));
 });
 
 /**
- * Set and persist the palette-derived workspace color theme.
+ * Set the palette-derived workspace color theme in memory.
  */
 const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
   set(internalColorTheme$, colorTheme);
   set(syncShellDocumentAttributes$);
-  /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
-  // eslint-disable-next-line no-restricted-syntax -- blocked localStorage must not prevent the authenticated theme preference from synchronizing.
-  try {
-    set(colorThemeStorageSet$, colorTheme);
-  } catch {
-    // Keep Okou usable when browser storage is unavailable.
-  }
-  /* eslint-enable ccstate/no-catch-abort */
 });
 
 /**
@@ -137,15 +107,16 @@ export const updateColorThemePreference$ = command(
 );
 
 /**
- * Reconcile the fast local bootstrap cache with the authoritative workspace
- * preference. Null server values migrate the cookie or current device choice.
+ * Reconcile the shared theme cookie and in-memory color theme with the
+ * authoritative workspace preference. Null server values adopt the current
+ * browser choice or the default color theme.
  */
 export const syncThemePreferences$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
-      writeOkouThemePreferenceToDocument(get(themePreference$));
+      set(themeCookieSet$, encodeOkouThemePreference(get(themePreference$)));
       return;
     }
 
@@ -204,7 +175,7 @@ export const syncShellDocumentAttributes$ = command(
     }
 
     const shellMounted = get(shellDocumentAttributesMounted$);
-    const featureSwitches = get(featureSwitchCacheState$);
+    const featureSwitches = get(featureSwitchState$);
     applyColorThemeDocumentAttributes(
       shellMounted &&
         (featureSwitches[FeatureSwitchKey.GradientColorThemes] ?? false),
@@ -227,47 +198,50 @@ export const shellDocumentAttributesRef$ = onRef(
 );
 
 /**
- * Initialize theme from localStorage or system preference.
+ * Initialize theme from the shared cookie or system preference.
  */
-export const initTheme$ = command(({ get, set }) => {
-  const bootstrapThemePreference = readOkouThemePreferenceFromDocument();
-
-  let rawStored: string | null = null;
-  let rawStoredColorTheme: string | null = null;
-  /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
-  // eslint-disable-next-line no-restricted-syntax -- browser privacy policies can block localStorage, in which case Okou safely follows the system.
-  try {
-    rawStored = get(themeStorageGet$);
-    rawStoredColorTheme = get(colorThemeStorageGet$);
-  } catch {
-    // Browser storage can be blocked; fall through to safe defaults.
-  }
-  /* eslint-enable ccstate/no-catch-abort */
+export const initTheme$ = command(({ get, set }, signal: AbortSignal) => {
   const preference =
-    bootstrapThemePreference ??
-    (isThemePreference(rawStored) ? rawStored : "system");
-  const colorTheme = isColorTheme(rawStoredColorTheme)
-    ? rawStoredColorTheme
-    : DEFAULT_COLOR_THEME;
+    decodeOkouThemePreference(get(themeCookieGet$)) ?? "system";
   set(internalPreference$, preference);
-  set(internalColorTheme$, colorTheme);
+  set(internalColorTheme$, DEFAULT_COLOR_THEME);
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
   applyTheme(resolved);
-  writeOkouThemePreferenceToDocument(preference);
+  set(themeCookieSet$, encodeOkouThemePreference(preference));
 
   // Listen for system theme changes when preference is "system"
-  window
-    .matchMedia("(prefers-color-scheme: dark)")
-    .addEventListener("change", () => {
+  const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+  systemTheme.addEventListener(
+    "change",
+    () => {
       const currentPreference = get(internalPreference$);
       if (currentPreference === "system") {
-        const newResolved = window.matchMedia("(prefers-color-scheme: dark)")
-          .matches
-          ? "dark"
-          : "light";
+        const newResolved = systemTheme.matches ? "dark" : "light";
         set(internalResolved$, newResolved);
         applyTheme(newResolved);
       }
-    });
+    },
+    { signal },
+  );
+
+  const syncThemeFromCookie = () => {
+    set(refreshCookies$);
+    const nextPreference =
+      decodeOkouThemePreference(get(themeCookieGet$)) ?? "system";
+    set(internalPreference$, nextPreference);
+    const nextResolved = resolveTheme(nextPreference);
+    set(internalResolved$, nextResolved);
+    applyTheme(nextResolved);
+  };
+  window.addEventListener("focus", syncThemeFromCookie, { signal });
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (document.visibilityState === "visible") {
+        syncThemeFromCookie();
+      }
+    },
+    { signal },
+  );
 });
