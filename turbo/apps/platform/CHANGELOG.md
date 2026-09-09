@@ -11,6 +11,13 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.881.1](https://github.com/vm0-ai/vm0/compare/app-v0.881.0...app-v0.881.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **platform:** open the default agent from home ([#33033](https://github.com/vm0-ai/vm0/issues/33033)) ([13d77f6](https://github.com/vm0-ai/vm0/commit/13d77f6d022469f71e37350efc380536401f23ef))
+
 ## [0.881.0](https://github.com/vm0-ai/vm0/compare/app-v0.880.0...app-v0.881.0) (2026-09-09)
 
 
