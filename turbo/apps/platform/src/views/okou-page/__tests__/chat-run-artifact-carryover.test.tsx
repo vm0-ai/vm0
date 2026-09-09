@@ -175,7 +175,14 @@ test("Expose an artifact referenced only by history from the main result actions
   expect(viewAgentProfileLinks()).toHaveLength(1);
   const dialog = await openRelatedArtifacts();
   expect(relatedArtifactRow(dialog, reportUrl)).toHaveTextContent("Report");
-  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
+  const workToggle = queryWorkHistoryToggle("collapsed");
+  expect(workToggle).toBeVisible();
+  expect(workToggle?.querySelector("[data-chat-run-work-label]")).toHaveClass(
+    "text-sm",
+    "font-normal",
+    "leading-5",
+    "text-muted-foreground/80",
+  );
 
   click(within(dialog).getByLabelText("Close"));
   await waitFor(() => {
@@ -442,12 +449,28 @@ test("Keep completed result actions before recommended followups", async () => {
     throw new Error("Expected the completed result action bar");
   }
   const keepGoing = await screen.findByRole("group", { name: "Keep going" });
+  const followupButton = within(keepGoing).getByTitle("Summarize the report");
+  const followupLabel = within(followupButton).getByText(
+    "Summarize the report",
+  );
+  const followupHoverIcon = followupButton.querySelector(
+    "[data-chat-followup-hover-icon]",
+  );
   const mainBody = main.closest<HTMLElement>(
     "[data-chat-scroll-anchor-event-id]",
   );
   const divider = keepGoing.previousElementSibling;
 
   expect(actions).toBeVisible();
+  expect(followupButton).toHaveClass("relative");
+  expect(followupLabel).toHaveClass(
+    "text-sm",
+    "font-normal",
+    "leading-5",
+    "text-muted-foreground/80",
+  );
+  expect(followupHoverIcon).toHaveClass("absolute", "opacity-0");
+  expect(followupHoverIcon).not.toHaveClass("ml-2", "shrink-0");
   expect(mainBody).toHaveClass("pl-0");
   expect(divider).toHaveClass("pl-0");
   expect(mainMessage).toContainElement(actions);

@@ -315,6 +315,7 @@ import {
   CHAT_THREAD_RESPONSE_FLUSH_CLASS,
   CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
+  CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
   CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
   CHAT_THREAD_RESPONSE_STACK_CLASS,
   CHAT_THREAD_WORK_HISTORY_MARKDOWN_CLASS,
@@ -3525,7 +3526,13 @@ function RunWorkSectionRow({
       <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
         <Hourglass aria-hidden />
       </span>
-      <span className="inline-flex min-w-0 items-center gap-1">
+      <span
+        data-chat-run-work-label
+        className={cn(
+          "inline-flex min-w-0 items-center gap-1",
+          CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
+        )}
+      >
         <ElapsedTime startTime={startTime} endTime={endTime}>
           {(elapsedTime) => {
             const duration = formatCompactDuration(
@@ -3576,7 +3583,7 @@ function RunWorkSectionRow({
     </>
   );
   const className = cn(
-    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal text-muted-foreground",
+    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 font-normal text-muted-foreground",
     CHAT_THREAD_RESPONSE_LINE_CLASS,
   );
   return (
@@ -4008,7 +4015,7 @@ function RecommendedFollowupList({
             type="button"
             title={followup.prompt}
             className={cn(
-              "group flex text-left transition-colors",
+              "group relative flex text-left transition-colors",
               // A quick reply sizes to its own text, so a short suggestion
               // stays small and more than one fits on screen. The rail equalises
               // their heights, which is why the contents align to the top: a
@@ -4029,7 +4036,7 @@ function RecommendedFollowupList({
           >
             <span
               className={cn(
-                "text-muted-foreground/70 transition-colors group-hover:text-foreground",
+                "text-muted-foreground transition-colors group-hover:text-foreground",
                 // A quick reply drops the 28px response rail, but keeps the
                 // icon for `generate`: mispicking one there costs a real
                 // generation rather than another message. `h-6` is one line
@@ -4045,7 +4052,8 @@ function RecommendedFollowupList({
             </span>
             <span
               className={cn(
-                "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground",
+                "min-w-0 flex-1 break-words group-hover:text-foreground",
+                CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
                 // Prompt length is unbounded server-side, so a runaway
                 // suggestion is clamped rather than allowed to grow the rail.
                 // Two lines is also the rail's ceiling: every card matches the
@@ -4056,9 +4064,11 @@ function RecommendedFollowupList({
               {followup.prompt}
             </span>
             <ArrowUpRight
+              aria-hidden
+              data-chat-followup-hover-icon
               size={16}
               className={cn(
-                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100 ml-2",
+                "pointer-events-none absolute right-2 top-1/2 box-content -translate-y-1/2 bg-state-hover pl-3 text-muted-foreground/60 opacity-0 transition-[color,opacity] group-hover:text-foreground group-hover:opacity-100",
                 showFollowupCards && "hidden",
               )}
             />

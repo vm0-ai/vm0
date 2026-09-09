@@ -29,6 +29,11 @@ export const CHAT_THREAD_RESPONSE_FLUSH_CLASS = "min-w-0 pl-0";
 export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
   "inline-flex w-7 shrink-0 items-center justify-center [&_svg]:size-4";
 
+// Supporting rows should read as one quiet unit: the 14px regular label sits
+// behind its 16px line icon instead of competing with the final response.
+export const CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS =
+  "text-sm font-normal leading-5 text-muted-foreground/80";
+
 // Work-history commentary is supporting context, not the final response.
 export const CHAT_THREAD_WORK_HISTORY_TEXT_CLASS =
   "text-sm leading-5 text-muted-foreground";
