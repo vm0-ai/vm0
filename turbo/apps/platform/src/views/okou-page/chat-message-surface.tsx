@@ -51,6 +51,12 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS =
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS =
   "flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
+// In the stacked mobile layout, start the response on the centre line of the
+// 28px avatar above it. The desktop grid already puts the response on the
+// thread axis, so the inset must disappear at that breakpoint.
+export const CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS =
+  "pl-3.5 @[900px]:pl-0";
+
 export const CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS =
   "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:h-9 @[900px]:w-9";
 
@@ -61,7 +67,7 @@ export const CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS =
   "flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS =
-  "@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]";
+  "pl-3.5 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:pl-0";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS =
   "flex items-center justify-between gap-2";

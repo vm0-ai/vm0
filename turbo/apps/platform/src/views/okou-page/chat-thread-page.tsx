@@ -309,6 +309,7 @@ import {
   CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS,
+  CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS,
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
@@ -4456,7 +4457,12 @@ function WaitingForAssistantResponse({
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
-        <div className="relative flex min-w-0 flex-col gap-2">
+        <div
+          className={cn(
+            "relative flex min-w-0 flex-col gap-2",
+            CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS,
+          )}
+        >
           <ChatAssistantMessageBody>
             <InlineThinkingRow
               blockStyle={blockStyle}
@@ -7201,7 +7207,13 @@ function PagedAssistantGroup({
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
-        <div className={cn("relative", CHAT_THREAD_RESPONSE_STACK_CLASS)}>
+        <div
+          className={cn(
+            "relative",
+            CHAT_THREAD_RESPONSE_STACK_CLASS,
+            CHAT_THREAD_ASSISTANT_RESPONSE_COLUMN_CLASS,
+          )}
+        >
           {usesRunWorkPresentation ? (
             <PagedRunWorkAssistantContent
               group={group}
