@@ -3374,13 +3374,24 @@ function formatCompactDuration(totalSeconds: number): string {
       },
     );
   }
-  const totalHours = Math.round(totalMinutes / 60);
-  return i18n.t(
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  const hours = i18n.t(
     ($) => {
       return $.chat.run.duration.hoursShort;
     },
     { count: totalHours },
   );
+  if (remainingMinutes === 0) {
+    return hours;
+  }
+  const minutes = i18n.t(
+    ($) => {
+      return $.chat.run.duration.minutesShort;
+    },
+    { count: remainingMinutes },
+  );
+  return `${hours} ${minutes}`;
 }
 
 const RUN_SECTION_LABEL_CLASS =
