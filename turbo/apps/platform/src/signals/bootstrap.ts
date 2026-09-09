@@ -8,7 +8,7 @@ import {
   runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
 } from "./authenticated-daemons.ts";
-import { initTheme$, syncThemePreferences$ } from "./theme.ts";
+import { initTheme$, syncColorThemePreference$ } from "./theme.ts";
 import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
@@ -527,7 +527,7 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
 const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(reloadFeatureSwitch$, signal);
   await set(syncLocalePreference$, signal);
-  await set(syncThemePreferences$, signal);
+  await set(syncColorThemePreference$, signal);
 });
 
 function notificationChatThreadId(data: unknown): string | null {

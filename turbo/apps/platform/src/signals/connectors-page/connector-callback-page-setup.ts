@@ -118,6 +118,20 @@ function callbackPageElement(
   });
 }
 
+const loadConnectorCallbackIcon$ = command(
+  async (
+    { set },
+    connectorSlug: ConnectorSlug,
+    signal: AbortSignal,
+  ): Promise<PublicConnectorCatalogIcon | undefined> => {
+    const catalogItem = await settle(
+      set(loadConnectorCatalogItem$, connectorSlug, signal),
+      signal,
+    );
+    return catalogItem.ok ? catalogItem.value?.icon : undefined;
+  },
+);
+
 const completeConnectorCallback$ = command(
   async (
     { get },
@@ -175,19 +189,19 @@ export const setupConnectorCallbackPage$ = command(
     const label = connectorLabel(callbackConnectorSlug);
     const searchParams = get(searchParams$);
     let connectorIcon = connectorIconFromSearchParams(searchParams);
-    if (!connectorIcon && connectorSlug) {
-      const catalogItem = await settle(
-        set(loadConnectorCatalogItem$, connectorSlug, signal),
-        signal,
-      );
-      connectorIcon = catalogItem.ok ? catalogItem.value?.icon : undefined;
-    }
     const pathResult = resultFromPath(
       typeof params?.status === "string" ? params.status : undefined,
       searchParams,
     );
 
     if (pathResult) {
+      if (!connectorIcon && connectorSlug) {
+        connectorIcon = await set(
+          loadConnectorCallbackIcon$,
+          connectorSlug,
+          signal,
+        );
+      }
       set(updatePage$, callbackPageElement(connectorIcon, label, pathResult));
       set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
       await set(hideAppSkeleton$, signal);
@@ -226,6 +240,13 @@ export const setupConnectorCallbackPage$ = command(
             query,
             signal,
           );
+    if (!connectorIcon && connectorSlug) {
+      connectorIcon = await set(
+        loadConnectorCallbackIcon$,
+        connectorSlug,
+        signal,
+      );
+    }
     if (result.status === "success") {
       await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
     }

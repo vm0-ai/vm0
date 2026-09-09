@@ -8,6 +8,7 @@ import { settle } from "../utils.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { initialFeatureSwitchHydration$ } from "../external/feature-switch.ts";
 
 export const setupSshConnectorPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -27,6 +28,8 @@ export const setupSshConnectorPage$ = command(
     );
     await set(hideAppSkeleton$, signal);
     if (add) {
+      await get(initialFeatureSwitchHydration$);
+      signal.throwIfAborted();
       // The rendered page owns load errors; failure must not open a credential form.
       const hosts = await settle(get(sshConnections$), signal);
       signal.throwIfAborted();

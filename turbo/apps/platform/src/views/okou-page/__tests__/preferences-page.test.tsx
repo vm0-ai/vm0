@@ -152,8 +152,10 @@ test("Theme preferences initialize from the shared cookie", async () => {
   await waitFor(() => {
     expectSelected(getFastRole("button", "Light"));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(updates).toContainEqual({ theme: "light" });
   });
+  expect(updates).not.toContainEqual(
+    expect.objectContaining({ theme: "light" }),
+  );
   expect(cookieWrites).toContain(
     "__Secure-okou-theme=v1.light; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
   );
@@ -166,6 +168,37 @@ test("Theme preferences initialize from the shared cookie", async () => {
     screen.findByText("Your agents will use this time zone during runs"),
   ).resolves.toBeVisible();
   expect(getFastRole("button", "Light")).toBeVisible();
+});
+
+test("A shared theme cookie supersedes and removes an older host-only duplicate", async () => {
+  mockPreferences({ theme: "dark" });
+  let cookie = "__Secure-okou-theme=v1.dark; __Secure-okou-theme=v1.light";
+  const cookieWrites: string[] = [];
+  vi.spyOn(document, "cookie", "get").mockImplementation(() => {
+    return cookie;
+  });
+  vi.spyOn(document, "cookie", "set").mockImplementation((value) => {
+    cookieWrites.push(value);
+    if (
+      value === "__Secure-okou-theme=; Path=/; Max-Age=0; SameSite=Lax; Secure"
+    ) {
+      cookie = "__Secure-okou-theme=v1.light";
+    }
+  });
+
+  await setupPage({ context, path: "/settings", host: "app.vm0.ai" });
+
+  await expect(
+    screen.findByText("Your preferred color scheme"),
+  ).resolves.toBeVisible();
+  expectSelected(getFastRole("button", "Light"));
+  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(cookieWrites).toContain(
+    "__Secure-okou-theme=; Path=/; Max-Age=0; SameSite=Lax; Secure",
+  );
+  expect(cookieWrites).toContain(
+    "__Secure-okou-theme=v1.light; Domain=.vm0.ai; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
+  );
 });
 
 test("Theme preferences refresh from the cookie when the page becomes active", async () => {
@@ -199,7 +232,7 @@ test("Theme preferences refresh from the cookie when the page becomes active", a
   });
 });
 
-test("Account-backed appearance preferences are restored and saved", async () => {
+test("Cookie theme and account-backed color theme are restored and saved", async () => {
   const updates = mockPreferences({
     theme: "dark",
     colorTheme: "golden-hour",
@@ -208,6 +241,7 @@ test("Account-backed appearance preferences are restored and saved", async () =>
   vi.spyOn(document, "cookie", "set").mockImplementation((value) => {
     cookieWrites.push(value);
   });
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.light");
 
   await setupPage({
     context,
@@ -220,15 +254,17 @@ test("Account-backed appearance preferences are restored and saved", async () =>
     screen.findByText("Your preferred color scheme"),
   ).resolves.toBeVisible();
   const colorTheme = await screen.findByRole("group", { name: "Color theme" });
-  expectSelected(getFastRole("button", "Dark"));
+  expectSelected(getFastRole("button", "Light"));
   expectSelected(getFastRole("button", "Golden hour", colorTheme));
 
-  click(getFastRole("button", "Light"));
+  click(getFastRole("button", "Dark"));
 
   await waitFor(() => {
-    expect(updates).toContainEqual({ theme: "light" });
-    expectSelected(getFastRole("button", "Light"));
+    expectSelected(getFastRole("button", "Dark"));
   });
+  expect(updates).not.toContainEqual(
+    expect.objectContaining({ theme: "dark" }),
+  );
 
   click(getFastRole("button", "Limelight", colorTheme));
 
@@ -236,13 +272,13 @@ test("Account-backed appearance preferences are restored and saved", async () =>
     expect(updates).toContainEqual({ colorTheme: "limelight" });
     expectSelected(getFastRole("button", "Limelight", colorTheme));
   });
-  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   expect(document.documentElement).toHaveAttribute(
     "data-color-theme",
     "limelight",
   );
   expect(cookieWrites).toContain(
-    "__Secure-okou-theme=v1.light; Domain=.okou.ai; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
+    "__Secure-okou-theme=v1.dark; Domain=.okou.ai; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
   );
   expect(cookieWrites.join("\n")).not.toMatch(/golden-hour|limelight/u);
 });

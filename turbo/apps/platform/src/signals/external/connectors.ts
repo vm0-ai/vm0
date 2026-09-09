@@ -102,8 +102,9 @@ export const loadConnectorCatalogItem$ = command(
         fetchOptions: { signal },
       }),
       [200, 404],
+      signal,
+      { showErrorToast: false },
     );
-    signal.throwIfAborted();
     return result.status === 200 ? result.body.connector : null;
   },
 );

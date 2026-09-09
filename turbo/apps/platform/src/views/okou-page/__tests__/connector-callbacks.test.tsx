@@ -51,19 +51,31 @@ test("Complete a custom connector authorization", async () => {
 
 test("Complete a GitHub connector authorization", async () => {
   const icon = githubIcon();
-  context.mocks.api(connectorCatalogContract.get, ({ params, respond }) => {
-    expect(params.connectorSlug).toBe("github");
-    return respond(200, {
-      connector: publicStatusItem({
-        connectorSlug: "github",
-        label: "GitHub",
-        icon,
-      }),
-    });
-  });
+  const catalogStarted = context.mocks.deferred<void>();
+  const releaseCatalog = context.mocks.deferred<void>();
+  const callbackStarted = context.mocks.deferred<void>();
+  const requestOrder: string[] = [];
+  context.mocks.api(
+    connectorCatalogContract.get,
+    async ({ params, respond, withSignal }) => {
+      requestOrder.push("catalog");
+      catalogStarted.resolve(undefined);
+      expect(params.connectorSlug).toBe("github");
+      await withSignal(releaseCatalog.promise);
+      return respond(200, {
+        connector: publicStatusItem({
+          connectorSlug: "github",
+          label: "GitHub",
+          icon,
+        }),
+      });
+    },
+  );
   context.mocks.api(
     connectorsSlugCallbackContract.callback,
     ({ params, query, respond }) => {
+      requestOrder.push("callback");
+      callbackStarted.resolve(undefined);
       expect(params.connectorSlug).toBe("github");
       expect(query).toMatchObject({
         code: "oauth-code",
@@ -74,11 +86,18 @@ test("Complete a GitHub connector authorization", async () => {
     },
   );
 
-  await setupPage({
+  const page = setupPage({
     context,
     path: "/connectors/github/callback?code=oauth-code&state=oauth-state",
     auth: null,
   });
+  await callbackStarted.promise;
+  expect(requestOrder).toStrictEqual(["callback"]);
+  await catalogStarted.promise;
+  expect(releaseCatalog.settled()).toBeFalsy();
+  expect(requestOrder).toStrictEqual(["callback", "catalog"]);
+  releaseCatalog.resolve(undefined);
+  await page;
 
   const heading = await screen.findByRole("heading", {
     name: "GitHub connected",

@@ -178,9 +178,10 @@ const hydrateFeatureSwitch$ = command(
   ) => {
     signal.throwIfAborted();
     const client = get(apiFeatureSwitchClient$);
-    const result = await accept(client.get({ fetchOptions: { signal } }), [
-      200,
-    ]);
+    const result = await accept(
+      client.get({ fetchOptions: { signal } }),
+      [200],
+    );
     signal.throwIfAborted();
 
     if (

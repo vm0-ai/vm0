@@ -26,7 +26,11 @@ const internalResolved$ = state<"light" | "dark">("light");
 const internalColorTheme$ = state<ColorTheme>(DEFAULT_COLOR_THEME);
 const shellDocumentAttributesMounted$ = state(false);
 
-const { get$: themeCookieGet$, set$: themeCookieSet$ } = cookieSignals("theme");
+const {
+  get$: themeCookieGet$,
+  promoteToSharedDomain$: promoteThemeCookieToSharedDomain$,
+  set$: themeCookieSet$,
+} = cookieSignals("theme");
 
 /**
  * Current resolved theme value (always "light" or "dark").
@@ -87,16 +91,6 @@ const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
 });
 
 /**
- * Apply a theme choice immediately, then persist it to the workspace.
- */
-export const updateThemePreference$ = command(
-  async ({ set }, preference: ThemePreference, signal: AbortSignal) => {
-    set(setTheme$, preference);
-    await set(updateUserPreference$, { theme: preference }, signal);
-  },
-);
-
-/**
  * Apply a color theme immediately, then persist it when supported by the API.
  */
 export const updateColorThemePreference$ = command(
@@ -107,38 +101,26 @@ export const updateColorThemePreference$ = command(
 );
 
 /**
- * Reconcile the shared theme cookie and in-memory color theme with the
- * authoritative workspace preference. Null server values adopt the current
- * browser choice or the default color theme.
+ * Reconcile the in-memory color theme with the authoritative workspace
+ * preference. Light/dark/system stays owned exclusively by the shared cookie.
  */
-export const syncThemePreferences$ = command(
+export const syncColorThemePreference$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
-      set(themeCookieSet$, encodeOkouThemePreference(get(themePreference$)));
       return;
     }
 
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
 
-    const theme = preferences.theme ?? get(themePreference$);
     const colorTheme = preferences.colorTheme ?? get(colorTheme$);
 
-    set(setTheme$, theme);
     set(setColorTheme$, colorTheme);
 
-    const shouldUpdateTheme = preferences.theme === null;
-    if (shouldUpdateTheme || preferences.colorTheme === null) {
-      await set(
-        updateUserPreference$,
-        {
-          ...(shouldUpdateTheme && { theme }),
-          ...(preferences.colorTheme === null && { colorTheme }),
-        },
-        signal,
-      );
+    if (preferences.colorTheme === null) {
+      await set(updateUserPreference$, { colorTheme }, signal);
     }
   },
 );
@@ -202,7 +184,8 @@ export const shellDocumentAttributesRef$ = onRef(
  */
 export const initTheme$ = command(({ get, set }, signal: AbortSignal) => {
   const preference =
-    decodeOkouThemePreference(get(themeCookieGet$)) ?? "system";
+    decodeOkouThemePreference(set(promoteThemeCookieToSharedDomain$)) ??
+    "system";
   set(internalPreference$, preference);
   set(internalColorTheme$, DEFAULT_COLOR_THEME);
   const resolved = resolveTheme(preference);

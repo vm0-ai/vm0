@@ -39,6 +39,11 @@ function sharedCookieDomain(hostname: string): string | null {
   return null;
 }
 
+function expireHostOnlyCookie(name: string): void {
+  // oxlint-disable-next-line unicorn/no-document-cookie -- domain promotion must remove a same-name host-only cookie first.
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax; Secure`;
+}
+
 function writeCookieValue(name: string, value: string): void {
   const domain = sharedCookieDomain(window.location.hostname);
   const domainAttribute = domain ? `; Domain=${domain}` : "";
@@ -47,6 +52,9 @@ function writeCookieValue(name: string, value: string): void {
   /* eslint-disable ccstate/no-catch-abort -- synchronous DOM access cannot carry an application AbortSignal. */
   // eslint-disable-next-line no-restricted-syntax -- blocked cookie writes must not prevent the in-memory preference from applying.
   try {
+    if (domain && window.location.hostname.toLowerCase() !== domain.slice(1)) {
+      expireHostOnlyCookie(name);
+    }
     // oxlint-disable-next-line unicorn/no-document-cookie -- theme persistence must be synchronous across sibling subdomains.
     document.cookie = serialized;
   } catch {
@@ -76,5 +84,30 @@ export function cookieSignals<const Key extends string>(
     set(refreshCookies$);
   });
 
-  return Object.freeze({ get$, set$ });
+  const promoteToSharedDomain$ = command(({ set }): string | null => {
+    const domain = sharedCookieDomain(window.location.hostname);
+    if (!domain || window.location.hostname.toLowerCase() === domain.slice(1)) {
+      return readCookieValue(name);
+    }
+
+    const hostValue = readCookieValue(name);
+    /* eslint-disable ccstate/no-catch-abort -- synchronous DOM access cannot carry an application AbortSignal. */
+    // eslint-disable-next-line no-restricted-syntax -- promotion must preserve a parent-domain cookie while removing an older host-only duplicate.
+    try {
+      expireHostOnlyCookie(name);
+    } catch {
+      return hostValue;
+    }
+    /* eslint-enable ccstate/no-catch-abort */
+
+    const sharedValue = readCookieValue(name);
+    const value = sharedValue ?? hostValue;
+    if (sharedValue === null && value !== null) {
+      writeCookieValue(name, value);
+    }
+    set(refreshCookies$);
+    return value;
+  });
+
+  return Object.freeze({ get$, promoteToSharedDomain$, set$ });
 }
