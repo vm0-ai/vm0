@@ -5169,9 +5169,9 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card px-3.5 py-3 text-foreground"
+      className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 px-3.5 py-3 text-foreground sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex min-w-0 items-start gap-2.5">
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
         {recovery.kind === "usage-limit" ||
         recovery.kind === "execution-timeout" ? (
           <Clock size={16} className="mt-1 shrink-0 text-brand-text" />
@@ -5180,20 +5180,13 @@ function AssistantErrorRecoveryCard({
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
-          <div className="mt-0.5 text-sm leading-5 text-muted-foreground">
+          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
             {description}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {resetText && (
-              <span className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground">
-                <Clock size={14} className="text-muted-foreground" />
-                {resetText}
-              </span>
-            )}
-            <AssistantRecoveryActions recovery={recovery} thread={thread} />
-          </div>
+            {resetText ? ` ${resetText}` : null}
+          </p>
         </div>
       </div>
+      <AssistantRecoveryActions recovery={recovery} thread={thread} />
     </div>
   );
 }
