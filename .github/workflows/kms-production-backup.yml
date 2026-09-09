@@ -15,6 +15,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  npm_config_audit: false
+
 jobs:
   backup:
     if: github.ref == 'refs/heads/main'
