@@ -561,7 +561,7 @@ function CreateTeammateDialogContent({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      size={480}
+      smMaxWidth={480}
       contentClassName="p-0 gap-0 overflow-hidden"
     >
       <DialogHeader className="sr-only">

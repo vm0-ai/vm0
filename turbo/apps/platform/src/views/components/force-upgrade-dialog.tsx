@@ -35,7 +35,7 @@ export function ForceUpgradeDialog({
         eventDetails.cancel();
       }}
     >
-      <DialogContent size="md" showCloseButton={false}>
+      <DialogContent maxWidth="md" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

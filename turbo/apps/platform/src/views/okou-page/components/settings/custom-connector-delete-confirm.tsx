@@ -46,7 +46,7 @@ export function CustomConnectorDeleteConfirm({
         return !open && closeDialog();
       }}
     >
-      <DialogContent size="md" aria-describedby={undefined}>
+      <DialogContent maxWidth="md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>
             {t(

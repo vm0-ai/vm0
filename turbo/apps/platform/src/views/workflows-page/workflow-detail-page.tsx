@@ -1681,7 +1681,7 @@ function OfficialWorkflowReconfigureDialog({
         }
       }}
     >
-      <DialogContent size={680} contentClassName="overflow-y-auto">
+      <DialogContent smMaxWidth={680} contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -2383,7 +2383,7 @@ function WorkflowCopyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size={560}>
+      <DialogContent smMaxWidth={560}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -4547,7 +4547,7 @@ function AutomationCreateMenu({
           </span>
         </button>
       </DialogTrigger>
-      <DialogContent size={880}>
+      <DialogContent smMaxWidth={880}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -6669,7 +6669,7 @@ function CreateGmailNewMessageAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -8092,7 +8092,7 @@ function CreateWebhookAutomationDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent size="2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -8250,7 +8250,7 @@ function RevealWebhookSecretDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent size="2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -9249,7 +9249,7 @@ function EditWorkflowAutomationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        size={
+        maxWidth={
           automation.kind === "event" &&
           (automation.eventType === "gmail-new-message" ||
             automation.eventType === "github-workflow-run-completed" ||

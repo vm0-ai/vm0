@@ -19,7 +19,8 @@ describe("Dialog", () => {
         <Dialog>
           <DialogTrigger>Open preview</DialogTrigger>
           <DialogContent
-            size="preview"
+            maxWidth={1440}
+            height={1000}
             mode={fullscreen ? "fullscreen" : "windowed"}
           >
             <DialogTitle>Image preview</DialogTitle>

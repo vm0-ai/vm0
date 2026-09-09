@@ -85,33 +85,33 @@ const DialogOverlay = React.forwardRef<
 });
 DialogOverlay.displayName = "DialogOverlay";
 
-// Preferred sizes are clamped by the viewport, including for future callers.
-// Numeric variants preserve the existing dialogs' desktop dimensions.
-const dialogSizeClasses = {
-  sm: "w-96",
-  md: "w-md",
-  lg: "w-lg",
-  xl: "w-xl",
-  "2xl": "w-2xl",
-  "3xl": "w-3xl",
-  "4xl": "w-4xl",
-  "6xl": "w-6xl",
-  400: "w-[400px]",
-  420: "w-[420px]",
-  424: "w-[424px]",
-  440: "w-[440px]",
-  480: "w-[480px]",
-  560: "w-[560px]",
-  640: "w-[640px]",
-  680: "w-[680px]",
-  720: "w-[720px]",
-  760: "w-[760px]",
-  820: "w-[820px]",
-  860: "w-[860px]",
-  880: "w-[880px]",
-  1120: "w-[1120px]",
-  1200: "w-[1200px]",
-  preview: "w-[1440px]",
+// These are upper bounds, not requested widths. The popup's w-full fills only
+// the safe viewport. Keep rem units and responsive caps when migrating callers.
+const dialogMaxWidthClasses = {
+  sm: { base: "max-w-sm", sm: "sm:max-w-sm" },
+  md: { base: "max-w-md", sm: "sm:max-w-md" },
+  lg: { base: "max-w-lg", sm: "sm:max-w-lg" },
+  xl: { base: "max-w-xl", sm: "sm:max-w-xl" },
+  "2xl": { base: "max-w-2xl", sm: "sm:max-w-2xl" },
+  "3xl": { base: "max-w-3xl", sm: "sm:max-w-3xl" },
+  "4xl": { base: "max-w-4xl", sm: "sm:max-w-4xl" },
+  "6xl": { base: "max-w-6xl", sm: "sm:max-w-6xl" },
+  "25rem": { base: "max-w-[25rem]", sm: "sm:max-w-[25rem]" },
+  "26.5rem": { base: "max-w-[26.5rem]", sm: "sm:max-w-[26.5rem]" },
+  420: { base: "max-w-[420px]", sm: "sm:max-w-[420px]" },
+  440: { base: "max-w-[440px]", sm: "sm:max-w-[440px]" },
+  480: { base: "max-w-[480px]", sm: "sm:max-w-[480px]" },
+  560: { base: "max-w-[560px]", sm: "sm:max-w-[560px]" },
+  640: { base: "max-w-[640px]", sm: "sm:max-w-[640px]" },
+  680: { base: "max-w-[680px]", sm: "sm:max-w-[680px]" },
+  720: { base: "max-w-[720px]", sm: "sm:max-w-[720px]" },
+  760: { base: "max-w-[760px]", sm: "sm:max-w-[760px]" },
+  820: { base: "max-w-[820px]", sm: "sm:max-w-[820px]" },
+  860: { base: "max-w-[860px]", sm: "sm:max-w-[860px]" },
+  880: { base: "max-w-[880px]", sm: "sm:max-w-[880px]" },
+  1120: { base: "max-w-[1120px]", sm: "sm:max-w-[1120px]" },
+  1200: { base: "max-w-[1200px]", sm: "sm:max-w-[1200px]" },
+  1440: { base: "max-w-[1440px]", sm: "sm:max-w-[1440px]" },
 } as const;
 
 const dialogHeightClasses = {
@@ -131,7 +131,10 @@ interface DialogContentProps extends Omit<
   readonly closeLabel?: string;
   /** Styles the inner content, never the viewport or popup boundary. */
   readonly contentClassName?: string;
-  readonly size?: keyof typeof dialogSizeClasses;
+  /** Maximum width; the available safe viewport may be narrower. */
+  readonly maxWidth?: keyof typeof dialogMaxWidthClasses;
+  /** Maximum width from the shared sm breakpoint onward. */
+  readonly smMaxWidth?: keyof typeof dialogMaxWidthClasses;
   readonly height?: keyof typeof dialogHeightClasses;
   readonly mode?: "windowed" | "fullscreen";
   readonly surface?: "card" | "canvas" | "transparent";
@@ -145,8 +148,9 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       children,
       contentClassName,
       closeLabel = "Close",
-      size = "lg",
-      height = size === "preview" ? 1000 : "content",
+      maxWidth = "lg",
+      smMaxWidth,
+      height = "content",
       mode = "windowed",
       surface = "card",
       overlayClassName,
@@ -180,12 +184,14 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             render={undefined}
             className={cn(
               dialogPopupAnimationClassName,
-              "relative flex min-h-0 min-w-0 max-h-full max-w-full flex-col overflow-hidden outline-none contain-layout",
+              "relative flex min-h-0 min-w-0 w-full max-h-full max-w-full flex-col overflow-hidden outline-none contain-layout",
               surface === "card" && "bg-card",
               surface === "canvas" && "bg-background",
               mode === "windowed"
                 ? [
-                    dialogSizeClasses[size],
+                    dialogMaxWidthClasses[maxWidth].base,
+                    smMaxWidth !== undefined &&
+                      dialogMaxWidthClasses[smMaxWidth].sm,
                     dialogHeightClasses[height],
                     "rounded-xl",
                     surface === "card" &&

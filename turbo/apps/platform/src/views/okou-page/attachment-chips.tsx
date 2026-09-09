@@ -1318,7 +1318,8 @@ function ArtifactPreviewDialogContent({
         initialFocus={dialogElement}
         showCloseButton={false}
         overlayClassName="okou-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
-        size="preview"
+        maxWidth={1440}
+        height={1000}
         surface="canvas"
         mode={fullscreen ? "fullscreen" : "windowed"}
         contentClassName="flex flex-col gap-0 overflow-hidden bg-background p-0"

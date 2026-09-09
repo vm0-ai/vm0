@@ -1415,7 +1415,7 @@ export function CustomConnectorCreateDialog({
         }}
       >
         <DialogContent
-          size="2xl"
+          maxWidth="2xl"
           contentClassName="overflow-y-auto"
           aria-describedby={undefined}
           closeLabel={t(($) => {

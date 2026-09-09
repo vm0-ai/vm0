@@ -50,7 +50,7 @@ function WebsiteTemplatePreviewDialog({
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        size={1120}
+        maxWidth={1120}
         height={760}
         showCloseButton={false}
         contentClassName="flex flex-col gap-0 overflow-hidden p-0"

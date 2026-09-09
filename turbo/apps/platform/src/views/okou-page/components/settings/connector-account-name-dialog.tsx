@@ -67,7 +67,7 @@ export function ConnectorAccountNameDialog() {
         return !open && close();
       }}
     >
-      <DialogContent size="md">
+      <DialogContent maxWidth="md">
         <form className="flex flex-col gap-5" onSubmit={submit}>
           <DialogHeader>
             <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">

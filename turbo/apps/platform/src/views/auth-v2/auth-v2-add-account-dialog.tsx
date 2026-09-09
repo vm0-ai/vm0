@@ -36,7 +36,7 @@ function AuthV2AddAccountDialogContent({
       }}
     >
       <DialogContent
-        size={400}
+        maxWidth="25rem"
         surface="transparent"
         contentClassName="okou-app gap-0 overflow-y-auto p-0"
         closeLabel={t(($) => {

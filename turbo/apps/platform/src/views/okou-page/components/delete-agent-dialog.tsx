@@ -370,7 +370,7 @@ export function AgentDeleteDialog({
                 closeLabel={t(($) => {
                   return $.actions.close;
                 })}
-                size="3xl"
+                maxWidth="3xl"
                 contentClassName="gap-0 overflow-hidden p-0"
               >
                 {canReconcile ? (

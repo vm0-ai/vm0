@@ -271,7 +271,7 @@ export function ChatForwardDialog({
       }}
     >
       <DialogContent
-        size="xl"
+        smMaxWidth="xl"
         contentClassName="okou-app grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="min-w-0 px-5 pb-3 pt-5">

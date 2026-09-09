@@ -278,7 +278,7 @@ function DowngradeConfirmDialogContent({
         handleClose();
       }}
     >
-      <DialogContent size={440}>
+      <DialogContent smMaxWidth={440}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -503,7 +503,7 @@ function RestorePlanConfirmDialogContent({
         return !v && close();
       }}
     >
-      <DialogContent size={440}>
+      <DialogContent smMaxWidth={440}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(
@@ -1435,7 +1435,7 @@ function ConcurrencyConfirmDialogContent({
     dialog.canReduce;
 
   return (
-    <DialogContent size={480}>
+    <DialogContent smMaxWidth={480}>
       <DialogHeader>
         <DialogTitle>{copy.title}</DialogTitle>
         {copy.description ? (
@@ -1498,7 +1498,7 @@ function ConcurrencyPurchaseReviewDialogContent({
   const loading = checkoutLoadable.state === "loading";
 
   return (
-    <DialogContent size={420}>
+    <DialogContent smMaxWidth={420}>
       <DialogHeader>
         <DialogTitle>
           {i18n.t(($) => {
@@ -1620,7 +1620,7 @@ function ConcurrencyPurchaseDialog({
         return !v && close();
       }}
     >
-      <DialogContent size={420}>
+      <DialogContent smMaxWidth={420}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -1943,7 +1943,7 @@ function StandaloneBillingPricingDialog({
     >
       <DialogContent
         aria-describedby={undefined}
-        size={860}
+        maxWidth={860}
         height={688}
         contentClassName="okou-app flex flex-col gap-0 overflow-hidden p-0"
       >

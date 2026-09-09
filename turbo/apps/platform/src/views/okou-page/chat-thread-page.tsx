@@ -2164,7 +2164,7 @@ function HeaderWorkflowAutomationEditDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        size={
+        maxWidth={
           automation.kind === "event" &&
           automation.eventType === "gmail-new-message"
             ? "2xl"
@@ -7480,7 +7480,7 @@ function RelatedArtifactsDialog({
       </TooltipProvider>
       <DialogContent
         aria-describedby={undefined}
-        size="xl"
+        smMaxWidth="xl"
         contentClassName="flex flex-col overflow-hidden gap-0 p-0"
         data-testid="chat-run-related-artifacts-dialog"
       >

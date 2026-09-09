@@ -344,7 +344,7 @@ function ConnectorAccessDialog({
       }}
     >
       <DialogContent
-        size={720}
+        maxWidth={720}
         height={720}
         contentClassName="flex flex-col overflow-hidden"
       >

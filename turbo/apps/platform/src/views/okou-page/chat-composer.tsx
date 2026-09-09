@@ -6247,7 +6247,7 @@ function TemplatePickerDialog({
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        size="6xl"
+        maxWidth="6xl"
         height={760}
         contentClassName={dialogContentClassName}
         aria-describedby={undefined}
@@ -7063,7 +7063,7 @@ function AddConnectorsDialog({
     >
       <DialogContent
         ref={registerConnectionDialog}
-        size="2xl"
+        maxWidth="2xl"
         contentClassName="okou-app flex flex-col"
         aria-describedby={undefined}
       >
@@ -8398,7 +8398,7 @@ function ComputerUseDownloadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" contentClassName="gap-0 overflow-hidden p-0">
+      <DialogContent maxWidth="md" contentClassName="gap-0 overflow-hidden p-0">
         <div className="flex h-44 items-center justify-center border-b border-border bg-gray-50">
           <img
             src={computerUseIllustrationImg}

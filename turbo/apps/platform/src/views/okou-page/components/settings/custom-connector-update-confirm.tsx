@@ -26,7 +26,7 @@ export function CustomConnectorUpdateConfirm({
       }}
     >
       <DialogContent
-        size="md"
+        maxWidth="md"
         aria-describedby={undefined}
         closeLabel={t(($) => {
           return $.connectors.actions.close;

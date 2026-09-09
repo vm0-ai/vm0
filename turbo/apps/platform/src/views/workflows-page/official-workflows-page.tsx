@@ -303,7 +303,7 @@ function InstallDialog({
         }
       }}
     >
-      <DialogContent size={680} contentClassName="overflow-y-auto">
+      <DialogContent smMaxWidth={680} contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(

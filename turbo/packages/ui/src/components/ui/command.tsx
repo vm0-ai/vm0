@@ -53,7 +53,10 @@ interface CommandDialogProps extends Omit<
   readonly children?: React.ReactNode;
   readonly closeLabel?: string | undefined;
   readonly contentClassName?: string | undefined;
-  readonly size?: React.ComponentProps<typeof DialogContent>["size"];
+  readonly maxWidth?: React.ComponentProps<typeof DialogContent>["maxWidth"];
+  readonly smMaxWidth?: React.ComponentProps<
+    typeof DialogContent
+  >["smMaxWidth"];
   readonly showCloseButton?: boolean;
   readonly commandClassName?: string | undefined;
   readonly commandProps?:
@@ -65,7 +68,8 @@ function CommandDialog({
   children,
   contentClassName,
   closeLabel,
-  size,
+  maxWidth,
+  smMaxWidth,
   showCloseButton,
   commandClassName,
   commandProps,
@@ -75,7 +79,8 @@ function CommandDialog({
     <Dialog {...props}>
       <DialogContent
         closeLabel={closeLabel}
-        size={size}
+        maxWidth={maxWidth}
+        smMaxWidth={smMaxWidth}
         showCloseButton={showCloseButton}
         contentClassName={cn("overflow-hidden p-0", contentClassName)}
       >

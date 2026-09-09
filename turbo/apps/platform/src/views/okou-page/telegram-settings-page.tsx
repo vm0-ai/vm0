@@ -1006,7 +1006,7 @@ function AddTelegramBotDialogFrame({
           })}
         </Button>
       </DialogTrigger>
-      <DialogContent size={640}>
+      <DialogContent smMaxWidth={640}>
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

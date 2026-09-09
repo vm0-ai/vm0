@@ -1334,7 +1334,7 @@ export function ThreeColumnSearchDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      size={820}
+      smMaxWidth={820}
       showCloseButton={false}
       contentClassName="okou-app gap-0"
       commandClassName="gap-0"
@@ -1470,7 +1470,7 @@ export function PinAgentDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      size="xl"
+      smMaxWidth="xl"
       contentClassName="okou-app gap-0"
       commandClassName="gap-0"
       commandProps={{

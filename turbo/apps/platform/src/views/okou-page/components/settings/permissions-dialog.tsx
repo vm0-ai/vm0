@@ -1674,7 +1674,7 @@ export function PermissionsDialog(props: PermissionsDrawerProps) {
       }}
     >
       <DialogContent
-        size={760}
+        maxWidth={760}
         height={720}
         contentClassName="flex flex-col overflow-hidden"
       >

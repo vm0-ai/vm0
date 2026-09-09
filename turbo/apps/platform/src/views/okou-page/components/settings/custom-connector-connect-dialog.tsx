@@ -431,7 +431,7 @@ export function CustomConnectorConnectDialog({
       }}
     >
       <DialogContent
-        size="md"
+        maxWidth="md"
         aria-describedby={undefined}
         closeLabel={t(($) => {
           return $.connectors.actions.close;

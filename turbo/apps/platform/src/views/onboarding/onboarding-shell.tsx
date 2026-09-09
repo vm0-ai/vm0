@@ -141,7 +141,7 @@ export function OnboardingDialog({
       }}
     >
       <DialogContent
-        size="4xl"
+        maxWidth="4xl"
         contentClassName="flex flex-col gap-0 overflow-hidden border-border bg-background p-5 sm:p-6"
       >
         <header className="shrink-0 pr-9">

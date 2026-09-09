@@ -69,10 +69,15 @@ inside the safe-area insets. The environment values come from the existing
 `--sat`, `--sar`, `--sab`, `--sal`, and `--okou-viewport-height` properties;
 the shared primitive also works with native `env()` insets outside Platform.
 
-Callers select a preferred `size`, `height`, and `mode`. The numeric size
-variants preserve existing desktop widths; `size="preview"` requests a
-1440 by 1000 px preview. Every variant is capped by the available viewport.
-Increasing a preferred size must never increase the safe boundary.
+Callers select `maxWidth`, `smMaxWidth`, `height`, and `mode`. The popup fills
+the available safe width and is capped by `maxWidth` (default `lg`);
+`smMaxWidth` changes that upper bound only from the shared `sm` breakpoint.
+Width caps never set a fixed width or determine height. Preserve existing
+breakpoints and units when migrating: `sm:max-w-[480px]` becomes
+`smMaxWidth={480}`, and `max-w-[25rem]` becomes `maxWidth="25rem"`.
+The artifact preview uses `maxWidth={1440} height={1000}`. Every variant is
+capped by the available viewport, so increasing a cap cannot increase the
+safe boundary.
 
 The popup does not accept `className`, `style`, or `render`. Use
 `contentClassName` for the inner layout and `DialogBody` for a scrolling body
