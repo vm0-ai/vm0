@@ -348,6 +348,46 @@ describe("okou connector custom readers", () => {
     },
   );
 
+  it.each([CONNECTOR_ID, "_acme-search"])(
+    "reports recovery guidance when status target %s is no longer available",
+    async (selector) => {
+      server.use(
+        stubCustomConnectors([customConnector()]),
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+          () => {
+            return HttpResponse.json(
+              { error: { code: "NOT_FOUND", message: "Connector not found" } },
+              { status: 404 },
+            );
+          },
+        ),
+      );
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+      try {
+        await expect(
+          customConnectorCommand.parseAsync([
+            "node",
+            "okou",
+            "status",
+            selector,
+          ]),
+        ).rejects.toThrow("process.exit called");
+
+        const output = error.mock.calls.flat().join("\n");
+        expect(output).toContain(`Custom connector not found: ${CONNECTOR_ID}`);
+        expect(output).toContain("okou connector custom list");
+        expect(consoleLog).not.toHaveBeenCalled();
+      } finally {
+        error.mockRestore();
+        exit.mockRestore();
+      }
+    },
+  );
+
   it.each([
     ["_removed-slug", "Unknown or unavailable custom connector slug"],
     ["_ACME-SEARCH", "Unknown or unavailable custom connector slug"],
