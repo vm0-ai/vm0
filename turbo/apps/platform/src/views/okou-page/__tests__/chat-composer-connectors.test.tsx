@@ -593,7 +593,7 @@ test.each([null, "Close", "Escape", "backdrop"] as const)(
   "Keep chat OAuth in one dialog through completion (dismissal: %s)",
   async (dismissal) => {
     const user = userEvent.setup({ delay: null });
-    installComposerConnectorFixture({
+    const fixture = installComposerConnectorFixture({
       catalog: [
         builtinConnector({
           slug: GOOGLE_ANALYTICS_SLUG,
@@ -674,6 +674,7 @@ test.each([null, "Close", "Escape", "backdrop"] as const)(
     context.mocks.data.connectors([
       { ...account, slug: GOOGLE_ANALYTICS_SLUG },
     ]);
+    fixture.completeOAuth(account.id);
     authWindow.close();
     await authorizationStarted.promise;
     expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(

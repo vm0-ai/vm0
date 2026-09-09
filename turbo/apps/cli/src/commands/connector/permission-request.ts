@@ -25,12 +25,14 @@ import {
 import {
   buildConnectorUrlDiagnosticRequest,
   resolveConnectorCheckDiagnostic,
+  validateDiagnosticUrl,
   type ResolvedDiagnostic,
 } from "./check-diagnostic";
 import {
   customConnectorIdFromSelector,
   customConnectorSettingsGuidance,
 } from "./custom-connector-guidance";
+import { resolveDiagnosticConnectorSelector } from "./diagnostic-connector-selector";
 
 function permissionDescription(permission: string): string {
   return permission === UNKNOWN_PERMISSION_GRANT
@@ -302,7 +304,10 @@ export const permissionRequestCommand = new Command()
   .description(
     "Request builtin permissions or Browser/Computer Use authorization",
   )
-  .argument("<slug>", "Builtin slug, browser, or computer-use")
+  .argument(
+    "<selector>",
+    "Connector slug, custom UUID, unique display name, browser, or computer-use; builtin:/custom: prefixes accepted",
+  )
   .addOption(
     new Option(
       "--permission <name>",
@@ -346,8 +351,8 @@ Notes:
   - Use --permission __unknown__ for diagnosed builtin unknown endpoints
   - Custom HTTP connectors with permission bundles use Connectors > agent access
     > Permissions. MCP connectors have Agent access but no HTTP permission bundle.
-    custom:<uuid> produces settings guidance, not a builtin approval link;
-    custom public slugs are not supported by this approval flow.
+    Custom UUIDs, full slugs, and exact unique display names, optionally prefixed
+    with custom:, resolve to this settings guidance rather than a builtin approval link.
   - Custom unknown endpoints have no approval control; ask an administrator
     to review the connector's routing and permission definition
   - Inside a run, --agent must match the current Agent; omit it to use OKOU_AGENT_ID.
@@ -361,7 +366,7 @@ ${callbackPromptNotes}  - Builtin permission requests update the current user's 
   .action(
     withErrorHandler(
       async (
-        connectorSlug: string,
+        selector: string,
         opts: {
           permission: string;
           agent?: string;
@@ -371,9 +376,12 @@ ${callbackPromptNotes}  - Builtin permission requests update the current user's 
         },
       ) => {
         const agentId = resolveConnectorAgentId(opts.agent);
+        if (opts.url !== undefined) {
+          validateDiagnosticUrl(opts.url);
+        }
         if (
           isBrowserPermissionTarget({
-            connectorSlug,
+            connectorSlug: selector,
             permission: opts.permission,
           })
         ) {
@@ -387,7 +395,7 @@ ${callbackPromptNotes}  - Builtin permission requests update the current user's 
         }
         if (
           isComputerUsePermissionTarget({
-            connectorSlug,
+            connectorSlug: selector,
             permission: opts.permission,
           })
         ) {
@@ -400,6 +408,8 @@ ${callbackPromptNotes}  - Builtin permission requests update the current user's 
           return;
         }
 
+        const connectorSlug =
+          await resolveDiagnosticConnectorSelector(selector);
         const customConnectorId = customConnectorIdFromSelector(connectorSlug);
         if (customConnectorId !== undefined) {
           throw new Error(

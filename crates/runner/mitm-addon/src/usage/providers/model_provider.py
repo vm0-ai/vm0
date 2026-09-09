@@ -222,9 +222,10 @@ def report_model_provider_usage_source(
     in a later frame. Callers can drop the source from flow metadata after this
     returns. Tiered models retain only their bounded concrete
     tier decision. Evicted decisions are recovered from bounded source-key
-    admission history when possible so later or duplicate output-only frames
-    derive the same billable category; otherwise positive usage receives a
-    conservative billable fallback.
+    admission history when possible so later or duplicate snapshots derive
+    the same billable category even when they repeat input tokens or change
+    service-tier metadata. Without retained history or a classifiable input
+    partition, positive usage receives a conservative billable fallback.
     """
     usage_events: list[UsageEvent] = []
     source_id = f"{flow.id}:{message_id}"
@@ -606,39 +607,32 @@ def _source_model_usage_pricing(
         )
         tiers.move_to_end(message_id)
         return tier, fast
-    if billing_tier is None:
+    # Admitted source keys remain authoritative after the tier cache evicts
+    # a response, even if this snapshot contains a different input partition.
+    fast = observed_fast is True
+    recovered_pricing = _recover_source_model_usage_pricing(run_id, source_id)
+    if recovered_pricing is not None:
+        billing_tier, fast = recovered_pricing
+    elif billing_tier is None:
         if not has_positive_model_provider_usage(usage):
             return None
-        recovered_pricing = _recover_source_model_usage_pricing(run_id, source_id)
-        billing_tier, fast = recovered_pricing or (
-            _MODEL_USAGE_TIER_LONG_CONTEXT,
-            observed_fast is True,
+        billing_tier = _MODEL_USAGE_TIER_LONG_CONTEXT
+        _log_model_usage_tier_fallback(
+            flow,
+            run_id,
+            provider,
+            billing_tier,
+            fast,
         )
-        if recovered_pricing is None:
-            _log_model_usage_tier_fallback(
-                flow,
-                run_id,
-                provider,
-                billing_tier,
-                fast,
-            )
-        tiers[message_id] = _ModelUsageTierDecision(
-            tier=billing_tier,
-            fast=fast,
-            committed=True,
-        )
-        if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
-            tiers.popitem(last=False)
-        return billing_tier, fast
 
     tiers[message_id] = _ModelUsageTierDecision(
         tier=billing_tier,
-        fast=observed_fast is True,
-        committed=has_positive_model_provider_usage(usage),
+        fast=fast,
+        committed=recovered_pricing is not None or has_positive_model_provider_usage(usage),
     )
     if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
         tiers.popitem(last=False)
-    return billing_tier, observed_fast is True
+    return billing_tier, fast
 
 
 def _recover_source_model_usage_pricing(

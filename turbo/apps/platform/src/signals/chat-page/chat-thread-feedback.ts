@@ -33,11 +33,15 @@ import {
   requestChatTranslation$,
   savedChatTranslationLanguage$,
 } from "./chat-translation.ts";
+import {
+  createTouchSelectionListeners,
+  createTouchSelectionOverlayRef,
+  FEEDBACK_SOURCE_SELECTOR,
+  measureTouchSelection,
+  touchSelectionText,
+  type TouchSelectionGeometry,
+} from "./chat-touch-selection.ts";
 
-// Assistant messages and other agent-produced content, such as linked email
-// drafts, opt into the shared Copy / Quote interaction.
-const FEEDBACK_SOURCE_SELECTOR =
-  ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 const SELECTION_ACTIONS_DISABLED_SELECTOR =
   "[data-chat-selection-actions-disabled]";
@@ -62,6 +66,7 @@ export interface ChatThreadFeedbackSelection {
   readonly eventId?: string;
   readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
+  readonly touch?: TouchSelectionGeometry;
 }
 
 export interface ChatThreadTranslationResult {
@@ -78,6 +83,8 @@ interface CapturedFeedbackSelection {
   readonly eventId?: string;
   readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
+  readonly touchRange?: Range;
+  readonly touch?: TouchSelectionGeometry;
 }
 
 function isSameFeedbackRange(
@@ -143,6 +150,14 @@ export interface ChatThreadFeedbackSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
+  readonly setTouchListenersRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  readonly setTouchOverlayRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
 }
 
 function closestFeedbackSource(node: Node | null): Element | null {
@@ -172,8 +187,11 @@ function shouldExpandSelectionToAssistantReply(): boolean {
   return !window.matchMedia(COARSE_POINTER_QUERY).matches;
 }
 
-function resolveSelectionSource(range: Range): Element | null {
-  if (shouldExpandSelectionToAssistantReply()) {
+function resolveSelectionSource(
+  range: Range,
+  touchSelection: boolean,
+): Element | null {
+  if (!touchSelection && shouldExpandSelectionToAssistantReply()) {
     const startSource = closestExpandedFeedbackSource(range.startContainer);
     const endSource = closestExpandedFeedbackSource(range.endContainer);
     return startSource !== null && startSource === endSource
@@ -321,17 +339,29 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function readFeedbackSelection(): CapturedFeedbackSelection | null {
+function readFeedbackSelection(
+  touchRange?: Range,
+): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+  const range =
+    touchRange ??
+    (selection && !selection.isCollapsed && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null);
+  if (
+    !range ||
+    !range.startContainer.isConnected ||
+    !range.endContainer.isConnected
+  ) {
     return null;
   }
-  const text = selection.toString().trim();
+  const text = touchRange
+    ? touchSelectionText(touchRange)
+    : selection?.toString().trim();
   if (!text) {
     return null;
   }
-  const range = selection.getRangeAt(0);
-  const sourceElement = resolveSelectionSource(range);
+  const sourceElement = resolveSelectionSource(range, touchRange !== undefined);
   if (!sourceElement) {
     return null;
   }
@@ -346,6 +376,9 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     runId: resolveSelectionRunId(sourceElement),
     ...location,
     ...(source ? { source } : {}),
+    ...(touchRange
+      ? { touchRange, touch: measureTouchSelection(touchRange) }
+      : {}),
   };
 }
 
@@ -365,6 +398,65 @@ function isSelectionInteractionTarget(target: EventTarget | null): boolean {
     target instanceof Element &&
     target.closest(SELECTION_INTERACTION_SELECTOR) !== null
   );
+}
+
+function createSelectionReconciliation({
+  threadId,
+  internalSelection$,
+  close$,
+}: {
+  readonly threadId: string;
+  readonly internalSelection$: State<CapturedFeedbackSelection | null>;
+  readonly close$: Command<void, []>;
+}) {
+  const reconcile$ = command(({ get, set }, reason: "scroll" | "layout") => {
+    const currentSelection = get(internalSelection$);
+    if (!currentSelection) {
+      return;
+    }
+    const selection = readFeedbackSelection(currentSelection.touchRange);
+    if (
+      !selection ||
+      selection.threadId !== threadId ||
+      !isSameFeedbackSelection(currentSelection, selection)
+    ) {
+      set(close$);
+      return;
+    }
+    const horizontalDisplacement =
+      selection.rect.left - currentSelection.scrollReferenceRect.left;
+    const verticalDisplacement =
+      selection.rect.top - currentSelection.scrollReferenceRect.top;
+    if (
+      reason === "scroll" &&
+      Math.hypot(horizontalDisplacement, verticalDisplacement) >
+        SELECTION_SCROLL_DISMISS_DISTANCE_PX
+    ) {
+      set(close$);
+      return;
+    }
+    if (
+      selection.touch ||
+      selection.rect.top !== currentSelection.rect.top ||
+      selection.rect.left !== currentSelection.rect.left ||
+      selection.rect.width !== currentSelection.rect.width ||
+      selection.rect.height !== currentSelection.rect.height
+    ) {
+      set(internalSelection$, {
+        ...currentSelection,
+        rect: selection.rect,
+        ...(reason === "layout" ? { scrollReferenceRect: selection.rect } : {}),
+        ...(selection.touch ? { touch: selection.touch } : {}),
+      });
+    }
+  });
+  const reconcileAfterScroll$ = command(({ set }) => {
+    set(reconcile$, "scroll");
+  });
+  const reconcileAfterLayout$ = command(({ set }) => {
+    set(reconcile$, "layout");
+  });
+  return { reconcileAfterScroll$, reconcileAfterLayout$ };
 }
 
 function createSelectionState(threadId: string) {
@@ -387,6 +479,7 @@ function createSelectionState(threadId: string) {
             ? { eventId: selection.eventId, range: selection.range }
             : {}),
           ...(selection.source ? { source: selection.source } : {}),
+          ...(selection.touch ? { touch: selection.touch } : {}),
         }
       : null;
   });
@@ -397,9 +490,11 @@ function createSelectionState(threadId: string) {
     set(internalTranslationPromise$, null);
     set(internalTranslationResult$, null);
   });
-  const capture$ = command(({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const selection = readFeedbackSelection();
+  const touchRange$ = computed((get) => {
+    return get(internalSelection$)?.touchRange ?? null;
+  });
+  const capture$ = command(({ get, set }, touchRange?: Range) => {
+    const selection = readFeedbackSelection(touchRange);
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -416,43 +511,8 @@ function createSelectionState(threadId: string) {
     set(internalTranslationResult$, null);
     set(internalSelection$, selection);
   });
-  const reconcileAfterScroll$ = command(({ get, set }) => {
-    const currentSelection = get(internalSelection$);
-    if (!currentSelection) {
-      return;
-    }
-    const selection = readFeedbackSelection();
-    if (
-      !selection ||
-      selection.threadId !== threadId ||
-      !isSameFeedbackSelection(currentSelection, selection)
-    ) {
-      set(close$);
-      return;
-    }
-    const horizontalDisplacement =
-      selection.rect.left - currentSelection.scrollReferenceRect.left;
-    const verticalDisplacement =
-      selection.rect.top - currentSelection.scrollReferenceRect.top;
-    if (
-      Math.hypot(horizontalDisplacement, verticalDisplacement) >
-      SELECTION_SCROLL_DISMISS_DISTANCE_PX
-    ) {
-      set(close$);
-      return;
-    }
-    if (
-      selection.rect.top !== currentSelection.rect.top ||
-      selection.rect.left !== currentSelection.rect.left ||
-      selection.rect.width !== currentSelection.rect.width ||
-      selection.rect.height !== currentSelection.rect.height
-    ) {
-      set(internalSelection$, {
-        ...currentSelection,
-        rect: selection.rect,
-      });
-    }
-  });
+  const { reconcileAfterScroll$, reconcileAfterLayout$ } =
+    createSelectionReconciliation({ threadId, internalSelection$, close$ });
   const copy$ = command(async ({ get, set }, signal: AbortSignal) => {
     const selection = get(internalSelection$);
     if (!selection) {
@@ -470,6 +530,10 @@ function createSelectionState(threadId: string) {
       );
     }
   });
+  const setTouchOverlayRef$ = createTouchSelectionOverlayRef({
+    range$: touchRange$,
+    reconcile$: reconcileAfterLayout$,
+  });
   return {
     internalSelection$,
     internalTranslationPromise$,
@@ -479,6 +543,8 @@ function createSelectionState(threadId: string) {
     selection$,
     close$,
     capture$,
+    touchRange$,
+    setTouchOverlayRef$,
     reconcileAfterScroll$,
     copy$,
   };
@@ -686,6 +752,7 @@ function createStartForward(
 
 function createToolbarRef({
   resetToolbarSignal$,
+  touchRange$,
   close$,
   copy$,
   start$,
@@ -693,6 +760,7 @@ function createToolbarRef({
   translate$,
 }: {
   resetToolbarSignal$: ReturnType<typeof resetSignal>;
+  touchRange$: Computed<Range | null>;
   close$: Command<void, []>;
   copy$: Command<Promise<void>, [AbortSignal]>;
   start$: Command<void, []>;
@@ -709,6 +777,11 @@ function createToolbarRef({
             return;
           }
           if (matchShortcut("mod+c", event)) {
+            if (get(touchRange$) && !isEditableTarget(event.target)) {
+              event.preventDefault();
+              await set(copy$, signal);
+              return;
+            }
             await delay(0, { signal: toolbarSignal });
             set(close$);
             return;
@@ -752,6 +825,21 @@ function createToolbarRef({
   );
 }
 
+function createNativeSelectionCapture(
+  selection$: State<CapturedFeedbackSelection | null>,
+  capture$: Command<void, []>,
+) {
+  const captureNativeSelection$ = command(
+    ({ get, set }, signal: AbortSignal) => {
+      signal.throwIfAborted();
+      if (!get(selection$)?.touchRange) {
+        set(capture$);
+      }
+    },
+  );
+  return debounceCommand(captureNativeSelection$, 0);
+}
+
 function createListenersRef({
   selection$,
   close$,
@@ -761,11 +849,11 @@ function createListenersRef({
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
-  capture$: Command<void, [AbortSignal]>;
+  capture$: Command<void, []>;
   reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
-  const debouncedCapture$ = debounceCommand(capture$, 0);
+  const debouncedCapture$ = createNativeSelectionCapture(selection$, capture$);
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const doc = el.ownerDocument;
@@ -808,6 +896,9 @@ function createListenersRef({
       doc.addEventListener(
         "mousedown",
         (event) => {
+          if (get(selection$)?.touchRange) {
+            return;
+          }
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
@@ -852,11 +943,9 @@ function createListenersRef({
           if (
             get(selection$) === null ||
             isSelectionInteractionTarget(event.target) ||
-            set(isProgrammaticScrollEvent$, event.target)
+            set(isProgrammaticScrollEvent$, event.target) ||
+            scrollReconciliationScheduled
           ) {
-            return;
-          }
-          if (scrollReconciliationScheduled) {
             return;
           }
           scrollReconciliationScheduled = true;
@@ -900,6 +989,7 @@ export function createChatThreadFeedbackSignals(
   );
   const setToolbarRef$ = createToolbarRef({
     resetToolbarSignal$: selection.resetToolbarSignal$,
+    touchRange$: selection.touchRange$,
     close$: selection.close$,
     copy$: selection.copy$,
     start$,
@@ -913,8 +1003,16 @@ export function createChatThreadFeedbackSignals(
     reconcileAfterScroll$: selection.reconcileAfterScroll$,
     isProgrammaticScrollEvent$,
   });
+  const setTouchListenersRef$ = createTouchSelectionListeners({
+    threadId,
+    range$: selection.touchRange$,
+    capture$: selection.capture$,
+    close$: selection.close$,
+  });
   return {
     selection$: selection.selection$,
+    setTouchListenersRef$,
+    setTouchOverlayRef$: selection.setTouchOverlayRef$,
     start$,
     close$: selection.close$,
     copy$: selection.copy$,

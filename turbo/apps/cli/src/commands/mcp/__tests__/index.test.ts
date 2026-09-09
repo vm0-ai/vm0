@@ -24,7 +24,9 @@ import {
 
 import { server } from "../../../mocks/server";
 import {
+  customConnector,
   runMcpConnector,
+  stubCustomConnectors,
   stubRunMcpConnectors,
 } from "../../__tests__/helpers/custom-connectors";
 import { mcpCommand } from "../index";
@@ -286,111 +288,141 @@ describe("okou mcp command", () => {
     expect(output).not.toContain("secrets.secret");
   });
 
-  it("discovers modern tools page by page with exact intent and cleanup", async () => {
-    const searchTool = {
-      name: "search",
-      description: "Search documents",
-      inputSchema: {
-        type: "object",
-        properties: { query: { type: "string" } },
-      },
-    } satisfies Tool;
-    const fetchTool = {
-      name: "fetch",
-      inputSchema: {
-        type: "object",
-        properties: { id: { type: "string" } },
-      },
-    } satisfies Tool;
-    const tools = [searchTool, fetchTool];
-    stubConnectorList();
-    const seen = stubMcpServer({
-      era: "modern",
-      pages: [[searchTool], [fetchTool]],
-    });
-
-    await mcpCommand.parseAsync([
-      "node",
-      "okou",
-      "list-tools",
-      "_acme-mcp",
-      "--json",
-    ]);
-
-    expect(consoleLog).toHaveBeenCalledWith(
-      JSON.stringify({ connectorSlug: "_acme-mcp", tools }),
+  it("rejects a shared admitted MCP name before opening either server", async () => {
+    const otherId = "55555555-5555-4555-8555-555555555555";
+    server.use(
+      stubRunMcpConnectors([
+        runMcpConnector(),
+        runMcpConnector({ id: otherId, slug: "_other" }),
+      ]),
     );
-    expect(
-      seen.map((request) => {
-        return request.method ?? request.httpMethod;
-      }),
-    ).toEqual(["server/discover", "tools/list", "tools/list"]);
-    expect(seen[2]?.params).toMatchObject({ cursor: "1" });
-    expect(
-      seen.every((request) => {
-        return request.intent === CONNECTOR_ID;
-      }),
-    ).toBe(true);
+    const seen = stubMcpServer({ era: "modern" });
+    await expect(
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "Acme MCP"]),
+    ).rejects.toThrow("process.exit called");
+    expect(seen).toStrictEqual([]);
+    const output = outputText(consoleError);
+    expect(output).toContain(`custom:${CONNECTOR_ID}`);
+    expect(output).toContain(`custom:${otherId}`);
   });
 
-  it("falls back to the 2025 handshake and calls the exact tool once", async () => {
-    const tool = {
-      name: "search",
-      description: "Search documents",
-      inputSchema: {
-        type: "object",
-        properties: { query: { type: "string" } },
-        required: ["query"],
-      },
-    } satisfies Tool;
-    const callResult = {
-      content: [{ type: "text", text: "one result" }],
-    } satisfies CallToolResult;
-    stubConnectorList();
-    const seen = stubMcpServer({
-      era: "legacy",
-      pages: [[tool]],
-      callResult,
-    });
+  it.each([
+    "_acme-mcp",
+    CONNECTOR_ID,
+    `custom:${CONNECTOR_ID}`,
+    "custom:_acme-mcp",
+    "Acme MCP",
+  ])(
+    "discovers tools selected by %s with exact intent and cleanup",
+    async (selector) => {
+      const searchTool = {
+        name: "search",
+        description: "Search documents",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+        },
+      } satisfies Tool;
+      const fetchTool = {
+        name: "fetch",
+        inputSchema: {
+          type: "object",
+          properties: { id: { type: "string" } },
+        },
+      } satisfies Tool;
+      const tools = [searchTool, fetchTool];
+      stubConnectorList();
+      const seen = stubMcpServer({
+        era: "modern",
+        pages: [[searchTool], [fetchTool]],
+      });
 
-    await mcpCommand.parseAsync([
-      "node",
-      "okou",
-      "call",
-      "_acme-mcp",
-      "search",
-      "--input",
-      '{"query":"okou"}',
-      "--json",
-    ]);
+      await mcpCommand.parseAsync([
+        "node",
+        "okou",
+        "list-tools",
+        selector,
+        "--json",
+      ]);
 
-    expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(callResult));
-    expect(
-      seen.map((request) => {
-        return request.method ?? request.httpMethod;
-      }),
-    ).toEqual([
-      "server/discover",
-      "initialize",
-      "notifications/initialized",
-      "tools/list",
-      "tools/call",
-      "DELETE",
-    ]);
-    const calls = seen.filter((request) => {
-      return request.method === "tools/call";
-    });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.params).toMatchObject({
-      name: "search",
-      arguments: { query: "okou" },
-    });
-    expect(
-      seen.every((request) => {
-        return request.intent === CONNECTOR_ID;
-      }),
-    ).toBe(true);
-  });
+      expect(consoleLog).toHaveBeenCalledWith(
+        JSON.stringify({ connectorSlug: "_acme-mcp", tools }),
+      );
+      expect(
+        seen.map((request) => {
+          return request.method ?? request.httpMethod;
+        }),
+      ).toEqual(["server/discover", "tools/list", "tools/list"]);
+      expect(seen[2]?.params).toMatchObject({ cursor: "1" });
+      expect(
+        seen.every((request) => {
+          return request.intent === CONNECTOR_ID;
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it.each(["_acme-mcp", CONNECTOR_ID, "Acme MCP"])(
+    "calls the exact tool selected by %s once after the 2025 handshake",
+    async (selector) => {
+      const tool = {
+        name: "search",
+        description: "Search documents",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      } satisfies Tool;
+      const callResult = {
+        content: [{ type: "text", text: "one result" }],
+      } satisfies CallToolResult;
+      stubConnectorList();
+      const seen = stubMcpServer({
+        era: "legacy",
+        pages: [[tool]],
+        callResult,
+      });
+
+      await mcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        selector,
+        "search",
+        "--input",
+        '{"query":"okou"}',
+        "--json",
+      ]);
+
+      expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(callResult));
+      expect(
+        seen.map((request) => {
+          return request.method ?? request.httpMethod;
+        }),
+      ).toEqual([
+        "server/discover",
+        "initialize",
+        "notifications/initialized",
+        "tools/list",
+        "tools/call",
+        "DELETE",
+      ]);
+      const calls = seen.filter((request) => {
+        return request.method === "tools/call";
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.params).toMatchObject({
+        name: "search",
+        arguments: { query: "okou" },
+      });
+      expect(
+        seen.every((request) => {
+          return request.intent === CONNECTOR_ID;
+        }),
+      ).toBe(true);
+    },
+  );
 
   it("reads call input from a file without exposing its contents", async () => {
     const inputPath = join(inputDirectory, "input.json");
@@ -838,6 +870,27 @@ describe("okou mcp command", () => {
     expect(seen).toHaveLength(0);
     expect(outputText(consoleError)).toContain(
       'MCP connector "_not-admitted" is not authorized for this Agent',
+    );
+  });
+
+  it.each([
+    "_acme-search",
+    "33333333-3333-4333-8333-333333333333",
+    "custom:33333333-3333-4333-8333-333333333333",
+    "Acme Search",
+  ])("rejects HTTP custom selector %s from MCP commands", async (selector) => {
+    const connector = customConnector();
+    stubConnectorList();
+    server.use(stubCustomConnectors([connector]));
+    const seen = stubMcpServer({ era: "modern" });
+
+    await expect(
+      mcpCommand.parseAsync(["node", "okou", "list-tools", selector]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(seen).toHaveLength(0);
+    expect(outputText(consoleError)).toContain(
+      `MCP connector "${selector}" is not authorized for this Agent`,
     );
   });
 

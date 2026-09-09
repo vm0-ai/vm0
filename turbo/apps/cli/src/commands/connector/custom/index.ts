@@ -11,6 +11,7 @@ import {
 } from "../../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { resolveConnectorAgentId } from "../agent-context";
+import { resolveCustomConnectorId } from "../custom-connector-selector";
 import { createCustomConnectorCommand } from "./create";
 import { updateCustomConnectorCommand } from "./update";
 import { connectorInspectionType } from "../inspection";
@@ -127,8 +128,15 @@ Omit --agent inside a run to inspect the current Agent's access.`,
           return connector.displayName.length;
         }),
       );
+      const slugWidth = Math.max(
+        4,
+        ...connectors.map((connector) => {
+          return connector.slug.length;
+        }),
+      );
       const header = [
         "ID".padEnd(idWidth),
+        "SLUG".padEnd(slugWidth),
         "NAME".padEnd(nameWidth),
         "KIND",
         "STATUS",
@@ -140,6 +148,7 @@ Omit --agent inside a run to inspect the current Agent's access.`,
       for (const connector of connectors) {
         const row = [
           connector.id.padEnd(idWidth),
+          connector.slug.padEnd(slugWidth),
           connector.displayName.padEnd(nameWidth),
           connector.kind,
           renderConnected(connector),
@@ -160,8 +169,8 @@ const statusCommand = new Command()
   .name("status")
   .description("Show a custom HTTP/MCP definition and member connection status")
   .argument(
-    "<connector-id>",
-    "Custom connector UUID from connector custom list",
+    "<selector>",
+    "Custom connector slug, UUID, or unique display name (custom: prefix accepted)",
   )
   .option(
     "--agent <id>",
@@ -171,18 +180,20 @@ const statusCommand = new Command()
   .addHelpText(
     "after",
     `
-Accepts a custom connector UUID, not a public slug or custom:<uuid> selector.
+Accepts a custom connector full slug, UUID, or exact unique display name,
+optionally prefixed with custom:. Use UUIDs for stable automation.
 Shows current org definition/member status, including inside a run. For the
-account admitted to a run, use connector status with its connector list slug.
+account admitted to a run, use connector status with its connector selector.
 Omit --agent inside a run to inspect the current Agent's access.`,
   )
   .action(
     withErrorHandler(
       async (
-        connectorId: string,
+        connectorSelector: string,
         options: { agent?: string; json?: boolean },
       ) => {
         const agentId = resolveConnectorAgentId(options.agent);
+        const connectorId = await resolveCustomConnectorId(connectorSelector);
         const [connector, agentCtx] = await Promise.all([
           getCustomConnector(connectorId),
           resolveCustomAgentContext(agentId),
@@ -215,11 +226,14 @@ Omit --agent inside a run to inspect the current Agent's access.`,
           return;
         }
         if (!connector) {
-          throw new Error(`Custom connector not found: ${connectorId}`);
+          throw new Error(
+            `Custom connector not found: ${connectorId}\nRun: okou connector custom list`,
+          );
         }
         console.log(`Custom connector: ${chalk.cyan(connector.displayName)}`);
         console.log();
         console.log(`${"ID:".padEnd(LABEL_WIDTH)}${connector.id}`);
+        console.log(`${"Slug:".padEnd(LABEL_WIDTH)}${connector.slug}`);
         console.log(`${"Kind:".padEnd(LABEL_WIDTH)}${connector.kind}`);
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${renderConnected(connector)}`,

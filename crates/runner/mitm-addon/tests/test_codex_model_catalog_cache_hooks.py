@@ -41,6 +41,11 @@ class _DecodeGuardPrefetchMarker(bytes):
         raise AssertionError("Codex prefetch marker must not be decoded")
 
 
+class _DecodeGuardAcceptEncoding(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("bypassed Accept-Encoding must not be decoded")
+
+
 def _set_catalog_query(flow: http.HTTPFlow, raw_query: str) -> None:
     path = f"/backend-api/codex/models?{raw_query}"
     flow.request.path = path
@@ -321,6 +326,163 @@ async def test_high_cardinality_catalog_query_bypasses_before_percent_decoding(r
     assert telemetry == {
         "model_catalog_cache_status": "model_catalog_bypass",
         "model_catalog_cache_bypass_reason": "request_url",
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw_values", "eligible"),
+    [
+        pytest.param((), True, id="absent"),
+        pytest.param((b"identity",), True, id="identity"),
+        pytest.param((b" \tIdEnTiTy\t ",), True, id="case-and-whitespace"),
+        pytest.param((b"\xc2\xa0identity\xe2\x80\xa8",), True, id="unicode-whitespace"),
+        pytest.param((b"",), False, id="empty"),
+        pytest.param((b" \t",), False, id="whitespace"),
+        pytest.param((b", ,",), False, id="empty-items"),
+        pytest.param((b"", b""), False, id="repeated-empty"),
+        pytest.param((b", identity, ,",), True, id="identity-with-empty-items"),
+        pytest.param((b"", b"identity", b" , "), True, id="identity-in-repeated-fields"),
+        pytest.param((b"identity, identity",), False, id="duplicate-identity-items"),
+        pytest.param((b"identity", b"identity"), False, id="duplicate-identity-fields"),
+        pytest.param((b"gzip",), False, id="encoded"),
+        pytest.param((b"identity, br",), False, id="mixed-encodings"),
+        pytest.param((b"identity;q=1",), False, id="parameterized-identity"),
+        pytest.param((b"*;q=0",), False, id="wildcard"),
+        pytest.param((b"\xffidentity",), False, id="invalid-utf8"),
+        pytest.param((b" " * (64 * 1024 - 8) + b"identity",), True, id="exact-budget"),
+        pytest.param(
+            (b"," * (64 * 1024 - 8) + b"identity",), True, id="many-empty-items-at-budget"
+        ),
+        pytest.param(
+            (b" " * (32 * 1024), b" " * (32 * 1024 - 8) + b"identity"),
+            True,
+            id="aggregate-exact-budget",
+        ),
+        pytest.param((b" " * (64 * 1024 - 7) + b"identity",), False, id="first-over-budget"),
+    ],
+)
+async def test_accept_encoding_controls_fresh_catalog_reuse(real_flow, raw_values, eligible):
+    await install_catalog(catalog_flow(real_flow))
+    flow = catalog_flow(real_flow)
+    flow.request.headers.set_all("Accept-Encoding", [])
+    flow.request.headers.fields += tuple((b"aCcEpT-EnCoDiNg", value) for value in raw_values)
+    original_fields = flow.request.headers.fields
+
+    await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    assert flow.request.headers.fields == original_fields
+    if eligible:
+        assert flow.response is not None
+        assert flow.response.content == CATALOG_BODY
+    else:
+        assert flow.response is None
+        telemetry: dict[str, object] = {}
+        catalog_cache.add_network_log_fields(flow, telemetry)
+        assert telemetry == {
+            "model_catalog_cache_status": "model_catalog_bypass",
+            "model_catalog_cache_bypass_reason": "request_encoding",
+        }
+
+
+async def test_accept_encoding_budget_excludes_unrelated_values(real_flow):
+    await install_catalog(catalog_flow(real_flow))
+    flow = catalog_flow(real_flow)
+    flow.request.headers.fields += ((b"X-Unrelated", b"x" * (64 * 1024 + 1)),)
+    original_fields = flow.request.headers.fields
+
+    await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    assert flow.request.headers.fields == original_fields
+    assert flow.response is not None
+    assert flow.response.content == CATALOG_BODY
+
+
+@pytest.mark.parametrize("leading_value", [b"gzip", b"identity,identity"])
+async def test_accept_encoding_bypass_stops_before_decoding_later_fields(real_flow, leading_value):
+    flow = catalog_flow(real_flow)
+    flow.request.headers.set_all("Accept-Encoding", [])
+    flow.request.headers.fields += (
+        (b"Accept-Encoding", leading_value),
+        (b"accept-encoding", _DecodeGuardAcceptEncoding(b"identity")),
+    )
+    original_fields = flow.request.headers.fields
+
+    await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    assert flow.response is None
+    assert flow.request.headers.fields == original_fields
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_encoding",
+    }
+
+
+@pytest.mark.parametrize("entry_point", ["request", "requestheaders"])
+@pytest.mark.parametrize("billable", [False, True], ids=["non-billable", "billable"])
+@pytest.mark.parametrize("repeated", [False, True], ids=["single-field", "aggregate-overflow"])
+async def test_over_budget_accept_encoding_bypasses_catalog_without_decoding(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    entry_point: Literal["request", "requestheaders"],
+    billable: bool,
+    repeated: bool,
+):
+    if repeated:
+        encoding_fields = (
+            (b"Accept-Encoding", _DecodeGuardAcceptEncoding(b" " * (32 * 1024))),
+            (b"accept-encoding", _DecodeGuardAcceptEncoding(b" " * (32 * 1024 - 7) + b"identity")),
+        )
+    else:
+        encoding_fields = (
+            (b"aCcEpT-EnCoDiNg", _DecodeGuardAcceptEncoding(b"gzip," * (64 * 1024 // 5) + b"br")),
+        )
+    registry_path = _write_codex_registry(
+        tmp_path, capture=entry_point == "requestheaders", billable=billable
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="chatgpt.com",
+        method="GET",
+        path="/backend-api/codex/models?client_version=0.145.0",
+        request_headers=http.Headers(((b"Host", b"chatgpt.com"), *encoding_fields)),
+    )
+    flow.metadata["_request_end_stream"] = True
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(
+            headers={
+                "Authorization": "Bearer resolved-token",
+                "ChatGPT-Account-ID": "resolved-account",
+            }
+        ),
+    ):
+        if entry_point == "requestheaders":
+            await await_requestheaders_result(mitm_addon.requestheaders(flow))
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer resolved-token"
+    assert (
+        tuple(
+            (name, value)
+            for name, value in flow.request.headers.fields
+            if name.lower() == b"accept-encoding"
+        )
+        == encoding_fields
+    )
+    if billable:
+        assert flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "preserved_work_budget"
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_encoding",
     }
 
 

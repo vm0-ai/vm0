@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { findConnectorBySelector } from "./connector-selector";
 import { resolveAgentContext, resolveConnectorAgentId } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
@@ -229,9 +230,24 @@ async function printRunConnectorStatus(
     }
     return;
   }
-  const connector = view.connectors.find((candidate) => {
-    return candidate.slug === connectorSlug;
-  });
+  const connector = findConnectorBySelector(
+    view.connectors,
+    connectorSlug,
+    (candidate) => {
+      return candidate.target.kind === "custom"
+        ? {
+            kind: "custom",
+            id: candidate.target.customConnectorId,
+            slug: candidate.slug,
+            label: candidate.connectorLabel,
+          }
+        : {
+            kind: "builtin",
+            slug: candidate.slug,
+            label: candidate.connectorLabel,
+          };
+    },
+  );
   if (!connector) {
     throw new Error(
       `Connector is not available in this run: ${connectorSlug}`,
@@ -263,8 +279,8 @@ export const statusCommand = new Command()
   .name("status")
   .description("Show run account status, or builtin status outside a run")
   .argument(
-    "<slug>",
-    "Slug shown by connector list (builtin only outside a run)",
+    "<selector>",
+    "Connector slug or unique display name (builtin only outside a run)",
   )
   .option(
     "--agent <id>",
@@ -275,13 +291,15 @@ export const statusCommand = new Command()
     "after",
     `
 Scope:
-  Inside a run, accepts builtin or custom HTTP/MCP slugs shown by connector list
-  and reports the account selected for that run. Missing account context is
+  Inside a run, accepts builtin or custom HTTP/MCP full slugs, custom UUIDs,
+  or exact unique display names from connector list. Reports the account
+  selected for that run. Missing account context is
   reported as unavailable. Omit --agent or match the current Agent; the flag
   does not change the run's accounts.
-  Outside a run, accepts builtin catalog slugs and shows the current member's
-  connection plus optional --agent authorization.
-  For org custom definition/member status, use connector custom status <uuid>.
+  Outside a run, accepts builtin catalog full slugs or exact unique display names
+  and shows the current member's connection plus optional --agent authorization.
+  Qualify a selector with builtin: or custom: within the supported connector types.
+  For org custom definition/member status, use connector custom status <selector>.
 
 Examples:
   okou connector status github --json

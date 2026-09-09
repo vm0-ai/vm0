@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import { connectorAccountRoutes } from "../connector-accounts";
 import {
   connectorOpenIdStartContract,
   connectorsBySlugContract,
@@ -52,7 +56,10 @@ function mockSteamRuntimeEnv(): void {
 async function startSteamOpenId(
   actor: TestActor,
   account: ConnectorAccountMutationIntent = { intent: "add" },
-): Promise<URL> {
+): Promise<{
+  readonly authorizationUrl: URL;
+  readonly oauthAttemptId: string;
+}> {
   mockSession(actor);
   const response = await accept(
     setupApp({ context, routes: connectorsRoutes })(
@@ -64,7 +71,13 @@ async function startSteamOpenId(
     }),
     [200],
   );
-  return new URL(response.body.authorizationUrl);
+  if (!response.body.oauthAttemptId) {
+    throw new Error("Expected OpenID attempt ID");
+  }
+  return {
+    authorizationUrl: new URL(response.body.authorizationUrl),
+    oauthAttemptId: response.body.oauthAttemptId,
+  };
 }
 
 function stateFromSteamAuthorizationUrl(authorizationUrl: URL): string {
@@ -190,7 +203,7 @@ describe("Steam OpenID connector", () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
 
-    const authorizationUrl = await startSteamOpenId(actor);
+    const { authorizationUrl, oauthAttemptId } = await startSteamOpenId(actor);
     expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
       "https://steamcommunity.com/openid/login",
     );
@@ -213,6 +226,17 @@ describe("Steam OpenID connector", () => {
       }),
       [200],
     );
+    const completion = await accept(
+      setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      ).oauthCompletion({
+        headers: authHeaders(),
+        params: { attemptId: oauthAttemptId },
+        query: { kind: "builtin", connectorSlug: "steam" },
+      }),
+      [200],
+    );
+    expect(completion.body).toStrictEqual({ connectionId: connector.body.id });
     expect(connector.body).toMatchObject({
       slug: "steam",
       authMethod: "openid",
@@ -226,7 +250,8 @@ describe("Steam OpenID connector", () => {
   it("keeps the active Steam connection until a verified replacement succeeds", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    const initialAuthorizationUrl = await startSteamOpenId(actor);
+    const { authorizationUrl: initialAuthorizationUrl } =
+      await startSteamOpenId(actor);
     await completeSteamOpenIdCallback(initialAuthorizationUrl);
 
     mockSession(actor);
@@ -240,8 +265,16 @@ describe("Steam OpenID connector", () => {
       [200],
     );
 
-    const authorizationUrl = await startSteamOpenId(actor);
+    const { authorizationUrl, oauthAttemptId } = await startSteamOpenId(actor);
     mockSession(actor);
+    const pending = await setupApp({ context, routes: connectorAccountRoutes })(
+      connectorAccountsContract,
+    ).oauthCompletion({
+      headers: authHeaders(),
+      params: { attemptId: oauthAttemptId },
+      query: { kind: "builtin", connectorSlug: "steam" },
+    });
+    expect(pending.status).toBe(404);
     const whilePending = await accept(
       setupApp({ context, routes: connectorsRoutes })(
         connectorsBySlugContract,
@@ -283,10 +316,11 @@ describe("Steam OpenID connector", () => {
     );
     expect(connector.body).toStrictEqual(initial.body);
 
-    const replacementAuthorizationUrl = await startSteamOpenId(actor, {
-      intent: "reconnect",
-      connectionId: initial.body.id,
-    });
+    const { authorizationUrl: replacementAuthorizationUrl } =
+      await startSteamOpenId(actor, {
+        intent: "reconnect",
+        connectionId: initial.body.id,
+      });
     await completeSteamOpenIdCallback(replacementAuthorizationUrl);
     mockSession(actor);
     const replaced = await accept(

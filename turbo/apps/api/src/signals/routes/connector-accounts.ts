@@ -10,6 +10,8 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
+import { setResHeader$ } from "../context/hono";
+import { readConnectorOAuthCompletion } from "../services/connector-oauth-completion.service";
 import type { RouteEntry } from "../route-entry";
 import { bestEffort } from "../utils";
 import {
@@ -39,6 +41,30 @@ function targetFromQuery(
     ? { kind: "builtin", connectorSlug: query.connectorSlug }
     : { kind: "custom", customConnectorId: query.customConnectorId };
 }
+
+const oauthCompletionInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const { attemptId } = get(
+      pathParamsOf(connectorAccountsContract.oauthCompletion),
+    );
+    const target = get(queryOf(connectorAccountsContract.oauthCompletion));
+    set(setResHeader$, "Cache-Control", "no-store");
+    const completion = await readConnectorOAuthCompletion(
+      set(writeDb$),
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        attemptId,
+        target,
+      },
+      signal,
+    );
+    return completion
+      ? { status: 200 as const, body: completion }
+      : notFound("OAuth completion not found");
+  },
+);
 
 const inspectInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -369,6 +395,10 @@ const writeAuth = {
 } as const;
 
 export const connectorAccountRoutes: readonly RouteEntry[] = [
+  {
+    route: connectorAccountsContract.oauthCompletion,
+    handler: authRoute(readAuth, oauthCompletionInner$),
+  },
   {
     route: connectorAccountsContract.inspect,
     handler: authRoute(readAuth, inspectInner$),

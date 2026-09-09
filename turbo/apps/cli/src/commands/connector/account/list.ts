@@ -13,6 +13,7 @@ import {
   listCustomConnectors,
 } from "../../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { findConnectorBySelector } from "../connector-selector";
 import { connectorAccountCliInventoryLabel } from "../account-label";
 import {
   connectorDiscoveryItems,
@@ -140,7 +141,10 @@ export const listConnectorAccountsCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List available accounts for one connector")
-  .argument("<slug>", "Connector slug")
+  .argument(
+    "<selector>",
+    "Connector slug, custom UUID, or unique display name; builtin:/custom: prefixes accepted",
+  )
   .option("--search <text>", "Filter accounts by name or provider identity")
   .option("--json", "Output available accounts as JSON")
   .action(
@@ -159,9 +163,20 @@ export const listConnectorAccountsCommand = new Command()
           connectors,
           customConnectors,
         );
-        const connector = discoveredConnectors.find((item) => {
-          return item.slug === slug;
-        });
+        const connector = findConnectorBySelector(
+          discoveredConnectors,
+          slug,
+          (item) => {
+            return item.kind === "custom"
+              ? {
+                  kind: "custom",
+                  id: item.customConnector.id,
+                  slug: item.slug,
+                  label: item.label,
+                }
+              : { kind: "builtin", slug: item.slug, label: item.label };
+          },
+        );
         if (!connector) {
           throw new Error(`Unknown or unavailable connector: ${slug}`, {
             cause: new Error(

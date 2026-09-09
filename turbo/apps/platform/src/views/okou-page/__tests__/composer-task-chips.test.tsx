@@ -59,7 +59,7 @@ test.each([
   { task: "Image", mode: "image", instruction: "Create an image." },
   { task: "Video", mode: "video", instruction: "Create a video." },
   {
-    task: "Slides",
+    task: "Presentation",
     mode: "presentation",
     instruction: "Create a presentation.",
   },
@@ -231,7 +231,12 @@ test("A presentation suggestion inserts a canonical template and preserves the p
   const capture = mockTemplateChat();
   const editor = await setupChips();
   await fill(editor, "Explain our product launch");
-  click(button("Slides", screen.getByRole("group", { name: "Choose a task" })));
+  click(
+    button(
+      "Presentation",
+      screen.getByRole("group", { name: "Choose a task" }),
+    ),
+  );
   const templates = await screen.findByRole("group", {
     name: "Presentation templates",
   });
@@ -298,7 +303,12 @@ test("Uploaded presentation suggestions use the existing template reference", as
     }),
   ]);
   const editor = await setupChips();
-  click(button("Slides", screen.getByRole("group", { name: "Choose a task" })));
+  click(
+    button(
+      "Presentation",
+      screen.getByRole("group", { name: "Choose a task" }),
+    ),
+  );
   const templates = await screen.findByRole("group", {
     name: "Presentation templates",
   });
@@ -333,7 +343,12 @@ test("Importing a deck uses the existing analysis flow without a create-mode ins
   });
   const user = userEvent.setup({ delay: null });
   await setupChips();
-  click(button("Slides", screen.getByRole("group", { name: "Choose a task" })));
+  click(
+    button(
+      "Presentation",
+      screen.getByRole("group", { name: "Choose a task" }),
+    ),
+  );
   const input = await screen.findByLabelText("Import your own deck");
   await user.upload(
     input,
@@ -355,7 +370,7 @@ test("More templates and Website open the existing library in the matching categ
   const editor = await setupChips();
   await fill(editor, "Keep my draft");
   const tasks = screen.getByRole("group", { name: "Choose a task" });
-  click(button("Slides", tasks));
+  click(button("Presentation", tasks));
   click(button("More templates"));
   const dialog = await screen.findByRole("dialog");
   expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");

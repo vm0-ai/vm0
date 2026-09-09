@@ -27,6 +27,7 @@ import {
 } from "./check-custom";
 import { customConnectorSettingsGuidance } from "./custom-connector-guidance";
 import { printConnectorCheckJson } from "./check-json";
+import { resolveDiagnosticConnectorSelector } from "./diagnostic-connector-selector";
 import {
   diagnoseConnectorCheck,
   getConnector,
@@ -625,7 +626,7 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--connector <selector>",
-      "Select a builtin slug or custom:<uuid> when connectors own the same URL route",
+      "Select a unique slug, custom UUID, or display name; qualify collisions with builtin: or custom:",
     ),
   )
   .addOption(
@@ -648,8 +649,8 @@ Scope:
   select a permission in this mode. Custom HTTP/MCP routes use --url; this checks
   HTTP routing, not MCP tool discovery or execution.
   URL mode discovers builtin and custom route owners. Use --connector with a
-  builtin slug or custom:<uuid> to disambiguate; custom public slugs are not
-  accepted here. Find UUIDs with connector custom list.
+  full slug, custom UUID, or exact unique display name; qualify collisions with
+  builtin: or custom:. Find UUIDs with connector custom list.
   --connector and --method require --url. URL permissions are derived from the
   request, so --check-permission cannot be combined with --url.
   Inside a run, account identity comes from that run's admitted accounts.
@@ -661,6 +662,7 @@ Examples:
   okou connector check --url https://api.github.com/repos/owner/repo
   okou connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
   okou connector check --url https://api.acme.example/v1/items --connector custom:<connector-id>
+  okou connector check --url https://api.acme.example/v1/items --connector _acme-search
   okou connector check --url https://slack.com/api/chat.postMessage --method POST
   okou connector check --env-name SLACK_TOKEN --check-permission chat:write
 
@@ -705,7 +707,11 @@ Permission recovery:
         return;
       }
       const method = opts.method.toUpperCase();
-      const request = buildDiagnosticRequest(opts, method);
+      const connector =
+        opts.connector === undefined
+          ? undefined
+          : await resolveDiagnosticConnectorSelector(opts.connector);
+      const request = buildDiagnosticRequest({ ...opts, connector }, method);
       const diagnostic = await diagnoseConnectorCheck(request);
       if (opts.json) {
         await printConnectorCheckJson(request, diagnostic);

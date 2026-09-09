@@ -46,5 +46,16 @@ Run context:
   run account context means unavailable; it does not select another account.
   Outside a run, commands exposing --agent can inspect that Agent's authorization.
 
+Selectors:
+  Use a full slug, a custom UUID, or an exact unique display name.
+  Qualify a target with builtin:<slug-or-name> or custom:<uuid-slug-or-name>.
+  Full identifiers take precedence over display names; ambiguous matches are rejected.
+  Each command retains its supported connector types. Use UUIDs for stable custom automation.
+
+Examples:
+  okou connector status builtin:github
+  okou connector custom status "Acme Search"
+  okou connector check --connector custom:_acme-search --url https://api.acme.test/items
+
 Use each command's --help for its supported selectors and callback limits.`,
   );

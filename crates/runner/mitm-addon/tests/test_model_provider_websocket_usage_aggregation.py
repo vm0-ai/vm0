@@ -47,8 +47,8 @@ def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = 
     ).encode()
 
 
-def _pressure_model_usage_tier_state(flow: http.HTTPFlow) -> None:
-    for index in range(100):
+def _pressure_model_usage_tier_state(flow: http.HTTPFlow, *, response_count: int = 100) -> None:
+    for index in range(response_count):
         feed_websocket_server_message(
             flow,
             _openai_websocket_zero_usage_frame(f"resp_ws_pressure_{index}"),
@@ -367,6 +367,155 @@ class TestModelProviderWebSocketUsageAggregation:
         [duplicate_event] = duplicate_entry["usage_events"]
         assert duplicate_event["category"] == "tokens.output"
         assert duplicate_event["buffer_accepted"] is False
+
+    @pytest.mark.parametrize("intervening_responses", [99, 100])
+    @pytest.mark.parametrize(
+        "initial_output_tokens", [0, 12], ids=["late-output", "duplicate-output"]
+    )
+    @pytest.mark.parametrize(
+        (
+            "input_tokens",
+            "service_tier",
+            "replay_input_tokens",
+            "replay_service_tier",
+            "category_suffix",
+        ),
+        [
+            pytest.param(20, "priority", 20, None, ".fast", id="fast-omitted-tier"),
+            pytest.param(
+                272_001,
+                "priority",
+                272_001,
+                None,
+                ".long_context.fast",
+                id="long-context-fast-omitted-tier",
+            ),
+            pytest.param(20, "priority", 272_001, "default", ".fast", id="fast-changed-pricing"),
+            pytest.param(
+                272_001,
+                "priority",
+                20,
+                "default",
+                ".long_context.fast",
+                id="long-context-fast-changed-pricing",
+            ),
+            pytest.param(20, "default", 272_001, "priority", "", id="base-changed-pricing"),
+            pytest.param(
+                272_001,
+                "default",
+                20,
+                "priority",
+                ".long_context",
+                id="long-context-changed-pricing",
+            ),
+        ],
+    )
+    def test_model_websocket_input_replay_preserves_committed_pricing_at_eviction_boundary(
+        self,
+        tmp_path,
+        real_flow,
+        intervening_responses,
+        initial_output_tokens,
+        input_tokens,
+        service_tier,
+        replay_input_tokens,
+        replay_service_tier,
+        category_suffix,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        replay_response = {
+            "id": "resp_ws_input_replay",
+            "model": "gpt-5.5",
+            "usage": {"input_tokens": replay_input_tokens, "output_tokens": 12},
+        }
+        if replay_service_tier is not None:
+            replay_response["service_tier"] = replay_service_tier
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "resp_ws_input_replay",
+                            "model": "gpt-5.5",
+                            "service_tier": service_tier,
+                            "usage": {
+                                "input_tokens": input_tokens,
+                                "output_tokens": initial_output_tokens,
+                            },
+                        },
+                    }
+                ).encode(),
+            )
+            usage.flush_usage_events(trigger="test")
+            _pressure_model_usage_tier_state(flow, response_count=intervening_responses)
+            feed_websocket_server_message(
+                flow,
+                json.dumps({"type": "response.done", "response": replay_response}).encode(),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [
+                ("gpt-5.5", f"tokens.input{category_suffix}", input_tokens),
+                ("gpt-5.5", f"tokens.output{category_suffix}", 12),
+            ],
+        )
+
+    def test_model_websocket_zero_replay_keeps_recovered_pricing_committed(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "resp_ws_zero_replay",
+                            "model": "gpt-5.5",
+                            "service_tier": "priority",
+                            "usage": {"input_tokens": 272_001},
+                        },
+                    }
+                ).encode(),
+            )
+            usage.flush_usage_events(trigger="test")
+            _pressure_model_usage_tier_state(flow)
+            feed_websocket_server_message(
+                flow,
+                _openai_websocket_zero_usage_frame("resp_ws_zero_replay"),
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_ws_zero_replay",
+                    input_tokens=20,
+                    output_tokens=12,
+                ),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [
+                ("gpt-5.5", "tokens.input.long_context.fast", 272_001),
+                ("gpt-5.5", "tokens.output.long_context.fast", 12),
+            ],
+        )
 
     def test_model_websocket_explicit_zero_input_selects_base_tier_for_late_output(
         self,

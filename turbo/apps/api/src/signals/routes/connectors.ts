@@ -495,7 +495,7 @@ const startConnectorOauthInner$ = command(
         allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
-        return { resolution, connectionId: null };
+        return { resolution, connectionId: null, oauthAttemptId: null };
       }
       const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
@@ -515,6 +515,7 @@ const startConnectorOauthInner$ = command(
       });
       return {
         resolution,
+        oauthAttemptId: oauthStateId,
         connectionId:
           bodyResult.data.account.intent === "add" ? oauthStateId : null,
       };
@@ -531,6 +532,7 @@ const startConnectorOauthInner$ = command(
       body: {
         authorizationUrl: authResult.url,
         connectionId: mutationStart.connectionId ?? undefined,
+        oauthAttemptId: mutationStart.oauthAttemptId ?? undefined,
       },
     };
   },
@@ -619,7 +621,7 @@ const startConnectorOpenIdInner$ = command(
         allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
-        return { resolution, connectionId: null };
+        return { resolution, connectionId: null, oauthAttemptId: null };
       }
       const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
@@ -638,6 +640,7 @@ const startConnectorOpenIdInner$ = command(
       });
       return {
         resolution,
+        oauthAttemptId: oauthStateId,
         connectionId:
           bodyResult.data.account.intent === "add" ? oauthStateId : null,
       };
@@ -654,6 +657,7 @@ const startConnectorOpenIdInner$ = command(
       body: {
         authorizationUrl: authResult.url,
         connectionId: mutationStart.connectionId ?? undefined,
+        oauthAttemptId: mutationStart.oauthAttemptId ?? undefined,
       },
     };
   },

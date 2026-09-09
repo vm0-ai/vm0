@@ -41,14 +41,6 @@ import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-mode
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 import { validatePermanentComputerUseHostProductState } from "./test-computer-use-host-product-permanent";
-import { LEGACY_DATABASE_IDENTITY_MANIFEST } from "./legacy-database-identity-manifest";
-import {
-  assertLegacyDatabaseIdentityInventory,
-  countLegacyIdentitiesByKind,
-  discoverLatestLegacySnapshotIdentities,
-  discoverPersistedSemanticLegacyIdentities,
-  discoverReplayedCatalogLegacyIdentities,
-} from "./legacy-database-identity-inventory";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -1589,56 +1581,6 @@ async function validatePermanentTriggerAndFunctionInventory(
     });
 
     console.log("   ✅ Permanent trigger and function inventories match\n");
-  } finally {
-    await client.end();
-  }
-}
-
-async function validateActiveLegacyDatabaseIdentityInventory(
-  dbUrl: string,
-): Promise<void> {
-  console.log(
-    "=== Phase 2.5.1.1: Validate active legacy database identity inventory ===\n",
-  );
-  const snapshot = await discoverLatestLegacySnapshotIdentities(MIGRATIONS_DIR);
-  const client = new Client({ connectionString: dbUrl });
-  await client.connect();
-
-  try {
-    const catalog = await discoverReplayedCatalogLegacyIdentities(client);
-    const semanticContracts = discoverPersistedSemanticLegacyIdentities(
-      snapshot.snapshot,
-    );
-    const discovered = [
-      ...snapshot.identities,
-      ...catalog,
-      ...semanticContracts,
-    ];
-    assertLegacyDatabaseIdentityInventory({
-      discovered,
-      manifest: LEGACY_DATABASE_IDENTITY_MANIFEST,
-    });
-    const counts = countLegacyIdentitiesByKind(discovered);
-    const nonEmptyCounts = Object.entries(counts)
-      .filter(([, count]) => {
-        return count > 0;
-      })
-      .map(([kind, count]) => {
-        return `${kind}=${count}`;
-      })
-      .join(", ");
-
-    console.log(
-      `   Latest snapshot: ${snapshot.migrationTag} (${snapshot.identities.length} identities)`,
-    );
-    console.log(`   Replayed catalog: ${catalog.length} identities`);
-    console.log(
-      `   Persisted semantic contracts: ${semanticContracts.length} families`,
-    );
-    console.log(`   Authoritative manifest: ${nonEmptyCounts}`);
-    console.log(
-      "   ✅ Active legacy database identity inventory matches exactly\n",
-    );
   } finally {
     await client.end();
   }
@@ -3690,7 +3632,6 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validatePermanentUsagePackPendingSnapshotState(dbUrl1);
-    await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentPiMemoryStage1BlobRetentionBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);

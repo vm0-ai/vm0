@@ -1,6 +1,11 @@
 import { cn } from "@okouai/ui";
 import type { HTMLAttributes } from "react";
 
+// Pointer mode is set synchronously so hybrid devices keep native mouse
+// selection. Editable controls and links retain their browser interactions.
+export const CHAT_TOUCH_SELECTION_CLASS =
+  "data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])]:select-none data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])]:[-webkit-touch-callout:none] data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])_:is(a,button,input,textarea,select,[contenteditable]:not([contenteditable=false]))]:select-text data-[chat-selection-mode=touch]:[&_:is([data-chat-selection-source],[data-feedback-source])_:is(a,button,input,textarea,select,[contenteditable]:not([contenteditable=false]))]:[-webkit-touch-callout:default]";
+
 export const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 
@@ -73,6 +78,7 @@ export function ChatAssistantMessageBody({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-chat-selection-source
       className={cn(
         "okou-chat-bubble-assistant p-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
         className,

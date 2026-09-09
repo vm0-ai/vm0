@@ -272,84 +272,93 @@ describe("run connector account inspection", () => {
     expect(inspectionRequests).toBe(0);
   });
 
-  it("uses one exact representation for custom HTTP and MCP targets", async () => {
-    const httpConnector = customConnector();
-    const mcpConnector = customMcpConnector();
-    const httpConnectionId = "33333333-3333-4333-8333-333333333334";
-    const mcpConnectionId = "44444444-4444-4444-8444-444444444445";
-    writeContext([
-      {
-        kind: "custom",
-        customConnectorId: httpConnector.id,
-        connectionId: httpConnectionId,
-      },
-      {
-        kind: "custom",
-        customConnectorId: mcpConnector.id,
-        connectionId: mcpConnectionId,
-      },
-    ]);
-    server.use(
-      stubConnectorCatalog([]),
-      stubCustomConnectors([httpConnector, mcpConnector]),
-      http.post(
-        "http://localhost:3000/api/connector-accounts/inspect",
-        async ({ request }) => {
-          const body = connectorAccountsContract.inspect.body.parse(
-            await request.json(),
-          );
-          return HttpResponse.json({
-            results: body.selections.map((selection) => {
-              return { kind: "unavailable" as const, ...selection };
-            }),
-          });
-        },
-      ),
-    );
-
-    await listCommand.parseAsync(["node", "cli"]);
-    let output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain(httpConnector.slug);
-    expect(output).toContain(httpConnectionId);
-    expect(output).toContain(mcpConnector.slug);
-    expect(output).toContain(mcpConnectionId);
-
-    mockConsoleLog.mockClear();
-    await statusCommand.parseAsync(["node", "cli", mcpConnector.slug]);
-    output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain(mcpConnectionId);
-    expect(output).toContain("Current Status:");
-
-    mockConsoleLog.mockClear();
-    await listCommand.parseAsync(["node", "cli", "--json"]);
-    const json: unknown = JSON.parse(
-      mockConsoleLog.mock.calls.flat().join("\n"),
-    );
-    expect(json).toMatchObject({
-      context: "run",
-      connectors: [
+  it.each(["slug", "uuid", "qualified", "name"] as const)(
+    "preserves pinned HTTP and MCP accounts for a %s selector",
+    async (form) => {
+      const httpConnector = customConnector();
+      const mcpConnector = customMcpConnector();
+      const httpConnectionId = "33333333-3333-4333-8333-333333333334";
+      const mcpConnectionId = "44444444-4444-4444-8444-444444444445";
+      writeContext([
         {
-          target: { kind: "custom", customConnectorId: httpConnector.id },
-          connectorType: "custom-http",
-          definitionAvailable: true,
-          account: {
-            state: "metadata-unavailable",
-            connectionId: httpConnectionId,
-          },
+          kind: "custom",
+          customConnectorId: httpConnector.id,
+          connectionId: httpConnectionId,
         },
         {
-          target: { kind: "custom", customConnectorId: mcpConnector.id },
-          connectorType: "custom-mcp",
-          definitionAvailable: true,
-          account: {
-            state: "metadata-unavailable",
-            connectionId: mcpConnectionId,
-          },
+          kind: "custom",
+          customConnectorId: mcpConnector.id,
+          connectionId: mcpConnectionId,
         },
-      ],
-    });
-    expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-  });
+      ]);
+      server.use(
+        stubConnectorCatalog([]),
+        stubCustomConnectors([httpConnector, mcpConnector]),
+        http.post(
+          "http://localhost:3000/api/connector-accounts/inspect",
+          async ({ request }) => {
+            const body = connectorAccountsContract.inspect.body.parse(
+              await request.json(),
+            );
+            return HttpResponse.json({
+              results: body.selections.map((selection) => {
+                return { kind: "unavailable" as const, ...selection };
+              }),
+            });
+          },
+        ),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+      let output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(httpConnector.slug);
+      expect(output).toContain(httpConnectionId);
+      expect(output).toContain(mcpConnector.slug);
+      expect(output).toContain(mcpConnectionId);
+
+      mockConsoleLog.mockClear();
+      const selectors = {
+        slug: mcpConnector.slug,
+        uuid: mcpConnector.id,
+        qualified: `custom:${mcpConnector.id}`,
+        name: mcpConnector.displayName,
+      };
+      await statusCommand.parseAsync(["node", "cli", selectors[form]]);
+      output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(mcpConnectionId);
+      expect(output).toContain("Current Status:");
+
+      mockConsoleLog.mockClear();
+      await listCommand.parseAsync(["node", "cli", "--json"]);
+      const json: unknown = JSON.parse(
+        mockConsoleLog.mock.calls.flat().join("\n"),
+      );
+      expect(json).toMatchObject({
+        context: "run",
+        connectors: [
+          {
+            target: { kind: "custom", customConnectorId: httpConnector.id },
+            connectorType: "custom-http",
+            definitionAvailable: true,
+            account: {
+              state: "metadata-unavailable",
+              connectionId: httpConnectionId,
+            },
+          },
+          {
+            target: { kind: "custom", customConnectorId: mcpConnector.id },
+            connectorType: "custom-mcp",
+            definitionAvailable: true,
+            account: {
+              state: "metadata-unavailable",
+              connectionId: mcpConnectionId,
+            },
+          },
+        ],
+      });
+      expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("retains a missing custom definition's UUID with an explicitly unknown subtype", async () => {
     const customConnectorId = "33333333-3333-4333-8333-333333333333";

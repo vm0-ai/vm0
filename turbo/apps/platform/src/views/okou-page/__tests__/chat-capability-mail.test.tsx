@@ -1,3 +1,4 @@
+import { mockOAuthCompletions } from "./connector-page-test-helpers.ts";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
@@ -227,11 +228,14 @@ test("Reconnect the exact Gmail account required by a persisted mail card", asyn
       ),
     );
   });
+  const completedAttempts = mockOAuthCompletions(context);
+  const oauthAttemptId = crypto.randomUUID();
   const oauthAccounts: ConnectorAccountMutationIntent[] = [];
   context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
     oauthAccounts.push(body.account);
     return respond(200, {
       authorizationUrl: "https://accounts.example.test/gmail/authorize",
+      oauthAttemptId,
     });
   });
   const authorization = openedAuthorizationWindow();
@@ -273,6 +277,7 @@ test("Reconnect the exact Gmail account required by a persisted mail card", asyn
       updatedAt: "2026-08-01T10:00:00.000Z",
     }),
   ]);
+  completedAttempts.set(oauthAttemptId, GMAIL_CONNECTION_ID);
   authorization.complete();
   context.mocks.ably.trigger("connector:changed", { connectorSlug: "gmail" });
 

@@ -95,10 +95,22 @@ describe("okou connector custom readers", () => {
     });
   });
 
-  it.each([customConnector(), customMcpConnector()])(
-    "exposes $kind definition details through status JSON",
-    async (connector) => {
+  it.each(
+    [customConnector(), customMcpConnector()].flatMap((connector) => {
+      return [
+        connector.id,
+        connector.slug,
+        `custom:${connector.id}`,
+        connector.displayName,
+      ].map((selector) => {
+        return { connector, selector };
+      });
+    }),
+  )(
+    "exposes $connector.kind definition details selected by $selector through JSON",
+    async ({ connector, selector }) => {
       server.use(
+        stubCustomConnectors([connector]),
         http.get(
           `http://localhost:3000/api/custom-connectors/${connector.id}`,
           () => {
@@ -110,13 +122,14 @@ describe("okou connector custom readers", () => {
         "node",
         "okou",
         "status",
-        connector.id,
+        selector,
         "--json",
       ]);
       const json: unknown = JSON.parse(consoleLog.mock.calls.flat().join("\n"));
       expect(json).toMatchObject({
         context: "current",
         state: "available",
+        target: { kind: "custom", customConnectorId: connector.id },
         connector: {
           ...connector,
           connectorType: `custom-${connector.kind}`,
@@ -169,6 +182,9 @@ describe("okou connector custom readers", () => {
 
     const output = consoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("KIND");
+    expect(output).toContain("SLUG");
+    expect(output).toContain(connector.id);
+    expect(output).toContain(connector.slug);
     expect(output).toContain("Acme Search");
     expect(output).toContain("http");
   });
@@ -243,8 +259,27 @@ describe("okou connector custom readers", () => {
     },
   );
 
-  it("shows tagged HTTP routing details in status", async () => {
+  it.each([
+    CONNECTOR_ID,
+    `custom:${CONNECTOR_ID}`,
+    "_acme-search",
+    "_ACME-SEARCH",
+    "custom:_acme-search",
+    "Acme Search",
+  ])("shows HTTP status selected by %s", async (selector) => {
     const connector = customConnector();
+    if (selector !== CONNECTOR_ID) {
+      server.use(
+        stubCustomConnectors([
+          customConnector({
+            id: AGENT_ID,
+            slug: "_acme-search-extra",
+            displayName: "Another connector",
+          }),
+          connector,
+        ]),
+      );
+    }
     server.use(
       http.get(
         `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
@@ -258,15 +293,23 @@ describe("okou connector custom readers", () => {
       "node",
       "okou",
       "status",
-      CONNECTOR_ID,
+      selector,
     ]);
 
     const output = consoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(`ID:               ${CONNECTOR_ID}`);
+    expect(output).toContain("Slug:             _acme-search");
     expect(output).toContain("Kind:             http");
     expect(output).toContain("Prefixes:         https://api.acme.test/v1/");
   });
 
-  it("shows an MCP connector endpoint without HTTP routing fields", async () => {
+  it.each([
+    CONNECTOR_ID,
+    `custom:${CONNECTOR_ID}`,
+    "_acme-mcp",
+    "custom:_acme-mcp",
+    "Acme MCP",
+  ])("shows MCP status selected by %s", async (selector) => {
     const connector = {
       kind: "mcp",
       id: CONNECTOR_ID,
@@ -299,6 +342,9 @@ describe("okou connector custom readers", () => {
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
     } satisfies CustomConnectorMcpResponse;
+    if (selector !== CONNECTOR_ID) {
+      server.use(stubCustomConnectors([connector]));
+    }
     server.use(
       http.get(
         `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
@@ -312,13 +358,82 @@ describe("okou connector custom readers", () => {
       "node",
       "okou",
       "status",
-      CONNECTOR_ID,
+      selector,
     ]);
 
     const output = consoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(`ID:               ${CONNECTOR_ID}`);
+    expect(output).toContain("Slug:             _acme-mcp");
     expect(output).toContain("Kind:             mcp");
     expect(output).toContain("Transport:        streamable-http");
     expect(output).toContain("Endpoint:         https://mcp.acme.test/server");
     expect(output).not.toContain("Prefixes:");
+  });
+
+  it.each([CONNECTOR_ID, "_acme-search"])(
+    "reports recovery guidance when status target %s is no longer available",
+    async (selector) => {
+      server.use(
+        stubCustomConnectors([customConnector()]),
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+          () => {
+            return HttpResponse.json(
+              { error: { code: "NOT_FOUND", message: "Connector not found" } },
+              { status: 404 },
+            );
+          },
+        ),
+      );
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+      try {
+        await expect(
+          customConnectorCommand.parseAsync([
+            "node",
+            "okou",
+            "status",
+            selector,
+          ]),
+        ).rejects.toThrow("process.exit called");
+
+        const output = error.mock.calls.flat().join("\n");
+        expect(output).toContain(`Custom connector not found: ${CONNECTOR_ID}`);
+        expect(output).toContain("okou connector custom list");
+        expect(consoleLog).not.toHaveBeenCalled();
+      } finally {
+        error.mockRestore();
+        exit.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    ["_removed-slug", "Unknown or unavailable custom connector selector"],
+    ["Acme", "Unknown or unavailable custom connector selector"],
+    ["acme search", "Unknown or unavailable custom connector selector"],
+    ["github", "Unknown or unavailable custom connector selector"],
+    ["builtin:github", "Expected a custom connector"],
+  ])("rejects unresolved status selector %s", async (selector, message) => {
+    server.use(stubCustomConnectors([customConnector()]));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    try {
+      await expect(
+        customConnectorCommand.parseAsync(["node", "okou", "status", selector]),
+      ).rejects.toThrow("process.exit called");
+      expect(error.mock.calls.flat().join("\n")).toContain(message);
+      expect(error.mock.calls.flat().join("\n")).toContain(
+        "okou connector custom list",
+      );
+      expect(consoleLog).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+      exit.mockRestore();
+    }
   });
 });

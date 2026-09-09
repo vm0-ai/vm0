@@ -1,6 +1,7 @@
 import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 
 import { listRunMcpConnectors as listRunMcpConnectorsApi } from "../../lib/api/domains/connectors";
+import { findConnectorBySelector } from "../connector/connector-selector";
 
 export function listRunMcpConnectors(): Promise<McpConnector[]> {
   return listRunMcpConnectorsApi();
@@ -10,9 +11,18 @@ export async function resolveRunMcpConnector(
   connectorSlug: string,
 ): Promise<McpConnector> {
   const connectors = await listRunMcpConnectors();
-  const connector = connectors.find((candidate) => {
-    return candidate.slug === connectorSlug;
-  });
+  const connector = findConnectorBySelector(
+    connectors,
+    connectorSlug,
+    (candidate) => {
+      return {
+        kind: "custom",
+        id: candidate.id,
+        slug: candidate.slug,
+        label: candidate.displayName,
+      };
+    },
+  );
   if (!connector) {
     throw new Error(
       `MCP connector "${connectorSlug}" is not authorized for this Agent`,

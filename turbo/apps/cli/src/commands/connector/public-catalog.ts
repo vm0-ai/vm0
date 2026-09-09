@@ -1,5 +1,6 @@
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorCatalogStatus } from "../../lib/api/domains/connectors";
+import { findConnectorBySelector } from "./connector-selector";
 
 export type PublicConnectorStatus = ConnectorCatalogStatus;
 
@@ -235,15 +236,9 @@ export function findConnectorStatusItem(
   connectors: readonly PublicConnectorStatus[],
   connectorSlug: string,
 ): PublicConnectorStatus | null {
-  const exact = connectors.find((connector) => {
-    return connector.slug === connectorSlug;
-  });
-  if (exact) return exact;
-
-  const lower = connectorSlug.toLowerCase();
   return (
-    connectors.find((connector) => {
-      return connector.slug.toLowerCase() === lower;
+    findConnectorBySelector(connectors, connectorSlug, (connector) => {
+      return { kind: "builtin", slug: connector.slug, label: connector.label };
     }) ?? null
   );
 }

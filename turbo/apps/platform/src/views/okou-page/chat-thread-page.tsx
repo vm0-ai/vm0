@@ -301,6 +301,7 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import {
   ChatAssistantMessageBody,
+  CHAT_TOUCH_SELECTION_CLASS,
   ChatUserMessageBubble,
   CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
   CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
@@ -2822,7 +2823,10 @@ function ChatThread({
       aria-label={t(($) => {
         return $.chat.thread.ariaLabel;
       })}
-      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      className={cn(
+        "flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none",
+        CHAT_TOUCH_SELECTION_CLASS,
+      )}
       data-chat-thread-container-id={thread.threadId}
       ref={setContainerRef}
       tabIndex={-1}
