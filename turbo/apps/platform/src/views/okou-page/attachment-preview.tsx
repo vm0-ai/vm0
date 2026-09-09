@@ -1,4 +1,4 @@
-import type { AttachmentDisplay } from "../../signals/attachment-resource-url.ts";
+import type { AttachmentUrlsComputed } from "../../signals/attachment-resource-url.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Eye, FileMusic, Play, Video } from "lucide-react";
@@ -262,14 +262,14 @@ function fallbackHtmlPreviewTitle(filename: string, url: string): string {
 }
 
 function HtmlSitePreviewCard({
-  resourceDisplay,
+  attachmentUrls$,
   filename,
   previewImageLoad,
   previewImagePending,
   previewImageUrl,
   url,
 }: {
-  resourceDisplay?: AttachmentDisplay;
+  attachmentUrls$: AttachmentUrlsComputed;
   filename: string;
   previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
@@ -321,8 +321,7 @@ function HtmlSitePreviewCard({
             className="absolute inset-0 h-full w-full object-cover"
             fallback={
               <HtmlSitePreviewViewport
-                resourceDisplay={resourceDisplay}
-                publicUrl={publicUrl}
+                attachmentUrls$={attachmentUrls$}
                 title={title}
               />
             }
@@ -334,8 +333,7 @@ function HtmlSitePreviewCard({
           />
         ) : (
           <HtmlSitePreviewViewport
-            resourceDisplay={resourceDisplay}
-            publicUrl={publicUrl}
+            attachmentUrls$={attachmentUrls$}
             title={title}
           />
         )}
@@ -345,16 +343,14 @@ function HtmlSitePreviewCard({
 }
 
 function HtmlSitePreviewViewport({
-  resourceDisplay,
-  publicUrl,
+  attachmentUrls$,
   title,
 }: {
-  resourceDisplay?: AttachmentDisplay;
-  publicUrl: string;
+  attachmentUrls$: AttachmentUrlsComputed;
   title: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(publicUrl, resourceDisplay);
+  const resourceUrl = useResolvedAttachmentUrl(attachmentUrls$);
   return (
     <div
       data-testid="attachment-preview-html-viewport"
@@ -379,7 +375,7 @@ function HtmlSitePreviewViewport({
 }
 
 function DocumentThumbnailPreview({
-  resourceDisplay,
+  attachmentUrls$,
   filename,
   kind,
   previewImageLoad,
@@ -388,7 +384,7 @@ function DocumentThumbnailPreview({
   text$,
   url,
 }: {
-  resourceDisplay?: AttachmentDisplay;
+  attachmentUrls$: AttachmentUrlsComputed;
   filename: string;
   kind: "markdown" | "csv" | "pdf" | "html";
   previewImageLoad?: ImageLoadSignals;
@@ -400,7 +396,7 @@ function DocumentThumbnailPreview({
   if (kind === "html") {
     return (
       <HtmlSitePreviewCard
-        resourceDisplay={resourceDisplay}
+        attachmentUrls$={attachmentUrls$}
         filename={filename}
         previewImageLoad={previewImageLoad}
         previewImagePending={previewImagePending}
@@ -599,13 +595,13 @@ function VideoThumbnailPreview({
 }
 
 export function AttachmentPreview({
-  resourceDisplay,
+  attachmentUrls$,
   attachment,
   onPreviewFile,
   previewImageLoad,
   text$,
 }: {
-  resourceDisplay?: AttachmentDisplay;
+  attachmentUrls$: AttachmentUrlsComputed;
   attachment: ChatAttachmentDescriptor;
   onPreviewFile: () => void;
   previewImageLoad?: ImageLoadSignals;
@@ -617,7 +613,7 @@ export function AttachmentPreview({
     case "markdown": {
       return (
         <DocumentThumbnailPreview
-          resourceDisplay={resourceDisplay}
+          attachmentUrls$={attachmentUrls$}
           filename={attachment.filename}
           url={attachment.url}
           kind="markdown"
@@ -648,7 +644,7 @@ export function AttachmentPreview({
     case "csv": {
       return (
         <DocumentThumbnailPreview
-          resourceDisplay={resourceDisplay}
+          attachmentUrls$={attachmentUrls$}
           filename={attachment.filename}
           url={attachment.url}
           kind="csv"
@@ -659,7 +655,7 @@ export function AttachmentPreview({
     case "pdf": {
       return (
         <DocumentThumbnailPreview
-          resourceDisplay={resourceDisplay}
+          attachmentUrls$={attachmentUrls$}
           filename={attachment.filename}
           url={attachment.url}
           kind="pdf"
@@ -669,7 +665,7 @@ export function AttachmentPreview({
     case "html": {
       return (
         <DocumentThumbnailPreview
-          resourceDisplay={resourceDisplay}
+          attachmentUrls$={attachmentUrls$}
           filename={attachment.filename}
           previewImageLoad={previewImageLoad}
           previewImagePending={attachment.previewImagePending}

@@ -1,3 +1,7 @@
+import {
+  createAttachmentResourceUrl$,
+  type AttachmentUrlsComputed,
+} from "../attachment-resource-url.ts";
 import { computed } from "ccstate";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import {
@@ -48,6 +52,7 @@ interface ThreeColumnWorkflowSearchResult {
 
 export type ThreeColumnArtifactSearchItem = ArtifactSummary & {
   readonly thumbnailLoad: ImageLoadSignals;
+  readonly thumbnailUrls$: AttachmentUrlsComputed | null;
 };
 
 interface ThreeColumnArtifactSearchResult {
@@ -100,7 +105,13 @@ export const threeColumnArtifactSearchResults$ = computed(
     return {
       query,
       artifacts: result.body.artifacts.map((artifact) => {
-        return { ...artifact, thumbnailLoad: createImageLoadSignals() };
+        return {
+          ...artifact,
+          thumbnailLoad: createImageLoadSignals(),
+          thumbnailUrls$: artifact.thumbnail
+            ? createAttachmentResourceUrl$(artifact.thumbnail.url)
+            : null,
+        };
       }),
     };
   },

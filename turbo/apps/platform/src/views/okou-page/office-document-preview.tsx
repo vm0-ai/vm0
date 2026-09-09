@@ -1,4 +1,4 @@
-import type { AttachmentDisplay } from "../../signals/attachment-resource-url.ts";
+import type { AttachmentUrlsComputed } from "../../signals/attachment-resource-url.ts";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { resolveOfficeDocumentViewerBaseUrl } from "../../lib/platform-host.ts";
@@ -12,22 +12,20 @@ function officeDocumentViewerUrl(sourceUrl: string): string {
 }
 
 export function OfficeDocumentPreview({
-  resourceDisplay,
+  attachmentUrls$,
   filename,
   focusKey,
   focusOnMount,
   testId,
-  url,
 }: {
-  resourceDisplay?: AttachmentDisplay;
+  attachmentUrls$?: AttachmentUrlsComputed;
   filename: string;
   focusKey: string;
   focusOnMount: boolean;
   testId: string;
-  url: string;
 }) {
   const { t } = useTranslation();
-  const attachmentUrls = useAttachmentUrls(url, resourceDisplay);
+  const attachmentUrls = useAttachmentUrls(attachmentUrls$);
 
   if (attachmentUrls === undefined) {
     return (

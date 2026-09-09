@@ -1,3 +1,4 @@
+import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
@@ -748,12 +749,13 @@ function SpotlightArtifactThumbnail({
 }: {
   readonly artifact: ThreeColumnArtifactSearchItem;
 }) {
-  if (!artifact.thumbnail) {
+  const thumbnailUrl = useResolvedAttachmentUrl(artifact.thumbnailUrls$);
+  if (!thumbnailUrl) {
     return <SpotlightArtifactKindIcon kind={artifact.kind} />;
   }
   return (
     <ArtifactThumbnailImage
-      src={r2ImageTransformUrl(artifact.thumbnail.url, {
+      src={r2ImageTransformUrl(thumbnailUrl, {
         width: SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX,
         fit: "scale-down",
       })}

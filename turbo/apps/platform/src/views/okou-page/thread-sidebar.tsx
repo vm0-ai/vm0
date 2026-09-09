@@ -1,7 +1,12 @@
 import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
@@ -139,7 +144,7 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
   const fullscreen = useGet(sidebar.fullscreen$);
   const toggleFullscreen = useSet(sidebar.toggleFullscreen$);
   const close = useSet(sidebar.close$);
-  const open = useSet(sidebar.openCatalogArtifact$);
+  const open = useSet(sidebar.open$);
   const loadMore = useSet(sidebar.artifactCatalog.loadMore$);
   const pageSignal = useGet(pageSignal$);
 
@@ -205,7 +210,10 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
           <ArtifactCatalogGrid
             artifacts={artifacts}
             onOpen={(artifactId) => {
-              detach(open(artifactId, pageSignal), Reason.DomCallback);
+              open({
+                type: "artifact",
+                source: { kind: "catalog", artifactId },
+              });
             }}
           />
         )}
@@ -267,7 +275,7 @@ function ThreadArtifactDetail({
   const toggleFullscreen = useSet(sidebar.toggleFullscreen$);
   const close = useSet(sidebar.close$);
   const open = useSet(sidebar.open$);
-  const display = useGet(sidebar.selectedArtifactDisplay$);
+  const attachmentUrls$ = useLastResolved(sidebar.selectedArtifactUrls$);
   const backToArtifacts = useOpenThreadArtifacts(thread);
   const detailLoadable = useLastLoadable(
     sidebar.artifactCatalog.selectedArtifactDetail$,
@@ -300,7 +308,7 @@ function ThreadArtifactDetail({
     detailLoadable.state === "loading" ||
     (detailLoadable.state === "hasData" &&
       detailLoadable.data !== null &&
-      display === null)
+      !attachmentUrls$)
   ) {
     return (
       <aside
@@ -361,7 +369,7 @@ function ThreadArtifactDetail({
     <ArtifactSidebar
       artifactRef={{
         url: preview.url,
-        ...(display ? { display } : {}),
+        ...(attachmentUrls$ ? { attachmentUrls$ } : {}),
         kind: preview.kind,
         filename: preview.filename,
       }}

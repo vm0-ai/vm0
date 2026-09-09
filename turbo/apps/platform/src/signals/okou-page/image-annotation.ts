@@ -1,3 +1,4 @@
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import { command, computed, state } from "ccstate";
 import { onRef } from "../utils.ts";
 import type {
@@ -562,6 +563,13 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
     set(tool$, tool);
     set(selection$, null);
   });
+  const annotationResourceUrl$ = computed(async (get) => {
+    const target = get(annotationSessionTarget$);
+    return target
+      ? (await get(createAttachmentResourceUrl$(target.url))).resourceUrl
+      : null;
+  });
+
   const openAnnotationEditor$ = command(({ set }, target: AnnotationTarget) => {
     const opened = target.annotations ?? emptyAnnotation();
     set(session$, {
@@ -587,6 +595,7 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
     internal: { session$, ink$, selection$ },
     signals: {
       annotationSessionTarget$,
+      annotationResourceUrl$,
       annotationSessionActive$,
       annotationDraft$,
       annotationTool$,

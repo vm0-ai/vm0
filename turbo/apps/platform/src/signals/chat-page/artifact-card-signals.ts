@@ -1,4 +1,4 @@
-import { command, computed, type Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import {
   createCardSignalsRegistry,
   type CardSignalsRegistry,
@@ -8,8 +8,8 @@ import {
   isTextPreviewKind,
 } from "../text-preview.ts";
 import {
-  createAttachmentDisplay,
-  type AttachmentDisplay,
+  createAttachmentResourceUrl$,
+  type AttachmentUrlsComputed,
 } from "../attachment-resource-url.ts";
 import {
   createImageLoadSignals,
@@ -39,7 +39,7 @@ export interface ArtifactSignals extends ArtifactDescriptor {
   readonly previewImageLoad: ImageLoadSignals;
   readonly previewImageUrl$: Computed<Promise<string | undefined>>;
   readonly resourceUrl$: Computed<Promise<string>>;
-  readonly display: AttachmentDisplay;
+  readonly attachmentUrls$: AttachmentUrlsComputed;
   readonly text$?: Computed<Promise<string>>;
 }
 
@@ -65,25 +65,20 @@ function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ): ArtifactSignals {
-  const display = createAttachmentDisplay(descriptor.url);
-  const attachmentUrls$ = display.urls$;
+  const attachmentUrls$ = createAttachmentResourceUrl$(descriptor.url);
   const resourceUrl$ = computed(async (get) => {
     return (await get(attachmentUrls$)).resourceUrl;
   });
-  const imageLoad = createImageLoadSignals();
-  const previewImageLoad = {
-    ...imageLoad,
-    failed$: command(({ set }) => {
-      set(imageLoad.failed$);
-      set(display.retry$);
-    }),
-  };
+  const previewImageLoad = createImageLoadSignals();
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
       return undefined;
     }
     const previewImageUrlsByUrl = await get(previewImageUrlsByUrl$);
-    return previewImageUrlsByUrl.get(descriptor.url);
+    const url = previewImageUrlsByUrl.get(descriptor.url);
+    return url
+      ? (await get(createAttachmentResourceUrl$(url))).resourceUrl
+      : undefined;
   });
   if (!needsTextPreview(descriptor.kind)) {
     return {
@@ -91,12 +86,12 @@ function createArtifactSignals(
       previewImageLoad,
       previewImageUrl$,
       resourceUrl$,
-      display,
+      attachmentUrls$,
     };
   }
   return {
     ...descriptor,
-    display,
+    attachmentUrls$,
     previewImageLoad,
     previewImageUrl$,
     resourceUrl$,

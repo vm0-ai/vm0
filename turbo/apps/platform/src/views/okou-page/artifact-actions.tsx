@@ -1,3 +1,4 @@
+import type { AttachmentUrlsComputed } from "../../signals/attachment-resource-url.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isShareableArtifactReference } from "../../signals/artifact-sharing.ts";
@@ -157,18 +158,20 @@ export function ArtifactActionTooltip({
 }
 
 export function ArtifactShareButton({
+  attachmentUrls$,
   ariaLabel,
   className,
   iconSize = 16,
   url,
 }: {
+  attachmentUrls$?: AttachmentUrlsComputed;
   ariaLabel?: string;
   className?: string;
   iconSize?: number;
   url: string;
 }) {
   const { t } = useTranslation();
-  const attachmentUrls = useAttachmentUrls(url);
+  const attachmentUrls = useAttachmentUrls(attachmentUrls$);
   const shareUrl = attachmentUrls?.shareUrl ?? null;
   const features = useLastResolved(featureSwitch$);
   const label =

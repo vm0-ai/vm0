@@ -139,8 +139,12 @@ function ArtifactCatalogFallbackPreview({
   );
 }
 
-function ArtifactCatalogVideoPreview({ sourceUrl }: { sourceUrl: string }) {
-  const resourceUrl = useResolvedAttachmentUrl(sourceUrl);
+function ArtifactCatalogVideoPreview({
+  artifact,
+}: {
+  artifact: CatalogArtifact;
+}) {
+  const resourceUrl = useResolvedAttachmentUrl(artifact.videoUrls$);
   return (
     <video
       src={resourceUrl ? `${resourceUrl}#t=0.001` : undefined}
@@ -165,8 +169,9 @@ function ArtifactCatalogCard({
 }) {
   const { t } = useTranslation();
   const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
+  const thumbnailUrl = useResolvedAttachmentUrl(artifact.thumbnailUrls$);
   const sourceVideo = artifact.videoSourceUrl ? (
-    <ArtifactCatalogVideoPreview sourceUrl={artifact.videoSourceUrl} />
+    <ArtifactCatalogVideoPreview artifact={artifact} />
   ) : null;
   const fallbackPreview =
     sourceVideo ??
@@ -205,9 +210,9 @@ function ArtifactCatalogCard({
         data-testid="artifact-catalog-card-preview"
         className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-background"
       >
-        {artifact.thumbnail ? (
+        {thumbnailUrl ? (
           <ArtifactThumbnailImage
-            src={r2ImageTransformUrl(artifact.thumbnail.url, {
+            src={r2ImageTransformUrl(thumbnailUrl, {
               width: ARTIFACT_CARD_THUMBNAIL_WIDTH_PX,
               fit: "scale-down",
             })}
