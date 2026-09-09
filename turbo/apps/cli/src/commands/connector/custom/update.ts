@@ -26,7 +26,10 @@ function requireCustomConnectorWriteCapability(): void {
 export const updateCustomConnectorCommand = new Command()
   .name("update")
   .description("Update a custom HTTP or MCP connector definition from JSON")
-  .argument("<selector>", "Custom connector slug or UUID")
+  .argument(
+    "<selector>",
+    "Custom connector slug, UUID, or unique display name (custom: prefix accepted)",
+  )
   .requiredOption("-f, --file <path>", "JSON connector definition file")
   .option("--json", "Print the updated connector as JSON")
   .addHelpText(
@@ -35,8 +38,8 @@ export const updateCustomConnectorCommand = new Command()
 The file uses the same complete HTTP or MCP definition shape as create.
 HTTP supports authMode: none, manual, oauth; MCP also supports automatic.
 authMode is required. See connector custom create --help for mode restrictions
-and valid examples. The connector argument is a UUID, not a public slug or
-custom:<uuid> diagnostic selector.
+and valid examples. The connector argument accepts a full slug, UUID, or exact
+unique display name, optionally prefixed with custom:. Use UUIDs for stable automation.
 OAuth updates may omit oauthConfig.clientSecret to preserve the encrypted
 current client secret. Never include an end-user token or values array.
 

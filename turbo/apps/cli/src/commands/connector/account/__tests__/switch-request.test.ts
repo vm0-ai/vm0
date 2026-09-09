@@ -186,7 +186,13 @@ describe("okou connector account switch-request command", () => {
     ]);
   });
 
-  it("resolves and validates a custom connector target", async () => {
+  it.each([
+    "_acme-search",
+    CUSTOM_CONNECTOR_ID,
+    `custom:${CUSTOM_CONNECTOR_ID}`,
+    "custom:_acme-search",
+    "Acme Search",
+  ])("resolves and validates custom selector %s", async (selector) => {
     const target = {
       kind: "custom" as const,
       customConnectorId: CUSTOM_CONNECTOR_ID,
@@ -208,7 +214,7 @@ describe("okou connector account switch-request command", () => {
     await switchConnectorAccountRequestCommand.parseAsync([
       "node",
       "okou",
-      "_acme-search",
+      selector,
       "--connection-id",
       CONNECTION_ID,
       "--callback-prompt",

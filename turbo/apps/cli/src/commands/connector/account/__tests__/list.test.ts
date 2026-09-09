@@ -88,6 +88,120 @@ describe("okou connector account list command", () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([
+    ["Shared Name", "Shared Name", "builtin:Shared Name", "builtin"],
+    ["Shared Name", "Shared Name", "custom:Shared Name", "custom"],
+    ["GitHub", "github", "github", "builtin"],
+    ["GitHub", "GITHUB", "GITHUB", "builtin"],
+    ["_acme-search", "Acme Search", "_acme-search", "custom"],
+  ] as const)(
+    "resolves builtin label %s and custom label %s with selector %s to %s",
+    async (builtinLabel, customLabel, selector, kind) => {
+      let targetQuery: string | undefined;
+      server.use(
+        stubConnectorCatalogStatus([
+          catalogStatusItem({ connectorSlug: "github", label: builtinLabel }),
+        ]),
+        stubCustomConnectors([customConnector({ displayName: customLabel })]),
+        http.get(
+          "http://localhost:3000/api/connector-accounts/connections",
+          ({ request }) => {
+            targetQuery = new URL(request.url).search;
+            return HttpResponse.json({ connections: [], nextCursor: null });
+          },
+        ),
+      );
+      await listConnectorAccountsCommand.parseAsync([
+        "node",
+        "okou",
+        selector,
+        "--json",
+      ]);
+      const target =
+        kind === "builtin"
+          ? { kind, connectorSlug: "github" }
+          : { kind, customConnectorId: CUSTOM_CONNECTOR_ID };
+      expect(
+        JSON.parse(mockConsoleLog.mock.calls.flat().join("\n")),
+      ).toMatchObject({ connector: { target } });
+      expect(new URLSearchParams(targetQuery).get("kind")).toBe(kind);
+      expect(
+        new URLSearchParams(targetQuery).get(
+          kind === "builtin" ? "connectorSlug" : "customConnectorId",
+        ),
+      ).toBe(kind === "builtin" ? "github" : CUSTOM_CONNECTOR_ID);
+    },
+  );
+
+  it.each(["mixed names", "custom names", "UUID collision"] as const)(
+    "rejects %s without listing accounts for an arbitrary candidate",
+    async (scenario) => {
+      const builtinSlug =
+        scenario === "UUID collision" ? CUSTOM_CONNECTOR_ID : "github";
+      const selector =
+        scenario === "UUID collision" ? CUSTOM_CONNECTOR_ID : "Shared Name";
+      const custom = customConnector({ displayName: "Shared Name" });
+      server.use(
+        stubConnectorCatalogStatus([
+          catalogStatusItem({
+            connectorSlug: builtinSlug,
+            label: scenario === "custom names" ? "GitHub" : "Shared Name",
+          }),
+        ]),
+        stubCustomConnectors(
+          scenario === "custom names"
+            ? [
+                custom,
+                customConnector({
+                  id: SECOND_CONNECTION_ID,
+                  slug: "_second",
+                  displayName: "Shared Name",
+                }),
+              ]
+            : [custom],
+        ),
+      );
+      await expect(
+        listConnectorAccountsCommand.parseAsync(["node", "okou", selector]),
+      ).rejects.toThrow("process.exit called");
+      const output = mockConsoleError.mock.calls.flat().join("\n");
+      expect(output).toContain("Ambiguous connector selector");
+      expect(output).toContain(`custom:${CUSTOM_CONNECTOR_ID}`);
+      expect(output).toContain(
+        scenario === "custom names"
+          ? `custom:${SECOND_CONNECTION_ID}`
+          : `builtin:${builtinSlug}`,
+      );
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["builtin", "custom"] as const)(
+    "uses an explicit %s qualifier to resolve a UUID collision",
+    async (kind) => {
+      server.use(
+        stubConnectorCatalogStatus([
+          catalogStatusItem({ connectorSlug: CUSTOM_CONNECTOR_ID }),
+        ]),
+        stubCustomConnectors([customConnector()]),
+        stubAccounts([]),
+      );
+      await listConnectorAccountsCommand.parseAsync([
+        "node",
+        "okou",
+        `${kind}:${CUSTOM_CONNECTOR_ID}`,
+        "--json",
+      ]);
+      const target =
+        kind === "builtin"
+          ? { kind, connectorSlug: CUSTOM_CONNECTOR_ID }
+          : { kind, customConnectorId: CUSTOM_CONNECTOR_ID };
+      expect(
+        JSON.parse(mockConsoleLog.mock.calls.flat().join("\n")),
+      ).toMatchObject({ connector: { target } });
+    },
+  );
+
   it("renders safe account details with shared label fallbacks", async () => {
     server.use(
       stubAccounts([
@@ -140,48 +254,53 @@ describe("okou connector account list command", () => {
     expect(fallbackRow).toContain("api-token");
   });
 
-  it("resolves a custom connector slug to its connection target", async () => {
-    const custom = customConnector({
-      id: CUSTOM_CONNECTOR_ID,
-      slug: "_acme-search",
-      displayName: "Acme Search",
-    });
-    server.use(
-      stubCustomConnectors([custom]),
-      http.get(
-        "http://localhost:3000/api/connector-accounts/connections",
-        ({ request }) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("kind")).toBe("custom");
-          expect(url.searchParams.get("customConnectorId")).toBe(
-            CUSTOM_CONNECTOR_ID,
-          );
-          expect(url.searchParams.get("limit")).toBe("100");
-          return HttpResponse.json({
-            connections: [
-              connectorAccount({
-                target: {
-                  kind: "custom",
-                  customConnectorId: CUSTOM_CONNECTOR_ID,
-                },
-              }),
-            ],
-            nextCursor: null,
-          });
-        },
-      ),
-    );
+  it.each([
+    "_acme-search",
+    CUSTOM_CONNECTOR_ID,
+    `custom:${CUSTOM_CONNECTOR_ID}`,
+    "custom:_acme-search",
+    "Acme Search",
+  ])(
+    "resolves custom selector %s to its connection target",
+    async (selector) => {
+      const custom = customConnector({
+        id: CUSTOM_CONNECTOR_ID,
+        slug: "_acme-search",
+        displayName: "Acme Search",
+      });
+      server.use(
+        stubCustomConnectors([custom]),
+        http.get(
+          "http://localhost:3000/api/connector-accounts/connections",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("kind")).toBe("custom");
+            expect(url.searchParams.get("customConnectorId")).toBe(
+              CUSTOM_CONNECTOR_ID,
+            );
+            expect(url.searchParams.get("limit")).toBe("100");
+            return HttpResponse.json({
+              connections: [
+                connectorAccount({
+                  target: {
+                    kind: "custom",
+                    customConnectorId: CUSTOM_CONNECTOR_ID,
+                  },
+                }),
+              ],
+              nextCursor: null,
+            });
+          },
+        ),
+      );
 
-    await listConnectorAccountsCommand.parseAsync([
-      "node",
-      "okou",
-      "_acme-search",
-    ]);
+      await listConnectorAccountsCommand.parseAsync(["node", "okou", selector]);
 
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "Available accounts for Acme Search (_acme-search):",
-    );
-  });
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        "Available accounts for Acme Search (_acme-search):",
+      );
+    },
+  );
 
   it("fetches all pages sequentially and forwards search", async () => {
     const cursors: (string | null)[] = [];

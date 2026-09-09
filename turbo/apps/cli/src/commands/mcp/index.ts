@@ -89,7 +89,10 @@ const listCommand = new Command()
 const listToolsCommand = new Command()
   .name("list-tools")
   .description("List tools exposed by an authorized MCP connector")
-  .argument("<connector-slug>", "MCP Custom Connector slug")
+  .argument(
+    "<selector>",
+    "MCP custom connector slug, UUID, or unique display name; custom: prefix accepted",
+  )
   .option("--json", "Print compact JSON")
   .action(
     withErrorHandler(async (connectorSlug: string, options: JsonOptions) => {
@@ -142,7 +145,10 @@ const inputFileOption = new Option(
 const callCommand = new Command()
   .name("call")
   .description("Call one tool on an authorized MCP connector")
-  .argument("<connector-slug>", "MCP Custom Connector slug")
+  .argument(
+    "<selector>",
+    "MCP custom connector slug, UUID, or unique display name; custom: prefix accepted",
+  )
   .argument("<tool-name>", "Exact MCP tool name")
   .addOption(inputOption)
   .addOption(inputFileOption)
@@ -184,10 +190,12 @@ export const mcpCommand = new Command()
 Examples:
   List authorized MCP connectors: okou mcp list
   List connector tools:          okou mcp list-tools _acme-mcp --json
+  Select by display name:        okou mcp list-tools "Acme MCP" --json
   Call a tool:                   okou mcp call _acme-mcp search --input '{"query":"okou"}' --json
   Pipe tool input:               printf '{"query":"okou"}' | okou mcp call _acme-mcp search
 
 Notes:
+  - Select by full slug, UUID, custom:<selector>, or an exact unique display name
   - Available only inside an Agent Run and scoped to its Agent's current authorization
   - Runner remains execution authority; authorization changes may require a new Run
   - Runner applies endpoint policy and injects connector credentials

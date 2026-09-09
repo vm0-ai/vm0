@@ -14,6 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../mocks/server";
 import {
+  catalogItem,
+  stubConnectorCatalog,
+} from "../../__tests__/helpers/connector-catalog";
+import {
   customConnector,
   stubAgentCustomConnectors,
   stubCustomConnectors,
@@ -374,9 +378,18 @@ describe("custom connector URL diagnostics", () => {
     );
   });
 
-  it.each(["http", "mcp"] as const)(
-    "resolves a custom %s slug and preserves the run-pinned target",
-    async (kind) => {
+  it.each([
+    ["http", "slug"],
+    ["http", "uuid"],
+    ["http", "qualified"],
+    ["http", "name"],
+    ["mcp", "slug"],
+    ["mcp", "uuid"],
+    ["mcp", "qualified"],
+    ["mcp", "name"],
+  ] as const)(
+    "resolves a custom %s %s and preserves the run-pinned target",
+    async (kind, form) => {
       const httpDefinition = customConnector({
         id: CUSTOM_ID,
         slug: `_acme-${kind}`,
@@ -401,7 +414,13 @@ describe("custom connector URL diagnostics", () => {
         }),
       );
 
-      await check("--connector", definition.slug);
+      const selectors = {
+        slug: definition.slug,
+        uuid: CUSTOM_ID,
+        qualified: `custom:${definition.slug}`,
+        name: definition.displayName,
+      };
+      await check("--connector", selectors[form]);
 
       expect(requests).toStrictEqual([
         { mode: "url", method: "POST", url: REQUEST_URL, target: TARGET },
@@ -461,13 +480,14 @@ describe("custom connector URL diagnostics", () => {
       const message = error.mock.calls.flat().join("\n");
       expect(message).toContain(
         scenario === "unknown"
-          ? "Unknown or unavailable custom connector slug"
-          : "Ambiguous custom connector slug",
+          ? "Unknown or unavailable custom connector selector"
+          : "Ambiguous connector selector",
       );
-      expect(message).toContain("okou connector custom list");
       if (scenario === "ambiguous") {
-        expect(message).toContain(`${CUSTOM_ID}, ${DEFAULT_ACCOUNT_ID}`);
-        expect(message).toContain("custom:<uuid>");
+        expect(message).toContain(`custom:${CUSTOM_ID}`);
+        expect(message).toContain(`custom:${DEFAULT_ACCOUNT_ID}`);
+      } else {
+        expect(message).toContain("okou connector custom list");
       }
     },
   );
@@ -496,7 +516,7 @@ describe("custom connector URL diagnostics", () => {
       "Inventory lookup failed",
     );
     expect(error.mock.calls.flat().join("\n")).not.toContain(
-      "Unknown or unavailable custom connector slug",
+      "Unknown or unavailable custom connector selector",
     );
   });
 
@@ -616,30 +636,57 @@ describe("custom connector URL diagnostics", () => {
     expect(message).not.toContain("connectorSlug=");
   });
 
-  it("preserves UUID-shaped builtin selectors instead of guessing they identify custom connectors", async () => {
-    stubDiagnostic({ outcome: "unknown-connector" });
+  it("rejects a UUID shared by a builtin slug and custom ID before diagnosis", async () => {
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({ connectorSlug: CUSTOM_ID, label: "UUID builtin" }),
+      ]),
+      stubCustomConnectors([customConnector()]),
+    );
     await expect(check("--connector", CUSTOM_ID)).rejects.toThrow(
       "process.exit called",
     );
-    expect(requests).toStrictEqual([
-      {
-        mode: "url",
-        method: "POST",
-        url: REQUEST_URL,
-        connectorSlug: CUSTOM_ID,
-      },
-    ]);
-    expect(error.mock.calls.flat().join("\n")).toContain(
-      `Unknown connector slug: ${CUSTOM_ID}`,
-    );
+    expect(requests).toStrictEqual([]);
+    const message = error.mock.calls.flat().join("\n");
+    expect(message).toContain("Ambiguous connector selector");
+    expect(message).toContain(`builtin:${CUSTOM_ID}`);
+    expect(message).toContain(`custom:${CUSTOM_ID}`);
   });
 
-  it("rejects malformed custom identity before sending a diagnostic", async () => {
-    await expect(check("--connector", "custom:not-a-uuid")).rejects.toThrow(
+  it.each([CUSTOM_ID, `builtin:${CUSTOM_ID}`])(
+    "diagnoses a UUID-shaped builtin slug selected by %s",
+    async (selector) => {
+      server.use(
+        stubConnectorCatalog([catalogItem({ connectorSlug: CUSTOM_ID })]),
+        stubCustomConnectors([]),
+      );
+      stubDiagnostic({ outcome: "unknown-connector" });
+      await expect(check("--connector", selector)).rejects.toThrow(
+        "process.exit called",
+      );
+      expect(requests).toStrictEqual([
+        {
+          mode: "url",
+          method: "POST",
+          url: REQUEST_URL,
+          connectorSlug: CUSTOM_ID,
+        },
+      ]);
+      expect(error.mock.calls.flat().join("\n")).toContain(
+        `Unknown connector slug: ${CUSTOM_ID}`,
+      );
+    },
+  );
+
+  it("rejects an unavailable qualified name before sending a diagnostic", async () => {
+    server.use(stubCustomConnectors([]));
+    await expect(check("--connector", "custom:missing-name")).rejects.toThrow(
       "process.exit called",
     );
     expect(requests).toStrictEqual([]);
-    expect(error.mock.calls.flat().join("\n")).toContain("custom:<uuid>");
+    expect(error.mock.calls.flat().join("\n")).toContain(
+      "Unknown or unavailable custom connector selector",
+    );
   });
 
   it("does not treat custom unknown endpoints as a grantable builtin permission", async () => {

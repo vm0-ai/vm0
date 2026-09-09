@@ -138,46 +138,45 @@ describe("okou connector custom update", () => {
     return path;
   }
 
-  it.each([CONNECTOR_ID, "_acme-mcp"])(
-    "updates an MCP definition selected by %s",
-    async (selector) => {
-      const definition = manualMcpDefinition();
-      const definitionPath = writeDefinition(definition);
-      if (selector !== CONNECTOR_ID) {
-        server.use(stubCustomConnectors([mcpResponse(definition)]));
-      }
-      let updateBody: unknown;
-      server.use(
-        http.put(
-          `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
-          async ({ request }) => {
-            updateBody = await request.json();
-            return HttpResponse.json(mcpResponse(definition));
-          },
-        ),
-      );
+  it.each([
+    CONNECTOR_ID,
+    `custom:${CONNECTOR_ID}`,
+    "_acme-mcp",
+    "custom:_acme-mcp",
+    "Acme MCP Updated",
+  ])("updates an MCP definition selected by %s", async (selector) => {
+    const definition = manualMcpDefinition();
+    const definitionPath = writeDefinition(definition);
+    if (selector !== CONNECTOR_ID) {
+      server.use(stubCustomConnectors([mcpResponse(definition)]));
+    }
+    let updateBody: unknown;
+    server.use(
+      http.put(
+        `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+        async ({ request }) => {
+          updateBody = await request.json();
+          return HttpResponse.json(mcpResponse(definition));
+        },
+      ),
+    );
 
-      await customConnectorCommand.parseAsync([
-        "node",
-        "okou",
-        "update",
-        selector,
-        "--file",
-        definitionPath,
-      ]);
+    await customConnectorCommand.parseAsync([
+      "node",
+      "okou",
+      "update",
+      selector,
+      "--file",
+      definitionPath,
+    ]);
 
-      expect(updateBody).toStrictEqual(definition);
-      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        'Custom connector "Acme MCP Updated" updated',
-      );
-      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        CONNECTOR_ID,
-      );
-      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        "_acme-mcp",
-      );
-    },
-  );
+    expect(updateBody).toStrictEqual(definition);
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+      'Custom connector "Acme MCP Updated" updated',
+    );
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(CONNECTOR_ID);
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain("_acme-mcp");
+  });
 
   it("updates an HTTP connector by its exact slug", async () => {
     const connector = customConnector({ id: CONNECTOR_ID });
@@ -258,7 +257,14 @@ describe("okou connector custom update", () => {
         expect(message).toContain(
           scenario === "unknown" ? "Unknown or unavailable" : "Ambiguous",
         );
-        expect(message).toContain("okou connector custom list");
+        if (scenario === "unknown") {
+          expect(message).toContain("okou connector custom list");
+        } else {
+          expect(message).toContain(`custom:${CONNECTOR_ID}`);
+          expect(message).toContain(
+            "custom:44444444-4444-4444-8444-444444444444",
+          );
+        }
         expect(mockConsoleLog).not.toHaveBeenCalled();
       } finally {
         error.mockRestore();

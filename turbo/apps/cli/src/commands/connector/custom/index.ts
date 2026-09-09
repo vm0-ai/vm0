@@ -168,7 +168,10 @@ Omit --agent inside a run to inspect the current Agent's access.`,
 const statusCommand = new Command()
   .name("status")
   .description("Show a custom HTTP/MCP definition and member connection status")
-  .argument("<selector>", "Custom connector slug or UUID")
+  .argument(
+    "<selector>",
+    "Custom connector slug, UUID, or unique display name (custom: prefix accepted)",
+  )
   .option(
     "--agent <id>",
     "Show authorization state for the given Agent (must match the current Agent inside a run)",
@@ -177,9 +180,10 @@ const statusCommand = new Command()
   .addHelpText(
     "after",
     `
-Accepts a custom connector UUID, not a public slug or custom:<uuid> selector.
+Accepts a custom connector full slug, UUID, or exact unique display name,
+optionally prefixed with custom:. Use UUIDs for stable automation.
 Shows current org definition/member status, including inside a run. For the
-account admitted to a run, use connector status with its connector list slug.
+account admitted to a run, use connector status with its connector selector.
 Omit --agent inside a run to inspect the current Agent's access.`,
   )
   .action(

@@ -73,54 +73,58 @@ describe("okou connector connect command", () => {
     vi.unstubAllEnvs();
   });
 
-  it("preserves first-connect syntax and sends explicit add", async () => {
-    let receivedBody: unknown;
-    server.use(
-      http.get("http://localhost:3000/api/connectors/:connectorSlug", () => {
-        return HttpResponse.json(
-          {
-            error: { message: "Connector not found", code: "NOT_FOUND" },
-          },
-          { status: 404 },
-        );
-      }),
-      http.post(
-        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
-        async ({ params, request }) => {
-          receivedBody = await request.json();
+  it.each(["zendesk", "Zendesk", "builtin:zendesk", "builtin:Zendesk"])(
+    "connects builtin selector %s and sends explicit add",
+    async (selector) => {
+      let receivedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/connectors/:connectorSlug", () => {
           return HttpResponse.json(
-            connectorResponse(String(params.connectorSlug)),
+            {
+              error: { message: "Connector not found", code: "NOT_FOUND" },
+            },
+            { status: 404 },
           );
+        }),
+        http.post(
+          "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+          async ({ params, request }) => {
+            expect(params.connectorSlug).toBe("zendesk");
+            receivedBody = await request.json();
+            return HttpResponse.json(
+              connectorResponse(String(params.connectorSlug)),
+            );
+          },
+        ),
+      );
+
+      await connectCommand.parseAsync([
+        "node",
+        "cli",
+        selector,
+        "--value",
+        "apiToken=secret-token",
+        "--value",
+        "subdomain=example",
+        "--value",
+        "email=support@example.com",
+      ]);
+
+      expect(receivedBody).toStrictEqual({
+        account: { intent: "add" },
+        authMethod: "api-token",
+        values: {
+          apiToken: "secret-token",
+          subdomain: "example",
+          email: "support@example.com",
         },
-      ),
-    );
-
-    await connectCommand.parseAsync([
-      "node",
-      "cli",
-      "zendesk",
-      "--value",
-      "apiToken=secret-token",
-      "--value",
-      "subdomain=example",
-      "--value",
-      "email=support@example.com",
-    ]);
-
-    expect(receivedBody).toStrictEqual({
-      account: { intent: "add" },
-      authMethod: "api-token",
-      values: {
-        apiToken: "secret-token",
-        subdomain: "example",
-        email: "support@example.com",
-      },
-    });
-    const output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("Zendesk connected");
-    expect(output).toContain("okou connector status zendesk");
-    expect(output).not.toContain("secret-token");
-  });
+      });
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("Zendesk connected");
+      expect(output).toContain("okou connector status zendesk");
+      expect(output).not.toContain("secret-token");
+    },
+  );
 
   it("rejects a custom slug from the builtin manual-connect flow", async () => {
     const connector = customConnector();

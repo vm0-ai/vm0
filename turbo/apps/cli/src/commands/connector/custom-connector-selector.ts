@@ -1,38 +1,36 @@
 import { z } from "zod";
 import { listCustomConnectors } from "../../lib/api/domains/connectors";
+import {
+  findConnectorBySelector,
+  parseConnectorSelector,
+} from "./connector-selector";
 
 export async function resolveCustomConnectorId(
   selector: string,
 ): Promise<string> {
-  if (!selector.startsWith("_")) {
-    const id = z.uuid().safeParse(selector);
-    if (id.success) {
-      return id.data;
-    }
+  const { kind, value } = parseConnectorSelector(selector);
+  if (kind === "builtin") {
     throw new Error(
-      `Expected a custom connector slug or UUID: ${selector}\nRun: okou connector custom list`,
+      `Expected a custom connector: ${selector}\nRun: okou connector custom list`,
     );
+  }
+  const id = z.uuid().safeParse(value);
+  if (id.success) {
+    return id.data.toLowerCase();
   }
 
   const connectors = await listCustomConnectors();
-  const matches = connectors.filter((connector) => {
-    return connector.slug === selector;
+  const connector = findConnectorBySelector(connectors, selector, (item) => {
+    return {
+      kind: "custom",
+      id: item.id,
+      slug: item.slug,
+      label: item.displayName,
+    };
   });
-  if (matches.length > 1) {
-    const ids = matches
-      .map((connector) => {
-        return connector.id;
-      })
-      .sort()
-      .join(", ");
-    throw new Error(
-      `Ambiguous custom connector slug: ${selector}\nMatching IDs: ${ids}\nRun: okou connector custom list\nSelect an explicit UUID (custom:<uuid> for connector check).`,
-    );
-  }
-  const connector = matches[0];
   if (!connector) {
     throw new Error(
-      `Unknown or unavailable custom connector slug: ${selector}\nRun: okou connector custom list`,
+      `Unknown or unavailable custom connector selector: ${selector}\nRun: okou connector custom list`,
     );
   }
   return connector.id;
