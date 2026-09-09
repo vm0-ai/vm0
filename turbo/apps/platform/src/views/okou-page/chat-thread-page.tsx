@@ -3415,7 +3415,7 @@ function formatCompactDuration(totalSeconds: number): string {
 }
 
 const RUN_SECTION_LABEL_CLASS =
-  "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
+  "min-w-0 max-w-full shrink-0 break-words font-serif text-sm leading-5 italic text-muted-foreground/50";
 const RUN_SECTION_ROW_CLASS =
   "@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 

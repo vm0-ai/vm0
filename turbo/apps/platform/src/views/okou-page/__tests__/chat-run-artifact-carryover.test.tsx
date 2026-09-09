@@ -471,6 +471,7 @@ test("Keep completed result actions before recommended followups", async () => {
     "[data-chat-scroll-anchor-event-id]",
   );
   const divider = keepGoing.previousElementSibling;
+  const dividerLabel = screen.getByText(/Keep going ·/u);
 
   expect(actions).toBeVisible();
   expect(actions).toHaveClass("-ml-1.5");
@@ -487,6 +488,8 @@ test("Keep completed result actions before recommended followups", async () => {
   expect(followupHoverIcon).not.toHaveClass("ml-2", "shrink-0");
   expect(mainBody).toHaveClass("pl-0");
   expect(divider).toHaveClass("pl-0");
+  expect(dividerLabel).toHaveClass("text-sm", "leading-5");
+  expect(dividerLabel).not.toHaveClass("text-[13px]");
   expect(mainMessage).toContainElement(actions);
   expect(mainMessage).not.toContainElement(keepGoing);
   expect(assistantGroupFor(main)).toContainElement(keepGoing);
