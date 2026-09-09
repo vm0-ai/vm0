@@ -71,7 +71,9 @@ export const googleAdsAccountForUser$ = command(
     const user = users.data.find((candidate) => {
       return candidate.id === userId;
     });
-    if (!user) throw new Error(`No Clerk user found for user ${userId}`);
+    if (!user) {
+      throw new Error(`No Clerk user found for user ${userId}`);
+    }
     const metadata = user.privateMetadata;
     // An existing unresolved or malformed first touch cannot borrow a later
     // visit's campaign. Only users with no saved touch may use the captured one.

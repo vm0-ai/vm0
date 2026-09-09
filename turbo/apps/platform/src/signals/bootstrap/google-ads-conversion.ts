@@ -70,7 +70,9 @@ export function fireGoogleAdsConversion(args: {
       : args.accountId === GOOGLE_ADS_ADSMARCH_ACCOUNT_ID
         ? "AW-18407336975"
         : null;
-  if (!tagId || !args.sendTo.startsWith(`${tagId}/`)) return false;
+  if (!tagId || !args.sendTo.startsWith(`${tagId}/`)) {
+    return false;
+  }
   if (args.storedDedupeValue === args.dedupeValue) {
     return false;
   }

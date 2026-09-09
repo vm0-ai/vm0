@@ -113,7 +113,9 @@ export const capturePaidOnboardingStepViewed$ = command(
               value: ONBOARDING_START_CONVERSION_VALUE_USD,
             }
           : null;
-    if (!config) return;
+    if (!config) {
+      return;
+    }
     const conversionFired = fireGoogleAdsConversion({
       accountId,
       sendTo: config.sendTo,
@@ -121,7 +123,9 @@ export const capturePaidOnboardingStepViewed$ = command(
       value: config.value,
       storedDedupeValue: get(config.storage.get$),
     });
-    if (conversionFired) set(config.storage.set$, config.sendTo);
+    if (conversionFired) {
+      set(config.storage.set$, config.sendTo);
+    }
   },
 );
 
@@ -169,7 +173,9 @@ export const capturePaidOnboardingRedirectToStripe$ = command(
               value: ADSMARCH_CHECKOUT_START_CONVERSION_VALUE_USD,
             }
           : null;
-    if (!config) return;
+    if (!config) {
+      return;
+    }
     const conversionFired = fireGoogleAdsConversion({
       accountId,
       sendTo: config.sendTo,
@@ -177,7 +183,9 @@ export const capturePaidOnboardingRedirectToStripe$ = command(
       value: config.value,
       storedDedupeValue: get(config.storage.get$),
     });
-    if (conversionFired) set(config.storage.set$, config.sendTo);
+    if (conversionFired) {
+      set(config.storage.set$, config.sendTo);
+    }
   },
 );
 

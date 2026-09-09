@@ -132,7 +132,9 @@ export const recordSignupAttribution$ = command(
                 transactionId: user.id,
               }
             : null;
-      if (!config) return;
+      if (!config) {
+        return;
+      }
       const conversionFired = fireGoogleAdsConversion({
         accountId: googleAdsAccountId,
         sendTo: config.sendTo,
@@ -141,7 +143,9 @@ export const recordSignupAttribution$ = command(
         storedDedupeValue: get(config.storage.get$),
         transactionId: config.transactionId,
       });
-      if (conversionFired) set(config.storage.set$, user.id);
+      if (conversionFired) {
+        set(config.storage.set$, user.id);
+      }
     }
   },
 );

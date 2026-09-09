@@ -120,8 +120,9 @@ export const syncGoogleAdsConversionMilestones$ = command(
 
     // Old-account milestones use UPLOAD_CLICKS, not these website actions.
     // Unresolved ownership must not initialize or advance the delivery state.
-    if (response.body.googleAdsAccountId !== GOOGLE_ADS_ADSMARCH_ACCOUNT_ID)
+    if (response.body.googleAdsAccountId !== GOOGLE_ADS_ADSMARCH_ACCOUNT_ID) {
       return false;
+    }
 
     const stored = storedMilestonesByUser(get(milestoneStorage.get$));
     const previous = stored[user.id];
@@ -178,7 +179,9 @@ export const bootstrapGoogleAdsConversionMilestones$ = command(
     }
     const resolved = await set(syncGoogleAdsConversionMilestones$, signal);
     signal.throwIfAborted();
-    if (!resolved) return;
+    if (!resolved) {
+      return;
+    }
     set(bootstrappedUserIds$, (previous) => {
       return new Set([...previous, user.id]);
     });

@@ -627,11 +627,12 @@ describe("POST /api/attribution/google-ads-account", () => {
         }),
         [200],
       );
-      if (expected !== "7935750692")
+      if (expected !== "7935750692") {
         expect(milestones.body).toStrictEqual({
           googleAdsAccountId: expected,
           milestones: [],
         });
+      }
     },
   );
   it("resolves the captured campaign only before a first touch has been saved", async () => {

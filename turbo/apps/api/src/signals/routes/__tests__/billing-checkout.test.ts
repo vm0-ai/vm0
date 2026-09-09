@@ -15352,13 +15352,14 @@ describe("POST /api/billing/checkout/complete", () => {
   });
 
   it.each([
-    { campaignId: "24220469665", accountId: "7935750692" },
-    { campaignId: "24154967178", accountId: null },
-    { campaignId: undefined, accountId: null },
-    { campaignId: "99999999999", accountId: null },
+    { campaignId: "24220469665", accountId: "7935750692", amountPaid: 20_000 },
+    { campaignId: "24154967178", accountId: null, amountPaid: 20_000 },
+    { campaignId: undefined, accountId: null, amountPaid: 20_000 },
+    { campaignId: "99999999999", accountId: null, amountPaid: 20_000 },
+    { campaignId: "24220469665", accountId: null, amountPaid: undefined },
   ])(
-    "returns a website paid conversion only for the owning account: $campaignId",
-    async ({ campaignId, accountId }) => {
+    "returns a website paid conversion only for the owning account: $campaignId, amount $amountPaid",
+    async ({ campaignId, accountId, amountPaid }) => {
       const customerId = `cus_${randomUUID().slice(0, 8)}`;
       const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
       const fixture = await trackedSeed({
@@ -15388,7 +15389,7 @@ describe("POST /api/billing/checkout/complete", () => {
           },
           status: "paid",
           currency: "usd",
-          amount_paid: 20_000,
+          amount_paid: amountPaid,
         },
         items: {
           data: [

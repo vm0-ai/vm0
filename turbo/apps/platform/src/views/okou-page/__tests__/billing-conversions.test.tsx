@@ -92,7 +92,9 @@ test.each(["7935750692", "1001302527", undefined])(
         accountId === "7935750692" ? 1 : 0,
       );
     });
-    if (accountId !== "7935750692") return;
+    if (accountId !== "7935750692") {
+      return;
+    }
     expect(googleTag).toHaveBeenCalledWith("event", "conversion", {
       send_to: "AW-18407336975/ePWuCPuRrOccEI_YpslE",
       value: 40,

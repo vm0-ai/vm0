@@ -37,7 +37,9 @@ const resolveGoogleAdsAccountInner$ = command(
       bodyResultOf(acquisitionAttributionContract.resolveGoogleAdsAccount),
     );
     signal.throwIfAborted();
-    if (!body.ok) return body.response;
+    if (!body.ok) {
+      return body.response;
+    }
     const googleAdsAccountId = await set(
       googleAdsAccountForUser$,
       get(authContext$).userId,

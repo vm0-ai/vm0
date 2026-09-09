@@ -465,12 +465,14 @@ const googleAdsPaidConversion$ = command(
     orgId: string,
     signal: AbortSignal,
   ) => {
+    const amountPaidCents = invoice?.amount_paid ?? 0;
     if (
       invoice?.status !== "paid" ||
       invoice.currency.toLowerCase() !== "usd" ||
-      invoice.amount_paid <= 0
-    )
+      amountPaidCents <= 0
+    ) {
       return undefined;
+    }
 
     // Invoice attribution is a frozen checkout snapshot. Never fill an unknown
     // invoice click with a campaign from a different touch or organization.
@@ -506,10 +508,12 @@ const googleAdsPaidConversion$ = command(
     }
     // Legacy paid conversions are UPLOAD_CLICKS and remain on the offline path.
     // Omitting this optional payload also protects already-open old clients.
-    if (googleAdsAccountId !== GOOGLE_ADS_ADSMARCH_ACCOUNT_ID) return undefined;
+    if (googleAdsAccountId !== GOOGLE_ADS_ADSMARCH_ACCOUNT_ID) {
+      return undefined;
+    }
     return {
       transactionId: invoice.id,
-      valueUsd: invoice.amount_paid / 100,
+      valueUsd: amountPaidCents / 100,
       googleAdsAccountId,
     };
   },

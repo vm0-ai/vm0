@@ -11,7 +11,9 @@ export const resolveGoogleAdsAccount$ = command(
     const user = await get(user$);
     signal.throwIfAborted();
     const attribution = set(readStoredAdAttributionMetadata$);
-    if (!user) return googleAdsAccountForAttribution(attribution);
+    if (!user) {
+      return googleAdsAccountForAttribution(attribution);
+    }
     const client = get(apiClient$)(acquisitionAttributionContract);
     const result = await accept(
       client.resolveGoogleAdsAccount({
