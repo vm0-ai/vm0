@@ -194,10 +194,6 @@ export class SharedDatabaseMessagePortServer {
     signal.addEventListener("abort", this.handleRegisteredConnectionAbort, {
       once: true,
     });
-    const daemon = this.store.set(startSharedDatabaseWorkerDaemons$);
-    if (daemon) {
-      detach(daemon, Reason.Daemon, "shared database Worker daemons");
-    }
   }
 
   private readonly requestToken: SharedDatabaseTokenProvider = (
@@ -342,6 +338,12 @@ export class SharedDatabaseMessagePortServer {
       }
       if (message.type === "heartbeat") {
         this.store.set(recordConnectionHeartbeat$, this.connectionId);
+        // Token routing only considers tabs that have sent a heartbeat, so the
+        // first heartbeat must be visible before realtime setup requests one.
+        const daemon = this.store.set(startSharedDatabaseWorkerDaemons$);
+        if (daemon) {
+          detach(daemon, Reason.Daemon, "shared database Worker daemons");
+        }
         return;
       }
       if (message.type === "realtime-subscribe") {
