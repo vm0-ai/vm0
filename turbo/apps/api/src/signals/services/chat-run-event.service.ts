@@ -1,5 +1,6 @@
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { validateReasoningEffortDispatch } from "./chat-reasoning-effort.service";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import type { FeatureSwitchContext } from "@okouai/core";
 
@@ -54,6 +55,10 @@ export async function resolveRunChatThreadModelContext(params: {
   }
   if ("status" in resolved) {
     return resolved;
+  }
+  const effortError = validateReasoningEffortDispatch(resolved.reasoningEffort);
+  if (effortError) {
+    return effortError;
   }
   return { ...resolved, featureSwitchContext };
 }

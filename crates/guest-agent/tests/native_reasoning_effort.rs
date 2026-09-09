@@ -91,8 +91,8 @@ async fn selected_effort_reaches_new_and_resumed_native_runs() -> TestResult {
             Some("max"),
             Some("max"),
         ),
-        // The CLI mode is preserved here; API admission stays closed until
-        // dynamic-workflow availability can be established for the session.
+        // Preserve the CLI mode while chat admission stays closed for rollout.
+        // Ultracode also needs actual workflow availability verified before use.
         (
             "claude-code",
             &claude_mock,

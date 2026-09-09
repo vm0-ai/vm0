@@ -147,7 +147,8 @@ impl ApiRequestBuilder {
         Ok(FinalizedApiRequest { request, context })
     }
 
-    pub(crate) fn header(self, name: &'static str, value: &'static str) -> Self {
+    #[cfg(test)]
+    fn header_for_test(self, name: &'static str, value: &'static str) -> Self {
         let Self {
             client,
             builder,
@@ -872,10 +873,10 @@ mod tests {
 
         let request = http
             .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
-            .header(CLIENT_VERSION_HEADER, "caller-version")
-            .header(CLIENT_TYPE_HEADER, "caller-type")
-            .header(CLIENT_SESSION_ID_HEADER, "caller-session")
-            .header(CLIENT_REQUEST_ID_HEADER, "caller-request")
+            .header_for_test(CLIENT_VERSION_HEADER, "caller-version")
+            .header_for_test(CLIENT_TYPE_HEADER, "caller-type")
+            .header_for_test(CLIENT_SESSION_ID_HEADER, "caller-session")
+            .header_for_test(CLIENT_REQUEST_ID_HEADER, "caller-request")
             .build()
             .unwrap();
 

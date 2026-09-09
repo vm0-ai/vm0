@@ -127,9 +127,6 @@ pub mod runners {
     /// Rust runners use this shared contract value to split target batches before calling the API.
     pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = 256;
 
-    /// Claim header advertising native reasoning effort support.
-    pub const NATIVE_REASONING_EFFORT_HEADER: &str = "X-Okou-Native-Reasoning-Effort";
-
     /// Official token kind; the API still authenticates the secret and winning claim.
     pub const OFFICIAL_RUNNER_TOKEN_PREFIX: &str = "vm0_official_";
 

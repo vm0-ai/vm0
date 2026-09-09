@@ -11,9 +11,9 @@ use tracing::{error, info, warn};
 use api_contracts::generated::{
     constants::runners::{
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
-        NATIVE_REASONING_EFFORT_HEADER, PI_MODEL_CONFIG_CURRENT_GENERATION,
-        PI_MODEL_CONFIG_DIALECT_TIER_GENERATION, PI_MODEL_CONFIG_LEGACY_GENERATION,
-        PI_MODEL_CONFIG_NATIVE_GENERATION, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+        PI_MODEL_CONFIG_LEGACY_GENERATION, PI_MODEL_CONFIG_NATIVE_GENERATION,
+        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -1456,9 +1456,6 @@ impl ApiClient {
                 ),
                 &self.token,
             )
-            // Older APIs ignore this additive header; their claim capability
-            // JSON is strict. This runner bundles the native effort consumers.
-            .header(NATIVE_REASONING_EFFORT_HEADER, "1")
             .json(&body);
         let request_to_response_headers_started_at = Instant::now();
         let resp = send_api(request, "claim").await?;
@@ -4600,9 +4597,7 @@ mod tests {
         let path = format!("/api/runners/jobs/{run_id}/claim");
         let mock = server
             .mock_async(|when, then| {
-                when.method(POST)
-                    .path(path.as_str())
-                    .header(NATIVE_REASONING_EFFORT_HEADER, "1");
+                when.method(POST).path(path.as_str());
                 then.status(404);
             })
             .await;

@@ -1,4 +1,3 @@
-import { validateReasoningEffortDispatch } from "./chat-reasoning-effort.service";
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
@@ -2686,54 +2685,37 @@ interface CreateQueuedChatRunInputArgs {
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }
 
-async function loadQueuedMessageSessionContext(
+function loadQueuedMessageSessionState(
   args: CreateQueuedChatRunInputArgs,
   modelRoute: QueuedMessageModelRoute,
 ) {
-  const [startNewSession, loadedIncompleteContext] =
-    await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
-      "nested",
-      async () => {
-        const sessionResolution = await resolveChatThreadSession({
-          db: args.db,
-          threadId: args.threadId,
-          userId: args.userId,
-          orgId: args.agent.orgId,
-          agentId: args.agent.id,
-          route: {
-            selectedModel: modelRoute.modelPin.selectedModel,
-            cliAgentType: modelRoute.cliAgentType,
-          },
-        });
-        const incompleteContext = isWebChatContextType(
-          args.queuedMessage.contextType,
-        )
-          ? await loadWebChatIncompleteContext(args.db, args.threadId)
-          : "";
-        return [
-          sessionResolution.action === "rotated",
-          incompleteContext,
-        ] as const;
-      },
-    );
-  const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
-  const priorContext = await measureChatCallbackPreCreateTiming(
+  return measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_agent_chat_callback_auto_send_build_prior_context",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
     "nested",
-    () => {
-      return buildQueuedPriorContext({
+    async () => {
+      const sessionResolution = await resolveChatThreadSession({
         db: args.db,
         threadId: args.threadId,
-        startNewSession,
-        incompleteContext,
-        contextType: args.queuedMessage.contextType,
+        userId: args.userId,
+        orgId: args.agent.orgId,
+        agentId: args.agent.id,
+        route: {
+          selectedModel: modelRoute.modelPin.selectedModel,
+          cliAgentType: modelRoute.cliAgentType,
+        },
       });
+      const incompleteContext = isWebChatContextType(
+        args.queuedMessage.contextType,
+      )
+        ? await loadWebChatIncompleteContext(args.db, args.threadId)
+        : "";
+      return [
+        sessionResolution.action === "rotated",
+        incompleteContext,
+      ] as const;
     },
   );
-  return { incompleteContext, priorContext };
 }
 
 type QueuedIntegrationDeliveries = Pick<
@@ -3232,20 +3214,23 @@ async function buildCreateQueuedChatRunInput(
       featureSwitchContext,
     });
 
-  const effortError = validateReasoningEffortDispatch(
-    routedModel.reasoningEffort,
-    piExecution,
+  const [startNewSession, loadedIncompleteContext] =
+    await loadQueuedMessageSessionState(args, routedModel);
+  const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
+  const priorContext = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_build_prior_context",
+    "nested",
+    () => {
+      return buildQueuedPriorContext({
+        db: args.db,
+        threadId: args.threadId,
+        startNewSession,
+        incompleteContext,
+        contextType: args.queuedMessage.contextType,
+      });
+    },
   );
-  if (effortError) {
-    return queuedMessageAdmissionFailure(
-      args,
-      launchMaterial,
-      effortError.body.error,
-    );
-  }
-
-  const { incompleteContext, priorContext } =
-    await loadQueuedMessageSessionContext(args, routedModel);
   const {
     generationTemplatePrompt,
     generationTemplateIdentities,
