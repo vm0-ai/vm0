@@ -1,3 +1,4 @@
+import { artifactUrlSchema } from "./artifact-references";
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
@@ -92,9 +93,9 @@ export const hostedSitePrepareResponseSchema = z.object({
   siteId: z.string().uuid(),
   deploymentId: z.string().uuid(),
   publicSlug: z.string(),
-  url: z.string().url(),
+  url: artifactUrlSchema,
   deploymentVersion: z.number().int().positive().optional(),
-  artifactUrl: z.string().url().optional(),
+  artifactUrl: artifactUrlSchema.optional(),
   aliasUrl: z.string().url().optional(),
   uploads: z.array(hostedSiteUploadSchema),
 });
@@ -103,9 +104,9 @@ export const hostedSiteCompleteResponseSchema = z.object({
   siteId: z.string().uuid(),
   deploymentId: z.string().uuid(),
   publicSlug: z.string(),
-  url: z.string().url(),
+  url: artifactUrlSchema,
   deploymentVersion: z.number().int().positive().optional(),
-  artifactUrl: z.string().url().optional(),
+  artifactUrl: artifactUrlSchema.optional(),
   aliasUrl: z.string().url().optional(),
   isActive: z.boolean().optional(),
   activeDeploymentVersion: z.number().int().positive().optional(),
@@ -116,9 +117,9 @@ export const hostedSiteFilesResponseSchema = z.object({
   siteId: z.string().uuid(),
   deploymentId: z.string().uuid(),
   publicSlug: hostedSitePublicSlugSchema,
-  url: z.string().url(),
+  url: artifactUrlSchema,
   deploymentVersion: z.number().int().positive().optional(),
-  artifactUrl: z.string().url().optional(),
+  artifactUrl: artifactUrlSchema.optional(),
   aliasUrl: z.string().url().optional(),
   fileCount: z.number().int().nonnegative(),
   size: z.number().int().nonnegative(),
@@ -128,7 +129,7 @@ export const hostedSiteFilesResponseSchema = z.object({
 const hostedSiteDeploymentSummarySchema = z.object({
   deploymentId: z.string().uuid(),
   deploymentVersion: z.number().int().positive().nullable(),
-  artifactUrl: z.string().url().nullable(),
+  artifactUrl: artifactUrlSchema.nullable(),
   status: z.enum(["uploading", "ready", "failed", "deleted"]),
   isActive: z.boolean(),
   createdAt: z.string().datetime(),

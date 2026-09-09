@@ -9,6 +9,7 @@ import type {
 import { command } from "ccstate";
 import { z } from "zod";
 
+import { dataForSeoLabsLocationCode } from "../../lib/dataforseo-labs-locations";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
@@ -52,7 +53,11 @@ const DATAFORSEO_SERP_PATHS: Readonly<Record<SeoEngine, string>> = {
   google_news: "/v3/serp/google/news/live/advanced",
 };
 
-type DataForSeoRequest = SeoRequest;
+type DataForSeoRequest =
+  | Extract<SeoRequest, { operation: "serp" | "backlinks-summary" }>
+  | (Extract<SeoRequest, { operation: "keyword-ideas" | "ranked-keywords" }> & {
+      readonly locationCode: number;
+    });
 
 interface AuthedSeoArgs {
   readonly auth: AuthContext & { readonly orgId: string };
@@ -389,6 +394,25 @@ async function fetchDataForSeoJson(
   return result.value;
 }
 
+function prepareDataForSeoRequest(
+  request: SeoRequest,
+): DataForSeoRequest | SeoErrorResponse {
+  if (
+    request.operation !== "keyword-ideas" &&
+    request.operation !== "ranked-keywords"
+  ) {
+    return request;
+  }
+
+  const locationCode = dataForSeoLabsLocationCode(request.body.location);
+  if (locationCode === undefined) {
+    return invalidDataForSeoRequest(
+      `DataForSEO ${request.operation} requires a supported country or region, such as "United States" or "US". City and state locations are not supported. See https://docs.dataforseo.com/v3/dataforseo_labs_locations_and_languages/`,
+    );
+  }
+  return { ...request, locationCode };
+}
+
 function dataForSeoPath(request: DataForSeoRequest): string {
   switch (request.operation) {
     case "serp": {
@@ -422,7 +446,7 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
     case "keyword-ideas": {
       return {
         keywords: [request.body.keyword],
-        location_name: normalizeDataForSeoLocation(request.body.location),
+        location_code: request.locationCode,
         language_code: request.body.languageCode,
         limit: request.body.limit,
       };
@@ -430,7 +454,7 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
     case "ranked-keywords": {
       return {
         target: request.body.target,
-        location_name: normalizeDataForSeoLocation(request.body.location),
+        location_code: request.locationCode,
         language_code: request.body.languageCode,
         limit: request.body.limit,
       };
@@ -674,6 +698,10 @@ const runDataForSeo$ = command(
 
     const providerSignal = AbortSignal.any([signal, get(requestSignal$)]);
     providerSignal.throwIfAborted();
+    const request = prepareDataForSeoRequest(args.request);
+    if ("status" in request) {
+      return request;
+    }
     const creditError = await set(
       checkManagedCredits$,
       {
@@ -684,7 +712,7 @@ const runDataForSeo$ = command(
           kind: USAGE_KIND,
           provider: DATAFORSEO_PROVIDER,
           category: DATAFORSEO_BILLING_CATEGORY,
-          quantity: dataForSeoPreflightQuantity(args.request),
+          quantity: dataForSeoPreflightQuantity(request),
         },
         label: "Okou SEO DataForSEO",
       },
@@ -699,7 +727,7 @@ const runDataForSeo$ = command(
     const providerResult = await fetchDataForSeo(
       login,
       password,
-      args.request,
+      request,
       providerSignal,
     );
     signal.throwIfAborted();

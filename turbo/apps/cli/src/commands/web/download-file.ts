@@ -17,8 +17,8 @@ function defaultOutPath(fileId: string): string {
 
 export const downloadFileCommand = new Command()
   .name("download-file")
-  .description("Download a web-uploaded file by id")
-  .argument("<file-id>", "File id (UUID returned by the upload API)")
+  .description("Download a file by id or /artifacts/<hash> reference")
+  .argument("<file-id>", "File UUID or /artifacts/<hash> reference")
   .option(
     "-o, --out <path>",
     "Output path for the downloaded file (default: /tmp/web-<file-id>)",

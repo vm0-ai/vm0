@@ -6,7 +6,7 @@ import {
   type FeatureSwitchRolloutStage,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { Button, Switch, cn } from "@okouai/ui";
+import { surfaceVariants, Button, Switch, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   featureSwitch$,
@@ -122,7 +122,11 @@ function LabFeatureGroup(props: {
       <h2 className="mb-2 px-1 text-sm font-medium text-muted-foreground">
         {props.title}
       </h2>
-      <ul className="okou-card divide-y divide-border overflow-hidden">
+      <ul
+        className={surfaceVariants({
+          className: "divide-y divide-border overflow-hidden",
+        })}
+      >
         {props.keys.map((key) => {
           const enabled = props.features?.[key] ?? false;
           const featureMetadata = props.metadata[key];

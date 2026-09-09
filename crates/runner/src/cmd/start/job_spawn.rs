@@ -180,8 +180,11 @@ impl ExecutorInvocation {
         let inner = tokio::spawn(async move {
             if let Some(idle_entry) = reuse_entry {
                 executor::execute_job_reuse_with_hooks(
-                    idle_entry,
-                    reuse_result,
+                    executor::ReusedSandboxDispatch {
+                        factory: &**factory,
+                        idle_sandbox: idle_entry,
+                        reuse_result,
+                    },
                     context,
                     &exec_config,
                     &params,

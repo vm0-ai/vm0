@@ -1,5 +1,9 @@
 import { command, computed, state, type Computed } from "ccstate";
 import { timeout } from "signal-timers";
+import {
+  artifactReferencesContract,
+  parseArtifactReference,
+} from "@okouai/api-contracts/contracts/artifact-references";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { hostContract } from "@okouai/api-contracts/contracts/host";
 import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
@@ -81,6 +85,22 @@ function createAttachmentResourceUrl$(
   url: string,
 ): Computed<Promise<AttachmentUrls>> {
   return computed(async (get) => {
+    const reference = parseArtifactReference(url, location.origin);
+    if (reference) {
+      get(resourceRevision$);
+      const signal = get(pageSignal$);
+      const response = await accept(
+        get(apiClient$)(artifactReferencesContract).resolve({
+          params: { reference: `${reference.hash}${reference.extension}` },
+          fetchOptions: { signal, cache: "no-store" },
+        }),
+        [200],
+        signal,
+      );
+      const resourceUrl = new URL(response.body.url);
+      resourceUrl.hash = reference.fragment;
+      return { resourceUrl: resourceUrl.href, shareUrl: null };
+    }
     const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
     if (deploymentId) {
       get(resourceRevision$);

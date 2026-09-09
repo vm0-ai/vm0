@@ -387,10 +387,39 @@ export default [
           paths: [
             ...runtimeImportRestrictions,
             {
+              name: "@base-ui/react/dialog",
+              message:
+                "Use DialogContent from @okouai/ui. The shared dialog owns safe-area bounds, sizing, scrolling, and native focus behavior.",
+            },
+            {
+              name: "@base-ui/react",
+              importNames: ["Dialog"],
+              message:
+                "Use DialogContent from @okouai/ui so dialogs retain their safe-area boundary.",
+            },
+            {
+              name: "ably",
+              allowTypeImports: true,
+              message:
+                "Use src/lib/ably-realtime.ts for the modular runtime; direct imports are type-only.",
+            },
+            {
+              name: "@clerk/clerk-js",
+              message:
+                "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
+            },
+            {
               name: "@clerk/ui",
               allowTypeImports: true,
               message:
                 "Only src/clerk-ui.ts imports the optional UI at runtime; use ensureClerkUiLoaded$ on v1 routes. Other imports must be type-only.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@base-ui/react/dialog/*"],
+              message:
+                "Use the shared DialogContent instead of constructing a dialog viewport in business code.",
             },
           ],
         },

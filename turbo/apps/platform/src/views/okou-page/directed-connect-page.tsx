@@ -352,7 +352,7 @@ function ManualGrantDialog({
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent maxWidth="md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
             <ConnectorIcon icon={icon} size={20} />

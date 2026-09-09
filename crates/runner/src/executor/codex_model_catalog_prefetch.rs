@@ -9,7 +9,7 @@ use sandbox::{
     SandboxOperationWriteStage, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
+use tracing::{info, warn};
 
 use super::cli_framework::EffectiveCliFramework;
 use super::effective_cli_framework;
@@ -149,7 +149,7 @@ impl StartedCodexModelCatalogPrefetch {
                 ))
             }
             Err(error) if is_unusable_sandbox_start_timeout(&error) => {
-                warn!(error = %error, "Codex model catalog prefetch start timed out after write boundary");
+                info!(error = %error, "Codex model catalog prefetch start timed out after write boundary");
                 CodexModelCatalogPrefetchStart::SandboxUnusable(
                     UnusableCodexModelCatalogPrefetchStart {
                         error,
@@ -165,7 +165,7 @@ impl StartedCodexModelCatalogPrefetch {
                     ..
                 },
             ) => {
-                warn!(error = %error, "Codex model catalog prefetch start write failed after write boundary");
+                info!(error = %error, "Codex model catalog prefetch start write failed after write boundary");
                 CodexModelCatalogPrefetchStart::SandboxUnusable(
                     UnusableCodexModelCatalogPrefetchStart {
                         error,

@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 /**
  * Tests for okou generate video command
  *
@@ -297,7 +298,12 @@ describe("okou generate video command", () => {
       const origin = ownedApi
         ? "http://localhost:3000"
         : "https://foreign.example";
-      const frame = `${origin}/api/web/download-file?file_id=private-frame&filename=frame.png`;
+      const frame = ownedApi
+        ? artifactReferencePath(
+            "00000000-0000-4000-8000-000000000021",
+            "frame.png",
+          )
+        : `${origin}/api/web/download-file?file_id=private-frame&filename=frame.png`;
       let authorization: string | null = null;
       let videoInput: unknown;
       server.use(
@@ -310,7 +316,10 @@ describe("okou generate video command", () => {
           const { sourceUrl: _sourceUrl, ...result } = VIDEO_RESULT;
           return HttpResponse.json({
             ...result,
-            url: "http://localhost:3000/api/web/download-file?file_id=private-video&filename=video.mp4",
+            url: artifactReferencePath(
+              "00000000-0000-4000-8000-000000000022",
+              "video.mp4",
+            ),
           });
         }),
       );
@@ -333,7 +342,12 @@ describe("okou generate video command", () => {
           return String(value);
         })
         .join("\n");
-      expect(output).toContain("/api/web/download-file?file_id=private-video");
+      expect(output).toContain(
+        artifactReferencePath(
+          "00000000-0000-4000-8000-000000000022",
+          "video.mp4",
+        ),
+      );
       expect(output).not.toContain(VIDEO_RESULT.sourceUrl);
       expect(output).not.toContain("test-token");
     },

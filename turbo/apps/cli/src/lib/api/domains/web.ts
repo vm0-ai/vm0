@@ -1,3 +1,4 @@
+import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact-references";
 import { createWriteStream, readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Readable } from "node:stream";
@@ -160,6 +161,9 @@ interface DownloadWebFileResult {
 export async function webFileReferenceId(
   value: string,
 ): Promise<string | null> {
+  const reference = parseArtifactReference(value);
+  if (reference) return reference.id;
+  if (!URL.canParse(value)) return null;
   const url = new URL(value);
   const baseUrl = new URL(await getBaseUrl());
   if (
@@ -177,8 +181,10 @@ export async function webFileReferenceId(
   return id;
 }
 
-export async function fetchGenerationReference(url: URL): Promise<Response> {
-  const id = await webFileReferenceId(url.href);
+export async function fetchGenerationReference(
+  url: string | URL,
+): Promise<Response> {
+  const id = await webFileReferenceId(String(url));
   return id ? fetchWebFile(id) : fetch(url);
 }
 
@@ -211,7 +217,9 @@ export async function downloadWebFile(
   fileId: string,
   outPath: string,
 ): Promise<DownloadWebFileResult> {
-  const response = await fetchWebFile(fileId);
+  const response = await fetchWebFile(
+    parseArtifactReference(fileId)?.id ?? fileId,
+  );
 
   if (!response.ok) {
     let message = `Failed to download web file (HTTP ${response.status})`;

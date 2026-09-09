@@ -380,12 +380,14 @@ export function createChatCallbacksApi(context: TestContext) {
       addObject(object: StoredS3Object): void;
       readonly deletedKeys: readonly string[];
       readonly puts: readonly CapturedS3Put[];
-      rejectNextImmutablePutAsExisting(): void;
+      readonly rejectedPuts: readonly CapturedS3Put[];
+      rejectNextImmutablePutAsExisting(contentType: string): void;
     } {
       const objects: StoredS3Object[] = [];
       const deletedKeys: string[] = [];
       const puts: CapturedS3Put[] = [];
-      let rejectNextImmutablePut = false;
+      const rejectedPuts: CapturedS3Put[] = [];
+      let rejectNextImmutablePutContentType: string | null = null;
       context.mocks.s3.send.mockImplementation((...args: unknown[]) => {
         const input = commandInput(args[0]);
         const key = typeof input.Key === "string" ? input.Key : "";
@@ -405,7 +407,7 @@ export function createChatCallbacksApi(context: TestContext) {
         const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
         const name = commandName(args[0]);
         if (name === "PutObjectCommand") {
-          puts.push({
+          const put: CapturedS3Put = {
             bucket,
             cacheControl:
               typeof input.CacheControl === "string"
@@ -417,9 +419,15 @@ export function createChatCallbacksApi(context: TestContext) {
             contentType:
               typeof input.ContentType === "string" ? input.ContentType : null,
             metadata: isStringRecord(input.Metadata) ? input.Metadata : null,
-          });
-          if (rejectNextImmutablePut && input.IfNoneMatch === "*") {
-            rejectNextImmutablePut = false;
+          };
+          puts.push(put);
+          if (
+            rejectNextImmutablePutContentType !== null &&
+            input.ContentType === rejectNextImmutablePutContentType &&
+            input.IfNoneMatch === "*"
+          ) {
+            rejectNextImmutablePutContentType = null;
+            rejectedPuts.push(put);
             return Promise.reject(
               Object.assign(new Error("immutable object already exists"), {
                 name: "PreconditionFailed",
@@ -460,8 +468,9 @@ export function createChatCallbacksApi(context: TestContext) {
         },
         deletedKeys,
         puts,
-        rejectNextImmutablePutAsExisting(): void {
-          rejectNextImmutablePut = true;
+        rejectedPuts,
+        rejectNextImmutablePutAsExisting(contentType: string): void {
+          rejectNextImmutablePutContentType = contentType;
         },
       };
     },

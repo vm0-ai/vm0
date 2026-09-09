@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.642.0](https://github.com/vm0-ai/vm0/compare/core-v8.641.1...core-v8.642.0) (2026-09-09)
+
+
+### Features
+
+* add pin controls to chat thread headers ([#32867](https://github.com/vm0-ai/vm0/issues/32867)) ([6e36691](https://github.com/vm0-ai/vm0/commit/6e3669108941cbc17fbeb41865d82fd4d8454029))
+* **app:** add lightweight composer task chips behind a switch ([#32698](https://github.com/vm0-ai/vm0/issues/32698)) ([b95ee8c](https://github.com/vm0-ai/vm0/commit/b95ee8c26bccebccc7ee8b113e837dbfbd535523))
+
+
+### Bug Fixes
+
+* preserve composer context as hidden additional info ([#32782](https://github.com/vm0-ai/vm0/issues/32782)) ([ff22c3b](https://github.com/vm0-ai/vm0/commit/ff22c3bedc2784c46bc6f9bcc3a3731a6f5b404f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.1
+
 ## [8.641.1](https://github.com/vm0-ai/vm0/compare/core-v8.641.0...core-v8.641.1) (2026-09-09)
 
 

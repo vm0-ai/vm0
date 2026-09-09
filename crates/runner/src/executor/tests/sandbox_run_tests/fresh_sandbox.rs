@@ -460,6 +460,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
+            preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
@@ -703,6 +704,7 @@ async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
+            preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
@@ -806,6 +808,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
+            preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
@@ -1183,6 +1186,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
+            preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
@@ -1227,6 +1231,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         &default_params(),
         &mut telemetry,
         NewSandboxHooks {
+            preparation: crate::executor::sandbox_run::FreshPreparation::Initial,
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),

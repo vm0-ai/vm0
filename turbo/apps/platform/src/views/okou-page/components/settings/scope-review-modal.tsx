@@ -138,7 +138,7 @@ export function ScopeReviewModal({
         return !open && onClose();
       }}
     >
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent maxWidth="md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">

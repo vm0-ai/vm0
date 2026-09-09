@@ -340,7 +340,9 @@ function SettingsDialog({
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="okou-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden okou-border rounded-xl bg-card"
+        maxWidth={1200}
+        height="fill"
+        contentClassName="okou-app flex flex-col p-0 gap-0 overflow-hidden bg-card"
       >
         <DialogTitle className="sr-only">
           {t(($) => {

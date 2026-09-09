@@ -1,3 +1,5 @@
+import { chatThreadActivitySummaryContract } from "@okouai/api-contracts/contracts/chat-thread-activity-summary";
+import { chatThreadActivitySummaryRoutes } from "../chat-threads-activity-summary";
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
@@ -1679,6 +1681,80 @@ function chatThreadConnectorSelectionsClient() {
   return setupApp({ context, routes: chatThreadRoutes })(
     chatThreadConnectorSelectionContract,
   );
+}
+
+async function expectPiActivitySummaryBeforeGuestReplay(
+  actor: ApiTestUser,
+  run: { readonly threadId: string; readonly runId: string },
+  activityEnabled: boolean,
+): Promise<void> {
+  const orgId = requireOrgId(actor);
+  // The API-first projection must capture tools before any guest replay/result.
+  await flushWaitUntilForTest();
+  mockOptionalEnv("OPENROUTER_API_KEY", "activity-summary-key");
+  let activityInput = "";
+  server.use(
+    http.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      async ({ request }) => {
+        const body = openRouterBodySchema.parse(await request.json());
+        activityInput = body.messages
+          .map((message) => {
+            return message.content;
+          })
+          .join("\n");
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "Checking the CLI and preparing the note" },
+            },
+          ],
+        });
+      },
+    ),
+  );
+  if (!activityEnabled) {
+    await accept(
+      setupApp({ context, routes: chatThreadActivitySummaryRoutes })(
+        chatThreadActivitySummaryContract,
+      ).summarize({
+        headers: sessionHeaders(actor),
+        params: { id: run.threadId },
+        body: { runId: run.runId },
+      }),
+      [403],
+    );
+    expect(activityInput).toBe("");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.ThreadActivitySummary]: true },
+    );
+  }
+  const activity = await accept(
+    setupApp({ context, routes: chatThreadActivitySummaryRoutes })(
+      chatThreadActivitySummaryContract,
+    ).summarize({
+      headers: sessionHeaders(actor),
+      params: { id: run.threadId },
+      body: { runId: run.runId },
+    }),
+    [200],
+  );
+  expect(activity.body).toMatchObject({
+    status: "fresh",
+    sourceSequence: activityEnabled ? 3 : null,
+    summarySequence: activityEnabled ? 3 : null,
+  });
+  if (activityEnabled) {
+    expect(activityInput).toContain("okou --help");
+    expect(activityInput).toContain("add_ad_hoc_note");
+  }
+  expect(activityInput).not.toContain(
+    "API-first reasoning preserved for Sandbox resume",
+  );
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
 }
 
 describe("CHAT-02: thread run admission invariant", () => {
@@ -3754,6 +3830,10 @@ describe("CHAT-02: queueing and recalling messages", () => {
           version: 1,
           parts: [
             {
+              type: "additional_info",
+              text: "Create a video.\nDuration: 6s.",
+            },
+            {
               type: "file",
               fileId,
               filenameSnapshot: "delivery-notes.txt",
@@ -3840,6 +3920,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     expect(secondReservation.eventIds).toStrictEqual([secondEventId]);
     expect(secondReservation.prompt).toBe(
       [
+        "Create a video.\nDuration: 6s.",
         `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
         "second durable steer",
       ].join("\n\n"),
@@ -15289,7 +15370,7 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it("publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes", async () => {
+  async function piActivityScenario(enabled: boolean): Promise<void> {
     if (await runInIsolatedProcess(import.meta.url)) {
       return;
     }
@@ -15305,6 +15386,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.ThreadActivitySummary]: enabled,
         [FeatureSwitchKey.CodexFastMode]: true,
       },
     );
@@ -15575,6 +15657,8 @@ describe("CHAT-02: model-first provider policies", () => {
       },
       { type: "text", text: "after parallel tools" },
     ]);
+    await expectPiActivitySummaryBeforeGuestReplay(actor, run, enabled);
+
     await webhooks.requestAgentEvents(
       {
         runId: run.runId,
@@ -16279,7 +16363,13 @@ describe("CHAT-02: model-first provider policies", () => {
       [200],
     );
     expect(repeatedCombinedH2.body).toStrictEqual(combinedH2.body);
-  }, 150_000);
+  }
+
+  it.each([false, true])(
+    "publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes (activity: %s)",
+    piActivityScenario,
+    150_000,
+  );
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -22032,6 +22122,42 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
+  it.each([
+    "Create a presentation.\nNumber of slides: 10.",
+    "Create a video.\nDuration: 6s.\nAudio: off.",
+    "Create an image.\nAspect ratio: 1:1.",
+  ])(
+    "preserves client-authored additional info in the agent prompt: %s",
+    async (additionalInfo) => {
+      const { actor, agentId } = await entitledChatActor();
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      const prompt = "Our launch brief";
+      const userMessage: UserMessageInputDocument = {
+        version: 1,
+        parts: [
+          { type: "additional_info", text: additionalInfo },
+          { type: "text", text: prompt },
+        ],
+      };
+      const sent = await sendChatRun(actor, { agentId, prompt, userMessage });
+      const run = await api.readRun(actor, sent.runId);
+      expect(run.prompt).toBe(`${additionalInfo}\n\n${prompt}`);
+      const messages = await chat.listThreadEvents(actor, sent.threadId);
+      const message = userMessages(messages.events).find((event) => {
+        return event.eventType === "input.prompt" && event.runId === sent.runId;
+      });
+      if (!message) {
+        throw new Error("Expected the sent message to be persisted");
+      }
+      expect(message).toMatchObject({
+        userMessage: { parts: expect.arrayContaining(userMessage.parts) },
+      });
+      expect(chatEventDisplayText(message)).toBe(prompt);
+      await cancelChatRun(actor, sent.runId);
+    },
+    90_000,
+  );
+
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -25392,7 +25518,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, mockRunId);
   }, 90_000);
 
-  it("projects inline templates into queued web launch material", async () => {
+  it("projects additional info and inline templates into queued web launch material", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -25410,6 +25536,10 @@ describe("CHAT-02: shared user message queue", () => {
     const queuedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
+        {
+          type: "additional_info",
+          text: "Create an image.\nAspect ratio: 1:1.",
+        },
         { type: "text", text: "Restyle with " },
         {
           type: "template",
@@ -25469,7 +25599,9 @@ describe("CHAT-02: shared user message queue", () => {
 
     const run = await api.readRun(actor, queuedRunId);
     const inlineMarker = `[Template #1: ${style.title} (illustration)]`;
-    expect(run.prompt).toBe(`Restyle with ${inlineMarker} at claim`);
+    expect(run.prompt).toBe(
+      `Create an image.\nAspect ratio: 1:1.\n\nRestyle with ${inlineMarker} at claim`,
+    );
     const webPrompt = [
       "# Current Integration\nYou are currently running inside: Web",
       "You are communicating with the user through the web chat UI.",

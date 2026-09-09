@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -71,7 +72,10 @@ describe("okou host publish command", () => {
     "uploads a $label bundle and returns the exact API-selected URL in text and JSON",
     async ({ privateArtifact }) => {
       const artifactUrl = privateArtifact
-        ? "http://localhost:3000/api/host/private-deployments/00000000-0000-4000-8000-000000000002/view"
+        ? artifactReferencePath(
+            "00000000-0000-4000-8000-000000000002",
+            "index.html",
+          )
         : ARTIFACT_URL;
       const url = privateArtifact ? artifactUrl : ALIAS_URL;
       const alias = privateArtifact ? {} : { aliasUrl: ALIAS_URL };

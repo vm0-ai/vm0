@@ -976,7 +976,9 @@ export function ConnectorDirectoryDialog({
       }}
     >
       <DialogContent
-        className="flex h-[min(600px,85vh)] max-w-2xl flex-col gap-0 p-0"
+        maxWidth="2xl"
+        height={600}
+        contentClassName="flex flex-col gap-0 p-0"
         aria-describedby={undefined}
         onKeyDown={handleKeyDown}
       >

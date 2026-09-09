@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button, Dialog, DialogContent, cn } from "@okouai/ui";
+import { Button, Dialog, DialogBody, DialogContent } from "@okouai/ui";
 import {
   useGet,
   useLastLoadable,
@@ -635,7 +635,6 @@ function ArtifactDialogImageStage({
   resourceUrl: string | null;
 }) {
   const { t } = useTranslation();
-  const fullscreen = useGet(lightboxDialogFullscreen$);
   // Marks live on the draft rather than in the file, so the viewer has to draw
   // them too — otherwise reopening an annotated image shows a clean picture.
   const annotation = preview.annotationTarget?.annotations ?? null;
@@ -656,7 +655,7 @@ function ArtifactDialogImageStage({
             </div>
           ) : (
             <ZoomableArtifactImageCanvas
-              key={`${fullscreen ? "fullscreen" : "windowed"}:${resourceUrl}`}
+              key={resourceUrl}
               src={resourceUrl}
               alt={filename}
               signals={attachmentLightboxImageCanvasSignals}
@@ -1318,10 +1317,11 @@ function ArtifactPreviewDialogContent({
         initialFocus={dialogElement}
         showCloseButton={false}
         overlayClassName="okou-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
-        className={cn(
-          "fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
-          fullscreen ? "p-0" : "p-6",
-        )}
+        maxWidth={1440}
+        height={1000}
+        surface="canvas"
+        mode={fullscreen ? "fullscreen" : "windowed"}
+        contentClassName="flex flex-col gap-0 overflow-hidden bg-background p-0"
         aria-label={t(
           ($) => {
             return $.artifacts.preview.dialogLabel;
@@ -1340,27 +1340,9 @@ function ArtifactPreviewDialogContent({
               : undefined
           }
         />
-        {/*
-          The popup spans the viewport, so the area around the panel is the
-          backdrop the user sees. Dismissal lives on this dedicated sibling
-          rather than on the popup: a press that starts in the panel and ends
-          outside it — panning a zoomed image past the edge, dragging a text
-          selection out of a document — fires its click at the common ancestor
-          of both endpoints, which is the popup, so this element never sees it.
-        */}
-        <div
-          className="absolute inset-0"
-          onClick={closeWithAnimation}
-          data-testid="attachment-lightbox-backdrop"
-        />
         <div
           ref={registerConnectionDialog}
-          className={cn(
-            "relative flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
-            fullscreen
-              ? "okou-fixed-viewport-shell w-dvw rounded-none"
-              : "h-[min(1000px,calc(100dvh-3rem))] w-[min(1440px,calc(100vw-3rem))] rounded-xl",
-          )}
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden text-foreground"
           data-testid="attachment-lightbox-panel"
         >
           <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 pl-4 pr-3">
@@ -1380,7 +1362,7 @@ function ArtifactPreviewDialogContent({
               />
             )}
           </div>
-          <div className="min-h-0 flex-1 bg-background">
+          <DialogBody className="overflow-hidden bg-background">
             {connectionProgressActive ? (
               <div className="flex h-full items-center justify-center p-6">
                 <ConnectorConnectionStatus />
@@ -1392,7 +1374,7 @@ function ArtifactPreviewDialogContent({
                 preview={preview}
               />
             )}
-          </div>
+          </DialogBody>
         </div>
       </DialogContent>
     </Dialog>

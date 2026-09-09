@@ -650,13 +650,11 @@ test.each([null, "Close", "Escape", "backdrop"] as const)(
       } else if (dismissal === "Escape") {
         await user.keyboard("{Escape}");
       } else {
-        const overlay = catalog.parentElement?.querySelector(
-          '[data-slot="dialog-overlay"]',
-        );
-        if (!(overlay instanceof HTMLElement)) {
-          throw new Error("Expected the connector directory backdrop");
+        const viewport = catalog.closest('[data-slot="dialog-viewport"]');
+        if (!(viewport instanceof HTMLElement)) {
+          throw new Error("Expected the connector directory viewport");
         }
-        await user.click(overlay);
+        await user.click(viewport);
       }
     }
     await waitFor(() => {

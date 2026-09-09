@@ -1,6 +1,6 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { artifactSharingTarget } from "../../signals/artifact-sharing.ts";
+import { isShareableArtifactReference } from "../../signals/artifact-sharing.ts";
 import { ArtifactShareMenu } from "./artifact-share-menu.tsx";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import {
@@ -180,7 +180,7 @@ export function ArtifactShareButton({
     attachmentUrls &&
     shareUrl === null &&
     features?.[FeatureSwitchKey.PrivateArtifacts] &&
-    artifactSharingTarget(url)
+    isShareableArtifactReference(url)
   ) {
     return (
       <ArtifactShareMenu

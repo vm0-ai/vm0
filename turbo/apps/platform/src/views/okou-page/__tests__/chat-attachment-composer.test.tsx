@@ -139,7 +139,11 @@ test("A deliberate backdrop click closes an image preview", async () => {
     screen.findByRole("dialog", { name: "photo.png preview" }),
   ).resolves.toBeVisible();
 
-  fireEvent.click(screen.getByTestId("attachment-lightbox-backdrop"));
+  const viewport = document.querySelector('[data-slot="dialog-viewport"]');
+  if (!viewport) {
+    throw new Error("Expected the image preview viewport");
+  }
+  click(viewport);
 
   await waitFor(() => {
     expect(
@@ -161,11 +165,14 @@ test("Dragging from an image preview onto its backdrop keeps it open", async () 
     name: "photo.png preview",
   });
   const panel = screen.getByTestId("attachment-lightbox-panel");
-  const backdrop = screen.getByTestId("attachment-lightbox-backdrop");
+  const backdrop = document.querySelector('[data-slot="dialog-viewport"]');
+  if (!backdrop) {
+    throw new Error("Expected the image preview viewport");
+  }
 
   fireEvent.mouseDown(panel, { button: 0 });
   fireEvent.mouseUp(backdrop, { button: 0 });
-  fireEvent.click(dialog);
+  fireEvent.click(backdrop);
 
   expect(dialog).toBeVisible();
 });

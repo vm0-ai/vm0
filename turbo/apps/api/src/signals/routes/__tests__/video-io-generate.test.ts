@@ -1,4 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
@@ -1467,9 +1468,7 @@ describe("POST /api/video-io/generate", () => {
         expect(body).not.toHaveProperty("sourceUrl");
         expect(putInput.Bucket).toBe("test-private-artifacts");
         expect(putInput.Key).toBe(`private-artifacts/${fileId}/${filename}`);
-        expect(url).toBe(
-          `${WEB_ORIGIN}/api/web/download-file?file_id=${fileId}&filename=${filename}`,
-        );
+        expect(url).toBe(artifactReferencePath(fileId, filename));
         expect(
           JSON.stringify(context.mocks.ably.publish.mock.calls),
         ).not.toContain(BYTEPLUS_VIDEO_URL);

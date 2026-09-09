@@ -1694,6 +1694,7 @@
       "saving": "Guardando...",
       "send": "Enviar",
       "stop": "Detener",
+      "undo": "Deshacer",
       "view": "Ver"
     },
     "actionUnavailable": {
@@ -2643,7 +2644,10 @@
     },
     "toasts": {
       "copied": "Copiado",
-      "deleted": "Chat eliminado"
+      "deleted": "Chat eliminado",
+      "pinned": "Chat fijado",
+      "pinUpdateFailed": "No se pudo confirmar el cambio. Actualiza la página para comprobar el estado guardado.",
+      "unpinned": "Chat desfijado"
     },
     "translation": {
       "action": "Traducir",
@@ -2806,7 +2810,6 @@
       "authorized": "Autorizado",
       "connectAria": "Conectar {{connector}}",
       "connected": "Conectado",
-      "connecting": "Conectando…",
       "connectionExpired": "Conexión expirada",
       "connectToContinue": "Conecta esta cuenta para continuar",
       "managePermissions": "Gestionar permisos",

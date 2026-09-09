@@ -83,8 +83,14 @@ test.each([
     await waitFor(() => {
       expect(capture.runPrompts).toHaveLength(1);
     });
-    expect(capture.runPrompts[0]).toContain(instruction);
-    expect(capture.runPrompts[0]).toContain("My launch next week");
+    expect(capture.runPrompts).toStrictEqual(["My launch next week"]);
+    expect(capture.sentMessages[0]?.parts).toContainEqual({
+      type: "additional_info",
+      text: expect.stringContaining(instruction),
+    });
+    await expect(
+      screen.findByText("My launch next week"),
+    ).resolves.toBeVisible();
   },
 );
 
@@ -249,6 +255,13 @@ test("A presentation suggestion inserts a canonical template and preserves the p
     expect(editor).toHaveTextContent(template.title);
   });
   expect(editor).toHaveTextContent("Explain our product launch");
+  const slideCount = screen.getByRole("combobox", { name: "Slide count" });
+  expect(slideCount).toHaveTextContent("8–12 slides");
+  click(slideCount);
+  click(await screen.findByRole("option", { name: "16–20 slides" }));
+  await waitFor(() => {
+    expect(slideCount).toHaveTextContent("16–20 slides");
+  });
   expect(capture.sentMessages).toHaveLength(0);
   click(button("Send"));
   await waitFor(() => {
@@ -260,6 +273,10 @@ test("A presentation suggestion inserts a canonical template and preserves the p
       templateId: template.templateId,
       previewUrl: template.embedUrl,
     },
+  });
+  expect(capture.sentMessages[0]?.parts).toContainEqual({
+    type: "additional_info",
+    text: expect.stringContaining("- Slide count: 16-20"),
   });
 });
 

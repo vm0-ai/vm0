@@ -299,8 +299,10 @@ const callbackPromptNotes = callbackPromptAvailable
 
 export const permissionRequestCommand = new Command()
   .name("permission-request")
-  .description("Request permission to use a connector capability")
-  .argument("<slug>", "The connector slug (e.g. github)")
+  .description(
+    "Request builtin permissions or Browser/Computer Use authorization",
+  )
+  .argument("<slug>", "Builtin slug, browser, or computer-use")
   .addOption(
     new Option(
       "--permission <name>",
@@ -339,12 +341,22 @@ Notes:
   - First run okou connector check --url <FAILED_URL> --method <METHOD>
   - Use the exact permission-request command printed by connector check
   - A platform URL is output only when that request maps to a denied or approval-required permission
-  - Use --permission __unknown__ to request access to unknown endpoints
-  - Custom connectors use Connectors > agent access > Permissions, not this builtin approval flow
-  - Inside a run, --agent must match the current Agent; omit it to use OKOU_AGENT_ID
-  - Outside a run, use --agent to select the Agent whose permission page should be opened
+  - Builtin requests require --url and run-scoped policy data; an unavailable
+    non-run diagnostic cannot produce a builtin permission approval
+  - Use --permission __unknown__ for diagnosed builtin unknown endpoints
+  - Custom HTTP connectors with permission bundles use Connectors > agent access
+    > Permissions. MCP connectors have Agent access but no HTTP permission bundle.
+    custom:<uuid> produces settings guidance, not a builtin approval link;
+    custom public slugs are not supported by this approval flow.
+  - Custom unknown endpoints have no approval control; ask an administrator
+    to review the connector's routing and permission definition
+  - Inside a run, --agent must match the current Agent; omit it to use OKOU_AGENT_ID.
+    Outside a run, --agent selects the Agent's permission page.
+    Agent selection does not change the accounts admitted to a run.
   - The user chooses the permission duration on the confirmation page
-${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
+  - --callback-prompt requires the current web chat and its current Agent;
+    it is unsupported for custom, Browser, and Computer Use authorization
+${callbackPromptNotes}  - Builtin permission requests update the current user's connector grants after confirmation`,
   )
   .action(
     withErrorHandler(

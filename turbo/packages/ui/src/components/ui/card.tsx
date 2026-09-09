@@ -1,9 +1,32 @@
 import * as React from "react";
+import { cva } from "class-variance-authority";
 
 import { cn } from "../../lib/utils";
 
 const cardClassName =
   "rounded-xl border border-border bg-card text-card-foreground overflow-hidden";
+
+/** Page surfaces preserve the host element's layout and native semantics. */
+const surfaceVariants = cva(
+  "bg-card border-(length:--border-width-surface) border-solid border-surface-border shadow-surface transition-[background-color] duration-150 ease-surface",
+  {
+    variants: {
+      radius: {
+        standard: "rounded-surface",
+        compact: "rounded-surface-compact",
+      },
+      interactive: {
+        // Keep the overlay when a touch browser exposes :hover as well.
+        true: "cursor-pointer [&:hover]:bg-state-hover-overlay",
+        false: "",
+      },
+    },
+    defaultVariants: {
+      radius: "standard",
+      interactive: false,
+    },
+  },
+);
 
 const Card = React.forwardRef<
   HTMLDivElement,
@@ -81,6 +104,7 @@ const CardFooter = React.forwardRef<
 CardFooter.displayName = "CardFooter";
 
 export {
+  surfaceVariants,
   Card,
   CardHeader,
   CardFooter,

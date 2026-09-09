@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  artifactReferenceSchema,
+  artifactUrlSchema,
+} from "./artifact-references";
 
 import { authHeadersSchema, initContract } from "./base";
 import {
@@ -46,7 +50,10 @@ export const introVideoAgentGenerateRequestSchema = z.object({
   avatarGroupId: introVideoAvatarGroupIdSchema.optional(),
   voiceId: introVideoVoiceIdSchema.optional(),
   orientation: orientationSchema,
-  fileUrls: z.array(fileUrlSchema).max(20).optional(),
+  fileUrls: z
+    .array(z.union([fileUrlSchema, artifactReferenceSchema]))
+    .max(20)
+    .optional(),
 });
 
 /**
@@ -62,7 +69,7 @@ export const introVideoAgentResponseSchema = z.object({
   providerStatus: z.string().optional(),
   notice: z.string().optional(),
   error: builtInGenerationErrorSchema.optional(),
-  url: z.url().optional(),
+  url: artifactUrlSchema.optional(),
   filename: z.string().optional(),
   contentType: z.literal("video/mp4").optional(),
   size: z.number().nonnegative().optional(),

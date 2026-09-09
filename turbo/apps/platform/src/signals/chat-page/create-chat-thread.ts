@@ -225,6 +225,7 @@ import {
 } from "../okou-page/composer-signals.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import { createChatThreadPinSignals } from "./chat-thread-pin.ts";
 import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
 import type {
   ChatEventSignals,
@@ -1169,7 +1170,7 @@ interface UserMessagePartRegistries {
 const registerUserMessageRenderPart$ = command(
   (
     { set },
-    part: UserMessagePart,
+    part: Exclude<UserMessagePart, { type: "additional_info" }>,
     registries: UserMessagePartRegistries,
   ): UserMessageRenderPart => {
     const { artifactCardSignals, agentReferenceSignals } = registries;
@@ -1264,8 +1265,10 @@ const registerUserMessageRenderDocument$ = command(
     }
     return {
       document,
-      parts: document.parts.map((part) => {
-        return set(registerUserMessageRenderPart$, part, registries);
+      parts: document.parts.flatMap((part) => {
+        return part.type === "additional_info"
+          ? []
+          : [set(registerUserMessageRenderPart$, part, registries)];
       }),
     };
   },
@@ -4395,6 +4398,7 @@ function createChatPanelSignalsWithDraft(
     composer,
     feedback,
     sharing,
+    pin: createChatThreadPinSignals(threadId, threadMeta$),
     locator,
     ...threadOwned,
     sidebar: messages.sidebar,

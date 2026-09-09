@@ -447,13 +447,25 @@ export function editorDocToMessageDocument(
  */
 export function createEditorDocumentSnapshot(
   document: ProseMirrorNode,
+  additionalInfo?: string,
 ): EditorDocumentSnapshot {
   return Object.freeze({
     toEditorDocument() {
       return document.toJSON();
     },
-    toMessageDocument(context: EditorDocumentContext = {}) {
-      return editorDocToMessageDocument(document, context);
+    toMessageDocument(
+      context: EditorDocumentContext = {},
+    ): UserMessageInputDocument | null {
+      const message = editorDocToMessageDocument(document, context);
+      return message && additionalInfo
+        ? {
+            ...message,
+            parts: [
+              { type: "additional_info", text: additionalInfo },
+              ...message.parts,
+            ],
+          }
+        : message;
     },
     toDraft(context: EditorDocumentContext = {}) {
       return editorDocToDraftDocument(document, context);
@@ -868,7 +880,8 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
       part.type === "source" ||
       part.type === "automation" ||
       part.type === "goal" ||
-      part.type === "model"
+      part.type === "model" ||
+      part.type === "additional_info"
     ) {
       continue;
     }

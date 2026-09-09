@@ -68,7 +68,7 @@ export function queryConnectorCard(label: string): HTMLElement | null {
     .find((element) => {
       return element.textContent === label;
     });
-  const card = labelElement?.closest(".okou-card");
+  const card = labelElement?.closest('[data-slot="connector-card"]');
   if (labelElement && !(card instanceof HTMLElement)) {
     throw new Error(`${label} connector card label has no card container`);
   }

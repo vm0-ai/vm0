@@ -104,8 +104,8 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
 
 export const connectCommand = new Command()
   .name("connect")
-  .description("Connect a connector with manual grant values")
-  .argument("<slug>", "Connector slug (e.g., zendesk)")
+  .description("Connect a builtin connector with manual grant values")
+  .argument("<slug>", "Builtin connector slug (e.g., zendesk)")
   .addOption(
     new Option("--add", "Create a new connector account").conflicts(
       "reconnect",
@@ -124,7 +124,7 @@ export const connectCommand = new Command()
       .conflicts("reconnect")
       .argParser(parseAccountName),
   )
-  .option("--auth-method <method>", "Connector auth method to use")
+  .option("--auth-method <method>", "Builtin manual-grant auth method to use")
   .option(
     "--value <name=value>",
     "Connector field value; repeat for multiple fields",
@@ -135,6 +135,13 @@ export const connectCommand = new Command()
   .addHelpText(
     "after",
     `
+Scope:
+  Supports builtin catalog connectors with a manual-grant authentication method.
+  OAuth authorization and custom HTTP/MCP account connections use the web
+  connection flow. Use connector search <slug> --limit 1 for connection guidance.
+  This command manages member connections. Use connector list/status to inspect
+  the account admitted to the current run.
+
 Examples:
   okou connector connect openai --value apiKey=...
   okou connector connect openai --add --account-name Work --value apiKey=...

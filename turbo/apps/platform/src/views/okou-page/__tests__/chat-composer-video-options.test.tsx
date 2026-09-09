@@ -7,6 +7,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
 import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import {
@@ -196,65 +197,100 @@ function installVideoSubmissionCapture(): SubmittedMessage[] {
   return submissions;
 }
 
-test("Submit a video template with its default generation options", async () => {
-  const user = userEvent.setup({ delay: null });
-  const submissions = installVideoSubmissionCapture();
-  await setupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-  const prompt = "Generate the first cinematic clip.";
-  const editor = await enterText(prompt);
-  await enterVideoMode("Claude Fable 5.1");
-  const template = await selectVideoTemplate();
-  await expect(
-    openVideoOptions("16:9 · 8s · 720p"),
-  ).resolves.toBeInTheDocument();
-  await user.keyboard("{Escape}");
-  await sendCurrent(editor, prompt);
-
-  await waitFor(() => {
-    expect(submissions).toHaveLength(1);
-    expect(editor).toHaveTextContent(/^$/u);
-    expect(videoTemplatePart(submissions[0]!)).toStrictEqual({
-      type: "template",
-      titleSnapshot: template.title,
-      template: {
-        type: "video",
-        selection: { stylePresetId: template.id },
-      },
+test.each([false, true])(
+  "Submit default video options with Create enabled: %s",
+  async (enabled) => {
+    const user = userEvent.setup({ delay: null });
+    const submissions = installVideoSubmissionCapture();
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: enabled },
     });
-    expect(submissions[0]?.runOptions).toBeUndefined();
-  });
-});
 
-test("Submit the video ratio selected by the user", async () => {
-  const user = userEvent.setup({ delay: null });
-  const submissions = installVideoSubmissionCapture();
-  await setupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    const prompt = "Generate the first cinematic clip.";
+    const editor = await enterText(prompt);
+    await enterVideoMode("Claude Fable 5.1");
+    const template = await selectVideoTemplate();
+    await expect(
+      openVideoOptions("16:9 · 8s · 720p"),
+    ).resolves.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await sendCurrent(editor, prompt);
 
-  const prompt = "Generate the portrait cinematic clip.";
-  const editor = await enterText(prompt);
-  await enterVideoMode("Claude Fable 5.1");
-  const template = await selectVideoTemplate();
-  const options = await openVideoOptions("16:9 · 8s · 720p");
-  const ratioGroup = screen.getByRole("radiogroup", { name: "Ratio" });
-  expect(options).toContainElement(ratioGroup);
-  click(optionRadio(ratioGroup, "9:16"));
-  await user.keyboard("{Escape}");
-  await sendCurrent(editor, prompt);
-
-  await waitFor(() => {
-    expect(submissions).toHaveLength(1);
-    expect(editor).toHaveTextContent(/^$/u);
-    expect(videoTemplatePart(submissions[0]!)).toStrictEqual({
-      type: "template",
-      titleSnapshot: template.title,
-      template: {
-        type: "video",
-        selection: { stylePresetId: template.id },
-      },
+    await waitFor(() => {
+      expect(submissions).toHaveLength(1);
+      expect(editor).toHaveTextContent(/^$/u);
+      expect(videoTemplatePart(submissions[0]!)).toStrictEqual({
+        type: "template",
+        titleSnapshot: template.title,
+        template: {
+          type: "video",
+          selection: { stylePresetId: template.id },
+        },
+      });
+      expect(submissions[0]?.runOptions).toBeUndefined();
+      expect(submissions[0]?.userMessage?.parts).not.toContainEqual(
+        expect.objectContaining({ type: "additional_info" }),
+      );
     });
-    expect(submissions[0]?.runOptions).toStrictEqual({
-      video: { aspectRatio: "9:16" },
+  },
+);
+
+test.each([false, true])(
+  "Submit a selected video ratio with Create enabled: %s",
+  async (enabled) => {
+    const user = userEvent.setup({ delay: null });
+    const submissions = installVideoSubmissionCapture();
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: enabled },
     });
-  });
-});
+
+    const prompt = "Generate the portrait cinematic clip.";
+    const editor = await enterText(prompt);
+    await enterVideoMode("Claude Fable 5.1");
+    const template = await selectVideoTemplate();
+    const options = await openVideoOptions("16:9 · 8s · 720p");
+    const ratioGroup = screen.getByRole("radiogroup", { name: "Ratio" });
+    expect(options).toContainElement(ratioGroup);
+    click(optionRadio(ratioGroup, "9:16"));
+    await user.keyboard("{Escape}");
+    await sendCurrent(editor, prompt);
+
+    await waitFor(() => {
+      expect(submissions).toHaveLength(1);
+      expect(editor).toHaveTextContent(/^$/u);
+      expect(videoTemplatePart(submissions[0]!)).toStrictEqual({
+        type: "template",
+        titleSnapshot: template.title,
+        template: {
+          type: "video",
+          selection: { stylePresetId: template.id },
+        },
+      });
+    });
+    expect(
+      submissions[0]?.userMessage?.parts.find((part) => {
+        return part.type === "additional_info";
+      }),
+    ).toStrictEqual(
+      enabled
+        ? {
+            type: "additional_info",
+            text: [
+              "# Video Generation Defaults",
+              "The user set these for videos generated in this run:",
+              "- Aspect ratio: 9:16",
+              "Where this run's message asks for something else, the message wins, for that parameter only.",
+            ].join("\n"),
+          }
+        : undefined,
+    );
+    expect(submissions[0]?.runOptions).toStrictEqual(
+      enabled ? undefined : { video: { aspectRatio: "9:16" } },
+    );
+    await expect(screen.findByText(prompt)).resolves.toBeVisible();
+  },
+);
