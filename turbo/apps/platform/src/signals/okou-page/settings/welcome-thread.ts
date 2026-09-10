@@ -4,6 +4,7 @@ import { accept } from "../../../lib/accept.ts";
 import { apiClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { syncEventDrivenChatThreads$ } from "../../chat-page/chat-thread-event-sourcing.ts";
+import { rootSignal$ } from "../../root-signal.ts";
 import { createChildAbortController, withCleanup } from "../../utils.ts";
 import { navigateToChat$ } from "../nav.ts";
 import {
@@ -37,10 +38,14 @@ export const welcomeThreadAction$ = computed(
       if (inFlight) {
         return await inFlight;
       }
-      const controller = createChildAbortController(
-        AbortSignal.any([dialogSignal, pageSignal]),
-      );
-      const signal = controller.signal;
+      // A committed welcome's shared list recovery outlives its UI wait, but
+      // remains owned by this app and the captured user/workspace identity.
+      const controller = createChildAbortController(get(rootSignal$));
+      const signal = AbortSignal.any([
+        dialogSignal,
+        pageSignal,
+        controller.signal,
+      ]);
       const unsubscribe = clerk.addListener(() => {
         // Like watchOrgSwitch$, retain the concrete workspace during a
         // transient Clerk token refresh; a different workspace cancels us.
@@ -52,7 +57,7 @@ export const welcomeThreadAction$ = computed(
           controller.abort();
         }
       });
-      signal.addEventListener("abort", unsubscribe, { once: true });
+      controller.signal.addEventListener("abort", unsubscribe, { once: true });
       // Retain the action identity after every failure, including a lost 201.
       const clientThreadId = get(clientThreadId$) ?? crypto.randomUUID();
       set(clientThreadId$, clientThreadId);
@@ -68,7 +73,7 @@ export const welcomeThreadAction$ = computed(
             signal,
           );
           // Recover the ordinary list even when the creation notification was lost.
-          await set(syncEventDrivenChatThreads$, signal);
+          await set(syncEventDrivenChatThreads$, controller.signal);
           signal.throwIfAborted();
           set(closeSettingsModal$);
           set(navigateToChat$, result.body.id);
