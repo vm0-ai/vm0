@@ -5944,6 +5944,7 @@ export function ComposerPresentationRecommendations({
 
 function PptTemplateGrid({
   items,
+  importedItems,
   runtime,
   value,
   onSelect,
@@ -5954,6 +5955,7 @@ function PptTemplateGrid({
   signals,
 }: {
   items: readonly PresentationTemplateItem[];
+  importedItems: readonly ImportedPresentationTemplatePickerItem[];
   runtime: TemplatePreviewRuntime;
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
@@ -5965,12 +5967,10 @@ function PptTemplateGrid({
 }) {
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
-  const importedTemplateItems =
-    useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <PptImportCard signals={signals} onImported={onImported} />
-      {importedTemplateItems.map(({ imageBuffers, template }) => {
+      {importedItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard
             key={template.id}
@@ -6404,94 +6404,90 @@ function TemplatePickerDialog({
         }
         initialFocus={false}
       >
-        <div
-          inert={isPreviewing}
-          aria-hidden={isPreviewing}
-          className={cn(
-            "min-h-0 flex-1 flex-col",
-            isPreviewing ? "hidden" : "flex",
-          )}
-        >
-          <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
-            <DialogTitle>
-              {t(($) => {
-                return $.artifacts.templates.template;
-              })}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <TemplatePickerCategoryNav
-              selectedCategory={selectedCategory}
-              introVideoEnabled={introVideoEnabled}
-              onChange={handleCategoryChange}
-            />
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              {selectedCategory === "intro-video" ? (
-                <IntroVideoPicker
-                  signals={signals.template.introVideo}
-                  onCancel={closeTemplatePicker}
-                  onSelect={(template) => {
-                    onChange(template);
-                    closeTemplatePicker();
-                  }}
-                />
-              ) : (
-                <>
-                  <div
-                    className={cn(
-                      "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                      showTemplatePickerSearch || showAvatarPickerToolbar
-                        ? "flex"
-                        : "hidden sm:flex",
-                    )}
-                  >
-                    {showTemplatePickerSearch ? (
-                      <TemplatePickerWorkflowSearch
-                        search={search}
-                        onSearchChange={handleSearchChange}
-                      />
-                    ) : null}
-                    {showAvatarPickerToolbar ? (
-                      <AvatarTemplatePickerToolbar signals={signals} />
-                    ) : null}
-                  </div>
-                  <TemplatePickerCategoryContent
-                    signals={signals}
-                    selectedCategory={selectedCategory}
-                    pptItems={presentationItems}
-                    websiteItems={WEBSITE_TEMPLATE_ITEMS}
-                    illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
-                    videoItems={VIDEO_TEMPLATE_ITEMS}
-                    videoGenerationAllowed={videoGenerationAllowed}
-                    workflowCatalog={workflowCatalog}
-                    value={value}
-                    illustrationVariantIndex={illustrationVariantIndex}
-                    onPresentationScroll={setPresentationGridScrollTop}
-                    onRestorePresentationScroll={
-                      restorePresentationGridScrollNode
-                    }
-                    onSelectPresentation={handleSelectPresentation}
-                    onSelectImportedPresentation={
-                      handleSelectImportedPresentation
-                    }
-                    onPreviewPresentation={handlePreview}
-                    onPreviewImportedPresentation={handlePreviewImported}
-                    onImportedPresentation={closeTemplatePicker}
-                    onSelectWebsite={handleSelectWebsite}
-                    onPreviewWebsite={handlePreviewWebsite}
-                    onSelectIllustration={handleSelectIllustration}
-                    onIllustrationVariantChange={setIllustrationVariantIndex}
-                    onSelectVideo={handleSelectVideo}
-                    onSelectAvatar={handleSelectAvatar}
-                    onWorkflowCategoryChange={setWorkflowCategoryFilter}
-                    onSelectWorkflow={handleSelectWorkflow}
-                    runtime={runtime}
+        {!isPreviewing ? (
+          <div className="min-h-0 flex flex-1 flex-col">
+            <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
+              <DialogTitle>
+                {t(($) => {
+                  return $.artifacts.templates.template;
+                })}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+              <TemplatePickerCategoryNav
+                selectedCategory={selectedCategory}
+                introVideoEnabled={introVideoEnabled}
+                onChange={handleCategoryChange}
+              />
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                {selectedCategory === "intro-video" ? (
+                  <IntroVideoPicker
+                    signals={signals.template.introVideo}
+                    onCancel={closeTemplatePicker}
+                    onSelect={(template) => {
+                      onChange(template);
+                      closeTemplatePicker();
+                    }}
                   />
-                </>
-              )}
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                        showTemplatePickerSearch || showAvatarPickerToolbar
+                          ? "flex"
+                          : "hidden sm:flex",
+                      )}
+                    >
+                      {showTemplatePickerSearch ? (
+                        <TemplatePickerWorkflowSearch
+                          search={search}
+                          onSearchChange={handleSearchChange}
+                        />
+                      ) : null}
+                      {showAvatarPickerToolbar ? (
+                        <AvatarTemplatePickerToolbar signals={signals} />
+                      ) : null}
+                    </div>
+                    <TemplatePickerCategoryContent
+                      signals={signals}
+                      selectedCategory={selectedCategory}
+                      pptItems={presentationItems}
+                      importedPptItems={importedTemplateItems}
+                      websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                      illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                      videoItems={VIDEO_TEMPLATE_ITEMS}
+                      videoGenerationAllowed={videoGenerationAllowed}
+                      workflowCatalog={workflowCatalog}
+                      value={value}
+                      illustrationVariantIndex={illustrationVariantIndex}
+                      onPresentationScroll={setPresentationGridScrollTop}
+                      onRestorePresentationScroll={
+                        restorePresentationGridScrollNode
+                      }
+                      onSelectPresentation={handleSelectPresentation}
+                      onSelectImportedPresentation={
+                        handleSelectImportedPresentation
+                      }
+                      onPreviewPresentation={handlePreview}
+                      onPreviewImportedPresentation={handlePreviewImported}
+                      onImportedPresentation={closeTemplatePicker}
+                      onSelectWebsite={handleSelectWebsite}
+                      onPreviewWebsite={handlePreviewWebsite}
+                      onSelectIllustration={handleSelectIllustration}
+                      onIllustrationVariantChange={setIllustrationVariantIndex}
+                      onSelectVideo={handleSelectVideo}
+                      onSelectAvatar={handleSelectAvatar}
+                      onWorkflowCategoryChange={setWorkflowCategoryFilter}
+                      onSelectWorkflow={handleSelectWorkflow}
+                      runtime={runtime}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
         {previewItem ? (
           <TemplatePreviewPage
             item={previewItem}
@@ -6521,6 +6517,7 @@ function TemplatePickerCategoryContent({
   signals,
   selectedCategory,
   pptItems,
+  importedPptItems,
   websiteItems,
   illustrationItems,
   videoItems,
@@ -6548,6 +6545,7 @@ function TemplatePickerCategoryContent({
   signals: ComposerSignals;
   selectedCategory: string;
   pptItems: readonly PresentationTemplateItem[];
+  importedPptItems: readonly ImportedPresentationTemplatePickerItem[];
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
@@ -6597,6 +6595,7 @@ function TemplatePickerCategoryContent({
       >
         <PptTemplateGrid
           items={pptItems}
+          importedItems={importedPptItems}
           value={value}
           onSelect={onSelectPresentation}
           onSelectImported={onSelectImportedPresentation}
