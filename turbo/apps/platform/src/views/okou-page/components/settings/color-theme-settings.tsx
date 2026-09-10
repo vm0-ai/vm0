@@ -129,6 +129,7 @@ export function ColorThemeSettings() {
                   : "border-border hover:border-[hsl(var(--gray-500))] hover:bg-accent",
               )}
             >
+              {/* Resolve each palette on its own preview, independently of the selected theme. */}
               <span
                 aria-hidden="true"
                 data-color-theme={value}

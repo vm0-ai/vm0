@@ -219,3 +219,23 @@ The corresponding source passed 27 focused page tests, App/UI/E2E types,
 formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
 This is bounded Chromium acceptance; the earlier native and motion exclusions
 remain in force.
+
+## Color theme preview swatches
+
+`swatch-cases.json` runs the actual Preference dialog with the gradient theme
+capability explicitly enabled and disabled. Use `pnpm style:migration:swatch`
+from `e2e` with the standard deployed App/API, source/build, storage-state,
+output and baseline arguments, plus `--feature-fixture` pointing to the frozen
+TEST account's feature-switch response (no credentials). The runner records
+that fixture's hash and applies it to both API requests and inert document
+bootstrap responses. Only preferences and feature switches are controlled.
+
+Before editing swatch styles, capture and upload BEFORE plus unchanged-code
+A/A using this exact runner. In Light, Dark and narrow DPR 2, the cases cover
+all eight previews, inactive hover, keyboard focus and Space selection, every
+selected palette, and reload. Every capture observes both native controls and
+their preview spans, including background image and geometry. Distinct gradients
+must survive changes to the root palette. The disabled capability remains hidden.
+Real API persistence is a separate preview check; controlled responses certify
+client rendering and interaction only. Existing browser and rounding limits
+apply unchanged, and failures are retained.

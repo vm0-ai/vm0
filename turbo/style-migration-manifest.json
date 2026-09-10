@@ -221,10 +221,27 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873"
+    },
+    {
+      "id": "color-theme-swatch",
+      "family": "local-controls",
+      "tokens": ["okou-color-theme-swatch"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/color-theme-settings.tsx"
+      ],
+      "cases": [
+        "swatch-light",
+        "swatch-dark",
+        "swatch-mobile",
+        "swatch-disabled"
+      ],
+      "status": "planned",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
-    "../e2e/playwright/style-migration/tone-cases.json"
+    "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/swatch-cases.json"
   ]
 }
