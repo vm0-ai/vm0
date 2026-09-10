@@ -172,6 +172,15 @@ interface ModelPickerMenuContentProps {
   onChange: (selection: ModelProviderSelection) => void;
 }
 
+function formatChatEffort(
+  model: string | undefined,
+  effort: string | null | undefined,
+) {
+  return model?.startsWith("claude-") && effort
+    ? effort.charAt(0).toUpperCase() + effort.slice(1)
+    : effort;
+}
+
 function canAdjustChatSettings(
   option: ModelPickerMenuOption | undefined,
   hasEffortControls: boolean,
@@ -236,7 +245,7 @@ function ModelPickerOverview({
           summary={
             [
               selectedOption?.fastAvailable ? speedLabel : undefined,
-              savedEffort,
+              formatChatEffort(value?.selectedModel, savedEffort),
             ]
               .filter(Boolean)
               .join(" · ") || undefined
@@ -306,7 +315,7 @@ function ChatReasoningEffortSettings({
   });
   const defaultEffort = defaultChatReasoningEffort(selection.selectedModel);
   const value = selection.reasoningEffort ?? defaultEffort;
-  const displayValue = value === "extra" ? "xhigh" : value;
+  const displayValue = formatChatEffort(selection.selectedModel, value);
   const index = efforts.findIndex((effort) => {
     return effort === value;
   });

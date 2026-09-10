@@ -895,22 +895,21 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
     ),
   );
   let slider = await screen.findByRole("slider", { name: "Reasoning effort" });
-  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  expect(slider).toHaveAttribute("aria-valuetext", "High");
   slider.focus();
   await user.keyboard("{End}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "max");
+    expect(slider).toHaveAttribute("aria-valuetext", "Max");
   });
   await user.keyboard("{ArrowLeft}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
+    expect(slider).toHaveAttribute("aria-valuetext", "Extra");
   });
-  expect(screen.getByText("xhigh")).toBeInTheDocument();
-  expect(screen.queryByText("extra")).not.toBeInTheDocument();
+  expect(screen.getByText("Extra")).toBeInTheDocument();
   expect(screen.queryByText("ultracode")).not.toBeInTheDocument();
   await user.keyboard("{ArrowLeft}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "high");
+    expect(slider).toHaveAttribute("aria-valuetext", "High");
   });
   click(
     buttonNamed(
@@ -918,6 +917,9 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
       screen.getByRole("region", { name: "Chat settings" }),
     ),
   );
+  await expect(
+    screen.findByRole("region", { name: "Models" }),
+  ).resolves.toHaveTextContent("High");
   click(
     buttonNamed(
       "Change Chat model, Claude Sonnet 5",
@@ -977,7 +979,10 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
 });
 
 test("Keep saved effort dormant when its feature is disabled", async () => {
-  const updates: { reasoningEffort?: string | null }[] = [];
+  const updates: {
+    codexServiceTier?: string | null;
+    reasoningEffort?: string | null;
+  }[] = [];
   installRunChat({
     selectedModel: "gpt-5.6-sol",
     reasoningEffort: "high",
@@ -1009,9 +1014,16 @@ test("Keep saved effort dormant when its feature is disabled", async () => {
   ).not.toBeInTheDocument();
   click(screen.getByRole("switch", { name: "Fast" }));
   await waitFor(() => {
-    expect(updates).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
+    expect(updates).toContainEqual(
+      expect.objectContaining({ codexServiceTier: "fast" }),
+    );
   });
-  expect(updates[0]?.reasoningEffort).toBeUndefined();
+  expect(
+    updates.find((update) => {
+      return update.codexServiceTier === "fast";
+    })?.reasoningEffort,
+  ).toBeUndefined();
 });
 
 test("Allow restoring a saved effort when the route no longer supports it", async () => {
@@ -1087,10 +1099,14 @@ test("Follow effort changes and resets made in another session", async () => {
   const slider = await screen.findByRole("slider", {
     name: "Reasoning effort",
   });
-  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  expect(slider).toHaveAttribute("aria-valuetext", "High");
   for (const [reasoningEffort, displayValue] of [
-    ["extra", "xhigh"],
-    [null, "high"],
+    ["low", "Low"],
+    ["medium", "Medium"],
+    ["high", "High"],
+    ["extra", "Extra"],
+    ["max", "Max"],
+    [null, "High"],
   ] as const) {
     events.push({
       id: crypto.randomUUID(),
