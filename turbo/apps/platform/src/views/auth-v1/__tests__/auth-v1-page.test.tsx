@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import {
+  click,
   queryAllByRoleFast,
   setupPage,
   startPage,
@@ -328,6 +329,22 @@ test("Hosted auth reaches the brand home and the theme toggle", async () => {
   expect(logoImage).not.toHaveAttribute("crossorigin");
   expect(logoImage.closest("a")).toBe(okouBrandLink());
   expect(screen.getByLabelText("Toggle theme")).toBeVisible();
+});
+
+test("Theme changes preserve the Clerk runtime binding", async () => {
+  context.mocks.browser.matchMedia(false);
+  const clerk = context.mocks.clerk();
+  await setupSignedOutPage("/v1/sign-up");
+
+  const clerkRouter = registeredClerkRouter();
+  const themeToggle = screen.getByLabelText("Toggle theme");
+  click(themeToggle);
+
+  await waitFor(() => {
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  });
+  expect(registeredClerkRouter()).toBe(clerkRouter);
+  expect(clerk.statusListenerCount()).toBe(1);
 });
 
 test("Leaving the hosted page releases the Clerk status subscription", async () => {
