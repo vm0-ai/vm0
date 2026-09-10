@@ -15,6 +15,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { ComposerAgentSuggestion } from "../../signals/okou-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/okou-page/chat-thread-suggestion-domain.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
+import type { ComposerTask } from "../../signals/okou-page/composer-task-chips.ts";
 import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
@@ -194,6 +195,8 @@ interface TiptapWorkflowComposerProps {
 
 interface ComposerKeyDownContext {
   readonly composer: ComposerSignals;
+  readonly selectedTask: ComposerTask | null;
+  readonly selectTask: (task: ComposerTask | null) => void;
   readonly suggestionCount: number;
   readonly selectedSuggestionIndex: number;
   readonly showSuggestionMenu: boolean;
@@ -211,6 +214,18 @@ function eventTargetsNonEditableNodeView(event: Event): boolean {
   );
 }
 
+function shouldRemoveSelectedTask(
+  event: KeyboardEvent,
+  context: ComposerKeyDownContext,
+): boolean {
+  return (
+    event.key === "Backspace" &&
+    !context.showSuggestionMenu &&
+    context.selectedTask !== null &&
+    context.composer.editor.editor.isEmpty
+  );
+}
+
 function handleComposerKeyDownCapture(
   event: KeyboardEvent,
   context: ComposerKeyDownContext,
@@ -223,6 +238,11 @@ function handleComposerKeyDownCapture(
   if (event.isComposing || event.keyCode === 229) {
     context.onKeyDown(event);
     return event.defaultPrevented;
+  }
+  if (shouldRemoveSelectedTask(event, context)) {
+    event.preventDefault();
+    context.selectTask(null);
+    return true;
   }
   if (
     event.key === "Enter" &&
@@ -358,6 +378,8 @@ function useComposerSuggestionMenu({
   const setCreateMode = useSet(composer.create.setMode$);
   const choosing = useGet(composer.create.choosing$);
   const slashRange = useGet(composer.suggestion.activeSlashRange$);
+  const selectedTask = useGet(composer.taskChips.task$);
+  const selectTask = useSet(composer.taskChips.selectTask$);
   const createModes = useComposerCreateSuggestions(composer, slashRange?.query);
   const chatThreadRange = useGet(
     composer.suggestion.activeChatThreadSuggestionRange$,
@@ -444,6 +466,8 @@ function useComposerSuggestionMenu({
     }
     return handleComposerKeyDownCapture(event, {
       composer,
+      selectedTask,
+      selectTask,
       suggestionCount,
       selectedSuggestionIndex: selectedIndex,
       showSuggestionMenu: open,

@@ -46,6 +46,175 @@ const base: SshConnectionResponse = Object.freeze({
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
 
+test("SSH recovers after first opening Connectors during a workspace refresh", async () => {
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 1 });
+  });
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [base] });
+  });
+  await page("/agents");
+  await screen.findByRole("heading", { name: "Agents" });
+
+  const clerk = context.mocks.clerk();
+  act(() => {
+    clerk.organization({ ...auth.organization, activeOrg: null });
+    clerk.stateChanged();
+  });
+  click(
+    getAction(
+      "link",
+      "Connectors",
+      screen.getByRole("navigation", { name: "Sidebar" }),
+    ),
+  );
+  await fill(await screen.findByPlaceholderText("Find connectors"), "ssh");
+  await screen.findByText(/No connectors matching/u);
+
+  act(() => {
+    clerk.organization(auth.organization);
+    clerk.stateChanged();
+  });
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+
+  click(
+    await waitFor(() => {
+      return getAction("link", "Manage SSH hosts");
+    }),
+  );
+  await expect(
+    screen.findByText("deploy@ssh.example.com:22"),
+  ).resolves.toBeVisible();
+});
+
+test.each(["token", "profile", "session"])(
+  "A same-owner Clerk %s refresh preserves an SSH form that can still be saved",
+  async (refresh) => {
+    let hosts = [base];
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: hosts });
+    });
+    context.mocks.api(sshConnectionsContract.create, ({ body, respond }) => {
+      const connection = {
+        ...base,
+        id: "b0000000-0000-4000-8000-000000000002",
+        displayName: body.displayName,
+        host: body.host,
+        port: body.port,
+        username: body.username,
+      };
+      hosts = [...hosts, connection];
+      return respond(201, connection);
+    });
+    await page();
+    await screen.findByText("deploy@ssh.example.com:22");
+    click(getAction("button", "Add host"));
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Display name"), "Unsaved host");
+    await fill(
+      within(dialog).getByLabelText("Public hostname or IP address"),
+      "unsaved.example.com",
+    );
+    await fill(within(dialog).getByLabelText("Port"), "2222");
+    await fill(within(dialog).getByLabelText("SSH username"), "unsaved-user");
+    await fill(within(dialog).getByLabelText("Private key"), "unsaved-key");
+    await fill(
+      within(dialog).getByLabelText("Passphrase (optional)"),
+      "unsaved-passphrase",
+    );
+    await userEvent.click(within(dialog).getByLabelText("Private key"));
+
+    const clerk = context.mocks.clerk();
+    act(() => {
+      clerk.user(
+        {
+          ...auth.user,
+          fullName:
+            refresh === "profile" ? "Updated profile" : auth.user.fullName,
+        },
+        {
+          id: refresh === "session" ? "replacement-session" : "test-session-id",
+          token: "refreshed-token",
+        },
+      );
+      clerk.stateChanged();
+    });
+
+    const current = within(await screen.findByRole("dialog"));
+    expect(current.getByLabelText("Display name")).toHaveValue("Unsaved host");
+    expect(current.getByLabelText("Public hostname or IP address")).toHaveValue(
+      "unsaved.example.com",
+    );
+    expect(current.getByLabelText("Port")).toHaveValue(2222);
+    expect(current.getByLabelText("SSH username")).toHaveValue("unsaved-user");
+    expect(current.getByLabelText("Private key")).toHaveValue("unsaved-key");
+    expect(current.getByLabelText("Private key")).toHaveFocus();
+    expect(current.getByLabelText("Passphrase (optional)")).toHaveValue(
+      "unsaved-passphrase",
+    );
+    expect(screen.getByText("deploy@ssh.example.com:22")).toBeInTheDocument();
+    click(getAction("button", "Save", await screen.findByRole("dialog")));
+    await screen.findByText("unsaved-user@unsaved.example.com:2222");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const displayName =
+      refresh === "profile" ? "Updated profile" : auth.user.fullName;
+    await waitFor(() => {
+      expect(getAction("button", displayName)).toBeVisible();
+    });
+  },
+);
+
+test.each(["session", "organization"])(
+  "Transiently missing Clerk %s data preserves an unsaved SSH credential form",
+  async (missing) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [base] });
+    });
+    await page();
+    await screen.findByText("deploy@ssh.example.com:22");
+    click(getAction("button", "Add host"));
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Private key"), "unsaved-key");
+    await fill(
+      within(dialog).getByLabelText("Passphrase (optional)"),
+      "unsaved-passphrase",
+    );
+    await userEvent.click(within(dialog).getByLabelText("Private key"));
+
+    const clerk = context.mocks.clerk();
+    act(() => {
+      if (missing === "session") {
+        clerk.user(auth.user, null);
+      } else {
+        clerk.organization({ ...auth.organization, activeOrg: null });
+      }
+      clerk.stateChanged();
+    });
+
+    const pending = within(await screen.findByRole("dialog"));
+    expect(pending.getByLabelText("Private key")).toHaveValue("unsaved-key");
+    expect(pending.getByLabelText("Private key")).toHaveFocus();
+    expect(pending.getByLabelText("Passphrase (optional)")).toHaveValue(
+      "unsaved-passphrase",
+    );
+    expect(screen.getByText("deploy@ssh.example.com:22")).toBeInTheDocument();
+
+    act(() => {
+      clerk.user(auth.user, { token: "refreshed-token" });
+      clerk.organization(auth.organization);
+      clerk.stateChanged();
+    });
+
+    const restored = within(await screen.findByRole("dialog"));
+    expect(restored.getByLabelText("Private key")).toHaveValue("unsaved-key");
+    expect(restored.getByLabelText("Private key")).toHaveFocus();
+    expect(restored.getByLabelText("Passphrase (optional)")).toHaveValue(
+      "unsaved-passphrase",
+    );
+    expect(screen.getByText("deploy@ssh.example.com:22")).toBeInTheDocument();
+  },
+);
+
 test("Live notifications refresh hosts across reconnect without clearing an open credential form", async () => {
   let host = base;
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
@@ -685,6 +854,7 @@ test("Changing owner closes the credential form and clears its fields", async ()
 
 test("A visible shared Agent offers the current user's SSH authorization", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: "another-owner",
     displayName: "Shared Agent",
@@ -725,6 +895,7 @@ test("A visible shared Agent offers the current user's SSH authorization", async
 
 test("Changing users hides the previous user's SSH grant while the new grant loads", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: "shared-agent-owner",
     displayName: "Shared Agent",
@@ -774,6 +945,7 @@ test("Changing users hides the previous user's SSH grant while the new grant loa
 
 test("A last-host deletion notification hides Authorization without clearing its retained grant", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: auth.user.id,
     displayName: "SSH Research",
@@ -818,6 +990,7 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
     return respond(200, { configuredCount: 1 });
   });
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: auth.user.id,
     displayName: "Research",
@@ -888,6 +1061,7 @@ test.each([false, true])(
       return respond(200, { configuredCount: 1 });
     });
     const agent: AgentResponse = {
+      isDefaultAgent: false,
       agentId,
       ownerId: auth.user.id,
       displayName: "Research",

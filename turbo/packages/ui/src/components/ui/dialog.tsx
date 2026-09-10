@@ -196,7 +196,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
                     dialogHeightClasses[height],
                     "rounded-xl",
                     surface === "card" &&
-                      "border-[0.7px] border-[hsl(var(--gray-400))] shadow-lg",
+                      "border border-[hsl(var(--gray-400))] shadow-lg",
                     surface === "canvas" &&
                       "shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
                   ]

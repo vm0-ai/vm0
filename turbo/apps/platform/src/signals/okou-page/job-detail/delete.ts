@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { agentDeletionError } from "@okouai/core/agent-protection";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { apiClient$ } from "../../api-client.ts";
@@ -21,6 +22,11 @@ export const deleteAgent$ = command(
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
+    }
+
+    const identityError = agentDeletionError(detail.isDefaultAgent);
+    if (identityError) {
+      throw new Error(identityError.message);
     }
 
     // Copy acknowledgements belong to the rescue session. Waiting here keeps a

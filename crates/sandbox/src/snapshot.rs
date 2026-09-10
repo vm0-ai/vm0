@@ -11,12 +11,27 @@ pub struct SnapshotCreateConfig {
     /// value as its runtime socket directory name and requires a single,
     /// non-empty normal ASCII path segment containing only letters, digits,
     /// `.`, `-`, and `_`. The special `.` and `..` components, nested or
-    /// composite values such as `<rootfs>/<snapshot>`, are invalid, and the generated
-    /// `/run/vm0/sock/<id>/vsock/vsock.sock` path must be at most 107 bytes.
-    /// Invalid Firecracker IDs are reported as `SnapshotError::Setup` before
-    /// snapshot-output cleanup. Other providers may impose different
-    /// requirements; this provider-specific contract is not enforced by the
-    /// provider-neutral configuration type.
+    /// composite values such as `<rootfs>/<snapshot>`, are invalid.
+    ///
+    /// The complete guest-control listener path
+    /// `/run/vm0/sock/<id>/vsock/vsock.sock_1000` must be at most 107 bytes,
+    /// the usable Linux Unix socket pathname limit. The current guest-control
+    /// port is 1000, so its `_1000` suffix reserves five bytes: the unsuffixed
+    /// `vsock.sock` path must be at most 102 bytes. With the default socket root
+    /// `/run/vm0/sock/`, this leaves at most 71 ASCII bytes for the ID.
+    ///
+    /// | ID length (ASCII bytes) | Base path (bytes) | Listener path (bytes) | Fits listener limit? |
+    /// | --- | --- | --- | --- |
+    /// | 71 | 102 | 107 | Yes |
+    /// | 72 | 103 | 108 | No |
+    ///
+    /// Firecracker's early validation rejects invalid ID syntax and unsuffixed
+    /// paths longer than 107 bytes as [`SnapshotError::Setup`] before checking
+    /// prerequisites or cleaning snapshot output. It does not reserve the
+    /// listener suffix: IDs of 72 through 76 ASCII bytes under the default root
+    /// pass that length check but exceed the later listener's pathname limit.
+    /// Other providers may impose different requirements; this provider-specific
+    /// contract is not enforced by the provider-neutral configuration type.
     pub id: String,
     /// Path to the sandbox backend binary (e.g., firecracker).
     pub binary_path: PathBuf,

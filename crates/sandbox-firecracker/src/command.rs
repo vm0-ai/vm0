@@ -308,13 +308,9 @@ where
     P: AsRef<OsStr>,
     A: AsRef<OsStr>,
 {
-    command_output_with_policy_and_exit_notifier(
-        program,
-        args,
-        timeout,
-        output_policy,
-        ChildExitNotifier::open,
-    )
+    command_output_with_policy_and_exit_notifier(program, args, timeout, output_policy, |child| {
+        ChildExitNotifier::open(child.id())
+    })
     .await
 }
 
@@ -626,7 +622,7 @@ fn request_child_tree_kill(
     child: &mut Child,
 ) -> (Option<nix::errno::Errno>, Option<std::io::Error>) {
     #[cfg(unix)]
-    let group_kill_error = crate::process::kill_process_group(child).err();
+    let group_kill_error = crate::process::kill_process_group(child.id()).err();
     #[cfg(not(unix))]
     let group_kill_error = None;
     let child_kill_error = child.start_kill().err();
@@ -1024,7 +1020,7 @@ mod tests {
                 stdout: StreamOutputPolicy::SemanticCapture { max_bytes: 3 },
                 stderr: StreamOutputPolicy::DiagnosticCapture { max_bytes: 16 },
             },
-            ChildExitNotifier::open,
+            |child| ChildExitNotifier::open(child.id()),
         )
         .await;
 
@@ -1047,7 +1043,7 @@ mod tests {
                 stdout: StreamOutputPolicy::Discard,
                 stderr: StreamOutputPolicy::DiagnosticCapture { max_bytes: 3 },
             },
-            ChildExitNotifier::open,
+            |child| ChildExitNotifier::open(child.id()),
         )
         .await
         .unwrap();

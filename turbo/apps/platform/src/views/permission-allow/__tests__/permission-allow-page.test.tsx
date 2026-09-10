@@ -59,6 +59,7 @@ interface PermissionPageOptions {
 
 function agentFixture(displayName: string): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     displayName,

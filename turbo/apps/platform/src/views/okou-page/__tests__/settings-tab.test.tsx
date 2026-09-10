@@ -8,6 +8,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { HttpResponse } from "msw";
+import { updateAgentSettings$ } from "../../../signals/okou-page/job-detail/settings.ts";
+import { deleteAgent$ } from "../../../signals/okou-page/job-detail/delete.ts";
 
 import {
   agentInstructionsContract,
@@ -132,6 +134,7 @@ function prepareAgentProfile(
   let lastSavedProfile: AgentResponse | null = null;
   let detail: AgentResponse = {
     agentId: AGENT_ID,
+    isDefaultAgent: false,
     ownerId,
     description: "A helpful agent",
     displayName: "Research Agent",
@@ -582,6 +585,7 @@ test("Allow an org admin to update another user's public agent avatar", async ()
 test("Keep the default agent’s canonical identity read-only", async () => {
   const defaultAgent: AgentResponse = {
     agentId: DEFAULT_AGENT_ID,
+    isDefaultAgent: true,
     ownerId: "test-user-123",
     description: "The default assistant",
     displayName: "Okou",
@@ -592,6 +596,11 @@ test("Keep the default agent’s canonical identity read-only", async () => {
     selectedModel: null,
     preferPersonalProvider: false,
   };
+  let saved: AgentMetadataRequest | undefined;
+  context.mocks.api(agentsByIdContract.updateMetadata, ({ body, respond }) => {
+    saved = body;
+    return respond(200, { ...defaultAgent, ...body });
+  });
   context.mocks.data.agents([defaultAgent]);
   context.mocks.api(agentsByIdContract.get, ({ respond }) => {
     return respond(200, defaultAgent);
@@ -627,7 +636,84 @@ test("Keep the default agent’s canonical identity read-only", async () => {
   }
   expect(within(nameRow).getByText("Okou")).toBeVisible();
   expect(within(nameRow).queryByLabelText("Name")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("switch", { name: "Make public" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("Public", { selector: "p" })).toBeVisible();
+  expect(screen.queryByText("Delete agent")).not.toBeInTheDocument();
+  await fill(
+    screen.getByDisplayValue("The default assistant"),
+    "Workspace helper",
+  );
+  click(screen.getByText("Save"));
+  await waitFor(() => {
+    return expect(saved).toMatchObject({ description: "Workspace helper" });
+  });
+  expect(saved).not.toHaveProperty("displayName");
+  expect(saved).not.toHaveProperty("avatarUrl");
+  expect(saved).not.toHaveProperty("visibility");
 });
+
+test.each([true, undefined])(
+  "Reject queued protected actions for default identity %s",
+  async (identity) => {
+    const agent: AgentResponse = {
+      agentId: AGENT_ID,
+      isDefaultAgent: identity,
+      ownerId: "test-user-123",
+      displayName: "Okou",
+      description: "Workspace helper",
+      sound: "professional",
+      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+      visibility: "public",
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    };
+    // The optional identity models a previous API during the rollout window.
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+      return respond(200, agent);
+    });
+    context.mocks.api(agentsByIdContract.updateMetadata, ({ respond }) => {
+      return respond(400, {
+        error: { code: "UNEXPECTED_WRITE", message: "Unexpected write" },
+      });
+    });
+    context.mocks.api(agentsByIdContract.delete, ({ respond }) => {
+      return respond(204);
+    });
+    await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+    await screen.findByText("Avatar", { selector: "p" });
+    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Customize avatar")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Make public" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete agent")).not.toBeInTheDocument();
+    // Locked controls cannot produce these inputs through the current page.
+    // Exercise the queued-command boundary explicitly for stale editor submissions.
+    for (const update of [
+      { displayName: "Renamed" },
+      { avatarUrl: "preset:2" },
+      { visibility: "private" as const },
+    ]) {
+      await expect(
+        context.store.set(
+          updateAgentSettings$,
+          { ...update, description: "Must not be saved" },
+          context.signal,
+        ),
+      ).rejects.toThrow(
+        identity === true ? "workspace default" : "identity is unavailable",
+      );
+    }
+    await expect(
+      context.store.set(deleteAgent$, context.signal),
+    ).rejects.toThrow(
+      identity === true ? "cannot be deleted" : "identity is unavailable",
+    );
+  },
+);
 
 test("Tone selection is accessible and follows preview, discard and saved profile state", async () => {
   prepareAgentProfile();
@@ -885,6 +971,7 @@ function copyTarget(
 ): AgentResponse {
   return {
     agentId,
+    isDefaultAgent: agentId === DEFAULT_AGENT_ID,
     displayName,
     ownerId,
     description: null,

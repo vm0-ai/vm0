@@ -48,7 +48,7 @@ pub const ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS: u64 = 5;
 /// Kill the CLI process if a network tool hasn't returned a result within
 /// this duration. Override with the `OKOU_STUCK_TOOL_TIMEOUT_SECS` bootstrap
 /// environment variable.
-/// See: https://github.com/anthropics/claude-code/issues/11650
+/// See: <https://github.com/anthropics/claude-code/issues/11650>
 pub const STUCK_TOOL_TIMEOUT_SECS: u64 = 300;
 
 /// How often (in seconds) to check for stuck tools in the select loop.
@@ -65,7 +65,7 @@ pub const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
 /// still be blocked draining long-running backgrounded Bash tasks it spawned
 /// via its 2-minute auto-background timeout. Those tasks have been observed
 /// holding the sandbox alive for tens of minutes until external cancel.
-/// See: https://github.com/vm0-ai/vm0/issues/10879
+/// See: <https://github.com/vm0-ai/vm0/issues/10879>
 pub const POST_RESULT_SIGTERM_GRACE_SECS: u64 = 10;
 
 /// Absolute cap after observing a `type=result` event before SIGTERM-ing the

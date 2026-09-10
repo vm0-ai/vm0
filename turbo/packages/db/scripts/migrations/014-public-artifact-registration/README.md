@@ -162,12 +162,12 @@ click-only records and later optional pointer/typing fields are recognized.
    Neon queries. No workflow mode passes `--finalize`. Accept coverage only
    with zero missing, conflicting or unclassified records and zero unregistered
    pending multipart uploads.
-3. Review the separate `a.okou.io` delivery cutover (#32959) after coverage is
-   complete. The planned unified host serves old registered public files and new
-   opaque public-share aliases through `zero-host-worker`. Existing URLs and old
-   public thumbnail behavior must remain compatible. New shares require policy
-   checks before any byte-cache hit; global public cache overrides and prefix
-   rewrites must be scoped for those routes as part of that later cutover.
+3. Prepare the cache policy and review the separate `a.okou.io` delivery cutover
+   (#32959). It serves registered public files and opaque public-share aliases
+   through `zero-host-worker`. Preserve old URLs, one-year caching and public
+   image transformations; new shares require policy checks before byte-cache
+   reads. Follow the cutover order and the explicitly accepted production
+   exception below. That exception does not certify full registration coverage.
 4. Finalize registration and enable new private artifact behavior only as separate
    rollout decisions. Completion markers close the legacy site fallback, so they
    are intentionally excluded from the first production phase.
@@ -177,3 +177,94 @@ The current API/Worker file-share host configuration is changed by #32959, not b
 this registration rollout. Private preview URL lifetime and renewal are tracked
 separately in #32977; image derivatives and private video/HTML previews remain
 follow-ups in #32492.
+
+## Unified public file domain
+
+Both historical public files and new Public file shares use `a.okou.io`.
+Historical aliases resolve their `legacy-file` record to the same object in the
+public bucket. This also covers new flag-off writes, whose exact registration
+precedes upload. GET/HEAD/Range and the one-year cache policy depend on that
+registration kind, not the object's creation date. Existing `cdn.*` endpoints
+keep their direct public storage behavior.
+
+New shares resolve a `publication` record and read the current R2 share policy
+before private snapshot bytes or any content-cache hit. Their browser response
+is `private, no-store`. Only canonical file-share paths are accepted, including
+the temporary `/artifacts/` rewrite form; encoded or trailing-slash variants
+must not expose share bytes through the legacy cache rule.
+
+The unlaunched `f.okou.io` DNS and route were removed on 2026-09-09; #33017
+already removed its deployment route. Retain the shared `zero-host-worker`,
+`*.okou.app/*` and `*.sites.vm0.io/*` routes. Staging continues to use
+`files.sites.vm7.io` on its existing wildcard. Never attach a public domain to
+the private bucket, move public bytes or delete historical objects.
+
+### Accepted production state on 2026-09-10
+
+Incremental registration is deployed. Backfill wrote the missing registrations;
+independent run [34422606017](https://github.com/vm0-ai/vm0/actions/runs/34422606017)
+passed its completed-object missing/unclassified assertions but failed on three
+old unregistered multipart sessions. The subsequent
+[preflight](https://github.com/vm0-ai/vm0/actions/runs/34453611593) confirmed those
+sessions still blocked full acceptance. Under the
+[maintainer decision in #32492](https://github.com/vm0-ai/vm0/issues/32492#issuecomment-5599918851),
+these three sessions no longer block advancing #32959. They are not registered,
+verified or finalized by this decision. Preserve their parts and lifecycle; do
+not bypass the verifier or write completion markers. A late completion of one
+of those old sessions can still require reconciliation.
+
+Cache preparation was applied and independently read back on 2026-09-10. The
+existing one-year override excludes the prospective public-share filename
+shape on both short and `/artifacts/` paths. A full 145,548-object public-bucket
+listing found no existing paths excluded. Cold requests for a post-change
+upload and recent generated/completed-multipart samples showed MISS then HIT
+with a one-year cache header; old image resizing, HEAD and Range remained
+usable. This cache inventory does not replace database/registry verification.
+
+### Production cutover order
+
+Releasing the Worker configuration attaches `a.okou.io/*` even while
+`privateArtifacts` is off. A code merge alone does not deploy that route.
+
+1. Retain the deployed incremental registration hooks and the completed-object
+   backfill. Carry the three-session exception above explicitly; final coverage
+   and completion markers remain separate decisions.
+2. Preserve the applied one-year cache rule for legacy paths and its exclusions
+   for a 24-character basename plus a 1-12 character extension, both with and
+   without the `/artifacts/` prefix. Preserve error-response no-cache behavior
+   and unrelated `cdn.*`/static rules. Do not change the entire host to
+   `respect_origin` while direct R2 delivery is active: most historical objects
+   have no origin Cache-Control, so that would shorten their cache lifetime.
+3. Keep the R2-managed `a.okou.io` DNS/custom-domain binding. Deploy the reviewed
+   Worker with `a.okou.io/*`, `PUBLIC_ARTIFACT_HOST=a.okou.io` and its existing
+   public/private bucket bindings. The file reader accepts the live rewrite's
+   `/artifacts/` prefix, preserving registered links across this transition.
+4. Verify legacy GET/HEAD/Range and resized-image requests through the Worker.
+   Disable the rewrite named
+   `Serve a.okou.io short artifact paths from /artifacts in R2` after this
+   verification. Verify the original short paths again. Once the Worker
+   supplies the one-year legacy response headers, the entire host's browser
+   and edge TTLs can separately move to `respect_origin`. That optional rule
+   cleanup was not performed by the cache preparation above. Restore the R2
+   rewrite and legacy one-year rule before any rollback to direct R2 delivery.
+5. Deploy the matching API configuration
+   `PUBLIC_ARTIFACT_SHARES_BASE_URL=https://a.okou.io` and App URL recognition.
+   Keep `privateArtifacts` off; the hostname change does not enable it or add a
+   second switch. Before later activation, use an authorized test cohort to
+   verify Public access, warm-cache access, revocation, organization audience
+   and republishing on the exact production origin, including rejection of
+   noncanonical paths. Confirm new shares remain `private, no-store`.
+
+Image Resizing has a separate derivative cache that cannot enforce current
+share permissions. New Public file previews keep their original URL and the
+Worker rejects Image Resizing source requests for publication records.
+Historical public images retain resizing. A future private-thumbnail path must
+authorize before every derivative-cache read.
+
+Immutable alias metadata has its own cache; the mutable policy remains an R2
+read on every share request. Missing aliases are not cached. File aliases use
+one global namespace across both brands. Measure regional cold/warm latency
+before feature activation. Under #32492, remove the temporary prefix
+normalization after the rewrite is disabled and supported infrastructure
+rollback no longer depends on it. Finalization and private-preview lifetime
+work remain independent of the domain cutover.

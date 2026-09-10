@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.189.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.6...runner-rs-v0.189.7) (2026-09-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify upstream content policy rejections ([#33180](https://github.com/vm0-ai/vm0/issues/33180)) ([f61db10](https://github.com/vm0-ai/vm0/commit/f61db105d0965c93bffb84f061d1027db8d79e36))
+* **python:** bound webhook tasks after worker startup failure ([#33124](https://github.com/vm0-ai/vm0/issues/33124)) ([2a7efd4](https://github.com/vm0-ai/vm0/commit/2a7efd4d585f59bbe0694a90d342dd2f93c2da30))
+* **runner:** classify transient active-input read recovery ([#33116](https://github.com/vm0-ai/vm0/issues/33116)) ([6b3e05a](https://github.com/vm0-ai/vm0/commit/6b3e05a6bfb0844e7349cc112e3abd9fb0551ef2))
+
+
+### Documentation
+
+* **python:** correct jsonl flush warning transport ([#33118](https://github.com/vm0-ai/vm0/issues/33118)) ([c2713d8](https://github.com/vm0-ai/vm0/commit/c2713d8536f25fc5246bc0e0a3c4a58e8545a3b4))
+
+
+### Refactoring
+
+* retire goal backend authority and application orm consumers ([#33105](https://github.com/vm0-ai/vm0/issues/33105)) ([2c23176](https://github.com/vm0-ai/vm0/commit/2c231766e383b651867893852cfb47dcc78af0bd))
+
 ## [0.189.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.5...runner-rs-v0.189.6) (2026-09-09)
 
 

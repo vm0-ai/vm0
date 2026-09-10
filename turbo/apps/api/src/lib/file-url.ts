@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isArtifactPublicationFilePath } from "@okouai/api-contracts/contracts/artifact-delivery";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { env } from "./env";
@@ -109,6 +110,9 @@ export function artifactKeyFromShortOkouUrl(url: URL): string | null {
   }
 
   const shortPath = pathname.replace(/^\/+/, "");
+  if (isArtifactPublicationFilePath(`/${shortPath}`)) {
+    return null;
+  }
   return shortPath === "" ? null : `${ARTIFACTS_PATH_PREFIX}${shortPath}`;
 }
 

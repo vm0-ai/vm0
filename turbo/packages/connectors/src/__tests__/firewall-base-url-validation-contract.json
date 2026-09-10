@@ -3,6 +3,24 @@
   "baseUrlTemplateResolutionCases": [
     {
       "category": "authority-fragment",
+      "name": "host suffix cannot extend a full literal label",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.SUFFIX }}/v1/{resource}",
+      "vars": {
+        "SUFFIX": "x.example.com"
+      },
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "authority-fragment",
+      "name": "host suffix cannot introduce authority or path structure",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.SUFFIX }}/v1/{resource}",
+      "vars": {
+        "SUFFIX": ".example.com:443/capture"
+      },
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "authority-fragment",
       "name": "trailing authority fragment before path resolves",
       "base": "https://api-${{ vars.HOST }}/v1",
       "vars": { "HOST": "tenant.example.com" },
@@ -160,6 +178,77 @@
       },
       "expectedValid": true,
       "expectedResolvedBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaax.example/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host suffix starts a new label after 62 literal characters",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.SUFFIX }}/v1/{resource}",
+      "vars": {
+        "SUFFIX": ".example.com"
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host suffix starts a new label after 63 literal characters",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.SUFFIX }}/v1/{resource}",
+      "vars": {
+        "SUFFIX": ".example.com"
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host prefix ends a label before 63 literal characters",
+      "base": "https://${{ vars.PREFIX }}bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/v1/{resource}",
+      "vars": {
+        "PREFIX": "api."
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host variable separates two full literal labels",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.MIDDLE }}bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/v1/{resource}",
+      "vars": {
+        "MIDDLE": "."
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "adjacent host variables separate full literal labels",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.FIRST }}${{ vars.SECOND }}bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/v1/{resource}",
+      "vars": {
+        "FIRST": ".api",
+        "SECOND": "."
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.api.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host variable preserves a canonical alabel",
+      "base": "https://xn--bcher-kva${{ vars.SUFFIX }}/v1/{resource}",
+      "vars": {
+        "SUFFIX": ".example.com"
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://xn--bcher-kva.example.com/v1/{resource}"
+    },
+    {
+      "category": "authority",
+      "name": "host suffix cannot repair an overlong literal label",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.SUFFIX }}/v1/{resource}",
+      "vars": {
+        "SUFFIX": ".example.com"
+      },
+      "expectedValid": false,
+      "expectedResolvedBase": null
     },
     {
       "category": "valid",

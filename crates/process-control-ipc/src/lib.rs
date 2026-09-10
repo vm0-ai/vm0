@@ -76,8 +76,8 @@ pub use codec::{
     read_hello, read_request, read_response, write_hello, write_request, write_response,
 };
 pub use transport::{
-    accept_with_timeout, bind_abstract_listener, connect_abstract, endpoint_name,
-    read_tool_placement_ack, read_tool_placement_confirmation,
+    accept_with_timeout, bind_abstract_listener, connect_abstract, connect_abstract_with_timeout,
+    endpoint_name, read_tool_placement_ack, read_tool_placement_confirmation,
     read_workload_placement_confirmation, receive_tool_placement, receive_workload_placement,
     send_tool_placement, send_workload_placement, write_tool_placement_ack,
     write_tool_placement_confirmation, write_workload_placement_confirmation,

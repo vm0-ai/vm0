@@ -70,7 +70,6 @@ import {
   agentActiveTab$,
   setAgentActiveTab$,
 } from "../../signals/okou-page/job-detail/agent-name";
-import { onboardingStatus$ } from "../../signals/okou-page/onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
@@ -900,7 +899,7 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
 }) {
   const { t } = useTranslation("agents");
   const nav = useSet(detachedNavigateTo$);
@@ -917,7 +916,7 @@ function AgentHeader({
               alt={displayName}
               className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
             />
-            {showProfileAndInstructions && !isDefaultAgent && (
+            {showProfileAndInstructions && isDefaultAgent === false && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1015,7 +1014,7 @@ function AgentProfileSettings({
   description: string;
   avatarUrl: string | null;
   resolvedSound: Tone;
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
   visibility: "public" | "private";
   canEditVisibility: boolean;
   onDelete: () => Promise<void>;
@@ -1099,7 +1098,7 @@ function AgentTabContent({
   description: string;
   avatarUrl: string | null;
   resolvedSound: Tone;
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
   visibility: "public" | "private";
   canEditVisibility: boolean;
 }) {
@@ -1150,6 +1149,7 @@ function useAgentFields() {
     return {
       detail: detail ?? null,
       agentId: "",
+      isDefaultAgent: undefined,
       displayName: t(($) => {
         return $.fallbackName;
       }),
@@ -1163,6 +1163,7 @@ function useAgentFields() {
   return {
     detail: detail ?? null,
     agentId: source.agentId,
+    isDefaultAgent: source.isDefaultAgent,
     displayName:
       source.displayName ??
       (source.agentId ||
@@ -1177,16 +1178,7 @@ function useAgentFields() {
   };
 }
 
-function useTabVisibility(
-  agentId: string,
-  ownerId: string,
-  visibility: "public" | "private",
-) {
-  const statusLoadable = useLastLoadable(onboardingStatus$);
-  const isDefaultAgent =
-    statusLoadable.state === "hasData" &&
-    statusLoadable.data.defaultAgentId === agentId;
-
+function useTabVisibility(ownerId: string, visibility: "public" | "private") {
   const adminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
 
@@ -1202,7 +1194,6 @@ function useTabVisibility(
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   return {
-    isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
     activeTab,
@@ -1222,13 +1213,9 @@ export function JobDetailPage() {
   const currentAgentId = useGet(currentAgentId$);
   const fields = useAgentFields();
   const errorAgentId = fields.agentId || currentAgentId || "";
-  const {
-    isDefaultAgent,
-    hideProfileAndInstructions,
-    isOwner,
-    activeTab,
-    setActiveTab,
-  } = useTabVisibility(fields.agentId, fields.ownerId, fields.visibility);
+  const { hideProfileAndInstructions, isOwner, activeTab, setActiveTab } =
+    useTabVisibility(fields.ownerId, fields.visibility);
+  const isDefaultAgent = fields.isDefaultAgent;
 
   if (!fields.detail && !error) {
     return <DetailSkeleton />;

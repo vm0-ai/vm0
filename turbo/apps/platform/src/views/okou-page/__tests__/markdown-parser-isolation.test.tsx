@@ -44,6 +44,7 @@ function markdownFrameFor(element: Element): HTMLElement {
 async function openInstructionsThenChat(): Promise<void> {
   context.mocks.api(agentsByIdContract.get, ({ respond }) => {
     return respond(200, {
+      isDefaultAgent: false,
       agentId: AGENT_ID,
       avatarUrl: null,
       description: null,

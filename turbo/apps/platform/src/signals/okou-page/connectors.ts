@@ -106,6 +106,7 @@ export interface ComposerConnectorSignals {
     [ComposerConnectorAuthorizationTarget, boolean, AbortSignal]
   >;
   readonly connectorUiState$: Computed<ComposerConnectorUiState>;
+  readonly openAddConnectorsDialog$: Command<void, []>;
   readonly updateConnectorUiState$: Command<
     void,
     [Partial<ComposerConnectorUiState>]
@@ -119,13 +120,12 @@ export interface ComposerConnectorSignals {
   readonly accounts: ComposerConnectorAccountSignals;
 }
 
-const relatedConnectorCatalogKeyword$ = computed(() => {
+/** Browse reads ask for no keyword; the category, when set, scopes them. */
+const emptyCatalogKeyword$ = computed(() => {
   return "";
 });
 
-const composerRelatedCatalog$ = relatedConnectorCatalog(
-  relatedConnectorCatalogKeyword$,
-);
+const composerRelatedCatalog$ = relatedConnectorCatalog(emptyCatalogKeyword$);
 
 const composerRelatedCatalogItems$ = computed(async (get) => {
   return (await get(composerRelatedCatalog$)).connectors;
@@ -362,7 +362,7 @@ function createConnectorAuthorizationCommand(
 
 function createConnectorUiSignals(): Pick<
   ComposerConnectorSignals,
-  "connectorUiState$" | "updateConnectorUiState$"
+  "connectorUiState$" | "updateConnectorUiState$" | "openAddConnectorsDialog$"
 > {
   const internalUiState$ = state(initialComposerConnectorUiState());
   const connectorUiState$ = computed((get): ComposerConnectorUiState => {
@@ -378,7 +378,23 @@ function createConnectorUiSignals(): Pick<
       });
     },
   );
-  return { connectorUiState$, updateConnectorUiState$ };
+  const openAddConnectorsDialog$ = command(({ set }): void => {
+    // Ordinary entry starts a fresh browsing session without changing explicit
+    // connector/account targets or the lifetime of an ongoing connection.
+    set(updateConnectorUiState$, {
+      showAddDialog: true,
+      addDialogSearch: "",
+      directoryTab: "discover",
+      directoryCategory: null,
+      directoryDetailSlug: null,
+      directoryActiveIndex: 0,
+    });
+  });
+  return {
+    connectorUiState$,
+    updateConnectorUiState$,
+    openAddConnectorsDialog$,
+  };
 }
 
 export function createComposerConnectorSignals(
@@ -404,12 +420,28 @@ export function createComposerConnectorSignals(
   const addDialogKeyword$ = computed((get) => {
     return get(ui.connectorUiState$).addDialogSearch;
   });
+  const addDialogCategory$ = computed((get) => {
+    return get(ui.connectorUiState$).directoryCategory;
+  });
   const searchedCatalog$ = relatedConnectorCatalog(addDialogKeyword$);
+  /**
+   * A chosen category is fetched by name, so the directory holds all of it.
+   * The browse response carries a slice per category, which is what the
+   * shelves want and what a category page must not settle for: the count the
+   * chip offers on the way in is the number this has to deliver.
+   */
+  const categoryCatalog$ = relatedConnectorCatalog(
+    emptyCatalogKeyword$,
+    addDialogCategory$,
+  );
   const addDialogCatalogItems$ = computed(async (get) => {
-    if (!get(addDialogKeyword$).trim()) {
-      return await get(composerRelatedCatalogItems$);
+    if (get(addDialogKeyword$).trim()) {
+      return (await get(searchedCatalog$)).connectors;
     }
-    return (await get(searchedCatalog$)).connectors;
+    if (get(addDialogCategory$)) {
+      return (await get(categoryCatalog$)).connectors;
+    }
+    return await get(composerRelatedCatalogItems$);
   });
   const connectorPermissionMetadata$ = computed(async (get) => {
     const connectorSlug = get(ui.connectorUiState$).permissionConnectorSlug;

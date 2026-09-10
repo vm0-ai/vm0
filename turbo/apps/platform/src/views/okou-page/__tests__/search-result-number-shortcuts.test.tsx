@@ -77,6 +77,7 @@ function searchResultTitles(dialog: HTMLElement): string[] {
 
 function installSearchResources() {
   const agent = {
+    isDefaultAgent: false,
     agentId: "c7000000-0000-4000-a000-000000000002",
     displayName: "Budget agent",
     ownerId: "test-user",

@@ -266,6 +266,98 @@ async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
     remove_telemetry_files(paths);
 }
 
+async fn assert_cancelled_telemetry_owner_finishes_upload(
+    final_shutdown: bool,
+    keep_reporter: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use tokio::io::AsyncWriteExt;
+
+    let files = ExplicitTelemetryFiles::new("cancelled-owner")?;
+    guest_agent::paths::write_private(files.paths.system_log_file(), "pending\n")?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let http = guest_agent::http::HttpClient::with_api_config(
+        format!("http://{}", listener.local_addr()?),
+        "test-token",
+        "",
+        "test-session",
+        Duration::ZERO,
+    )?;
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "cancelled-owner".into(),
+        &files.paths,
+        Arc::new(SecretMasker::from_raw("")),
+        http,
+    );
+    let reporter = keep_reporter.then(|| telemetry.incident_reporter());
+    let owner = tokio::spawn(async move {
+        if final_shutdown {
+            telemetry.final_flush_and_shutdown().await
+        } else {
+            let result = telemetry
+                .flush(guest_agent::telemetry::UploadMode::Live)
+                .await;
+            telemetry.shutdown().await;
+            result
+        }
+    });
+
+    let (mut stream, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        super::http_client::read_raw_request(&mut stream),
+    )
+    .await??;
+    // The complete request proves the upload is in flight. Join the aborted
+    // owner before making its successful response available.
+    owner.abort();
+    assert!(matches!(owner.await, Err(error) if error.is_cancelled()));
+    stream
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+        .await?;
+    drop(stream);
+
+    // This test owns its current-thread runtime and starts no mock-server
+    // tasks. Quiescence observes both uploader and HTTP task cleanup without
+    // exposing a private worker handle or waiting an arbitrary amount of time.
+    let metrics = tokio::runtime::Handle::current().metrics();
+    let terminated = tokio::time::timeout(Duration::from_secs(5), async {
+        while metrics.num_alive_tasks() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    assert!(
+        terminated.is_ok(),
+        "cancelled owner left {} tasks: final_shutdown={final_shutdown}, keep_reporter={keep_reporter}",
+        metrics.num_alive_tasks()
+    );
+    assert_eq!(
+        std::fs::read_to_string(files.paths.telemetry_system_log_pos_file())?,
+        "8",
+        "the accepted upload must persist its cursor, keep_reporter={keep_reporter}"
+    );
+    drop(reporter);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_telemetry_final_shutdown_finishes_upload_and_exits() {
+    for keep_reporter in [true, false] {
+        assert_cancelled_telemetry_owner_finishes_upload(true, keep_reporter)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_telemetry_live_flush_owner_finishes_upload_and_exits() {
+    for keep_reporter in [true, false] {
+        assert_cancelled_telemetry_owner_finishes_upload(false, keep_reporter)
+            .await
+            .unwrap();
+    }
+}
+
 #[tokio::test]
 async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     let api = SharedApiMock::new().await;

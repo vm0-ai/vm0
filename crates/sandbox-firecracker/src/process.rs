@@ -9,8 +9,8 @@ use std::os::fd::OwnedFd;
 /// Requires the child to have been spawned with `process_group(0)` so that its
 /// PGID equals its PID. No-op if the child has already exited or the PID cannot
 /// be represented as `i32`.
-pub(crate) fn kill_process_group(child: &tokio::process::Child) -> nix::Result<()> {
-    if let Some(pid) = child.id() {
+pub(crate) fn kill_process_group(pid: Option<u32>) -> nix::Result<()> {
+    if let Some(pid) = pid {
         kill_process_group_by_pid(pid)
     } else {
         Ok(())
@@ -96,8 +96,8 @@ impl ChildExitNotifier {
     /// notifier. On non-Linux platforms, the notifier is always unavailable.
     /// Callers must check [`Self::is_available`] and retain their explicit child
     /// wait fallback.
-    pub(crate) fn open(child: &tokio::process::Child) -> Self {
-        let Some(pid) = child.id() else {
+    pub(crate) fn open(pid: Option<u32>) -> Self {
+        let Some(pid) = pid else {
             return Self::unavailable(ChildExitNotifierUnavailable::MissingPid);
         };
         Self::open_for_pid(pid)
@@ -160,7 +160,7 @@ impl ChildExitNotifier {
 
     #[cfg(target_os = "linux")]
     fn open_for_pid(pid: u32) -> Self {
-        match open_pidfd(pid) {
+        match process_launch::asynchronous::open_pidfd(pid) {
             Ok(pidfd) => match tokio::io::unix::AsyncFd::new(pidfd) {
                 Ok(pidfd) => Self {
                     inner: ChildExitNotifierInner::PidFd(pidfd),
@@ -187,19 +187,4 @@ impl ChildExitNotifier {
     pub(crate) fn available_for_current_process_for_test() -> bool {
         Self::open_for_pid(std::process::id()).is_available()
     }
-}
-
-#[cfg(target_os = "linux")]
-fn open_pidfd(pid: u32) -> io::Result<OwnedFd> {
-    let pid = i32::try_from(pid)
-        .ok()
-        .and_then(rustix::process::Pid::from_raw)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "child PID cannot be represented as rustix::process::Pid",
-            )
-        })?;
-
-    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).map_err(io::Error::from)
 }
