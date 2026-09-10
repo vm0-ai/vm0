@@ -74,7 +74,7 @@ lock_file="${MOCK_LOCK_ROOT}/${host}-${JOB_REF}.lock"
 
 # Run the holder the script actually asks for, minus the privilege escalation
 # and the absolute lock path that only exist on a metal host.
-local_command=${remote_command#exec sudo }
+local_command=${remote_command#sudo }
 local_command=${local_command//"/var/lock/vm0-runner-lifecycle-${JOB_REF}.lock"/$lock_file}
 if [ -n "${MOCK_HOLDER_COMMAND_FILE:-}" ]; then
   printf '%s\n' "$local_command" >"$MOCK_HOLDER_COMMAND_FILE"
@@ -259,6 +259,8 @@ PATH="${fake_bin}:$PATH" \
   fail "a multi-host lock did not release promptly after its protected command"
 }
 for multi_host in metal-one.example.test metal-two.example.test; do
+  grep -q "namespace=pr-78 host=${multi_host} phase=release local_exit=0 remote_release=confirmed" \
+    "${tmp_dir}/multi.err" || fail "missing successful release confirmation for ${multi_host}"
   flock --exclusive --timeout 5 \
     "${multi_lock_root}/${multi_host}-pr-78.lock" true ||
     fail "the lock on ${multi_host} was still held after release"
@@ -267,7 +269,7 @@ done
 # An orphaned holder never sees end-of-input on a half-open transport, so the
 # lease is the only thing that stops it from blocking the host indefinitely.
 [ -s "$holder_command_file" ] || fail "the mock did not record the remote holder command"
-IFS= read -r holder_command <"$holder_command_file"
+holder_command=$(cat "$holder_command_file")
 orphan_fifo="${tmp_dir}/orphan-stdin"
 mkfifo "$orphan_fifo"
 exec {orphan_fd}<>"$orphan_fifo"
@@ -290,7 +292,13 @@ flock --exclusive --timeout 1 "$lease_lock_file" true &&
 
 flock --exclusive --timeout "$((lease_seconds * 3))" "$lease_lock_file" true ||
   fail "the orphaned holder kept the lock past its lease"
-wait "$orphan_pid" || fail "the orphaned holder exited abnormally"
+orphan_status=0
+wait "$orphan_pid" || orphan_status=$?
+[ "$orphan_status" -gt 128 ] || fail "the orphaned holder did not report its read timeout"
+grep -Fxq VM0_RUNNER_LIFECYCLE_LOCK_LEASE_EXPIRED "${tmp_dir}/orphan.out" ||
+  fail "the orphaned holder did not distinguish lease expiration from EOF"
+! grep -Fxq VM0_RUNNER_LIFECYCLE_LOCK_RELEASED "${tmp_dir}/orphan.out" ||
+  fail "the orphaned holder reported a normal release"
 background_pids=()
 exec {orphan_fd}>&-
 
