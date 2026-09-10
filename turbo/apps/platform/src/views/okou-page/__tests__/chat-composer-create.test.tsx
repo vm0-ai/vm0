@@ -640,3 +640,66 @@ test("Canceling and switching Create preserve slash text and template references
     }),
   );
 });
+
+async function setupComposerWithFlatSlash(
+  flatSlash: boolean,
+): Promise<HTMLElement> {
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerCreateCommands]: true,
+      [FeatureSwitchKey.ComposerCreateFlatSlash]: flatSlash,
+    },
+  });
+  return await findComposerEditor();
+}
+
+test("The slash menu keeps the Create type chooser until the Lab switch is on", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithFlatSlash(false);
+  await fill(editor, "Our launch /create");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  expect(
+    queryAllByRoleFast("button", menu)
+      .map((item) => {
+        return item.getAttribute("aria-label");
+      })
+      .filter((label) => {
+        return label?.startsWith("Create");
+      }),
+  ).toStrictEqual(["Create"]);
+  click(button("Create", menu));
+  await screen.findByRole("group", { name: "Choose a type" });
+});
+
+test("The slash menu lists every create type in one step when the switch is on", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithFlatSlash(true);
+  await fill(editor, "Our launch /create");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  expect(
+    queryAllByRoleFast("button", menu)
+      .map((item) => {
+        return item.getAttribute("aria-label");
+      })
+      .filter((label) => {
+        return label?.startsWith("Create");
+      }),
+  ).toStrictEqual(["Create presentation", "Create video", "Create image"]);
+
+  click(button("Create video", menu));
+  await waitFor(() => {
+    expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
+      "Create video",
+    );
+  });
+  // The second row of type buttons is what moved the composer; it must never
+  // appear on this path.
+  expect(screen.queryByRole("group", { name: "Choose a type" })).toBeNull();
+  expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
+  expect(editor).toHaveTextContent("Our launch");
+  expect(editor).not.toHaveTextContent("/create");
+});

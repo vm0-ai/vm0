@@ -81,4 +81,5 @@ export enum FeatureSwitchKey {
   AvatarFraming = "avatarFraming",
   ConnectorDirectory = "connectorDirectory",
   ChatThreadHeaderActions = "chatThreadHeaderActions",
+  ComposerCreateFlatSlash = "composerCreateFlatSlash",
 }

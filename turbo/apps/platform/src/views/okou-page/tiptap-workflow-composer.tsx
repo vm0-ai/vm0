@@ -306,6 +306,8 @@ function useComposerCreateSuggestions(
 ): readonly ComposerCreateCommand[] {
   useTranslation();
   const enabled = useGet(composer.create.enabled$);
+  const flatSlash =
+    useGet(featureSwitch$)[FeatureSwitchKey.ComposerCreateFlatSlash] === true;
   if (!enabled || query === undefined) {
     return [];
   }
@@ -314,7 +316,10 @@ function useComposerCreateSuggestions(
     "create".startsWith(normalized) ||
     composerCreateCommandLabel("choose").toLowerCase().startsWith(normalized)
   ) {
-    return ["choose"];
+    // Under ComposerCreateFlatSlash the menu answers the query in one level.
+    // The `choose` entry exists only to open a second row of type buttons above
+    // the composer, which moves the composer by its own height.
+    return flatSlash ? composer.create.modes : ["choose"];
   }
   return composer.create.modes.filter((mode) => {
     return (

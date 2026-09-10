@@ -508,6 +508,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerCreateFlatSlash]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "List the create types directly in the slash menu instead of a Create entry that opens a second row of type buttons above the composer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
