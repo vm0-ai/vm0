@@ -12,7 +12,8 @@ import {
   updateSshConnectionRequestSchema,
   SSH_PRIVATE_KEY_MAX_LENGTH,
 } from "@okouai/api-contracts/contracts/ssh-connections";
-import { clerk$, currentOrgInfo$, currentUserInfo$ } from "./auth.ts";
+import { clerk$, currentOrgInfo$, user$ } from "./auth.ts";
+import { runtimeAuthenticatedIdentity$ } from "./auth-context.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { apiClient$ } from "./api-client.ts";
@@ -103,19 +104,20 @@ export const sshIdentity$ = computed(async (get) => {
   if (!enabled) {
     return null;
   }
-  const [org, user] = await Promise.all([
-    get(currentOrgInfo$),
-    get(currentUserInfo$),
+  // User changes invalidate SSH state; global org switching reloads the page.
+  // Background token/profile updates must not reset credential forms.
+  const [user, identity] = await Promise.all([
+    get(user$),
+    get(runtimeAuthenticatedIdentity$),
   ]);
-  return org && user ? `${org.id}:${user.id}` : null;
+  return user ? `${identity.orgId}:${user.id}` : null;
 });
 const reload$ = state(0);
 const sshClients$ = computed(async (get) => {
   const identity = await get(sshIdentity$);
   const clerk = await get(clerk$);
-  const sessionId = clerk.session?.id;
   const createClient = get(apiClient$);
-  const assertIdentity = () => {
+  const assertIdentity = (sessionId: string | undefined) => {
     if (
       !identity ||
       !sessionId ||
@@ -127,10 +129,11 @@ const sshClients$ = computed(async (get) => {
   };
   const options = {
     getToken: async (signal: AbortSignal) => {
-      assertIdentity();
+      const sessionId = clerk.session?.id;
+      assertIdentity(sessionId);
       const token = await readClerkToken(clerk, signal);
       signal.throwIfAborted();
-      assertIdentity();
+      assertIdentity(sessionId);
       return token;
     },
   };
