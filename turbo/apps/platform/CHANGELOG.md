@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.884.1](https://github.com/vm0-ai/vm0/compare/app-v0.884.0...app-v0.884.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **auth:** restore hosted input boundaries ([#33301](https://github.com/vm0-ai/vm0/issues/33301)) ([4b4f5d4](https://github.com/vm0-ai/vm0/commit/4b4f5d498a2c024852cd7694f5f13a722d177432))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.0
+
 ## [0.884.0](https://github.com/vm0-ai/vm0/compare/app-v0.883.0...app-v0.884.0) (2026-09-10)
 
 

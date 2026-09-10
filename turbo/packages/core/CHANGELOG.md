@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.651.0](https://github.com/vm0-ai/vm0/compare/core-v8.650.0...core-v8.651.0) (2026-09-10)
+
+
+### Features
+
+* **ssh:** enable access by default for staff ([#33304](https://github.com/vm0-ai/vm0/issues/33304)) ([5e019e4](https://github.com/vm0-ai/vm0/commit/5e019e4f0a8ee96c89df9f636e0749c8beda9828))
+
 ## [8.650.0](https://github.com/vm0-ai/vm0/compare/core-v8.649.0...core-v8.650.0) (2026-09-10)
 
 
