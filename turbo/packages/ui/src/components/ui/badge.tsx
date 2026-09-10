@@ -25,7 +25,7 @@ import { cn } from "../../lib/utils";
  * key/value chips from wrapping.
  */
 const badgeClassName =
-  "inline-flex items-center gap-1 rounded-md border-(length:--border-width-surface) border-solid border-surface-border bg-gray-0 px-2 py-0.5 align-middle leading-snug [&>svg]:size-3";
+  "inline-flex items-center gap-1 rounded-md border border-surface-border bg-gray-0 px-2 py-0.5 align-middle leading-snug [&>svg]:size-3";
 
 export type BadgeProps = useRender.ComponentProps<"span">;
 
