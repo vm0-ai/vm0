@@ -15,6 +15,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import { now } from "../../lib/time.ts";
+import { recordImpactAttribution$ } from "./impact-attribution.ts";
 import { apiClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
@@ -78,15 +79,20 @@ export const recordSignupAttribution$ = command(
     }
 
     const storedAttribution = set(readStoredAdAttributionMetadata$);
+    const impactAttribution = set(recordImpactAttribution$);
     const recentlyCreatedUser = isRecentlyCreatedUser(user);
     const attribution: AdAttributionMetadata | undefined =
       storedAttribution ??
-      (recentlyCreatedUser ? { source_type: "unknown" } : undefined);
+      (recentlyCreatedUser
+        ? { source_type: "unknown" }
+        : impactAttribution
+          ? {}
+          : undefined);
     if (!attribution) {
       return;
     }
 
-    const attributionFingerprint = `${user.id}:${JSON.stringify(attribution)}`;
+    const attributionFingerprint = `${user.id}:${JSON.stringify(attribution)}:${JSON.stringify(impactAttribution)}`;
     let recorded =
       get(signupAttributionRecordedStorage.get$) === attributionFingerprint;
 
@@ -96,7 +102,10 @@ export const recordSignupAttribution$ = command(
       const client = createClient(acquisitionAttributionContract);
       const result = await accept(
         client.recordSignup({
-          body: { attribution: legacyGoogleAdsAttribution(attribution) },
+          body: {
+            attribution: legacyGoogleAdsAttribution(attribution),
+            ...(impactAttribution ? { impactAttribution } : {}),
+          },
           fetchOptions: { signal },
         }),
         [200],
