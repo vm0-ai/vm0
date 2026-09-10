@@ -5,7 +5,7 @@ import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
 import * as agentSchema from "./schema/agent";
-import * as agentRunSchema from "./schema/agent-run";
+import * as agentRunSchema from "./runtime/agent-run";
 import * as agentRunConnectorDiagnosticRegistrationSchema from "./schema/agent-run-connector-diagnostic-registration";
 import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
@@ -89,7 +89,6 @@ import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
 import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
-import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as builtInModelKeySchema from "./schema/built-in-model-key";
@@ -232,7 +231,6 @@ export const schema = {
   ...usagePricingSchema,
   ...agentDraftSchema,
   ...userPermissionGrantSchema,
-  ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...builtInModelKeySchema,

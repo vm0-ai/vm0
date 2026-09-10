@@ -25,7 +25,7 @@ import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import type {
   WorkflowAutomationEventPayload,
@@ -232,14 +232,6 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly triggerBrief: string | null;
   };
 
-type InputGoalEvent = ChatEventIdentity &
-  Pick<ChatEventInputPayload, "userMessage"> & {
-    readonly eventType: "input.goal";
-    readonly content?: null;
-    readonly contextType: "goal";
-    readonly runGroupId: string;
-  };
-
 type InputBudgetEvent = ChatEventIdentity &
   ChatAgentRunDisplayContext &
   Pick<ChatEventInputPayload, "userMessage"> & {
@@ -337,22 +329,6 @@ type BrowserLifecycleEvent = Pick<
   readonly content?: null;
 };
 
-type GoalOpenEvent = Pick<
-  ChatEventIdentity,
-  "id" | "chatThreadId" | "createdAt"
-> & {
-  readonly eventType: "goal.open";
-  readonly content: string;
-};
-
-type GoalCloseEvent = Pick<
-  ChatEventIdentity,
-  "id" | "chatThreadId" | "createdAt"
-> & {
-  readonly eventType: "goal.close";
-  readonly content?: null;
-};
-
 type UsageRecordedEvent = ChatEventIdentity & {
   readonly eventType: "usage.recorded";
   readonly runId: string;
@@ -363,7 +339,6 @@ type UsageRecordedEvent = ChatEventIdentity & {
 export type NewChatEvent =
   | InputPromptEvent
   | InputAutomationEvent
-  | InputGoalEvent
   | InputBudgetEvent
   | InputRejectedEvent
   | OutputMessageEvent
@@ -378,8 +353,6 @@ export type NewChatEvent =
   | ControlInterruptEvent
   | ControlRevokeEvent
   | BrowserLifecycleEvent
-  | GoalOpenEvent
-  | GoalCloseEvent
   | UsageRecordedEvent;
 
 type AppendChatEvent = Exclude<
@@ -402,17 +375,19 @@ interface ChatEventBatchCommandResult {
 
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
 
-type PersistedChatEvent = Omit<CanonicalChatEventInsert, "seqId">;
-
-type ChatEventContextPointer = Pick<
+type PersistedChatEvent = Omit<
   CanonicalChatEventInsert,
-  "contextType" | "contextId"
->;
+  "seqId" | "contextType"
+> &
+  ChatEventContextPointer;
+
+type ChatEventContextPointer = {
+  readonly contextType?: CanonicalChatEventInsert["contextType"] | SQL;
+  readonly contextId?: CanonicalChatEventInsert["contextId"];
+};
 
 interface StoredChatEventContextPointer {
-  readonly contextType: NonNullable<
-    CanonicalChatEventInsert["contextType"]
-  > | null;
+  readonly contextType: string | null;
   readonly contextId: string | null;
 }
 
@@ -715,10 +690,11 @@ function replacementContext(
   readonly pointer: ChatEventContextPointer | undefined;
   readonly displayContext: NewDisplayContext | undefined;
 } {
-  if (target.contextType !== null) {
+  if (target.contextType !== null || values.eventType === "usage.recorded") {
     return {
       pointer: {
-        contextType: target.contextType,
+        contextType:
+          target.contextType === null ? null : sql`${target.contextType}`,
         contextId: target.contextId,
       },
       displayContext: undefined,
@@ -942,27 +918,31 @@ function canonicalChatEventPayload(
   return Object.keys(payload).length === 0 ? null : payload;
 }
 
+function canonicalChatEventContext(
+  values: NewChatEvent,
+  overrides?: ChatEventContextPointer,
+) {
+  const runGroupId = "runGroupId" in values ? values.runGroupId : undefined;
+  const context =
+    runGroupId === null || runGroupId === undefined
+      ? {
+          contextType: "contextType" in values ? values.contextType : undefined,
+          contextId: "contextId" in values ? values.contextId : undefined,
+        }
+      : { contextType: "goal" as const, contextId: runGroupId };
+  // Replacement provenance is authoritative, including explicit null pointers.
+  return { ...context, ...overrides };
+}
+
 /** Map the public event command into its canonical storage representation. */
 function canonicalChatEventValues(
   values: NewChatEvent,
-  overrides?: Partial<
-    Pick<CanonicalChatEventInsert, "id" | "contextType" | "contextId">
-  >,
+  overrides?: ChatEventContextPointer & Pick<CanonicalChatEventInsert, "id">,
 ): PersistedChatEvent {
-  const runGroupId = "runGroupId" in values ? values.runGroupId : undefined;
-  const contextType =
-    runGroupId === null || runGroupId === undefined
-      ? (overrides?.contextType ??
-        ("contextType" in values ? values.contextType : undefined))
-      : "goal";
-  const contextId =
-    runGroupId === null || runGroupId === undefined
-      ? overrides && "contextId" in overrides
-        ? overrides.contextId
-        : "contextId" in values
-          ? values.contextId
-          : undefined
-      : runGroupId;
+  const { contextType, contextId } = canonicalChatEventContext(
+    values,
+    overrides,
+  );
 
   return {
     id: overrides?.id ?? values.id,

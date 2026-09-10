@@ -6,7 +6,6 @@ import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { command } from "ccstate";
 import {
   and,
@@ -147,24 +146,6 @@ function missingScheduledContextRowCondition(db: Db) {
   );
 }
 
-function missingGoalRowCondition(db: Db) {
-  return and(
-    chatEventTypeIn(["input.goal"]),
-    notExists(
-      db
-        .select({ id: threadGoals.id })
-        .from(threadGoals)
-        .where(
-          and(
-            eq(chatEvents.contextType, "goal"),
-            eq(threadGoals.id, chatEvents.contextId),
-            eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
-          ),
-        ),
-    ),
-  );
-}
-
 async function monitorChatEventQueue(
   db: Db,
   signal: AbortSignal,
@@ -184,7 +165,7 @@ async function monitorChatEventQueue(
         eventIds === undefined
           ? undefined
           : inArray(chatEvents.id, [...eventIds]),
-        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
+        chatEventTypeIn(["input.prompt", "input.automation"]),
         isNull(chatEvents.runId),
         notExists(
           db
@@ -196,7 +177,6 @@ async function monitorChatEventQueue(
         or(
           missingChatIntegrationContextRowCondition(db),
           missingScheduledContextRowCondition(db),
-          missingGoalRowCondition(db),
         ),
       ),
     )
@@ -205,10 +185,7 @@ async function monitorChatEventQueue(
 
   const orphanedMessagesBySource: Record<string, number> = {};
   for (const result of results) {
-    const source =
-      result.eventType === "input.goal"
-        ? "goal"
-        : (result.source ?? "(unknown)");
+    const source = result.source ?? "(unknown)";
     orphanedMessagesBySource[source] =
       (orphanedMessagesBySource[source] ?? 0) + result.orphanedMessages;
   }

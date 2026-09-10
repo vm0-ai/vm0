@@ -1,5 +1,6 @@
 import { command } from "ccstate";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { historicalRunGroupId } from "./run-event-provenance.service";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
@@ -153,28 +154,16 @@ export function visibleChatEventCondition(
   );
 }
 
-export async function goalIdForRun(
-  db: Db,
-  runId: string,
-): Promise<string | undefined> {
-  const [run] = await db
-    .select({ goalId: agentRuns.goalId })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
-    .limit(1);
-  return run?.goalId ?? undefined;
-}
-
 async function assistantEventRunContextForRun(
   db: ChatThreadEventTransaction,
   runId: string,
+  signal: AbortSignal,
 ): Promise<{
   readonly goalId: string | undefined;
   readonly shouldAttemptFirstAssistantEventClaim: boolean;
 }> {
   const [run] = await db
     .select({
-      goalId: agentRuns.goalId,
       apiStartedAt: agentRuns.apiStartedAt,
       firstAssistantEventAcknowledgedAt:
         agentRuns.firstAssistantEventAcknowledgedAt,
@@ -183,7 +172,7 @@ async function assistantEventRunContextForRun(
     .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return {
-    goalId: run?.goalId ?? undefined,
+    goalId: await historicalRunGroupId(db, runId, signal),
     shouldAttemptFirstAssistantEventClaim:
       run !== undefined &&
       run.apiStartedAt !== null &&
@@ -208,7 +197,11 @@ export async function insertAssistantEventsInTransaction(
     };
   }
 
-  const runContext = await assistantEventRunContextForRun(tx, args.runId);
+  const runContext = await assistantEventRunContextForRun(
+    tx,
+    args.runId,
+    signal,
+  );
   signal.throwIfAborted();
 
   const insertedRows = await insertChatEvents(

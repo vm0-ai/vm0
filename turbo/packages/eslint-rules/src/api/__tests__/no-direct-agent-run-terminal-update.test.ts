@@ -53,6 +53,13 @@ ruleTester.run(
       },
     ],
     invalid: [
+      {
+        name: "runtime mapping retains the terminal lifecycle guard",
+        code: `${preamble.replace("/db/schema/agent-run", "/db/runtime/agent-run")}
+          tx.update(agentRuns).set({ status: "failed" });
+        `,
+        errors: [{ messageId: "directTerminalUpdate" }],
+      },
       ...["completed", "failed", "timeout", "cancelled"].map((status) => {
         return {
           name: `direct ${status} transition is rejected`,

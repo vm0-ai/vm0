@@ -13,7 +13,7 @@ import type {
   ChatTeamsMessageFile,
   ChatTeamsMessageFiles,
 } from "@okouai/db/jsonb-contracts/chat-teams-context";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";

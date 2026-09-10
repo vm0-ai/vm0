@@ -4,7 +4,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
-  readGoalThreadFixture,
   seedGoalForRunFixture,
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
@@ -24,7 +23,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { cronExtractPiMemoryStage1Contract } from "@okouai/api-contracts/contracts/cron";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
@@ -177,13 +175,12 @@ import {
   createUsagePricingFixture,
   type UsagePricingFixture,
 } from "../../../test-fixtures/usage-pricing";
-import { signSandboxJwtForTests, verifyOkouToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { cronExtractPiMemoryStage1RoutesForTest } from "../cron-extract-pi-memory-stage1";
-import { goalsRoutes } from "../goals";
 import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { modelProvidersRoutes } from "../model-providers";
@@ -3087,25 +3084,6 @@ function threadPiAutomationsClient(
   })(workflowAutomationsContract);
 }
 
-function threadPiGoalHeaders(actor: ApiTestUser, runId: string) {
-  const seconds = Math.floor(now() / 1000);
-  return {
-    authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "okou",
-      userId: actor.userId,
-      orgId: requireOrgId(actor),
-      runId,
-      capabilities: [
-        "goal:read",
-        "goal:agent-result:write",
-        "goal:user-control:write",
-      ],
-      iat: seconds,
-      exp: seconds + 600,
-    })}`,
-  };
-}
-
 async function postThreadPiAutomationEvent(args: {
   readonly webhookUrl: string;
   readonly webhookSecret: string;
@@ -3436,47 +3414,6 @@ describe("thread-bound Pi Automation and Goal execution", () => {
       clearMockNow();
     },
     90_000,
-  );
-
-  it.each(["bootstrap", "continuation"] as const)(
-    "rejects retired Goal %s before Pi subscription execution",
-    async (entry) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const origin =
-        entry === "bootstrap"
-          ? await api.createRun(actor, {
-              agentId,
-              prompt: "old client bootstrap",
-              modelProvider: "anthropic-api-key",
-            })
-          : await sendChatRun(actor, {
-              agentId,
-              prompt: "old client continuation",
-              model: "claude-sonnet-5",
-            });
-      const originClaim = await claimChatRun(runnerGroup, origin.runId);
-      await configureSubscriptionPiModel(
-        actor,
-        { accountId: "goal-owner-account" },
-        "gpt-5.6-luna",
-      );
-      const goal = await accept(
-        setupApp({ context, routes: goalsRoutes })(goalsContract).create({
-          headers: threadPiGoalHeaders(actor, origin.runId),
-          body: { objective: "retired Goal" },
-        }),
-        [409],
-      );
-      expect(goal.body.error.message).toContain("retired");
-      await expect(
-        readGoalThreadFixture({
-          orgId: requireOrgId(actor),
-          userId: actor.userId,
-          agentId,
-        }),
-      ).resolves.toBeNull();
-      await completeChatRunOk(origin.runId, originClaim.sandboxHeaders);
-    },
   );
 });
 
@@ -21853,9 +21790,6 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
-  // Provider text is untrusted and must never reach a log or a metric.
-  const privateProviderDetail = "private_prompt_history_authorization_canary";
-
   it.each([
     { enabled: false, existingThread: false },
     { enabled: true, existingThread: false },
@@ -21959,6 +21893,176 @@ describe("CHAT-02: initial thinking indicator", () => {
       }
       const afterDemand = await chat.listThreadEvents(actor, run.threadId);
       expect(afterDemand.events).toStrictEqual(beforeDemand.events);
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
+  const providerDetail = "private-provider-detail";
+
+  it.each([
+    {
+      name: "an upstream gateway timeout delivered inside a 200 envelope",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          error: { code: 504, message: providerDetail },
+        });
+      },
+      outcome: "degraded",
+      reason: "upstream_timeout",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "a provider rate limit",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, {
+          status: 429,
+          headers: { "retry-after": "12" },
+        });
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      retryAfterMs: 12_000,
+    },
+    {
+      // OpenRouter also reports an exhausted upstream window as a choice-level
+      // error wrapped in a synthetic 502. It is the same admission problem, so
+      // it must not be counted as an independent gateway outage.
+      name: "a rate limit wrapped in a synthetic 502",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "error",
+              error: { code: 429, message: providerDetail },
+            },
+          ],
+        });
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "an upstream bad gateway",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 502 });
+      },
+      outcome: "degraded",
+      reason: "provider_unavailable",
+      retryAfterMs: undefined,
+    },
+    // Negative control: an unsupported request is our defect, not the
+    // provider's availability, and stays reportable.
+    {
+      name: "a rejected request",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 400 });
+      },
+      outcome: "error",
+      reason: "invalid_request",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "broken credentials",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 401 });
+      },
+      outcome: "error",
+      reason: "auth",
+      retryAfterMs: undefined,
+    },
+    {
+      // #33115 kept an exhausted budget reportable at this call site because it
+      // describes our own request. The shared boundary has classified it as an
+      // expected capacity outcome for every other optional generation since
+      // #32979, and no truncation was observed here in production, so the six
+      // fast-path features now agree rather than this one differing.
+      name: "an exhausted token budget",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "length",
+              native_finish_reason: "MAX_TOKENS",
+              message: { content: providerDetail },
+            },
+          ],
+        });
+      },
+      outcome: "degraded",
+      reason: "output_truncated",
+      retryAfterMs: undefined,
+    },
+    {
+      // Non-empty for the provider, yet nothing survives sanitization. Output
+      // this service cannot interpret stays our defect.
+      name: "output that sanitizes to nothing",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
+        });
+      },
+      outcome: "error",
+      reason: "unusable_output",
+      retryAfterMs: undefined,
+    },
+  ])(
+    "omits opening copy and reports a defect only for $name",
+    async ({ thinkingResponse, outcome, reason, retryAfterMs }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            const system = payload.messages[0]?.content ?? "";
+            return system.includes("Write user-visible progress copy")
+              ? thinkingResponse()
+              : HttpResponse.json({
+                  choices: [
+                    {
+                      finish_reason: "stop",
+                      message: { content: "Launch Checklist" },
+                    },
+                  ],
+                });
+          },
+        ),
+      );
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare the launch checklist",
+      });
+      await flushWaitUntilForTest();
+
+      // The optional generation is isolated: no marker, and the run proceeds.
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        events.events.filter((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toStrictEqual([]);
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+
+      const [result] = auxiliaryResults(context, "chat_initial_thinking");
+      expect(result).toStrictEqual(
+        expect.objectContaining({ outcome, reason, run_id: run.runId }),
+      );
+      // Recorded only when the provider actually asked for a delay, so the
+      // backoff decision can rest on how often the header is really sent.
+      expect(result?.retry_after_ms).toBe(retryAfterMs);
+      // Only a defect the caller can act on still reaches the log.
+      expect(auxiliaryWarnings(context)).toHaveLength(
+        outcome === "error" ? 1 : 0,
+      );
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
+        providerDetail,
+      );
+      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(
+        providerDetail,
+      );
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22250,136 +22354,6 @@ describe("CHAT-02: initial thinking indicator", () => {
           return event.runEventId === "thinking:initial";
         }),
       ).toBeFalsy();
-    },
-  );
-
-  it.each([
-    {
-      name: "an HTTP rate limit",
-      response: () => {
-        return HttpResponse.json(
-          { error: { code: 429 } },
-          { status: 429, headers: { "retry-after": "12" } },
-        );
-      },
-      outcome: "degraded",
-      reason: "rate_limited",
-      retryAfterMs: 12_000,
-    },
-    {
-      // OpenRouter reports an exhausted upstream window as a synthetic gateway
-      // failure. It is the same admission problem, not a separate outage.
-      name: "a rate limit wrapped in a synthetic 502",
-      response: () => {
-        return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "error",
-              error: { code: 429, message: privateProviderDetail },
-            },
-          ],
-        });
-      },
-      outcome: "degraded",
-      reason: "rate_limited",
-      retryAfterMs: undefined,
-    },
-    {
-      name: "an unreachable provider",
-      response: () => {
-        return new HttpResponse(privateProviderDetail, { status: 503 });
-      },
-      outcome: "degraded",
-      reason: "provider_unavailable",
-      retryAfterMs: undefined,
-    },
-    {
-      name: "rejected credentials",
-      response: () => {
-        return new HttpResponse(privateProviderDetail, { status: 401 });
-      },
-      outcome: "error",
-      reason: "auth",
-      retryAfterMs: undefined,
-    },
-    {
-      // Non-empty for the provider, yet nothing survives sanitization.
-      name: "output that sanitizes to nothing",
-      response: () => {
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
-        });
-      },
-      outcome: "error",
-      reason: "unusable_output",
-      retryAfterMs: undefined,
-    },
-  ])(
-    "classifies $name for optional progress copy",
-    async ({ response, outcome, reason, retryAfterMs }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const body = openRouterBodySchema.parse(await request.json());
-            return body.messages[0]?.content.includes(
-              "Write user-visible progress copy",
-            )
-              ? response()
-              : HttpResponse.json({
-                  choices: [
-                    { finish_reason: "stop", message: { content: "Update" } },
-                  ],
-                });
-          },
-        ),
-      );
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare an update",
-      });
-      await flushWaitUntilForTest();
-
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome,
-          reason,
-          run_id: run.runId,
-          // Recorded only when the provider actually asked for a delay.
-          ...(retryAfterMs === undefined
-            ? {}
-            : { retry_after_ms: retryAfterMs }),
-        }),
-      ]);
-      expect(
-        auxiliaryResults(context, "chat_initial_thinking")[0],
-      ).toStrictEqual(
-        retryAfterMs === undefined
-          ? expect.not.objectContaining({ retry_after_ms: expect.anything() })
-          : expect.anything(),
-      );
-      // Only a defect the caller can act on still reaches the log.
-      expect(auxiliaryWarnings(context)).toHaveLength(
-        outcome === "error" ? 1 : 0,
-      );
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        privateProviderDetail,
-      );
-      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(
-        privateProviderDetail,
-      );
-
-      // The optional copy is absent either way; the run itself is untouched.
-      const page = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        page.events.some((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toBeFalsy();
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-      await cancelChatRun(actor, run.runId);
     },
   );
 

@@ -1,5 +1,5 @@
 import { elapsedSinceApiStartMs } from "@okouai/api-contracts/contracts/runners";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";

@@ -1,4 +1,5 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { historicalRunGroupId } from "./run-event-provenance.service";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { FeatureSwitchKey, isFeatureEnabled } from "@okouai/core";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -27,10 +28,7 @@ import {
   generateAuxiliary,
   type RecordAuxiliaryGenerationDetail,
 } from "./auxiliary-generation.service";
-import {
-  goalIdForRun,
-  visibleChatEventCondition,
-} from "./chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
@@ -275,9 +273,10 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   ) {
     return false;
   }
-  // Progress copy is the most disposable of the auxiliary generations: the run
-  // still answers without it. Share the boundary so an exhausted provider
-  // window is counted as expected degradation instead of warned about here.
+  // Opening copy is optional, is never retried, and its omission changes no run
+  // outcome. #33115 suppressed the transient provider classes here directly;
+  // the shared boundary owns exactly that judgement for every other fast-path
+  // generation, so route through it instead of keeping a second classifier.
   const thinking = await generateAuxiliary({
     feature: "chat_initial_thinking",
     generate: (record) => {
@@ -299,7 +298,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const goalId = await goalIdForRun(args.db, args.runId);
+  const goalId = await historicalRunGroupId(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,

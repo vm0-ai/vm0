@@ -604,22 +604,6 @@ export async function installOfficialWorkflowRunGateFixture(
   throw new Error("Official Workflow Run gate did not become active");
 }
 
-export async function readThreadGoalAutonomyBudgetFixture(
-  context: TestContext,
-  threadId: string,
-): Promise<number | null> {
-  const response = await postAction(context, {
-    action: "read-thread-goal-autonomy-budget",
-    thread_id: threadId,
-  });
-  if (!("autonomy_budget" in response)) {
-    throw new Error(
-      "readThreadGoalAutonomyBudgetFixture missing autonomy_budget",
-    );
-  }
-  return response.autonomy_budget ?? null;
-}
-
 export async function resetDatabasePool(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-database-pool" });
 }

@@ -8,7 +8,7 @@ import type {
   HostedSitePrepareRequest,
 } from "@okouai/api-contracts/contracts/host";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import {
   hostedDeployments,
   privateHostedDeployments,

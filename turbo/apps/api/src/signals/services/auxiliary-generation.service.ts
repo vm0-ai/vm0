@@ -7,6 +7,7 @@ import {
   OpenRouterRequestError,
 } from "../external/openrouter";
 import {
+  isTransientProviderFailure,
   openRouterFailureReason,
   openRouterFailureTokenCounts,
   type OpenRouterFailureReason,
@@ -69,16 +70,30 @@ function retryAfterMilliseconds(error: unknown): number | undefined {
     : undefined;
 }
 
-/** Reasons the caller can do nothing about: counted, never warned. */
+/**
+ * Reasons the caller can do nothing about: counted, never warned. The provider
+ * classes come from the shared predicate. The two listed here describe our own
+ * request rather than the provider's availability, but for an optional
+ * generation the token ceiling and a tool-call terminal outcome are still
+ * expected capacity results, and reporting them as defects would restore the
+ * noise this boundary replaces.
+ */
 function isDegradedReason(reason: Reason): boolean {
-  return (
-    reason === "rate_limited" ||
-    reason === "upstream_timeout" ||
-    reason === "network" ||
-    reason === "provider_unavailable" ||
-    reason === "output_truncated" ||
-    reason === "unexpected_tool_calls"
-  );
+  switch (reason) {
+    case "none":
+    case "caller_cancelled":
+    case "not_applicable":
+    case "unusable_output": {
+      return false;
+    }
+    case "output_truncated":
+    case "unexpected_tool_calls": {
+      return true;
+    }
+    default: {
+      return isTransientProviderFailure(reason);
+    }
+  }
 }
 
 const log = logger("api:auxiliary-generation");

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { usageEvent } from "@okouai/db/schema/usage-event";

@@ -1213,66 +1213,18 @@ mod tests {
         assert!(framework_supports_active_input(env::Framework::Pi));
     }
 
-    struct TestEnvGuard;
+    struct TestRuntimeRootGuard;
 
-    impl Drop for TestEnvGuard {
+    impl TestRuntimeRootGuard {
+        fn new() -> Self {
+            let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
+            Self
+        }
+    }
+
+    impl Drop for TestRuntimeRootGuard {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
-        }
-    }
-
-    unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) -> TestEnvGuard {
-        let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
-        unsafe {
-            clear_test_env();
-            std::env::set_var(
-                guest_contracts::env::CANONICAL_API_URL_ENV,
-                server.base_url(),
-            );
-            std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
-            std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
-            std::env::set_var(
-                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-                test_runtime_dir(),
-            );
-            std::env::set_var(
-                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-                write_test_run_payload(prompt),
-            );
-        }
-        TestEnvGuard
-    }
-
-    unsafe fn clear_test_env() {
-        for key in [
-            guest_contracts::env::RUN_ID_ENV,
-            guest_contracts::env::CANONICAL_API_TOKEN_ENV,
-            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-            guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-            guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-            guest_contracts::env::CLI_AGENT_TYPE_ENV,
-            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            guest_contracts::env::USE_MOCK_CLAUDE_ENV,
-            guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-            "MOCK_CODEX_APP_SERVER_SCENARIO",
-        ] {
-            unsafe {
-                std::env::remove_var(key);
-            }
         }
     }
 
@@ -1418,7 +1370,7 @@ mod tests {
     async fn assert_final_telemetry_does_not_record_recursive_upload_op(status: u16) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, None) };
+        let _runtime_root_guard = TestRuntimeRootGuard::new();
         let guest_paths = test_guest_paths();
 
         let tmp = tempfile::tempdir().unwrap();
@@ -1698,8 +1650,7 @@ mod tests {
 
     async fn complete_execution_keeps_workload_resource_counters_out_of_messages_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
-        let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
-        let _runtime_root_guard = TestEnvGuard;
+        let _runtime_root_guard = TestRuntimeRootGuard::new();
         let hard_limit = WorkloadResourceLimitDiagnostic {
             memory_max_events: 1_882_956,
             memory_oom_events: 3,
@@ -1852,7 +1803,7 @@ mod tests {
     async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("/checkpoint-failure")) };
+        let _runtime_root_guard = TestRuntimeRootGuard::new();
         let guest_paths = test_guest_paths();
 
         let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
@@ -1910,7 +1861,7 @@ mod tests {
     async fn complete_execution_treats_combined_report_failure_as_checkpoint_failure_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("/combined-checkpoint-failure")) };
+        let _runtime_root_guard = TestRuntimeRootGuard::new();
         let guest_paths = test_guest_paths();
 
         let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
@@ -1979,7 +1930,7 @@ mod tests {
     async fn complete_execution_keeps_success_when_history_is_unavailable_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("/help")) };
+        let _runtime_root_guard = TestRuntimeRootGuard::new();
         let guest_paths = test_guest_paths();
 
         let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
@@ -2052,7 +2003,7 @@ mod tests {
     ) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
+        let _runtime_root_guard = TestRuntimeRootGuard::new();
         let guest_paths = test_guest_paths();
 
         let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);

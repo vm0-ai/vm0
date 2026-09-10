@@ -176,6 +176,74 @@ const cases = Object.freeze([
     outcome: "degraded",
     reason: "rate_limited",
   },
+  // OpenRouter reports an upstream gateway failure inside a 200 body too. The
+  // wrapper status is then a local synthetic 502, so only the provider code
+  // separates a timeout from unavailability.
+  {
+    name: "typed response gateway timeout",
+    response: () => {
+      return HttpResponse.json({ error: { code: 504, message: secret } });
+    },
+    outcome: "degraded",
+    reason: "upstream_timeout",
+  },
+  {
+    name: "typed response bad gateway",
+    response: () => {
+      return HttpResponse.json({ error: { code: 502, message: secret } });
+    },
+    outcome: "degraded",
+    reason: "provider_unavailable",
+  },
+  {
+    name: "wrapped provider unavailability",
+    response: () => {
+      return HttpResponse.json({
+        error: {
+          metadata: {
+            raw: JSON.stringify({
+              error: { status: "UNAVAILABLE", message: secret },
+            }),
+          },
+        },
+      });
+    },
+    outcome: "degraded",
+    reason: "provider_unavailable",
+  },
+  {
+    name: "wrapped provider resource exhaustion",
+    response: () => {
+      return HttpResponse.json({
+        error: {
+          metadata: {
+            raw: JSON.stringify({
+              error: { status: "RESOURCE_EXHAUSTED", message: secret },
+            }),
+          },
+        },
+      });
+    },
+    outcome: "degraded",
+    reason: "rate_limited",
+  },
+  {
+    name: "wrapped invalid parameter overrides a transient provider code",
+    response: () => {
+      return HttpResponse.json({
+        error: {
+          code: 504,
+          metadata: {
+            raw: JSON.stringify({
+              error: { status: "INVALID_ARGUMENT", message: secret },
+            }),
+          },
+        },
+      });
+    },
+    outcome: "error",
+    reason: "invalid_request",
+  },
   {
     name: "wrapped invalid parameter overrides transient HTTP",
     response: () => {

@@ -48,7 +48,8 @@ function updatesAgentRuns(
   }
   const imported = importReference(sourceCode, resolvedTable);
   return (
-    imported?.source === AGENT_RUN_SCHEMA_MODULE &&
+    (imported?.source === AGENT_RUN_SCHEMA_MODULE ||
+      imported?.source === "@okouai/db/runtime/agent-run") &&
     imported.importedName === "agentRuns"
   );
 }

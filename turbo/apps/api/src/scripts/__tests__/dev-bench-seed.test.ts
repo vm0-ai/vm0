@@ -53,7 +53,6 @@ function runMetadata(row: ProfileRunMetadataRow) {
     triggerSource: row.triggerSource,
     autonomyBudget: row.autonomyBudget,
     workflowAutomationId: row.workflowAutomationId,
-    goalId: row.goalId,
     modelProvider: row.modelProvider,
     modelProviderId: row.modelProviderId,
     modelProviderCredentialScope: row.modelProviderCredentialScope,

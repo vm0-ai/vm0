@@ -1,4 +1,4 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, gt, isNull, or, type SQL } from "drizzle-orm";
 
 export function activePendingRunPredicate(staleThreshold: Date): SQL {
