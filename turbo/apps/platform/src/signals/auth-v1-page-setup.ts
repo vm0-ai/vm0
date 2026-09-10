@@ -49,7 +49,7 @@ function setupAuthV1Page(mode: AuthV1PageMode) {
       set(updatePage$, createElement(AuthV1LoadError));
       return;
     }
-    const signals = createAuthV1ClerkSignals();
+    const signals = createAuthV1ClerkSignals(clerk);
     set(
       updatePage$,
       createElement(AuthV1Page, { clerk, mode, ui: uiLoad.value, signals }),

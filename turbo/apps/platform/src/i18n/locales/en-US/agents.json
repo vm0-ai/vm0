@@ -61,11 +61,16 @@
     "success": "Agent deleted",
     "title": "Delete {{agentName}}?",
     "workflows": {
+      "copiedTitle": "Already copied",
+      "copiedTo": "{{workflowTitle}} copied to {{agentName}}",
       "copyTo": "Copy to {{agentName}}",
       "deleteWithAgent": "Delete with agent",
       "description": "Copy a workflow to another agent to keep it. Anything left is deleted.",
       "handle": "Handle workflow {{workflowTitle}}",
-      "title": "Keep any workflows?"
+      "loadFailed": "Could not load workflows. Retry before deleting this agent.",
+      "loading": "Loading workflows…",
+      "title": "Keep any workflows?",
+      "untitled": "Workflow"
     }
   },
   "detail": {
@@ -553,6 +558,7 @@
         "label": "How they sound"
       },
       "visibility": {
+        "defaultDescription": "The workspace default agent must remain public for all workspace members.",
         "description": "Visible to everyone in this workspace.",
         "label": "Make public"
       }

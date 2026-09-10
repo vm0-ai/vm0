@@ -386,3 +386,95 @@ test("An unresolved signup can be sent after its account is verified", async () 
     }),
   );
 });
+
+test.each([
+  {
+    referral: "Impact alone",
+    query: "im_ref=partner-click",
+    acquisition: {},
+  },
+  {
+    referral: "Impact alongside an Okou Google Ads campaign",
+    query:
+      "im_ref=partner-click&gclid=original-click&okou_campaign_id=24220469665&okou_ad_group_id=123456",
+    acquisition: {
+      gclid: "original-click",
+      vm0_campaign_id: "24220469665",
+      vm0_ad_group_id: "123456",
+    },
+  },
+])(
+  "A returning user forwards $referral separately without firing a signup conversion",
+  async ({ query, acquisition }) => {
+    mockNow(NOW, context.signal);
+    const gtag = installGtagMock();
+    let receivedImpact: unknown;
+    let receivedAcquisition: unknown;
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        receivedImpact = body.impactAttribution;
+        receivedAcquisition = body.attribution;
+        return respond(200, { recorded: false });
+      },
+    );
+    await setupPage({
+      context,
+      path: `/agents?${query}`,
+      auth: {
+        user: {
+          id: "test-user-123",
+          fullName: "Test User",
+          email: "test@example.com",
+          createdAt: new Date(NOW - 86_400_000),
+        },
+      },
+    });
+    await waitForAgentsPage();
+    expect(receivedImpact).toStrictEqual({
+      clickId: "partner-click",
+      capturedAt: new Date(NOW).toISOString(),
+    });
+    expect(receivedAcquisition).toMatchObject(acquisition);
+    expect(receivedAcquisition).not.toHaveProperty("im_ref");
+    expect(gtag).not.toHaveBeenCalled();
+  },
+);
+
+test("An expired shared Impact cookie is not forwarded", async () => {
+  let receivedImpact: unknown;
+  context.mocks.browser.cookie(
+    `okou_impact=${encodeURIComponent(JSON.stringify({ clickId: "expired", capturedAt: "2025-01-01T00:00:00.000Z" }))}`,
+  );
+  context.mocks.api(
+    acquisitionAttributionContract.recordSignup,
+    ({ body, respond }) => {
+      receivedImpact = body.impactAttribution;
+      return respond(200, { recorded: true });
+    },
+  );
+  await setupAttributionPage();
+  await waitForAgentsPage();
+  expect(receivedImpact).toBeUndefined();
+});
+
+test("A shared Impact click keeps its timestamp after crossing the auth domain", async () => {
+  const impact = {
+    clickId: "shared-partner-click",
+    capturedAt: new Date(NOW - 86_400_000).toISOString(),
+  };
+  context.mocks.browser.cookie(
+    `okou_impact=${encodeURIComponent(JSON.stringify(impact))}`,
+  );
+  let receivedImpact: unknown;
+  context.mocks.api(
+    acquisitionAttributionContract.recordSignup,
+    ({ body, respond }) => {
+      receivedImpact = body.impactAttribution;
+      return respond(200, { recorded: false });
+    },
+  );
+  await setupAttributionPage(new Date(NOW - 86_400_000));
+  await waitForAgentsPage();
+  expect(receivedImpact).toStrictEqual(impact);
+});

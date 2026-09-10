@@ -409,7 +409,7 @@ struct ProcessLogReaders {
 }
 
 impl ProcessLogReaders {
-    fn from_child(id: &str, child: &mut tokio::process::Child) -> Self {
+    fn from_child(id: &str, child: &mut process_launch::asynchronous::Child) -> Self {
         Self {
             stdout: child
                 .stdout
@@ -1228,7 +1228,7 @@ impl FirecrackerSandbox {
     /// [`Sandbox::start`] remains responsible for cleanup when startup fails.
     async fn spawn_and_wait_for_api(
         &mut self,
-        command: tokio::process::Command,
+        command: process_launch::Command,
         api_sock: &Path,
         runtime_cancel: CancellationToken,
         boot_mode: &str,
@@ -1238,14 +1238,15 @@ impl FirecrackerSandbox {
             .as_ref()
             .map(|manager| manager.acquire(self.config.id, self.config.resources.cpu_count))
             .transpose()?;
-        let placement_file = guest_cpu_cgroup
+        let placement_directory = guest_cpu_cgroup
             .as_ref()
-            .map(GuestCpuCgroupLease::clone_placement_file)
+            .map(GuestCpuCgroupLease::clone_placement_directory)
             .transpose()
             .map_err(|e| SandboxError::Start {
                 message: format!("clone Guest CPU cgroup placement descriptor: {e}"),
             })?;
-        let child = spawn_firecracker(command, self.sandbox_paths.workspace(), placement_file)
+        let child = spawn_firecracker(command, self.sandbox_paths.workspace(), placement_directory)
+            .await
             .map_err(|e| SandboxError::Start {
                 message: format!(
                     "spawn firecracker: {e} (boot_mode={boot_mode}, api_sock={})",
@@ -1321,7 +1322,7 @@ impl FirecrackerSandbox {
 
         let api_sock = self.sock_paths.api_sock();
 
-        let mut command = tokio::process::Command::new("ip");
+        let mut command = process_launch::Command::new("ip");
         command
             .args(["netns", "exec"])
             .arg(self.network.name())
@@ -1781,7 +1782,7 @@ impl Drop for FirecrackerSandbox {
 #[cfg(test)]
 fn monitor_process(
     id: &str,
-    child: tokio::process::Child,
+    child: process_launch::asynchronous::Child,
     state: Arc<AtomicU8>,
     state_publish_lock: Arc<Mutex<()>>,
     state_tx: watch::Sender<SandboxState>,
@@ -1801,7 +1802,7 @@ fn monitor_process(
 
 fn monitor_process_with_context(
     id: &str,
-    mut child: tokio::process::Child,
+    mut child: process_launch::asynchronous::Child,
     context: ProcessMonitorContext,
 ) -> ProcessMonitorHandle {
     let readers = ProcessLogReaders::from_child(id, &mut child);
@@ -1810,17 +1811,17 @@ fn monitor_process_with_context(
 
 fn monitor_process_with_log_readers(
     id: &str,
-    child: tokio::process::Child,
+    child: process_launch::asynchronous::Child,
     context: ProcessMonitorContext,
     readers: ProcessLogReaders,
 ) -> ProcessMonitorHandle {
-    let exit_notifier = ChildExitNotifier::open(&child);
+    let exit_notifier = ChildExitNotifier::open(child.id());
     monitor_process_with_log_readers_and_exit_notifier(id, child, context, readers, exit_notifier)
 }
 
 fn monitor_process_with_log_readers_and_exit_notifier(
     id: &str,
-    mut child: tokio::process::Child,
+    mut child: process_launch::asynchronous::Child,
     mut context: ProcessMonitorContext,
     readers: ProcessLogReaders,
     exit_notifier: ChildExitNotifier,
@@ -1841,7 +1842,7 @@ fn monitor_process_with_log_readers_and_exit_notifier(
             ProcessMonitorExit::NaturalPreReap => {
                 let prev = publish_process_monitor_exit(&context);
                 if prev == SandboxState::Running {
-                    let _ = kill_process_group(&child);
+                    let _ = kill_process_group(child.id());
                 }
                 (prev, child.wait().await)
             }
@@ -1876,7 +1877,7 @@ fn monitor_process_with_log_readers_and_exit_notifier(
 }
 
 async fn wait_for_process_monitor_exit(
-    child: &mut tokio::process::Child,
+    child: &mut process_launch::asynchronous::Child,
     exit_notifier: &ChildExitNotifier,
     kill_rx: &mut mpsc::Receiver<control::ProcessTerminationRequest>,
 ) -> ProcessMonitorExit {
@@ -1899,12 +1900,12 @@ async fn wait_for_process_monitor_exit(
 }
 
 async fn wait_after_process_termination_request(
-    child: &mut tokio::process::Child,
+    child: &mut process_launch::asynchronous::Child,
     kill_rx: &mut mpsc::Receiver<control::ProcessTerminationRequest>,
     request: Option<control::ProcessTerminationRequest>,
 ) -> io::Result<std::process::ExitStatus> {
     if let Some(request) = request {
-        let _ = kill_process_group(child);
+        let _ = kill_process_group(child.id());
         request.acknowledge();
         kill_rx.close();
         // Closed receivers can still observe sends that already reserved

@@ -36,6 +36,12 @@ case "${1:-}" in
         exit 1
       fi
       [ "${MOCK_GOAL_TARGET_FLOOR_VALID:-1}" = "1" ]
+    elif [ "${3:-}" = "2c231766e383b651867893852cfb47dcc78af0bd" ]; then
+      [ "${4:-}" != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ] &&
+        [ "${MOCK_GOAL_SCHEMA_READER_VALID:-1}" = "1" ]
+    elif [ "${3:-}" = "077a9a644986e13bed4750796f91e55c4a876aad" ]; then
+      [ "${4:-}" != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ] &&
+        [ "${MOCK_GOAL_SCHEMA_REPAIR_VALID:-1}" = "1" ]
     else
       [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
     fi
@@ -128,7 +134,7 @@ assert_failure() {
   grep -q "$expected_message" "${tmp_dir}/failure.err" || fail "missing failure message: ${expected_message}"
 }
 
-# An S1-compatible API target must still resolve its valid pre-S1 Runner.
+# A combined-S4-compatible API target must still resolve its valid pre-S1 Runner.
 : >"${tmp_dir}/boundaries.log"
 output_file="${tmp_dir}/success.output"
 run_resolver "$output_file" >"${tmp_dir}/success.log"
@@ -197,6 +203,22 @@ assert_failure "Runner release runner-rs-v1.2.3 predates the blank sandbox statu
 if grep -q 'api.github.com/repos/.*/releases/tags/' "${tmp_dir}/boundaries.log"; then
   fail "blank reader artifact rejection must precede asset resolution"
 fi
+
+# S1/S2/S3-only and original-S4-without-repair targets fail before any artifacts.
+for floors in "0 0" "1 0" "0 1"; do
+  read -r reader repair <<<"$floors"
+  : >"${tmp_dir}/boundaries.log"
+  assert_failure "lacks the combined S4 Goal schema compatibility boundary" \
+    run_resolver "${tmp_dir}/schema-floor.output" \
+    MOCK_GOAL_SCHEMA_READER_VALID="$reader" MOCK_GOAL_SCHEMA_REPAIR_VALID="$repair"
+  grep -Fq "4a4881bf84cb1d79723fd38c83e00f2215bb1e31 (API 1.580.0)" \
+    "${tmp_dir}/failure.err" || fail "schema rejection must identify the verified release"
+  [ ! -s "${tmp_dir}/schema-floor.output" ] || fail "unsafe schema target published output"
+  [ ! -s "${tmp_dir}/failure.out" ] || fail "unsafe schema target printed resolved targets"
+  if grep -qE '^(curl|ssh|git (show|rev-list)) ' "${tmp_dir}/boundaries.log"; then
+    fail "schema rejection must precede API and Runner artifact resolution"
+  fi
+done
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
 ruby -e '

@@ -1241,6 +1241,12 @@ export async function discoverExternalPublicConnectorCatalogStatus(
   const read = connectorCatalogStatusRead({
     catalog,
     effective: discoveryEffectiveConnectors(effective, args),
+    // The category list and the category counts describe the same thing, so
+    // they are computed from the same set: the whole catalog minus the
+    // connectors Okou runs for itself, not the slice that came back for a
+    // named category. Offering a category the counts do not know would be a
+    // chip that opens nothing.
+    categorySource: withoutInternalConnectors(effective),
     connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
   });
@@ -1257,6 +1263,13 @@ export async function discoverExternalPublicConnectorCatalogStatus(
 function connectorCatalogStatusRead(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: readonly EffectiveConnector[];
+  /**
+   * The connectors the category list describes, when that is wider than the
+   * ones being returned. Discovery answers a named category with only that
+   * category, and the category list is how a client offers the others, so it
+   * has to keep describing the whole catalog. Defaults to what is returned.
+   */
+  readonly categorySource?: readonly EffectiveConnector[];
   readonly connections: readonly ConnectorCatalogConnection[];
   readonly referenceConnectorSlugs: readonly string[];
 }): ConnectorCatalogStatusRead {
@@ -1279,7 +1292,7 @@ function connectorCatalogStatusRead(args: {
       connectors,
       categoryMetadata: categoryMetadataForConnectors(
         args.catalog,
-        args.effective,
+        args.categorySource ?? args.effective,
       ),
     },
     referenceMetadata: referenceMetadataForCatalog(

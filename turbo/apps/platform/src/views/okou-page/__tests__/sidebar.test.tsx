@@ -120,6 +120,7 @@ function prepareDefaultAgent(
 function prepareAgents(targetContext = context): AgentResponse[] {
   const agents: AgentResponse[] = [
     {
+      isDefaultAgent: false,
       agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
@@ -132,6 +133,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       visibility: "public",
     },
     {
+      isDefaultAgent: false,
       agentId: RESEARCH_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Research Agent",
@@ -144,6 +146,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       visibility: "public",
     },
     {
+      isDefaultAgent: false,
       agentId: SUPPORT_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Support Agent",
@@ -164,6 +167,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       [SUPPORT_AGENT_ID]: "Support Agent",
     };
     return respond(200, {
+      isDefaultAgent: false,
       agentId: params.id,
       ownerId: "test-user-123",
       description: null,
@@ -794,12 +798,7 @@ function mockLongSidebarHistory(
 
 async function scrollToArchivedContext(): Promise<HTMLElement> {
   await waitFor(() => {
-    expect(
-      within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-    ).toBeInTheDocument();
-    expect(
-      within(sidebar()).getAllByTestId("sidebar-chat-thread-virtual-row"),
-    ).toHaveLength(14);
+    expect(threadLinkByTitle("Release plan")).toBeInTheDocument();
   });
 
   const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
@@ -1604,12 +1603,17 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
   });
 });
 
-test("Show mark all read in the mobile chat-list menu", async () => {
+test("Show mark all read in the mobile chat-list menu before conversations load", async () => {
   mockMobileLayout();
   prepareDefaultAgent();
-  const cachedChatThreadEvents = mockSidebarThreadStory([
-    createThread(INCIDENT_THREAD_ID, "Unread conversation"),
-  ]);
+  const remote = context.mocks.deferred<void>();
+  mockSidebarThreadStory(
+    [createThread(INCIDENT_THREAD_ID, "Unread conversation")],
+    [],
+    [],
+    context,
+    remote.promise,
+  );
   mockUnreadAgents(() => {
     return [AGENT_ID];
   });
@@ -1617,21 +1621,23 @@ test("Show mark all read in the mobile chat-list menu", async () => {
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    cachedChatThreadEvents,
   });
 
-  const list = await waitFor(() => {
-    const current = mobileSidebar();
-    expect(
-      within(current).getByText("Unread conversation"),
-    ).toBeInTheDocument();
-    return current;
+  const list = await screen.findByRole("complementary", {
+    name: "Sidebar",
   });
+  expect(
+    within(list).queryByText("Unread conversation"),
+  ).not.toBeInTheDocument();
   click(within(list).getByLabelText("Open chat list menu"));
 
   await waitFor(() => {
     expect(menuItemByText("Mark all read")).toBeInTheDocument();
   });
+  expect(
+    within(list).queryByText("Unread conversation"),
+  ).not.toBeInTheDocument();
+  remote.resolve();
 });
 
 test("Mark all of an agent’s chats read", async () => {

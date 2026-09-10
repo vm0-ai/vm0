@@ -1,4 +1,4 @@
-import { createAttachmentUrls$ } from "../attachment-resource-url.ts";
+import { createAttachmentPreviewSignals } from "../attachment-resource-url.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import {
   command,
@@ -153,19 +153,21 @@ function createCatalogArtifactPreviewSignals(
   internalArtifactPreviewSignal$: State<AbortSignal>,
 ) {
   // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-  const selectedArtifactUrls$ = computed(async (get) => {
+  const selectedArtifactPreview$ = computed(async (get) => {
     get(internalArtifactPreviewSignal$);
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
     return detail
-      ? await get(createAttachmentUrls$(artifactDetailPreview(detail).url))
+      ? createAttachmentPreviewSignals(artifactDetailPreview(detail).url)
       : null;
   });
 
   const resourceUrl$ = computed(async (get) => {
-    return (await get(selectedArtifactUrls$))?.resourceUrl ?? null;
+    const preview = await get(selectedArtifactPreview$);
+    return preview ? await get(preview.resourceUrl$) : null;
   });
   const shareUrl$ = computed(async (get) => {
-    return (await get(selectedArtifactUrls$))?.shareUrl ?? null;
+    const preview = await get(selectedArtifactPreview$);
+    return preview ? await get(preview.shareUrl$) : null;
   });
 
   // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership

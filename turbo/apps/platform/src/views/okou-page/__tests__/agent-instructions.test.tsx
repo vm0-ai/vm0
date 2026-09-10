@@ -15,6 +15,7 @@ const context = testContext();
 
 function researchAgent() {
   return {
+    isDefaultAgent: false,
     agentId: AGENT_ID,
     avatarUrl: null,
     description: "Investigates release risks",

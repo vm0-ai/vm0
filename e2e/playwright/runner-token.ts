@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { chromium, type Browser, type Page } from "@playwright/test";
+import { chromium, expect, type Browser, type Page } from "@playwright/test";
 
 import { resolveApiBackendUrl } from "./api-backend-url";
 import { refreshClerkSessionToken, signInWithClerkEmailCode } from "./lib/auth";
@@ -9,11 +9,12 @@ import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import { formatErrorReport } from "./lib/error-report";
 import { captureClerkReadiness } from "./lib/clerk-readiness";
+import { ensureRunnerOrganizationReady } from "./lib/onboarding";
 import {
-  ensureRunnerOrganizationReady,
-  startVideoOnboardingCheckout,
-  waitForPaidOnboardingCompletion,
-} from "./lib/onboarding";
+  completeRunnerOnboarding,
+  createRunnerCheckout,
+  readRunnerPaidEntitlement,
+} from "./lib/runner-onboarding";
 import { seedPreviewBypassCookie } from "./lib/preview-bypass";
 import {
   collectStripeCheckoutState,
@@ -163,11 +164,17 @@ async function provisionRunnerCredential(
       clerkSessionToken,
       vercelAutomationBypassSecret,
     });
+    await completeRunnerOnboarding({
+      apiUrl,
+      clerkSessionToken,
+      vercelAutomationBypassSecret,
+    });
     if (target.upgradeToPro) {
-      await completePaidOnboarding(page, target, appUrl, outputDirectory);
-      clerkSessionToken = await refreshClerkSessionToken(page, {
-        activeOrganizationId: target.organizationId,
-      });
+      clerkSessionToken = await preparePaidRunner(
+        page,
+        options,
+        clerkSessionToken,
+      );
     }
     const token = await issueCliToken({
       apiUrl,
@@ -189,16 +196,63 @@ async function provisionRunnerCredential(
   }
 }
 
-async function completePaidOnboarding(
+async function preparePaidRunner(
   page: Page,
-  target: RunnerCredentialTarget,
-  appUrl: string,
-  outputDirectory: string,
-): Promise<void> {
+  options: ProvisionRunnerCredentialOptions,
+  clerkSessionToken: string,
+): Promise<string> {
+  const {
+    apiUrl,
+    appUrl,
+    target,
+    outputDirectory,
+    vercelAutomationBypassSecret,
+  } = options;
   try {
-    await startVideoOnboardingCheckout(page, { appUrl });
+    const memberId = await page.evaluate(() => window.Clerk?.user?.id);
+    if (!memberId) {
+      throw new Error("Runner checkout requires the signed-in Clerk user");
+    }
+    const checkoutUrl = await createRunnerCheckout({
+      apiUrl,
+      appUrl,
+      memberId,
+      clerkSessionToken,
+      vercelAutomationBypassSecret,
+    });
+    await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
     await fillStripeCheckout(page);
-    await waitForPaidOnboardingCompletion(page, { appUrl });
+    await page.waitForURL((url) => url.origin === new URL(appUrl).origin, {
+      timeout: 180_000,
+      waitUntil: "domcontentloaded",
+    });
+    let verifiedToken = await refreshClerkSessionToken(page, {
+      activeOrganizationId: target.organizationId,
+    });
+    // Observe the public entitlement after Stripe/webhook settlement before
+    // exposing credentials to shards that require paid models and BYOK.
+    await expect
+      .poll(
+        async () => {
+          const token = await page.evaluate(
+            async () => await window.Clerk?.session?.getToken(),
+          );
+          if (!token) {
+            throw new Error(
+              "Clerk session unavailable while verifying runner entitlement",
+            );
+          }
+          verifiedToken = token;
+          return await readRunnerPaidEntitlement({
+            apiUrl,
+            clerkSessionToken: token,
+            vercelAutomationBypassSecret,
+          });
+        },
+        { timeout: 60_000, message: "Runner Pro entitlement must be active" },
+      )
+      .toBe(true);
+    return verifiedToken;
   } catch (error: unknown) {
     try {
       await capturePaidOnboardingFailure(page, target, outputDirectory);

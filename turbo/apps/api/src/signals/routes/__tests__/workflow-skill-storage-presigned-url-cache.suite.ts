@@ -165,12 +165,15 @@ function cronHeaders(secret = CRON_SECRET) {
 function mockUniquePresignedUrls(): void {
   let count = 0;
   context.mocks.s3.getSignedUrl.mockImplementation(
-    (_client: unknown, command: unknown) => {
+    (_client: unknown, command: unknown, options: unknown) => {
+      if (!isRecord(options) || typeof options.expiresIn !== "number") {
+        throw new Error("Expected a presigned URL expiration");
+      }
       count += 1;
       const input = (command as { readonly input?: { readonly Key?: string } })
         .input;
       return Promise.resolve(
-        `https://r2.example.com/${encodeURIComponent(input?.Key ?? "unknown")}?sig=${count}`,
+        `https://r2.example.com/${encodeURIComponent(input?.Key ?? "unknown")}?sig=${count}&X-Amz-Expires=${options.expiresIn}`,
       );
     },
   );
@@ -330,7 +333,7 @@ beforeEach(() => {
 });
 
 describe("workflow skill storage presigned URL cache", () => {
-  it("reuses DB-cached URLs for ordinary read-only Storage mounts", async () => {
+  it("issues and reuses two-hour URLs for ordinary read-only Storage mounts", async () => {
     const { actor, runnerGroup } = await entitledWorkflowActor();
     if (!actor.orgId) {
       throw new Error("Expected readonly cache test actor to have an org");
@@ -387,10 +390,13 @@ describe("workflow skill storage presigned URL cache", () => {
           if (!mount?.archiveUrl) {
             throw new Error("Missing ordinary readonly Storage archive URL");
           }
-          return { runId: run.runId, mount };
+          return { runId: run.runId, archiveUrl: mount.archiveUrl };
         };
 
         const first = await createAndClaim("warm ordinary readonly DB cache");
+        expect(
+          new URL(first.archiveUrl).searchParams.get("X-Amz-Expires"),
+        ).toBe("7200");
         const rows = await readCacheRowsByObjectKeyPrefix(
           objectKeyPrefix,
           "readonly_storage",
@@ -399,13 +405,13 @@ describe("workflow skill storage presigned URL cache", () => {
         expect(rows[0]).toMatchObject({
           resolved_org_id: actor.orgId,
           storage_version_id: prepared.versionId,
-          ttl_seconds: 60 * 60,
-          presigned_url: first.mount.archiveUrl,
+          ttl_seconds: 2 * 60 * 60,
+          presigned_url: first.archiveUrl,
         });
         await api.requestCancelRun(actor, first.runId, [200]);
 
         const second = await createAndClaim("reuse ordinary readonly DB cache");
-        expect(second.mount.archiveUrl).toBe(first.mount.archiveUrl);
+        expect(second.archiveUrl).toBe(first.archiveUrl);
         await api.requestCancelRun(actor, second.runId, [200]);
       },
       "readonly_storage",

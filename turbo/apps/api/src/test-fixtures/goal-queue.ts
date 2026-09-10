@@ -3,9 +3,11 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { randomUUID } from "node:crypto";
+import { seedLiteralGoalArchive } from "./goal-retirement";
+import { insertChatEvent } from "../signals/services/chat-event.service";
 import { createStore } from "ccstate";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { now } from "../lib/time";
 import { ApiDispatchTimingCollector } from "../signals/services/api-dispatch-timing.service";
 import { claimQueueFirstRunAssociation } from "../signals/services/chat-queued-event.service";
@@ -65,12 +67,12 @@ export async function admitGoalQueueEventFixture(
   });
 }
 
-/** Persist a pre-retirement Goal on a thread created through the ordinary API. */
+/** Seed a retained literal archive and return its inert historical context ID. */
 export async function seedGoalForRunFixture(
   runId: string,
   objective: string,
   status: "active" | "paused" | "blocked" | "complete" = "active",
-): Promise<typeof threadGoals.$inferSelect> {
+): Promise<{ id: string; chatThreadId: string; objectiveBrief: string }> {
   const [run] = await db()
     .select({
       orgId: agentRuns.orgId,
@@ -88,32 +90,8 @@ export async function seedGoalForRunFixture(
       "Expected an owned thread run for the historical Goal fixture",
     );
   }
-  return await db().transaction(async (tx) => {
-    const [goal] = await tx
-      .insert(threadGoals)
-      .values({
-        orgId: run.orgId,
-        ownerUserId: run.userId,
-        agentId,
-        chatThreadId,
-        status,
-        objective,
-        objectiveBrief: objective,
-        autonomyBudget: 9,
-      })
-      .returning();
-    if (!goal) {
-      throw new Error("Expected a historical Goal fixture");
-    }
-    if (status === "active") {
-      await appendHistoricalGoalEvent(tx, {
-        chatThreadId: goal.chatThreadId,
-        eventType: "goal.open",
-        content: objective,
-      });
-    }
-    return goal;
-  });
+  const id = await seedLiteralGoalArchive(chatThreadId, objective, status);
+  return { id, chatThreadId, objectiveBrief: objective };
 }
 
 /** Restore actual legacy provenance independently of the current Goal writer. */
@@ -122,20 +100,29 @@ export async function setLegacyGoalRunOriginFixture(
   goalId: string,
   triggerSource: "goal" | "chat" = "goal",
 ): Promise<void> {
-  await db()
-    .update(agentRuns)
-    .set({ goalId, triggerSource })
-    .where(eq(agentRuns.id, runId));
+  await db().transaction(async (tx) => {
+    const [run] = await tx
+      .update(agentRuns)
+      .set({ triggerSource })
+      .where(eq(agentRuns.id, runId))
+      .returning({ threadId: agentRuns.chatThreadId });
+    if (!run?.threadId) {
+      throw new Error("Expected an owned historical run");
+    }
+    await insertChatEvent(tx, {
+      chatThreadId: run.threadId,
+      runId,
+      eventType: "output.message",
+      content: "Retained Goal run output",
+      runGroupId: goalId,
+    });
+  });
 }
 
 /** Read queue source event ids and admitted goal-run ids for route assertions. */
 export async function readGoalQueueStateFixture(threadId: string): Promise<{
   readonly eventIds: readonly string[];
   readonly runIds: readonly string[];
-  readonly runs: readonly {
-    readonly id: string;
-    readonly goalId: string | null;
-  }[];
 }> {
   const [events, runs] = await Promise.all([
     db()
@@ -150,14 +137,12 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
     db()
       .select({
         id: agentRuns.id,
-        goalId: agentRuns.goalId,
       })
       .from(agentRuns)
       .where(
         and(
           eq(agentRuns.chatThreadId, threadId),
-          isNotNull(agentRuns.goalId),
-          isNotNull(agentRuns.triggerSource),
+          eq(agentRuns.triggerSource, "goal"),
         ),
       ),
   ]);
@@ -168,7 +153,6 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
     runIds: runs.map((run) => {
       return run.id;
     }),
-    runs,
   };
 }
 
@@ -212,18 +196,23 @@ export async function setGoalQueueEventCreatedAtFixture(args: {
   }
 }
 
-/** Invalidate a goal without triggering a separate queue drain. */
+/** Retain a close marker beside captured input without invoking a queue drain. */
 export async function pauseGoalQueueTargetFixture(
   goalId: string,
 ): Promise<void> {
-  const [goal] = await db()
-    .update(threadGoals)
-    .set({ status: "paused" })
-    .where(eq(threadGoals.id, goalId))
-    .returning({ id: threadGoals.id });
-  if (!goal) {
-    throw new Error("Expected the goal queue target fixture");
+  const [event] = await db()
+    .select({ threadId: chatEvents.chatThreadId })
+    .from(chatEvents)
+    .where(eq(chatEvents.contextId, goalId));
+  if (!event) {
+    throw new Error("Expected historical Goal input");
   }
+  await db().transaction(async (tx) => {
+    await appendHistoricalGoalEvent(tx, {
+      chatThreadId: event.threadId,
+      eventType: "goal.close",
+    });
+  });
 }
 
 /** Seed retained Goal input beside supported automation input for queue tests. */
@@ -235,21 +224,7 @@ export async function createActiveGoalQueueEventFixture(args: {
   readonly objective: string;
   readonly objectiveBrief: string;
 }): Promise<{ readonly goalId: string; readonly eventId: string }> {
-  const [goal] = await db()
-    .insert(threadGoals)
-    .values({
-      orgId: args.orgId,
-      ownerUserId: args.userId,
-      agentId: args.agentId,
-      chatThreadId: args.threadId,
-      status: "active",
-      objective: args.objective,
-      objectiveBrief: args.objectiveBrief,
-    })
-    .returning({ id: threadGoals.id });
-  if (!goal) {
-    throw new Error("Expected the active goal fixture");
-  }
+  const goal = { id: randomUUID() };
   const admission = await admitGoalQueueEventFixture({
     threadId: args.threadId,
     goalId: goal.id,
@@ -263,7 +238,7 @@ export async function createActiveGoalQueueEventFixture(args: {
 
 /** Replay the final claim of a Goal prepared by an outgoing API instance. */
 export async function claimPreparedGoalFixture(args: {
-  readonly goal: typeof threadGoals.$inferSelect;
+  readonly goal: { readonly chatThreadId: string };
   readonly eventId: string;
   readonly runId: string;
 }): Promise<"claimed" | "lost"> {
@@ -349,7 +324,7 @@ async function appendHistoricalGoalEvent(
   tx: Tx,
   event: {
     readonly chatThreadId: string;
-    readonly eventType: "goal.open" | "input.goal";
+    readonly eventType: "goal.open" | "goal.close" | "input.goal";
     readonly content?: string | null;
     readonly runId?: string | null;
     readonly contextType?: "goal";
@@ -397,19 +372,34 @@ export async function setHistoricalGoalStatusFixture(
   if (!run?.threadId) {
     throw new Error("Missing historical fixture run");
   }
-  await db()
-    .update(threadGoals)
-    .set({ status })
-    .where(eq(threadGoals.chatThreadId, run.threadId));
+  await seedLiteralGoalArchive(
+    run.threadId,
+    "Retained historical status",
+    status,
+  );
 }
 
+/** Read inert archived status, never a current lifecycle record. */
 export async function historicalGoalStatusFixture(
   runId: string,
 ): Promise<string | undefined> {
-  const [goal] = await db()
-    .select({ status: threadGoals.status })
-    .from(threadGoals)
-    .innerJoin(agentRuns, eq(agentRuns.chatThreadId, threadGoals.chatThreadId))
-    .where(eq(agentRuns.id, runId));
-  return goal?.status;
+  const rows = await db()
+    .select({ payload: chatEvents.payload })
+    .from(chatEvents)
+    .innerJoin(agentRuns, eq(agentRuns.chatThreadId, chatEvents.chatThreadId))
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(chatEvents.eventType, "output.message"),
+        sql`${chatEvents.payload}->>'content' LIKE 'Okou Goal retired.%'`,
+      ),
+    )
+    .orderBy(desc(chatEvents.seqId))
+    .limit(1);
+  const content = rows[0]?.payload?.content;
+  return typeof content === "string"
+    ? /Original recorded status: (active|paused|blocked|complete)\n/u.exec(
+        content,
+      )?.[1]
+    : undefined;
 }

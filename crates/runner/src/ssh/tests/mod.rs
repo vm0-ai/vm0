@@ -3,6 +3,7 @@ mod credentials;
 mod framing;
 mod harness;
 mod lifecycle;
+mod observations;
 mod proof;
 mod telemetry;
 

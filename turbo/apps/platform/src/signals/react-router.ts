@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { ReactNode } from "react";
 
-type PageLayout = "sidebar" | "minimal" | "none";
+type PageLayout = "sidebar" | "standalone" | "none";
 
 const internalLayout$ = state<PageLayout>("none");
 const internalPage$ = state<ReactNode | undefined>(undefined);

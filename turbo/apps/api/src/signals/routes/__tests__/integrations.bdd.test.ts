@@ -1,3 +1,7 @@
+import {
+  seedLegacyMissingDefaultAgentFixture,
+  seedLegacyPrivateDefaultAgentFixture,
+} from "../../../test-fixtures/legacy-default-agent";
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/integrations-telegram";
@@ -4360,7 +4364,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(silentHomeSwitch).toBe("");
     expect(context.mocks.slack.views.open).not.toHaveBeenCalled();
 
-    // Deleting the org default agent clears orgMetadata.defaultAgentId at the
+    // A legacy deletion of the org default clears orgMetadata.defaultAgentId at the
     // DB level (FK onDelete: "set null"), and active onboarding flows only
     // configure existing agents, so resolveEffectiveCompose's "not_found"
     // status ("configured agent could not be found" notice) is unreachable
@@ -4377,7 +4381,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!status.defaultAgentId) {
       throw new Error("Expected onboarding to configure a default agent");
     }
-    await bdd.deleteAgent(onboarded, status.defaultAgentId);
+    await seedLegacyMissingDefaultAgentFixture(status.defaultAgentId);
     const missingSlackUserId = uniqueSlackUserId();
     const missingInstall = await integrations.installSlackWorkspace(onboarded, {
       installerSlackUserId: missingSlackUserId,
@@ -4813,8 +4817,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
     integrations.configureSlackAppMocks();
     const actor = bdd.user();
     const formerAdmin = bdd.user({ orgId: actor.orgId });
-    // Limited-free onboarding is admin-only. A later role downgrade leaves the
-    // former admin's private agent configured as an inaccessible org default.
+    // Reproduce legacy data written before default-agent visibility was locked.
+    // The former admin is now a member; other members must not gain private access.
     const hiddenDefaultId = await bdd.bootstrapLimitedFreeOnboarding(
       formerAdmin,
       {
@@ -4826,9 +4830,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       orgId: actor.orgId,
       orgRole: "org:member",
     });
-    await bdd.updateAgentMetadata(member, hiddenDefaultId, {
-      visibility: "private",
-    });
+    await seedLegacyPrivateDefaultAgentFixture(hiddenDefaultId);
     const visiblePublic = await bdd.createAgent(member, {
       displayName: "BDD Visible Public",
     });
@@ -5802,7 +5804,7 @@ describe("INT-02: Telegram integration", () => {
       },
       [200],
     );
-    await bdd.deleteAgent(actor, onboarding.defaultAgentId);
+    await seedLegacyMissingDefaultAgentFixture(onboarding.defaultAgentId);
 
     const inbound = await integrations.requestTelegramWebhook(
       OFFICIAL_TELEGRAM_BOT_ID,

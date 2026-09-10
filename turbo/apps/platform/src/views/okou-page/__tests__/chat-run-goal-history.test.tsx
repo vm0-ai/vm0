@@ -64,6 +64,59 @@ function inRunGroup(
   return { ...event, runGroupId };
 }
 
+test("A runless message stays outside later work history", async () => {
+  const groupId = "e0000000-0000-4000-a000-000000000299";
+  installRunChat({
+    chatEvents: [
+      {
+        id: "runless-welcome",
+        eventType: "output.message",
+        runId: undefined,
+        content: "The complete welcome before any run",
+        createdAt: createdAt(0),
+        seqId: 1,
+      },
+      goalContinuationEvent({
+        id: "later-work-input",
+        runId: RUN_A,
+        runGroupId: groupId,
+        seqId: 2,
+        brief: "Continue the actual task",
+        model: "gpt-5.6-sol",
+        createdAt: createdAt(1),
+      }),
+      inRunGroup(
+        assistantEvent({
+          id: "later-work-output",
+          runId: RUN_A,
+          seqId: 3,
+          text: "The actual work result",
+          createdAt: createdAt(1, 20),
+        }),
+        groupId,
+      ),
+      inRunGroup(
+        completedEvent({
+          id: "later-work-completed",
+          runId: RUN_A,
+          seqId: 4,
+          createdAt: createdAt(1, 21),
+        }),
+        groupId,
+      ),
+    ],
+  });
+  await setupPage({ context, path: RUN_PATH });
+  await readyChat();
+  await expect(
+    screen.findByText("The complete welcome before any run"),
+  ).resolves.toBeVisible();
+  expect(screen.getByText("Continue the actual task")).toBeVisible();
+  expect(screen.getByText("The actual work result")).toBeVisible();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
+  expect(screen.getAllByText(/^Worked for /u)).toHaveLength(1);
+});
+
 test("Review goal continuations as one work history", async () => {
   const goalGroupId = "e0000000-0000-4000-a000-000000000211";
   installRunChat({

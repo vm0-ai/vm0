@@ -649,6 +649,108 @@ test("Canceling and switching Create preserve slash text and template references
   );
 });
 
+async function setupComposerWithChipCover(
+  chipCover: boolean,
+): Promise<HTMLElement> {
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerCreateCommands]: true,
+      [FeatureSwitchKey.ComposerTemplateChipCover]: chipCover,
+    },
+  });
+  return await findComposerEditor();
+}
+
+function inlineTemplateCover(index = 0): HTMLImageElement | null {
+  const chip = composerInlineTemplates()[index];
+  if (!chip) {
+    throw new Error(`Expected an inline template at ${index}`);
+  }
+  return chip.querySelector("img");
+}
+
+async function addPresentationTemplate(
+  editor: HTMLElement,
+  title: string,
+): Promise<void> {
+  await chooseCommand(
+    editor,
+    "Our launch /create presentation",
+    "Create presentation",
+  );
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${title}`));
+  await waitFor(() => {
+    expect(composerInlineTemplates()).toHaveLength(1);
+  });
+}
+
+test("The template chip cover stays off until the Lab switch is on", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithChipCover(false);
+  const [first] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!first) {
+    throw new Error("Expected a presentation template");
+  }
+  await addPresentationTemplate(editor, first.title);
+  expect(inlineTemplateCover()).toBeNull();
+  expect(composerInlineTemplates()[0]).toHaveTextContent(first.title);
+});
+
+test("An inline template chip shows the chosen cover and follows a replacement", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithChipCover(true);
+  const [first, , replacement] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!first || !replacement) {
+    throw new Error("Expected two presentation templates");
+  }
+  await addPresentationTemplate(editor, first.title);
+  await waitFor(() => {
+    expect(inlineTemplateCover()?.getAttribute("src")).toContain(first.slug);
+  });
+
+  // The picker rewrites the node in place, so the cover has to follow the new
+  // selection rather than only the first one.
+  const chip = composerInlineTemplates()[0];
+  if (!chip) {
+    throw new Error("Expected the inline template");
+  }
+  click(button(`Preview template ${first.title}`, chip));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${replacement.title}`));
+  await waitFor(() => {
+    expect(inlineTemplateCover()?.getAttribute("src")).toContain(
+      replacement.slug,
+    );
+  });
+  expect(composerInlineTemplates()).toHaveLength(1);
+});
+
+test("A template with no cover keeps the template glyph on its chip", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithChipCover(true);
+  const [template] = VIDEO_TEMPLATE_ITEMS;
+  if (!template) {
+    throw new Error("Expected a video template");
+  }
+  await chooseCommand(editor, "Our launch /create video", "Create video");
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(
+    await screen.findByLabelText(`Select video template ${template.title}`),
+  );
+  await waitFor(() => {
+    expect(composerInlineTemplates()).toHaveLength(1);
+  });
+  expect(inlineTemplateCover()).toBeNull();
+});
+
 test("Reopening and dismissing the in-composer picker preserves the selected scene and draft", async () => {
   setupModels();
   const editor = await setupComposer();

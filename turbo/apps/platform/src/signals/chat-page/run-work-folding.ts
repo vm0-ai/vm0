@@ -430,7 +430,12 @@ function isRunGroupInternalInput(event: EnrichedChatEvent): boolean {
 }
 
 function canAnchorGoalRun(unit: RunWorkUnit | undefined): boolean {
-  return unit !== undefined && !unit.isGoal && unit.runGroupId === undefined;
+  return (
+    unit !== undefined &&
+    unit.runIds.length > 0 &&
+    !unit.isGoal &&
+    unit.runGroupId === undefined
+  );
 }
 
 function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
@@ -606,7 +611,11 @@ function foldRunWorkGroup(
     }),
   };
   const startTime = firstEventTime(events);
-  if (anchorEvent === undefined || startTime === null) {
+  if (
+    unit.runIds.length === 0 ||
+    anchorEvent === undefined ||
+    startTime === null
+  ) {
     return {
       visibleEvents: events.filter((event) => {
         return (

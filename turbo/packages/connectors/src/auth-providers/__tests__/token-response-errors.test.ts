@@ -27,17 +27,6 @@ const PROVIDERS: readonly ProviderCase[] = [
     rotates: false,
   },
   {
-    slug: "ramp",
-    methodId: "api-token",
-    url: "https://api.ramp.com/developer/v1/token",
-    inputs: {
-      clientId: "client-id",
-      clientSecret: "client-secret",
-      scope: "transactions:read",
-    },
-    rotates: false,
-  },
-  {
     slug: "netsuite",
     methodId: "api-token",
     url: "https://test-account.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token",

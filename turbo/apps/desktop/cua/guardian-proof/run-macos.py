@@ -91,8 +91,12 @@ def run_case(electron, build, sdk, output, native, mode, iteration):
             result = json.loads(Path(f"{socket}.result").read_text())
             negative = mode in {"failed-kill", "identity-mismatch", "lost-observation"}
             assert result["confirmed"] is not negative, result
-            if mode in {"blocked-before-ready", "guardian-dies", "guardian-stops"} or negative:
-                assert result["beats"] >= 200, result
+            if mode in {"blocked-before-ready", "guardian-dies", "guardian-stops",
+                        "slow-heartbeat", "main-blocks"} or negative:
+                # Bound silence, not timer throughput. The injected main stall
+                # must fail the same responsiveness contract as a real stall.
+                responsive = result["maxHeartbeatGapMs"] <= 500
+                assert responsive is (mode != "main-blocks"), result
             if negative:
                 assert result["fenceRetained"], result
                 assert 4990 <= result["elapsedMs"] < 5200, result
@@ -133,7 +137,7 @@ def main():
     cases += [(mode, 0) for mode in [
         "guardian-dies", "guardian-stops", "helper-dies", "main-dies",
         "main-dies-during-force", "failed-kill",
-        "identity-mismatch", "lost-observation",
+        "identity-mismatch", "lost-observation", "slow-heartbeat", "main-blocks",
     ]]
     cases += [("spawn-stop", i) for i in range(10)]
     cases += [("healthy", i) for i in range(3)]

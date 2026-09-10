@@ -1,19 +1,7 @@
-import { command, computed, state } from "ccstate";
+import { command } from "ccstate";
 
 import { cloudBrowserEnabledByDefault$ } from "../../cloud-browser-preference.ts";
-import { pageSignal$ } from "../../page-signal.ts";
 import { updateUserPreference$ } from "./user-preferences.ts";
-
-const internalCloudBrowserSubmission$ = state<{
-  readonly enabled: boolean;
-  readonly signal: AbortSignal;
-} | null>(null);
-
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-export const submittedCloudBrowserEnabledByDefault$ = computed((get) => {
-  const submission = get(internalCloudBrowserSubmission$);
-  return submission?.signal === get(pageSignal$) ? submission.enabled : null;
-});
 
 export const updateCloudBrowserEnabledByDefault$ = command(
   async (
@@ -22,7 +10,6 @@ export const updateCloudBrowserEnabledByDefault$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     signal.throwIfAborted();
-    set(internalCloudBrowserSubmission$, { enabled, signal });
     await set(
       updateUserPreference$,
       { cloudBrowserEnabledByDefault: enabled },

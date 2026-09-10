@@ -71,7 +71,7 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
         "ExecStart=/usr/bin/runner start --config /configs/$suffix.yaml"
       exit 0
       ;;
-    effective|malformed-config)
+    effective|malformed-config|comment-hash|comment-semicolon)
       printf '%s\n' \
         '# /etc/systemd/system/vm0-runner-test.service' \
         '[Service]' \
@@ -82,8 +82,12 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
         'ExecStart=/usr/bin/runner start --config /etc/vendor.yaml' \
         '# /run/systemd/system/vm0-runner-test.service.d/20-runtime.conf' \
         '[Service]' \
-        'ExecStart=' \
-        "ExecStart=/usr/bin/runner start --config $OKOU_RUN_GC_ENABLED_SERVICE_CONFIG"
+        'ExecStart='
+      case "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" in
+        comment-hash) printf '%s\n' '  # runner config example \' ;;
+        comment-semicolon) printf '%s\n' '  ; runner config example \' ;;
+      esac
+      printf '%s\n' "ExecStart=/usr/bin/runner start --config $OKOU_RUN_GC_ENABLED_SERVICE_CONFIG"
       exit 0
       ;;
   esac
@@ -519,6 +523,13 @@ async fn effective_enabled_service_config_ref_keeps_image_snapshot() {
 }
 
 #[tokio::test]
+async fn enabled_service_config_after_backslash_ended_comment_keeps_image_snapshot() {
+    for scenario in ["comment-hash", "comment-semicolon"] {
+        run_enabled_service_scenario(scenario).await;
+    }
+}
+
+#[tokio::test]
 async fn enabled_service_discovery_failures_make_inventory_incomplete() {
     for scenario in ["enablement-error", "cat-error", "cat-warning"] {
         run_enabled_service_scenario(scenario).await;
@@ -613,7 +624,7 @@ async fn enabled_service_systemctl_child() {
     let system_dir = PathBuf::from(std::env::var(ENABLED_SERVICE_SYSTEM_DIR_ENV).unwrap());
     match scenario.as_str() {
         "bounded" => assert_bounded_enabled_service_discovery(&system_dir).await,
-        "effective" => {
+        "effective" | "comment-hash" | "comment-semicolon" => {
             let home = test_home(Path::new(&std::env::var(ENABLED_SERVICE_HOME_ENV).unwrap()));
             let rootfs_hash = test_hash('a');
             let snapshot_hash = test_hash('b');

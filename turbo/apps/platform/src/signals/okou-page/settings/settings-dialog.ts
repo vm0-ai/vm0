@@ -18,6 +18,7 @@ import {
   clearPendingLogo$,
   initProfileName$,
   requestBuyCreditsScroll$,
+  resetDeleteConfirm$,
   setBillingPlansStandalone$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
@@ -80,7 +81,12 @@ export function resolveAvailableSettingsSection(
 const internalSettingsDialogOpen$ = state(false);
 const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
 const resetSettingsDialogSignal$ = resetSignal();
+const resetSettingsActionSignal$ = resetSignal();
+const internalSettingsActionSignal$ = state<AbortSignal | null>(null);
 const internalSettingsDialogSessionActive$ = state(false);
+
+// Actions stop at dismissal; the dialog session survives its closing animation.
+export { internalSettingsActionSignal$ as settingsActionSignal$ };
 
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
@@ -188,6 +194,7 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
   set(internalSettingsDialogSignal$, null);
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
+  set(resetDeleteConfirm$);
   set(resetUsagePackPricing$);
   // The billing sub-page belongs to the session, not to the tab: a closed
   // dialog must not reopen on the plans page the next time it is opened.
@@ -196,6 +203,7 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
 });
 
 export const closeSettingsModal$ = command(({ get, set }) => {
+  set(resetSettingsActionSignal$);
   set(internalSettingsDialogOpen$, false);
 
   const params = new URLSearchParams(get(searchParams$));
@@ -238,6 +246,12 @@ export const setSettingsDialogOpen$ = command(
     }
 
     set(retryEmailSubscription$);
+    if (!get(internalSettingsDialogOpen$)) {
+      set(
+        internalSettingsActionSignal$,
+        set(resetSettingsActionSignal$, pageSignal),
+      );
+    }
     if (get(internalSettingsDialogSessionActive$)) {
       set(internalSettingsDialogOpen$, true);
       set(setSettingsActiveSection$, get(internalActiveSection$));

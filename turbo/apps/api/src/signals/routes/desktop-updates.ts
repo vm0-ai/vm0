@@ -3,19 +3,37 @@ import {
   DESKTOP_UPDATE_LINE_OKOU,
   DESKTOP_UPDATE_LINE_ZERO,
   desktopUpdatesContract,
+  type DesktopUpdateLine,
   type DesktopZeroMigrationPolicy,
 } from "@okouai/api-contracts/contracts/desktop-updates";
 import { command } from "ccstate";
 
-import { notFound } from "../../lib/error";
+import { desktopUpdateUnavailable, notFound } from "../../lib/error";
+import { logger } from "../../lib/log";
 import { setResHeader$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
+  DESKTOP_UPDATE_MANIFEST_LOG_TYPE,
+  DESKTOP_UPDATE_MANIFEST_PROVIDER,
+  desktopUpdateManifestUnavailable,
   loadDesktopDmgDownloadUrl,
   loadDesktopReleasePageUrl,
   loadDesktopUpdateFeed,
+  type DesktopUpdateManifestUnavailable,
 } from "../services/desktop-updates.service";
+import { settle } from "../utils";
+
+const L = logger("DesktopUpdates");
+
+/**
+ * How long a client should wait before re-asking after a `503`.
+ *
+ * Shorter than the desktop updater's own 30-minute poll, so it never delays
+ * the schedule the client already keeps; it only helps anything that retries
+ * on its own.
+ */
+const DESKTOP_UPDATE_RETRY_AFTER_SECONDS = "60";
 
 const releasePageParams$ = pathParamsOf(desktopUpdatesContract.releasePage);
 const dmgDownloadParams$ = pathParamsOf(desktopUpdatesContract.dmgDownload);
@@ -64,51 +82,146 @@ const getDesktopMigrationPolicy$ = command(({ set }) => {
  */
 const UNQUALIFIED_DESKTOP_UPDATE_LINE = DESKTOP_UPDATE_LINE_OKOU;
 
-const getDesktopReleasePage$ = command(async ({ get }, signal: AbortSignal) => {
-  const url = await loadDesktopReleasePageUrl(
-    {
-      line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
-      ...get(releasePageParams$),
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (!url) {
-    return notFound("No desktop release is available for this feed.");
+/**
+ * Settle a manifest-backed load, separating "the release host could not be
+ * read" from every other failure.
+ *
+ * Only that one outcome is reported back; a missing or invalid manifest, a
+ * bug in release selection, and a cancelled request all keep propagating to
+ * the unhandled-error path, where they stay loud.
+ */
+async function settleManifestLoad<T>(
+  load: Promise<T>,
+  signal: AbortSignal,
+): Promise<
+  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: false;
+      readonly unavailable: DesktopUpdateManifestUnavailable;
+    }
+> {
+  const settled = await settle(load, signal);
+  if (settled.ok) {
+    return { ok: true, value: settled.value };
   }
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: url,
-      "Cache-Control": "no-store",
-    },
-  });
-});
-
-const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
-  const url = await loadDesktopDmgDownloadUrl(
-    {
-      line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
-      ...get(dmgDownloadParams$),
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (!url) {
-    return notFound("No desktop DMG is available for this feed.");
+  const unavailable = desktopUpdateManifestUnavailable(settled.error);
+  if (!unavailable) {
+    throw settled.error;
   }
+  return { ok: false, unavailable };
+}
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: url,
-      "Cache-Control": "no-store",
+/**
+ * Answer a poll whose manifest could not be read.
+ *
+ * This is a classified outcome, not an unhandled error: it is logged at `warn`
+ * with the upstream status and attempt count and never reaches Sentry, because
+ * a single one needs no intervention. A sustained rate is the real signal, and
+ * it stays visible both here and as `503` in the request log.
+ */
+const desktopUpdateUnavailable$ = command(
+  (
+    { set },
+    args: {
+      readonly line: DesktopUpdateLine;
+      readonly route: string;
+      readonly unavailable: DesktopUpdateManifestUnavailable;
     },
-  });
-});
+  ) => {
+    L.warn("Desktop update manifest upstream unavailable", {
+      type: DESKTOP_UPDATE_MANIFEST_LOG_TYPE,
+      outcome: "unavailable",
+      provider: DESKTOP_UPDATE_MANIFEST_PROVIDER,
+      ...(args.unavailable.providerStatus === null
+        ? {}
+        : { provider_status: args.unavailable.providerStatus }),
+      failure_class: "transient_read_exhausted",
+      attempts: args.unavailable.attempts,
+      line: args.line,
+      method: "GET",
+      route: args.route,
+    });
+
+    set(setResHeader$, "Cache-Control", "no-store");
+    set(setResHeader$, "Retry-After", DESKTOP_UPDATE_RETRY_AFTER_SECONDS);
+    return desktopUpdateUnavailable(
+      "The desktop release manifest is temporarily unavailable. Try again shortly.",
+    );
+  },
+);
+
+const getDesktopReleasePage$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const loaded = await settleManifestLoad(
+      loadDesktopReleasePageUrl(
+        {
+          line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
+          ...get(releasePageParams$),
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!loaded.ok) {
+      return set(desktopUpdateUnavailable$, {
+        line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
+        route: desktopUpdatesContract.releasePage.path,
+        unavailable: loaded.unavailable,
+      });
+    }
+    const url = loaded.value;
+    signal.throwIfAborted();
+
+    if (!url) {
+      return notFound("No desktop release is available for this feed.");
+    }
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: url,
+        "Cache-Control": "no-store",
+      },
+    });
+  },
+);
+
+const getDesktopDmgDownload$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const loaded = await settleManifestLoad(
+      loadDesktopDmgDownloadUrl(
+        {
+          line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
+          ...get(dmgDownloadParams$),
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!loaded.ok) {
+      return set(desktopUpdateUnavailable$, {
+        line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
+        route: desktopUpdatesContract.dmgDownload.path,
+        unavailable: loaded.unavailable,
+      });
+    }
+    const url = loaded.value;
+    signal.throwIfAborted();
+
+    if (!url) {
+      return notFound("No desktop DMG is available for this feed.");
+    }
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: url,
+        "Cache-Control": "no-store",
+      },
+    });
+  },
+);
 
 // All three `:product` handlers below reject the same retired lines. `okou` is
 // the pre-adoption Okou line. `zero` joined it in #31475: its manifest had been
@@ -118,7 +231,7 @@ const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
 // removed from the contract union — see the note there.
 
 const getProductDesktopReleasePage$ = command(
-  async ({ get }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const { product, ...params } = get(productReleasePageParams$);
     if (
       product === DESKTOP_UPDATE_LINE_LEGACY_OKOU ||
@@ -126,10 +239,18 @@ const getProductDesktopReleasePage$ = command(
     ) {
       return notFound("This desktop update line is retired.");
     }
-    const url = await loadDesktopReleasePageUrl(
-      { line: product, ...params },
+    const loaded = await settleManifestLoad(
+      loadDesktopReleasePageUrl({ line: product, ...params }, signal),
       signal,
     );
+    if (!loaded.ok) {
+      return set(desktopUpdateUnavailable$, {
+        line: product,
+        route: desktopUpdatesContract.productReleasePage.path,
+        unavailable: loaded.unavailable,
+      });
+    }
+    const url = loaded.value;
     signal.throwIfAborted();
 
     if (!url) {
@@ -147,7 +268,7 @@ const getProductDesktopReleasePage$ = command(
 );
 
 const getProductDesktopUpdateFeed$ = command(
-  async ({ get }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const { product, ...params } = get(productFeedParams$);
     if (
       product === DESKTOP_UPDATE_LINE_LEGACY_OKOU ||
@@ -155,10 +276,18 @@ const getProductDesktopUpdateFeed$ = command(
     ) {
       return notFound("This desktop update line is retired.");
     }
-    const feed = await loadDesktopUpdateFeed(
-      { line: product, ...params },
+    const loaded = await settleManifestLoad(
+      loadDesktopUpdateFeed({ line: product, ...params }, signal),
       signal,
     );
+    if (!loaded.ok) {
+      return set(desktopUpdateUnavailable$, {
+        line: product,
+        route: desktopUpdatesContract.productFeed.path,
+        unavailable: loaded.unavailable,
+      });
+    }
+    const feed = loaded.value;
     signal.throwIfAborted();
 
     if (!feed) {
@@ -173,7 +302,7 @@ const getProductDesktopUpdateFeed$ = command(
 );
 
 const getProductDesktopDmgDownload$ = command(
-  async ({ get }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const { product, ...params } = get(productDmgDownloadParams$);
     if (
       product === DESKTOP_UPDATE_LINE_LEGACY_OKOU ||
@@ -181,10 +310,18 @@ const getProductDesktopDmgDownload$ = command(
     ) {
       return notFound("This desktop update line is retired.");
     }
-    const url = await loadDesktopDmgDownloadUrl(
-      { line: product, ...params },
+    const loaded = await settleManifestLoad(
+      loadDesktopDmgDownloadUrl({ line: product, ...params }, signal),
       signal,
     );
+    if (!loaded.ok) {
+      return set(desktopUpdateUnavailable$, {
+        line: product,
+        route: desktopUpdatesContract.productDmgDownload.path,
+        unavailable: loaded.unavailable,
+      });
+    }
+    const url = loaded.value;
     signal.throwIfAborted();
 
     if (!url) {

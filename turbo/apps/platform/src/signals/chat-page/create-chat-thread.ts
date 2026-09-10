@@ -1485,6 +1485,7 @@ function thinkingIndicatorProjectionFromGroups(
   const running = runState !== null && !lastAssistantCancelled;
 
   if (
+    (!running && !lastAssistantEvent?.runId) ||
     shouldHideThinkingIndicator({
       lastIsAssistant,
       lastAssistantCancelled,

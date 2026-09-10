@@ -309,3 +309,89 @@ separate ownership. S5 must prove a serving consumer-free S4 rollback target and
 repeat preservation/zero-residual gates before any physical contraction. The
 permanent S1 ancestry floor alone is insufficient. S6 publication/storage cleanup
 remains separate; Codex `features.goals=false` stays intact.
+
+## S5 physical contraction (#33285)
+
+The accepted combined S4 release is `4a4881bf84cb1d79723fd38c83e00f2215bb1e31`
+(API 1.580.0). The current-main rollback resolver now requires both original S4
+and its ordinary-write repair; see [the compatibility boundary](deployment-compatibility.md#okou-goal-retirement-rollback-floor).
+Implementation merge is not production contraction or EPIC acceptance.
+
+### Ordered migration and retry contract
+
+1. `1105_prepare_goal_metadata_contraction` adds
+   `agent_runs_metadata_without_goal_check` with `NOT VALID`, retaining the
+   original validated check. New writes satisfy both checks immediately.
+   Separate online validation scans existing runs with a 60-second statement
+   limit, without an ACCESS EXCLUSIVE scan lock. Adding the check uses a
+   1-second lock / 10-second statement limit. Retry reuses the same check.
+2. `1106_contract_retired_goal_schema` recreates and calls the 1094 operation:
+   100 candidate threads / up to 100 revokes per commit, Goal advisory lock
+   before the owning thread row, exact literal objective/original status,
+   no lifecycle callbacks or accounting. The CALL retains its 15-minute total
+   budget and 1-second lock limit. Receipts survive a committed-prefix retry.
+   Missing paired receipts, or an unreceipted Goal whose existing archive or
+   snapshot makes prior preservation ambiguous, fail closed before appending.
+3. A single final `DO` statement, bounded by 10 seconds including lock waits,
+   rechecks ownership, receipt shape, active/pending/reserved/actual-origin
+   nonterminal residuals and preservation, then contracts atomically. ACCESS
+   EXCLUSIVE locks on `agent_runs` and `thread_goals` are required for DDL.
+   SHARE locks on threads, agents, events, snapshots and active delivery tables
+   freeze clears, ownership changes, retention/publication and residual writers
+   across verification and DROP. The backfill takes none of these table locks.
+   Contention beyond one second aborts; the current physical schema survives.
+4. The final transaction renames the already-validated replacement check,
+   explicitly drops the named Goal FK/index/column, and drops `thread_goals`
+   with `RESTRICT`. It rejects unexpected automatic column dependencies and
+   stored routine references before contraction. External views/FKs that PostgreSQL
+   protects with RESTRICT also roll back the entire final transaction.
+   There is no visible state without a validated metadata check.
+
+The replacement check contains every original term except `goal_id`: either all
+18 remaining optional fields are null, or trigger source and autonomy budget
+are both present. Autonomy bounds, launch snapshot and official provenance
+constraints are unchanged. No run, session, event, share, snapshot or accounting
+row is a deletion target. Snapshot IDs and historical `goal` security labels
+remain inert context.
+
+The non-transactional runner writes its journal only after all statements pass.
+If interrupted after final DDL commits but before helper removal or journal
+insertion, retry recreates the helper without retired row-type dependencies,
+verifies complete contracted state and the validated checks, removes the helper,
+and journals once. If verification/DDL fails, every destructive change rolls
+back; retry performs the entire idempotent replay again. Resolve the observed
+blocker before retrying through the normal authorized release path. No manual
+journal edits, receipt resets, trigger relaxation, 014 replay or new DB/R2
+operator is part of this recovery. One attempt is bounded by the 15-minute CALL,
+60-second online validation and 10-second final statement; repeated attempts
+require a resolved cause, not an increased timeout or bypass.
+
+### Preservation evidence and verification
+
+Hot receipts require exact identity, runless/revokerless/contextless raw-source
+coordinates, one string payload key, no revocation and the complete frozen 1094
+notice plus unchanged objective UTF-8 bytes. All comparisons execute inside
+PostgreSQL and expose counts only. Snapshot-only receipts require a valid V7
+physical/logical cursor covering the receipt and a thread/sequence-specific
+content-addressed object key. Null, mismatched or missing coverage blocks DROP.
+
+This pointer coverage is **not a fresh full-content certificate**. The
+[accepted S2 certificate](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5604844349)
+and unchanged canonical reader checksum/schema/order validation preserve the
+external object boundary. Current-main hot/snapshot/search/share/export tests
+run against the complete contracted schema. Genuine 1094/014 transition cases
+run separately in private databases stopped before S5; they never restore Goal
+tables in the current schema. The transition validators remain active through
+independent production acceptance under MIGRATIONS.md. The pre-contract API
+recovery cases and their private migration setup share that removal gate; keep
+the current-schema history cases when retiring those transition cases.
+
+The S5 validator uses 4,162 Goals, 101,626 hot Goal inputs and 113,789 historical
+linked runs within 271,758 total runs. It compares retained run/event/snapshot
+records and unrelated constraints before/after contraction, tests actual
+constraint failures, and measures online validation, replay and final lock-held
+work separately. Hot-input counts do not enumerate all snapshot history.
+Replay census/reconciliation and final notices report remaining counts; compare
+these with legitimate concurrent clear counts without reconstructing objectives.
+Production release and acceptance remain the controller and separate release
+owner's responsibility.

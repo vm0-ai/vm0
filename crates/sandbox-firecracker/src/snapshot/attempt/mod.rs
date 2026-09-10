@@ -354,16 +354,21 @@ impl SnapshotAttempt {
         // mount lives in a private mount namespace and dies with the process.
         // The shared command builder keeps this mount setup aligned with
         // snapshot restore.
-        if let Err(e) = self.cleanup_resources.process.spawn(SnapshotProcessSpawn {
-            cow_device_path: &cow_device_path,
-            drive_bind: &drive_bind,
-            workspace_image: &workspace_image,
-            workspace_drive_bind: &workspace_drive_bind,
-            network_name: &network_name,
-            binary_path: &config.binary_path,
-            api_sock: &api_sock,
-            current_dir: self.paths.workspace(),
-        }) {
+        if let Err(e) = self
+            .cleanup_resources
+            .process
+            .spawn(SnapshotProcessSpawn {
+                cow_device_path: &cow_device_path,
+                drive_bind: &drive_bind,
+                workspace_image: &workspace_image,
+                workspace_drive_bind: &workspace_drive_bind,
+                network_name: &network_name,
+                binary_path: &config.binary_path,
+                api_sock: &api_sock,
+                current_dir: self.paths.workspace(),
+            })
+            .await
+        {
             // Release the checked-out netns before returning —
             // `netns_pool.cleanup()` only drains queued entries, not
             // already-acquired ones.

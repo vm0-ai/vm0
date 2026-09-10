@@ -505,7 +505,7 @@ dependencies = [
  "http 0.2.12",
  "pretty_assertions",
  "regex-lite",
- "roxmltree",
+ "roxmltree 0.14.1",
  "serde_json",
  "thiserror",
 ]
@@ -982,7 +982,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "codex-mock"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "chrono",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.88.0"
+version = "0.88.1"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1761,6 +1761,7 @@ dependencies = [
  "guest-control-proto",
  "libc",
  "process-control-ipc",
+ "process-launch",
  "serde_json",
  "shell-quote",
  "tempfile",
@@ -1803,7 +1804,7 @@ dependencies = [
 
 [[package]]
 name = "guest-storage-apply"
-version = "0.23.75"
+version = "0.23.76"
 dependencies = [
  "flate2",
  "guest-contracts",
@@ -1811,6 +1812,7 @@ dependencies = [
  "httpmock",
  "libc",
  "linux-mountinfo",
+ "roxmltree 0.21.1",
  "serde",
  "serde_json",
  "tar",
@@ -1844,7 +1846,7 @@ dependencies = [
 
 [[package]]
 name = "guest-workspace-mount"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libc",
  "linux-mountinfo",
@@ -2452,7 +2454,7 @@ checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "linux-mountinfo"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "linux-raw-sys"
@@ -3046,6 +3048,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-launch"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "proptest"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3351,6 +3362,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "rsa"
 version = "0.10.0-rc.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3371,7 +3391,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.189.6"
+version = "0.189.7"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3714,7 +3734,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-firecracker"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "async-trait",
  "clap",
@@ -3727,6 +3747,7 @@ dependencies = [
  "linux-mountinfo",
  "nbd-cow",
  "nix",
+ "process-launch",
  "proptest",
  "reqwest",
  "runner-rpc-proto",

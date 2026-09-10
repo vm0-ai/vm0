@@ -46,6 +46,7 @@ const TALL_HAIR_DRAWN_FILL = 383.4 / 380;
 
 function agent(agentId: string, avatarUrl: string): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: "test-user-123",
     description: null,

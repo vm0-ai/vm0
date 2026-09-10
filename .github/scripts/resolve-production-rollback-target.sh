@@ -6,6 +6,9 @@ readonly CHAT_EVENT_FAILURE_REASON_READER_COMMIT=c093e0ffdab988d2a8a071809f90d87
 readonly CHAT_EVENT_FAILURE_REASON_READER_RELEASE=89c6a521944e2ac8550da424f164db08f4f80f0c
 readonly BLANK_SANDBOX_STATUS_READER_COMMIT=febec8a3399be74b0f14a89cb9f42e39dd5ce69f
 readonly OKOU_GOAL_RETIREMENT_COMMIT=6d391117e4fead19e2105136fb2792a6e77801d8
+readonly OKOU_GOAL_SCHEMA_READER_COMMIT=2c231766e383b651867893852cfb47dcc78af0bd
+readonly OKOU_GOAL_SCHEMA_REPAIR_COMMIT=077a9a644986e13bed4750796f91e55c4a876aad
+readonly OKOU_GOAL_SCHEMA_RELEASE=4a4881bf84cb1d79723fd38c83e00f2215bb1e31
 readonly OKOU_GOAL_RETIREMENT_RELEASE=1f68f182a2457ec3aea52d8063be2bd2d2263abd
 
 fail() {
@@ -58,6 +61,13 @@ fi
 # The API retirement boundary legitimately retains a pre-retirement Runner tag.
 if ! git merge-base --is-ancestor "$OKOU_GOAL_RETIREMENT_COMMIT" "$TARGET_COMMIT"; then
   fail "Target commit predates the Okou Goal retirement boundary. The first compatible release is ${OKOU_GOAL_RETIREMENT_RELEASE} (API 1.571.1)."
+fi
+
+# Current main owns this API schema guard before S5 production contraction.
+# Retained Runner tags have separate ancestry and artifact requirements below.
+if ! git merge-base --is-ancestor "$OKOU_GOAL_SCHEMA_READER_COMMIT" "$TARGET_COMMIT" ||
+  ! git merge-base --is-ancestor "$OKOU_GOAL_SCHEMA_REPAIR_COMMIT" "$TARGET_COMMIT"; then
+  fail "Target commit lacks the combined S4 Goal schema compatibility boundary. The first verified compatible release is ${OKOU_GOAL_SCHEMA_RELEASE} (API 1.580.0)."
 fi
 
 deployments=$(curl -fsS --get "https://api.vercel.com/v6/deployments" \

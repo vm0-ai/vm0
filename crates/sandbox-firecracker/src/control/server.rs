@@ -6,17 +6,19 @@ use std::time::Duration;
 
 use sandbox::EXEC_OUTPUT_LIMIT_7_MIB;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::exec_response::{ExecResult, write_raw_exec_response};
 use super::protocol::{
-    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, read_frame,
-    write_frame,
+    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus,
+    read_frame_payload_len, write_frame,
 };
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
@@ -28,6 +30,12 @@ use crate::runtime_dirs::set_private_runtime_socket_mode;
 
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+// Bound tasks and sockets independently of the declared request sizes.
+const MAX_CONTROL_CONNECTIONS: usize = 32;
+// Allow an existing maximum-size frame without retaining that much per client.
+const CONTROL_REQUEST_BYTE_BUDGET: usize = 64 * 1024 * 1024;
+// One deadline from accept through the entire prefix and body, excluding exec.
+const CONTROL_REQUEST_RECEIVE_TIMEOUT: Duration = Duration::from_secs(5);
 const RUN_CONTROL_MISMATCH_ERROR: &str = "run control target is no longer assigned to this sandbox";
 
 /// Cloneable handle used by the control server to ask the process monitor to
@@ -293,6 +301,7 @@ fn spawn_bound_server(
         info!(path = %sock_path.path().display(), "control socket listening");
 
         let mut handlers = JoinSet::new();
+        let request_bytes = Arc::new(Semaphore::new(CONTROL_REQUEST_BYTE_BUDGET));
 
         loop {
             tokio::select! {
@@ -315,11 +324,22 @@ fn spawn_bound_server(
                         }
                     };
 
+                    if handlers.len() >= MAX_CONTROL_CONNECTIONS {
+                        warn!(limit = MAX_CONTROL_CONNECTIONS, "control connection limit reached");
+                        drop(stream);
+                        continue;
+                    }
+
+                    let request_deadline = Instant::now() + CONTROL_REQUEST_RECEIVE_TIMEOUT;
+                    let request_bytes = Arc::clone(&request_bytes);
                     let guest_operations = guest_operations.clone();
                     let termination = termination.clone();
                     let handler_shutdown = shutdown.clone();
                     handlers.spawn(async move {
-                        if let Err(e) = handle_connection(stream, guest_operations, termination, handler_shutdown).await {
+                        if let Err(e) = handle_connection(
+                            stream, guest_operations, termination, handler_shutdown,
+                            request_bytes, request_deadline,
+                        ).await {
                             warn!(error = %e, "control connection handler error");
                         }
                     });
@@ -369,25 +389,62 @@ async fn shutdown_handlers(handlers: &mut JoinSet<()>) {
     }
 }
 
+struct RequestFrame {
+    // Field order drops the allocation before making its byte budget available.
+    payload: Vec<u8>,
+    _byte_permit: OwnedSemaphorePermit,
+}
+
+async fn read_request_frame(
+    stream: &mut UnixStream,
+    request_bytes: Arc<Semaphore>,
+) -> io::Result<RequestFrame> {
+    let len = read_frame_payload_len(stream).await?;
+    // The validated frame length fits u32. Never queue a waiter or allocate a
+    // declared body until its entire size has been admitted.
+    let byte_permit = request_bytes
+        .try_acquire_many_owned(len as u32)
+        .map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::WouldBlock,
+                format!("control request byte budget unavailable: {error}"),
+            )
+        })?;
+    let mut payload = vec![0u8; len];
+    stream.read_exact(&mut payload).await?;
+    Ok(RequestFrame {
+        payload,
+        _byte_permit: byte_permit,
+    })
+}
+
 /// Handle a single control socket connection.
 async fn handle_connection(
     mut stream: UnixStream,
     guest_operations: GuestOperationStartGate,
     termination: ProcessTerminationHandle,
     shutdown: CancellationToken,
+    request_bytes: Arc<Semaphore>,
+    request_deadline: Instant,
 ) -> io::Result<()> {
     let frame = tokio::select! {
         biased;
         () = shutdown.cancelled() => return Ok(()),
-        result = read_frame(&mut stream) => result?,
+        () = tokio::time::sleep_until(request_deadline) => {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "control request receive timed out"));
+        }
+        result = read_request_frame(&mut stream, request_bytes) => result?,
     };
 
-    if let Ok(request) = serde_json::from_slice::<TerminateRequest>(&frame) {
+    if let Ok(request) = serde_json::from_slice::<TerminateRequest>(&frame.payload) {
+        drop(frame);
         let response = terminate(request, &termination).await;
         return write_json_frame(&mut stream, &response).await;
     }
 
-    let response = match serde_json::from_slice::<ExecRequest>(&frame) {
+    let request = serde_json::from_slice::<ExecRequest>(&frame.payload);
+    drop(frame);
+    let response = match request {
         Ok(request) => tokio::select! {
             biased;
             () = shutdown.cancelled() => return Ok(()),

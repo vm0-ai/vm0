@@ -1644,7 +1644,7 @@ test("A visitor resets a forgotten password and signs in", async () => {
     borderColor: "rgb(70 80 90)",
     borderRadius: "6px",
     borderStyle: "solid",
-    borderWidth: "1px",
+    borderWidth: "0.5px",
     flexShrink: "0",
     height: "calc(4px * 4)",
     width: "calc(4px * 4)",

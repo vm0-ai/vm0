@@ -53,6 +53,10 @@ export function eventDeliveryUnavailable(message: string) {
   return httpError(503, "EVENT_DELIVERY_UNAVAILABLE", message);
 }
 
+export function desktopUpdateUnavailable(message: string) {
+  return httpError(503, "DESKTOP_UPDATE_UNAVAILABLE", message);
+}
+
 export function insufficientCredits() {
   return httpError(
     402,

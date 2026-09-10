@@ -121,7 +121,11 @@ export interface PiMemoryPhase2NoDiffResult extends PiMemoryPhase2ResultBase {
 
 export interface PiMemoryPhase2PreparedResult extends PiMemoryPhase2ResultBase {
   readonly status: "prepared";
-  readonly responseId: string;
+  /**
+   * Provider evidence only. Phase 2 correctness comes from the validated
+   * memory tree, so a provider that omits a response id is not a failure.
+   */
+  readonly responseId: string | null;
   readonly usage: PiMemoryPhase2ProviderUsage;
 }
 

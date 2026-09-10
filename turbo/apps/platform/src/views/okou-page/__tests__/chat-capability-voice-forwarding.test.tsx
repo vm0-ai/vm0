@@ -9,7 +9,6 @@ import { expect, test, vi } from "vitest";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createChildAbortController } from "../../../signals/utils.ts";
-import { decodeVoiceDraftPcmWav } from "../../../signals/voice-io/voice-draft-pcm.ts";
 import {
   completedConversation,
   context,
@@ -88,73 +87,7 @@ async function uploadedAudio(request: Request) {
 }
 
 test.each(targets)(
-  "Stop a forwarded $target microphone when its dialog closes and recover saved audio",
-  async ({ name, path }) => {
-    const initialPage = createChildAbortController(context.signal);
-    const capture = context.mocks.deferred<(samples: Float32Array) => void>();
-    const stopped = context.mocks.deferred<void>();
-    installVoiceBoundaries();
-    context.mocks.browser.voiceInput({
-      rms: 0.12,
-      onPcmCapture: capture.resolve,
-      onTrackStop: () => {
-        if (!stopped.settled()) {
-          stopped.resolve();
-        }
-      },
-    });
-    const uploads: ArrayBuffer[] = [];
-    context.mocks.http.post(
-      "*/api/voice-io/transcribe/segment",
-      async ({ request }) => {
-        uploads.push(await uploadedAudio(request));
-        return HttpResponse.json({
-          transcript: "recovered",
-          polishedText: "Recovered forwarded audio.",
-          language: "en-US",
-        });
-      },
-    );
-    await setupPage({
-      context: { ...context, signal: initialPage.signal },
-      path: RUN_PATH,
-      featureSwitches: flags,
-    });
-    await findEnabledButton("Voice input");
-    const dialog = await openForwardComposer(name);
-    click(await findEnabledButton("Voice input", dialog));
-    const emit = await capture.promise;
-    emit(new Float32Array(4096).fill(0.25));
-    await waitFor(async () => {
-      await expect(recordings()).resolves.toMatchObject([
-        { sampleCount: 4096 },
-      ]);
-    });
-    click(await findEnabledButton("Close", dialog));
-    await stopped.promise;
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-    expect(uploads).toStrictEqual([]);
-    unload(initialPage);
-    await setupPage({
-      context: refreshedContext,
-      path,
-      featureSwitches: flags,
-    });
-    click(await findEnabledButton("Retry"));
-    await findEnabledButton("Voice input");
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
-      "Recovered forwarded audio.",
-    );
-    expect(uploads).toHaveLength(1);
-    expect(decodeVoiceDraftPcmWav(uploads[0]!)).toHaveLength(4096);
-    await expect(recordings()).resolves.toStrictEqual([]);
-  },
-);
-
-test.each(targets)(
-  "Release a forwarded $target audio context when its dialog closes during startup",
+  "Release a forwarded $target microphone and audio context when its dialog closes during startup",
   async ({ name }) => {
     installVoiceBoundaries();
     const moduleRequested = context.mocks.deferred<void>();

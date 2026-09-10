@@ -90,6 +90,7 @@ class _FirewallAuthPlanFailure(Enum):
     """Canonical pre-resolution policy failure for both hook phases."""
 
     UNSAFE_METHOD = "unsafe_method"
+    METHOD_OVERRIDE = "method_override"
     INSECURE_TRANSPORT = "insecure_transport"
     AUTH_UNAVAILABLE = "auth_unavailable"
 
@@ -528,6 +529,10 @@ def _build_firewall_auth_plan(
     failure = None
     if injects_credentials and _request_method_forbids_managed_credentials(flow.request.method):
         failure = _FirewallAuthPlanFailure.UNSAFE_METHOD
+    elif injects_credentials and "x-http-method-override" in flow.request.headers:
+        # The firewall authorizes the wire method. Providers such as Mailchimp
+        # can reinterpret this header as DELETE even when only POST is allowed.
+        failure = _FirewallAuthPlanFailure.METHOD_OVERRIDE
     elif injects_credentials and flow.request.scheme.lower() != "https":
         failure = _FirewallAuthPlanFailure.INSECURE_TRANSPORT
     elif needs_resolution and not sandbox_info.get("encryptedSecrets"):
@@ -1245,6 +1250,24 @@ def _preflight_firewall_auth(
             action="BLOCK",
             error_code="unsafe_auth_method",
             message=f"Firewall credentials cannot be injected into {request_method} requests",
+            permission=context.allow.name,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    if plan.failure is _FirewallAuthPlanFailure.METHOD_OVERRIDE:
+        log_proxy_entry(
+            context.proxy_log_path,
+            "warn",
+            "Refusing to inject firewall credentials into an HTTP method override request",
+            type="firewall",
+            firewall_base=context.firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=403,
+            action="BLOCK",
+            error_code="unsafe_auth_method_override",
+            message="Use the actual HTTP method instead of X-HTTP-Method-Override",
             permission=context.allow.name,
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE

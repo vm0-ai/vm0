@@ -25,92 +25,79 @@ export function isAuthenticatedAttachmentUrl(url: string): boolean {
   );
 }
 
-interface AttachmentUrls {
+interface AttachmentPresignedToken {
+  /** The temporary URL that authorizes this browser to load the resource. */
+  readonly token: string;
+  readonly expiresAt: string;
   /**
-   * URL this browser can load right now. Presigned for a private attachment,
-   * so it expires and grants access only to that object.
+   * Stable URL that another viewer can open. A signature cannot be converted
+   * into one, so null means that the attachment remains private.
    */
-  readonly resourceUrl: string;
-  /**
-   * URL that still works for whoever receives it. Never the canonical API URL:
-   * that one answers only to the owner's credentials, so a recipient gets a 401
-   * instead of the file. Null until a private artifact is published.
-   */
-  readonly shareUrl: string | null;
+  readonly publicUrl: string | null;
 }
 
-export function createAttachmentResourceUrl$(url: string) {
-  const urls$ = createAttachmentUrls$(url);
+interface ArtifactReference {
+  readonly hash: string;
+  readonly extension: string;
+  readonly fragment: string;
+}
+
+function withFragment(url: string, fragment: string): string {
+  const parsed = new URL(url);
+  parsed.hash = fragment;
+  return parsed.href;
+}
+
+function createArtifactReferencePresignedToken$(
+  reference: ArtifactReference,
+): Computed<Promise<AttachmentPresignedToken | null>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
-    return (await get(urls$)).resourceUrl;
+    const signal = get(pageSignal$);
+    const response = await accept(
+      get(apiClient$)(artifactReferencesContract).resolve({
+        params: { reference: `${reference.hash}${reference.extension}` },
+        fetchOptions: { signal, cache: "no-store" },
+      }),
+      [200],
+      signal,
+    );
+    return {
+      token: withFragment(response.body.url, reference.fragment),
+      expiresAt: response.body.expiresAt,
+      publicUrl: null,
+    };
   });
 }
 
-export function createAttachmentPreviewSignals(url: string) {
-  const urls$ = createAttachmentUrls$(url);
-  return {
-    resourceUrl$: computed(async (get) => {
-      return (await get(urls$)).resourceUrl;
-    }),
-    shareUrl$: computed(async (get) => {
-      return (await get(urls$)).shareUrl;
-    }),
-  };
-}
-
-/**
- * Persisted chat attachments live behind an authenticated API route, and a bare
- * `src` attribute cannot carry an Authorization header. Exchange the canonical
- * API URL for the URLs the browser can actually use; the API still runs the
- * ownership check before answering.
- */
-export function createAttachmentUrls$(
-  inputUrl: string,
-): Computed<Promise<AttachmentUrls>> {
-  const url = publicAttachmentUrl(inputUrl);
+function createPrivateHostedPresignedToken$(
+  url: string,
+  deploymentId: string,
+): Computed<Promise<AttachmentPresignedToken | null>> {
   // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
-    const reference = parseArtifactReference(url, location.origin);
-    if (reference) {
-      const signal = get(pageSignal$);
-      const response = await accept(
-        get(apiClient$)(artifactReferencesContract).resolve({
-          params: { reference: `${reference.hash}${reference.extension}` },
-          fetchOptions: { signal, cache: "no-store" },
-        }),
-        [200],
-        signal,
-      );
-      const resourceUrl = new URL(response.body.url);
-      resourceUrl.hash = reference.fragment;
-      return {
-        resourceUrl: resourceUrl.href,
-        shareUrl: null,
-      };
-    }
-    const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
-    if (deploymentId) {
-      const signal = get(pageSignal$);
-      const response = await accept(
-        get(apiClient$)(hostContract).privatePreview({
-          params: { deploymentId },
-          fetchOptions: { signal },
-        }),
-        [200],
-        signal,
-      );
-      const resourceUrl = new URL(response.body.url);
-      resourceUrl.hash = new URL(url).hash;
-      return {
-        resourceUrl: resourceUrl.href,
-        shareUrl: null,
-      };
-    }
-    if (!isAuthenticatedAttachmentUrl(url)) {
-      // Already a public address, so it both renders and shares as-is.
-      return { resourceUrl: url, shareUrl: url };
-    }
+    const signal = get(pageSignal$);
+    const response = await accept(
+      get(apiClient$)(hostContract).privatePreview({
+        params: { deploymentId },
+        fetchOptions: { signal },
+      }),
+      [200],
+      signal,
+    );
+    return {
+      token: withFragment(response.body.url, new URL(url).hash),
+      expiresAt: response.body.expiresAt,
+      publicUrl: null,
+    };
+  });
+}
 
+function createWebFilePresignedToken$(
+  url: string,
+): Computed<Promise<AttachmentPresignedToken | null>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
+  return computed(async (get) => {
     const sourceUrl = new URL(url);
     const fileId = sourceUrl.searchParams.get("file_id");
     if (!fileId) {
@@ -127,8 +114,55 @@ export function createAttachmentUrls$(
       signal,
     );
     return {
-      resourceUrl: response.body.url,
-      shareUrl: response.body.publicUrl,
+      token: response.body.url,
+      expiresAt: response.body.expiresAt,
+      publicUrl: response.body.publicUrl,
     };
   });
+}
+
+function createAttachmentPresignedToken$(
+  url: string,
+): Computed<Promise<AttachmentPresignedToken | null>> {
+  const reference = parseArtifactReference(url, location.origin);
+  if (reference) {
+    return createArtifactReferencePresignedToken$(reference);
+  }
+  const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
+  if (deploymentId) {
+    return createPrivateHostedPresignedToken$(url, deploymentId);
+  }
+  if (isAuthenticatedAttachmentUrl(url)) {
+    return createWebFilePresignedToken$(url);
+  }
+  return computed(() => {
+    return Promise.resolve(null);
+  });
+}
+
+/**
+ * Persisted chat attachments live behind an authenticated API route, and a bare
+ * `src` attribute cannot carry an Authorization header. Exchange the canonical
+ * API URL for a temporary token after the API has checked ownership. Public
+ * addresses need no token and pass through unchanged.
+ */
+export function createAttachmentPreviewSignals(inputUrl: string) {
+  const url = publicAttachmentUrl(inputUrl);
+  const presignedToken$ = createAttachmentPresignedToken$(url);
+  const resourceUrl$ = computed(async (get) => {
+    return (await get(presignedToken$))?.token ?? url;
+  });
+  const shareUrl$ = computed(async (get) => {
+    const presigned = await get(presignedToken$);
+    return presigned === null ? url : presigned.publicUrl;
+  });
+  return {
+    presignedToken$,
+    resourceUrl$,
+    shareUrl$,
+  };
+}
+
+export function createAttachmentResourceUrl$(url: string) {
+  return createAttachmentPreviewSignals(url).resourceUrl$;
 }

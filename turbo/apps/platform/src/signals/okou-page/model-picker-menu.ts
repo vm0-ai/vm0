@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { onRef } from "../utils.ts";
+import { delay } from "signal-timers";
+import { onRef, resetSignal } from "../utils.ts";
 
 type ModelPickerCategory = "chat" | "image" | "video";
 
@@ -14,6 +15,13 @@ type ModelPickerFlyoutSide = "left" | "right";
 const FLYOUT_PANEL_WIDTH = 258;
 const FLYOUT_VIEWPORT_MARGIN = 8;
 
+/**
+ * How long a pointer has to rest on a type row before its panel opens. A
+ * pointer crossing the rail on its way somewhere else passes each row in far
+ * less than this, so only a row the user stops on swaps the panel.
+ */
+const FLYOUT_HOVER_INTENT_MS = 200;
+
 /** One navigation state per composer, including split chats. */
 export function createModelPickerMenuSignals() {
   const internalPage$ = state<ModelPickerMenuPage>({ kind: "overview" });
@@ -22,6 +30,8 @@ export function createModelPickerMenuSignals() {
   });
   const reset$ = command(({ set }) => {
     set(internalPage$, { kind: "overview" });
+    // Closing the picker drops a swap the pointer scheduled on its way out.
+    set(resetHoverIntent$);
     set(internalFlyoutCategory$, "chat");
   });
   const showModels$ = command(({ set }, category: ModelPickerCategory) => {
@@ -44,11 +54,38 @@ export function createModelPickerMenuSignals() {
   const flyoutCategory$ = computed((get) => {
     return get(internalFlyoutCategory$);
   });
+  // Hovering schedules the swap rather than performing it. The owner stays in
+  // the domain instead of inside debounceCommand because leaving a row has to
+  // cancel a pending swap without scheduling a replacement to supersede it.
+  const resetHoverIntent$ = resetSignal();
+
   const setFlyoutCategory$ = command(
     ({ set }, category: ModelPickerCategory) => {
+      // A click or keyboard move is already deliberate: it takes effect now and
+      // drops whatever the pointer was in the middle of scheduling.
+      set(resetHoverIntent$);
       set(internalFlyoutCategory$, category);
     },
   );
+
+  /** Swap the panel only once the pointer has settled on the row. */
+  const hoverFlyoutCategory$ = command(
+    async (
+      { set },
+      category: ModelPickerCategory,
+      parentSignal: AbortSignal,
+    ) => {
+      const signal = set(resetHoverIntent$, parentSignal);
+      await delay(FLYOUT_HOVER_INTENT_MS, { signal });
+      signal.throwIfAborted();
+      set(internalFlyoutCategory$, category);
+    },
+  );
+
+  /** The pointer left before it settled, so the row it grazed never opens. */
+  const cancelFlyoutCategoryHover$ = command(({ set }) => {
+    set(resetHoverIntent$);
+  });
 
   const internalFlyoutSide$ = state<ModelPickerFlyoutSide>("left");
   const flyoutSide$ = computed((get) => {
@@ -88,6 +125,10 @@ export function createModelPickerMenuSignals() {
       signal.addEventListener("abort", () => {
         window.cancelAnimationFrame(frame);
         window.removeEventListener("resize", measure);
+        // The rail cancels a scheduled swap on mouseleave, but an unmounted row
+        // never sends one: closing the picker while the pointer rests on a row
+        // would otherwise swap the category of a menu that is already gone.
+        set(resetHoverIntent$);
       });
     }),
   );
@@ -112,6 +153,8 @@ export function createModelPickerMenuSignals() {
     focusPanelRef$,
     flyoutCategory$,
     setFlyoutCategory$,
+    hoverFlyoutCategory$,
+    cancelFlyoutCategoryHover$,
     flyoutSide$,
     flyoutRootRef$,
     focusFlyoutPanelRef$,

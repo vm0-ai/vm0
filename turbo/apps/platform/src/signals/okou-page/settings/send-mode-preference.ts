@@ -1,20 +1,8 @@
-import { command, computed, state } from "ccstate";
+import { command } from "ccstate";
 import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { sendMode$ } from "../../send-mode.ts";
-import { pageSignal$ } from "../../page-signal.ts";
 import { updateUserPreference$ } from "./user-preferences.ts";
-
-const internalSendModeSubmission$ = state<{
-  readonly value: SendMode;
-  readonly signal: AbortSignal;
-} | null>(null);
-
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-export const submittedSendMode$ = computed((get) => {
-  const submission = get(internalSendModeSubmission$);
-  return submission?.signal === get(pageSignal$) ? submission.value : null;
-});
 
 /**
  * Update send mode preference. After saving, await the refetched value so the
@@ -23,7 +11,6 @@ export const submittedSendMode$ = computed((get) => {
 export const updateSendMode$ = command(
   async ({ get, set }, value: SendMode, signal: AbortSignal) => {
     signal.throwIfAborted();
-    set(internalSendModeSubmission$, { value, signal });
     await set(updateUserPreference$, { sendMode: value }, signal);
     signal.throwIfAborted();
     await get(sendMode$);

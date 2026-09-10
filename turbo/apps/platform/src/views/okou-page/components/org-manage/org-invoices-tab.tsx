@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Badge,
 } from "@okouai/ui";
 import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import type { FormEvent } from "react";
@@ -39,7 +40,9 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { currentLocale } from "../../../../i18n/index.ts";
 import { formatUsd } from "../../../../i18n/format.ts";
 
-const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
+const cardBorder = {
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
+} as const;
 
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
@@ -367,10 +370,10 @@ export function OrgInvoicesTab() {
                     {inv.number ?? inv.id}
                   </span>
                   {inv.status && (
-                    <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
-                      <CircleCheck size={12} className="text-green-600" />
+                    <Badge className="text-xs font-medium text-muted-foreground">
+                      <CircleCheck className="text-green-600" />
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 <div className="text-left text-sm text-muted-foreground tabular-nums">

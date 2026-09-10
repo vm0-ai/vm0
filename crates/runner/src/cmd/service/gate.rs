@@ -254,8 +254,33 @@ pub(super) async fn check_active_jobs_gate(
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
 
     use super::*;
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
+
+    const COMMENT_MARKER_ENV: &str = "OKOU_RUN_SERVICE_GATE_COMMENT_MARKER";
+    const COMMENT_CONFIG_ENV: &str = "OKOU_RUN_SERVICE_GATE_COMMENT_CONFIG";
+    const COMMENT_CHILD_TEST: &str =
+        "cmd::service::gate::tests::commented_unit_active_jobs_gate_child";
+    const COMMENT_SYSTEMCTL: &str = r#"#!/bin/sh
+if [ "$1" = "show" ]; then
+  printf '%s\n' 'LoadState=loaded' 'ActiveState=active'
+  exit 0
+fi
+if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
+  printf '%s\n' \
+    '[Service]' \
+    "$OKOU_RUN_SERVICE_GATE_COMMENT_MARKER runner config example \\" \
+    "ExecStart=/usr/bin/runner start --config \"$OKOU_RUN_SERVICE_GATE_COMMENT_CONFIG\""
+  exit 0
+fi
+printf '%s\n' "unexpected fake systemctl invocation: $*" >&2
+exit 2
+"#;
 
     struct FakeGateOps {
         active_results: VecDeque<RunnerResult<bool>>,
@@ -747,6 +772,92 @@ mod tests {
 
         assert_eq!(ops.active_queries, 1);
         assert_eq!(ops.config_queries, 1);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_uses_config_after_backslash_ended_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let systemctl = dir.path().join("systemctl");
+        std::fs::write(&systemctl, COMMENT_SYSTEMCTL).unwrap();
+        std::fs::set_permissions(&systemctl, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let config_path = dir.path().join("selected config.yaml");
+
+        for marker in ["#", ";"] {
+            run_ignored_child_test(
+                COMMENT_CHILD_TEST,
+                (COMMENT_MARKER_ENV, marker),
+                &[
+                    ("PATH", Some(dir.path().to_str().unwrap())),
+                    (COMMENT_CONFIG_ENV, Some(config_path.to_str().unwrap())),
+                ],
+                Duration::from_secs(10),
+            )
+            .await;
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by the commented unit active-jobs gate test"]
+    async fn commented_unit_active_jobs_gate_child() {
+        let Ok(marker) = std::env::var(COMMENT_MARKER_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((COMMENT_MARKER_ENV, &marker)) {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+        let config_path = PathBuf::from(std::env::var(COMMENT_CONFIG_ENV).unwrap());
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+
+        let run_id = RunId::new_v4();
+        for command in ["stop", "uninstall"] {
+            for active_runs in [Vec::new(), vec![serde_json::json!({"run_id": run_id})]] {
+                tokio::fs::write(
+                    base_dir.join("status.json"),
+                    serde_json::to_vec(&serde_json::json!({
+                        "mode": "running",
+                        "active_runs": active_runs,
+                        "started_at": "2026-04-13T00:00:00Z",
+                    }))
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
+
+                let result = check_active_jobs_gate(
+                    &unit,
+                    &home,
+                    false,
+                    command,
+                    &mut super::super::RealServiceUninstallOps,
+                )
+                .await;
+                if active_runs.is_empty() {
+                    result.unwrap();
+                } else {
+                    let error = result.unwrap_err();
+                    assert!(
+                        matches!(&error, RunnerError::ActiveJobs(jobs) if jobs.run_ids == [run_id]),
+                        "expected active-job protection for {command}, got {error}"
+                    );
+                }
+            }
+        }
+
+        let bounded_config =
+            super::super::unit_config::read_unit_config_path_bounded(&unit, Duration::from_secs(5))
+                .await
+                .unwrap();
+        assert!(matches!(
+            bounded_config,
+            super::super::systemctl::BoundedSystemctlQuery::Completed(Some(path))
+                if path == config_path
+        ));
     }
 
     #[tokio::test]
