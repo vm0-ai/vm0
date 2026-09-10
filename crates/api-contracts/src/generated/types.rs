@@ -2003,7 +2003,7 @@ pub mod webhooks {
                 #[serde(rename_all = "camelCase")]
                 pub struct RequestMaintenanceAttestation {
                     /// Maintenance checkpoint attestation version.
-                    pub schema_version: u64,
+                    pub schema_version: i64,
                     /// Opaque token fencing the maintenance claim.
                     pub lease_token: String,
                     /// Exact claimed Phase 2 input revision.
@@ -2078,7 +2078,7 @@ pub mod webhooks {
                 #[serde(rename_all = "camelCase")]
                 pub struct RequestMaintenanceAttestation {
                     /// Maintenance checkpoint attestation version.
-                    pub schema_version: u64,
+                    pub schema_version: i64,
                     /// Opaque token fencing the maintenance claim.
                     pub lease_token: String,
                     /// Exact claimed Phase 2 input revision.
