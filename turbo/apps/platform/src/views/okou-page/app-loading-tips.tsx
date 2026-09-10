@@ -24,11 +24,11 @@ function LoadingTip() {
     <div
       ref={loadingTipsRef}
       aria-live="off"
-      className="absolute top-full left-1/2 mt-6 w-[min(24rem,calc(100vw-3rem))] -translate-x-1/2 text-center text-sm leading-relaxed text-muted-foreground"
+      className="absolute top-full left-1/2 mt-4 w-80 max-w-[calc(100vw-3rem)] -translate-x-1/2 text-center text-sm leading-6 text-muted-foreground"
     >
       <p
         key={tip}
-        className="m-0 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:starting:opacity-0"
+        className="m-0 text-balance motion-safe:transition-opacity motion-safe:duration-300 motion-safe:starting:opacity-0"
       >
         {tip === "support" ? (
           <a
