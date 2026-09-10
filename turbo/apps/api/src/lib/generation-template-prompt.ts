@@ -391,7 +391,7 @@ function buildVideoGenerationTemplatePrompt(
     return {
       status: "resolved",
       prompt: [
-        ...templateFraming("an explainer video"),
+        ...templateFraming("an intro video"),
         ...explainerVideoInstructionLines(options),
       ].join("\n"),
     };

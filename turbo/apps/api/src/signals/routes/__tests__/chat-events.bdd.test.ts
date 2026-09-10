@@ -22885,9 +22885,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     const prompt = (await api.readRun(actor, explained.runId))
       .appendSystemPrompt;
     expect(prompt).toContain("Use the $intro-video skill");
-    expect(prompt).toContain("Minimalism");
-    expect(prompt).toContain("No avatar. Do not add a presenter.");
-    expect(prompt).toContain("No voiceover. Do not add narration.");
+    expect(prompt).toContain("- HeyGen style: Minimalism (minimalism)");
+    expect(prompt).toContain("- HeyGen style preview aspect ratio: 16:9");
+    expect(prompt).toContain("- Avatar: No avatar");
+    expect(prompt).toContain("- Voice: No voiceover");
     await cancelChatRun(actor, explained.runId);
   }, 90_000);
 

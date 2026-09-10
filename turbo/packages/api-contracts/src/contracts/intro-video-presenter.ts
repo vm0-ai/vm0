@@ -35,11 +35,21 @@ export const introVideoStyleIdSchema = z
   .max(200)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
+export const introVideoAvatarTypeSchema = z.enum([
+  "studio_avatar",
+  "photo_avatar",
+  "digital_twin",
+]);
+
+export type IntroVideoAvatarType = z.infer<typeof introVideoAvatarTypeSchema>;
+
 export const introVideoAvatarSchema = z.object({
   id: introVideoPresenterAvatarIdSchema,
   groupId: introVideoAvatarGroupIdSchema,
   name: z.string().trim().min(1),
   defaultVoiceId: introVideoVoiceIdSchema,
+  /** HeyGen look type; a studio look is a cutout, a photo avatar carries its environment. */
+  avatarType: introVideoAvatarTypeSchema.optional(),
   previewImageUrl: z.url().optional(),
   previewVideoUrl: z.url().optional(),
   gender: z.enum(["female", "male"]).optional(),
