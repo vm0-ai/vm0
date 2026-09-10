@@ -94,6 +94,76 @@ function property(value: unknown, key: string): unknown {
     : undefined;
 }
 
+/**
+ * The HTTP status is absent for a completion envelope, and the provider code is
+ * absent for a bare transport status, so each class is a single enumerated set
+ * matched against whichever of the two is present.
+ */
+function matchesFailure(
+  candidates: readonly (string | number)[],
+  httpStatus: number | undefined,
+  code: unknown,
+): boolean {
+  return candidates.some((candidate) => {
+    return candidate === httpStatus || candidate === code;
+  });
+}
+
+function requestFailureReason(
+  httpStatus: number | undefined,
+  code: unknown,
+  errorType: unknown,
+): OpenRouterFailureReason {
+  if (matchesFailure([401, 403], httpStatus, code)) {
+    return "auth";
+  }
+  if (
+    matchesFailure(
+      [
+        400,
+        402,
+        404,
+        413,
+        422,
+        "invalid_request_error",
+        "invalid_argument",
+        "invalid_parameter",
+        "unsupported_parameter",
+        "unsupported_value",
+        "INVALID_ARGUMENT",
+      ],
+      httpStatus,
+      code,
+    ) ||
+    errorType === "invalid_request_error"
+  ) {
+    return "invalid_request";
+  }
+  if (
+    matchesFailure(
+      [429, "rate_limit_exceeded", "RESOURCE_EXHAUSTED"],
+      httpStatus,
+      code,
+    ) ||
+    errorType === "rate_limit_exceeded"
+  ) {
+    return "rate_limited";
+  }
+  // OpenRouter also delivers an upstream gateway failure inside a 200 body, as
+  // an error envelope with no choices. The wrapper status is then a local
+  // synthetic 502 and only the provider code carries the real outcome, so these
+  // two classes match the code the way the rate-limit class already does. Both
+  // stay last, leaving an enumerated invalid-request or auth code overriding a
+  // transient status exactly as before.
+  if (matchesFailure([408, 504], httpStatus, code)) {
+    return "upstream_timeout";
+  }
+  if (matchesFailure([502, 503, "UNAVAILABLE"], httpStatus, code)) {
+    return "provider_unavailable";
+  }
+  return "unknown";
+}
+
 export function recordOpenRouterRequestFailure(
   error: Error,
   status: number,
@@ -101,66 +171,14 @@ export function recordOpenRouterRequestFailure(
   value: unknown,
 ): void {
   const detail = property(value, "error") ?? value;
-  const code = property(error, "errorCode") ?? property(detail, "code");
-  const errorType = property(property(detail, "metadata"), "error_type");
-  const httpStatus = origin === "http" ? status : undefined;
-  let reason: OpenRouterFailureReason = "unknown";
-  if (
-    [401, 403].some((candidate) => {
-      return candidate === httpStatus || candidate === code;
-    })
-  ) {
-    reason = "auth";
-  } else if (
-    [
-      400,
-      402,
-      404,
-      413,
-      422,
-      "invalid_request_error",
-      "invalid_argument",
-      "invalid_parameter",
-      "unsupported_parameter",
-      "unsupported_value",
-      "INVALID_ARGUMENT",
-    ].some((candidate) => {
-      return candidate === httpStatus || candidate === code;
-    }) ||
-    errorType === "invalid_request_error"
-  ) {
-    reason = "invalid_request";
-  } else if (
-    code === "rate_limit_exceeded" ||
-    code === "RESOURCE_EXHAUSTED" ||
-    code === 429 ||
-    errorType === "rate_limit_exceeded" ||
-    httpStatus === 429
-  ) {
-    reason = "rate_limited";
-  } else if (
-    httpStatus === 408 ||
-    httpStatus === 504 ||
-    code === 408 ||
-    code === 504
-  ) {
-    // OpenRouter also delivers an upstream gateway failure inside a 200 body,
-    // as an error envelope with no choices. The wrapper status is then a local
-    // synthetic 502 and only the provider code carries the real outcome, so
-    // this and the branch below match that code the way the rate-limit branch
-    // already does. Both stay last, leaving an enumerated invalid-request or
-    // auth code overriding a transient status exactly as before.
-    reason = "upstream_timeout";
-  } else if (
-    httpStatus === 502 ||
-    httpStatus === 503 ||
-    code === 502 ||
-    code === 503 ||
-    code === "UNAVAILABLE"
-  ) {
-    reason = "provider_unavailable";
-  }
-  recordOpenRouterFailure(error, reason);
+  recordOpenRouterFailure(
+    error,
+    requestFailureReason(
+      origin === "http" ? status : undefined,
+      property(error, "errorCode") ?? property(detail, "code"),
+      property(property(detail, "metadata"), "error_type"),
+    ),
+  );
 }
 
 /** Call only at fetch/body I/O, never around feature code or output interpretation. */
