@@ -1,5 +1,16 @@
 # Changelog
 
+## [9.323.5](https://github.com/vm0-ai/vm0/compare/cli-v9.323.4...cli-v9.323.5) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.425.0
+    * @okouai/core bumped to 8.649.0
+    * @okouai/pi-agent-runtime bumped to 1.24.12
+
 ## [9.323.4](https://github.com/vm0-ai/vm0/compare/cli-v9.323.3...cli-v9.323.4) (2026-09-09)
 
 

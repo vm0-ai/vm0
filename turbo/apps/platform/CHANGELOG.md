@@ -11,6 +11,36 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.883.0](https://github.com/vm0-ai/vm0/compare/app-v0.882.5...app-v0.883.0) (2026-09-10)
+
+
+### Features
+
+* **api:** answer a named category with the whole category ([#33112](https://github.com/vm0-ai/vm0/issues/33112)) ([04d3c7e](https://github.com/vm0-ai/vm0/commit/04d3c7e5b600b195e272e80b2bcef2b66ffc7c26))
+* **api:** hand the intro-video skill its entry form and name it intro video everywhere ([#33119](https://github.com/vm0-ai/vm0/issues/33119)) ([850ec24](https://github.com/vm0-ai/vm0/commit/850ec247513051216bc44da4b246fd047fcb0ceb))
+
+
+### Bug Fixes
+
+* **connectors:** place remote access before custom connectors ([#33106](https://github.com/vm0-ai/vm0/issues/33106)) ([e5e5207](https://github.com/vm0-ai/vm0/commit/e5e52075f4f2285ebaf93bd62b61465d91f05b9e))
+* **platform:** exclude folded history from thread shares ([#33060](https://github.com/vm0-ai/vm0/issues/33060)) ([ded08cc](https://github.com/vm0-ai/vm0/commit/ded08cccea06e34792b3b6014685e91be1de119c))
+* **platform:** match the flyout panel's surface and close it on selection ([#33102](https://github.com/vm0-ai/vm0/issues/33102)) ([96ec51e](https://github.com/vm0-ai/vm0/commit/96ec51e06505ea20e54ab89a5fc604aa41d56d61))
+* **platform:** stop reporting webkit media-controls errors from chat pages ([#33109](https://github.com/vm0-ai/vm0/issues/33109)) ([d721acc](https://github.com/vm0-ai/vm0/commit/d721acc86bf4f96ff0cce69ab9116d231800791c))
+
+
+### Refactoring
+
+* **ads:** normalize okou attribution with rollout compatibility ([#33149](https://github.com/vm0-ai/vm0/issues/33149)) ([a222108](https://github.com/vm0-ai/vm0/commit/a222108b4eccfdab77fa3f6f3c08fa6ea2bdfac7))
+* **app:** migrate monochrome icon filter to dark utility ([#33062](https://github.com/vm0-ai/vm0/issues/33062)) ([460ff68](https://github.com/vm0-ai/vm0/commit/460ff6855c77a5eba0ecf1c9966bb5bbc8d29885))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.425.0
+    * @okouai/core bumped to 8.649.0
+
 ## [0.882.5](https://github.com/vm0-ai/vm0/compare/app-v0.882.4...app-v0.882.5) (2026-09-10)
 
 
