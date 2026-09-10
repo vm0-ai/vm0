@@ -17,7 +17,7 @@ use crate::types::SandboxReuseResult;
 
 // Real HTTP I/O must make progress without advancing the paused retry clock.
 // A wall-clock watchdog also bounds assertions when Tokio time is frozen.
-async fn observe<T>(description: &str, mut observed: impl FnMut() -> Option<T>) -> T {
+pub(super) async fn observe<T>(description: &str, mut observed: impl FnMut() -> Option<T>) -> T {
     let deadline = Instant::now() + RUN_IN_SANDBOX_TEST_TIMEOUT;
     loop {
         if let Some(value) = observed() {
@@ -31,7 +31,7 @@ async fn observe<T>(description: &str, mut observed: impl FnMut() -> Option<T>) 
     }
 }
 
-async fn retry_delay(captured: &CapturedEvents, count: usize) -> Duration {
+pub(super) async fn retry_delay(captured: &CapturedEvents, count: usize) -> Duration {
     observe("API read retry scheduling", || {
         let events = captured.entries();
         let retries = events
