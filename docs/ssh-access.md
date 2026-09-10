@@ -12,8 +12,11 @@ accounts nor connector permissions.
 Open **Connectors -> Remote access -> SSH** (`/connectors/ssh`) to manage hosts for your
 current organization and user, without selecting or creating an Agent. The SSH
 card uses the same presentation as connector cards: no hosts shows the service
-description and add affordance; configured hosts show a compact host-count
-footer with **Add access** or **Used by** Agent authorization. The authorization
+description and add affordance; one configured host shows its display name and
+multiple hosts show their count. Hosts without a reported failure use a green dot;
+current failures use an amber dot and `failed/total need attention`, including
+`1/1 need attention` for a single failed host. The footer keeps **Add access** or
+**Used by** Agent authorization. The authorization
 dialog lists your currently visible Agents with search and the same switches as
 Connector access management, while writing only the standalone SSH grant API.
 The count is configuration, not tested connectivity. It participates in
@@ -100,10 +103,11 @@ the accepted Run-lifetime cache window.
 
 After an actual SSH attempt, the host card can show the last reported connection
 failure, its observation time, and localized recovery guidance. The directory
-card, Chat service row and visible compact SSH icon show an attention indicator
-when any current host has such a failure. Multiple hosts retain independent
-observations; a healthy sibling cannot clear another host's warning. Grants,
-service order and the compact icon limit are unchanged.
+card uses the same status-dot and attention-ratio presentation as Connector
+cards. Chat service rows and compact icons do not add SSH-only warning badges,
+matching Connector presentation. Multiple hosts retain independent observations;
+a healthy sibling cannot clear another host's warning. Grants, service order
+and the compact icon limit are unchanged.
 
 Only credential parsing, destination, network, host identity, authentication and
 pre-authentication handshake/timeout failures are connection failures. A verified
@@ -114,9 +118,13 @@ host warnings. No command is retried and no trust or grant is changed.
 
 Saving or editing a host is not a connection test. Any configuration generation
 change hides observations for the previous configuration without claiming success.
-No observation means unknown, not healthy; the UI does not add an untested status
-line. A failed/unavailable diagnostic read is shown separately and leaves host
-management available. Observations refresh through the existing owner notification.
+No observation means unknown connectivity. A green directory dot means configured
+with no currently reported failure, not a verified live connection; the UI does
+not add an untested status line. A failed/unavailable diagnostic read is shown
+separately and leaves host management available. Observations refresh through
+the existing owner notification. A single-host name uses the existing owner-scoped
+host-list read; while that name is unavailable, the configured count is the
+presentational fallback.
 
 This is best-effort recent evidence, not continuous monitoring. Reports may be
 missed, arrive late or be rejected after a Run ends or authority changes. There
