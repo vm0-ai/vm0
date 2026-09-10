@@ -5703,7 +5703,6 @@
           "unavailable": "사용할 수 없는 모델 ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "이 요청 ID는 다른 채팅에 속합니다. 설정을 닫고 새 환영 채팅 만들기를 시작하세요.",
           "create": "환영 채팅 만들기",
           "creating": "만드는 중…",
           "defaultAgentNotReady": "워크스페이스의 기본 에이전트를 설정한 후 다시 시도하세요.",

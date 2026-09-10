@@ -317,7 +317,6 @@ function createDesktopSelection(
   phase$: State<DesktopAuthPhase>,
   memberships$: ReturnType<typeof createDesktopMemberships>,
   selectedOrganization$: State<string | null>,
-  lifetime: AbortSignal,
 ) {
   return command(
     async ({ get, set }, organizationId: string, signal: AbortSignal) => {
@@ -329,7 +328,6 @@ function createDesktopSelection(
         signal,
       );
       signal.throwIfAborted();
-      lifetime.throwIfAborted();
       if (get(selectedOrganization$)) {
         return;
       }
@@ -341,11 +339,7 @@ function createDesktopSelection(
         return;
       }
       set(selectedOrganization$, organizationId);
-      const attempt = AbortSignal.any([
-        signal,
-        lifetime,
-        AbortSignal.timeout(25_000),
-      ]);
+      const attempt = AbortSignal.any([signal, AbortSignal.timeout(25_000)]);
       const result = await settle(
         waitForDesktopOperation(
           set(
@@ -422,12 +416,10 @@ function createDesktopAuthSignals(
     phase$,
     memberships$,
     selectedOrganization$,
-    lifetime,
   );
 
   const reopen$ = command(({ get }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    lifetime.throwIfAborted();
     const url = get(callbackUrl$);
     if (url && get(phase$) === "pending") {
       location.assign(url);
@@ -435,7 +427,6 @@ function createDesktopAuthSignals(
   });
   const retry$ = command(({ get }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    lifetime.throwIfAborted();
     if (mode === "callback" && get(phase$) === "failed") {
       location.replace(desktopAuthUrl("callback", params));
     }

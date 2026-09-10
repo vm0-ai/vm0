@@ -1,31 +1,18 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
 import { ApiError } from "../../../../lib/api-error.ts";
-import {
-  welcomeThreadAction$,
-  type WelcomeThreadAction,
-} from "../../../../signals/okou-page/settings/welcome-thread.ts";
-import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { settingsActionSignal$ } from "../../../../signals/okou-page/settings/settings-dialog.ts";
+import { createWelcomeThread$ } from "../../../../signals/okou-page/settings/welcome-thread.ts";
 import { detach, isAbortError, Reason } from "../../../../signals/utils.ts";
 
 export function WelcomeThreadCard() {
-  const action = useLoadable(welcomeThreadAction$);
-  return action.state === "hasData" ? (
-    <WelcomeThreadActionCard action={action.data} />
-  ) : null;
-}
-
-function WelcomeThreadActionCard({
-  action,
-}: {
-  readonly action: WelcomeThreadAction;
-}) {
   const { t } = useTranslation();
-  const [result, create] = useLoadableSet(action.create$);
-  const pageSignal = useGet(pageSignal$);
+  const [result, create] = useLoadableSet(createWelcomeThread$);
+  // Dismissal aborts this signal before the closing animation finishes.
+  const actionSignal = useGet(settingsActionSignal$);
   const pending = result.state === "loading";
   const error = result.state === "hasError" ? result.error : undefined;
   const errorCode = error instanceof ApiError ? error.code : undefined;
@@ -54,9 +41,11 @@ function WelcomeThreadActionCard({
         </div>
         <Button
           type="button"
-          disabled={pending}
+          disabled={pending || !actionSignal}
           onClick={() => {
-            detach(create(pageSignal), Reason.DomCallback);
+            if (actionSignal) {
+              detach(create(actionSignal), Reason.DomCallback);
+            }
           }}
         >
           {pending
@@ -75,13 +64,9 @@ function WelcomeThreadActionCard({
                 return $.settings.preferences.debug.welcomeThread
                   .defaultAgentNotReady;
               })
-            : errorCode === "CONFLICT"
-              ? t(($) => {
-                  return $.settings.preferences.debug.welcomeThread.conflict;
-                })
-              : t(($) => {
-                  return $.settings.preferences.debug.welcomeThread.failed;
-                })}
+            : t(($) => {
+                return $.settings.preferences.debug.welcomeThread.failed;
+              })}
         </p>
       )}
     </section>

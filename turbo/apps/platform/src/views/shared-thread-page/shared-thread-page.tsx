@@ -16,6 +16,7 @@ import {
 } from "../../signals/branding.ts";
 import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
@@ -264,12 +265,13 @@ function SharedRichMessageBody({
 }) {
   const state = useGet(richContent.state$);
   const retry = useSet(richContent.retry$);
+  const pageSignal = useGet(pageSignal$);
   const tree = state.trees.get(messageIndex);
   const onRetry =
     state.status === "error"
       ? () => {
           detach(
-            retry(),
+            retry(pageSignal),
             Reason.DomCallback,
             "retry shared thread rich content",
           );

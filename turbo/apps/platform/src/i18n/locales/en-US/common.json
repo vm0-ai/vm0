@@ -5708,7 +5708,6 @@
           "unavailable": "Unavailable model ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "This request ID belongs to another chat. Close Settings and start a new welcome action.",
           "create": "Create welcome thread",
           "creating": "Creating…",
           "defaultAgentNotReady": "Configure the workspace default agent, then try again.",

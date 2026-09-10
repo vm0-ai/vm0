@@ -5703,7 +5703,6 @@
           "unavailable": "Model tidak tersedia ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "ID permintaan ini milik obrolan lain. Tutup Pengaturan dan mulai tindakan sambutan baru.",
           "create": "Buat obrolan sambutan",
           "creating": "Membuat…",
           "defaultAgentNotReady": "Konfigurasikan agen default ruang kerja, lalu coba lagi.",

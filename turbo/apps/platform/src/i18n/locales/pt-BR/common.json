@@ -5776,7 +5776,6 @@
           "unavailable": "Modelo indisponível ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "Este ID de solicitação pertence a outra conversa. Feche as configurações e inicie uma nova criação.",
           "create": "Criar conversa de boas-vindas",
           "creating": "Criando…",
           "defaultAgentNotReady": "Configure o agente padrão do espaço de trabalho e tente novamente.",

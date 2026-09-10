@@ -5776,7 +5776,6 @@
           "unavailable": "Modelo no disponible ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "Este ID de solicitud pertenece a otro chat. Cierra Configuración e inicia una nueva acción de bienvenida.",
           "create": "Crear chat de bienvenida",
           "creating": "Creando…",
           "defaultAgentNotReady": "Configura el agente predeterminado del espacio de trabajo e inténtalo de nuevo.",
