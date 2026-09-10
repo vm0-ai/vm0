@@ -296,3 +296,25 @@ must survive changes to the root palette. The disabled capability remains hidden
 Real API persistence is a separate preview check; controlled responses certify
 client rendering and interaction only. Existing browser and rounding limits
 apply unchanged, and failures are retained.
+
+### Color swatch acceptance (#33063)
+
+[BEFORE/A/A](https://a.okou.io/tfbcvgmfih.zip) uses the unmigrated App build
+`440d64b6dfffeba66d643e35fee9685ad90df335` and frozen runner source
+`68ba2c0000bbebf2f088625e20b9ae10e6788082`. The
+[AFTER archive](https://a.okou.io/ibwjj8txei.zip) uses App/API build
+`094ffe1c195a4b4680a696273ebb08f4047ca2a8` from source
+`00f85fa8dd75772a7c274c4ca846f9ee65fbd042`, including main's shared button migration.
+All 40 states have zero changed pixels and identical native-control/swatch
+observations. The [comparison](https://a.okou.io/767nwsbdl5.png) is a quick view;
+the archive retains full images and raw diffs. Live API save, reload and
+restoration of Blue horizon passed separately. Current implementation-head CI,
+App/E2E types, style checks and 11 preference tests passed.
+
+The [earlier calibration](https://a.okou.io/w9gttm8nol.zip) retains a completed
+capture's command termination and a Light reload that stayed at the startup
+spinner. Their triggers remain unconfirmed. Before business-style edits, the
+runner gained failure diagnostics and began waiting for the post-save GET,
+then a fresh BEFORE/A/A pair passed. No pixel or timeout limits changed.
+This is bounded Chromium acceptance; broader browser/native and unattended
+coverage remain outside this batch.
