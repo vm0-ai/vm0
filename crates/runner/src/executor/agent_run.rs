@@ -798,7 +798,7 @@ where
                 ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false);
             // Preserve metadata before replacing the terminal result, and keep
             // it separate from the real diagnostic used for cancellation proof.
-            outcome.oom_evidence = take_oom_evidence(&mut exit.diagnostic);
+            outcome.oom_evidence = take_oom_evidence(run_id, &mut exit.diagnostic);
             outcome.hard_cancel_terminal_confirmed = exit.diagnostic.is_empty()
                 && matches!(
                     exit.termination,
@@ -1097,35 +1097,23 @@ fn sandbox_reuse_disposition_for_process_exit(
     }
 }
 
+/// Remove bounded OOM metadata before outcome processing so it never reaches
+/// user-facing stderr or a terminal-status decision. A metadata line that broke
+/// its own contract is dropped too, but must not disappear silently.
 fn take_oom_evidence(
+    run_id: crate::ids::RunId,
     diagnostic: &mut String,
 ) -> Option<guest_contracts::oom_evidence::OomEvidence> {
-    use guest_contracts::oom_evidence::{
-        EVIDENCE_PREFIX, MAX_EVIDENCE_BYTES, MAX_INCIDENTS, MAX_KERNEL_EVENTS, OomEvidence,
-    };
-    let mut evidence = None;
-    let retained = diagnostic
-        .lines()
-        .filter(|line| {
-            let Some(json) = line.strip_prefix(EVIDENCE_PREFIX) else {
-                return true;
-            };
-            if json.len() <= MAX_EVIDENCE_BYTES
-                && let Ok(parsed) = serde_json::from_str::<OomEvidence>(json)
-                && parsed.incidents.len() <= MAX_INCIDENTS
-                && parsed
-                    .incidents
-                    .iter()
-                    .all(|incident| incident.kernel_events.len() <= MAX_KERNEL_EVENTS)
-            {
-                evidence = Some(parsed);
-            }
-            false
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    *diagnostic = retained;
-    evidence
+    let split = guest_contracts::oom_evidence::split_diagnostic(diagnostic);
+    *diagnostic = split.residual;
+    if split.malformed_lines > 0 {
+        warn!(
+            run_id = %run_id,
+            malformed_lines = split.malformed_lines,
+            "guest oom evidence envelope malformed"
+        );
+    }
+    split.evidence
 }
 
 fn process_failure_exit_code(exit: &sandbox::ProcessExit) -> i32 {
@@ -2568,7 +2556,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 .with_active_input_delivery_ids(active_input_delivery_ids));
         }
     };
-    if let Some(evidence) = take_oom_evidence(&mut exit.diagnostic).or(oom_evidence) {
+    if let Some(evidence) = take_oom_evidence(context.run_id, &mut exit.diagnostic).or(oom_evidence)
+    {
         if evidence
             .incidents
             .iter()
