@@ -54,6 +54,7 @@ import {
 } from "drizzle-orm";
 
 import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
+import type { Tx } from "../../lib/db-types";
 import { now, nowDate } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import { inferMimetype } from "./chat-event-shared.service";
@@ -638,6 +639,59 @@ export function chatThreadArtifacts(args: {
   );
 }
 
+export interface CreatedChatThread {
+  readonly kind: "created";
+  readonly id: string;
+  readonly createdAt: Date;
+}
+
+/** The thread a duplicate delivery of one create request replays. */
+export interface ExistingChatThread {
+  readonly kind: "existing";
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly title: string | null;
+  readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+}
+
+/**
+ * The thread a repeated create request already owns, read inside the same
+ * transaction that lost the insert conflict. Ownership stays scoped to the
+ * caller and the requested agent, so an id held by another member, org, or
+ * agent resolves to a conflict the route answers without disclosing it.
+ */
+async function resolveExistingClientThread(
+  tx: Tx,
+  args: {
+    readonly clientThreadId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<ExistingChatThread | { readonly kind: "client_thread_conflict" }> {
+  const [existingThread] = await tx
+    .select({
+      id: chatThreads.id,
+      createdAt: chatThreads.createdAt,
+      title: chatThreads.title,
+      selectedModel: chatThreads.selectedModel,
+      codexServiceTier: chatThreads.codexServiceTier,
+    })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, args.clientThreadId),
+        eq(chatThreads.userId, args.userId),
+        eq(chatThreads.agentId, args.agentId),
+      ),
+    )
+    .limit(1);
+  if (!existingThread) {
+    return { kind: "client_thread_conflict" as const };
+  }
+  return { kind: "existing" as const, ...existingThread };
+}
+
 export const createChatThread$ = command(
   async (
     { set },
@@ -659,10 +713,10 @@ export const createChatThread$ = command(
     },
     signal: AbortSignal,
   ): Promise<
+    | CreatedChatThread
+    | ExistingChatThread
     | {
-        readonly kind: "created";
-        readonly id: string;
-        readonly createdAt: Date;
+        readonly kind: "client_thread_conflict";
       }
     | {
         readonly kind: "invalid_connector_selection";
@@ -706,9 +760,21 @@ export const createChatThread$ = command(
           selectedVideoModel: args.selectedVideoModel,
           selectedImageModel: args.selectedImageModel,
         })
+        // A duplicate delivery of one create request must replay the thread the
+        // caller already owns instead of surfacing the primary key violation.
+        // Only that key is tolerated, so every other database fault propagates.
+        .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
-        return undefined;
+        // A generated id never collides, so its absent row stays an error.
+        if (args.clientThreadId === undefined) {
+          return undefined;
+        }
+        return await resolveExistingClientThread(tx, {
+          clientThreadId: args.clientThreadId,
+          userId: args.userId,
+          agentId: args.agentId,
+        });
       }
       await insertInitialChatThreadConnectorSelections(tx, {
         chatThreadId: createdThread.id,

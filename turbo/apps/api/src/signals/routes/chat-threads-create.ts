@@ -18,7 +18,12 @@ import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
-import { createChatThread$ } from "../services/chat-thread.service";
+import { logger } from "../../lib/log";
+import {
+  createChatThread$,
+  type CreatedChatThread,
+  type ExistingChatThread,
+} from "../services/chat-thread.service";
 import { agentExistsInOrg } from "../services/agent-deletion.service";
 import { loadNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
 import {
@@ -29,6 +34,8 @@ import { chatThreadModelPinColumns } from "../services/chat-thread-model.service
 import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
+const L = logger("ChatThreadCreate");
+
 const createBody$ = bodyResultOf(chatThreadsContract.create);
 
 function modelFirstSelection(selectedModel: string) {
@@ -36,6 +43,50 @@ function modelFirstSelection(selectedModel: string) {
     modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
     selectedModel,
   };
+}
+
+interface ChatThreadCreateSettings {
+  readonly title: string | null;
+  readonly selectedModel: string;
+  readonly codexServiceTier: CodexServiceTier | null;
+}
+
+function chatThreadCreatedResponse(
+  thread: { readonly id: string; readonly createdAt: Date },
+  settings: ChatThreadCreateSettings,
+) {
+  return {
+    status: 201 as const,
+    body: {
+      id: thread.id,
+      title: settings.title,
+      createdAt: thread.createdAt.toISOString(),
+      selectedModel: settings.selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(settings.codexServiceTier),
+    },
+  };
+}
+
+/**
+ * The created thread, or the one a duplicate delivery replays. A replay answers
+ * with the stored settings rather than the repeated request, because the member
+ * may have renamed or repinned the thread since the original delivery.
+ */
+function chatThreadCreateResponse(
+  thread: CreatedChatThread | ExistingChatThread,
+  requested: ChatThreadCreateSettings,
+) {
+  if (thread.kind === "created") {
+    return chatThreadCreatedResponse(thread, requested);
+  }
+  // Duplicate deliveries are expected and non-actionable, so they stay out of
+  // the error channel while remaining countable in production.
+  L.info("Replayed chat thread create for an existing client thread id");
+  return chatThreadCreatedResponse(thread, {
+    title: thread.title,
+    selectedModel: thread.selectedModel ?? requested.selectedModel,
+    codexServiceTier: thread.codexServiceTier,
+  });
 }
 
 /**
@@ -179,20 +230,22 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (thread.kind === "invalid_connector_selection") {
     return badRequestMessage(thread.message);
   }
+  // The id already belongs to another member, org, or agent. Answer exactly
+  // like a thread that does not exist so a collision discloses no ownership.
+  if (thread.kind === "client_thread_conflict") {
+    return notFound("Chat thread not found");
+  }
 
+  // The thread list invalidation is idempotent, so a replay also repairs a
+  // realtime notification the original delivery may have lost.
   await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
-  return {
-    status: 201 as const,
-    body: {
-      id: thread.id,
-      title: body.data.title ?? null,
-      createdAt: thread.createdAt.toISOString(),
-      selectedModel,
-      serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
-    },
-  };
+  return chatThreadCreateResponse(thread, {
+    title: body.data.title ?? null,
+    selectedModel,
+    codexServiceTier,
+  });
 });
 
 export const chatThreadCreateRoutes: readonly RouteEntry[] = [
