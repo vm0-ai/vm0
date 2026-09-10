@@ -221,6 +221,8 @@ async function run() {
       });
       let releaseSave: (() => void) | undefined;
       let savePending: Promise<void> | undefined;
+      let saveArrived: Promise<void> | undefined;
+      let markSaveArrived: (() => void) | undefined;
       try {
         await context.clearCookies({ name: "__Secure-okou-theme" });
         await context.addCookies([
@@ -296,8 +298,10 @@ async function run() {
                 if (
                   savePending &&
                   (update.timezone !== undefined || update.locale !== undefined)
-                )
+                ) {
+                  markSaveArrived?.();
                   await savePending;
+                }
                 for (const [key, value] of Object.entries(update)) {
                   if (key === "timezone") {
                     assert(value === "Etc/UTC" || value === "Asia/Tokyo");
@@ -340,7 +344,11 @@ async function run() {
           ).toBeEnabled();
           if (!item.isMobile)
             await expect(
-              page.getByRole("button", { name: "Get Pro", exact: true }),
+              page.getByRole("button", {
+                name: "Get Pro",
+                exact: true,
+                includeHidden: true,
+              }),
             ).toBeVisible();
           await expect(
             page.getByRole("button", {
@@ -426,6 +434,9 @@ async function run() {
         await expect(language).toBeFocused();
         await capture("language-keyboard-focus");
         await language.click();
+        saveArrived = new Promise<void>((resolve) => {
+          markSaveArrived = resolve;
+        });
         savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
@@ -433,6 +444,9 @@ async function run() {
         await expect(language).toBeDisabled();
         await expect(page.getByRole("listbox")).not.toBeVisible();
         await page.mouse.move(0, 0);
+        await saveArrived;
+        await expect(page.locator("html")).toHaveAttribute("lang", "ja-JP");
+        await expect(language).toHaveText(/日本語/);
         await capture("language-saving");
         releaseSave?.();
         savePending = undefined;
@@ -464,6 +478,9 @@ async function run() {
         await expect(timezone).toBeFocused();
         await capture("timezone-keyboard-focus");
         await timezone.click();
+        saveArrived = new Promise<void>((resolve) => {
+          markSaveArrived = resolve;
+        });
         savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
@@ -471,6 +488,7 @@ async function run() {
         await expect(timezone).toBeDisabled();
         await expect(page.getByRole("listbox")).not.toBeVisible();
         await page.mouse.move(0, 0);
+        await saveArrived;
         await capture("timezone-saving");
         releaseSave?.();
         savePending = undefined;
