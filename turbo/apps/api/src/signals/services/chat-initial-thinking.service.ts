@@ -15,12 +15,18 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
+import {
+  FAST_PATH_MODEL,
+  generateTextWithUsage,
+  openRouterTokenCounts,
+} from "../external/openrouter";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
-import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
+import {
+  generateAuxiliary,
+  type RecordAuxiliaryGenerationDetail,
+} from "./auxiliary-generation.service";
 import {
   goalIdForRun,
   visibleChatEventCondition,
@@ -38,8 +44,6 @@ import {
   canonicalChatEventError,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
-
-const log = logger("api:chat-initial-thinking");
 
 const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
 const THINKING_CONTEXT_MESSAGE_CAP = 8;
@@ -195,6 +199,7 @@ async function runCanReceiveThinkingMessage(args: {
 async function generateInitialThinkingText(args: {
   readonly currentPrompt: string;
   readonly history: readonly ThinkingContextMessage[];
+  readonly record: RecordAuxiliaryGenerationDetail;
 }): Promise<string | null> {
   const history = args.history
     .map((message) => {
@@ -202,7 +207,7 @@ async function generateInitialThinkingText(args: {
     })
     .join("\n\n");
 
-  const text = await generateText(
+  const generation = await generateTextWithUsage(
     FAST_PATH_MODEL,
     [
       {
@@ -231,8 +236,15 @@ async function generateInitialThinkingText(args: {
     THINKING_MAX_TOKENS,
     { reasoning: { effort: "low" } },
   );
+  if (generation === null) {
+    return null;
+  }
+  args.record({
+    truncated: generation.truncated === true,
+    tokens: openRouterTokenCounts(generation.usage),
+  });
 
-  return sanitizeThinkingText(text);
+  return sanitizeThinkingText(generation.text);
 }
 
 export async function generateAndPersistInitialThinkingMessage(args: {
@@ -263,23 +275,24 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   ) {
     return false;
   }
-  const thinking = await tapError(
-    generateInitialThinkingText({
-      currentPrompt: args.currentPrompt,
-      history,
-    }),
-    (err) => {
-      log.warn("Initial thinking generation failed", {
-        threadId: args.threadId,
-        runId: args.runId,
-        err,
+  // Progress copy is the most disposable of the auxiliary generations: the run
+  // still answers without it. Share the boundary so an exhausted provider
+  // window is counted as expected degradation instead of warned about here.
+  const thinking = await generateAuxiliary({
+    feature: "chat_initial_thinking",
+    generate: (record) => {
+      return generateInitialThinkingText({
+        currentPrompt: args.currentPrompt,
+        history,
+        record,
       });
     },
-  );
-  if (thinking === undefined) {
-    return false;
-  }
-  if (thinking === null) {
+    usable: (value) => {
+      return value !== null;
+    },
+    diagnosticContext: { runId: args.runId, threadId: args.threadId },
+  });
+  if (thinking === undefined || thinking === null) {
     return false;
   }
   if (!(await runCanReceiveThinkingMessage(args))) {
