@@ -1,0 +1,93 @@
+{
+  "encryption": {
+    "Rules": [
+      {
+        "ApplyServerSideEncryptionByDefault": {
+          "SSEAlgorithm": "AES256"
+        }
+      }
+    ]
+  },
+  "publicAccess": {
+    "BlockPublicAcls": true,
+    "IgnorePublicAcls": true,
+    "BlockPublicPolicy": true,
+    "RestrictPublicBuckets": true
+  },
+  "ownership": {
+    "Rules": [
+      {
+        "ObjectOwnership": "BucketOwnerEnforced"
+      }
+    ]
+  },
+  "versioning": "Enabled",
+  "policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "DenyInsecureTransport",
+        "Effect": "Deny",
+        "Principal": "*",
+        "Action": "s3:*",
+        "Resource": [
+          "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2",
+          "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2/*"
+        ],
+        "Condition": {
+          "Bool": {
+            "aws:SecureTransport": "false",
+            "aws:PrincipalIsAWSService": "false"
+          }
+        }
+      },
+      {
+        "Sid": "AuditServiceBucketCheck",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "config.amazonaws.com"
+        },
+        "Action": ["s3:GetBucketAcl", "s3:ListBucket"],
+        "Resource": "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2",
+        "Condition": {
+          "StringEquals": {
+            "AWS:SourceAccount": "251964670836"
+          },
+          "ArnLike": {
+            "AWS:SourceArn": "arn:aws:config:us-west-2:251964670836:*"
+          }
+        }
+      },
+      {
+        "Sid": "AuditServiceDelivery",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "config.amazonaws.com"
+        },
+        "Action": "s3:PutObject",
+        "Resource": "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2/AWSLogs/251964670836/Config/*",
+        "Condition": {
+          "StringEquals": {
+            "AWS:SourceAccount": "251964670836",
+            "s3:x-amz-acl": "bucket-owner-full-control"
+          },
+          "ArnLike": {
+            "AWS:SourceArn": "arn:aws:config:us-west-2:251964670836:*"
+          }
+        }
+      }
+    ]
+  },
+  "lifecycle": [
+    {
+      "ID": "AbortIncompleteUploads",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}
