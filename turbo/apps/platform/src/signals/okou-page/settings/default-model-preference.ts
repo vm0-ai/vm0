@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command } from "ccstate";
 
 import type { ModelProviderSelection } from "../../../views/okou-page/components/model-provider-picker.tsx";
 import {
@@ -6,23 +6,6 @@ import {
   updateUserModelPreference$,
   userModelPreference$,
 } from "../../external/user-model-preference.ts";
-import { pageSignal$ } from "../../page-signal.ts";
-
-interface DefaultModelSubmission {
-  readonly selection: ModelProviderSelection | null;
-  readonly signal: AbortSignal;
-}
-
-const internalDefaultModelSubmission$ = state<DefaultModelSubmission | null>(
-  null,
-);
-
-export const defaultModelSubmission$ = computed((get) => {
-  const submission = get(internalDefaultModelSubmission$);
-  return submission?.signal === get(pageSignal$)
-    ? { selection: submission.selection }
-    : null;
-});
 
 export const updateDefaultModelPreference$ = command(
   async (
@@ -31,7 +14,6 @@ export const updateDefaultModelPreference$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     signal.throwIfAborted();
-    set(internalDefaultModelSubmission$, { selection, signal });
     await set(
       updateUserModelPreference$,
       {

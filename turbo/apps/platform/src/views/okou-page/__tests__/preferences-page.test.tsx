@@ -462,6 +462,111 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
   });
 });
 
+test("Chat setting controls disable while their saves settle", async () => {
+  let preferences = {
+    ...defaultPreferences(),
+    cloudBrowserEnabledByDefault: false,
+  };
+  const releaseCloudUpdate = context.mocks.deferred<void>();
+  const releaseSendModeUpdate = context.mocks.deferred<void>();
+  const updateReleases = [releaseCloudUpdate, releaseSendModeUpdate] as const;
+  let updateIndex = 0;
+  context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+    return respond(200, preferences);
+  });
+  context.mocks.api(
+    userPreferencesContract.update,
+    async ({ body, respond, withSignal }) => {
+      const release = updateReleases[updateIndex];
+      if (!release) {
+        throw new Error("Unexpected preference update");
+      }
+      updateIndex += 1;
+      await withSignal(release.promise);
+      preferences = { ...preferences, ...body };
+      return respond(200, preferences);
+    },
+  );
+
+  context.mocks.data.userModelPreference({
+    selectedModel: "gpt-6-astra",
+    serviceTier: null,
+    selectedVideoModel: null,
+    selectedImageModel: null,
+    updatedAt: "2026-09-06T00:00:00.000Z",
+  });
+  const releaseModelUpdate = context.mocks.deferred<void>();
+  context.mocks.api(
+    userModelPreferenceContract.update,
+    async ({ body, respond, withSignal }) => {
+      await withSignal(releaseModelUpdate.promise);
+      const preference = {
+        selectedModel: body.selectedModel,
+        serviceTier: body.serviceTier,
+        selectedVideoModel: null,
+        selectedImageModel: null,
+        updatedAt: "2026-09-06T00:00:01.000Z",
+      };
+      context.mocks.data.userModelPreference(preference);
+      return respond(200, preference);
+    },
+  );
+
+  await setupPage({
+    context,
+    path: "/?settings=chat",
+    host: "app.okou.ai",
+    featureSwitches: {
+      [FeatureSwitchKey.ChatPreference]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+    },
+  });
+
+  const dialog = await screen.findByRole("dialog", { name: "Settings" });
+  click(await within(dialog).findByRole("combobox", { name: "GPT 6 Astra" }));
+  click(await screen.findByRole("option", { name: "GPT 6 Astra Fast" }));
+  await waitFor(() => {
+    expect(within(dialog).getByLabelText("GPT 6 Astra")).toBeVisible();
+    expect(
+      within(dialog).queryByRole("combobox", { name: "GPT 6 Astra" }),
+    ).toBeNull();
+  });
+  releaseModelUpdate.resolve();
+  await waitFor(() => {
+    expect(
+      within(dialog).getByRole("combobox", { name: "GPT 6 Astra Fast" }),
+    ).toBeEnabled();
+  });
+
+  click(within(dialog).getByRole("switch", { name: "Cloud browser" }));
+  await waitFor(() => {
+    const cloudBrowser = within(dialog).getByRole("switch", {
+      name: "Cloud browser",
+    });
+    expect(cloudBrowser).toHaveAttribute("aria-disabled", "true");
+  });
+  releaseCloudUpdate.resolve();
+  await waitFor(() => {
+    const cloudBrowser = within(dialog).getByRole("switch", {
+      name: "Cloud browser",
+    });
+    expect(cloudBrowser).toBeChecked();
+    expect(cloudBrowser).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  click(getFastRole("button", "⌘ Enter", dialog));
+  await waitFor(() => {
+    expect(getFastRole("button", "Enter", dialog)).toBeDisabled();
+    expect(getFastRole("button", "⌘ Enter", dialog)).toBeDisabled();
+  });
+  releaseSendModeUpdate.resolve();
+  await waitFor(() => {
+    expectSelected(getFastRole("button", "⌘ Enter", dialog));
+    expect(getFastRole("button", "Enter", dialog)).toBeEnabled();
+    expect(getFastRole("button", "⌘ Enter", dialog)).toBeEnabled();
+  });
+});
+
 test("A user can save message-send and time-zone preferences", async () => {
   const updates = mockPreferences();
 
