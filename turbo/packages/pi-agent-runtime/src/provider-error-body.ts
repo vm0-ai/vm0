@@ -23,17 +23,78 @@ const PROVIDER_HTTP_STATUS_MARKER = "provider HTTP";
 /** Statuses whose responses must not carry a body. */
 const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([204, 205, 304]);
 
-interface BufferedErrorBody {
-  readonly bytes: Uint8Array;
-  readonly truncated: boolean;
+type InspectedErrorBody =
+  | { readonly kind: "buffered"; readonly bytes: Uint8Array }
+  | {
+      readonly kind: "passthrough";
+      readonly stream: ReadableStream<Uint8Array>;
+    };
+
+/**
+ * Replay the bounded prefix already read for inspection, then transfer the
+ * original reader to the returned stream for the unread remainder.
+ */
+function replayErrorBody(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  chunks: readonly Uint8Array[],
+): ReadableStream<Uint8Array> {
+  let nextChunk = 0;
+  let cancelled = false;
+  let released = false;
+  const releaseReader = () => {
+    if (!released) {
+      released = true;
+      reader.releaseLock();
+    }
+  };
+
+  return new ReadableStream({
+    async pull(controller) {
+      if (cancelled) {
+        return;
+      }
+      const chunk = chunks[nextChunk];
+      if (chunk !== undefined) {
+        nextChunk += 1;
+        controller.enqueue(chunk);
+        return;
+      }
+      try {
+        const result = await reader.read();
+        if (cancelled) {
+          return;
+        }
+        if (result.done) {
+          releaseReader();
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
+      } catch (error) {
+        if (!cancelled) {
+          controller.error(error);
+        }
+        releaseReader();
+      }
+    },
+    async cancel(reason) {
+      cancelled = true;
+      try {
+        await reader.cancel(reason);
+      } finally {
+        releaseReader();
+      }
+    },
+  });
 }
 
 async function bufferErrorBody(
   body: ReadableStream<Uint8Array>,
-): Promise<BufferedErrorBody> {
+): Promise<InspectedErrorBody> {
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let readerTransferred = false;
   try {
     for (;;) {
       const result = await reader.read();
@@ -43,16 +104,22 @@ async function bufferErrorBody(
       chunks.push(result.value);
       size += result.value.byteLength;
       if (size > MAX_BUFFERED_ERROR_BODY_BYTES) {
-        // An oversized error body is passed through untouched, so cancelling
-        // the remainder would truncate what the adapter still parses.
-        await reader.cancel();
-        return { bytes: concatChunks(chunks, size), truncated: true };
+        // Stop inspecting here, but replay the prefix and retain the reader so
+        // the adapter can still consume the complete provider response.
+        const stream = replayErrorBody(reader, chunks);
+        readerTransferred = true;
+        return { kind: "passthrough", stream };
       }
     }
   } finally {
-    reader.releaseLock();
+    if (!readerTransferred) {
+      reader.releaseLock();
+    }
   }
-  return { bytes: concatChunks(chunks, size), truncated: false };
+  return {
+    kind: "buffered",
+    bytes: concatChunks(chunks, size),
+  };
 }
 
 function concatChunks(chunks: readonly Uint8Array[], size: number): Uint8Array {
@@ -115,10 +182,17 @@ export function preserveProviderErrorStatus(
     ) {
       return response;
     }
-    const { bytes, truncated } = await bufferErrorBody(response.body);
-    const text = new TextDecoder().decode(bytes);
-    if (truncated || isJsonBody(text)) {
-      return new Response(bytes, {
+    const body = await bufferErrorBody(response.body);
+    if (body.kind === "passthrough") {
+      return new Response(body.stream, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    }
+    const text = new TextDecoder().decode(body.bytes);
+    if (isJsonBody(text)) {
+      return new Response(body.bytes, {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,
