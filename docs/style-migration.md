@@ -176,7 +176,7 @@ baseline and A/A, and `--aria-mode pressed` for the migrated UI. The runner
 asserts and records the four attributes separately in each capture; all other
 button semantics, geometry and computed styles must match exactly. The mode
 change does not permit any pixel or layout difference. Re-run the original
-21 preference states whenever changing the shared ChoiceButton.
+21 preference states whenever changing the shared ToggleButton.
 
 The Tone calibration initially queried the wrong Save label; that attempt is
 retained. A subsequent unchanged-code comparison exposed clipped-edge raster
@@ -219,3 +219,57 @@ The corresponding source passed 27 focused page tests, App/UI/E2E types,
 formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
 This is bounded Chromium acceptance; the earlier native and motion exclusions
 remain in force.
+
+## Shared toggle button follow-up
+
+The three migrated consumers (Appearance, Send mode and Agent profile Tone)
+share a persistent selected-state contract through `ToggleButton`, retaining
+its native element, controlled `selected` prop, inline/tile layouts and existing
+activation and focus behavior. Both `Button` and `ToggleButton` render through
+the internal `ButtonBase`, sharing the Base UI primitive, refs, native-title
+handling and optional tooltip. Tooltips remain off by default and require an accessible label when enabled. Group selection
+and arrow-key behavior remain owned by the existing callers.
+
+Before implementation, freeze the 33 Tone and 21 preference states against
+unchanged main code on the PR preview and require an unchanged-code replay.
+After implementation, replay those frozen cases and verify tooltip activation,
+disabled controls and existing Button trigger composition through focused
+component tests. Record commit-bound before/after evidence with the PR.
+
+[PR #32958](https://github.com/vm0-ai/vm0/pull/32958) starts from main after
+the Tone migration merged. Its [BEFORE and unchanged-code replay archive](https://a.okou.io/c8j22q6j4i.zip)
+pins App/API build `0b5a1934a9d4279f84ae1a83127ab7f7e4c1997b` and records
+54 states with zero changed pixels. The archive also preserves failed calibration
+attempts. Generate the Agent fixture from the same TEST account used by the
+browser: its owner identity controls whether visibility settings render. Tone
+also freezes that Agent's empty user-connectors and permission-grants GET
+responses, so preview database resets cannot invalidate ancillary reads.
+Geometry assertions run against the same settled paint that is archived.
+
+The [initial AFTER archive](https://a.okou.io/2ylnq5pvv1.zip) and
+[quick comparison](https://a.okou.io/eirvvzcyr7.png) record all 54 states with
+zero changed pixels and identical control observations on App/API build
+`7da162302e3de54931c8c9c66e49f4c1d3211960`, from source
+`92f0e94405a15b7c5f94fdd05660ab698a22f7af`. Real API Save, reload, Discard
+and restoration of the original tone passed. The 15 shared UI tests, 27 page
+tests, relevant types/lint/Knip checks and all source-head CI gates passed.
+The legacy inventory remains 94 tokens, 534 declarations, 309 production uses
+and two injections.
+
+The shared `ButtonBase` rendering follow-up was replayed against the same frozen
+BEFORE evidence. Its [AFTER archive](https://a.okou.io/iuba6g9yb2.zip) and
+[comparison image](https://a.okou.io/dua9x3cxng.png) record all 54 states passing
+with zero changed pixels and identical control observations on App/API build
+`775b8ba760699a5f60fc9d9add8673d70b6211ab`, from source
+`ff6300001b95407e5db1421e589c1d2ebab5888d`. The runner, fixtures, cases and
+rounding limits are unchanged. The same 42 focused tests and affected static
+checks passed again; real API Save, reload, Discard and restoration passed on
+this build. Both artifacts were anonymously downloaded and hash-verified.
+
+The initial AFTER archive retains its first invocation: two initial Light frames
+captured the sidebar promo before it appeared, while control observations and
+all other states matched. After confirming the live promo had loaded, a new
+invocation with identical source, runner, cases, fixture and limits passed.
+No expected image, mask or threshold changed. This is bounded Chromium
+acceptance; explicit sidebar readiness remains necessary before using the
+runner as an unattended gate.
