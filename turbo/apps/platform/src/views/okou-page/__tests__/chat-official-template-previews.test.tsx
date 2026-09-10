@@ -63,6 +63,10 @@ test.each([true, false])(
     await expect(
       screen.findByRole("textbox", { name: "Message" }),
     ).resolves.toBeEnabled();
+    expect(screen.queryByText(/^Working for /u)).toBeNull();
+    expect(
+      document.querySelector('[data-role="assistant-thinking"]') === null,
+    ).toBe(runless);
     click(link("Sunlit bookshop.jpg"));
     await expect(
       screen.findByTestId("attachment-lightbox-image"),
