@@ -2040,6 +2040,110 @@ const openAiImageResponseSchema = z.object({
   }),
 });
 
+const openAiImageErrorSchema = z.object({
+  error: z.object({
+    type: z.string().optional(),
+    code: z.string().optional(),
+    moderation_details: z
+      .object({
+        moderation_stage: z.enum(["input", "output", "unknown"]).optional(),
+      })
+      .optional(),
+  }),
+});
+
+interface OpenAiImageFailure {
+  readonly response: ErrorResponse;
+  readonly providerErrorType: string;
+  readonly providerErrorCode: string;
+  readonly failureKind: string;
+  readonly failureStage: string;
+  readonly retryPolicy: string;
+  readonly expected: boolean;
+}
+
+const OPENAI_IMAGE_USER_ERROR_TYPE = "image_generation_user_error";
+
+function unclassifiedOpenAiImageFailure(): OpenAiImageFailure {
+  return {
+    response: badGateway(
+      "Image generation failed",
+      "OPENAI_IMAGE_REQUEST_FAILED",
+    ),
+    providerErrorType: "unknown",
+    providerErrorCode: "unknown",
+    failureKind: "unknown",
+    failureStage: "provider",
+    retryPolicy: "retry_once",
+    expected: false,
+  };
+}
+
+/**
+ * OpenAI documents `image_generation_user_error` as user-correctable, tells
+ * callers not to retry it unmodified, and names `error.code` the stable
+ * discriminator. Only the allowlisted codes below become an actionable input
+ * failure; every other status, type, or code keeps the provider-fault
+ * classification so an unrecognized failure stays visible at error level.
+ */
+function classifyOpenAiImageFailure(
+  status: number,
+  body: unknown,
+): OpenAiImageFailure {
+  const parsed = openAiImageErrorSchema.safeParse(body);
+  if (!parsed.success || status !== 400) {
+    return unclassifiedOpenAiImageFailure();
+  }
+  const providerError = parsed.data.error;
+  if (providerError.type !== OPENAI_IMAGE_USER_ERROR_TYPE) {
+    return unclassifiedOpenAiImageFailure();
+  }
+  if (providerError.code === "invalid_image_file") {
+    return {
+      response: badRequest(
+        "An input image could not be read by the generation provider.",
+        "GENERATION_INPUT_MEDIA_INVALID",
+      ),
+      providerErrorType: OPENAI_IMAGE_USER_ERROR_TYPE,
+      providerErrorCode: providerError.code,
+      failureKind: "input_media_invalid",
+      failureStage: "input",
+      retryPolicy: "after_input_change",
+      expected: true,
+    };
+  }
+  if (providerError.code === "moderation_blocked") {
+    // Only an explicit output stage means our generated image was blocked;
+    // input and unknown stages stay a caller-correctable input rejection.
+    return providerError.moderation_details?.moderation_stage === "output"
+      ? {
+          response: badRequest(
+            "The generated image was blocked by the safety filter.",
+            "GENERATION_OUTPUT_SAFETY_BLOCKED",
+          ),
+          providerErrorType: OPENAI_IMAGE_USER_ERROR_TYPE,
+          providerErrorCode: providerError.code,
+          failureKind: "output_safety_blocked",
+          failureStage: "output",
+          retryPolicy: "manual_once",
+          expected: true,
+        }
+      : {
+          response: badRequest(
+            "The prompt or reference image was blocked by the safety filter.",
+            "GENERATION_INPUT_SAFETY_REJECTED",
+          ),
+          providerErrorType: OPENAI_IMAGE_USER_ERROR_TYPE,
+          providerErrorCode: providerError.code,
+          failureKind: "input_safety_rejected",
+          failureStage: "input",
+          retryPolicy: "after_input_change",
+          expected: true,
+        };
+  }
+  return unclassifiedOpenAiImageFailure();
+}
+
 export async function generateOpenAiImage(
   options: ImageOptions,
   references: ImageProviderReferences,
@@ -2082,13 +2186,35 @@ export async function generateOpenAiImage(
     },
   );
   if (!response.ok) {
-    const responseBody = await readImageProviderErrorBody(response, signal);
-    L.error("OpenAI image generation request failed", {
+    const responseBody = await response.text();
+    signal.throwIfAborted();
+    const failure = classifyOpenAiImageFailure(
+      response.status,
+      safeJsonParse(responseBody),
+    );
+    // Bounded taxonomy fields only. The provider body echoes request input and
+    // provider request IDs, so it never reaches the log.
+    const fields = {
+      provider: "openai",
       model: options.model,
-      status: response.status,
-      body: responseBody,
-    });
-    return badGateway("Image generation failed", "OPENAI_IMAGE_REQUEST_FAILED");
+      providerStatus: response.status,
+      providerErrorType: failure.providerErrorType,
+      providerErrorCode: failure.providerErrorCode,
+      failureKind: failure.failureKind,
+      failureStage: failure.failureStage,
+      publicErrorCode: failure.response.body.error.code,
+      retryPolicy: failure.retryPolicy,
+      billingDisposition: "not_charged",
+      expected: failure.expected,
+    };
+    if (failure.expected) {
+      // Provider-rejected input is routine and not actionable by us. The job
+      // row keeps the durable record through its public error code.
+      L.debug("OpenAI image generation request failed", fields);
+    } else {
+      L.error("OpenAI image generation request failed", fields);
+    }
+    return failure.response;
   }
 
   const responseText = await response.text();
