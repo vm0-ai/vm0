@@ -12,7 +12,6 @@ import { CLERK_JS_VERSION, CLERK_UI_VERSION } from "./clerk-versions.ts";
 
 interface ClerkRuntimeOptions {
   readonly publishableKey: string;
-  readonly domain?: string;
   readonly loadOptions: ClerkRuntimeLoadOptions;
 }
 
@@ -154,7 +153,6 @@ function adoptEarlyClerkRuntime(
   }
   if (
     bootstrap.publishableKey !== options.publishableKey ||
-    bootstrap.domain !== options.domain ||
     !matchesEarlyLoadOptions(bootstrap.loadOptions, options.loadOptions)
   ) {
     throw new Error("Early Clerk bootstrap configuration mismatch");
@@ -185,7 +183,6 @@ export async function startClerkBrowserRuntime(
 ): Promise<ClerkBrowserRuntime> {
   await loadClerkJSScript({
     __internal_clerkJSVersion: CLERK_JS_VERSION,
-    domain: options.domain,
     publishableKey: options.publishableKey,
   });
   const clerk: unknown = Reflect.get(globalThis, "Clerk");

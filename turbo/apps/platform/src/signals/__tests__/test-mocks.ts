@@ -219,7 +219,6 @@ interface PostHogMock {
 }
 
 interface ClerkResourceRequest {
-  readonly domain: string | undefined;
   readonly publishableKey: string;
 }
 

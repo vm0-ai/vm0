@@ -370,7 +370,6 @@ export const setupAuthPageWrapper = (
       L.info("redirect unauthenticated user to app sign-in", {
         currentUrl: location.href,
         signInUrl: signInUrl.toString(),
-        domain: signInUrl.searchParams.get("domain"),
         redirectUrl: signInUrl.searchParams.get("redirect_url"),
       });
       window.location.href = signInUrl.toString();

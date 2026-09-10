@@ -12,7 +12,6 @@ interface OkouClerkBootstrapLoadOptions {
 
 interface OkouClerkBootstrap {
   clerk?: PlatformClerk;
-  readonly domain?: string;
   readonly loadOptions: OkouClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
   uiLoaded?: Promise<typeof ui>;

@@ -17,7 +17,7 @@ test("Okou production uses its own authentication URLs", async () => {
   });
 
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    { publishableKey: "test_production_key" },
   ]);
   expect(clerk.loads).toContainEqual({
     afterSignOutUrl: "https://app.okou.ai/sign-in",
@@ -66,7 +66,6 @@ type InlineClerkRouter = (
 ) => unknown;
 
 interface InlineBootstrapConfiguration {
-  readonly domain?: string;
   readonly loadOptions: InlineBootstrapLoadOptions;
 }
 

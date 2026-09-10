@@ -267,7 +267,7 @@ test("Okou production uses production authentication", async () => {
 
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    { publishableKey: "test_production_key" },
   ]);
   expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
   expect(clerk.uiRequests).toStrictEqual([]);
@@ -288,7 +288,7 @@ test("V1 comparison authentication loads the hosted Clerk UI", async () => {
   );
   expect(screen.queryByTestId("app-auth-v2")).not.toBeInTheDocument();
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    { publishableKey: "test_production_key" },
   ]);
   expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
   expect(clerk.uiRequests).toStrictEqual([
@@ -306,7 +306,7 @@ test("Authorized preview hosts use preview authentication", async () => {
   });
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_preview_key" },
+    { publishableKey: "test_preview_key" },
   ]);
 });
 
@@ -322,7 +322,7 @@ test.each(["okou.ai.evil.example", "app.okou.ai.evil.example"])(
     });
     await waitForReadySignIn();
     expect(clerk.resourceRequests).toStrictEqual([
-      { domain: undefined, publishableKey: "test_preview_key" },
+      { publishableKey: "test_preview_key" },
     ]);
   },
 );
