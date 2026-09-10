@@ -699,10 +699,14 @@ test("A template with no cover keeps the template glyph on its chip", async () =
   await chooseCommand(editor, "Our launch /create video", "Create video");
   click(button("Add template"));
   await screen.findByRole("dialog");
-  click(await screen.findByLabelText(`Select video template ${template.title}`));
+  click(
+    await screen.findByLabelText(`Select video template ${template.title}`),
+  );
   await waitFor(() => {
     expect(composerInlineTemplates()).toHaveLength(1);
   });
   expect(inlineTemplateCover()).toBeNull();
-  expect(composerInlineTemplates()[0]?.querySelector("svg")).toBeInTheDocument();
+  expect(
+    composerInlineTemplates()[0]?.querySelector("svg"),
+  ).toBeInTheDocument();
 });
