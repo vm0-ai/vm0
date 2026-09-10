@@ -5,13 +5,11 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createChildAbortController } from "../../../signals/utils.ts";
 import {
   draftPlainText,
   textContinuityDraft,
@@ -25,20 +23,6 @@ import {
   queryButton,
   RUN_PATH,
 } from "./chat-run-test-fixtures.ts";
-
-const refreshedContext = testContext();
-
-function unloadPage(page: AbortController): void {
-  const error = new Error("Page reloaded");
-  error.name = "AbortError";
-  page.abort(error);
-  cleanup();
-  // A real reload replaces the browser runtime too. Release setupPage's
-  // history stubs before bootstrapping another Store in the same test window.
-  vi.mocked(window.history.pushState).mockRestore();
-  vi.mocked(window.history.replaceState).mockRestore();
-  vi.mocked(window.history.back).mockRestore();
-}
 
 test.each([
   {
@@ -56,15 +40,10 @@ test.each([
 ])(
   "Preserve saved text and recovered voice while loading a $target draft (interrupted: $interruptHydration)",
   async ({ path, interruptHydration }) => {
-    const initialPage = createChildAbortController(context.signal);
-    const refreshedPage = createChildAbortController(refreshedContext.signal);
-    const firstRequest = context.mocks.deferred<void>();
-    const firstResponse = context.mocks.deferred<void>();
     const retryRequested = context.mocks.deferred<void>();
     const hydrationRequested = context.mocks.deferred<void>();
     const hydrationRestarted = context.mocks.deferred<void>();
     const hydrationReady = context.mocks.deferred<void>();
-    let delayHydration = false;
     let hydrationRequests = 0;
     let transcriptionRequests = 0;
     let persistedDraft = textContinuityDraft("Keep these saved notes.");
@@ -74,15 +53,13 @@ test.each([
       return respond(200, { allowed: true, count: 0, limit: 60 });
     });
     const readDraft = async () => {
-      if (delayHydration) {
-        hydrationRequests += 1;
-        if (hydrationRequests === 1) {
-          hydrationRequested.resolve();
-        } else if (hydrationRequests === 2) {
-          hydrationRestarted.resolve();
-        }
-        await hydrationReady.promise;
+      hydrationRequests += 1;
+      if (hydrationRequests === 1) {
+        hydrationRequested.resolve();
+      } else if (hydrationRequests === 2) {
+        hydrationRestarted.resolve();
       }
+      await hydrationReady.promise;
       return persistedDraft;
     };
     context.mocks.api(agentDraftContract.get, async ({ respond }) => {
@@ -107,14 +84,21 @@ test.each([
       }
       return respond(204);
     });
-    context.mocks.http.post("*/api/voice-io/transcribe/segment", async () => {
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
       transcriptionRequests += 1;
       if (transcriptionRequests === 2) {
         retryRequested.resolve();
       }
       if (transcriptionRequests === 1) {
-        firstRequest.resolve();
-        await firstResponse.promise;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "PROVIDER_UNAVAILABLE",
+              message: "Voice transcription is temporarily unavailable",
+            },
+          },
+          { status: 503 },
+        );
       }
       return HttpResponse.json({
         transcript: "recovered voice note",
@@ -124,34 +108,16 @@ test.each([
     });
 
     await setupPage({
-      context: {
-        ...context,
-        signal: initialPage.signal,
-      },
-      path,
-      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("textbox", { name: "Message" }),
-      ).toHaveTextContent("Keep these saved notes.");
-    });
-    click(await findEnabledButton("Voice input"));
-    click(await findEnabledButton("Stop recording"));
-    await firstRequest.promise;
-    unloadPage(initialPage);
-    firstResponse.resolve();
-
-    delayHydration = true;
-    await setupPage({
-      context: {
-        ...refreshedContext,
-        signal: refreshedPage.signal,
-      },
+      context,
       path,
       featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     await hydrationRequested.promise;
+    // Create retryable audio through the UI while the remote text stays gated.
+    // Reload recovery is covered separately in chat-capability-voice-input.
+    click(await findEnabledButton("Voice input"));
+    click(await findEnabledButton("Stop recording"));
+    await screen.findByText("Voice transcription is temporarily unavailable");
     click(await findEnabledButton("Retry"));
     await retryRequested.promise;
     const retryStatus = screen.getByRole("status");
@@ -165,7 +131,6 @@ test.each([
       click(await findEnabledButton("Retry"));
     }
     hydrationReady.resolve();
-    delayHydration = false;
     await findEnabledButton("Send");
     await waitFor(() => {
       const savedText = draftPlainText(persistedDraft.draftUserMessage);

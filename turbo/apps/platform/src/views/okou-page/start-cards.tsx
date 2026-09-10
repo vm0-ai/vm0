@@ -415,7 +415,7 @@ export function StartCards({
 }) {
   const { t } = useTranslation();
   const kinds = useGet(startCardKinds$);
-  const explainerEnabled =
+  const introVideoEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
   const composerSignals = useGet(agentChatComposerSignals$);
@@ -465,7 +465,7 @@ export function StartCards({
         prompt: template?.promptGuidance ?? "",
       };
     }
-    if (kind === "video" && explainerEnabled) {
+    if (kind === "video" && introVideoEnabled) {
       return {
         ...copy.video,
         title: t(($) => {

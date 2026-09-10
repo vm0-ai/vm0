@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Inventory, backfill then independently verify, or verify only"
+        description: "Inventory, backfill, verify, or inspect pending multipart uploads"
         type: choice
-        options: [dry-run, migrate, verify]
+        options: [dry-run, migrate, verify, multipart-check]
         default: dry-run
         required: true
       max_objects:
@@ -58,7 +58,32 @@ jobs:
           corepack enable pnpm
           pnpm install --frozen-lockfile --ignore-scripts --filter @okouai/db...
 
+      # Verify the cheap multipart gate before resolving the DB or scanning all
+      # objects. Final verification still checks it again before its last scan.
+      - name: Check pending public multipart registrations
+        if: inputs.mode == 'verify' || inputs.mode == 'multipart-check'
+        working-directory: turbo/packages/db
+        env:
+          REGISTRATION_LIMIT: ${{ inputs.max_objects }}
+          REGISTRATION_CONCURRENCY: ${{ inputs.concurrency }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_USER_ARTIFACTS_BUCKET_NAME: ${{ vars.R2_USER_ARTIFACTS_BUCKET_NAME }}
+          R2_USER_ARTIFACTS_ACCESS_KEY_ID: ${{ secrets.R2_USER_ARTIFACTS_ACCESS_KEY_ID }}
+          R2_USER_ARTIFACTS_SECRET_ACCESS_KEY: ${{ secrets.R2_USER_ARTIFACTS_SECRET_ACCESS_KEY }}
+          R2_HOSTED_SITES_BUCKET_NAME: ${{ vars.R2_HOSTED_SITES_BUCKET_NAME }}
+          R2_HOSTED_SITES_ACCESS_KEY_ID: ${{ secrets.R2_HOSTED_SITES_ACCESS_KEY_ID }}
+          R2_HOSTED_SITES_SECRET_ACCESS_KEY: ${{ secrets.R2_HOSTED_SITES_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          test "$R2_USER_ARTIFACTS_BUCKET_NAME" = "user-artifact-prod"
+          test "$R2_HOSTED_SITES_BUCKET_NAME" = "vm0-hosted-sites"
+          pnpm exec tsx scripts/migrations/014-public-artifact-registration/multipart.ts \
+            --max-objects "$REGISTRATION_LIMIT" \
+            --concurrency "$REGISTRATION_CONCURRENCY" \
+            --report public-artifact-registration-multipart.json
+
       - name: Resolve protected production database
+        if: inputs.mode != 'multipart-check'
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
@@ -126,6 +151,7 @@ jobs:
       # creates metadata only; it cannot write completion markers or change
       # privateArtifacts, DNS, Worker routes, cache rules or artifact bytes.
       - name: Register or verify historical public artifacts
+        if: inputs.mode != 'multipart-check'
         working-directory: turbo/packages/db
         env:
           REGISTRATION_MODE: ${{ inputs.mode }}
@@ -171,6 +197,7 @@ jobs:
         with:
           name: public-artifact-registration-${{ github.run_id }}
           path: |
+            turbo/packages/db/public-artifact-registration-multipart.json
             turbo/packages/db/public-artifact-registration.json
             turbo/packages/db/public-artifact-registration-verification.json
           if-no-files-found: ignore

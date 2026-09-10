@@ -186,7 +186,7 @@ async function expectNoShare(fixture: ShareFixture) {
 }
 
 function expectOutcome(outcome: string, reason: string) {
-  expect(auxiliaryResults(context)).toStrictEqual([
+  expect(auxiliaryResults(context, "shared_thread_title")).toStrictEqual([
     expect.objectContaining({
       feature: "shared_thread_title",
       outcome,
@@ -452,7 +452,7 @@ describe("optional shared-thread titles", () => {
     await flushWaitUntilForTest();
     await expectNoShare(fixture);
     expect(requests).toStrictEqual([]);
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "shared_thread_title")).toStrictEqual([]);
     expect(auxiliaryWarnings(context)).toStrictEqual([]);
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
@@ -558,7 +558,7 @@ describe("optional shared-thread titles", () => {
     );
     expect(unknown.body.error.code).toBe("NO_SHAREABLE_MESSAGES");
     await expectNoShare(fixture);
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "shared_thread_title")).toStrictEqual([]);
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
@@ -568,7 +568,7 @@ describe("optional shared-thread titles", () => {
     const response = await accept(client().create(requestBody(fixture)), [413]);
     expect(response.body.error.code).toBe("SHARED_THREAD_TOO_LARGE");
     await expectNoShare(fixture);
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "shared_thread_title")).toStrictEqual([]);
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
@@ -594,7 +594,7 @@ describe("optional shared-thread titles", () => {
       "Unknown response status 500 for POST /api/chat-threads/:threadId/shared-threads",
     );
     await flushWaitUntilForTest();
-    expect(auxiliaryResults(context)).toStrictEqual([
+    expect(auxiliaryResults(context, "shared_thread_title")).toStrictEqual([
       expect.objectContaining({
         feature: "shared_thread_title",
         outcome: "degraded",

@@ -26,7 +26,6 @@
     "okou-border-r",
     "okou-border-t",
     "okou-btn-morandi",
-    "okou-bubble-cool",
     "okou-chat-bubble-assistant",
     "okou-chat-bubble-user",
     "okou-chat-card",
@@ -36,7 +35,6 @@
     "okou-composer",
     "okou-desktop-no-drag",
     "okou-desktop-titlebar-drag-region",
-    "okou-emoji",
     "okou-fixed-viewport-shell",
     "okou-managed-bottom-safe-area",
     "okou-markdown-card",
@@ -694,13 +692,6 @@
       },
       {
         "atRules": [],
-        "selector": ".okou-emoji",
-        "property": "font-family",
-        "value": "var(--font-family-emoji)",
-        "important": false
-      },
-      {
-        "atRules": [],
         "selector": ".okou-border",
         "property": "border",
         "value": "0.7px solid hsl(var(--gray-400))",
@@ -1047,20 +1038,6 @@
         "selector": ".okou-app .okou-chat-card",
         "property": "background-color",
         "value": "hsl(var(--card))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-bubble-cool",
-        "property": "background-color",
-        "value": "hsl(var(--gray-100)/0.95)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-bubble-cool",
-        "property": "color",
-        "value": "hsl(var(--foreground))",
         "important": false
       },
       {
@@ -3921,7 +3898,6 @@
       "okou-chat-bubble-user": 2,
       "okou-chat-card": 2,
       "okou-chat-skeleton-reveal": 1,
-      "okou-emoji": 3,
       "okou-shimmer-text": 1,
       "okou-thinking-enter": 3,
       "okou-thinking-spinner": 1,
@@ -4015,9 +3991,6 @@
       "okou-badge": 3,
       "okou-border": 1
     },
-    "apps/platform/src/views/okou-page/components/settings/language-settings.tsx": {
-      "okou-btn-morandi": 1
-    },
     "apps/platform/src/views/okou-page/components/settings/permission-policy-toggle.tsx": {
       "okou-border": 1
     },
@@ -4041,9 +4014,6 @@
       "okou-app": 1,
       "okou-border-r": 1
     },
-    "apps/platform/src/views/okou-page/components/settings/timezone-settings.tsx": {
-      "okou-btn-morandi": 1
-    },
     "apps/platform/src/views/okou-page/components/settings/voice-input-model-settings.tsx": {
       "okou-btn-morandi": 1
     },
@@ -4063,7 +4033,6 @@
     },
     "apps/platform/src/views/okou-page/directed-shared.tsx": {
       "okou-app": 1,
-      "okou-nav": 1,
       "okou-viewport-shell": 1
     },
     "apps/platform/src/views/okou-page/ideation-page.tsx": {
@@ -4078,8 +4047,6 @@
       "okou-app": 1
     },
     "apps/platform/src/views/okou-page/settings-tab.tsx": {
-      "okou-border": 1,
-      "okou-bubble-cool": 1,
       "okou-chat-bubble-assistant": 1
     },
     "apps/platform/src/views/okou-page/sidebar-account.tsx": {

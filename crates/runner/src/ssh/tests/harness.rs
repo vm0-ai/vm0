@@ -312,6 +312,10 @@ impl Harness {
         }
     }
 
+    pub(super) fn take_dispatcher(&mut self) -> SshRun {
+        self.dispatcher.take().unwrap()
+    }
+
     pub(super) async fn restart(&mut self, run: RunId) {
         self.shutdown().await;
         self.run = run;

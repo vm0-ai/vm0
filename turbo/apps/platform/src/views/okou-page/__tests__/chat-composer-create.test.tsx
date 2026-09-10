@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -108,13 +108,22 @@ test("Choose a video through the consolidated Create entry with the keyboard and
   const menu = await screen.findByTestId("slash-workflow-menu");
   expect(button("Create", menu)).toBeInTheDocument();
   await user.keyboard("{Enter}");
-  const types = await screen.findByRole("group", { name: "Choose a type" });
+  const types = await screen.findByRole("listbox", { name: "Choose a type" });
   expect(
-    queryAllByRoleFast("button", types).map((item) => {
-      return item.textContent?.trim();
-    }),
+    within(types)
+      .getAllByRole("option")
+      .map((item) => {
+        return item.getAttribute("aria-label");
+      }),
   ).toStrictEqual(["Presentation", "Video", "Image"]);
-  expect(button("Presentation", types)).toHaveFocus();
+  expect(
+    within(types).getByRole("option", { name: "Presentation" }),
+  ).toHaveFocus();
+  const card = editor.closest('[data-slot="chat-composer-card"]');
+  expect(card).toContainElement(types);
+  expect(card).toContainElement(
+    screen.getByRole("combobox", { name: "Choose a type" }),
+  );
   expect(button("Send")).toBeDisabled();
   await user.keyboard("{ArrowRight}{Enter}");
   await waitFor(() => {
@@ -548,8 +557,8 @@ test("The slash menu exposes one Create entry that opens the image style flow", 
     }),
   ).toHaveLength(1);
   click(button("Create", menu));
-  const types = await screen.findByRole("group", { name: "Choose a type" });
-  click(button("Image", types));
+  const types = await screen.findByRole("listbox", { name: "Choose a type" });
+  click(within(types).getByRole("option", { name: "Image" }));
   await waitFor(() => {
     expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
       "Create image",
@@ -586,12 +595,11 @@ test("Canceling and switching Create preserve slash text and template references
   await user.paste("Our launch /create");
   const menu = await screen.findByTestId("slash-workflow-menu");
   click(button("Create", menu));
-  const chooser = await screen.findByRole("group", {
+  const chooser = await screen.findByRole("listbox", {
     name: "Choose a type",
   });
-  await user.click(editor);
-  await user.keyboard("{Enter}");
-  expect(chooser).toBeInTheDocument();
+  expect(chooser).toBeVisible();
+  expect(editor).not.toBeVisible();
   expect(button("Send")).toBeDisabled();
   expect(submissions).toHaveLength(0);
   await user.keyboard("{Escape}");
@@ -604,8 +612,8 @@ test("Canceling and switching Create preserve slash text and template references
   await user.paste(" /create");
   const reopened = await screen.findByTestId("slash-workflow-menu");
   click(button("Create", reopened));
-  const types = await screen.findByRole("group", { name: "Choose a type" });
-  click(button("Presentation", types));
+  const types = await screen.findByRole("listbox", { name: "Choose a type" });
+  click(within(types).getByRole("option", { name: "Presentation" }));
   const chip = await screen.findByTestId("composer-create-mode");
   expect(chip).toHaveTextContent("Create presentation");
   expect(types).not.toBeInTheDocument();
@@ -639,4 +647,162 @@ test("Canceling and switching Create preserve slash text and template references
       titleSnapshot: template.title,
     }),
   );
+});
+
+async function setupComposerWithChipCover(
+  chipCover: boolean,
+): Promise<HTMLElement> {
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerCreateCommands]: true,
+      [FeatureSwitchKey.ComposerTemplateChipCover]: chipCover,
+    },
+  });
+  return await findComposerEditor();
+}
+
+function inlineTemplateCover(index = 0): HTMLImageElement | null {
+  const chip = composerInlineTemplates()[index];
+  if (!chip) {
+    throw new Error(`Expected an inline template at ${index}`);
+  }
+  return chip.querySelector("img");
+}
+
+async function addPresentationTemplate(
+  editor: HTMLElement,
+  title: string,
+): Promise<void> {
+  await chooseCommand(
+    editor,
+    "Our launch /create presentation",
+    "Create presentation",
+  );
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${title}`));
+  await waitFor(() => {
+    expect(composerInlineTemplates()).toHaveLength(1);
+  });
+}
+
+test("The template chip cover stays off until the Lab switch is on", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithChipCover(false);
+  const [first] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!first) {
+    throw new Error("Expected a presentation template");
+  }
+  await addPresentationTemplate(editor, first.title);
+  expect(inlineTemplateCover()).toBeNull();
+  expect(composerInlineTemplates()[0]).toHaveTextContent(first.title);
+});
+
+test("An inline template chip shows the chosen cover and follows a replacement", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithChipCover(true);
+  const [first, , replacement] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!first || !replacement) {
+    throw new Error("Expected two presentation templates");
+  }
+  await addPresentationTemplate(editor, first.title);
+  await waitFor(() => {
+    expect(inlineTemplateCover()?.getAttribute("src")).toContain(first.slug);
+  });
+
+  // The picker rewrites the node in place, so the cover has to follow the new
+  // selection rather than only the first one.
+  const chip = composerInlineTemplates()[0];
+  if (!chip) {
+    throw new Error("Expected the inline template");
+  }
+  click(button(`Preview template ${first.title}`, chip));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${replacement.title}`));
+  await waitFor(() => {
+    expect(inlineTemplateCover()?.getAttribute("src")).toContain(
+      replacement.slug,
+    );
+  });
+  expect(composerInlineTemplates()).toHaveLength(1);
+});
+
+test("A template with no cover keeps the template glyph on its chip", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposerWithChipCover(true);
+  const [template] = VIDEO_TEMPLATE_ITEMS;
+  if (!template) {
+    throw new Error("Expected a video template");
+  }
+  await chooseCommand(editor, "Our launch /create video", "Create video");
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(
+    await screen.findByLabelText(`Select video template ${template.title}`),
+  );
+  await waitFor(() => {
+    expect(composerInlineTemplates()).toHaveLength(1);
+  });
+  expect(inlineTemplateCover()).toBeNull();
+});
+
+test("Reopening and dismissing the in-composer picker preserves the selected scene and draft", async () => {
+  setupModels();
+  const editor = await setupComposer();
+  const user = userEvent.setup({ delay: null });
+  await chooseCommand(
+    editor,
+    "Our quarterly update /create presentation",
+    "Create presentation",
+  );
+  const trigger = screen.getByRole("combobox", { name: "Choose a type" });
+  const card = editor.closest('[data-slot="chat-composer-card"]');
+  expect(card).toContainElement(trigger);
+  expect(editor).toBeVisible();
+
+  click(screen.getByRole("combobox", { name: "Slide count" }));
+  click(await screen.findByRole("option", { name: "16–20 slides" }));
+  await waitFor(() => {
+    expect(
+      screen.getByRole("combobox", { name: "Slide count" }),
+    ).toHaveTextContent("16–20 slides");
+  });
+  click(trigger);
+  const picker = await screen.findByRole("listbox", { name: "Choose a type" });
+  expect(card).toContainElement(picker);
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+  expect(trigger).toHaveAttribute("aria-controls", picker.id);
+  expect(
+    within(picker).getByRole("option", { name: "Presentation" }),
+  ).toHaveAttribute("aria-selected", "true");
+  expect(button("Send")).toBeDisabled();
+  await user.keyboard("{ArrowDown}{Escape}");
+  await waitFor(() => {
+    expect(editor).toHaveFocus();
+  });
+  expect(picker).not.toBeInTheDocument();
+  expect(trigger).toHaveTextContent("Create presentation");
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(editor).toHaveTextContent("Our quarterly update");
+  expect(
+    screen.getByRole("combobox", { name: "Slide count" }),
+  ).toHaveTextContent("16–20 slides");
+
+  click(trigger);
+  const reopened = await screen.findByRole("listbox", {
+    name: "Choose a type",
+  });
+  click(within(reopened).getByRole("option", { name: "Image" }));
+  await waitFor(() => {
+    expect(editor).toHaveFocus();
+  });
+  expect(trigger).toHaveTextContent("Create image");
+  expect(editor).toHaveTextContent("Our quarterly update");
+  expect(editor).toBeVisible();
+  expect(reopened).not.toBeInTheDocument();
 });

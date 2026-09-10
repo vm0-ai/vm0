@@ -324,13 +324,7 @@ export function createBddApi(context: TestContext) {
         agentsByIdClient().updateMetadata({
           params: { id: status.defaultAgentId },
           headers,
-          body: {
-            displayName: options.displayName,
-            ...(options.sound === undefined ? {} : { sound: options.sound }),
-            ...(options.avatarUrl === undefined
-              ? {}
-              : { avatarUrl: options.avatarUrl }),
-          },
+          body: options.sound === undefined ? {} : { sound: options.sound },
         }),
         [200],
       );

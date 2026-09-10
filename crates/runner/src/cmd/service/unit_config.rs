@@ -67,10 +67,10 @@ fn logical_unit_lines(content: &str) -> Vec<String> {
     for raw_line in content.lines() {
         let line = raw_line.trim_end();
         let trimmed_start = line.trim_start();
-        if !continued.is_empty()
-            && (trimmed_start.is_empty()
-                || trimmed_start.starts_with('#')
-                || trimmed_start.starts_with(';'))
+        // Full-line comments must neither start nor end a continuation.
+        if trimmed_start.is_empty()
+            || trimmed_start.starts_with('#')
+            || trimmed_start.starts_with(';')
         {
             continue;
         }
@@ -380,6 +380,78 @@ ExecStart = "/usr/bin/runner" start --config "/etc/runner.yaml"
     }
 
     #[test]
+    fn parse_unit_config_path_ignores_standalone_comments_ending_in_backslash() {
+        for marker in ['#', ';'] {
+            for indent in ["", " \t"] {
+                let content = format!(
+                    r#"[Service]
+{indent}{marker} runner config example \
+ExecStart=/usr/bin/runner start --config /etc/runner.yaml
+"#
+                );
+
+                assert_eq!(
+                    parse_unit_config_path(&content),
+                    Some(PathBuf::from("/etc/runner.yaml")),
+                    "comment marker {marker:?} with indent {indent:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_unit_config_path_comment_does_not_hide_service_section() {
+        for marker in ['#', ';'] {
+            let content = format!(
+                r#"[Unit]
+Description=runner
+  {marker} service settings \
+[Service]
+ExecStart=/usr/bin/runner start --config /etc/runner.yaml
+"#
+            );
+
+            assert_eq!(
+                parse_unit_config_path(&content),
+                Some(PathBuf::from("/etc/runner.yaml")),
+                "comment marker {marker:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_unit_config_path_comment_does_not_hide_leaving_service_section() {
+        for marker in ['#', ';'] {
+            let content = format!(
+                r#"[Service]
+ExecStart=/usr/bin/runner start --config /etc/runner.yaml
+  {marker} install settings \
+[Install]
+ExecStart=/usr/bin/runner start --config /etc/wrong-runner.yaml
+"#
+            );
+
+            assert_eq!(
+                parse_unit_config_path(&content),
+                Some(PathBuf::from("/etc/runner.yaml")),
+                "comment marker {marker:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_unit_config_path_preserves_comment_markers_inside_arguments() {
+        let content = r#"[Service]
+ExecStart=/usr/bin/runner start --config "/etc/#runner;config.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/#runner;config.yaml"))
+        );
+    }
+
+    #[test]
     fn parse_unit_config_path_ignores_exec_start_outside_service_section() {
         let content = r#"
 [Service]
@@ -415,8 +487,9 @@ ExecStart="/usr/bin/runner" start \
         let content = r#"
 [Service]
 ExecStart="/usr/bin/runner" start \
-  # comment between continued lines
-  ; another comment
+  # comment between continued lines \
+
+  ; another comment \
   --config "/etc/runner.yaml"
 "#;
 
@@ -450,6 +523,39 @@ ExecStart=
 "#;
 
         assert_eq!(parse_unit_config_path(content), None);
+    }
+
+    #[test]
+    fn parse_unit_config_path_comments_preserve_drop_in_reset_and_replacement() {
+        for marker in ['#', ';'] {
+            for (replacement, expected) in [
+                (
+                    "/usr/bin/runner start --config /etc/new-runner.yaml",
+                    Some("/etc/new-runner.yaml"),
+                ),
+                ("/usr/bin/true", None),
+            ] {
+                let content = format!(
+                    r#"# /etc/systemd/system/vm0-runner-test.service
+[Service]
+ExecStart=/usr/bin/runner start --config /etc/old-runner.yaml
+
+# /run/systemd/system/vm0-runner-test.service.d/override.conf
+[Service]
+  {marker} reset original command \
+ExecStart=
+  {marker} replacement command \
+ExecStart={replacement}
+"#
+                );
+
+                assert_eq!(
+                    parse_unit_config_path(&content),
+                    expected.map(PathBuf::from),
+                    "comment marker {marker:?}, replacement {replacement:?}"
+                );
+            }
+        }
     }
 
     #[test]

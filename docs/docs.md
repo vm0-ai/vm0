@@ -43,6 +43,8 @@ surface; the index does not replace their detailed rules.
   commits.
 - [Chat cards](./chat-cards.md): recognizing links in chat messages, creating
   thread-scoped card signals, and rendering rich interactive cards.
+- [Welcome chat threads](./welcome-chat-threads.md): explicit creation contract,
+  atomic runless seeding, durable replay identity, and fixed localized content.
 - [Pi native provider preparation](./pi-native-provider-preparation.md): additive
   native readers, transport/auth ownership, accounting and activation gates.
 - [Runner host configuration](./runner-host-configuration.md): configure and
@@ -52,3 +54,6 @@ surface; the index does not replace their detailed rules.
 - [Testing catalog](./testing/anti-patterns.md): detailed testing anti-patterns.
 - [Addon runtime contracts](./mitm-addon-contracts.md): logging ownership,
   WebSocket framing and handshake limits, and path normalization boundaries.
+- [Chat Event Snapshot timeout diagnostics](./chat-event-snapshot-timeout-logging.md):
+  expected per-head deadlines, stage diagnostics, convergence and retention
+  safety, and archive-lag alerting.

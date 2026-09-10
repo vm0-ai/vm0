@@ -342,6 +342,34 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/pi-api-first-turn.service.ts"],
+    rules: {
+      // Recovery, discarded late results and attempt timeouts are the only
+      // evidence that an API-owned first turn kept single execution and
+      // truthful usage after handing off, and they must survive Axiom's info
+      // default. They stay non-error because a successful recovery is not a
+      // failure; ordinary API completion keeps using debug.
+      "api/no-logger-info": [
+        "error",
+        { allowedMessages: ["Pi API first-turn outcome"] },
+      ],
+    },
+  },
+  {
+    files: ["src/signals/services/cron-snapshot-chat-events.service.ts"],
+    rules: {
+      // An expected per-head deadline is bounded backpressure, not a warning,
+      // but a genuinely stuck head still needs its stage and duration. Axiom's
+      // default transport drops debug events, so retain this record at info.
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: ["Timed out Chat Event Snapshot candidate"],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     ignores: [
       "src/**/__tests__/**",

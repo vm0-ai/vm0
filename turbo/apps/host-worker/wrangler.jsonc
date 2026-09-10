@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-13",
   "routes": [
+    { "pattern": "a.okou.io/*", "zone_name": "okou.io" },
     {
       "pattern": "*.sites.vm0.io/*",
       "zone_name": "vm0.io",
@@ -16,7 +17,7 @@
   "vars": {
     "HOST_DOMAIN": "sites.vm0.io",
     "OKOU_HOST_DOMAIN": "okou.app",
-    "PUBLIC_ARTIFACT_HOST": "f.okou.io",
+    "PUBLIC_ARTIFACT_HOST": "a.okou.io",
   },
   "r2_buckets": [
     {

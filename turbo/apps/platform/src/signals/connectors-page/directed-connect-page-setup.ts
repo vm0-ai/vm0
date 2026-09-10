@@ -13,7 +13,7 @@ export const setupDirectedConnectPage$ = command(
     const connectorSlug =
       typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
-    set(updatePage$, createElement(DirectedConnectPage), "minimal");
+    set(updatePage$, createElement(DirectedConnectPage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(

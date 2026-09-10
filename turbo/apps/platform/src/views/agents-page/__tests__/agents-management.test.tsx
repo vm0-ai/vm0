@@ -39,6 +39,7 @@ interface AgentOptions {
 
 function agent(agentId: string, options: AgentOptions = {}): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: options.ownerId ?? "test-user-123",
     description: options.description ?? null,

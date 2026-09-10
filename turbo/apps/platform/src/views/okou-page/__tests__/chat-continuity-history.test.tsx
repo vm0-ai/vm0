@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
@@ -7,7 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test } from "vitest";
 
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { fastButton } from "./chat-list-test-helpers.ts";
@@ -296,7 +296,7 @@ test("Navigate chat history with scroll controls and keyboard commands", async (
     expect(container.querySelector("[data-scroll-to-bottom]")).toBeVisible();
   });
 
-  await userEvent.click(fastButton("Scroll to bottom", container));
+  click(fastButton("Scroll to bottom", container));
   await waitFor(() => {
     expect(scroller.scrollTop).toBe(2400);
     expect(container.querySelector("[data-scroll-to-bottom]")).toBeNull();
@@ -324,50 +324,21 @@ test("Navigate chat history with scroll controls and keyboard commands", async (
   expect(scroller.scrollTop).toBe(bottomOffset);
 });
 
-test("Keep open chats live without duplicating messages", async () => {
+test("Keep both open chats live without mixing their messages", async () => {
   const main = continuityThread(22, 1, "Live main conversation");
   const side = continuityThread(22, 2, "Live side conversation");
-  const initialMainRunId = "b9000000-0000-4000-a000-000000000001";
-  const activeMainRunId = "b9000000-0000-4000-a000-000000000002";
-  const sideRunId = "b9000000-0000-4000-a000-000000000003";
-  const initialMainRows = [
-    promptRow(22, 1, main.id, "Existing main request", {
-      runId: initialMainRunId,
-    }),
-    outputRow(22, 2, main.id, "Existing main answer", {
-      id: initialMainRunId,
-    }),
-    completedRow(22, 3, main.id, initialMainRunId),
-  ];
-  const initialSideRows = [
+  const mainRunId = "b9000000-0000-4000-a000-000000000001";
+  const sideRunId = "b9000000-0000-4000-a000-000000000002";
+  const initialRows = [
+    promptRow(22, 1, main.id, "Existing main request", { runId: mainRunId }),
+    outputRow(22, 2, main.id, "Existing main answer", { id: mainRunId }),
     promptRow(22, 1, side.id, "Existing side request", { runId: sideRunId }),
     outputRow(22, 2, side.id, "Existing side answer", { id: sideRunId }),
   ];
-  let allRows = [...initialMainRows, ...initialSideRows];
   const workspace = installContinuityWorkspace(context, {
     caseId: 22,
     threads: [main, side],
-    chatEventRows: allRows,
-  });
-  const sends: CapturedSend[] = [];
-  context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
-    if (
-      !("userMessage" in body) ||
-      body.userMessage === undefined ||
-      body.clientEventId === undefined ||
-      body.threadId === undefined
-    ) {
-      throw new Error("Expected a normal chat message send");
-    }
-    sends.push({
-      clientEventId: body.clientEventId,
-      threadId: body.threadId,
-      userMessage: body.userMessage,
-    });
-    return respond(201, {
-      runId: sends.length === 1 ? activeMainRunId : null,
-      threadId: body.threadId,
-    });
+    chatEventRows: initialRows,
   });
 
   await setupPage({
@@ -377,27 +348,19 @@ test("Keep open chats live without duplicating messages", async () => {
   });
 
   await waitFor(() => {
-    expect(
-      threadContainer(main.id).querySelector(
-        '[role="textbox"][aria-label="Message"]',
-      ),
-    ).toBeVisible();
-    expect(
-      threadContainer(side.id).querySelector(
-        '[role="textbox"][aria-label="Message"]',
-      ),
-    ).toBeVisible();
-    expect(threadContainer(side.id)).toBeVisible();
     expect(threadContainer(main.id)).toHaveTextContent("Existing main answer");
     expect(threadContainer(side.id)).toHaveTextContent("Existing side answer");
-    expect(
-      context.mocks.ably.hasSubscription(`chatThreadDetailChanged:${main.id}`),
-    ).toBeTruthy();
-    expect(
-      context.mocks.ably.hasSubscription(`chatThreadDetailChanged:${side.id}`),
-    ).toBeTruthy();
   });
+  const mainContainer = threadContainer(main.id);
+  const sideContainer = threadContainer(side.id);
 
+  const mainReply = outputRow(
+    22,
+    3,
+    main.id,
+    "A live reply for the main conversation",
+    { id: mainRunId },
+  );
   const sideReply = outputRow(
     22,
     3,
@@ -405,102 +368,166 @@ test("Keep open chats live without duplicating messages", async () => {
     "A live reply for the side conversation",
     { id: sideRunId },
   );
-  allRows = [...allRows, sideReply];
-  workspace.setChatEventRows(allRows);
+  workspace.setChatEventRows([...initialRows, mainReply, sideReply]);
+  createChatEvent(main.id);
   createChatEvent(side.id);
 
   await waitFor(() => {
-    expect(threadContainer(side.id)).toHaveTextContent(
+    expect(mainContainer).toHaveTextContent(
+      "A live reply for the main conversation",
+    );
+    expect(sideContainer).toHaveTextContent(
       "A live reply for the side conversation",
     );
   });
-  expect(threadContainer(main.id)).not.toHaveTextContent(
+  expect(mainContainer).not.toHaveTextContent(
     "A live reply for the side conversation",
   );
-
-  const mainContainer = threadContainer(main.id);
-  const mainComposer = mainContainer.querySelector<HTMLElement>(
-    '[role="textbox"][aria-label="Message"]',
+  expect(sideContainer).not.toHaveTextContent(
+    "A live reply for the main conversation",
   );
-  if (!mainComposer) {
-    throw new Error("Expected main composer");
-  }
-  await fill(mainComposer, "Send this exactly once");
-  await userEvent.click(fastButton("Send", mainContainer));
-  await waitFor(() => {
-    expect(sends).toHaveLength(1);
-    expect(userTurnCount(mainContainer, "Send this exactly once")).toBe(1);
-  });
-  const sent = sends[0]!;
-  expect(sent.threadId).toBe(main.id);
-
-  const acceptedMessageId = "a9000000-0000-4000-a000-000000022001";
-  const confirmedRows = [
-    promptRow(22, 4, main.id, "Send this exactly once", {
-      id: sent.clientEventId,
-      userMessage: sent.userMessage,
-    }),
-    promptRow(22, 5, main.id, "Send this exactly once", {
-      id: acceptedMessageId,
-      runId: activeMainRunId,
-      revokesEventId: sent.clientEventId,
-      userMessage: sent.userMessage,
-    }),
-    outputRow(22, 6, main.id, "Assistant output after confirmation", {
-      id: activeMainRunId,
-    }),
-  ];
-  allRows = [...allRows, ...confirmedRows];
-  workspace.setChatEventRows(allRows);
-  createChatEvent(main.id);
-
-  await waitFor(() => {
-    expect(mainContainer).toHaveTextContent(
-      "Assistant output after confirmation",
-    );
-    expect(userTurnCount(mainContainer, "Send this exactly once")).toBe(1);
-    expect(eventAnchorCount(mainContainer, acceptedMessageId)).toBe(1);
-  });
-  expect(eventAnchorCount(mainContainer, sent.clientEventId)).toBe(0);
-
-  await fill(mainComposer, "Steer this active run once");
-  await waitFor(() => {
-    expect(fastButton("Send", mainContainer)).toBeEnabled();
-  });
-  await userEvent.click(fastButton("Send", mainContainer));
-  await waitFor(() => {
-    expect(sends).toHaveLength(2);
-  });
-  const steering = sends[1]!;
-  const deliveredSteeringId = "a9000000-0000-4000-a000-000000022002";
-  const steeringRows = [
-    promptRow(22, 7, main.id, "Steer this active run once", {
-      id: steering.clientEventId,
-      userMessage: steering.userMessage,
-    }),
-    promptRow(22, 8, main.id, "Steer this active run once", {
-      id: deliveredSteeringId,
-      runId: activeMainRunId,
-      revokesEventId: steering.clientEventId,
-      userMessage: steering.userMessage,
-    }),
-    outputRow(22, 9, main.id, "Assistant acknowledged the steering message", {
-      id: activeMainRunId,
-    }),
-  ];
-  allRows = [...allRows, ...steeringRows];
-  workspace.setChatEventRows(allRows);
-  createChatEvent(main.id);
-
-  await waitFor(() => {
-    expect(mainContainer).toHaveTextContent(
-      "Assistant acknowledged the steering message",
-    );
-    expect(userTurnCount(mainContainer, "Steer this active run once")).toBe(1);
-    expect(eventAnchorCount(mainContainer, deliveredSteeringId)).toBe(1);
-    expect(queuedMessage(mainContainer)).toBeUndefined();
-  });
-  expect(eventAnchorCount(mainContainer, steering.clientEventId)).toBe(0);
-  expect(threadContainer(main.id)).toBeVisible();
-  expect(threadContainer(side.id)).toBeVisible();
+  expect(mainContainer).toBeVisible();
+  expect(sideContainer).toBeVisible();
 });
+
+test.each([
+  {
+    caseId: 220,
+    scenario: "a new run",
+    activeRun: false,
+    message: "Send this exactly once",
+  },
+  {
+    caseId: 221,
+    scenario: "an active run",
+    activeRun: true,
+    message: "Steer this active run once",
+  },
+])(
+  "Confirm a message for $scenario in split chats without duplicating it",
+  async ({ caseId, activeRun, message }) => {
+    const thread = continuityThread(caseId, 1, "Message confirmation");
+    const side = continuityThread(caseId, 2, "Independent side conversation");
+    const initialRunId = "b9000000-0000-4000-a000-000000000001";
+    const sideRunId = "b9000000-0000-4000-a000-000000000003";
+    const confirmedRunId = activeRun
+      ? initialRunId
+      : "b9000000-0000-4000-a000-000000000002";
+    const mainRows = [
+      promptRow(caseId, 1, thread.id, "Existing request", {
+        runId: initialRunId,
+      }),
+      outputRow(caseId, 2, thread.id, "Existing answer", { id: initialRunId }),
+      ...(activeRun ? [] : [completedRow(caseId, 3, thread.id, initialRunId)]),
+    ];
+    const initialRows = [
+      ...mainRows,
+      promptRow(caseId, 1, side.id, "Existing side request", {
+        runId: sideRunId,
+      }),
+      outputRow(caseId, 2, side.id, "Existing side answer", { id: sideRunId }),
+    ];
+    const workspace = installContinuityWorkspace(context, {
+      caseId,
+      threads: [thread, side],
+      chatEventRows: initialRows,
+    });
+    const send = context.mocks.deferred<CapturedSend>();
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
+      if (
+        !("userMessage" in body) ||
+        body.userMessage === undefined ||
+        body.clientEventId === undefined ||
+        body.threadId === undefined
+      ) {
+        throw new Error("Expected a normal chat message send");
+      }
+      send.resolve({
+        clientEventId: body.clientEventId,
+        threadId: body.threadId,
+        userMessage: body.userMessage,
+      });
+      return respond(201, {
+        runId: activeRun ? null : confirmedRunId,
+        threadId: body.threadId,
+      });
+    });
+
+    await setupPage({
+      context,
+      path: `/chats/${thread.id}?sidebar=${side.id}`,
+      ...workspace.pageOptions,
+    });
+
+    await waitFor(() => {
+      expect(threadContainer(thread.id)).toHaveTextContent("Existing answer");
+      expect(threadContainer(side.id)).toHaveTextContent(
+        "Existing side answer",
+      );
+    });
+    const container = threadContainer(thread.id);
+    const sideContainer = threadContainer(side.id);
+    const composer = await within(container).findByLabelText("Message");
+    const sideComposer = await within(sideContainer).findByLabelText("Message");
+    expect(sideComposer).toBeVisible();
+
+    expect(
+      container.querySelectorAll('button[aria-label="Stop"]'),
+    ).toHaveLength(activeRun ? 1 : 0);
+
+    await fill(composer, message);
+    await waitFor(() => {
+      expect(fastButton("Send", container)).toBeEnabled();
+    });
+    click(fastButton("Send", container));
+    const sent = await send.promise;
+    await waitFor(() => {
+      expect(userTurnCount(container, message)).toBe(1);
+    });
+    expect(sent.threadId).toBe(thread.id);
+    expect(sideContainer).not.toHaveTextContent(message);
+
+    const confirmedPrompt = promptRow(
+      caseId,
+      mainRows.length + 2,
+      thread.id,
+      message,
+      {
+        runId: confirmedRunId,
+        revokesEventId: sent.clientEventId,
+        userMessage: sent.userMessage,
+      },
+    );
+    workspace.setChatEventRows([
+      ...initialRows,
+      promptRow(caseId, mainRows.length + 1, thread.id, message, {
+        id: sent.clientEventId,
+        userMessage: sent.userMessage,
+      }),
+      confirmedPrompt,
+      outputRow(
+        caseId,
+        mainRows.length + 3,
+        thread.id,
+        "Assistant acknowledged the message",
+        { id: confirmedRunId },
+      ),
+    ]);
+    createChatEvent(thread.id);
+
+    await waitFor(() => {
+      expect(container).toHaveTextContent("Assistant acknowledged the message");
+    });
+    expect(userTurnCount(container, message)).toBe(1);
+    expect(eventAnchorCount(container, confirmedPrompt.id)).toBe(1);
+    expect(eventAnchorCount(container, sent.clientEventId)).toBe(0);
+    expect(queuedMessage(container)).toBeUndefined();
+    expect(container).toBeVisible();
+    expect(sideContainer).toBeVisible();
+    expect(sideContainer).toHaveTextContent("Existing side answer");
+    expect(sideContainer).not.toHaveTextContent(message);
+    expect(sideContainer).not.toHaveTextContent(
+      "Assistant acknowledged the message",
+    );
+  },
+);

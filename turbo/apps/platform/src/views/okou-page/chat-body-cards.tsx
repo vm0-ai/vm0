@@ -75,10 +75,6 @@ import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { BankingActionCard } from "./banking-action-card.tsx";
 import { ConnectorAccountActionCard } from "./connector-account-action-card.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
-import {
-  WelcomeSlackDiagram,
-  WelcomeTeamDiagram,
-} from "./welcome-thread-diagrams.tsx";
 
 type ChatImagePreviewLinkProps = {
   alt: string;
@@ -315,13 +311,6 @@ export function MarkdownCardView({
     }
     case "unavailable-action": {
       return <UnavailableActionCard />;
-    }
-    case "welcome-diagram": {
-      return card.diagram === "team" ? (
-        <WelcomeTeamDiagram />
-      ) : (
-        <WelcomeSlackDiagram />
-      );
     }
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={card.signals} />;
@@ -1217,8 +1206,8 @@ function PermissionActionCardContent({
   const { t } = useTranslation();
   const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
   const remainingMs = expiresAtMs - now();
-  const hourCount = Math.ceil(remainingMs / (60 * 60 * 1000));
-  const dayCount = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+  const hourCount = Math.round(remainingMs / (60 * 60 * 1000));
+  const dayCount = Math.round(remainingMs / (24 * 60 * 60 * 1000));
   const expiryText =
     !expirationAvailable || !Number.isFinite(expiresAtMs)
       ? null
@@ -1226,14 +1215,14 @@ function PermissionActionCardContent({
         ? t(($) => {
             return $.chat.permissions.expired;
           })
-        : remainingMs >= 24 * 60 * 60 * 1000
+        : hourCount > 24
           ? t(
               ($) => {
                 return $.chat.permissions.expiresInDays;
               },
               { count: dayCount },
             )
-          : remainingMs < 59 * 60 * 1000 || hourCount === 1
+          : hourCount <= 1
             ? null
             : t(
                 ($) => {

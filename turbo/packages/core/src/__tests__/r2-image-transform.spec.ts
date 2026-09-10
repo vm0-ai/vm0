@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { r2ImageTransformUrl } from "../r2-image-transform";
 
 describe("r2ImageTransformUrl", () => {
+  it("keeps public shares on their policy-checked URL", () => {
+    const url = `https://a.okou.io/${"a".repeat(24)}.png?download=1#preview`;
+    expect(r2ImageTransformUrl(url, { width: 400, height: 300 })).toBe(url);
+  });
+
+  it("continues resizing historical short artifact URLs", () => {
+    expect(
+      r2ImageTransformUrl("https://a.okou.io/0123456789.png", { width: 400 }),
+    ).toBe(
+      "https://a.okou.io/cdn-cgi/image/width=400,fit=scale-down,format=auto,quality=85,metadata=none/0123456789.png",
+    );
+  });
+
   it("adds image transform directives for vm0 CDN artifact URLs", () => {
     expect(
       r2ImageTransformUrl("https://cdn.vm0.io/artifacts/user/id/image.png", {

@@ -5,7 +5,10 @@ import {
   phase2DiagnosticForError,
   sanitizePiMemoryPhase2Diagnostic,
 } from "./phase2-memory-diagnostics";
-import { PiMemoryPhase2EngineError } from "./phase2-memory-types";
+import {
+  PiMemoryPhase2EngineError,
+  type PiMemoryPhase2FailureClass,
+} from "./phase2-memory-types";
 
 const counts = {
   candidateCount: 0,
@@ -14,12 +17,29 @@ const counts = {
   heartbeatCount: 0,
 };
 
+const FIXTURE_ERROR_CLASSES: Readonly<
+  Record<string, PiMemoryPhase2FailureClass>
+> = {
+  aborted: "aborted",
+  agent_output_invalid: "agent_output_invalid",
+  model_failed: "model_failed",
+  session_failed: "session_failed",
+};
+
+function fixtureErrorClass(name: string): PiMemoryPhase2FailureClass {
+  const errorClass = FIXTURE_ERROR_CLASSES[name];
+  if (!errorClass) {
+    throw new Error("Unknown Pi memory Phase 2 fixture error class");
+  }
+  return errorClass;
+}
+
 describe("Pi Phase 2 terminal diagnostic boundary", () => {
   it.each(fixtures)(
     "serializes the cross-language $name fixture",
     (fixture) => {
       const error = new PiMemoryPhase2EngineError(
-        "agent_output_invalid",
+        fixtureErrorClass(fixture.errorClass),
         counts,
         fixture.diagnostic
           ? sanitizePiMemoryPhase2Diagnostic(fixture.diagnostic)

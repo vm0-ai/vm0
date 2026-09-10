@@ -465,12 +465,12 @@
       "attach": "표시 첨부",
       "draftOnly": "표시는 임시 보관함에 남아 있으며 보내기 전까지 수정할 수 있습니다",
       "inkLabel": "색상 {{color}}",
-      "notePlaceholder": "여기를 어떻게 바꿀지 적어 주세요",
+      "notePlaceholder": "무엇을 바꿀까요?",
       "open": "주석",
       "redo": "다시 실행",
       "removeMark": "표시 삭제",
       "subtitle_other": "표시 {{count}}개",
-      "textPlaceholder": "라벨 입력",
+      "textPlaceholder": "여기에 입력",
       "tools": {
         "arrow": "화살표",
         "box": "사각형",
@@ -598,8 +598,6 @@
       "category": "템플릿 카테고리",
       "chooseVoice": "{{title}}의 음성 선택",
       "creativeVideo": "창작 영상",
-      "explainerUnavailable": "이 동영상 템플릿은 더 이상 사용할 수 없습니다. 메시지를 보내려면 삭제하세요.",
-      "explainerVideo": "설명 영상",
       "filters": {
         "age": "연령",
         "all": "전체",
@@ -621,6 +619,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}}장",
       "importedSlides_other": "{{count}}장",
+      "introVideo": "인트로 영상",
+      "introVideoUnavailable": "이 동영상 템플릿은 더 이상 사용할 수 없습니다. 메시지를 보내려면 삭제하세요.",
       "multiAccent": "다중 악센트",
       "needPro": "Pro 필요",
       "nextSlide": "다음 슬라이드 미리보기",
@@ -1882,12 +1882,15 @@
       "create": {
         "addStyle": "스타일 추가",
         "addTemplate": "템플릿 추가",
+        "chooseScene": "만들 항목 선택",
         "chooseType": "유형 선택",
         "description": "프레젠테이션, 동영상, 이미지",
         "exit": "만들기 모드 종료",
         "image": "이미지 만들기",
+        "imageDescription": "아이디어를 이미지로 표현",
         "imagePlaceholder": "만들고 싶은 이미지를 설명하세요…",
         "presentation": "프레젠테이션 만들기",
+        "presentationDescription": "이야기를 담은 슬라이드",
         "presentationPlaceholder": "프레젠테이션의 주제는 무엇인가요?",
         "question": "무엇을 실현하고 싶으신가요?",
         "settingsAdjusted": "이 모델에 맞게 일부 동영상 설정을 조정했습니다",
@@ -1896,6 +1899,7 @@
         "slideCountRange": "{{range}}장",
         "title": "만들기",
         "video": "동영상 만들기",
+        "videoDescription": "아이디어를 영상으로 표현",
         "videoPlaceholder": "만들고 싶은 동영상을 설명하세요…"
       },
       "createWorkflow": "워크플로 생성",
@@ -2026,20 +2030,6 @@
       },
       "runCancelled": "중간에 일시 중지됨 — 언제든 다시 시작하세요."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
-      "avatarVoice": "아바타 음성",
-      "changeAvatar": "아바타 변경",
-      "chooseStyle": "스타일 선택",
-      "chooseStyleAndVoice": "스타일과 음성을 선택하세요.",
-      "noMatches": "결과가 없습니다. 다른 검색어나 카테고리를 사용해 보세요.",
-      "ready": "준비되었습니다. 채팅에 콘텐츠를 추가하세요.",
-      "searchAvatars": "아바타 검색",
-      "searchStyles": "스타일 검색",
-      "settings": "설명 영상 설정",
-      "style": "스타일",
-      "useSelection": "선택 항목 사용"
-    },
     "feedback": {
       "emailDraftDescription": "이메일 초안 (메일 초안 ID: {{id}})",
       "partHeading": "답변 이 부분에 대한 피드백:",
@@ -2048,8 +2038,6 @@
       "placeholder": "무엇을 변경해야 하나요?",
       "quote": "인용",
       "remove": "피드백 제거",
-      "selectionEnd": "선택 끝 위치 조정",
-      "selectionStart": "선택 시작 위치 조정",
       "sentEmailDescription": "발송된 이메일 (메일 ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", 발송 ID: {{sentId}}",
       "sourcePartHeading": "{{description}} 이 부분에 대한 피드백:",
@@ -2083,6 +2071,20 @@
       },
       "footer": {
         "cancel": "취소"
+      },
+      "picker": {
+        "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
+        "avatarVoice": "아바타 음성",
+        "changeAvatar": "아바타 변경",
+        "chooseStyle": "스타일 선택",
+        "chooseStyleAndVoice": "스타일과 음성을 선택하세요.",
+        "noMatches": "결과가 없습니다. 다른 검색어나 카테고리를 사용해 보세요.",
+        "ready": "준비되었습니다. 채팅에 콘텐츠를 추가하세요.",
+        "searchAvatars": "아바타 검색",
+        "searchStyles": "스타일 검색",
+        "settings": "인트로 영상 설정",
+        "style": "스타일",
+        "useSelection": "선택 항목 사용"
       },
       "style": {
         "auto": "Okou에게 맡기기",
@@ -2522,6 +2524,7 @@
       "moreIdeas": "다른 아이디어",
       "moreTemplates": "더 많은 템플릿",
       "presentationTemplates": "프레젠테이션 템플릿",
+      "removeTask": "{{task}} 제거",
       "tasks": {
         "image": "이미지",
         "presentation": "슬라이드",
@@ -2639,34 +2642,6 @@
       "transcribing": "전사 중",
       "transcribingProgress": "전사 진행 중...",
       "transcriptionFailed": "음성 전사 실패. 다시 시도하세요."
-    },
-    "welcomeThread": {
-      "content": "# 안녕하세요, {{assistantName}}입니다\n\n저는 여러분의 AI 팀원입니다. 필요한 결과를 알려 주시면 여러 도구에서 작업한 뒤 완성된 결과물을 이 채팅으로 가져옵니다.\n\n## 제가 제공할 수 있는 결과물\n\n### 이미지\n\n캠페인 비주얼, 제품 일러스트, 소셜 그래픽, 광고 크리에이티브를 만들 수 있습니다.\n\n![{{assistantName}}가 제공한 캠페인 비주얼]({{imageUrl}})\n\n`campaign-visual.png`\n\n### 프레젠테이션\n\n간단한 브리프를 구조와 디자인이 완성된 발표용 자료로 만들 수 있습니다.\n\n![{{assistantName}}가 제공한 프레젠테이션]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · 슬라이드 {{slideCount}}장\n\n### 동영상\n\n편집된 제품 데모, 출시 영상, 설명 영상, 자막이 포함된 소셜 클립을 제공할 수 있습니다.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · 공유 준비 완료\n\n### 자동화 추천\n\n팀의 반복 업무를 검토하고 자동화할 가치가 높은 작업을 우선순위로 정리해 드립니다.\n\n| 우선순위 | 작업 | 트리거 | 결과물 |\n| --- | --- | --- | --- |\n| 1 | 인바운드 리드 분류 | 새 양식 응답 | 정보가 보강된 CRM 레코드와 답장 초안 |\n| 2 | 회의를 후속 조치로 전환 | 통화 완료 | 요약, CRM 메모, 이메일 초안 |\n| 3 | 주간 성장 검토 | 월요일 아침 | 지표 브리프와 이상 징후 보고서 |\n\n## 팀이 {{assistantName}}를 더 잘 활용하는 이유\n\n좋은 결과를 한 사람의 채팅에만 둘 필요는 없습니다. 검증된 과정을 공유 워크플로로 저장하면 다음 팀원이 이미 효과가 입증된 방법에서 시작할 수 있습니다.\n\n```mermaid\nflowchart TB\n  A[\"1. 효과적인 방법 찾기<br/>팀원과 {{assistantName}}가 함께 작업을 완료\"]\n  B[\"2. 워크플로 공유<br/>과정과 컨텍스트를 재사용 가능하게 전환\"]\n  C[\"3. 효과적인 방법 재사용<br/>다른 팀원도 검증된 과정에서 시작\"]\n  D[\"4. 함께 개선<br/>피드백으로 다음 실행을 향상\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **최종 파일뿐 아니라 워크플로를 공유하세요.**\n- 모든 팀원이 동일한 시작 컨텍스트를 갖게 됩니다.\n- 한 번 개선한 과정을 팀 전체가 활용할 수 있습니다.\n\n## 팀에서 저를 활용하는 방법\n\n좋은 답변은 한 사람을 돕습니다. 저장된 워크플로는 그 일을 이어받는 모든 사람을 돕습니다.\n\n[팀 워크플로 다이어그램](<{{teamDiagramUrl}}>)\n\n1. **먼저 저와 함께 한 번 해 보세요.** 거기까지 가는 단계가 아니라 원하는 결과를 알려 주시고, 작업이 진행되는 동안 바로잡아 주세요. 그 수정이야말로 남길 가치가 있는 부분입니다.\n2. **워크플로로 저장하세요.** 아래 입력창에서 **워크플로 생성**을 선택하세요. 어떤 결과를 원하는지, 무엇으로 시작할지, 결과를 어떻게 처리할지 여쭤본 뒤 다시 실행할 수 있는 워크플로로 정리해 드립니다.\n3. **가시성을 공개로 바꾸세요.** 워크플로를 열고 **가시성**을 설정하세요. **비공개** 워크플로는 본인만 쓰지만, **공개** 워크플로는 워크스페이스의 누구나 실행할 수 있습니다.\n4. **이름으로 실행하세요.** 어느 대화에서든 `/` 뒤에 워크플로 이름을 입력하면 됩니다. 요청이 아니라 일정이나 트리거로 실행해야 한다면 자동화를 추가하세요.\n\n가장 어려운 일이 아니라, 팀이 가장 자주 반복하는 일부터 시작하세요. 매주 도는 워크플로가 한 번 쓰이는 정교한 워크플로보다 값집니다.\n\n## Slack에서 말 걸기\n\n이런 일의 상당수는 이미 Slack에서 논의됩니다. 제가 Slack에 설치되면 답이 다른 탭이 아니라 스레드 안으로 도착합니다.\n\n[Slack 대화 다이어그램](<{{slackDiagramUrl}}>)\n\n**한 번만 설정하면 됩니다**\n\n1. 왼쪽 사이드바에서 **{{assistantName}}가(이) 작업하는 곳**을 엽니다.\n2. Slack 카드에서 **Slack에 설치**를 선택하고 권한을 승인합니다. 설치는 워크스페이스 관리자만 할 수 있으니 관리자가 아니라면 관리자에게 요청하세요.\n3. 나머지 구성원은 같은 카드를 열고 **연결**을 선택해 각자의 Slack 계정을 연결합니다.\n\n**그다음부터는 다른 동료처럼 쓰시면 됩니다**\n\n| Slack에서 | 제가 하는 일 |\n| --- | --- |\n| 다이렉트 메시지 보내기 | 끊기지 않는 하나의 대화로, 둘이서만 진행합니다 |\n| 채널에서 `@{{assistantName}}` | 보낸 메시지의 스레드로 답해 팀이 함께 볼 수 있게 합니다 |\n| 스레드 안에서 다시 `@{{assistantName}}` | 그 스레드를 이어받아 계속 작업합니다 |\n| `/okou` | 명령 목록을 엽니다: 연결, 에이전트 전환, 모델 전환, 연결 해제 |\n\n두 가지를 알아 두시면 좋습니다. 채널에서는 언급될 때만 답하므로 부르지 않은 스레드에는 끼어들지 않습니다. 그리고 다이렉트 메시지에 파일을 첨부하시면 답하기 전에 읽어 둡니다.\n\n[Slack 설정하기]({{worksUrl}}) — 위에서 저장한 워크플로를 채널을 떠나지 않고 시작할 수 있습니다.\n\n[팀원을 초대]({{inviteUrl}})해 다음에 만드는 워크플로를 필요한 사람들이 바로 재사용할 수 있게 하세요.\n\n공유 워크플로에 대한 자세한 내용은 [문서]({{docsUrl}})에서 확인하세요.",
-      "slackDiagram": {
-        "caption": "Slack에서 답이 도착하는 곳. 보낸 메시지의 스레드 안이거나, 비공개 다이렉트 메시지",
-        "channelEyebrow": "채널에서는",
-        "channelNote": "답이 보낸 메시지에 붙어 있어 채널이 넘치지 않고 팀도 계속 따라올 수 있습니다.",
-        "directEyebrow": "다이렉트 메시지에서는",
-        "directLabel": "나와 {{assistantName}}",
-        "directNote": "작업이 바뀌어도 맥락이 남는 둘만의 대화입니다.",
-        "mentionLabel": "{{assistantName}}를 멘션합니다",
-        "replyLabel": "{{assistantName}}가 스레드로 답합니다"
-      },
-      "teamDiagram": {
-        "automationBody": "아무도 시키지 않아도 일정이나 트리거로 실행됩니다.",
-        "automationTitle": "자동화",
-        "caption": "잘 풀린 대화 하나가 팀 전체와 일정이 출발점으로 삼는 워크플로가 됩니다",
-        "chatBody": "{{assistantName}}와 함께 한 번 제대로 끝냅니다.",
-        "chatTitle": "잘 풀린 대화",
-        "savedEyebrow": "한 번 저장",
-        "teamEyebrow": "모두의 것",
-        "teammateBody": "이름으로 실행해 이미 되는 지점부터 시작합니다.",
-        "teammateTitle": "팀의 누구나",
-        "workflowBody": "과정과 맥락이 남아 계속 다시 쓸 수 있습니다.",
-        "workflowTitle": "워크플로",
-        "yoursEyebrow": "내 것"
-      },
-      "title": "{{assistantName}}에 오신 것을 환영합니다"
     },
     "workflows": {
       "named": "워크플로 {{title}}",
@@ -5729,6 +5704,21 @@
     "cancel": "취소",
     "chooseFile": "파일 선택",
     "choosePrivateKeyFile": "개인 키 파일 선택",
+    "connectionStatus": {
+      "attention_other": "SSH 호스트 {{count}}개에 확인이 필요합니다",
+      "authenticationFailed": "SSH 인증에 실패했습니다. 사용자 이름, 개인 키, 서버 권한을 확인하고 필요하면 호스트를 수정하거나 자격 증명을 교체하세요.",
+      "credentialResourceLimit": "개인 키가 지원되는 처리 한도를 초과합니다. 지원되는 암호화 설정으로 다시 내보낸 후 자격 증명을 교체하세요.",
+      "hostKeyMismatch": "서버의 호스트 키가 저장된 식별 정보와 일치하지 않습니다. 호스트 키를 초기화하기 전에 별도의 방법으로 서버를 확인하세요.",
+      "invalidCredential": "개인 키 또는 암호문을 읽을 수 없습니다. 전체 키와 올바른 암호문으로 자격 증명을 교체하세요.",
+      "networkFailure": "마지막 SSH 연결에 실패했습니다. 호스트 이름, 포트, 서버 가용성, Runner에서 방화벽을 통한 접근을 확인하세요.",
+      "observedAt": "확인 시각: {{time}}",
+      "protocol": "SSH 핸드셰이크에 실패했습니다. 이 포트에서 SSH를 제공하고 서버가 호환되는 알고리즘을 지원하는지 확인하세요.",
+      "timedOut": "인증이 완료되기 전에 마지막 SSH 연결 시간이 초과되었습니다. 엔드포인트, 방화벽, 서버 가용성을 확인하세요.",
+      "unavailable": "SSH 연결 상태를 확인할 수 없습니다",
+      "unsafeDestination": "이 호스트가 허용된 공용 주소로 확인되지 않습니다. 공용 SSH 엔드포인트로 변경하세요.",
+      "unsupportedCredential": "개인 키 형식 또는 알고리즘이 지원되지 않습니다. 지원되는 OpenSSH, PKCS8 또는 RSA PEM 키로 교체하세요.",
+      "unsupportedHostKey": "서버의 호스트 키가 지원되지 않습니다. 서버에 지원되는 Ed25519, ECDSA 또는 RSA 호스트 키를 설정하세요."
+    },
     "credentialsHelp": "인증 정보는 쓰기 전용이며 샌드박스 외부에 보관됩니다. 전체 키를 붙여 넣으세요. 공백은 유지됩니다. 제출하거나 양식을 닫으면 입력란이 지워집니다.",
     "delete": "호스트 삭제",
     "deleteHelp": "이 호스트와 저장된 인증 정보를 삭제할까요? Agent의 최신 호스트 목록에서 더 이상 표시되지 않습니다.",
@@ -6497,6 +6487,7 @@
       "install": "설치",
       "installDescription": "에이전트를 선택하고 모든 필수 매개변수를 입력하세요. 포함된 모든 자동화가 설치됩니다.",
       "installed": "공식 워크플로가 설치되었습니다",
+      "installedStatus": "설치됨",
       "installErrorDescription": "에이전트와 매개변수 값을 확인한 후 다시 시도하세요.",
       "installErrorTitle": "공식 워크플로를 설치하지 못했습니다",
       "installTitle": "{{name}} 설치",

@@ -4,6 +4,8 @@ import { delay } from "signal-timers";
 import { z } from "zod";
 import {
   introVideoAvatarSchema,
+  introVideoAvatarTypeSchema,
+  type IntroVideoAvatarType,
   introVideoStyleSchema,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 
@@ -433,15 +435,29 @@ function parseHeyGenOrientation(
     : undefined;
 }
 
+function parseHeyGenAvatarType(
+  value: unknown,
+): IntroVideoAvatarType | undefined {
+  const parsed = introVideoAvatarTypeSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function parsePositiveInteger(value: unknown): number | undefined {
   const parsed = optionalNumber(value);
   return parsed && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
-  if (!isRecord(value)) {
-    return null;
-  }
+interface HeyGenAvatarIdentity {
+  readonly id: string;
+  readonly groupId: string;
+  readonly name: string;
+  readonly defaultVoiceId: string;
+}
+
+/** A public look is usable only when complete and renderable by Avatar III. */
+function parseHeyGenAvatarIdentity(
+  value: Record<string, unknown>,
+): HeyGenAvatarIdentity | null {
   const id = optionalString(value.id)?.trim();
   const groupId = optionalString(value.group_id)?.trim();
   const name = optionalString(value.name)?.trim();
@@ -459,6 +475,18 @@ function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
   ) {
     return null;
   }
+  return { id, groupId, name, defaultVoiceId };
+}
+
+function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const identity = parseHeyGenAvatarIdentity(value);
+  if (!identity) {
+    return null;
+  }
+  const avatarType = parseHeyGenAvatarType(value.avatar_type);
   const previewImageUrl = optionalUrl(value.preview_image_url);
   const previewVideoUrl = optionalUrl(value.preview_video_url);
   const gender = parseHeyGenGender(value.gender);
@@ -468,10 +496,8 @@ function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
     value.preferred_orientation,
   );
   const parsed = introVideoAvatarSchema.safeParse({
-    id,
-    groupId,
-    name,
-    defaultVoiceId,
+    ...identity,
+    ...(avatarType ? { avatarType } : {}),
     ...(previewImageUrl ? { previewImageUrl } : {}),
     ...(previewVideoUrl ? { previewVideoUrl } : {}),
     ...(gender ? { gender } : {}),

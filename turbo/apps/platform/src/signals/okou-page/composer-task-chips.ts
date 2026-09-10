@@ -13,7 +13,7 @@ export function createComposerTaskChipsSignals(create: ComposerCreateSignals) {
   const enabled$ = computed((get) => {
     return get(featureSwitch$)[FeatureSwitchKey.ComposerTaskChips];
   });
-  const internalGeneralTask$ = state<"workflow" | "website" | null>("workflow");
+  const internalGeneralTask$ = state<"workflow" | "website" | null>(null);
   const task$ = computed((get): ComposerTask | null => {
     if (!get(enabled$) || get(create.choosing$)) {
       return null;

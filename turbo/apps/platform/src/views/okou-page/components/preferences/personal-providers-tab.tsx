@@ -140,7 +140,9 @@ function OAuthAccountGroupsSection() {
       <TooltipProvider delayDuration={100}>
         <div
           className="overflow-hidden rounded-xl bg-card"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          style={{
+            border: "var(--border-width-surface) solid hsl(var(--gray-400))",
+          }}
         >
           {isLoading ? (
             <>
@@ -623,7 +625,9 @@ function LegacyOAuthCredentialsSection() {
       <PersonalModelsHeading />
       <div
         className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        style={{
+          border: "var(--border-width-surface) solid hsl(var(--gray-400))",
+        }}
       >
         {isLoading ? (
           <>

@@ -40,7 +40,9 @@ fn write_usage_pending_state(
     .unwrap();
 }
 
-async fn install_usage_flush_child(config: &mut RunConfig) {
+async fn install_usage_flush_child(
+    config: &mut RunConfig,
+) -> tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>> {
     use tokio::io::AsyncBufReadExt;
 
     std::fs::create_dir_all(config.paths.base_dir.join("mitm-addon")).unwrap();
@@ -76,7 +78,7 @@ mkfifo "$fifo"
 exec 3<>"$fifo"
 # Match the addon lifecycle: SIGUSR1 only wakes usage work, while the JSONL
 # marker watcher progresses independently.
-trap 'printf "\n" >&3' USR1
+trap 'printf "signaled\n"; printf "\n" >&3' USR1
 trap 'exit 0' TERM
 echo ready
 while true; do
@@ -104,16 +106,17 @@ done
         .expect("usage flush child stdout closed before ready");
     assert_eq!(ready, "ready");
     config.proxy.mitm.set_child_for_test(child);
+    ready_lines
 }
 
 #[tokio::test]
 async fn job_completion_requests_proxy_usage_flush_without_waiting() {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    install_usage_flush_child(&mut config).await;
+    let mut child_lines = install_usage_flush_child(&mut config).await;
     let usage_state_id = config.proxy.mitm.usage_state_id_for_test().to_string();
     write_usage_pending_state(&config.paths.base_dir, &usage_state_id, 0, 0, 1);
     let base_dir = config.paths.base_dir.clone();
-    let run_handle = tokio::spawn(run(config));
+    let run_handle = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(run(config)));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
@@ -130,8 +133,22 @@ async fn job_completion_requests_proxy_usage_flush_without_waiting() {
     );
     wait_usage_flush_requested(&env, Duration::from_secs(5)).await;
 
+    // The observer precedes the signal call. Require receipt in the child
+    // before shutdown can independently signal it or usage delivery is released.
+    let signaled = tokio::time::timeout(Duration::from_secs(5), child_lines.next_line())
+        .await
+        .expect("proxy child must receive SIGUSR1 after job completion")
+        .unwrap();
+    assert_eq!(signaled.as_deref(), Some("signaled"));
+    let pending: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(usage_pending_path(&base_dir)).unwrap()).unwrap();
+    assert_eq!(
+        pending["reports"], 1,
+        "job completion and signal receipt must not require usage delivery"
+    );
+
     write_usage_pending_state(&base_dir, &usage_state_id, 0, 0, 0);
-    shutdown(&env, run_handle).await;
+    shutdown(&env, run_handle.detach()).await;
 }
 
 /// Regression guard: the post-complete deferred network-log upload (moved
@@ -185,7 +202,8 @@ async fn deferred_network_log_upload_drains_after_stopping_signal() {
     });
 
     let (mut config, env) = mock_run_config_with_api_url(test_profiles(), 8, 32768, 4, &api_url);
-    install_usage_flush_child(&mut config).await;
+    // Keep the signal acknowledgement pipe open until the child is stopped.
+    let _child_lines = install_usage_flush_child(&mut config).await;
     let addon_dir = config.paths.base_dir.join("mitm-addon");
     config.proxy.mitm.set_addon_dir_for_test(addon_dir.clone());
     let mitm_jsonl_flush = config.proxy.mitm.jsonl_flush_handle();

@@ -197,15 +197,18 @@ export const maybeEmitRunUsageEvent$ = command(
         .limit(1);
       signal.throwIfAborted();
 
-      const archivedUsageEvent = hotUsageEvent
+      // Keep a necessary canonical read within this locked operation, so first
+      // late usage can also resolve its group without downloading history twice.
+      const history = hotUsageEvent
         ? undefined
-        : [...(await runEventHistory(tx, context.chatThreadId, signal))]
-            .reverse()
-            .find((event) => {
-              return (
-                event.runId === runId && event.eventType === "usage.recorded"
-              );
-            });
+        : await runEventHistory(tx, context.chatThreadId, runId, signal);
+      const archivedUsageEvent = history
+        ? [...history].reverse().find((event) => {
+            return (
+              event.runId === runId && event.eventType === "usage.recorded"
+            );
+          })
+        : undefined;
       const existingUsageEvent =
         hotUsageEvent ??
         (archivedUsageEvent
@@ -223,6 +226,9 @@ export const maybeEmitRunUsageEvent$ = command(
         return null;
       }
 
+      const runGroupId = existingUsageEvent
+        ? undefined
+        : await historicalRunGroupId(tx, runId, history, signal);
       const event = {
         chatThreadId: context.chatThreadId,
         eventType: "usage.recorded" as const,
@@ -230,11 +236,7 @@ export const maybeEmitRunUsageEvent$ = command(
         runId,
         // A replacement inherits the exact context pointer, including null.
         // Only a first event needs the retained run provenance lookup.
-        ...(existingUsageEvent
-          ? {}
-          : {
-              runGroupId: await historicalRunGroupId(tx, runId, signal),
-            }),
+        ...(existingUsageEvent ? {} : { runGroupId }),
         usagePayload: payload,
       };
       const inserted = existingUsageEvent

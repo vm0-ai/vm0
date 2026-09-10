@@ -32,6 +32,7 @@ pub(in crate::exec_operation) enum ExecTerminalLogReason {
     ExpectedCancel,
     ExpectedTimeout,
     Notable,
+    OomEvidence,
     Slow,
 }
 
@@ -41,6 +42,7 @@ impl ExecTerminalLogReason {
             ExecTerminalLogReason::ExpectedCancel => "expected_cancel",
             ExecTerminalLogReason::ExpectedTimeout => "expected_timeout",
             ExecTerminalLogReason::Notable => "notable",
+            ExecTerminalLogReason::OomEvidence => "oom_evidence",
             ExecTerminalLogReason::Slow => "slow",
         }
     }
@@ -61,7 +63,15 @@ pub(in crate::exec_operation) struct ExecTerminalLogContext {
     pub(in crate::exec_operation) stdout_truncated: bool,
     pub(in crate::exec_operation) stderr_truncated: bool,
     pub(in crate::exec_operation) stream_overflowed: bool,
-    pub(in crate::exec_operation) diagnostic_present: bool,
+    /// The diagnostic left after removing bounded OOM metadata. Only this part
+    /// describes an operation failure; Runner drops the metadata before outcome
+    /// processing, so severity must not be selected on the raw frame.
+    pub(in crate::exec_operation) actionable_diagnostic: bool,
+    /// The transported evidence proves an OOM decision rather than recording an
+    /// inspected-and-empty capture candidate.
+    pub(in crate::exec_operation) evidence_has_proof: bool,
+    /// A line claimed the evidence prefix but broke its bounds or encoding.
+    pub(in crate::exec_operation) evidence_malformed: bool,
     pub(in crate::exec_operation) host_cancel_requested: bool,
 }
 
@@ -194,7 +204,29 @@ impl ExecOperationDiagnostic {
         let slow = elapsed_ms >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD.as_millis();
         let stdout_truncated = exec_operation_captured_output_truncated(result.stdout);
         let stderr_truncated = exec_operation_captured_output_truncated(result.stderr);
-        let diagnostic_present = !result.diagnostic.is_empty();
+        // Bounded OOM metadata shares this transport with real diagnostics, so
+        // classify on the residual. Only metadata counts are logged here; the
+        // payload itself belongs to the evidence upload.
+        let split = guest_contracts::oom_evidence::split_diagnostic(result.diagnostic);
+        let diagnostic_present = split.is_actionable();
+        let evidence_has_proof = split.has_proof();
+        let evidence_malformed = split.malformed_lines > 0;
+        let oom_evidence = split.evidence.is_some();
+        let oom_incidents = split
+            .evidence
+            .as_ref()
+            .map_or(0, |evidence| evidence.incidents.len());
+        let oom_kernel_events = split.evidence.as_ref().map_or(0, |evidence| {
+            evidence
+                .incidents
+                .iter()
+                .map(|incident| incident.kernel_events.len())
+                .sum::<usize>()
+        });
+        let oom_dropped_incidents = split
+            .evidence
+            .as_ref()
+            .map_or(0, |evidence| evidence.dropped_incidents);
         let Some(decision) = exec_terminal_log_decision(ExecTerminalLogContext {
             lifecycle,
             timeout_is_expected: self.timeout_is_expected,
@@ -203,7 +235,9 @@ impl ExecOperationDiagnostic {
             stdout_truncated,
             stderr_truncated,
             stream_overflowed,
-            diagnostic_present,
+            actionable_diagnostic: diagnostic_present,
+            evidence_has_proof,
+            evidence_malformed,
             host_cancel_requested,
         }) else {
             return;
@@ -227,6 +261,12 @@ impl ExecOperationDiagnostic {
                     stdout_truncated,
                     stderr_truncated,
                     diagnostic_present,
+                    oom_evidence,
+                    oom_evidence_proof = evidence_has_proof,
+                    oom_evidence_malformed = evidence_malformed,
+                    oom_incidents,
+                    oom_kernel_events,
+                    oom_dropped_incidents,
                     host_cancel_requested,
                     process_class = self.process_class,
                     operation_kind = self.operation_kind,
@@ -274,7 +314,8 @@ pub(in crate::exec_operation) fn exec_terminal_cancel_is_expected(
         && !context.stdout_truncated
         && !context.stderr_truncated
         && !context.stream_overflowed
-        && !context.diagnostic_present
+        && !context.actionable_diagnostic
+        && !context.evidence_malformed
 }
 
 pub(in crate::exec_operation) fn exec_terminal_log_lifecycle(
@@ -310,7 +351,8 @@ pub(in crate::exec_operation) fn exec_terminal_log_decision(
         && !context.stdout_truncated
         && !context.stderr_truncated
         && !context.stream_overflowed
-        && !context.diagnostic_present
+        && !context.actionable_diagnostic
+        && !context.evidence_malformed
     {
         return Some(ExecTerminalLogDecision {
             severity: ExecTerminalLogSeverity::Info,
@@ -322,11 +364,21 @@ pub(in crate::exec_operation) fn exec_terminal_log_decision(
         || context.stdout_truncated
         || context.stderr_truncated
         || context.stream_overflowed
-        || context.diagnostic_present;
+        || context.actionable_diagnostic
+        || context.evidence_malformed;
     if notable {
         return Some(ExecTerminalLogDecision {
             severity: ExecTerminalLogSeverity::Warn,
             reason: ExecTerminalLogReason::Notable,
+        });
+    }
+    // Proven guest memory pressure stays visible even when the operation itself
+    // reached an ordinary terminal status. A capture candidate proves nothing
+    // and is classified exactly like an operation that carried no metadata.
+    if context.evidence_has_proof {
+        return Some(ExecTerminalLogDecision {
+            severity: ExecTerminalLogSeverity::Warn,
+            reason: ExecTerminalLogReason::OomEvidence,
         });
     }
     if !context.slow {
