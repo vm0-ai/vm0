@@ -200,6 +200,7 @@ class AuditSetupTests(unittest.TestCase):
         event_request=REQUEST_ID,
         snapshot_account=audit.ACCOUNT,
         include_config_bucket=True,
+        item_status="OK",
     ):
         now = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=5)
         trail = self.stubs["cloudtrail"]
@@ -264,7 +265,7 @@ class AuditSetupTests(unittest.TestCase):
                     "awsAccountId": snapshot_account,
                     "resourceType": "AWS::S3::Bucket",
                     "resourceId": bucket,
-                    "configurationItemStatus": "OK",
+                    "configurationItemStatus": item_status,
                     "configuration": SECRET,
                 }
                 for bucket in buckets
@@ -334,6 +335,13 @@ class AuditSetupTests(unittest.TestCase):
 
     def test_snapshot_must_contain_both_new_audit_buckets(self):
         self.delivery_responses(include_config_bucket=False)
+        with self.assertRaisesRegex(
+            RuntimeError, "snapshot_missing_audit_bucket_items"
+        ):
+            self.verify()
+
+    def test_unrecorded_bucket_items_do_not_pass_delivery_verification(self):
+        self.delivery_responses(item_status="ResourceNotRecorded")
         with self.assertRaisesRegex(
             RuntimeError, "snapshot_missing_audit_bucket_items"
         ):

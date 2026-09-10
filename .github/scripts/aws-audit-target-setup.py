@@ -564,7 +564,7 @@ def verify_delivery(session, report, deadline):
                     item["resourceId"]
                     for item in items
                     if item["resourceType"] == "AWS::S3::Bucket"
-                    and item["configurationItemStatus"] != "ResourceDeleted"
+                    and item["configurationItemStatus"] in {"OK", "ResourceDiscovered"}
                 }
                 require(
                     {TRAIL_BUCKET, CONFIG_BUCKET}.issubset(buckets),
