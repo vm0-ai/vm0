@@ -67,96 +67,122 @@ test.each([
   ).toBeVisible();
 });
 
-test("A lost response retries the same UUID, prevents pending duplicates, and opens the real runless thread", async () => {
-  const chat = createMarkdownChatFixture(context);
-  const row = {
-    ...chat.outputMessage("Hello from the persisted welcome", { seqId: 1 }),
-    runId: null,
-    runEventId: null,
-    runEventSequenceNumber: null,
-  };
-  chat.install({
-    rows: () => {
-      return [row];
-    },
-  });
-  let committed = false;
-  const created = chatListEvent(33_294, 2, "created", chat.threadId, {
-    agentId: "c0000000-0000-4000-a000-000000000071",
-    title: "Recovered welcome",
-  });
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: [],
-      latestEventId: "d0000000-0000-4000-a000-000000000001",
-      latestSeqId: 1,
+test.each([false, true])(
+  "A lost response retries the same UUID and opens the runless thread with token refresh=%s",
+  async (refresh) => {
+    const chat = createMarkdownChatFixture(context);
+    const row = {
+      ...chat.outputMessage("Hello from the persisted welcome", { seqId: 1 }),
+      runId: null,
+      runEventId: null,
+      runEventSequenceNumber: null,
+    };
+    chat.install({
+      rows: () => {
+        return [row];
+      },
     });
-  });
-  context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
-    return respond(200, {
-      events: committed && (query.sinceSeqId ?? 0) < 2 ? [created] : [],
-      hasMore: false,
-    });
-  });
-  context.mocks.data.agents([
-    {
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      displayName: "Default agent",
-    },
-    {
+    let committed = false;
+    const created = chatListEvent(33_294, 2, "created", chat.threadId, {
       agentId: "c0000000-0000-4000-a000-000000000071",
-      displayName: "Markdown Agent",
-    },
-  ]);
-  const release = context.mocks.deferred<void>();
-  const received = context.mocks.deferred<void>();
-  const requests: string[] = [];
-  context.mocks.http.post("*/api/welcome-chat-threads", async ({ request }) => {
-    const body = welcomeChatThreadsContract.create.body.parse(
-      await request.json(),
+      title: "Recovered welcome",
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [],
+        latestEventId: "d0000000-0000-4000-a000-000000000001",
+        latestSeqId: 1,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      return respond(200, {
+        events: committed && (query.sinceSeqId ?? 0) < 2 ? [created] : [],
+        hasMore: false,
+      });
+    });
+    context.mocks.data.agents([
+      {
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        displayName: "Default agent",
+      },
+      {
+        agentId: "c0000000-0000-4000-a000-000000000071",
+        displayName: "Markdown Agent",
+      },
+    ]);
+    const release = context.mocks.deferred<void>();
+    const received = context.mocks.deferred<void>();
+    const requests: string[] = [];
+    context.mocks.http.post(
+      "*/api/welcome-chat-threads",
+      async ({ request }) => {
+        const body = welcomeChatThreadsContract.create.body.parse(
+          await request.json(),
+        );
+        requests.push(body.clientThreadId);
+        committed = true;
+        if (requests.length === 1) {
+          received.resolve();
+          await release.promise;
+          return HttpResponse.error();
+        }
+        return HttpResponse.json({ id: chat.threadId }, { status: 201 });
+      },
     );
-    requests.push(body.clientThreadId);
-    committed = true;
-    if (requests.length === 1) {
-      received.resolve();
-      await release.promise;
-      return HttpResponse.error();
+    await openDebug();
+    const create = button("Create welcome thread");
+    click(create);
+    click(create);
+    await received.promise;
+    expect(button("Creating…")).toBeDisabled();
+    if (refresh) {
+      const clerk = context.mocks.clerk();
+      act(() => {
+        clerk.organization({
+          activeOrg: null,
+          memberships: [{ id: "org_default" }],
+        });
+        clerk.stateChanged();
+      });
+      act(() => {
+        clerk.organization({
+          activeOrg: { id: "org_default", name: "Default Org" },
+          memberships: [{ id: "org_default" }],
+        });
+        clerk.stateChanged();
+      });
     }
-    return HttpResponse.json({ id: chat.threadId }, { status: 201 });
-  });
-  await openDebug();
-  const create = button("Create welcome thread");
-  click(create);
-  click(create);
-  await received.promise;
-  expect(button("Creating…")).toBeDisabled();
-  release.resolve();
-  await screen.findByRole("alert");
-  click(button("Create welcome thread"));
-  await screen.findByText("Hello from the persisted welcome");
-  expect(window.location.pathname).toBe(chat.path);
-  expect(
-    new URL(window.location.href).searchParams.has("settings"),
-  ).toBeFalsy();
-  expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
-  expect(requests).toHaveLength(2);
-  expect(requests[0]).toMatch(/^[0-9a-f-]{36}$/);
-  expect(requests[1]).toBe(requests[0]);
-  expect(
-    queryAllByRoleFast("link").some((link) => {
-      return link.textContent?.includes("Recovered welcome");
-    }),
-  ).toBeTruthy();
-  await reopenDebug();
-  click(button("Create welcome thread"));
-  await screen.findByText("Hello from the persisted welcome");
-  await waitFor(() => {
-    return expect(
-      screen.queryByRole("dialog", { name: "Settings" }),
-    ).toBeNull();
-  });
-  expect(requests[2]).not.toBe(requests[0]);
-});
+    release.resolve();
+    await screen.findByRole("alert");
+    click(button("Create welcome thread"));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(chat.path);
+    });
+    await screen.findByText("Hello from the persisted welcome");
+    expect(window.location.pathname).toBe(chat.path);
+    expect(
+      new URL(window.location.href).searchParams.has("settings"),
+    ).toBeFalsy();
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(requests[1]).toBe(requests[0]);
+    expect(
+      queryAllByRoleFast("link").some((link) => {
+        return link.textContent?.includes("Recovered welcome");
+      }),
+    ).toBeTruthy();
+    await reopenDebug();
+    click(button("Create welcome thread"));
+    await screen.findByText("Hello from the persisted welcome");
+    await waitFor(() => {
+      return expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).toBeNull();
+    });
+    expect(requests[2]).not.toBe(requests[0]);
+  },
+);
 
 test("Leaving the page cancels the pending action without opening its late result", async () => {
   const received = context.mocks.deferred<void>();

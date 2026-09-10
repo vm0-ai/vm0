@@ -41,7 +41,13 @@ export const welcomeThreadAction$ = computed(
       );
       const signal = controller.signal;
       const unsubscribe = clerk.addListener(() => {
-        if (clerk.user?.id !== userId || clerk.organization?.id !== orgId) {
+        // Like watchOrgSwitch$, retain the concrete workspace during a
+        // transient Clerk token refresh; a different workspace cancels us.
+        const currentOrgId = clerk.organization?.id;
+        if (
+          clerk.user?.id !== userId ||
+          (currentOrgId && currentOrgId !== orgId)
+        ) {
           controller.abort();
         }
       });
