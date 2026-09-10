@@ -5,7 +5,11 @@ import {
   type SourceType,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { command } from "ccstate";
-import { normalizeGoogleAdsAttributionParams } from "../../lib/google-ads-attribution.ts";
+import {
+  compatibleGoogleAdsAttribution,
+  legacyGoogleAdsAttribution,
+  normalizeGoogleAdsAttributionParams,
+} from "@okouai/core/google-ads-attribution";
 import { registerPostHogAttribution } from "../../lib/posthog.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 
@@ -27,8 +31,8 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
-  "vm0_campaign_id",
-  "vm0_ad_group_id",
+  "okou_campaign_id",
+  "okou_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -44,8 +48,8 @@ const STRIPE_METADATA_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
-  "vm0_campaign_id",
-  "vm0_ad_group_id",
+  "okou_campaign_id",
+  "okou_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -147,7 +151,9 @@ function registerStoredAttribution(
   }
 
   const properties: Record<string, string> = {};
-  for (const [key, value] of Object.entries(metadata)) {
+  for (const [key, value] of Object.entries(
+    compatibleGoogleAdsAttribution(metadata),
+  )) {
     if (typeof value === "string" && value) {
       properties[key] = value;
     }
@@ -189,8 +195,8 @@ export const applyStoredAdAttribution$ = command(({ get }, url: URL): void => {
   const attributionParams = collectAttributionParams(
     new URLSearchParams(storedAttribution),
   );
-  url.searchParams.delete("okou_campaign_id");
-  url.searchParams.delete("okou_ad_group_id");
+  url.searchParams.delete("vm0_campaign_id");
+  url.searchParams.delete("vm0_ad_group_id");
   for (const param of AD_ATTRIBUTION_PARAMS) {
     url.searchParams.delete(param);
 
@@ -242,4 +248,10 @@ export const readStoredAdAttributionMetadata$ = command(({ get }) => {
     get(storedAdAttributionStorage.get$),
     getCookieString(),
   );
+});
+
+// Keep the wire shape readable by older API deployments until #33059 closes its rollout gate.
+export const readApiAdAttributionMetadata$ = command(({ set }) => {
+  const metadata = set(readStoredAdAttributionMetadata$);
+  return metadata ? legacyGoogleAdsAttribution(metadata) : undefined;
 });
