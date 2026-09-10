@@ -48,6 +48,9 @@ const DUPLICATE_EVENT_ID_WARNING =
   "Normalized duplicate chat event IDs in snapshot";
 const SNAPSHOT_COMPLETED_MESSAGE = "Completed chat event snapshot";
 const SNAPSHOT_COMPLETED_TYPE = "chat_event_snapshot_completed";
+const SNAPSHOT_TIMED_OUT_TYPE = "chat_event_snapshot_candidate_timed_out";
+const SNAPSHOT_FAILED_TYPE = "chat_event_snapshot_candidate_failed";
+const SNAPSHOT_THREAD_TIMEOUT_MS = 30_000;
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-r1-([0-9a-f]{64})\.ndjson\.gz$/;
 
@@ -93,6 +96,16 @@ function snapshotCompletionEvents(): readonly Record<string, unknown>[] {
     return events.filter((event): event is Record<string, unknown> => {
       return isRecord(event) && event.type === SNAPSHOT_COMPLETED_TYPE;
     });
+  });
+}
+
+function candidateLogFields(
+  level: "info" | "warn" | "error",
+  type: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiomLogging[level].mock.calls.flatMap((call) => {
+    const fields = call[1];
+    return isRecord(fields) && fields.type === type ? [fields] : [];
   });
 }
 
@@ -615,6 +628,11 @@ describe("cron snapshot chat events", () => {
     });
     expect(putsForThread(failedThreadId)).toHaveLength(0);
     expect(putsForThread(repairableThreadId)).toHaveLength(1);
+    // A genuine archive failure keeps the error feed and now names its stage.
+    const failedLogs = candidateLogFields("error", SNAPSHOT_FAILED_TYPE);
+    expect(failedLogs).toHaveLength(1);
+    expect(failedLogs[0]).toMatchObject({ stage: "put_object" });
+    expect(candidateLogFields("info", SNAPSHOT_TIMED_OUT_TYPE)).toHaveLength(0);
     expect(snapshotCompletionEvents()).toHaveLength(1);
     expect(snapshotCompletionEvents()[0]).toMatchObject({
       snapshots: 1,
@@ -723,6 +741,26 @@ describe("cron snapshot chat events", () => {
       snapshots: 1,
       skippedFailedHeads: 0,
       skippedTimedOutHeads: 1,
+    });
+
+    // An expected bounded deadline is diagnostic info, not a warning: it must
+    // stay out of the warn/error feed while keeping the stuck stage locatable.
+    const timedOutLogs = candidateLogFields("info", SNAPSHOT_TIMED_OUT_TYPE);
+    expect(timedOutLogs).toHaveLength(1);
+    expect(timedOutLogs[0]).toMatchObject({
+      expected: true,
+      stage: "resolve_prefix",
+      timeoutMs: SNAPSHOT_THREAD_TIMEOUT_MS,
+      durationMs: expect.any(Number),
+    });
+    expect(candidateLogFields("warn", SNAPSHOT_TIMED_OUT_TYPE)).toHaveLength(0);
+    expect(candidateLogFields("error", SNAPSHOT_TIMED_OUT_TYPE)).toHaveLength(
+      0,
+    );
+    expect(candidateLogFields("error", SNAPSHOT_FAILED_TYPE)).toHaveLength(0);
+    expect(snapshotCompletionEvents()[0]).toMatchObject({
+      skippedTimedOutHeads: 1,
+      oldestCandidateAgeMs: expect.any(Number),
     });
 
     context.mocks.abortSignal.timeout.mockReset();
