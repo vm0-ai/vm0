@@ -467,11 +467,8 @@ test("Chat setting controls disable while their saves settle", async () => {
     ...defaultPreferences(),
     cloudBrowserEnabledByDefault: false,
   };
-  const cloudUpdateStarted = context.mocks.deferred<void>();
   const releaseCloudUpdate = context.mocks.deferred<void>();
-  const sendModeUpdateStarted = context.mocks.deferred<void>();
   const releaseSendModeUpdate = context.mocks.deferred<void>();
-  const updateStarts = [cloudUpdateStarted, sendModeUpdateStarted] as const;
   const updateReleases = [releaseCloudUpdate, releaseSendModeUpdate] as const;
   let updateIndex = 0;
   context.mocks.api(userPreferencesContract.get, ({ respond }) => {
@@ -480,13 +477,11 @@ test("Chat setting controls disable while their saves settle", async () => {
   context.mocks.api(
     userPreferencesContract.update,
     async ({ body, respond, withSignal }) => {
-      const started = updateStarts[updateIndex];
       const release = updateReleases[updateIndex];
-      if (!started || !release) {
+      if (!release) {
         throw new Error("Unexpected preference update");
       }
       updateIndex += 1;
-      started.resolve();
       await withSignal(release.promise);
       preferences = { ...preferences, ...body };
       return respond(200, preferences);
@@ -500,12 +495,10 @@ test("Chat setting controls disable while their saves settle", async () => {
     selectedImageModel: null,
     updatedAt: "2026-09-06T00:00:00.000Z",
   });
-  const modelUpdateStarted = context.mocks.deferred<void>();
   const releaseModelUpdate = context.mocks.deferred<void>();
   context.mocks.api(
     userModelPreferenceContract.update,
     async ({ body, respond, withSignal }) => {
-      modelUpdateStarted.resolve();
       await withSignal(releaseModelUpdate.promise);
       const preference = {
         selectedModel: body.selectedModel,
@@ -532,10 +525,12 @@ test("Chat setting controls disable while their saves settle", async () => {
   const dialog = await screen.findByRole("dialog", { name: "Settings" });
   click(await within(dialog).findByRole("combobox", { name: "GPT 6 Astra" }));
   click(await screen.findByRole("option", { name: "GPT 6 Astra Fast" }));
-  await modelUpdateStarted.promise;
-  expect(
-    within(dialog).queryByRole("combobox", { name: "GPT 6 Astra" }),
-  ).toBeNull();
+  await waitFor(() => {
+    expect(within(dialog).getByLabelText("GPT 6 Astra")).toBeVisible();
+    expect(
+      within(dialog).queryByRole("combobox", { name: "GPT 6 Astra" }),
+    ).toBeNull();
+  });
   releaseModelUpdate.resolve();
   await waitFor(() => {
     expect(
@@ -544,7 +539,6 @@ test("Chat setting controls disable while their saves settle", async () => {
   });
 
   click(within(dialog).getByRole("switch", { name: "Cloud browser" }));
-  await cloudUpdateStarted.promise;
   await waitFor(() => {
     const cloudBrowser = within(dialog).getByRole("switch", {
       name: "Cloud browser",
@@ -561,7 +555,6 @@ test("Chat setting controls disable while their saves settle", async () => {
   });
 
   click(getFastRole("button", "⌘ Enter", dialog));
-  await sendModeUpdateStarted.promise;
   await waitFor(() => {
     expect(getFastRole("button", "Enter", dialog)).toBeDisabled();
     expect(getFastRole("button", "⌘ Enter", dialog)).toBeDisabled();
