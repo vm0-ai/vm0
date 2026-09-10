@@ -2,8 +2,24 @@
 
 S1 of [#33205](https://github.com/vm0-ai/vm0/issues/33205), implemented for
 [#33252](https://github.com/vm0-ai/vm0/issues/33252), provides a server operation
-for an explicit welcome action. The Settings > Debug button and shared example
-previews belong to S2.
+for an explicit welcome action. S2 of [#33294](https://github.com/vm0-ai/vm0/issues/33294)
+exposes it in Settings > Debug and recognizes the original official examples
+through ordinary Markdown Artifact previews.
+
+## Manual Debug action
+
+The existing Debug gate and `welcomeThread` switch control the card. A deliberate
+click calls the atomic endpoint below, retains its UUID through retries, catches
+up the ordinary thread list, then closes Settings and opens the returned chat.
+The action belongs to the initiating user, workspace, page and open dialog.
+Dismissal cancels it immediately even while the dialog's closing animation is
+still running. Cancellation does not undo a transaction committed by the server.
+
+The shared chat URL recognizer accepts exact example URLs from the existing
+illustration, presentation and video template catalogs. It does not trust a
+static-host prefix or require a run/uploaded Artifact record. Ordinary Markdown
+links and image syntax keep their existing lightbox/card behavior; the server's
+complete localized welcome content is unchanged.
 
 ## API contract
 

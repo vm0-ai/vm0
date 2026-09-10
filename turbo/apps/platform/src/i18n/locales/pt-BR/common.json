@@ -5493,6 +5493,15 @@
           "description": "Escolha o modelo para entrada de voz v2. Os modelos de transcrição usam {{model}} para refinar o texto.",
           "title": "Modelo de entrada de voz",
           "unavailable": "Modelo indisponível ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "Este ID de solicitação pertence a outra conversa. Feche as configurações e inicie uma nova criação.",
+          "create": "Criar conversa de boas-vindas",
+          "creating": "Criando…",
+          "defaultAgentNotReady": "Configure o agente padrão do espaço de trabalho e tente novamente.",
+          "description": "Crie uma conversa de boas-vindas com a introdução e os exemplos.",
+          "failed": "Não foi possível criar a conversa de boas-vindas. Tente novamente.",
+          "title": "Conversa de boas-vindas"
         }
       },
       "emailSubscription": {

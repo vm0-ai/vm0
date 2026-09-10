@@ -37,6 +37,7 @@ import {
   type BrowserSessionDescriptor,
 } from "./browser-session-block.ts";
 import { isTrustedPlatformHostname } from "./trusted-platform-url.ts";
+import { isOfficialTemplatePreviewUrl } from "./official-template-preview.ts";
 
 import {
   resolveHostedSiteDomains,
@@ -539,6 +540,7 @@ export function isPreviewableChatUrl(url: string): boolean {
       ),
     ) ||
     Boolean(privateHostedDeploymentId(url, resolveApiBase())) ||
+    isOfficialTemplatePreviewUrl(url) ||
     isPlatformFileUrl(url) ||
     isHostedSiteUrl(url)
   );

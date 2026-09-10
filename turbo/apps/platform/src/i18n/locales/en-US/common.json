@@ -5425,6 +5425,15 @@
           "description": "Choose the model for voice input v2. Speech-to-text models and GPT Audio recordings over 90 seconds use {{model}} for cleanup.",
           "title": "Voice input model",
           "unavailable": "Unavailable model ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "This request ID belongs to another chat. Close Settings and start a new welcome action.",
+          "create": "Create welcome thread",
+          "creating": "Creating…",
+          "defaultAgentNotReady": "Configure the workspace default agent, then try again.",
+          "description": "Create a welcome chat with the introduction and examples.",
+          "failed": "Could not create the welcome thread. Try again.",
+          "title": "Welcome thread"
         }
       },
       "emailSubscription": {

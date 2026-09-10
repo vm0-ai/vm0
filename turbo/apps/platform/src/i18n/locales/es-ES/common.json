@@ -5493,6 +5493,15 @@
           "description": "Elige el modelo para la entrada de voz v2. Los modelos de transcripción usan {{model}} para pulir el texto.",
           "title": "Modelo de entrada de voz",
           "unavailable": "Modelo no disponible ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "Este ID de solicitud pertenece a otro chat. Cierra Configuración e inicia una nueva acción de bienvenida.",
+          "create": "Crear chat de bienvenida",
+          "creating": "Creando…",
+          "defaultAgentNotReady": "Configura el agente predeterminado del espacio de trabajo e inténtalo de nuevo.",
+          "description": "Crea un chat de bienvenida con la introducción y los ejemplos.",
+          "failed": "No se pudo crear el chat de bienvenida. Inténtalo de nuevo.",
+          "title": "Chat de bienvenida"
         }
       },
       "emailSubscription": {

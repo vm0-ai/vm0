@@ -5420,6 +5420,15 @@
           "description": "Pilih model untuk input suara v2. Model transkripsi menggunakan {{model}} untuk merapikan teks.",
           "title": "Model input suara",
           "unavailable": "Model tidak tersedia ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "ID permintaan ini milik obrolan lain. Tutup Pengaturan dan mulai tindakan sambutan baru.",
+          "create": "Buat obrolan sambutan",
+          "creating": "Membuat…",
+          "defaultAgentNotReady": "Konfigurasikan agen default ruang kerja, lalu coba lagi.",
+          "description": "Buat obrolan sambutan berisi pengantar dan contoh.",
+          "failed": "Tidak dapat membuat obrolan sambutan. Coba lagi.",
+          "title": "Obrolan sambutan"
         }
       },
       "emailSubscription": {
