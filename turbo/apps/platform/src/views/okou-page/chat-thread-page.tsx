@@ -7477,6 +7477,7 @@ function RelatedArtifactRow({ card }: { readonly card: RelatedArtifactCard }) {
         },
         { filename: name },
       )}
+      aria-description={card.description}
       title={card.signals.url}
       data-chat-run-related-artifact-url={card.signals.url}
       onClick={() => {
@@ -7488,6 +7489,14 @@ function RelatedArtifactRow({ card }: { readonly card: RelatedArtifactCard }) {
         <span className="block truncate text-sm font-medium text-foreground">
           {name}
         </span>
+        {card.description ? (
+          <span
+            className="mt-1 line-clamp-2 whitespace-normal break-words text-xs text-muted-foreground"
+            title={card.description}
+          >
+            {card.description}
+          </span>
+        ) : null}
         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
           {kind}
           {host ? ` · ${host}` : ""}

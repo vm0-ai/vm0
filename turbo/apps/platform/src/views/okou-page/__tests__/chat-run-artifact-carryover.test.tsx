@@ -220,6 +220,173 @@ test("A carried image keeps its label and opens a lightbox over the dialog", asy
   await closeRelatedArtifactPreview(dialog);
 });
 
+test.each([
+  [
+    "inline explanation",
+    "[Editable package](ARTIFACT_URL) — Update the slides for your next presentation.",
+    "Update the slides for your next presentation.",
+  ],
+  [
+    "standalone link introduction",
+    "Use this package to edit the slides offline.\n\nARTIFACT_URL",
+    "Use this package to edit the slides offline.",
+  ],
+  [
+    "list item explanation",
+    "- [Editable package](ARTIFACT_URL)\n\n  Update the slides for your next presentation.",
+    "Update the slides for your next presentation.",
+  ],
+  [
+    "table row explanation",
+    "| File | Purpose |\n| --- | --- |\n| [Editable package](ARTIFACT_URL) | Update the slides for your next presentation. |",
+    "Update the slides for your next presentation.",
+  ],
+  [
+    "explicit link title",
+    '[Editable package](ARTIFACT_URL "Use this package to edit the slides offline.")',
+    "Use this package to edit the slides offline.",
+  ],
+])("Show the artifact's %s before opening it", async (_, markdown, purpose) => {
+  const url = artifactUrl("artifact-purpose", "3qkwcyzuet.zip");
+  await setupArtifactRun([
+    assistantEvent({
+      id: "artifact-purpose-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: markdown.replace("ARTIFACT_URL", url),
+    }),
+    assistantEvent({
+      id: "artifact-purpose-main",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "The presentation is ready",
+    }),
+  ]);
+
+  const dialog = await openRelatedArtifacts();
+  const artifact = relatedArtifactRow(dialog, url);
+  expect(within(artifact).getByText(purpose)).toBeVisible();
+  expect(artifact).toHaveAccessibleDescription(purpose);
+  click(artifact);
+  const preview = await screen.findByRole("dialog", {
+    name: "3qkwcyzuet.zip preview",
+  });
+  expect(
+    within(preview).getByText("No inline preview available for this file."),
+  ).toBeVisible();
+  await closeRelatedArtifactPreview(dialog);
+});
+
+test("Keep each file's purpose with its own list item", async () => {
+  const editableUrl = artifactUrl("editable-package", "3qkwcyzuet.zip");
+  const evidenceUrl = artifactUrl("source-package", "z6rgfsqp0b.zip");
+  await setupArtifactRun([
+    assistantEvent({
+      id: "separate-purposes-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: [
+        `- [Editable slides](${editableUrl}) — Customize the presentation.`,
+        `- [Source data](${evidenceUrl}) — Verify the figures in the report.`,
+      ].join("\n"),
+    }),
+    assistantEvent({
+      id: "separate-purposes-main",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "The deliverables are ready",
+    }),
+  ]);
+
+  const dialog = await openRelatedArtifacts();
+  const editable = relatedArtifactRow(dialog, editableUrl);
+  const evidence = relatedArtifactRow(dialog, evidenceUrl);
+  expect(editable).toHaveAccessibleDescription("Customize the presentation.");
+  expect(editable).not.toHaveTextContent("Verify the figures");
+  expect(evidence).toHaveAccessibleDescription(
+    "Verify the figures in the report.",
+  );
+  expect(evidence).not.toHaveTextContent("Customize the presentation");
+});
+
+test("Enrich a repeated bare link without duplicating or reordering files", async () => {
+  const url = artifactUrl("enriched-package", "3qkwcyzuet.zip");
+  const otherUrl = artifactUrl("other-package", "z6rgfsqp0b.zip");
+  await setupArtifactRun([
+    assistantEvent({
+      id: "enriched-purpose-bare",
+      runId: RUN_ID,
+      seqId: 2,
+      text: `${url}\n\n${otherUrl}`,
+    }),
+    assistantEvent({
+      id: "enriched-purpose-explanation",
+      runId: RUN_ID,
+      seqId: 3,
+      text: `[Editable slides](${url}) — Customize the presentation.`,
+    }),
+    assistantEvent({
+      id: "enriched-purpose-repeated",
+      runId: RUN_ID,
+      seqId: 4,
+      text: url,
+    }),
+    assistantEvent({
+      id: "enriched-purpose-main",
+      runId: RUN_ID,
+      seqId: 5,
+      text: "The editable slides are ready",
+    }),
+  ]);
+
+  const dialog = await openRelatedArtifacts();
+  const artifact = relatedArtifactRow(dialog, url);
+  expect(artifact).toHaveAccessibleName("Preview Editable slides");
+  expect(artifact).toHaveAccessibleDescription("Customize the presentation.");
+  expectDocumentOrder(artifact, relatedArtifactRow(dialog, otherUrl));
+});
+
+test("Do not assign shared or unrelated prose to a particular artifact", async () => {
+  const firstUrl = artifactUrl("ambiguous-first", "first.zip");
+  const secondUrl = artifactUrl("ambiguous-second", "second.zip");
+  const bareUrl = artifactUrl("no-description", "third.zip");
+  await setupArtifactRun([
+    assistantEvent({
+      id: "ambiguous-purpose-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: `Use [one](${firstUrl}) or [the other](${secondUrl}) for the presentation.`,
+    }),
+    assistantEvent({
+      id: "unrelated-purpose-history",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "Reviewed the presentation.",
+    }),
+    assistantEvent({
+      id: "missing-purpose-history",
+      runId: RUN_ID,
+      seqId: 4,
+      text: bareUrl,
+    }),
+    assistantEvent({
+      id: "ambiguous-purpose-main",
+      runId: RUN_ID,
+      seqId: 5,
+      text: "The presentation review is complete",
+    }),
+  ]);
+
+  const dialog = await openRelatedArtifacts();
+  for (const url of [firstUrl, secondUrl, bareUrl]) {
+    expect(relatedArtifactRow(dialog, url)).not.toHaveAttribute(
+      "aria-description",
+    );
+  }
+  expect(relatedArtifactRow(dialog, bareUrl)).toHaveTextContent("third.zip");
+  expect(within(dialog).queryByText("Reviewed the presentation.")).toBeNull();
+});
+
 async function openRelatedArtifactOverSidebar(filename: string, body?: string) {
   const url = artifactUrl("sidebar-preview", filename);
   if (body !== undefined) {
@@ -537,8 +704,8 @@ test("Keep artifacts with the same filename distinct when their URLs differ", as
   const second = relatedArtifactRow(dialog, secondUrl);
   expectDocumentOrder(first, second);
   expect(within(dialog).getAllByText("Report")).toHaveLength(2);
-  expect(screen.queryByText("First report version")).toBeNull();
-  expect(screen.queryByText("Second report version")).toBeNull();
+  expect(first).toHaveAccessibleDescription("First report version");
+  expect(second).toHaveAccessibleDescription("Second report version");
 });
 
 test("Render inline media and action cards after expanding short history", async () => {

@@ -50,7 +50,11 @@ export interface RunWorkSection {
 type RunWorkArtifactCard = Extract<
   MarkdownCardRef,
   { readonly kind: "artifact" }
-> & { readonly label?: string; readonly tree: Root };
+> & {
+  readonly label?: string;
+  readonly description?: string;
+  readonly tree: Root;
+};
 
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
@@ -127,6 +131,99 @@ function artifactNodeLabel(node: Element): string | undefined {
   return normalized || undefined;
 }
 
+function artifactContext(node: Element): {
+  readonly text: string;
+  readonly artifactCount: number;
+} {
+  if (node.data?.card) {
+    return {
+      text: "",
+      artifactCount: node.data.card.kind === "artifact" ? 1 : 0,
+    };
+  }
+  let artifactCount = 0;
+  const text = node.children
+    .map((child) => {
+      if (child.type === "text") {
+        return child.value;
+      }
+      if (child.type !== "element") {
+        return "";
+      }
+      const context = artifactContext(child);
+      artifactCount += context.artifactCount;
+      return ["p", "li", "td", "th", "br"].includes(child.tagName)
+        ? ` ${context.text} `
+        : context.text;
+    })
+    .join("");
+  return { text, artifactCount };
+}
+
+function artifactDescription(
+  node: Element,
+  ancestors: readonly (Root | Element)[],
+): string | undefined {
+  const normalize = (text: string): string | undefined => {
+    const description = text
+      .replace(/\s+/gu, " ")
+      .replace(/^[\s:：,，;；|–—-]+|[\s:：,，;；|–—-]+$/gu, "");
+    return /[\p{L}\p{N}]/u.test(description) &&
+      description !== artifactNodeLabel(node)
+      ? description
+      : undefined;
+  };
+  if (typeof node.properties.title === "string") {
+    const title = normalize(node.properties.title);
+    if (title) {
+      return title;
+    }
+  }
+  // Stay within the artifact's paragraph, list item, or table row. Shared
+  // prose cannot describe one particular file when it contains several.
+  let paragraphIndex = -1;
+  for (let index = ancestors.length - 1; index >= 0; index--) {
+    const ancestor = ancestors[index]!;
+    if (
+      ancestor.type !== "element" ||
+      !["p", "li", "td", "th", "tr"].includes(ancestor.tagName)
+    ) {
+      continue;
+    }
+    if (ancestor.tagName === "p" && paragraphIndex === -1) {
+      paragraphIndex = index;
+    }
+    const context = artifactContext(ancestor);
+    if (context.artifactCount !== 1) {
+      return undefined;
+    }
+    const description = normalize(context.text);
+    if (description) {
+      return description;
+    }
+  }
+  // A standalone link commonly follows its introduction on a separate line.
+  // Only use an immediately adjacent paragraph/heading in the same container.
+  const paragraph = ancestors[paragraphIndex];
+  const parent = ancestors[paragraphIndex - 1];
+  if (!paragraph || paragraph.type !== "element" || !parent) {
+    return undefined;
+  }
+  const siblings = parent.children.filter((child): child is Element => {
+    return child.type === "element";
+  });
+  const previous = siblings[siblings.indexOf(paragraph) - 1];
+  if (
+    !previous ||
+    previous.type !== "element" ||
+    !/^(?:p|h[1-6])$/u.test(previous.tagName)
+  ) {
+    return undefined;
+  }
+  const context = artifactContext(previous);
+  return context.artifactCount === 0 ? normalize(context.text) : undefined;
+}
+
 function artifactCardsInTree(
   tree: Root | undefined,
 ): readonly RunWorkArtifactCard[] {
@@ -134,23 +231,28 @@ function artifactCardsInTree(
     return [];
   }
   const cards: RunWorkArtifactCard[] = [];
-  const visit = (node: Root | Element): void => {
+  const visit = (
+    node: Root | Element,
+    ancestors: readonly (Root | Element)[],
+  ): void => {
     if (node.type === "element" && node.data?.card?.kind === "artifact") {
       const label = artifactNodeLabel(node);
+      const description = artifactDescription(node, ancestors);
       cards.push({
         ...node.data.card,
         ...(label === undefined ? {} : { label }),
+        ...(description === undefined ? {} : { description }),
         tree: { type: "root", children: [node] },
       });
       return;
     }
     for (const child of node.children) {
       if (child.type === "element") {
-        visit(child);
+        visit(child, [...ancestors, node]);
       }
     }
   };
-  visit(tree);
+  visit(tree, []);
   return cards;
 }
 
@@ -162,21 +264,28 @@ function remainingArtifactCards(
       return card.signals.url;
     }),
   );
-  const seenUrls = new Set<string>();
-  const remaining: RunWorkArtifactCard[] = [];
+  const remaining = new Map<string, RunWorkArtifactCard>();
   for (const message of outputMessages) {
     for (const card of artifactCardsInTree(message.tree)) {
       const { url } = card.signals;
-      if (seenUrls.has(url)) {
+      if (finalUrls.has(url)) {
         continue;
       }
-      seenUrls.add(url);
-      if (!finalUrls.has(url)) {
-        remaining.push(card);
-      }
+      const previous = remaining.get(url);
+      const previousLabel = previous?.label;
+      remaining.set(url, {
+        ...card,
+        label:
+          previousLabel &&
+          previousLabel !== url &&
+          previousLabel !== card.signals.filename
+            ? previousLabel
+            : card.label,
+        description: previous?.description ?? card.description,
+      });
     }
   }
-  return remaining;
+  return [...remaining.values()];
 }
 
 export function runWorkSectionForGroup(
