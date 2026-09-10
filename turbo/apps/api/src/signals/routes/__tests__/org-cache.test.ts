@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise, settleIncludingAbort } from "../../utils";
+import { createDeferredPromise } from "../../utils";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -159,23 +159,20 @@ describe("trusted organization identity cache", () => {
         return organization(actor, "Older provider snapshot");
       },
     );
-    const reading = settleIncludingAbort(api.readOrg(actor));
+    const reading = Promise.allSettled([api.readOrg(actor)]);
     await started.promise;
     context.mocks.clerk.organizations.updateOrganization.mockResolvedValue(
       organization(actor, "Renamed workspace"),
     );
-    const updating = await settleIncludingAbort(
+    const updating = await Promise.allSettled([
       api.requestUpdateOrg(actor, { name: "Renamed workspace" }, [200]),
-    );
+    ]);
     release.resolve();
 
-    await expect(reading).resolves.toMatchObject({
-      ok: true,
-      value: { name: "Renamed workspace" },
-    });
-    if (!updating.ok) {
-      throw updating.error;
-    }
+    await expect(reading).resolves.toMatchObject([
+      { status: "fulfilled", value: { name: "Renamed workspace" } },
+    ]);
+    expect(updating).toMatchObject([{ status: "fulfilled" }]);
     await expect(api.readOrg(actor)).resolves.toMatchObject({
       name: "Renamed workspace",
     });
