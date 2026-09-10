@@ -16,7 +16,7 @@ import {
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { rootSignal$ } from "../root-signal.ts";
+import { rootSignal$, rootVersion$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
 import {
   createChildAbortController,
@@ -165,9 +165,12 @@ interface ChatThreadEventSyncBarrier {
   work: Promise<void> | null;
 }
 
-const chatThreadEventSyncBarrier$ = computed((): ChatThreadEventSyncBarrier => {
-  return { work: null };
-});
+const chatThreadEventSyncBarrier$ = computed(
+  (get): ChatThreadEventSyncBarrier => {
+    get(rootVersion$);
+    return { work: null };
+  },
+);
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
   return new Set(

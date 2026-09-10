@@ -28,7 +28,11 @@ import {
   setAblyPayloadLoop$,
   setupRealtime$,
 } from "../signals/realtime.ts";
-import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
+import {
+  rootSignal$,
+  rootVersion$,
+  setRootSignal$,
+} from "../signals/root-signal.ts";
 import { logger } from "../signals/log.ts";
 import { settle } from "../signals/utils.ts";
 import { throttleCommand } from "../signals/command-scheduling.ts";
@@ -125,7 +129,8 @@ const executeCatchUpChatEvent$ = command(
   },
 );
 
-const catchUpChatEventThrottle$ = computed(() => {
+const catchUpChatEventThrottle$ = computed((get) => {
+  get(rootVersion$);
   return throttleCommand(
     executeCatchUpChatEvent$,
     CHAT_EVENT_CATCH_UP_THROTTLE_MS,
@@ -143,7 +148,8 @@ interface WorkerChatThreadIndicatorsCache {
 }
 
 const workerChatThreadIndicatorsCache$ = computed(
-  (): WorkerChatThreadIndicatorsCache => {
+  (get): WorkerChatThreadIndicatorsCache => {
+    get(rootVersion$);
     return { source: null, result: null };
   },
 );
