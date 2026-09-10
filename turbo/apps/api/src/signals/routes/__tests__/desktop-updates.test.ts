@@ -566,6 +566,16 @@ describe("desktop update routes", () => {
       "http://api.test/api/desktop/updates/stable/darwin/arm64/release",
     );
     expect(releaseResponse.status).toBe(503);
+
+    const productDmgResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/dmg",
+    );
+    expect(productDmgResponse.status).toBe(503);
+
+    const productReleaseResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/release",
+    );
+    expect(productReleaseResponse.status).toBe(503);
   });
 
   it("serves the cached release while the manifest host is unreachable", async () => {
