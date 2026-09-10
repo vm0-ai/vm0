@@ -4223,7 +4223,8 @@ function ShimmerText({
   return (
     <p
       className={cn(
-        "okou-shimmer-text h-auto min-w-0 flex-1 truncate text-[0.8125rem] leading-[inherit]",
+        "okou-shimmer-text h-auto min-w-0 flex-1 truncate",
+        CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
         className,
       )}
       aria-label={ariaLabel}
@@ -4300,7 +4301,9 @@ function ThinkingLoader({
         <img
           src={thinkingSpinnerImg}
           alt=""
-          className="okou-thinking-spinner size-4 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+          // The 48px asset has a 4px inset. A 17px canvas makes its visible
+          // mark match the perceived size of the 16px line icons.
+          className="okou-thinking-spinner size-[17px] max-w-none shrink-0 animate-spin motion-reduce:animate-none"
         />
       </span>
     );
