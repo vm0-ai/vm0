@@ -335,3 +335,15 @@ AFTER and the source-parent diagnosis. That rejected AFTER also matches the
 refreshed legacy BEFORE exactly in all 28 frames, isolating the upstream
 composer change. After the refreshed baseline was uploaded, the original
 three-consumer font migration and its shrink-only ratchet patch were reapplied.
+
+The [AFTER archive](https://a.okou.io/b1j7myrczw.zip) records all 28 states
+passing with zero raw changed pixels and identical observations on source
+`0c52bbddd94dbefa9451d2bae92af6581a85abe4`, App/API build
+`57e0a0676fcfbd40d2ca8c1c630027ab2de02014`. The 19 focused emoji/header tests,
+App/E2E types, affected lint, Knip, formatting and shrink-only style checks
+passed. Real TEST API selection, reload, removal, reload and restoration also
+passed with zero chat event rows. TEST state must be recreated after a preview
+database reset; authentication material remains private. The batch remains
+`implemented` until current-head CI also passes: the tested source had a
+sidebar test failure and Runner setup HTTP 500 failures outside the changed
+files. The PR records the latest deployment and CI status.

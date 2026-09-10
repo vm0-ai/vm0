@@ -299,6 +299,12 @@
           "url": "https://a.okou.io/z6rgfsqp0b.zip",
           "sha256": "18a6c9fe37af3ab5cdafb67caf2fd1ea3bbe9ef4d0d1fb08d545bf8389b54438",
           "commit": "4e18c07e3eb936da5778207e5a81508cfce9aaa0"
+        },
+        {
+          "kind": "after-raw-diffs-and-real-api-persistence",
+          "url": "https://a.okou.io/b1j7myrczw.zip",
+          "sha256": "6ab10971d95a34027b10b73cabf2cafcd96b3c29a282762a8b074bf108259e10",
+          "commit": "0c52bbddd94dbefa9451d2bae92af6581a85abe4"
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33064"
