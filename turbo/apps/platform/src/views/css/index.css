@@ -1,3 +1,5 @@
+@layer theme, base, clerk, components, utilities;
+
 @import "tailwindcss";
 @import "@okouai/ui/styles/globals.css";
 
@@ -7,6 +9,11 @@
 @source "../../../../../packages/ui/src/**/*.{ts,tsx}";
 
 @theme {
+  /* V1 comparison geometry follows AuthV2 without changing its styles. */
+  --okou-auth-card-max-width: 25rem;
+  --okou-auth-card-page-width: calc(100% + 0.5rem);
+  --okou-auth-card-padding-inline: 2.5rem;
+  --okou-auth-card-padding-block: 2rem;
   /* Font families */
   --font-family-sans: "Geist", system-ui, sans-serif;
   --font-family-mono:
@@ -502,12 +509,6 @@ body {
   color: hsl(var(--muted-foreground));
 }
 
-/* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
-   Scoped to [data-theme="dark"] only—not .okou-app—so portaled popovers/dropdowns still match. */
-:where([data-theme="dark"]) .okou-icon-mono {
-  filter: invert(1);
-}
-
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
 /* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
    glyphs render in color. Without this, dual-presentation codepoints fall back
@@ -712,12 +713,6 @@ body {
   .okou-app .okou-chat-card {
     background-color: hsl(var(--card));
   }
-}
-
-/* Message bubble (e.g. Meet Okou tone samples) */
-.okou-app .okou-bubble-cool {
-  background-color: hsl(var(--gray-100) / 0.95);
-  color: hsl(var(--foreground));
 }
 
 /* Gray-100 clears 1.06:1 against the white canvas, so

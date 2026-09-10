@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Loader2, Plus } from "lucide-react";
-import { cn, surfaceVariants } from "@okouai/ui";
+import { ChevronRight } from "lucide-react";
+import { cn } from "@okouai/ui";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import type {
   ConnectorShelf,
@@ -8,104 +8,6 @@ import type {
 } from "../../../../signals/okou-page/settings/connector-shelves.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { DIRECTORY_HAIRLINE } from "./connector-card.tsx";
-
-/**
- * A shelf cell. The description card is three rows deep per category, so six
- * of them push the next category off the first screen; this is the same six
- * products in two rows. Descriptions come back inside a category and on search
- * results, where the reader is comparing rather than scanning.
- */
-export function ConnectorShelfRow({
-  connector,
-  connected,
-  busy,
-  active = false,
-  onActivate,
-}: {
-  readonly connector: PlatformConnectorCatalogStatusItem;
-  readonly connected: boolean;
-  readonly busy: boolean;
-  readonly active?: boolean;
-  readonly onActivate: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      role="button"
-      tabIndex={busy ? -1 : 0}
-      data-connector-slug={connector.slug}
-      data-active={active ? "true" : undefined}
-      aria-label={
-        connected
-          ? t(
-              ($) => {
-                return $.chat.connectors.directory.openDetailAria;
-              },
-              { connector: connector.label },
-            )
-          : t(
-              ($) => {
-                return $.connectors.card.connectAria;
-              },
-              { connector: connector.label },
-            )
-      }
-      aria-disabled={busy}
-      className={surfaceVariants({
-        radius: "compact",
-        interactive: !busy,
-        className: cn(
-          "flex items-center gap-2.5 px-2.5 py-1.5",
-          busy && "cursor-default",
-          active && "bg-state-selected",
-        ),
-      })}
-      onClick={() => {
-        if (!busy) {
-          onActivate();
-        }
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          if (!busy) {
-            onActivate();
-          }
-        }
-      }}
-    >
-      <span
-        className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-50",
-          DIRECTORY_HAIRLINE,
-        )}
-      >
-        <ConnectorIcon icon={connector.icon} size={18} />
-      </span>
-      <span
-        data-testid="connector-card-label"
-        className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
-      >
-        {connector.label}
-      </span>
-      <span
-        className={cn(
-          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-          !busy && !connected && "border border-border/60",
-        )}
-        aria-hidden="true"
-      >
-        {busy ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : connected ? (
-          <ChevronRight size={14} />
-        ) : (
-          <Plus size={13} />
-        )}
-      </span>
-    </div>
-  );
-}
 
 /**
  * The closing cell. "See all 327" names nothing a reader can act on, so this
@@ -185,7 +87,7 @@ export function ConnectorShelfSection({
       </h3>
       <div
         className={cn(
-          "grid gap-2",
+          "grid gap-3",
           columns === 3
             ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
             : "grid-cols-1 sm:grid-cols-2",

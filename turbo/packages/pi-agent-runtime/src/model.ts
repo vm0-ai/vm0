@@ -20,6 +20,7 @@ import type {
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
 import type { PiAgentModelConfig } from "./types";
+import { preserveProviderErrorStatus } from "./provider-error-body";
 import {
   observePiResponseStatus,
   type PiAgentStreamOptions,
@@ -257,6 +258,10 @@ function piAgentCodexStream(
     // Codex keeps fast in config but sends priority on Responses requests.
     serviceTier: serviceTier === "fast" ? "priority" : undefined,
     accountId,
+    // Transport retries stay off here: the Codex adapter replaces a capped
+    // Retry-After with a bare delay error, which would discard the friendly
+    // usage-limit message the failure classifiers depend on. Recovery for a
+    // transient answer belongs to the session retry budget instead.
     maxRetries: 0,
     transport: "sse",
   });
@@ -315,15 +320,21 @@ export function piAgentStreamForConfig(
     ) {
       return streamPiNative(config, model, context, configuredOptions);
     }
-    const responseOptions = configuredOptions.onObservedResponseStatus
-      ? {
-          ...configuredOptions,
-          fetch: observePiResponseStatus(
-            configuredOptions.fetch ?? globalThis.fetch,
+    // Both OpenAI Responses routes answer an opaque gateway body with the raw
+    // text alone, so the observed status has to be preserved here to stay in
+    // the terminal error at all.
+    const boundaryFetch = preserveProviderErrorStatus(
+      configuredOptions.fetch ?? globalThis.fetch,
+    );
+    const responseOptions = {
+      ...configuredOptions,
+      fetch: configuredOptions.onObservedResponseStatus
+        ? observePiResponseStatus(
+            boundaryFetch,
             configuredOptions.onObservedResponseStatus,
-          ),
-        }
-      : configuredOptions;
+          )
+        : boundaryFetch,
+    };
     if (config.dialect === "openai-responses") {
       if (!isResponsesModel(model)) {
         throw new Error(

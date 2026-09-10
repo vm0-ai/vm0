@@ -6,9 +6,6 @@ export const CAPABILITIES = [
   "agent:write",
   "agent:delete",
   "agent-run:read",
-  "goal:read",
-  "goal:agent-result:write",
-  "goal:user-control:write",
   "github:read",
   "github:write",
   "slack:read",
@@ -44,6 +41,8 @@ export const CAPABILITIES = [
   "file:write",
   "host:read",
   "host:write",
+  "ssh:read",
+  "ssh:write",
   "presentation-template:write",
 ] as const;
 
@@ -66,15 +65,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "agent:write": { group: "Agent", label: "Create & update agents" },
   "agent:delete": { group: "Agent", label: "Delete agents" },
   "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
-  "goal:read": { group: "Goals", label: "Read thread goals" },
-  "goal:agent-result:write": {
-    group: "Goals",
-    label: "Complete or block thread goals",
-  },
-  "goal:user-control:write": {
-    group: "Goals",
-    label: "Create and manage thread goals",
-  },
   "github:read": {
     group: "Integrations",
     label: "Download GitHub files",
@@ -191,6 +181,11 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "file:write": { group: "Files", label: "Upload files" },
   "host:read": { group: "Hosting", label: "View hosted sites" },
   "host:write": { group: "Hosting", label: "Publish hosted sites" },
+  "ssh:read": { group: "SSH", label: "List authorized SSH hosts" },
+  "ssh:write": {
+    group: "SSH",
+    label: "Execute commands on authorized SSH hosts",
+  },
   "presentation-template:write": {
     group: "Presentation Templates",
     label: "Publish a presentation template",

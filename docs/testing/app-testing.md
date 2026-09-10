@@ -123,11 +123,10 @@ Initial authentication and organization state belongs in `auth`:
 - `session: null` inside an auth object means a known user without a token. It
   is not the signed-out state.
 
-Use `featureSwitches` for ordinary cases; it initializes both the first visible
-cache state and the mocked response. Use `cachedFeatureSwitches` only when the
-case intentionally distinguishes cached state from the later SWR response.
-`debugLoggers` and the documented shared-database lifecycle options are also
-owned by the page's test context.
+Use `featureSwitches` to configure the mocked authoritative API response.
+Before that response arrives, the App uses repository defaults rather than
+browser-persisted switch state. `debugLoggers` and the documented
+shared-database lifecycle options are also owned by the page's test context.
 
 ## Synchronization and Queries
 

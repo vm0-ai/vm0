@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { animationFrame } from "signal-timers";
 
-import { localStorageSignals } from "../external/local-storage.ts";
 import { resetSignal } from "../utils.ts";
 import { syncActiveBrowserFitAction$ } from "./thread-sidebar-coordinator.ts";
 
@@ -13,24 +12,14 @@ export const CHAT_THREAD_SIDEBAR_MIN_THREAD_WIDTH = 600;
 // an open utility sidebar replaces the chat instead of sitting alongside it.
 export const CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY = "(min-width: 1280px)";
 
-// Keep the existing storage key so previously saved artifact panel widths
-// continue to apply to the unified chat thread sidebar.
-const {
-  get$: chatThreadSidebarWidthRaw$,
-  set$: setChatThreadSidebarWidthRaw$,
-} = localStorageSignals("artifactPanelWidth");
+const internalChatThreadSidebarWidth$ = state<number | null>(null);
 
 export const chatThreadSidebarWidth$ = computed<number | null>((get) => {
-  const raw = get(chatThreadSidebarWidthRaw$);
-  if (raw === null) {
-    return null;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isNaN(parsed) ? null : parsed;
+  return get(internalChatThreadSidebarWidth$);
 });
 
 const setChatThreadSidebarWidth$ = command(({ set }, width: number) => {
-  set(setChatThreadSidebarWidthRaw$, String(Math.round(width)));
+  set(internalChatThreadSidebarWidth$, Math.round(width));
 });
 
 const internalChatThreadSidebarResizing$ = state(false);

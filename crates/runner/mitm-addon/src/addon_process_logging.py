@@ -68,8 +68,18 @@ def emit_addon_process_event(
     transport ``version`` and logger-owned ``level`` and ``message``, fields
     are passed through without an event-specific schema. Values must be JSON
     serializable. Runner-owned Axiom metadata such as time, context, service,
-    hostname, and Runner version remains authoritative. The write is best
-    effort because observability failure must not interrupt proxy traffic.
+    hostname, and Runner version remains authoritative.
+
+    The complete UTF-8 encoded record, including the prefix, JSON envelope,
+    and trailing newline, is limited to ``MAX_ADDON_PROCESS_EVENT_BYTES``
+    (4096 bytes). Only ``message`` is automatically shortened; structured
+    fields are never truncated. Callers must keep those fields within the
+    remaining encoded-record budget. If the record still exceeds the limit
+    with an empty message, ``ValueError`` is raised before any write.
+
+    The stderr write is best effort: ``OSError`` is suppressed so a write
+    failure does not interrupt proxy traffic. Input validation, serialization,
+    and record-size errors propagate to the caller.
     """
     if level not in ("warn", "error"):
         raise ValueError(f"invalid addon process event level: {level!r}")

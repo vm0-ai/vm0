@@ -54,7 +54,6 @@ test.each([
       host: "app.okou.ai",
       locale: "en-US",
       env: { TZ: timezone },
-      cachedFeatureSwitches: { [FeatureSwitchKey.MarkdownTime]: false },
       featureSwitches: { [FeatureSwitchKey.MarkdownTime]: true },
     });
 

@@ -32,7 +32,7 @@ fn cleanup_stale_paths_with_mountinfo_loader<L>(
     preserved: &[String],
     load_mountinfo: L,
 ) where
-    L: Fn() -> io::Result<String>,
+    L: Fn() -> io::Result<Vec<u8>>,
 {
     let detector = CleanupMountPointDetector::new(load_mountinfo);
     cleanup_stale_paths_with_mount_detector(cleanup_paths, preserved, |path| {
@@ -339,7 +339,7 @@ impl PreservedPaths {
 
 struct CleanupMountPointDetector<L>
 where
-    L: Fn() -> io::Result<String>,
+    L: Fn() -> io::Result<Vec<u8>>,
 {
     load_mountinfo: L,
     mount_points: OnceCell<Option<HashSet<PathBuf>>>,
@@ -347,7 +347,7 @@ where
 
 impl<L> CleanupMountPointDetector<L>
 where
-    L: Fn() -> io::Result<String>,
+    L: Fn() -> io::Result<Vec<u8>>,
 {
     fn new(load_mountinfo: L) -> Self {
         Self {
@@ -387,8 +387,8 @@ where
     }
 }
 
-fn cleanup_mountinfo() -> io::Result<String> {
-    fs::read_to_string("/proc/self/mountinfo")
+fn cleanup_mountinfo() -> io::Result<Vec<u8>> {
+    fs::read("/proc/self/mountinfo")
 }
 
 fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<PathBuf> {
@@ -400,60 +400,11 @@ fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<Path
     Ok(normalize_path(&absolute))
 }
 
-fn mount_points_from_mountinfo(mountinfo: &str) -> HashSet<PathBuf> {
-    mountinfo
-        .lines()
-        .filter_map(mount_point_from_mountinfo_line)
+fn mount_points_from_mountinfo(mountinfo: &[u8]) -> HashSet<PathBuf> {
+    linux_mountinfo::parse(mountinfo)
+        .filter_map(Result::ok)
+        .map(|mount| PathBuf::from(OsString::from_vec(mount.target)))
         .collect()
-}
-
-fn mount_point_from_mountinfo_line(line: &str) -> Option<PathBuf> {
-    let encoded_mount_point = line.split_whitespace().nth(4)?;
-    Some(decode_mountinfo_path(encoded_mount_point))
-}
-
-fn decode_mountinfo_path(encoded: &str) -> PathBuf {
-    let bytes = encoded.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let Some(&byte) = bytes.get(i) else {
-            break;
-        };
-        if byte == b'\\' {
-            let escape = (bytes.get(i + 1), bytes.get(i + 2), bytes.get(i + 3));
-            let (Some(&first), Some(&second), Some(&third)) = escape else {
-                decoded.push(byte);
-                i += 1;
-                continue;
-            };
-            if !is_octal_digit(first) || !is_octal_digit(second) || !is_octal_digit(third) {
-                decoded.push(byte);
-                i += 1;
-                continue;
-            }
-
-            let value =
-                ((first - b'0') as u16) * 64 + ((second - b'0') as u16) * 8 + (third - b'0') as u16;
-            if value <= u8::MAX as u16 {
-                decoded.push(value as u8);
-                i += 4;
-            } else {
-                decoded.push(byte);
-                i += 1;
-            }
-        } else {
-            decoded.push(byte);
-            i += 1;
-        }
-    }
-
-    PathBuf::from(OsString::from_vec(decoded))
-}
-
-fn is_octal_digit(byte: u8) -> bool {
-    (b'0'..=b'7').contains(&byte)
 }
 
 #[cfg(test)]
@@ -513,6 +464,40 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_preserves_unicode_mountpoints_without_preserving_their_prefixes() {
+        disable_system_log();
+        for whitespace in ['\u{a0}', '\u{85}', '\u{2003}', '\u{2028}'] {
+            for root in ["/".to_owned(), format!("/root{whitespace}dir")] {
+                let dir = tempfile::tempdir().unwrap();
+                let mountpoint = dir.path().join(format!("a{whitespace}b"));
+                let prefix = dir.path().join("a");
+                fs::create_dir(&mountpoint).unwrap();
+                fs::create_dir(&prefix).unwrap();
+                fs::write(mountpoint.join("stale.txt"), "old").unwrap();
+                fs::write(prefix.join("stale.txt"), "old").unwrap();
+                let mut mountinfo = format!(
+                    "36 25 0:32 {root} {} rw - ext4 /dev/vdb rw\n",
+                    mountpoint.display(),
+                )
+                .into_bytes();
+                mountinfo.extend_from_slice(
+                    b"malformed\n37 25 0:33 / /other/\xff rw - ext4 /dev/vdc rw\n",
+                );
+
+                cleanup_stale_paths_with_mountinfo_loader(
+                    &[path_string(&mountpoint), path_string(&prefix)],
+                    &[],
+                    || Ok(mountinfo.clone()),
+                );
+
+                assert!(mountpoint.is_dir());
+                assert!(!mountpoint.join("stale.txt").exists());
+                assert!(!prefix.exists());
+            }
+        }
+    }
+
+    #[test]
     fn cleanup_mountinfo_detector_loads_mountinfo_once_for_multiple_paths() {
         disable_system_log();
         let dir = tempfile::tempdir().unwrap();
@@ -531,7 +516,7 @@ mod tests {
             &[],
             || {
                 load_count.set(load_count.get() + 1);
-                Ok(mountinfo.clone())
+                Ok(mountinfo.as_bytes().to_vec())
             },
         );
 
@@ -558,7 +543,7 @@ mod tests {
             &[path_string(&child)],
             || {
                 load_count.set(load_count.get() + 1);
-                Ok(String::new())
+                Ok(Vec::new())
             },
         );
 
@@ -776,7 +761,7 @@ mod tests {
 
     #[test]
     fn mountinfo_contains_exact_mount_point() {
-        let mountinfo = "\
+        let mountinfo = b"\
 36 25 0:32 / /home/user/workspace rw,relatime - ext4 /dev/vdb rw
 37 25 0:33 / /home/user rw,relatime - ext4 /dev/root rw
 ";
@@ -786,7 +771,7 @@ mod tests {
 
     #[test]
     fn mountinfo_does_not_match_mount_point_prefix() {
-        let mountinfo = "\
+        let mountinfo = b"\
 36 25 0:32 / /home/user/workspace-old rw,relatime - ext4 /dev/vdb rw
 37 25 0:33 / /home/user rw,relatime - ext4 /dev/root rw
 ";
@@ -798,7 +783,7 @@ mod tests {
 
     #[test]
     fn mountinfo_decodes_escaped_mount_point_path() {
-        let mountinfo = r"36 25 0:32 / /home/user/work\040space rw,relatime - ext4 /dev/vdb rw";
+        let mountinfo = br"36 25 0:32 / /home/user/work\040space rw,relatime - ext4 /dev/vdb rw";
 
         assert!(
             mount_points_from_mountinfo(mountinfo).contains(Path::new("/home/user/work space"))
@@ -807,7 +792,7 @@ mod tests {
 
     #[test]
     fn mountinfo_returns_false_for_non_mount_path() {
-        let mountinfo = "36 25 0:32 / /home/user rw,relatime - ext4 /dev/root rw";
+        let mountinfo = b"36 25 0:32 / /home/user rw,relatime - ext4 /dev/root rw";
 
         assert!(
             !mount_points_from_mountinfo(mountinfo).contains(Path::new("/home/user/workspace"))

@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import chalk from "chalk";
 import { generateWebVoice } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { createArtifactPresentation } from "./artifact-return";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -52,6 +53,9 @@ Output:
   complete result object. With no --prompt and no piped input, prints the
   provider menu instead.
 
+  Successful results include inline-link and rich-preview Markdown guidance.
+  --json includes inlineMarkdownLink, previewMarkdownBlock, and artifactPresentationContext.
+
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful audio generation
@@ -75,8 +79,12 @@ Notes:
           instructions: options.instructions,
         });
 
+        const presentation = createArtifactPresentation(
+          result.filename,
+          result.url,
+        );
         if (options.json) {
-          console.log(JSON.stringify(result));
+          console.log(JSON.stringify({ ...result, ...presentation.json }));
           return;
         }
 
@@ -86,6 +94,7 @@ Notes:
         console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
         console.log(chalk.dim(`  Model: ${result.model}`));
         console.log(chalk.dim(`  Voice: ${result.voice}`));
+        console.log(`\n${presentation.text}`);
       }),
     );
 }

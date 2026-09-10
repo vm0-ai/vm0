@@ -1,6 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   agentCustomConnectorsContract,
@@ -65,8 +66,12 @@ export interface ComposerConnectorUiState {
   readonly directoryActiveIndex: number;
 }
 
-/** Which half of the directory is showing: what is connected, or what is not. */
-export type ConnectorDirectoryTab = "yours" | "discover" | "custom";
+/**
+ * Which half of the directory is showing. There is no "yours": the composer's
+ * connector popover already lists every connected connector with its accounts
+ * and permissions, so the directory is the surface for adding one.
+ */
+export type ConnectorDirectoryTab = "discover" | "custom";
 
 interface ComposerConnectorData {
   readonly relatedCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
@@ -80,6 +85,12 @@ interface ComposerConnectorData {
   readonly categoryConnectorCounts:
     | Readonly<Record<string, number>>
     | undefined;
+  /**
+   * The catalog's own category names. They ride on the same discovery response
+   * as the connectors, so the directory never has to name a category before it
+   * knows what that category is called.
+   */
+  readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
 }
 
 export interface ComposerConnectorSignals {
@@ -206,7 +217,7 @@ function initialComposerConnectorUiState(): ComposerConnectorUiState {
     popoverSearch: "",
     popoverSortOrder: null,
     permissionConnectorSlug: null,
-    directoryTab: "yours",
+    directoryTab: "discover",
     directoryCategory: null,
     directoryDetailSlug: null,
     directoryActiveIndex: 0,
@@ -387,6 +398,7 @@ export function createComposerConnectorSignals(
       customConnectors,
       authorization,
       categoryConnectorCounts: catalog.categoryConnectorCounts,
+      categoryMetadata: catalog.categoryMetadata,
     };
   });
   const addDialogKeyword$ = computed((get) => {

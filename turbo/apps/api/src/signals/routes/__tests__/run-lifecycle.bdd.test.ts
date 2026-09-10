@@ -1992,9 +1992,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ],
       "nested",
     );
-    expectNoApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
-    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       API_DISPATCH_PHASE_ACTION_TYPES,
@@ -5558,7 +5555,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       true,
       run.runId,
       [400],
-      {},
+      { capabilities: { piModelConfigGenerations: [1, 2, 3] } },
     );
     expectApiError(rejected.body);
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
@@ -5596,6 +5593,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           heartbeatGeneration: 1,
         },
         runnerHostname: "x".repeat(256),
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
       },
     );
     expectApiError(invalidHostname.body);
@@ -5852,6 +5850,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runnerId: randomUUID(),
           heartbeatGeneration: 1,
         },
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
         telemetry: {
           pollReason: "future-runner-reason",
           jobDiscoveredToClaimRequestMs: -1,
@@ -10714,17 +10713,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         piModelConfig,
       );
       await api.heartbeatRunner(runnerGroup);
-      for (const capabilities of [
-        undefined,
-        { piModelConfigGenerations: [1, 2, 3] },
-      ]) {
-        await api.requestClaimRunnerJob(true, run.runId, [404], {
-          capabilities,
-        });
-        await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-          status: "pending",
-        });
-      }
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "pending",
+      });
       const claim = await api.claimRunnerJob(run.runId, {
         capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
       });
@@ -10802,18 +10796,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       );
       await api.heartbeatRunner(runnerGroup);
 
-      const incompatibleCapabilities =
-        generation === 3
-          ? [undefined, { piModelConfigGenerations: [1, 2] }]
-          : generation === 2
-            ? [undefined]
-            : [];
-      for (const capabilities of incompatibleCapabilities) {
+      if (generation === 3) {
         const legacyClaim = await api.requestClaimRunnerJob(
           true,
           run.runId,
           [404],
-          { capabilities },
+          { capabilities: { piModelConfigGenerations: [1, 2] } },
         );
         expectApiError(legacyClaim.body);
         expect(legacyClaim.body.error.message).toBe("Job not found in queue");
@@ -13238,7 +13226,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
 
-  it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
+  it("retries custom OAuth quietly across runs and supports reconnect", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: () => {
@@ -13286,6 +13274,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "revoked-runtime-authorization-code",
       state,
     });
+    const [account] = await connectors.listCustomConnectorAccounts(
+      actor,
+      custom.id,
+    );
+    if (!account) {
+      throw new Error("Expected the authorized custom OAuth account");
+    }
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const firstRun = await api.createRun(actor, {
@@ -13313,6 +13308,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     onTestFinished(() => {
       clearMockNow();
     });
+    context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.axiomLogging.error.mockClear();
+    context.mocks.sentry.captureException.mockClear();
     const reconnectRequired = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
@@ -13398,6 +13396,57 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         return body.get("grant_type");
       }),
     ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    );
+
+    const replacement = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+      initialRefreshToken: "runtime-reconnected-refresh",
+    });
+    const reconnectUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+      agentId,
+      { intent: "reconnect", connectionId: account.id },
+    );
+    const reconnectState = new URL(reconnectUrl).searchParams.get("state");
+    if (!reconnectState) {
+      throw new Error("Expected custom connector OAuth reconnect state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "reconnected-runtime-authorization-code",
+      state: reconnectState,
+    });
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        connectionStatus: "connected",
+        reconnectReason: null,
+      }),
+    );
+    const recovered = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${secondClaim.sandboxToken}` },
+      { ...secondAuthBody, forceRefresh: true },
+      [200],
+    );
+    expect(recovered.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-oauth-refreshed-access-token" },
+    });
+    expect(replacement.tokenBodies.at(-1)?.get("refresh_token")).toBe(
+      "runtime-reconnected-refresh",
+    );
 
     await api.requestCancelRun(actor, firstRun.runId, [200]);
     await api.requestCancelRun(actor, secondRun.runId, [200]);
@@ -16161,6 +16210,46 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       await api.requestCancelRun(actor, run.runId, [200]);
     }
   });
+
+  it.each([true, false])(
+    "gates SSH guidance and Run scopes only on enabled=%s for an ordinary organization",
+    async (enabled) => {
+      const api = createRunsApi(context);
+      const connectors = createConnectorBddApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.SshAccess]: enabled,
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "inspect my SSH hosts",
+        modelProvider: "anthropic-api-key",
+      });
+      const prompt =
+        (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+      if (enabled) {
+        expect(prompt).toContain("okou ssh host list --json");
+        expect(prompt).toContain("failure_reason and effects, not error text");
+      } else {
+        expect(prompt).not.toContain("okou ssh");
+      }
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      const token = claim.platformEnvironment.OKOU_TOKEN;
+      if (!token) {
+        throw new Error("Expected a minted Run token");
+      }
+      const capabilities = verifyOkouToken(token)?.capabilities;
+      if (enabled) {
+        expect(capabilities).toContain("ssh:read");
+        expect(capabilities).toContain("ssh:write");
+      } else {
+        expect(capabilities).not.toContain("ssh:read");
+        expect(capabilities).not.toContain("ssh:write");
+      }
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
 
   it("advertises connector account switching", async () => {
     const api = createRunsApi(context);
@@ -19480,28 +19569,29 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     );
 
-    describe.each(["input_too_large", "execution_timeout"] as const)(
-      "globally suppresses %s",
-      (failureReason) => {
-        it.each([
-          { name: "BYOK", modelProvider: "anthropic-api-key" },
-          { name: "built-in", modelProvider: "built-in" },
-          {
-            name: "legacy provider",
-            persistedModelProvider: "legacy-unknown-provider",
-          },
-        ] satisfies readonly (FailureCase & { readonly name: string })[])(
-          "suppresses the generic log for $name",
-          async (provider) => {
-            const { runId } = await completeFailure({
-              ...provider,
-              failureReason,
-            });
-            expect(genericFailureLogCalls(runId)).toHaveLength(0);
-          },
-        );
-      },
-    );
+    describe.each([
+      "input_too_large",
+      "execution_timeout",
+      "safety_policy_refusal",
+    ] as const)("globally suppresses %s", (failureReason) => {
+      it.each([
+        { name: "BYOK", modelProvider: "anthropic-api-key" },
+        { name: "built-in", modelProvider: "built-in" },
+        {
+          name: "legacy provider",
+          persistedModelProvider: "legacy-unknown-provider",
+        },
+      ] satisfies readonly (FailureCase & { readonly name: string })[])(
+        "suppresses the generic log for $name",
+        async (provider) => {
+          const { runId } = await completeFailure({
+            ...provider,
+            failureReason,
+          });
+          expect(genericFailureLogCalls(runId)).toHaveLength(0);
+        },
+      );
+    });
 
     it.each([
       {

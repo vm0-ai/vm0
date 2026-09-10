@@ -39,6 +39,8 @@ pub(super) enum Scenario {
     RuntimeTurnFailedResponseTooManyFailedAttempts,
     RuntimeTurnFailedUnauthorized,
     RuntimeTurnFailedUnknown,
+    RuntimeTurnFailedContentPolicyRejection,
+    RuntimeTurnFailedInvalidRequestFormat,
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
@@ -153,6 +155,12 @@ impl Scenario {
                 }
                 "runtime-turn-failed-unauthorized" => Ok(Self::RuntimeTurnFailedUnauthorized),
                 "runtime-turn-failed-unknown" => Ok(Self::RuntimeTurnFailedUnknown),
+                "runtime-turn-failed-content-policy-rejection" => {
+                    Ok(Self::RuntimeTurnFailedContentPolicyRejection)
+                }
+                "runtime-turn-failed-invalid-request-format" => {
+                    Ok(Self::RuntimeTurnFailedInvalidRequestFormat)
+                }
                 "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
                 "runtime-turn-complete-before-steer-response" => {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
@@ -249,6 +257,10 @@ impl Scenario {
             }
             Self::RuntimeTurnFailedUnauthorized => Some(TurnFailure::Unauthorized),
             Self::RuntimeTurnFailedUnknown => Some(TurnFailure::Unknown),
+            Self::RuntimeTurnFailedContentPolicyRejection => {
+                Some(TurnFailure::ContentPolicyRejection)
+            }
+            Self::RuntimeTurnFailedInvalidRequestFormat => Some(TurnFailure::InvalidRequestFormat),
             _ => None,
         }
     }
@@ -279,4 +291,10 @@ pub(super) enum TurnFailure {
     ResponseTooManyFailedAttempts,
     Unauthorized,
     Unknown,
+    /// Upstream content-safety rejection passed through as a raw provider
+    /// envelope, with no structured `codexErrorInfo` to classify from.
+    ContentPolicyRejection,
+    /// Same error type and code as the rejection above, but a genuine
+    /// request-shape complaint that must stay unclassified.
+    InvalidRequestFormat,
 }

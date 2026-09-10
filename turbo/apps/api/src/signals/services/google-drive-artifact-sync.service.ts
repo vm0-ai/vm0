@@ -7,7 +7,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";

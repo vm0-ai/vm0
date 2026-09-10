@@ -41,7 +41,7 @@ Token and variant changes are reviewed at their owning layer together with affec
 
 Large editable surfaces use `border-surface-focus` to emphasize their existing border on focus: neutral gray in light themes and muted amber in dark themes. Keep the border width constant across interaction states. A shadow-only focus overlay may fade through opacity, but must not duplicate the surface border or depend on a negative inset to align its edge. The chat composer uses the default `border` width for its surface and connector circles; intentional badge overlap remains independent of border geometry. `data-slot="chat-composer-card"` identifies the editable card for keyboard positioning and page tests.
 
-Standalone selectable controls use the shared `ChoiceButton` and its required
+Standalone selectable controls use the shared `ToggleButton` and its required
 `selected` prop. Its default `inline` layout keeps compact icon/text choices;
 `layout="tile"` fills a grid cell with centered text and 12px horizontal / 10px
 vertical padding for Agent profile Tone choices. It retains native button/ref behavior and owns `aria-pressed`,
@@ -49,10 +49,27 @@ the selected primary treatment, focus ring, and disabled appearance. The shared
 `control-surface` and `control-border` colors map to the runtime gray-50 and
 gray-400 ramps in both light and dark themes, including palette overrides.
 `bg-state-hover-overlay` layers the existing hover state over an opaque fill.
-The choice variant keeps this overlay's unconditional `:hover` behavior for
+The toggle variant keeps this overlay's unconditional `:hover` behavior for
 touch compatibility; it preserves the existing media-aware text hover utility.
 Migrate consumers individually and retain the legacy definition until its last
 consumer is removed.
+
+`Button` represents an action; `ToggleButton` represents a persistent pressed
+state. Both render through the internal `ButtonBase` in `button-base.tsx`, which
+owns the Base UI button primitive, ref forwarding, render/asChild composition,
+native-title handling and optional tooltip. Their typography, radius and focus
+styles also share one base definition. Dimensions, icon sizing, transitions and
+disabled appearance remain owned by each styled control. `ToggleButton` keeps the
+native button and `onClick` contract; it does not manage state or change group
+keyboard behavior. Single-value settings keep a selection when the active
+choice is activated again. Use the existing `SegmentControl` for a new radio
+group that needs group-level keyboard navigation.
+
+Both buttons keep `showTooltip` off by default. Enabling it requires an
+`aria-label`, which also supplies the tooltip content; the native `title` is
+removed to avoid duplicate hints. The shared tooltip supports disabled triggers
+and preserves full-width tile layout. Visible labels and essential explanations
+remain available without hovering.
 
 ### Page surfaces
 
@@ -81,6 +98,10 @@ Only two exception kinds exist:
 
 - `global-environment` covers document-level browser or theme state that cannot be represented by a component utility.
 - `third-party-dom-adapter` covers DOM or isolated documents whose element classes are owned outside the business component.
+
+Hosted Clerk authentication does not use a third-party DOM adapter. It stays on
+Clerk's public appearance API under the narrower rules in
+[Clerk customization](./clerk-customize.md).
 
 Every exception identifies the exact file and selector or injected-style fingerprint, its owner, rationale, and removal condition. Third-party adapters also identify their upstream DOM owner. A styling convenience, missing utility, or existing first-party convention is not an exception. Vendored CSS is pinned by exact path and SHA-256 rather than by a directory-wide ignore.
 

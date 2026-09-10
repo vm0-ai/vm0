@@ -56,6 +56,30 @@ function pinnedIndicator(threadId: string): HTMLElement | null {
   return within(row).queryByLabelText("Pinned");
 }
 
+function openThreadMenu(threadId: string): void {
+  const row = continuitySidebarLink(threadId).parentElement;
+  if (!row) {
+    throw new Error(`Expected sidebar row for ${threadId}`);
+  }
+  click(within(row).getByLabelText("Open chat menu"));
+}
+
+function menuItemNamedOrNull(name: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.getAttribute("aria-label") === name;
+    }) ?? null
+  );
+}
+
+function menuItemNamed(name: string): HTMLElement {
+  const item = menuItemNamedOrNull(name);
+  if (!item) {
+    throw new Error(`Expected ${name} menu item`);
+  }
+  return item;
+}
+
 function dispatchPinShortcut(
   target: HTMLElement,
   options: KeyboardEventInit = {},
@@ -375,6 +399,58 @@ test("Pin the main chat when neither pane owns keyboard focus", async () => {
     expect(pinnedIndicator(main.id)).toBeVisible();
   });
   expect(pinnedIndicator(side.id)).toBeNull();
+});
+
+test("Apply displayed shortcuts to the chat whose menu is open", async () => {
+  const main = continuityThread(72, 1, "Focused shortcut chat");
+  const menuTarget = continuityThread(72, 2, "Menu shortcut chat");
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 72,
+    threads: [main, menuTarget],
+  });
+  context.mocks.api(chatThreadPinContract.pin, ({ respond }) => {
+    return respond(204);
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${main.id}`,
+    ...workspace.pageOptions,
+  });
+  await waitFor(() => {
+    expect(composerIn(main.id)).toBeVisible();
+    expect(continuitySidebarLink(menuTarget.id)).toBeVisible();
+  });
+  composerIn(main.id).focus();
+
+  openThreadMenu(menuTarget.id);
+  const pinItem = menuItemNamed("Pin chat");
+  await waitFor(() => {
+    expect(pinItem).toHaveFocus();
+  });
+  await userEvent.keyboard("{Control>}{Shift>}D{/Shift}{/Control}");
+
+  await waitFor(() => {
+    expect(pinnedIndicator(menuTarget.id)).toBeVisible();
+  });
+  expect(pinnedIndicator(main.id)).toBeNull();
+
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(menuItemNamedOrNull("Unpin chat")).toBeNull();
+  });
+
+  openThreadMenu(menuTarget.id);
+  const unpinItem = menuItemNamed("Unpin chat");
+  await waitFor(() => {
+    expect(unpinItem).toHaveFocus();
+  });
+  await userEvent.keyboard("{F2}");
+
+  const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+  expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+    "Menu shortcut chat",
+  );
 });
 
 test("Respect composition, held keys, dialogs, and navigation for pin shortcuts", async () => {

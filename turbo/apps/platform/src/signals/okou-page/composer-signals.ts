@@ -13,7 +13,7 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
-import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
+import { INTRO_VIDEO_TEMPLATE_ID } from "@okouai/core/intro-video-template";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -544,7 +544,6 @@ export function createComposerSignals(
     agentId$,
     {
       autoFocus: true,
-      singleLineOnMobile: options.singleLineOnMobile,
     },
     feedback,
   );
@@ -784,7 +783,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
   readonly voiceState$: ComposerVoiceInputSignals["state$"];
-  readonly choosingCreateType$: ComposerCreateSignals["choosing$"];
+  readonly createPickerOpen$: ComposerCreateSignals["pickerOpen$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
   const { options, eventSignals, workflowComposer } = args;
   const draft = options.draft.signals;
@@ -800,8 +799,7 @@ function createComposerPrimaryActionSignal(args: {
     const attachments = get(draft.attachments$);
     const hasContent =
       get(workflowComposer.hasInput$) || attachments.length > 0;
-    const canSend =
-      !get(args.choosingCreateType$) && uploadsReady && hasContent;
+    const canSend = !get(args.createPickerOpen$) && uploadsReady && hasContent;
     const sending = await get(eventSignals.sending$);
     if (sending && !canSend) {
       return "stop";
@@ -863,14 +861,13 @@ function createSubmitCurrentInput(
             return (
               part.type === "template" &&
               part.template.type === "video" &&
-              part.template.selection.stylePresetId ===
-                EXPLAINER_VIDEO_TEMPLATE_ID
+              part.template.selection.stylePresetId === INTRO_VIDEO_TEMPLATE_ID
             );
           })
         ) {
           toast.error(
             i18n.t(($) => {
-              return $.artifacts.templates.explainerUnavailable;
+              return $.artifacts.templates.introVideoUnavailable;
             }),
           );
           return false;
@@ -944,7 +941,7 @@ function createComposerSubmissionSignals(
     eventSignals,
     workflowComposer,
     voiceState$,
-    choosingCreateType$: create.choosing$,
+    createPickerOpen$: create.pickerOpen$,
   });
   const submitCurrentInput$ = createSubmitCurrentInput(
     options,

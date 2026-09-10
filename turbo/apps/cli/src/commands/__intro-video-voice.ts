@@ -3,6 +3,7 @@ import chalk from "chalk";
 
 import { generateWebIntroVideoVoice } from "../lib/api/domains/web";
 import { withErrorHandler } from "../lib/command/with-error-handler";
+import { createArtifactPresentation } from "./shared/artifact-return";
 
 interface IntroVideoVoiceCommandOptions {
   readonly voiceId: string;
@@ -38,8 +39,13 @@ async function runIntroVideoVoiceCommand(
     voiceId: options.voiceId,
     text: options.text,
   });
+  const presentation = createArtifactPresentation(
+    result.filename,
+    result.url,
+    "This result is narration audio that can be used in subsequent video composition.",
+  );
   if (options.json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify({ ...result, ...presentation.json }));
     return;
   }
   console.log(chalk.green(`✓ Intro Video narration generated: ${result.url}`));
@@ -47,6 +53,7 @@ async function runIntroVideoVoiceCommand(
   console.log(chalk.dim(`  Duration: ${result.durationSeconds}s`));
   console.log(chalk.dim(`  Voice: ${result.voiceId}`));
   console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
+  console.log(`\n${presentation.text}`);
 }
 
 export const introVideoVoiceCommand = new Command()

@@ -50,13 +50,30 @@ if name == "pnpm":
 
 if name == "aws":
     if arguments[:2] == ["sts", "assume-role-with-web-identity"]:
-        payload = json.load(sys.stdin)
+        # Honor the real CLI's file argument and repeated reads instead of
+        # assuming a single stdin read. A consumed pipe cannot satisfy this.
+        input_path = arguments[arguments.index("--cli-input-json") + 1]
+        assert input_path.startswith("file://")
+        input_file = Path(input_path.removeprefix("file://"))
+        payload = json.loads(input_file.read_text())
+        assert json.loads(input_file.read_text()) == payload
         assert (
             payload["RoleArn"]
             == "arn:aws:iam::251964670836:role/vm0-kms-migration-github-32264"
         )
         assert payload["WebIdentityToken"] == "synthetic-oidc-token"
         state["assumeCalls"] += 1
+        if scenario.startswith("aws-"):
+            errors = {
+                "aws-access-denied": "An error occurred (AccessDenied) when calling the AssumeRoleWithWebIdentity operation: synthetic-provider-secret-must-not-be-logged",
+                "aws-invalid-identity-token": "An error occurred (InvalidIdentityToken) when calling the AssumeRoleWithWebIdentity operation: synthetic-oidc-token",
+                "aws-cli-input-error": "Error parsing parameter 'cli-input-json': Invalid JSON: synthetic-oidc-token",
+                "aws-unclassified": "An error occurred (syntheticOperatorSecret) when calling the AssumeRoleWithWebIdentity operation: synthetic-provider-secret-must-not-be-logged",
+            }
+            state_path.write_text(json.dumps(state))
+            print("synthetic-operator-session")
+            print(errors[scenario], file=sys.stderr)
+            sys.exit(255)
         result = {
             "Credentials": {
                 "AccessKeyId": "operator",

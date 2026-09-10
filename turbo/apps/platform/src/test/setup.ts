@@ -20,6 +20,7 @@ import { clearAllDetached } from "../signals/utils.ts";
 for (const [name, content] of [
   ["okou-app-git-commit-sha", "0123456789abcdef0123456789abcdef01234567"],
   ["okou-app-version", "0.540.0"],
+  ["okou-clerk-ui-script", "https://app.example.test/assets/clerk-ui-test.js"],
 ]) {
   const meta = document.createElement("meta");
   meta.name = name;

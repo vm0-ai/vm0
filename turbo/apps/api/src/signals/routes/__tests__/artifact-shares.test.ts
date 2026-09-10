@@ -1,3 +1,4 @@
+import { mockNow } from "../../../lib/time";
 import {
   artifactReferencePath,
   artifactReferencesContract,
@@ -429,14 +430,24 @@ test("organization resolution checks current original-org membership and never g
     [404],
   );
   members.add(recipient);
+  mockNow(new Date("2026-09-09T12:00:00.123Z"));
   const allowed = await accept(
     api()(artifactSharesContract).resolve({ headers, params: { id } }),
     [200],
   );
   expect(allowed.body.url).toContain("signature=temporary");
+  expect(allowed.body.expiresAt).toBe("2026-09-11T12:00:00.000Z");
   expect(allowed.headers.get("cache-control")).toBe("private, no-store");
   expect(context.mocks.s3.getSignedUrl.mock.calls.at(-1)).toMatchObject({
-    2: { expiresIn: 900 },
+    1: {
+      input: {
+        ResponseCacheControl: "private, max-age=31536000, must-revalidate",
+      },
+    },
+    2: {
+      expiresIn: 172_800,
+      signingDate: new Date("2026-09-09T12:00:00.000Z"),
+    },
   });
   await accept(
     api()(artifactSharesContract).status({ headers, body: target }),

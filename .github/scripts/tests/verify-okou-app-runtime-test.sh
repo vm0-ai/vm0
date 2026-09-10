@@ -25,6 +25,7 @@ for file_name in \
   index-QrSt7890.css \
   vendor-EfGh5678.js \
   rolldown-runtime-IjKl9012.js \
+  clerk-ui-AbCd123456789012.js \
   shared-database-worker-MnOp3456.js; do
   printf 'javascript\n' > "${assets_directory}/${file_name}"
 done
@@ -33,6 +34,7 @@ cat > "$html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
 <meta name="okou-app-version" content="0.812.5">
+<meta name="okou-clerk-ui-script" content="https://static.test/okou-app/assets/clerk-ui-AbCd123456789012.js">
 <link id="okou-main-stylesheet" rel="preload" as="style" crossorigin href="https://static.test/okou-app/assets/index-QrSt7890.css">
 <script id="okou-main-stylesheet-loader"></script>
 <script type="module" crossorigin src="https://static.test/okou-app/assets/app-AbCd1234.js"></script>
@@ -117,6 +119,7 @@ for expected_url in \
   https://static.test/okou-app/assets/app-AbCd1234.js \
   https://static.test/okou-app/assets/vendor-EfGh5678.js \
   https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js \
+  https://static.test/okou-app/assets/clerk-ui-AbCd123456789012.js \
   https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js; do
   grep -Fq "$expected_url" "$curl_log" ||
     fail "runtime verifier did not probe ${expected_url}"
@@ -147,6 +150,7 @@ for expected_url in \
   "${worker_preview_url}/okou-app/assets/app-AbCd1234.js" \
   "${worker_preview_url}/okou-app/assets/vendor-EfGh5678.js" \
   "${worker_preview_url}/okou-app/assets/rolldown-runtime-IjKl9012.js" \
+  "${worker_preview_url}/okou-app/assets/clerk-ui-AbCd123456789012.js" \
   "${worker_preview_url}/okou-app/assets/shared-database-worker-MnOp3456.js"; do
   grep -Fq "$expected_url" "$curl_log" ||
     fail "Worker preview runtime verifier did not probe ${expected_url}"
@@ -279,6 +283,44 @@ fi
 grep -Fq 'Expected main stylesheet preload without fetchpriority' \
   "${test_root}/priority-failure.log" ||
   fail "main stylesheet fetchpriority failure was not identified"
+
+for ui_case in missing-source wrong-source eager-preload missing-asset; do
+  ui_html_source="${test_root}/ui-${ui_case}.html"
+  cp "$html_source" "$ui_html_source"
+  case "$ui_case" in
+    missing-source)
+      sed -i '/okou-clerk-ui-script/d' "$ui_html_source"
+      expected_failure='Expected one optional Clerk UI source'
+      ;;
+    wrong-source)
+      sed -i 's/clerk-ui-AbCd123456789012/clerk-ui-Wrong12345678901/' "$ui_html_source"
+      expected_failure='Expected one optional Clerk UI source'
+      ;;
+    eager-preload)
+      printf '<link rel="modulepreload" href="https://static.test/okou-app/assets/clerk-ui-AbCd123456789012.js">\n' >> "$ui_html_source"
+      expected_failure='Expected CDN runtime/vendor modulepreloads'
+      ;;
+    missing-asset)
+      mv "${assets_directory}/clerk-ui-AbCd123456789012.js" "${test_root}/clerk-ui.js"
+      expected_failure='optional-route Clerk UI JavaScript asset'
+      ;;
+  esac
+  if PATH="${fake_bin}:$PATH" \
+    MOCK_CURL_LOG="$curl_log" \
+    MOCK_HTML_SOURCE="$ui_html_source" \
+    MOCK_SLEEP_LOG="$sleep_log" \
+    bash "$script" \
+      https://app.test \
+      https://static.test/okou-app/assets \
+      "$assets_directory" > "${test_root}/ui-${ui_case}.log" 2>&1; then
+    fail "Clerk UI ${ui_case} did not fail verification"
+  fi
+  grep -Fq "$expected_failure" "${test_root}/ui-${ui_case}.log" ||
+    fail "Clerk UI ${ui_case} failure was not identified"
+  if [[ "$ui_case" == missing-asset ]]; then
+    mv "${test_root}/clerk-ui.js" "${assets_directory}/clerk-ui-AbCd123456789012.js"
+  fi
+done
 
 sed -i '/vendor-EfGh5678/d' "$html_source"
 : > "$curl_log"

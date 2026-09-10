@@ -76,7 +76,13 @@ const prepareUploadInner$ = command(
       return await onRejection(
         (async () => {
           uploadId = await get(
-            createMultipartS3Upload(bucket, s3Key, contentType, metadata),
+            createMultipartS3Upload(
+              bucket,
+              s3Key,
+              contentType,
+              metadata,
+              signal,
+            ),
           );
           signal.throwIfAborted();
           const partCount = Math.ceil(size / MULTIPART_PART_SIZE_BYTES);
@@ -124,10 +130,13 @@ const prepareUploadInner$ = command(
     }
 
     const uploadUrl = await get(
-      generatePresignedPutUrl(bucket, s3Key, contentType, PUT_URL_TTL_SECONDS, {
-        usePublicEndpoint: true,
-        metadata,
-      }),
+      generatePresignedPutUrl(
+        bucket,
+        s3Key,
+        contentType,
+        { expiresIn: PUT_URL_TTL_SECONDS, usePublicEndpoint: true, metadata },
+        signal,
+      ),
     );
     signal.throwIfAborted();
 

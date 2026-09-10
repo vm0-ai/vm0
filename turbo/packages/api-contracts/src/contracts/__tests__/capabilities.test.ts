@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { CAPABILITIES, CAPABILITY_META } from "../capabilities";
 
 describe("CAPABILITIES", () => {
-  it("should have exactly 43 capabilities", () => {
-    expect(CAPABILITIES).toHaveLength(43);
+  it("should have exactly 42 capabilities", () => {
+    expect(CAPABILITIES).toHaveLength(42);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -106,12 +106,6 @@ describe("CAPABILITIES", () => {
 
   it("should include banking read capability", () => {
     expect(CAPABILITIES).toContain("banking:read");
-  });
-
-  it("should include goal read and write capabilities", () => {
-    expect(CAPABILITIES).toContain("goal:read");
-    expect(CAPABILITIES).toContain("goal:agent-result:write");
-    expect(CAPABILITIES).toContain("goal:user-control:write");
   });
 
   it("should include chat thread read and write capabilities", () => {

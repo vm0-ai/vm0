@@ -9,7 +9,7 @@ import {
   isImageModelId,
   type ImageModelId,
 } from "@okouai/api-contracts/contracts/image-models";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

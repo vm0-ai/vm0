@@ -2018,98 +2018,114 @@ describe("POST /api/billing/checkout", () => {
     });
   });
 
-  it("attaches ad attribution to Stripe checkout and subscription metadata", async () => {
-    const fixture = await trackedSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  it.each(["legacy", "okou"])(
+    "attaches %s ad attribution to Stripe checkout and subscription metadata",
+    async (brand) => {
+      const fixture = await trackedSeed();
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
-    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
-      url: "https://checkout.stripe.com/session/attributed",
-    });
+      const customerId = `cus_${randomUUID().slice(0, 8)}`;
+      context.mocks.stripe.customers.create.mockResolvedValue({
+        id: customerId,
+      });
+      context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+        url: "https://checkout.stripe.com/session/attributed",
+      });
 
-    const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      billingCheckoutContract,
-    );
+      const client = setupApp({ context, routes: billingCheckoutRoutes })(
+        billingCheckoutContract,
+      );
 
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-          adAttribution: {
-            source_type: "paid",
-            vm0_source: "presentation",
-            vm0_campaign_id: "1234567890",
-            vm0_ad_group_id: "9876543210",
-            utm_source: "google",
-            utm_medium: "cpc",
-            utm_campaign: "presentation_search_en",
-            utm_content: "hero",
-            utm_term: "ai",
-            gclid: "test-gclid",
-            gclid_present: "true",
+      const response = await accept(
+        client.create({
+          body: {
+            tier: "pro",
+            successUrl: `${APP_ORIGIN}/billing?billing=success`,
+            cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+            adAttribution: {
+              source_type: "paid",
+              vm0_source: "presentation",
+              ...(brand === "okou"
+                ? {
+                    okou_campaign_id: "1234567890",
+                    okou_ad_group_id: "9876543210",
+                  }
+                : {
+                    vm0_campaign_id: "1234567890",
+                    vm0_ad_group_id: "9876543210",
+                  }),
+              utm_source: "google",
+              utm_medium: "cpc",
+              utm_campaign: "presentation_search_en",
+              utm_content: "hero",
+              utm_term: "ai",
+              gclid: "test-gclid",
+              gclid_present: "true",
+            },
           },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      url: "https://checkout.stripe.com/session/attributed",
-    });
-    const expectedAttribution = {
-      source_type: "paid",
-      vm0_source: "presentation",
-      vm0_campaign_id: "1234567890",
-      vm0_ad_group_id: "9876543210",
-      utm_source: "google",
-      utm_medium: "cpc",
-      utm_campaign: "presentation_search_en",
-      utm_content: "hero",
-      utm_term: "ai",
-      gclid: "test-gclid",
-      gclid_present: "true",
-    };
-    const expectedMetadata = {
-      orgId: fixture.orgId,
-      tier: "pro",
-      priceId: TEST_PRICE_PRO,
-      ...expectedAttribution,
-    };
-    expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
-      metadata: {
-        orgId: fixture.orgId,
-        ...expectedAttribution,
-      },
-    });
-    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expectedMetadata,
-        subscription_data: expect.objectContaining({
-          metadata: expectedMetadata,
+          headers: { authorization: "Bearer clerk-session" },
         }),
-      }),
-    );
+        [200],
+      );
 
-    await expect(
-      readOrgAcquisitionAttributionFixture(fixture.orgId),
-    ).resolves.toMatchObject({
-      acquisitionSourceType: "paid",
-      acquisitionFirstPartySource: "presentation",
-      acquisitionCampaignId: "1234567890",
-      acquisitionAdGroupId: "9876543210",
-      acquisitionCampaign: "presentation_search_en",
-      acquisitionUtmSource: "google",
-      acquisitionUtmMedium: "cpc",
-      acquisitionUtmContent: "hero",
-      acquisitionUtmTerm: "ai",
-      acquisitionGclid: "test-gclid",
-      acquisitionRecordedAt: expect.any(Date),
-    });
-  });
+      expect(response.body).toStrictEqual({
+        url: "https://checkout.stripe.com/session/attributed",
+      });
+      const expectedAttribution = {
+        source_type: "paid",
+        vm0_source: "presentation",
+        okou_campaign_id: "1234567890",
+        okou_ad_group_id: "9876543210",
+        vm0_campaign_id: "1234567890",
+        vm0_ad_group_id: "9876543210",
+        utm_source: "google",
+        utm_medium: "cpc",
+        utm_campaign: "presentation_search_en",
+        utm_content: "hero",
+        utm_term: "ai",
+        gclid: "test-gclid",
+        gclid_present: "true",
+      };
+      const expectedMetadata = {
+        orgId: fixture.orgId,
+        tier: "pro",
+        priceId: TEST_PRICE_PRO,
+        ...expectedAttribution,
+      };
+      expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
+        metadata: {
+          orgId: fixture.orgId,
+          ...expectedAttribution,
+        },
+      });
+      expect(
+        context.mocks.stripe.checkout.sessions.create,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expectedMetadata,
+          subscription_data: expect.objectContaining({
+            metadata: expectedMetadata,
+          }),
+        }),
+      );
+
+      await expect(
+        readOrgAcquisitionAttributionFixture(fixture.orgId),
+      ).resolves.toMatchObject({
+        acquisitionSourceType: "paid",
+        acquisitionFirstPartySource: "presentation",
+        acquisitionCampaignId: "1234567890",
+        acquisitionAdGroupId: "9876543210",
+        acquisitionCampaign: "presentation_search_en",
+        acquisitionUtmSource: "google",
+        acquisitionUtmMedium: "cpc",
+        acquisitionUtmContent: "hero",
+        acquisitionUtmTerm: "ai",
+        acquisitionGclid: "test-gclid",
+        acquisitionRecordedAt: expect.any(Date),
+      });
+    },
+  );
 
   it("returns Pro trial checkout URL during onboarding payment", async () => {
     const fixture = await trackedPendingSeed();
@@ -15662,14 +15678,25 @@ describe("POST /api/billing/checkout/complete", () => {
   });
 
   it.each([
-    { campaignId: "24220469665", accountId: "7935750692", amountPaid: 20_000 },
+    {
+      campaignId: "24220469665",
+      accountId: "7935750692",
+      amountPaid: 20_000,
+      key: "vm0_campaign_id",
+    },
+    {
+      campaignId: "24220469665",
+      accountId: "7935750692",
+      amountPaid: 20_000,
+      key: "okou_campaign_id",
+    },
     { campaignId: "24154967178", accountId: null, amountPaid: 20_000 },
     { campaignId: undefined, accountId: null, amountPaid: 20_000 },
     { campaignId: "99999999999", accountId: null, amountPaid: 20_000 },
     { campaignId: "24220469665", accountId: null, amountPaid: undefined },
   ])(
     "returns a website paid conversion only for the owning account: $campaignId, amount $amountPaid",
-    async ({ campaignId, accountId, amountPaid }) => {
+    async ({ campaignId, accountId, amountPaid, key = "vm0_campaign_id" }) => {
       const customerId = `cus_${randomUUID().slice(0, 8)}`;
       const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
       const fixture = await trackedSeed({
@@ -15695,7 +15722,7 @@ describe("POST /api/billing/checkout/complete", () => {
           id: "in_checkout_paid",
           metadata: {
             gclid: "original-paid-click",
-            ...(campaignId ? { vm0_campaign_id: campaignId } : {}),
+            ...(campaignId ? { [key]: campaignId } : {}),
           },
           status: "paid",
           currency: "usd",

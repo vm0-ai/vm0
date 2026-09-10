@@ -154,7 +154,9 @@ test.each([
     await hydrationRequested.promise;
     click(await findEnabledButton("Retry"));
     await retryRequested.promise;
-    expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+    const retryStatus = screen.getByRole("status");
+    expect(retryStatus).toHaveTextContent("Transcribing");
+    expect(retryStatus).toHaveTextContent("Retrying saved audio");
     if (interruptHydration) {
       click(await findLink("Agents"));
       await screen.findByRole("heading", { name: "Agents" });

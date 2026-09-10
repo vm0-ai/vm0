@@ -102,7 +102,7 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
   await waitFor(() => {
     expect(stop).toBeEnabled();
   });
-  expect(stop).toHaveTextContent("OK");
+  expect(stop).toHaveTextContent("Done");
   expect(
     screen.getByText(/^\d{2}:\d{2}$/u, { selector: "time" }),
   ).toBeVisible();
@@ -244,7 +244,8 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
   });
 
   await requested.promise;
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
+  expect(screen.getByText("Text is taking shape")).toBeVisible();
   expect(queryButton("Stop recording")).toBeNull();
   fireEvent.keyDown(currentComposer(), {
     key: "e",
@@ -252,7 +253,7 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
     ctrlKey: true,
     shiftKey: true,
   });
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
   response.resolve();
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Shortcut voice note");
@@ -324,7 +325,7 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   click(stop);
   await transcriptionStarted.promise;
 
-  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
   expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   placeCaret(currentComposer(), "Opening  closing", 8);
@@ -598,7 +599,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   await findEnabledButton("Voice input");
 });
 
-test("Show recent voice levels at the end of the waveform", async () => {
+test("Show a longer history of recent voice levels", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   installRunChat();
@@ -619,7 +620,7 @@ test("Show recent voice levels at the end of the waveform", async () => {
 
   await waitFor(() => {
     const bars = Array.from(waveform.children);
-    expect(bars).toHaveLength(32);
+    expect(bars).toHaveLength(40);
     expect(bars[0]).toHaveStyle({ height: "4px" });
     expect(bars.at(-1)).toHaveStyle({ height: "16px" });
   });
@@ -704,7 +705,8 @@ test.each([
 
   click(await findEnabledButton("Retry"));
   await retryRequest.promise;
-  await screen.findByText("Transcribing...");
+  await screen.findByText("Transcribing");
+  expect(screen.getByText("Retrying saved audio")).toBeVisible();
   retryResponse.resolve();
   await findEnabledButton("Retry");
   expect(normalizedComposerText()).toBe("Keep these notes.");
@@ -786,7 +788,7 @@ test.each([
     await firstRequest.promise;
     const pendingRecording = failed
       ? findButton("Retry")
-      : screen.findByText("Transcribing...");
+      : screen.findByText("Transcribing");
     await expect(pendingRecording).resolves.toBeVisible();
 
     click(await findLink("Agents"));
@@ -874,6 +876,11 @@ test("Discard a failed recording without removing typed notes", async () => {
   click(voiceInput);
   click(await activeVoiceDraftStopButton());
   click(await findButton("Remove voice draft"));
+  await waitFor(() => {
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Removing voice draft...");
+    expect(status).toHaveTextContent("Returning to composer");
+  });
   await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Keep typed notes");
 

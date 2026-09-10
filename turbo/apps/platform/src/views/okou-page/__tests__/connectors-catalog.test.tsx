@@ -20,6 +20,7 @@ import {
   search as locationSearch,
 } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setMockConnectorFeatureSwitches } from "../../../mocks/handlers/api-connectors.ts";
 import {
   getConnectorAction,
   getConnectorCard,
@@ -188,13 +189,15 @@ test("Update connector visibility when availability changes", async () => {
   await setupPage({
     context,
     path: "/connectors?keywords=mailchimp",
-    cachedFeatureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
   });
 
   await expect(
     screen.findByText(/No connectors matching/u),
   ).resolves.toBeInTheDocument();
 
+  setMockConnectorFeatureSwitches({
+    [FeatureSwitchKey.MailchimpConnector]: true,
+  });
   switchesReady.resolve();
 
   await waitFor(() => {
@@ -445,6 +448,8 @@ test("Present a connector with no accounts", async () => {
 });
 
 function shelfCatalog() {
+  // Sixteen, so the category holds more than the twelve discovery returns for
+  // it when no category is asked for by name.
   const mail = [
     "Gmail",
     "Outlook Mail",
@@ -454,6 +459,14 @@ function shelfCatalog() {
     "Telegram",
     "Lark",
     "Zendesk",
+    "Intercom",
+    "Mailchimp",
+    "Resend",
+    "Twilio",
+    "Front",
+    "Missive",
+    "Crisp",
+    "Help Scout",
   ].map((label, index) => {
     return publicStatusItem({
       connectorSlug: `mail-${index}` as ConnectorSlug,
@@ -475,7 +488,7 @@ function shelfCatalog() {
   ];
 }
 
-test("Browse the catalog as shelves and filter it with category chips", async () => {
+test("Browse the catalog as shelves, then enter a category and come back", async () => {
   mockConnectors(context, []);
   mockPublicConnectorStatus(context, shelfCatalog(), undefined, {
     "communication-collaboration": 327,
@@ -489,21 +502,20 @@ test("Browse the catalog as shelves and filter it with category chips", async ()
 
   // Six per shelf, closed by the products it stands for rather than a count.
   await waitFor(() => {
-    expect(screen.getByText("See Zendesk and 321 more")).toBeVisible();
+    expect(screen.getByText(/^See .* and 321 more$/u)).toBeVisible();
   });
   expect(
     screen.getByTestId("connector-shelf-communication-collaboration"),
   ).toBeInTheDocument();
 
-  // The status dimension is its own control now, and the agent list is gone
-  // from the filter: which agents may use a connector is answered on its card.
-  expect(screen.getByRole("radio", { name: "Not connected" })).toBeVisible();
-  expect(screen.queryByLabelText("Filter connectors")).toBeNull();
+  // Status has no control: the page already opens on what is connected. The
+  // agent list is gone from the filter too -- that question is answered on the
+  // connector's own card.
+  expect(screen.queryByRole("radio", { name: "Not connected" })).toBeNull();
+  expect(screen.queryByLabelText("Filter connectors")).toBeInTheDocument();
 
-  const communicationChip = queryAllByRoleFast("button").find((element) => {
-    return element.textContent?.startsWith("Communication");
-  });
-  await click(communicationChip!);
+  // A category is a place: entering it filters the page and leaves a way back.
+  await click(screen.getByText(/^See .* and 321 more$/u));
   await waitFor(() => {
     expect(locationSearch()).toContain("category=communication-collaboration");
   });
@@ -511,4 +523,22 @@ test("Browse the catalog as shelves and filter it with category chips", async ()
     screen.queryByTestId("connector-shelf-communication-collaboration"),
   ).toBeNull();
   expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+
+  // Entering a category asks the API for that category, so the view holds all
+  // of it -- the count on the way in is a promise the page has to keep.
+  // All sixteen, not the twelve the unfiltered response slices per category:
+  // the count offered on the way in is a promise this view has to keep.
+  expect(screen.getAllByTestId("connector-card-label")).toHaveLength(16);
+  expect(screen.queryByTestId("connector-category-grid")).toBeInTheDocument();
+
+  const back = queryAllByRoleFast("button").find((element) => {
+    return element.textContent === "Connectors";
+  });
+  await click(back!);
+  await waitFor(() => {
+    expect(locationSearch()).not.toContain("category=");
+  });
+  expect(
+    screen.getByTestId("connector-shelf-communication-collaboration"),
+  ).toBeInTheDocument();
 });

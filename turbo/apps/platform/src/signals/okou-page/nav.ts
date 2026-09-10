@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
@@ -82,22 +81,14 @@ const navigateAdjacentPinnedAgent$ = command(
   },
 );
 
-const {
-  get$: sidebarOffRaw$,
-  set$: setSidebarOffRaw$,
-  clear$: clearSidebarOff$,
-} = localStorageSignals("sidebarOff");
+const internalSidebarOff$ = state(false);
 
 export const sidebarOff$ = computed((get) => {
-  return get(sidebarOffRaw$) !== null;
+  return get(internalSidebarOff$);
 });
 
 export const toggleSidebarOff$ = command(({ get, set }) => {
-  if (get(sidebarOffRaw$) !== null) {
-    set(clearSidebarOff$);
-  } else {
-    set(setSidebarOffRaw$, "1");
-  }
+  set(internalSidebarOff$, !get(internalSidebarOff$));
 });
 
 function shouldHandleUniversalSearchShortcut(event: KeyboardEvent): boolean {

@@ -3,7 +3,7 @@ import type {
   GoogleAdsConversionMilestone,
   GoogleAdsConversionMilestoneKind,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { connectors } from "@okouai/db/schema/connector";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { usageEvent } from "@okouai/db/schema/usage-event";

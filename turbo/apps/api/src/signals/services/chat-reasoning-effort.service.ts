@@ -45,7 +45,9 @@ export function resolveChatReasoningEffort(args: {
 }
 
 /**
- * Keep dispatch closed until the native runtime consumers ship in #32903 PR 2.
+ * PR 2 of #32903 prepares native consumers while dispatch stays closed.
+ * PR 3 may open admission after those consumers are deployed and older runners
+ * have stopped claiming new jobs. Rollbacks must preserve that reader boundary.
  * Feature switches accept user overrides, so the rollout flag alone cannot
  * prevent a requested setting from being silently ignored by older runtimes.
  */

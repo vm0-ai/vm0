@@ -3,7 +3,7 @@ import {
   getRunModelAccess,
   RETIRED_RUN_MODEL_MESSAGE,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, gt, lte, sql, sum } from "drizzle-orm";

@@ -9,7 +9,7 @@ import {
   Button,
   Card,
   CardContent,
-  ChoiceButton,
+  ToggleButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -522,7 +522,7 @@ export function SettingsTab({
                 >
                   {TONE_OPTIONS.map((opt) => {
                     return (
-                      <ChoiceButton
+                      <ToggleButton
                         key={opt}
                         layout="tile"
                         selected={tone === opt}
@@ -534,12 +534,13 @@ export function SettingsTab({
                         }}
                       >
                         {toneCopy[opt].label}
-                      </ChoiceButton>
+                      </ToggleButton>
                     );
                   })}
                 </div>
                 <div
-                  className="rounded-lg bg-muted/30 px-3 py-2 w-full okou-border"
+                  data-slot="tone-preview"
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full border-(length:--border-width-surface) border-solid border-surface-border"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -548,7 +549,10 @@ export function SettingsTab({
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
-                      <div className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                      <div
+                        data-slot="tone-preview-user-message"
+                        className="bg-gray-100/95 text-foreground max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200"
+                      >
                         {toneCopy[tone].user}
                       </div>
                     </div>

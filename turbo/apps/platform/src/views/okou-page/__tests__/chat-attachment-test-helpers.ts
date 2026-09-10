@@ -231,6 +231,7 @@ export function mockPrivateUrlSequence(
     calls.set(query.file_id, call + 1);
     return respond(200, {
       url: urls[Math.min(call, urls.length - 1)]!,
+      expiresAt: "2099-01-01T00:00:00.000Z",
       publicUrl:
         publicUrlsByFileId[query.file_id] ?? publicArtifactUrl(query.file_id),
     });

@@ -30,6 +30,7 @@ import auth
 import auth_base_forwarder
 import auth_base_transport
 import aws_sigv4_body_admission
+import aws_sigv4_hash_executor
 import builtin_connector_diagnostics
 import claude_output_timing
 import codex_model_catalog_cache
@@ -66,6 +67,7 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     auth_base_transport.reset_transport_state_for_tests()
     firewall_auth_client.reset_transport_state_for_tests()
+    aws_sigv4_hash_executor.reset_for_tests()
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
@@ -97,6 +99,7 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     auth_base_transport.reset_transport_state_for_tests()
     firewall_auth_client.reset_transport_state_for_tests()
+    aws_sigv4_hash_executor.reset_for_tests()
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
@@ -532,9 +535,9 @@ def fresh_usage_executor():
     Tests that call ``shutdown(wait=True)`` to flush pending webhook
     reports need a fresh executor afterwards so later tests still see a
     live pool.  This fixture owns the lifecycle: a new
-    :class:`ThreadPoolExecutor` is installed before the test and the
+    :class:`usage.executor.WebhookExecutor` is installed before the test and the
     original is restored after a shutdown-triggered final flush.
-    ``ThreadPoolExecutor.shutdown`` is idempotent, so we always call it
+    ``WebhookExecutor.shutdown`` is idempotent, so we always call it
     on the way out regardless of whether the test already did.
     """
     with fresh_usage_executor_context() as executor:

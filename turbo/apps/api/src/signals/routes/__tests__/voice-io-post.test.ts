@@ -106,7 +106,10 @@ function putObjectInput(): PutObjectCommandInput {
       return candidate;
     })
     .find((candidate): candidate is PutObjectCommand => {
-      return candidate instanceof PutObjectCommand;
+      return (
+        candidate instanceof PutObjectCommand &&
+        candidate.input.Bucket === TEST_BUCKET
+      );
     });
   if (!command) {
     throw new Error("Expected generated speech to be uploaded to S3");

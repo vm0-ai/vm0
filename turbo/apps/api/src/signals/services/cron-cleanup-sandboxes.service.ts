@@ -1,7 +1,7 @@
 import { cleanupExpiredRunActivity$ } from "./run-activity-snapshot.service";
 import { command } from "ccstate";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { exportJobs } from "@okouai/db/schema/export-job";

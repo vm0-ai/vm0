@@ -1,5 +1,13 @@
+import { createAttachmentUrls$ } from "../attachment-resource-url.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 
 import {
   createArtifactCatalogSignals,
@@ -49,6 +57,8 @@ export type ArtifactPreviewKind =
   | "file";
 
 export type ArtifactRef = {
+  readonly resourceUrl$: Computed<Promise<string | null>>;
+  readonly shareUrl$: Computed<Promise<string | null>>;
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
@@ -95,6 +105,8 @@ export type ThreadSidebarTarget =
 export interface ThreadSidebarSignals {
   readonly target$: Computed<ThreadSidebarTarget | null>;
   readonly open$: Command<void, [ThreadSidebarTarget]>;
+  readonly selectedArtifactResourceUrl$: Computed<Promise<string | null>>;
+  readonly selectedArtifactShareUrl$: Computed<Promise<string | null>>;
   readonly close$: Command<void, []>;
   /**
    * Whether the current sidebar session should animate into the split layout.
@@ -136,6 +148,53 @@ function attachmentResourceReset(
     : undefined;
 }
 
+function createCatalogArtifactPreviewSignals(
+  artifactCatalog: ArtifactCatalogSignals,
+  internalArtifactPreviewSignal$: State<AbortSignal>,
+) {
+  const selectedArtifactUrls$ = computed(async (get) => {
+    get(internalArtifactPreviewSignal$);
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    return detail
+      ? await get(createAttachmentUrls$(artifactDetailPreview(detail).url))
+      : null;
+  });
+
+  const resourceUrl$ = computed(async (get) => {
+    return (await get(selectedArtifactUrls$))?.resourceUrl ?? null;
+  });
+  const shareUrl$ = computed(async (get) => {
+    return (await get(selectedArtifactUrls$))?.shareUrl ?? null;
+  });
+
+  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    if (!detail) {
+      throw new Error("Selected artifact is unavailable");
+    }
+    const preview = artifactDetailPreview(detail);
+    if (!isTextPreviewKind(preview.kind)) {
+      throw new Error("Selected artifact is not a text preview");
+    }
+    const resourceUrl = await get(resourceUrl$);
+    if (!resourceUrl) {
+      throw new Error("Selected artifact preview is unavailable");
+    }
+    return fetchPreviewText(resourceUrl, get(rootSignal$));
+  });
+  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
+    selectedArtifactText$,
+    internalArtifactPreviewSignal$,
+  );
+
+  return {
+    resourceUrl$,
+    shareUrl$,
+    text$: selectedArtifactText$,
+    markdownTree$: selectedArtifactMarkdownTree$,
+  };
+}
+
 export function createThreadSidebarSignals(
   threadId: string,
   ownerSignal: AbortSignal,
@@ -149,23 +208,11 @@ export function createThreadSidebarSignals(
   const resetArtifactPreviewSignal$ = resetSignal();
   const internalArtifactPreviewSignal$ = state(ownerSignal);
   const imageCanvas = createZoomableImageCanvasSignals();
-
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
-  const selectedArtifactText$ = computed(async (get): Promise<string> => {
-    const detail = await get(artifactCatalog.selectedArtifactDetail$);
-    if (!detail) {
-      throw new Error("Selected artifact is unavailable");
-    }
-    const preview = artifactDetailPreview(detail);
-    if (!isTextPreviewKind(preview.kind)) {
-      throw new Error("Selected artifact is not a text preview");
-    }
-    return fetchPreviewText(preview.url, get(rootSignal$));
-  });
-  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
-    selectedArtifactText$,
+  const preview = createCatalogArtifactPreviewSignals(
+    artifactCatalog,
     internalArtifactPreviewSignal$,
   );
 
@@ -249,7 +296,9 @@ export function createThreadSidebarSignals(
     }),
     imageCanvas,
     artifactCatalog,
-    selectedArtifactText$,
-    selectedArtifactMarkdownTree$,
+    selectedArtifactText$: preview.text$,
+    selectedArtifactMarkdownTree$: preview.markdownTree$,
+    selectedArtifactResourceUrl$: preview.resourceUrl$,
+    selectedArtifactShareUrl$: preview.shareUrl$,
   };
 }

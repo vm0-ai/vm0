@@ -1056,7 +1056,7 @@ test("Open personal Settings and manage account security", async () => {
   expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
 });
 
-test("Open personal Settings and manage account security from the production satellite", async () => {
+test("Open personal Settings and manage account security in production", async () => {
   prepareDefaultAgent();
   context.mocks.data.userPreferences({
     captureNetworkBodiesRemaining: 0,
@@ -1075,13 +1075,13 @@ test("Open personal Settings and manage account security from the production sat
     },
   });
 
-  const satelliteMenu = await openAccountMenu();
-  expect(within(satelliteMenu).getByText("Alex Rivera")).toBeInTheDocument();
+  const accountMenu = await openAccountMenu();
+  expect(within(accountMenu).getByText("Alex Rivera")).toBeInTheDocument();
   expect(
-    within(satelliteMenu).getByText("alex.rivera@example.test"),
+    within(accountMenu).getByText("alex.rivera@example.test"),
   ).toBeInTheDocument();
 
-  click(within(satelliteMenu).getByText("Settings"));
+  click(within(accountMenu).getByText("Settings"));
   const settingsDialog = await screen.findByRole("dialog", {
     name: "Settings",
   });

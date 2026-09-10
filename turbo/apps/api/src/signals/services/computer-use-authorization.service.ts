@@ -6,7 +6,7 @@ import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
 } from "@okouai/api-contracts/contracts/computer-use";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   computerUseAuthorizationRequests,

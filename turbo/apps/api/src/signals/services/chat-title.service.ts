@@ -1,4 +1,4 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
 import {
   chatEventCompatibilityRole,

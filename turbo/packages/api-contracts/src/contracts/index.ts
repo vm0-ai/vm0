@@ -137,7 +137,6 @@ export {
   type ModelPoliciesMainContract,
 } from "./model-policies";
 export {
-  SSH_CONNECTION_LIMIT,
   SSH_DISPLAY_NAME_MAX_LENGTH,
   SSH_HOST_MAX_LENGTH,
   SSH_PASSPHRASE_MAX_LENGTH,
@@ -1844,20 +1843,6 @@ export {
   type PresentationTemplatesContract,
   type PublishPresentationTemplateBody,
 } from "./presentation-templates";
-export {
-  goalsContract,
-  goalCreateRequestSchema,
-  goalEditRequestSchema,
-  goalEventSchema,
-  goalResponseSchema,
-  goalStatusSchema,
-  type GoalCreateRequest,
-  type GoalEditRequest,
-  type GoalEvent,
-  type GoalResponse,
-  type GoalStatus,
-  type GoalsContract,
-} from "./goals";
 export {
   hostContract,
   hostedSiteFileSchema,

@@ -748,12 +748,13 @@ function SpotlightArtifactThumbnail({
 }: {
   readonly artifact: ThreeColumnArtifactSearchItem;
 }) {
-  if (!artifact.thumbnail) {
+  const thumbnailUrl = useLastResolved(artifact.thumbnailUrl$);
+  if (!thumbnailUrl) {
     return <SpotlightArtifactKindIcon kind={artifact.kind} />;
   }
   return (
     <ArtifactThumbnailImage
-      src={r2ImageTransformUrl(artifact.thumbnail.url, {
+      src={r2ImageTransformUrl(thumbnailUrl, {
         width: SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX,
         fit: "scale-down",
       })}

@@ -1,5 +1,4 @@
 import type { MouseEvent } from "react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -29,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  getShortcutLabel,
 } from "@okouai/ui";
 import {
   Dialog,
@@ -93,14 +93,23 @@ import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { ThreadPinMoveMenuItems } from "./sidebar-thread-reorder.tsx";
 import { equalArrays } from "../../lib/equality.ts";
-import { activeRoute$ } from "../../signals/active-route.ts";
-import { assistantName$ } from "../../signals/branding.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
 
 // The row glyphs draw at 17px, which the shared button base (`[&_svg]:size-4`)
 // would otherwise clamp to 16px. Dimming stays on the individual glyphs so the
 // state indicators keep their own contrast.
 const CHAT_THREAD_ROW_ICON_CLASS = "[&_svg]:size-[17px]";
+
+function ChatThreadMenuShortcut({ shortcut }: { readonly shortcut: string }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="ml-auto shrink-0 whitespace-nowrap pl-4 font-sans text-xs opacity-70"
+    >
+      {getShortcutLabel(shortcut)}
+    </kbd>
+  );
+}
 
 function equalSidebarChatThreadWindows(
   previous: SidebarChatThreadWindow,
@@ -209,28 +218,33 @@ function ChatThreadPinMenuItems({
   const isPinned = useGet(signals.pinned$);
   const togglePinned = useSet(signals.togglePinned$);
   const pageSignal = useGet(pageSignal$);
+  const label = isPinned
+    ? t(($) => {
+        return $.chat.sidebar.unpin;
+      })
+    : t(($) => {
+        return $.chat.sidebar.pin;
+      });
   return (
     <>
       <DropdownMenuItem
+        aria-label={label}
+        aria-keyshortcuts={
+          GLOBAL_KEYBOARD_SHORTCUTS.toggleChatPin.ariaKeyShortcuts
+        }
         onSelect={() => {
           detach(togglePinned(pageSignal), Reason.DomCallback);
         }}
       >
         {isPinned ? (
-          <>
-            <PinOff size={16} className="mr-2" />
-            {t(($) => {
-              return $.chat.sidebar.unpin;
-            })}
-          </>
+          <PinOff size={16} className="mr-2" />
         ) : (
-          <>
-            <Pin size={16} className="mr-2" />
-            {t(($) => {
-              return $.chat.sidebar.pin;
-            })}
-          </>
+          <Pin size={16} className="mr-2" />
         )}
+        {label}
+        <ChatThreadMenuShortcut
+          shortcut={GLOBAL_KEYBOARD_SHORTCUTS.toggleChatPin.binding}
+        />
       </DropdownMenuItem>
       <ThreadPinMoveMenuItems signals={signals} />
     </>
@@ -248,6 +262,9 @@ function ChatThreadMenu({
   const openRename = useSet(signals.openRename$);
   const requestDelete = useSet(signals.requestDelete$);
   const pageSignal = useGet(pageSignal$);
+  const renameLabel = t(($) => {
+    return $.chat.sidebar.rename;
+  });
 
   function openRenameDialog() {
     detach(openRename(pageSignal), Reason.DomCallback);
@@ -323,14 +340,25 @@ function ChatThreadMenu({
             </Tooltip>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuContent
+          align="end"
+          className="w-56"
+          data-chat-thread-menu-thread-id={signals.threadId}
+        >
           <ChatThreadPinMenuItems signals={signals} />
           <ChatThreadMarkUnreadMenuItem signals={signals} />
-          <DropdownMenuModalItem onModalSelect={openRenameDialog}>
+          <DropdownMenuModalItem
+            aria-label={renameLabel}
+            aria-keyshortcuts={
+              GLOBAL_KEYBOARD_SHORTCUTS.renameChat.ariaKeyShortcuts
+            }
+            onModalSelect={openRenameDialog}
+          >
             <Pencil size={16} className="mr-2" />
-            {t(($) => {
-              return $.chat.sidebar.rename;
-            })}
+            {renameLabel}
+            <ChatThreadMenuShortcut
+              shortcut={GLOBAL_KEYBOARD_SHORTCUTS.renameChat.binding}
+            />
           </DropdownMenuModalItem>
           <DropdownMenuModalItem
             onModalSelect={() => {
@@ -423,35 +451,6 @@ function ChatThreadItem({
       <div className="pointer-events-none relative col-start-1 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end">
         <ChatThreadMenu signals={signals} />
       </div>
-    </div>
-  );
-}
-
-function BuiltInWelcomeThreadItem() {
-  const { t } = useTranslation();
-  const assistantName = useGet(assistantName$);
-  const isCurrentPage = useGet(activeRoute$) === "welcomeThread";
-  const title = t(
-    ($) => {
-      return $.chat.welcomeThread.title;
-    },
-    { assistantName },
-  );
-
-  return (
-    <div className="group relative" data-testid="built-in-welcome-thread-row">
-      <Link
-        pathname="/chats/welcome"
-        aria-current={isCurrentPage ? "page" : undefined}
-        data-sidebar-built-in-thread
-        className={`flex h-8 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
-          isCurrentPage
-            ? "bg-state-selected text-sidebar-foreground font-medium"
-            : "text-sidebar-foreground hover:bg-state-hover"
-        }`}
-      >
-        <span className="min-w-0 flex-1 truncate">{title}</span>
-      </Link>
     </div>
   );
 }
@@ -1026,18 +1025,12 @@ function ResolvedAgentChatThreadsContent({
   scrollSignals: SidebarChatThreadScrollSignals;
 }) {
   const currentMainThreadListed = useGet(listSignals.currentThreadListed$);
-  const threadCount = useGet(listSignals.count$);
-  const unreadOnly = useGet(chatThreadOnlyUnread$);
-  const featureSwitches = useGet(featureSwitch$);
-  const showBuiltInWelcomeThread =
-    !unreadOnly && featureSwitches[FeatureSwitchKey.OnboardingChat];
   const scrollCurrentChatThreadOnRef = useSet(
     scrollSignals.scrollCurrentChatThreadOnRef$,
   );
 
   return (
     <div className="flex flex-col gap-1">
-      {showBuiltInWelcomeThread ? <BuiltInWelcomeThreadItem /> : null}
       {currentMainThreadId && currentMainThreadListed ? (
         <span
           ref={scrollCurrentChatThreadOnRef}
@@ -1045,9 +1038,7 @@ function ResolvedAgentChatThreadsContent({
           hidden
         />
       ) : null}
-      {threadCount === 0 && showBuiltInWelcomeThread ? null : (
-        <ChatThreads listSignals={listSignals} />
-      )}
+      <ChatThreads listSignals={listSignals} />
     </div>
   );
 }

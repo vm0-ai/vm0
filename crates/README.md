@@ -1,6 +1,6 @@
 # Rust Crates
 
-This workspace contains 28 Rust crates for sandbox orchestration, guest execution,
+This workspace contains Rust crates for sandbox orchestration, guest execution,
 control and RPC services, shared contracts, and developer/test support.
 
 ## Crates
@@ -34,10 +34,16 @@ control and RPC services, shared contracts, and developer/test support.
 | guest-telemetry          | Structured guest logging and operation telemetry                                                      |
 | ably-subscriber          | Subscribe-only Ably client with authentication and connection recovery                                |
 | shell-quote              | POSIX shell argument quoting                                                                          |
+| linux-mountinfo          | Byte-preserving Linux mountinfo parsing shared by host and guest consumers                            |
 | tracing-test-support     | Structured tracing capture for tests                                                                  |
 | xtask                    | Workspace developer checks, invoked through the cargo xtask alias                                     |
 
 ## Architecture and naming
+
+`linux-mountinfo` parses mount identities, device numbers and decoded target
+bytes without filesystem I/O. Consumers own path normalization, caching and
+invalid-record policy: cleanup and snapshot lookup skip malformed records;
+the privileged workspace helper rejects malformed records and empty tables.
 
 ```text
 Runner -> guest-control-client -> guest-control-server (guest-init child)
@@ -114,6 +120,43 @@ retroactively; resubmit it with the option when input is needed.
 The input command rejects disabled forwarding or unavailable job metadata without
 creating an input entry. A successful command reports file publication, not an
 acknowledgement that the running agent consumed the input.
+
+### API active-input read recovery
+
+The Runner retries failed active-input reserve reads with the existing jittered
+backoff (200–250ms initially, capped at 3.2–4s). The HTTP request deadline remains
+10s. Notifications cannot bypass a pending failure delay; cancellation and run
+completion still interrupt reads and retry waits.
+
+For a send-stage timeout or TCP connection reset, the first failure is INFO.
+If reads continue failing for at least 30s after that first observed failure,
+the next failed response emits one `active-input source reads degraded; retrying`
+WARN. This is an operational threshold, not an input-delivery deadline: the
+initial failed request and subsequent request/backoff durations are separate.
+The threshold does not add a timer, change retries, or stop the run. Other read
+errors retain an immediate WARN, including when they follow an INFO-only
+transient failure. Further consecutive failures retain local retry scheduling
+records without repeating the episode warning.
+
+A successful reserve response resets the episode and emits
+`active-input source read recovered` at INFO, including `reserve_outcome`,
+`recovered_after_failures`, `failure_elapsed_ms` and `was_degraded`. An `empty`,
+`held`, `terminal` or `rejected_*` response is explicitly not delivery. Even
+`reserved` proves only readable reservation state, not Guest acceptance or an
+API delivery receipt. Guest-control uncertainty and receipt-recovery warnings
+are unchanged. Cancellation never fabricates read recovery.
+
+Runner INFO records remain local; Axiom continues ingesting WARN+ only. Before
+closing [#33079](https://github.com/vm0-ai/vm0/issues/33079), record the deployed
+Runner release/commit and a bounded real-traffic window (for example, the first
+24 hours after rollout). Correlate local retry/recovery records by run ID and
+time, separate empty/readable-terminal outcomes from actual pending input, and
+verify durable delivery receipts for sampled inputs that were reserved. Inspect
+degraded and unclassified warning episodes separately, including episodes that
+ended with cancellation or run completion. Report unavailable evidence rather
+than inferring recovery from missing warnings. Old draining Runners can still
+emit the previous immediate warnings, so group evidence by deployed identity.
+This observation does not require or authorize production fault injection.
 
 ### Orphan sandbox termination
 

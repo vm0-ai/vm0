@@ -16,7 +16,7 @@ import {
   type RunFailureReasonToken,
 } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 
@@ -211,6 +211,9 @@ function shouldSuppressKnownFailureLog(
   failureReason: KnownRunFailureReason,
 ): boolean {
   switch (failureReason) {
+    // A content-safety rejection is decided by the submitted input, so it needs
+    // no operator action even when the built-in provider owns the credential.
+    case "safety_policy_refusal":
     case "input_too_large":
     case "execution_timeout": {
       return true;
@@ -226,7 +229,6 @@ function shouldSuppressKnownFailureLog(
     case "provider_stream_timeout":
     case "provider_server_error":
     case "response_connection_lost":
-    case "safety_policy_refusal":
     case "reconnect_required":
     case "usage_limit": {
       const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);
@@ -821,7 +823,6 @@ const dispatchTerminalCompleteSideEffects$ = command(
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             apiStartTime: input.apiStartTime,
-            goalSchedulerOrigin: "terminal_callback_fallback",
           },
           signal,
         ),

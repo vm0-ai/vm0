@@ -1,8 +1,3 @@
-import { dispatchGoalRetirementEffects$ } from "../services/goal-retirement-effects.service";
-import {
-  retirePendingGoalRunInTransaction,
-  type RetiredGoalRun,
-} from "../services/goal-retirement.service";
 import { command } from "ccstate";
 import {
   claimCompatibleStoredExecutionContextSchema,
@@ -36,7 +31,7 @@ import {
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
@@ -93,10 +88,7 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
-import {
-  dispatchCompleteSideEffects$,
-  drainOrgQueue$,
-} from "../services/agent-run-lifecycle.service";
+import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
 import { reportBuiltInModelProviderFailure } from "../services/built-in-model-provider-failure.service";
@@ -1074,6 +1066,7 @@ function buildClaimTransitionSql(
               ${agentRuns.status} AS "status"
             FROM ${agentRuns}
             WHERE ${eq(agentRuns.id, runId)}
+              AND ${agentRuns.triggerSource} IS DISTINCT FROM 'goal'
             FOR UPDATE
           ),
           locked_job AS MATERIALIZED (
@@ -1174,10 +1167,7 @@ async function transitionClaimedJobToRunning(
   runnerAttribution: RunnerClaimAttribution | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
-): Promise<
-  | ClaimTransitionResult
-  | { readonly status: "retired"; readonly run: RetiredGoalRun }
-> {
+): Promise<ClaimTransitionResult> {
   const query = buildClaimTransitionSql(
     runId,
     runnerAttribution?.runnerIdentity.runnerId ?? null,
@@ -1186,10 +1176,6 @@ async function transitionClaimedJobToRunning(
     runnerAttribution?.runnerVersion ?? null,
   );
   return await db.transaction(async (tx) => {
-    const retired = await retirePendingGoalRunInTransaction(tx, runId);
-    if (retired) {
-      return { status: "retired" as const, run: retired };
-    }
     const result = await timing.measure(
       "claim_route_transition_execute",
       "nested",
@@ -2480,7 +2466,7 @@ async function resolveStoredExecutionContextForClaim(
     readonly runId: string;
     readonly orgId: string;
     readonly executionContext: unknown;
-    readonly capabilities: RunnerClaimCapabilities | undefined;
+    readonly capabilities: RunnerClaimCapabilities;
     readonly timing: ClaimRouteTimingCollector;
     readonly scheduleFailedSideEffects: (
       args: ClaimFailedSideEffectArgs,
@@ -2541,13 +2527,6 @@ async function resolveStoredExecutionContextForClaim(
   };
 }
 
-const finishRetiredGoalClaim$ = command(
-  async ({ set }, run: RetiredGoalRun, signal: AbortSignal): Promise<void> => {
-    await set(dispatchGoalRetirementEffects$, run, signal);
-    await set(drainOrgQueue$, { orgId: run.orgId }, signal);
-  },
-);
-
 const claimAuthorizedJob$ = command(
   async (
     { set },
@@ -2556,7 +2535,7 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly runnerAttribution: RunnerClaimAttribution | undefined;
-      readonly capabilities: RunnerClaimCapabilities | undefined;
+      readonly capabilities: RunnerClaimCapabilities;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2640,11 +2619,6 @@ const claimAuthorizedJob$ = command(
       L.debug("Runner claim request aborted after committed transition", {
         runId,
       });
-    }
-    if (claimResult.status === "retired") {
-      const committedSignal = new AbortController().signal;
-      waitUntil(set(finishRetiredGoalClaim$, claimResult.run, committedSignal));
-      return notFound("Job not found in queue");
     }
     signal.throwIfAborted();
     if (claimResult.status !== "claimed") {

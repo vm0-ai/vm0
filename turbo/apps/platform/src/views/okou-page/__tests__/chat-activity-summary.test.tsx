@@ -11,7 +11,6 @@ import {
   click,
   queryAllByRoleFast,
   setupPage,
-  startPage,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockNow, now } from "../../../lib/time.ts";
@@ -46,7 +45,7 @@ function summary(
 ): ActivitySummaryResponse {
   return {
     runId: RUN_ID,
-    phrase: PREPARATION,
+    messages: [{ id: PREPARATION, text: PREPARATION }],
     status: "fresh",
     sourceRevision: "source-z",
     summaryRevision: "summary-z",
@@ -137,7 +136,7 @@ test.each(["pending", "cooldown", 500] as const)(
             })
           : respond(
               200,
-              summary({ status, phrase: null, summaryRevision: null }),
+              summary({ status, messages: [], summaryRevision: null }),
             );
       },
     );
@@ -173,7 +172,7 @@ test("The fallback follows a saved language change and stays stable when reopeni
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     ({ respond }) => {
-      return respond(200, summary({ status: "pending", phrase: null }));
+      return respond(200, summary({ status: "pending", messages: [] }));
     },
   );
   await setupPage({ context, path: RUN_PATH, featureSwitches });
@@ -214,13 +213,12 @@ test("Authoritative switch activation replaces the legacy fallback in the mounte
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     ({ respond }) => {
-      return respond(200, summary({ status: "pending", phrase: null }));
+      return respond(200, summary({ status: "pending", messages: [] }));
     },
   );
   await setupPage({
     context,
     path: RUN_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
   });
   await expect(screen.findByText(LEGACY_FALLBACK)).resolves.toBeVisible();
   featureResponse.resolve(undefined);
@@ -241,7 +239,7 @@ test("Authoritative switch activation replaces the legacy fallback in the mounte
   expect(screen.getByText("Thinking...")).toBeVisible();
 });
 
-test("Only a visible main thread requests and later copy survives commentary and a completed animation", async () => {
+test("A subscribed main thread keeps polling while the document is hidden", async () => {
   const initialTime = new Date("2026-09-09T08:00:00.000Z").getTime();
   mockNow(initialTime, context.signal);
   const visibility = context.mocks.browser.visibilityState("hidden");
@@ -256,7 +254,7 @@ test("Only a visible main thread requests and later copy survives commentary and
         summary(
           requests.length > 1
             ? {
-                phrase: ACTIVITY,
+                messages: [{ id: ACTIVITY, text: ACTIVITY }],
                 // Hash order decreases while the actual summary advances.
                 summaryRevision: "summary-a",
                 summarySequence: 3,
@@ -270,9 +268,6 @@ test("Only a visible main thread requests and later copy survives commentary and
   );
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   await readyChat();
-  expect(screen.getByText("Thinking...")).toBeVisible();
-  expect(requests).toHaveLength(0);
-  changeVisibility(visibility, "visible");
   await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
   expect(requests).toStrictEqual([
     { threadId: RUN_THREAD_ID, body: { runId: RUN_ID } },
@@ -296,6 +291,9 @@ test("Only a visible main thread requests and later copy survives commentary and
   await expect(screen.findByText(ACTIVITY)).resolves.toBeVisible();
   expect(requests).toHaveLength(2);
   expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
+  changeVisibility(visibility, "visible");
+  expect(screen.getByText(ACTIVITY)).toBeVisible();
+  expect(requests).toHaveLength(2);
 });
 
 test.each(["pending", "cooldown", "stale"] as const)(
@@ -355,9 +353,11 @@ test.each(["pending", "cooldown", "stale"] as const)(
     });
     expect(screen.getByText(PREPARATION)).toBeVisible();
     expect(screen.getByLabelText(PREPARATION)).toBe(label);
+    expect(mutations).toHaveLength(0);
+    observer.disconnect();
     // A newer current source must not relabel old copy as a new summary.
     result = summary({
-      phrase: ACTIVITY,
+      messages: [{ id: ACTIVITY, text: ACTIVITY }],
       summaryRevision: "summary-a",
       summarySequence: 3,
       summaryMessageCursor: 3,
@@ -367,48 +367,34 @@ test.each(["pending", "cooldown", "stale"] as const)(
     advanceTime(60_001);
     changeVisibility(visibility, "visible");
     await expect(screen.findByText(ACTIVITY)).resolves.toBeVisible();
-    expect(mutations).toHaveLength(0);
   },
 );
 
-test("Hide and reopen aborts old demand and ignores its late response", async () => {
+test("Visibility changes preserve an in-flight request", async () => {
   const visibility = context.mocks.browser.visibilityState("visible");
   installActiveRun();
   const started = createDeferredPromise<AbortSignal>(context.signal);
-  const oldResponse = createDeferredPromise<void>(context.signal);
+  const response = createDeferredPromise<void>(context.signal);
   let requests = 0;
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     async ({ signal, respond }) => {
       requests++;
-      if (requests === 1) {
-        started.resolve(signal);
-        await oldResponse.promise;
-        return respond(200, summary());
-      }
-      return respond(
-        200,
-        summary({
-          phrase: ACTIVITY,
-          summaryRevision: "a",
-          summarySequence: 4,
-          summarizedAt: "2026-09-09T08:00:15.000Z",
-        }),
-      );
+      started.resolve(signal);
+      await response.promise;
+      return respond(200, summary());
     },
   );
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   const requestSignal = await started.promise;
   changeVisibility(visibility, "hidden");
-  await waitFor(() => {
-    expect(requestSignal.aborted).toBeTruthy();
-  });
-  expect(requests).toBe(1);
+  expect(requestSignal.aborted).toBeFalsy();
+  advanceTime(120_000);
   changeVisibility(visibility, "visible");
-  await expect(screen.findByText(ACTIVITY)).resolves.toBeVisible();
-  oldResponse.resolve(undefined);
-  expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
-  expect(screen.getByText(ACTIVITY)).toBeVisible();
+  expect(requestSignal.aborted).toBeFalsy();
+  response.resolve(undefined);
+  await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
+  expect(requests).toBe(1);
 });
 
 test("An outstanding request cannot overlap another interval or survive navigation", async () => {
@@ -468,7 +454,9 @@ test("Server cooldown survives hide and reopen before demand can refresh", async
         200,
         summary({
           status: "cooldown",
-          phrase: requests === 1 ? PREPARATION : ACTIVITY,
+          messages: [
+            { id: "current", text: requests === 1 ? PREPARATION : ACTIVITY },
+          ],
           retryAfterMs: 60_000,
         }),
       );
@@ -505,7 +493,7 @@ test("Optional service failures have a bounded retry budget across visibility ch
     chatThreadActivitySummaryContract.summarize,
     ({ respond }) => {
       requests++;
-      return respond(200, summary({ status: "unavailable", phrase: null }));
+      return respond(200, summary({ status: "unavailable", messages: [] }));
     },
   );
   await setupPage({ context, path: RUN_PATH, featureSwitches });
@@ -556,7 +544,12 @@ test.each(["completed", "cancelled", "replaced", "queued"] as const)(
           200,
           summary({
             runId: body.runId,
-            phrase: body.runId === RUN_ID ? PREPARATION : ACTIVITY,
+            messages: [
+              {
+                id: "current",
+                text: body.runId === RUN_ID ? PREPARATION : ACTIVITY,
+              },
+            ],
           }),
         );
       },
@@ -636,7 +629,7 @@ test.each([403, 404, "ineligible"] as const)(
         return status === "ineligible"
           ? respond(
               200,
-              summary({ status, phrase: null, summaryRevision: null }),
+              summary({ status, messages: [], summaryRevision: null }),
             )
           : respond(status, {
               error: { message: "Unavailable", code: "FORBIDDEN" },
@@ -658,7 +651,7 @@ test.each([403, 404, "ineligible"] as const)(
   },
 );
 
-test("A new app with an unavailable or malformed API retains a usable current-run phrase", async () => {
+test("Transient unavailable or malformed summaries retain the current-run messages", async () => {
   const visibility = context.mocks.browser.visibilityState("visible");
   installActiveRun();
   let requests = 0;
@@ -671,7 +664,7 @@ test("A new app with an unavailable or malformed API retains a usable current-ru
         summary(
           requests === 1
             ? {}
-            : { phrase: null, status: "unavailable", retryAfterMs: 60_000 },
+            : { messages: [], status: "unavailable", retryAfterMs: 60_000 },
         ),
       );
     },
@@ -688,7 +681,7 @@ test("A new app with an unavailable or malformed API retains a usable current-ru
   const malformed = createDeferredPromise<void>(context.signal);
   context.mocks.http.post("*/api/chat-threads/:id/activity-summary", () => {
     malformed.resolve(undefined);
-    return HttpResponse.json({ oldApi: true });
+    return HttpResponse.json({ malformed: true });
   });
   changeVisibility(visibility, "hidden");
   advanceTime(60_001);
@@ -696,58 +689,24 @@ test("A new app with an unavailable or malformed API retains a usable current-ru
   await malformed.promise;
   expect(screen.getByText(PREPARATION)).toBeVisible();
 });
-
-test("Authoritative switch rollback aborts a request started from cached feature state", async () => {
-  context.mocks.browser.visibilityState("visible");
-  const events = installActiveRun();
-  const featureResponse = createDeferredPromise<void>(context.signal);
-  const summaryResponse = createDeferredPromise<void>(context.signal);
-  const started = createDeferredPromise<AbortSignal>(context.signal);
-  context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
-    await featureResponse.promise;
-    return respond(200, {
-      switches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
-      effectiveSwitches: { [FeatureSwitchKey.ThreadActivitySummary]: false },
-    });
+test("A new summary batch replaces the previous batch", async () => {
+  installActiveRun();
+  let result = summary({
+    messages: [
+      { id: "prepare", text: PREPARATION },
+      { id: "review", text: "Reviewing the remaining tasks" },
+    ],
   });
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
-    async ({ signal, respond }) => {
-      started.resolve(signal);
-      await summaryResponse.promise;
-      return respond(200, summary());
+    ({ respond }) => {
+      return respond(200, result);
     },
   );
-  const page = startPage({
-    context,
-    path: RUN_PATH,
-    cachedFeatureSwitches: featureSwitches,
-  });
-  const requestSignal = await started.promise;
-  await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
-  featureResponse.resolve(undefined);
-  await (
-    await page
-  ).ready;
-  await readyChat();
-  await expect(screen.findByText(LEGACY_FALLBACK)).resolves.toBeVisible();
-  expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
-  await waitFor(() => {
-    expect(requestSignal.aborted).toBeTruthy();
-  });
-  summaryResponse.resolve(undefined);
-  expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
-  events.push(
-    assistantEvent({
-      id: "after-switch-rollback",
-      runId: RUN_ID,
-      seqId: 2,
-      text: "The run continues with the original indicator.",
-    }),
-  );
-  publishRunUpdate();
-  await expect(
-    screen.findByText("The run continues with the original indicator."),
-  ).resolves.toBeVisible();
-  expect(screen.getByText(LEGACY_FALLBACK)).toBeVisible();
+  await setupPage({ context, path: RUN_PATH, featureSwitches });
+  await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
+  advanceTime(15_001);
+  result = summary({ messages: [{ id: "activity", text: ACTIVITY }] });
+  await expect(screen.findByText(ACTIVITY)).resolves.toBeVisible();
+  expect(screen.queryByText(PREPARATION)).not.toBeInTheDocument();
 });

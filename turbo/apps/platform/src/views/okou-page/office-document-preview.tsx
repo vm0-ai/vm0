@@ -2,7 +2,6 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { resolveOfficeDocumentViewerBaseUrl } from "../../lib/platform-host.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
-import { useAttachmentUrls } from "./attachment-resource.ts";
 
 function officeDocumentViewerUrl(sourceUrl: string): string {
   const viewerUrl = new URL(resolveOfficeDocumentViewerBaseUrl());
@@ -11,22 +10,21 @@ function officeDocumentViewerUrl(sourceUrl: string): string {
 }
 
 export function OfficeDocumentPreview({
+  resourceUrl,
   filename,
   focusKey,
   focusOnMount,
   testId,
-  url,
 }: {
+  resourceUrl: string | null;
   filename: string;
   focusKey: string;
   focusOnMount: boolean;
   testId: string;
-  url: string;
 }) {
   const { t } = useTranslation();
-  const attachmentUrls = useAttachmentUrls(url);
 
-  if (attachmentUrls === undefined) {
+  if (resourceUrl === null) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 size={20} className="animate-spin" />
@@ -40,9 +38,7 @@ export function OfficeDocumentPreview({
     <AutoFocusedArtifactIframe
       focusKey={focusKey}
       focusOnMount={focusOnMount}
-      src={officeDocumentViewerUrl(
-        attachmentUrls.shareUrl ?? attachmentUrls.resourceUrl,
-      )}
+      src={officeDocumentViewerUrl(resourceUrl)}
       title={t(
         ($) => {
           return $.artifacts.preview.dialogLabel;

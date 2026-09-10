@@ -45,13 +45,17 @@ import type {
   SharedDatabaseRealtimeMessage,
   SharedDatabaseRealtimeScope,
 } from "./protocol.ts";
-import { MessagePortSharedDatabaseBridge } from "./message-port-client.ts";
+import {
+  MessagePortSharedDatabaseBridge,
+  type SharedDatabaseHeartbeatLoop,
+} from "./message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
 import {
   forwardChatThreadReadCursorUpdated$,
+  recordConnectionHeartbeat$,
   registerConnection$,
   reportWorkerUnavailableForConnections$,
-  requestTokenFromFirstConnection$,
+  requestTokenFromLatestConnection$,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import {
@@ -68,7 +72,7 @@ import {
  * values but use an in-process transport. SharedWorker transport stories opt
  * into the complete MessagePort host explicitly.
  */
-export type SharedWorkerTestTransport = "direct" | "message-port";
+export type SharedWorkerTestTransport = "direct" | "message-port" | "browser";
 
 interface SetupSharedWorkerTestBootstrap {
   readonly afterRegistration?: () => Promise<void>;
@@ -100,6 +104,14 @@ interface DirectSharedDatabaseBridgeOptions {
   readonly cachedChatThreadEvents?: ChatThreadEventQueryResult;
   readonly identity: SharedDatabaseIdentity;
 }
+
+const holdHeartbeatLoop: SharedDatabaseHeartbeatLoop = async (
+  heartbeat,
+  signal,
+): Promise<void> => {
+  heartbeat();
+  await createDeferredPromise<void>(signal).promise;
+};
 
 function directRealtimeChannelName(
   identity: SharedDatabaseIdentity,
@@ -244,6 +256,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       { getToken: this.getToken, port: directWorkerPort(this.emit) },
       connectionSignal,
     );
+    this.workerStore.set(recordConnectionHeartbeat$, this.connectionId);
     this.connectionSignal.addEventListener(
       "abort",
       () => {
@@ -401,7 +414,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
           apiBaseUrl: resolveApiBaseForTarget("api"),
           getToken: (requestSignal) => {
             return options.workerStore.set(
-              requestTokenFromFirstConnection$,
+              requestTokenFromLatestConnection$,
               requestSignal,
             );
           },
@@ -415,6 +428,12 @@ export const setupSharedWorkerTestBootstrap$ = command(
         },
         signal,
       );
+    }
+
+    // Browser failure stories keep the production host and mock SharedWorker
+    // itself, so native error events reach the real page boundary.
+    if (options.transport === "browser") {
+      return;
     }
 
     let directBridge: DirectSharedDatabaseBridge | null = null;
@@ -434,6 +453,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
             events,
             connectionSignal,
             getToken,
+            holdHeartbeatLoop,
           );
         } else {
           if (!directRealtimeForwardingInstalled) {

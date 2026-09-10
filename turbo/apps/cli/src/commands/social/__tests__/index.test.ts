@@ -1135,6 +1135,13 @@ describe("okou social command", () => {
       platform: "youtube",
       billing: { quantity: 2, creditsCharged: 6 },
       data: { status: "completed", artifact: { filename: "example.mp4" } },
+      inlineMarkdownLink:
+        "[example.mp4](<https://artifacts.example/video.mp4>)",
+      previewMarkdownBlock:
+        "![example.mp4](<https://artifacts.example/video.mp4>)",
+      artifactPresentationContext: expect.stringContaining(
+        "media file saved to Okou",
+      ),
     });
     expect(outputRequest()).toStrictEqual({
       resume: false,
@@ -1232,6 +1239,13 @@ describe("okou social command", () => {
 
     expect(creates).toBe(0);
     expect(JSON.parse(output()) as unknown).toMatchObject({
+      inlineMarkdownLink:
+        "[example.mp4](<https://artifacts.example/video.mp4>)",
+      previewMarkdownBlock:
+        "![example.mp4](<https://artifacts.example/video.mp4>)",
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
       target: {
         kind: "download",
         downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",

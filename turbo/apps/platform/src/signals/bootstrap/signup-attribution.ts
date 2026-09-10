@@ -1,4 +1,8 @@
 import {
+  legacyGoogleAdsAttribution,
+  compatibleGoogleAdsAttribution,
+} from "@okouai/core/google-ads-attribution";
+import {
   GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
   GOOGLE_ADS_LEGACY_ACCOUNT_ID,
 } from "@okouai/core/google-ads-account";
@@ -92,7 +96,7 @@ export const recordSignupAttribution$ = command(
       const client = createClient(acquisitionAttributionContract);
       const result = await accept(
         client.recordSignup({
-          body: { attribution },
+          body: { attribution: legacyGoogleAdsAttribution(attribution) },
           fetchOptions: { signal },
         }),
         [200],
@@ -106,12 +110,10 @@ export const recordSignupAttribution$ = command(
           landing_host: window.location.host,
           landing_path: window.location.pathname,
           source_type: attribution.source_type ?? "unknown",
-          ...(attribution.vm0_campaign_id
-            ? { vm0_campaign_id: attribution.vm0_campaign_id }
-            : {}),
-          ...(attribution.vm0_ad_group_id
-            ? { vm0_ad_group_id: attribution.vm0_ad_group_id }
-            : {}),
+          ...compatibleGoogleAdsAttribution({
+            okou_campaign_id: attribution.okou_campaign_id,
+            okou_ad_group_id: attribution.okou_ad_group_id,
+          }),
         });
       }
     }

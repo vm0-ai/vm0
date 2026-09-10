@@ -340,6 +340,7 @@ export function installContinuityWorkspace(
     }
     return respond(200, {
       url: `https://download.vm7.io/chat-continuity/${query.file_id}`,
+      expiresAt: "2099-01-01T00:00:00.000Z",
       publicUrl: `https://cdn.vm7.io/artifacts/tests/chat-continuity/${query.file_id}`,
     });
   });

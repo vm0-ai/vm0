@@ -133,6 +133,13 @@ describe("okou generate image command", () => {
     expect(stdout).toContain("Credits charged: 65");
     expect(stdout).toContain("Model: gpt-image-1");
     expect(stdout).toContain("Provider: fal");
+    expect(stdout).toContain(
+      `[${IMAGE_RESULT.filename}](<${IMAGE_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `\n\n![${IMAGE_RESULT.filename}](<${IMAGE_RESULT.url}>)\n\n`,
+    );
+    expect(stdout).toContain("creates two user-facing references");
   });
 
   it.each([
@@ -308,6 +315,12 @@ describe("okou generate image command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
     expect(stdout).toContain(`Embed this URL in HTML: ${embedUrl}`);
+    expect(stdout).toContain(
+      `[${IMAGE_RESULT.filename}](<${IMAGE_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `${embedUrl} is for embedding the image in authored HTML`,
+    );
   });
 
   it("should omit the embed line when the API does not return one", async () => {
@@ -346,8 +359,51 @@ describe("okou generate image command", () => {
       "--json",
     ]);
 
-    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(IMAGE_RESULT)]]);
+    expect(mockConsoleLog.mock.calls).toHaveLength(1);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual({
+      ...IMAGE_RESULT,
+      inlineMarkdownLink: `[${IMAGE_RESULT.filename}](<${IMAGE_RESULT.url}>)`,
+      previewMarkdownBlock: `![${IMAGE_RESULT.filename}](<${IMAGE_RESULT.url}>)`,
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
+    });
   });
+
+  it.each([
+    "/artifacts/00000000000040008000000000000021.png",
+    "http://localhost:3000/api/web/download-file?file_id=00000000-0000-4000-8000-000000000021&filename=Launch%20v2.png",
+  ])(
+    "preserves the private artifact reference %s and escapes its label",
+    async (url) => {
+      const filename = String.raw`Launch [v2]\image.png`;
+      const label = String.raw`Launch \[v2\]\\image.png`;
+      server.use(
+        http.post(IMAGE_URL, () => {
+          return HttpResponse.json({ ...IMAGE_RESULT, filename, url });
+        }),
+      );
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--raw-prompt",
+        "A product image",
+        "--json",
+      ]);
+      expect(
+        JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0])),
+      ).toMatchObject({
+        filename,
+        url,
+        inlineMarkdownLink: `[${label}](<${url}>)`,
+        previewMarkdownBlock: `![${label}](<${url}>)`,
+        artifactPresentationContext: expect.stringContaining(
+          "own Markdown paragraph",
+        ),
+      });
+    },
+  );
 
   it.each([
     ["provider listing", ["image", "--json"]],

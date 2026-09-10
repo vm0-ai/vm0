@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
+import { Dialog, DialogContent } from "@okouai/ui/components/ui/dialog";
 import { Input } from "@okouai/ui/components/ui/input";
 import {
   Tooltip,
@@ -42,7 +43,6 @@ import {
 } from "../../signals/okou-page/image-annotation.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   markInk,
   MarkNoteLabel,
@@ -1398,6 +1398,16 @@ function OpenMarkEditor({
   );
 }
 
+/**
+ * Makes the scrolling stage a size query container, so the image can be bounded
+ * by the box it is actually in.
+ *
+ * The fit used to be written as fractions of the *viewport* — `min(880px, 88vw)`
+ * by `min(520px, 62vh)` — which is a guess at the stage that stops being true
+ * the moment anything around it changes size. `100cqw`/`100cqh` are that box.
+ */
+const STAGE_QUERY_CONTAINER = { containerType: "size" } as const;
+
 function EditorStage({
   filename,
   signals,
@@ -1476,7 +1486,10 @@ function EditorStage({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/30">
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-5">
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-5"
+        style={STAGE_QUERY_CONTAINER}
+      >
         <div
           ref={bindSurface}
           onPointerDown={handlers.onPointerDown}
@@ -1495,8 +1508,8 @@ function EditorStage({
             // The fit bounds are the stage's own box, so 100% zoom shows the
             // whole image and zooming grows the layout box the stage scrolls.
             style={{
-              maxWidth: `calc(min(880px, 88vw) * ${zoom})`,
-              maxHeight: `calc(min(520px, 62vh) * ${zoom})`,
+              maxWidth: `calc(100cqw * ${zoom})`,
+              maxHeight: `calc(100cqh * ${zoom})`,
             }}
             className="block rounded-lg object-contain"
           />
@@ -1542,6 +1555,18 @@ export function ImageAnnotationEditor({
   return <AnnotationSurface signals={signals} target={target} />;
 }
 
+/**
+ * The editor is the same window as the preview it replaces.
+ *
+ * It used to be a hand-rolled `fixed z-50` overlay, which lost twice. Its size
+ * was a second set of numbers that had to be kept level with the preview's by
+ * hand, and it drifted — `min(980px, 94vw)` against the preview's 1440, so the
+ * picture shrank the moment the pencil was pressed. And `z-50` only orders it
+ * inside the app's own stacking context, so anything portalled to `body` after
+ * it — the composer's slash-command menu, left open behind the preview — kept
+ * painting on top of the editor and stayed clickable. Both are the dialog
+ * primitive's job, and the preview next door was already using it.
+ */
 function AnnotationSurface({
   signals,
   target,
@@ -1549,38 +1574,67 @@ function AnnotationSurface({
   readonly signals: ImageAnnotationSignals;
   readonly target: AnnotationTarget;
 }) {
+  const { t } = useTranslation();
+  const close = useSet(signals.closeAnnotationEditor$);
   const bindPanel = useSet(signals.bindAnnotationPanel$);
-  const resolvedUrl = useResolvedAttachmentUrl(target.url);
+  const panelElement = useSet(signals.annotationPanelElement$);
+  const resolvedUrl = useLastResolved(signals.annotationResourceUrl$);
 
-  if (resolvedUrl === null) {
+  if (!resolvedUrl) {
     return null;
   }
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div
-        className="okou-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
-        data-testid="image-annotation-editor"
+      <Dialog
+        open
+        // A press outside must not throw the session away: the marks live
+        // nowhere else until "Attach marks", so a stray click on the backdrop
+        // would discard every one of them with no undo.
+        disablePointerDismissal
+        onOpenChange={(next, details) => {
+          // Escape belongs to `KeyboardShortcuts`, which backs out one layer at
+          // a time — the open note, then the selection, then the session.
+          // Closing here as well would collapse all three into the first press.
+          if (!next && details.reason !== "escape-key") {
+            close();
+          }
+        }}
       >
-        <KeyboardShortcuts signals={signals} />
-        <div
-          // The panel holds the caret while no field wants it, which is what
-          // makes the tool letters and the ink digits reach the editor instead
-          // of the composer the editor opened over.
-          ref={bindPanel}
-          tabIndex={-1}
-          className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)] outline-none"
-          data-testid="image-annotation-panel"
+        <DialogContent
+          showCloseButton={false}
+          maxWidth={1440}
+          height={1000}
+          surface="canvas"
+          // The panel takes the opening focus rather than the first control in
+          // the header, so the tool letters and ink digits reach the editor
+          // instead of the composer it opened over — and so no button looks
+          // pressed before anything has been drawn.
+          initialFocus={panelElement}
+          overlayClassName="bg-gray-900/45 dark:bg-gray-900/45"
+          contentClassName="okou-app flex flex-col gap-0 overflow-hidden bg-background p-0"
+          aria-label={t(($) => {
+            return $.artifacts.annotation.open;
+          })}
+          data-testid="image-annotation-editor"
         >
-          <EditorHeader filename={target.filename} signals={signals} />
-          <EditorStage
-            filename={target.filename}
-            signals={signals}
-            url={resolvedUrl}
-          />
-          <EditorFooter signals={signals} />
-        </div>
-      </div>
+          <KeyboardShortcuts signals={signals} />
+          <div
+            ref={bindPanel}
+            tabIndex={-1}
+            className="relative flex min-h-0 flex-1 flex-col overflow-hidden text-foreground outline-none"
+            data-testid="image-annotation-panel"
+          >
+            <EditorHeader filename={target.filename} signals={signals} />
+            <EditorStage
+              filename={target.filename}
+              signals={signals}
+              url={resolvedUrl}
+            />
+            <EditorFooter signals={signals} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

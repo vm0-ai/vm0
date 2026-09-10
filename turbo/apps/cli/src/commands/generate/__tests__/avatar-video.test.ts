@@ -235,6 +235,13 @@ describe("okou generate avatar-video command", () => {
       `Avatar video generated: ${AVATAR_VIDEO_RESULT.url}`,
     );
     expect(stdout).toContain(`File: ${AVATAR_VIDEO_RESULT.filename}`);
+    expect(stdout).toContain(
+      `[${AVATAR_VIDEO_RESULT.filename}](<${AVATAR_VIDEO_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `\n\n![${AVATAR_VIDEO_RESULT.filename}](<${AVATAR_VIDEO_RESULT.url}>)\n\n`,
+    );
+    expect(stdout).toContain("creates two user-facing references");
     expect(stdout).toContain("Duration: 42s");
     expect(stdout).toContain("Credits charged: 623");
   });
@@ -259,9 +266,15 @@ describe("okou generate avatar-video command", () => {
       "--json",
     ]);
 
-    expect(mockConsoleLog.mock.calls).toEqual([
-      [JSON.stringify(AVATAR_VIDEO_RESULT)],
-    ]);
+    expect(mockConsoleLog.mock.calls).toHaveLength(1);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual({
+      ...AVATAR_VIDEO_RESULT,
+      inlineMarkdownLink: `[${AVATAR_VIDEO_RESULT.filename}](<${AVATAR_VIDEO_RESULT.url}>)`,
+      previewMarkdownBlock: `![${AVATAR_VIDEO_RESULT.filename}](<${AVATAR_VIDEO_RESULT.url}>)`,
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
+    });
   });
 
   it("rejects mixed script and audio input before calling the API", async () => {

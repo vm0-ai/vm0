@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { cn } from "@okouai/ui";
-import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 
 type ArtifactThumbnailImageProps = {
@@ -25,7 +24,6 @@ function ArtifactThumbnailImageInstance({
   src,
   testId,
 }: ArtifactThumbnailImageProps) {
-  const resourceUrl = useResolvedAttachmentUrl(src);
   const failed = useGet(load.status$) === "error";
   const markLoaded = useSet(load.loaded$);
   const markFailed = useSet(load.failed$);
@@ -34,7 +32,7 @@ function ArtifactThumbnailImageInstance({
     <>
       {failed ? fallback : null}
       <img
-        src={resourceUrl ?? undefined}
+        src={src}
         alt=""
         aria-hidden="true"
         data-testid={testId}

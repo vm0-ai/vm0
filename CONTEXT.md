@@ -213,27 +213,15 @@ then the browser language list. It is used only when the workspace locale
 preference is absent.
 _Avoid_: Workspace preference, forced locale
 
-# Clerk Satellite Authentication Context
+# Product Identity Context
 
-This context separates the app that owns authentication from another app that
-shares the same Clerk instance and receives its session.
+This context names the product identity used in application presentation.
 
 ## Language
 
-**Clerk primary app**:
-The app origin where sign-in and sign-up run and where the primary Clerk
-session is established.
-_Avoid_: Main brand, login tab
-
-**Clerk satellite app**:
-A registered app origin that shares the primary app's Clerk instance and
-receives synchronized session state.
-_Avoid_: Secondary login, separate Clerk instance
-
-**Satellite session sync**:
-The Clerk-owned navigation handshake that transfers the active primary-app
-session into the current satellite browser context.
-_Avoid_: Cookie copy, custom auth redirect
+**Okou product identity**:
+The sole current public product, presentation, and application identity.
+_Avoid_: Public brand, VM0 brand, selected brand
 
 # Chat Image Annotation Context
 

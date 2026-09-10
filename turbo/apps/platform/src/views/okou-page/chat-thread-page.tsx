@@ -1,3 +1,4 @@
+import type { ThinkingSummaries } from "../../signals/chat-page/thread-activity-summary.ts";
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type {
   CSSProperties,
@@ -92,6 +93,7 @@ import {
   TooltipTrigger,
   BrandSlack,
   ElapsedTime,
+  ThinkingMessages,
   useMediaQuery,
 } from "@okouai/ui";
 import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
@@ -582,7 +584,6 @@ export function AutomationMenuButton({
   const open = sidebarTarget?.type === "automations";
 
   // Show the opener when the thread has a workflow automation.
-  // Goals live in the composer, so a goal-only thread has nothing here.
   if (workflowAutomations.length === 0) {
     return null;
   }
@@ -4206,29 +4207,21 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 interface ServerThinkingLabel {
-  readonly displayedText: string;
-  readonly fadingOut: boolean;
-  readonly fullText: string;
   readonly id: string;
-  readonly setRef: (
-    el: HTMLParagraphElement | null,
-  ) => (() => void) | undefined;
+  readonly messages: ThinkingSummaries["messages"];
 }
 
 function ShimmerText({
   ariaLabel,
   children,
   className,
-  setRef,
 }: {
   readonly ariaLabel?: string;
   readonly children: ReactNode;
   readonly className?: string;
-  readonly setRef?: ServerThinkingLabel["setRef"];
 }) {
   return (
     <p
-      ref={setRef}
       className={cn(
         "okou-shimmer-text h-auto min-w-0 flex-1 truncate text-[0.8125rem] leading-[inherit]",
         className,
@@ -4277,16 +4270,12 @@ function ThinkingLabel({
 
   if (serverThinkingLabel) {
     return (
-      <ShimmerText
-        key={serverThinkingLabel.id}
-        setRef={serverThinkingLabel.setRef}
-        className={cn(
-          "transition-opacity duration-200",
-          serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
-        )}
-        ariaLabel={serverThinkingLabel.fullText}
-      >
-        {serverThinkingLabel.displayedText || "\u00a0"}
+      <ShimmerText>
+        <ThinkingMessages
+          key={serverThinkingLabel.id}
+          messages={serverThinkingLabel.messages}
+          fallback={thinkingLabel}
+        />
       </ShimmerText>
     );
   }
@@ -4577,7 +4566,8 @@ function ThinkingIndicator({
     "--zb-c2": c2,
     "--zb-c3": c3,
   } as CSSProperties;
-  const thinkingText = useLastResolved(thread.thinkingText$);
+  const summaries = useLastResolved(thread.thinkingSummaries$);
+  const thinkingRunId = useLastResolved(thread.thinkingRunId$);
   const recommendedFollowupSource =
     useLastResolved(thread.recommendedFollowupSource$, {
       equalityFn: equalRecommendedFollowupSources,
@@ -4585,23 +4575,9 @@ function ThinkingIndicator({
   const thinkingLabel = useGet(thread.thinkingPhrase$);
   const active = runStatusIndicatorActive(mode);
   const isQueued = thinkingIndicatorQueued(mode);
-  const thinkingEventId = useLastResolved(thread.thinkingEventId$);
-  const displayedThinkingText =
-    useLastResolved(thread.displayedThinkingText$) ?? "";
-  const thinkingTextFadingOut =
-    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
-  const setThinkingIndicatorTextRef = useSet(
-    thread.setThinkingIndicatorTextRef$,
-  );
   const serverThinkingLabel =
-    thinkingText && thinkingEventId && active && !isQueued
-      ? {
-          displayedText: displayedThinkingText,
-          fadingOut: thinkingTextFadingOut,
-          fullText: thinkingText,
-          id: thinkingEventId,
-          setRef: setThinkingIndicatorTextRef,
-        }
+    summaries && summaries.runId === thinkingRunId && active && !isQueued
+      ? { id: summaries.runId, messages: summaries.messages }
       : undefined;
 
   if (mode === null) {
@@ -5072,7 +5048,7 @@ function AssistantRecoveryActions({
   };
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2">
+    <div className="col-start-2 row-start-2 flex max-w-full flex-wrap items-center gap-2 @[640px]:col-start-3 @[640px]:row-start-1 @[640px]:ml-auto @[640px]:shrink-0 @[640px]:justify-end @[640px]:self-center">
       {hasResetAction && (
         <Button
           type="button"
@@ -5193,29 +5169,26 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-foreground"
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:items-center"
     >
-      <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2.5">
-        {recovery.kind === "usage-limit" ||
-        recovery.kind === "execution-timeout" ? (
-          <Clock size={16} className="shrink-0 text-brand-text" />
-        ) : (
-          <Coffee size={16} className="shrink-0 text-brand-text" />
-        )}
-        <span className="shrink-0 text-[0.9375rem] font-medium leading-6">
-          {title}
-        </span>
-        {/* The row is the point on desktop; on a phone a half-truncated
-            sentence is worse than none, and the title already carries it. */}
-        <span className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground sm:block">
+      {recovery.kind === "usage-limit" ||
+      recovery.kind === "execution-timeout" ? (
+        <Clock
+          size={16}
+          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
+        />
+      ) : (
+        <Coffee
+          size={16}
+          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
+        />
+      )}
+      <div className="col-start-2 row-start-1 min-w-0">
+        <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
+        <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
           {description}
-        </span>
-        {resetText && (
-          <span className="hidden shrink-0 items-center gap-1.5 text-sm font-medium text-foreground sm:inline-flex">
-            <Clock size={16} className="text-muted-foreground" />
-            {resetText}
-          </span>
-        )}
+          {resetText ? ` ${resetText}` : null}
+        </p>
       </div>
       <AssistantRecoveryActions recovery={recovery} thread={thread} />
     </div>
@@ -5501,13 +5474,7 @@ function SelectablePagedGroupRow({
   const phase = useGet(thread.sharing.phase$);
   const selectedEventIds = useGet(thread.sharing.selectedEventIds$);
   const toggle = useSet(thread.sharing.toggle$);
-  const visualGroupEvents = [
-    ...(runWorkSection?.hiddenGroups.flatMap((hiddenGroup) => {
-      return hiddenGroup.events;
-    }) ?? []),
-    ...group.events,
-  ];
-  const events = visualGroupEvents.flatMap((event) => {
+  const events = group.events.flatMap((event) => {
     const shareable = shareableEventFromChatEvent(event);
     return shareable ? [shareable] : [];
   });
@@ -5754,6 +5721,7 @@ function MessageAttachment({
   if (a.kind === "video") {
     return (
       <ChatVideoPreviewButton
+        resourceUrl$={a.signals.resourceUrl$}
         posterLoad={a.signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
@@ -5772,7 +5740,6 @@ function MessageAttachment({
           });
         }}
         posterClassName="h-full w-full"
-        url={a.url}
         videoClassName="h-full w-full object-contain"
       />
     );
@@ -6193,6 +6160,7 @@ function UserMessageFileReference({
   if (signals.kind === "video") {
     reference = (
       <ChatVideoPreviewButton
+        resourceUrl$={signals.resourceUrl$}
         posterLoad={signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
@@ -6211,7 +6179,6 @@ function UserMessageFileReference({
           });
         }}
         posterClassName="h-full w-full"
-        url={signals.url}
         videoClassName="h-full w-full object-contain"
       />
     );

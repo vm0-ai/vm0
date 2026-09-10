@@ -7,6 +7,7 @@ import type {
   PasswordValidation,
   UpdateUserPasswordParams,
 } from "@clerk/react/types";
+import type { ClerkOptions } from "@clerk/shared/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
@@ -609,7 +610,9 @@ function clearMockedAuth() {
   mockSignUpConfiguration({});
   mockSignUpPasswordValidation({ complexity: {}, strength: undefined });
   clerkListeners.length = 0;
+  clerkStatusListeners.clear();
   mockedClerk.on = defaultClerkStatusOn;
+  mockedClerk.off = defaultClerkStatusOff;
   mockedClerk.signOut.mockReset();
   mockedClerk.setActive.mockReset();
   mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
@@ -714,7 +717,6 @@ function clearMockedAuth() {
   mockedClerk.redirectToSignIn.mockImplementation(defaultRedirectToSignInImpl);
   mockedClerk.redirectToSignUp.mockReset();
   mockedClerk.redirectToSignUp.mockImplementation(defaultRedirectToSignUpImpl);
-  mockedClerk.initialize.mockReset();
 }
 
 export function clearMockedAuthOnAbort(signal: AbortSignal): void {
@@ -722,15 +724,31 @@ export function clearMockedAuthOnAbort(signal: AbortSignal): void {
 }
 
 const clerkListeners: MockedClerkListener[] = [];
+// Status subscriptions the SDK is still holding. A route that subscribes must
+// release its handler through `off`, so tests can observe the leak directly.
+const clerkStatusListeners = new Set<unknown>();
 const defaultClerkStatusOn: BrowserClerk["on"] = (
   event,
   handler,
   options,
 ): void => {
-  if (event === "status" && options?.notify) {
+  if (event !== "status") {
+    return;
+  }
+  clerkStatusListeners.add(handler);
+  if (options?.notify) {
     handler(internalMockedClerkLoaded ? "ready" : "loading");
   }
 };
+const defaultClerkStatusOff: BrowserClerk["off"] = (event, handler): void => {
+  if (event === "status" && handler) {
+    clerkStatusListeners.delete(handler);
+  }
+};
+
+export function mockedClerkStatusListenerCount(): number {
+  return clerkStatusListeners.size;
+}
 
 export function emitMockedClerkEvent(): void {
   const resources = { session: mockedClerk.session };
@@ -1028,9 +1046,12 @@ const defaultBuildUserProfileUrlImpl = () => {
 
 export interface MockedClerkLoadOptions {
   afterSignOutUrl?: string;
+  routerPush?: NonNullable<ClerkOptions["routerPush"]>;
+  routerReplace?: NonNullable<ClerkOptions["routerReplace"]>;
   signInUrl?: string;
   signUpUrl?: string;
   touchSession?: boolean;
+  ui?: unknown;
 }
 
 interface MockedSignInRedirectOptions {
@@ -1163,11 +1184,6 @@ async function defaultSetActiveImpl(
   }
 }
 
-const initialize =
-  vi.fn<
-    (publishableKey: string, options?: { readonly domain?: string }) => void
-  >();
-
 type MockedCreateOrganization = (
   params: CreateOrganizationParams,
 ) => Promise<{ readonly id: string }>;
@@ -1178,7 +1194,6 @@ export const mockedClerk = {
   userCreateBackupCode,
   userVerifyTOTP,
   userCreatePhoneNumber,
-  initialize,
   get loaded() {
     return internalMockedClerkLoaded;
   },
@@ -1321,6 +1336,7 @@ export const mockedClerk = {
   }),
   load: mockedClerkLoad,
   on: defaultClerkStatusOn,
+  off: defaultClerkStatusOff,
   addListener: (
     cb: MockedClerkListener,
     _options?: MockedClerkListenerOptions,

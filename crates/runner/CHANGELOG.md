@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.189.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.5...runner-rs-v0.189.6) (2026-09-09)
+
+
+### Bug Fixes
+
+* **python:** prevent sigv4 body retention on worker-start failure ([#33021](https://github.com/vm0-ai/vm0/issues/33021)) ([04084b9](https://github.com/vm0-ai/vm0/commit/04084b97b6fbaecadfa6733a022a4c567b169714))
+
+
+### Documentation
+
+* **python:** clarify process-event size and error contract ([#33007](https://github.com/vm0-ai/vm0/issues/33007)) ([27c93a8](https://github.com/vm0-ai/vm0/commit/27c93a80a09d09f12aba7c94379f9667ff1c5433))
+* **runner:** clarify idle pool admission and cleanup ([#33005](https://github.com/vm0-ai/vm0/issues/33005)) ([cc25e83](https://github.com/vm0-ai/vm0/commit/cc25e83cccfe32da6fa50a89a18cc81a1d34b0d2))
+
 ## [0.189.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.4...runner-rs-v0.189.5) (2026-09-09)
 
 

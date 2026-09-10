@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -162,7 +162,10 @@ test.each([
   },
 );
 
-test("Cancel a short hold and clear hints on release", async () => {
+test("Cancel a short hold and clear hints on release or window blur", async () => {
+  context.mocks.browser.userAgent(
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+  );
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -183,16 +186,24 @@ test("Cancel a short hold and clear hints on release", async () => {
     expect(sidebarThreadTitles()).toStrictEqual(["Hold lifecycle"]);
   });
   const list = screen.getByTestId("chat-list-column");
-  const user = userEvent.setup();
-  await user.keyboard("{Control>}{/Control}");
+  fireEvent.keyDown(document, { key: "Meta", code: "MetaLeft", metaKey: true });
+  fireEvent.keyUp(document, { key: "Meta", code: "MetaLeft" });
   expect(hintKeys(list)).toStrictEqual([]);
   const pressedAt = now();
-  await user.keyboard("{Control>}");
+  fireEvent.keyDown(document, { key: "Meta", code: "MetaLeft", metaKey: true });
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
+    expect(hintKeys(list)).toStrictEqual(["⌘1"]);
   });
   expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
-  await user.keyboard("{/Control}");
+  fireEvent.blur(window);
+  await waitFor(() => {
+    expect(hintKeys(list)).toStrictEqual([]);
+  });
+  fireEvent.keyDown(document, { key: "Meta", code: "MetaLeft", metaKey: true });
+  await waitFor(() => {
+    expect(hintKeys(list)).toStrictEqual(["⌘1"]);
+  });
+  fireEvent.keyUp(document, { key: "Meta", code: "MetaLeft" });
   await waitFor(() => {
     expect(hintKeys(list)).toStrictEqual([]);
   });

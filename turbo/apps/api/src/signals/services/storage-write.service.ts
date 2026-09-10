@@ -3,7 +3,7 @@ import {
   MEMORY_ARTIFACT_NAME,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
@@ -652,8 +652,8 @@ function createStorageUploadResponse(
           args.bucket,
           archiveKey,
           "application/gzip",
-          3600,
-          true,
+          { expiresIn: 3600, usePublicEndpoint: true },
+          signal,
         ),
       ),
       get(
@@ -661,8 +661,8 @@ function createStorageUploadResponse(
           args.bucket,
           manifestKey,
           "application/json",
-          3600,
-          true,
+          { expiresIn: 3600, usePublicEndpoint: true },
+          signal,
         ),
       ),
     ]);

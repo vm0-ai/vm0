@@ -1538,7 +1538,7 @@ export const runnersJobClaimContract = c.router({
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
       runnerHostname: runnerHostnameSchema.optional(),
-      capabilities: runnerClaimCapabilitiesSchema.optional(),
+      capabilities: runnerClaimCapabilitiesSchema,
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {

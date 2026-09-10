@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.4.13](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.12...host-worker-v1.4.13) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.2
+
+## [1.4.12](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.11...host-worker-v1.4.12) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.1
+
+## [1.4.11](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.10...host-worker-v1.4.11) (2026-09-09)
+
+
+### Bug Fixes
+
+* remove obsolete brand tombstones ([#33049](https://github.com/vm0-ai/vm0/issues/33049)) ([0b757ba](https://github.com/vm0-ai/vm0/commit/0b757ba3de7fc497cbc8c9a02ad461a30314dc01))
+
+## [1.4.10](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.9...host-worker-v1.4.10) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.0
+
+## [1.4.9](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.8...host-worker-v1.4.9) (2026-09-09)
+
+
+### Bug Fixes
+
+* **host-worker:** stop restoring the retired file route ([#33017](https://github.com/vm0-ai/vm0/issues/33017)) ([f2b4eca](https://github.com/vm0-ai/vm0/commit/f2b4ecad8d37efd4c016071c2b524af48795f21a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.423.0
+
+## [1.4.8](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.7...host-worker-v1.4.8) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.2
+
 ## [1.4.7](https://github.com/vm0-ai/vm0/compare/host-worker-v1.4.6...host-worker-v1.4.7) (2026-09-09)
 
 

@@ -1,5 +1,67 @@
 # Changelog
 
+## [8.648.3](https://github.com/vm0-ai/vm0/compare/core-v8.648.2...core-v8.648.3) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.2
+
+## [8.648.2](https://github.com/vm0-ai/vm0/compare/core-v8.648.1...core-v8.648.2) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.1
+
+## [8.648.1](https://github.com/vm0-ai/vm0/compare/core-v8.648.0...core-v8.648.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* remove obsolete brand tombstones ([#33049](https://github.com/vm0-ai/vm0/issues/33049)) ([0b757ba](https://github.com/vm0-ai/vm0/commit/0b757ba3de7fc497cbc8c9a02ad461a30314dc01))
+
+## [8.648.0](https://github.com/vm0-ai/vm0/compare/core-v8.647.0...core-v8.648.0) (2026-09-09)
+
+
+### Features
+
+* **chat:** poll thinking summaries from thread subscriptions ([#33040](https://github.com/vm0-ai/vm0/issues/33040)) ([53d3529](https://github.com/vm0-ai/vm0/commit/53d3529abdb3adf52a464018fb1127f9149c391c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.0
+
+## [8.647.0](https://github.com/vm0-ai/vm0/compare/core-v8.646.1...core-v8.647.0) (2026-09-09)
+
+
+### Features
+
+* enable intro video for the team ([#32984](https://github.com/vm0-ai/vm0/issues/32984)) ([a6ddc2c](https://github.com/vm0-ai/vm0/commit/a6ddc2c48d050ab204d37dcb7515f2ee8722a4bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.423.0
+
+## [8.646.1](https://github.com/vm0-ai/vm0/compare/core-v8.646.0...core-v8.646.1) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.422.2
+
 ## [8.646.0](https://github.com/vm0-ai/vm0/compare/core-v8.645.0...core-v8.646.0) (2026-09-09)
 
 

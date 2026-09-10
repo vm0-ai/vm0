@@ -14,24 +14,29 @@ function mockOnboardingNeeded(): void {
   });
 }
 
-test("A new user keeps prompt and connector context through onboarding", async () => {
-  mockOnboardingNeeded();
+test.each(["/", "/connectors/ssh"])(
+  "A new user keeps prompt and connector context through onboarding from %s",
+  async (entry) => {
+    mockOnboardingNeeded();
 
-  await setupPage({
-    context,
-    path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
-  });
+    await setupPage({
+      context,
+      path: `${entry}?prompt=hello%20world&connector=github&vm0_source=presentation`,
+    });
 
-  await expect(
-    screen.findByRole("heading", { name: "Try this prompt" }),
-  ).resolves.toBeInTheDocument();
-  expect(pathname()).toBe("/onboarding");
-  const onboardingContext = new URLSearchParams(search());
-  expect(onboardingContext.get("prompt")).toBe("hello world");
-  expect(onboardingContext.get("connector")).toBe("github");
-  expect(onboardingContext.get("vm0_source")).toBe("presentation");
-  expect(screen.getByLabelText("Onboarding prompt")).toHaveValue("hello world");
-});
+    await expect(
+      screen.findByRole("heading", { name: "Try this prompt" }),
+    ).resolves.toBeInTheDocument();
+    expect(pathname()).toBe("/onboarding");
+    const onboardingContext = new URLSearchParams(search());
+    expect(onboardingContext.get("prompt")).toBe("hello world");
+    expect(onboardingContext.get("connector")).toBe("github");
+    expect(onboardingContext.get("vm0_source")).toBe("presentation");
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      "hello world",
+    );
+  },
+);
 
 test("An unknown nested onboarding path shows not found", async () => {
   await setupPage({

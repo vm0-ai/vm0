@@ -40,10 +40,11 @@ const sharedDatabaseErrorSchema = z
 type SerializedSharedDatabaseError = z.infer<typeof sharedDatabaseErrorSchema>;
 
 const registerTabMessageSchema = z
-  .object({
-    type: z.literal("register-tab"),
-    lockName: z.string().startsWith("okou:shared-database:"),
-  })
+  .object({ type: z.literal("register-tab") })
+  .strict();
+
+const heartbeatMessageSchema = z
+  .object({ type: z.literal("heartbeat") })
   .strict();
 
 const queryRequestSchema = z
@@ -94,6 +95,7 @@ const userRealtimeTopicSchema = z.union([
   z.literal("billing:changed"),
   z.literal("browserSessionChanged"),
   z.literal("connector:changed"),
+  z.literal("ssh:changed"),
   z.literal("connectorPermissionUpdated"),
   z.literal("customConnectorListChanged"),
   z.literal("feishu:changed"),
@@ -144,6 +146,7 @@ const realtimeUnsubscribeRequestSchema = z
 
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   registerTabMessageSchema,
+  heartbeatMessageSchema,
   queryRequestSchema,
   getComputedRequestSchema,
   tokenResultMessageSchema,

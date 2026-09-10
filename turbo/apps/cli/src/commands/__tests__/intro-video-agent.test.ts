@@ -36,6 +36,18 @@ const COMPLETED_RESULT: IntroVideoAgentResponse = {
   orientation: "landscape",
 };
 
+const PENDING_OUTPUT = {
+  ...PENDING_RESULT,
+  resumeCommand: `okou __intro-video-agent status ${REQUEST_ID} --json`,
+  continuationContext: expect.stringContaining("do not submit another video"),
+};
+const COMPLETED_OUTPUT = {
+  ...COMPLETED_RESULT,
+  inlineMarkdownLink: `[intro.mp4](<${COMPLETED_RESULT.url}>)`,
+  previewMarkdownBlock: `![intro.mp4](<${COMPLETED_RESULT.url}>)`,
+  artifactPresentationContext: expect.stringContaining("outside code fences"),
+};
+
 function submitArgs(...extra: string[]): string[] {
   return [
     "node",
@@ -142,9 +154,10 @@ describe("internal Intro Video Agent command", () => {
       );
 
       expect(submissions).toBe(1);
-      expect(mockConsoleLog.mock.calls).toEqual([
-        [JSON.stringify(PENDING_RESULT)],
-      ]);
+      expect(mockConsoleLog.mock.calls).toHaveLength(1);
+      expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual(
+        PENDING_OUTPUT,
+      );
     },
   );
 
@@ -192,7 +205,7 @@ describe("internal Intro Video Agent command", () => {
       mockConsoleLog.mock.calls.map(([output]) => {
         return JSON.parse(String(output));
       }),
-    ).toEqual([PENDING_RESULT, COMPLETED_RESULT]);
+    ).toEqual([PENDING_OUTPUT, COMPLETED_OUTPUT]);
   });
 
   it.each([
@@ -228,10 +241,53 @@ describe("internal Intro Video Agent command", () => {
       expect(statusRequests).toBe(1);
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
       expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual(
-        result,
+        result.status === "completed"
+          ? COMPLETED_OUTPUT
+          : { ...PENDING_OUTPUT, ...result },
       );
     },
   );
+
+  it("prints the completed video preview forms from a status query", async () => {
+    server.use(
+      http.get(STATUS_URL, () => {
+        return HttpResponse.json(COMPLETED_RESULT);
+      }),
+    );
+    await introVideoAgentCommand.parseAsync([
+      "node",
+      "okou",
+      "status",
+      REQUEST_ID,
+    ]);
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(`[intro.mp4](<${COMPLETED_RESULT.url}>)`);
+    expect(stdout).toContain(`\n\n![intro.mp4](<${COMPLETED_RESULT.url}>)\n\n`);
+    expect(stdout).toContain("outside a code fence");
+  });
+
+  it("keeps a failed job's error available without claiming a preview", async () => {
+    const failed = {
+      ...PENDING_RESULT,
+      status: "failed",
+      error: { code: "PROVIDER_ERROR", message: "Generation failed" },
+    };
+    server.use(
+      http.get(STATUS_URL, () => {
+        return HttpResponse.json(failed);
+      }),
+    );
+    await introVideoAgentCommand.parseAsync([
+      "node",
+      "okou",
+      "status",
+      REQUEST_ID,
+      "--json",
+    ]);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual(
+      failed,
+    );
+  });
 
   it.each([false, true])(
     "prints a new recovery ID before submitting (JSON: %s)",

@@ -483,15 +483,11 @@ export function TiptapWorkflowComposer({
   onPaste,
 }: TiptapWorkflowComposerProps) {
   const composer = signals;
-  const singleLineOnMobile = composer.editor.singleLineOnMobile;
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
     onKeyDown,
   });
   const insertPromptMarkdown = useSet(composer.editor.insertPromptMarkdown$);
-  const hasTemplateAttachment = useGet(
-    composer.template.hasTemplateAttachment$,
-  );
   const setContainerRef = useSet(composer.editor.setContainerRef$);
 
   function handlePaste(
@@ -532,20 +528,12 @@ export function TiptapWorkflowComposer({
         }
       }}
     >
-      <div className="relative">
+      <div className="relative min-h-full">
         <WorkflowComposerPlaceholder composer={composer} sending={sending} />
         <div
-          // The template chip is 32px tall with 6px bottom spacing. Reserve
-          // those 38px above the input instead of letting the chip consume it.
-          className={
-            hasTemplateAttachment
-              ? singleLineOnMobile
-                ? "min-h-[106px] md:min-h-[134px] [&_.ProseMirror]:min-h-[106px] md:[&_.ProseMirror]:min-h-[134px]"
-                : "min-h-[134px] [&_.ProseMirror]:min-h-[134px]"
-              : singleLineOnMobile
-                ? "min-h-[68px] md:min-h-[96px]"
-                : "min-h-[96px]"
-          }
+          // The composer card owns responsive height allocation so its footer
+          // can change modes without changing the surrounding card height.
+          className="min-h-full [&_.ProseMirror]:min-h-full"
           ref={setContainerRef}
           onInput={(event) => {
             // The mount command targets the container for semantic document

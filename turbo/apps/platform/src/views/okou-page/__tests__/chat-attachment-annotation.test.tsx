@@ -86,6 +86,35 @@ test("A selected annotation mark can be resized directly", async () => {
   expect(screen.getByTestId("annotation-handle-br")).toBeVisible();
 });
 
+test("Pressing outside the editor keeps the session and every mark drawn in it", async () => {
+  // The editor used to be an inert overlay, so there was no dismissal to lose.
+  // It now rides on a dialog that closes on an outside press by default, and
+  // closing discards the whole session: marks live nowhere but here until
+  // "Attach marks", and there is no undo across that boundary.
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  const image = draftAttachment("stray-press.png");
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("stray-press.png");
+  drawBox(surface);
+  await screen.findByTestId("annotation-mark-1");
+
+  const backdrop = document.querySelector('[data-slot="dialog-overlay"]');
+  if (!backdrop) {
+    throw new Error("Expected the annotation editor's dialog backdrop");
+  }
+  await user.click(backdrop);
+
+  expect(screen.getByTestId("image-annotation-editor")).toBeVisible();
+  expect(screen.getByTestId("annotation-mark-1")).toBeVisible();
+});
+
 test("A user can click an annotation note, edit it, and close only the note", async () => {
   const user = userEvent.setup();
   const image = draftAttachment("annotated-plan.png", {

@@ -1,4 +1,4 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -6,6 +6,8 @@ import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import { publishSshInvalidationToRunnerGroup } from "../external/realtime";
 import { settle } from "../utils";
+
+import { publishSshClientInvalidation } from "./ssh-client-invalidation.service";
 
 const L = logger("SshRuntimeWakeup");
 
@@ -21,6 +23,7 @@ export async function publishSshRuntimeInvalidation(
   db: ReadonlyDb,
   scope: SshInvalidationScope,
 ): Promise<void> {
+  await publishSshClientInvalidation(scope);
   const discovery = await settle(
     db
       .select({ runId: agentRuns.id, runnerGroup: agentRuns.runnerGroup })

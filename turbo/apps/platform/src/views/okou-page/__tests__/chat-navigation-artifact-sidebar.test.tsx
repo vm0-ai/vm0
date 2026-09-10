@@ -314,7 +314,11 @@ test("Use a public URL for a private Office attachment preview", async () => {
   const publicUrl = `https://cdn.vm7.io/artifacts/tests/office/${filename}`;
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     expect(query.file_id).toBe(fileId);
-    return respond(200, { url: privateUrl, publicUrl });
+    return respond(200, {
+      url: privateUrl,
+      publicUrl,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
   });
   mockArtifactConversation(context, {
     catalog: [],
@@ -334,22 +338,34 @@ test("Use a public URL for a private Office attachment preview", async () => {
   expect(frame.getAttribute("src")).not.toContain(privateUrl);
 });
 
-test("Keep a private document and an existing public attachment accessible together", async () => {
+test("Preserve private and public attachments on tab return", async () => {
   const fileId = "f0000000-0000-4000-a000-000000000936";
   const filename = "private-plan.docx";
   const contentType =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const resourceUrl = `https://storage.example.test/${filename}?signature=first`;
+  const firstUrl = `https://storage.example.test/${filename}?signature=first`;
+  const refreshedUrl = `https://storage.example.test/${filename}?signature=refreshed`;
   const publicFileId = "f0000000-0000-4000-a000-000000000937";
   const publicFilename = "existing-image.png";
   const publicUrl = `https://cdn.vm7.io/artifacts/tests/${publicFilename}`;
-  const publicResourceUrl = `https://storage.example.test/${publicFilename}?signature=first`;
+  const firstPublicResourceUrl = `https://storage.example.test/${publicFilename}?signature=first`;
+  let publicResourceUrl = firstPublicResourceUrl;
+  let resourceUrl = firstUrl;
+  const visibility = context.mocks.browser.visibilityState("visible");
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     if (query.file_id === publicFileId) {
-      return respond(200, { url: publicResourceUrl, publicUrl });
+      return respond(200, {
+        url: publicResourceUrl,
+        publicUrl,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      });
     }
     expect(query.file_id).toBe(fileId);
-    return respond(200, { url: resourceUrl, publicUrl: null });
+    return respond(200, {
+      url: resourceUrl,
+      publicUrl: null,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
   });
   mockArtifactConversation(context, {
     catalog: [],
@@ -371,16 +387,29 @@ test("Keep a private document and an existing public attachment accessible toget
     host: "app.okou.ai",
   });
   const publicImage = await screen.findByAltText(publicFilename);
-  expect(publicImage).toHaveAttribute("src", publicResourceUrl);
+  expect(publicImage).toHaveAttribute("src", firstPublicResourceUrl);
   click(await screen.findByLabelText(`Preview ${filename}`));
   const dialog = await screen.findByTestId("attachment-lightbox");
   const frame = await within(dialog).findByTitle(`${filename} preview`);
-  expectOfficeViewerUrl(frame, resourceUrl);
+  expectOfficeViewerUrl(frame, firstUrl);
   expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
 
+  act(() => {
+    visibility.changeTo("hidden");
+  });
+  resourceUrl = refreshedUrl;
+  publicResourceUrl = `https://storage.example.test/${publicFilename}?signature=refreshed`;
+  await act(() => {
+    visibility.changeTo("visible");
+  });
+  await waitFor(() => {
+    const refreshedFrame = within(dialog).getByTitle(`${filename} preview`);
+    expect(refreshedFrame).toBeVisible();
+    expectOfficeViewerUrl(refreshedFrame, firstUrl);
+  });
   expect(screen.getByAltText(publicFilename)).toHaveAttribute(
     "src",
-    publicResourceUrl,
+    firstPublicResourceUrl,
   );
 });
 

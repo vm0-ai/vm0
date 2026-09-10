@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import { SharedDatabaseHttpError } from "../../shared-database/http-error.ts";
+import { SharedDatabaseWorkerLoadError } from "../../shared-database/worker-load-error.ts";
 import {
   deserializeSharedDatabaseError,
   serializeSharedDatabaseError,
@@ -42,6 +43,8 @@ test.each(["page", "shared-worker"] as const)(
   async (runtime) => {
     const beforeSend = startSentry(runtime);
     const expected = [
+      new SharedDatabaseWorkerLoadError(undefined),
+      new SharedDatabaseWorkerLoadError(new Error("Worker script failed")),
       new Error("Connection to server unavailable"),
       new Error("Channel attach timed out"),
       new DOMException("Permission denied by system", "NotAllowedError"),
@@ -88,6 +91,10 @@ test.each(["page", "shared-worker"] as const)(
   async (runtime) => {
     const beforeSend = startSentry(runtime);
     for (const exception of [
+      {
+        type: "SharedDatabaseWorkerLoadError",
+        value: "Shared database worker failed to load",
+      },
       { type: "Error", value: "Connection to server unavailable" },
       { type: "Error", value: "Channel attach timed out" },
       { type: "NotAllowedError", value: SAFARI_PERMISSION_MESSAGE },
@@ -114,6 +121,10 @@ test.each(["page", "shared-worker"] as const)(
   async (runtime) => {
     const beforeSend = startSentry(runtime);
     for (const error of [
+      new Error("Shared database worker failed to load"),
+      new Error(
+        "ChatThreadEvent cursor expired immediately after a server snapshot",
+      ),
       new Error("Voice draft recording failed", {
         cause: new Error("Storage write failed"),
       }),
@@ -170,3 +181,90 @@ test.each(["page", "shared-worker"] as const)(
     ).resolves.toBeNull();
   },
 );
+
+// WebKit's own <video> controls script escapes to window.onerror with no
+// application frame, so thirdPartyErrorFilterIntegration tags it before
+// delivery. Only that exact combination may be discarded.
+function userAgentEvent(
+  value: string,
+  overrides: {
+    readonly handled?: boolean;
+    readonly mechanismType?: string;
+    readonly thirdPartyCode?: boolean;
+  } = {},
+): ErrorEvent {
+  return {
+    type: undefined,
+    exception: {
+      values: [
+        {
+          type: "Error",
+          value,
+          mechanism: {
+            handled: overrides.handled ?? false,
+            type:
+              overrides.mechanismType ?? "auto.browser.global_handlers.onerror",
+          },
+        },
+      ],
+    },
+    tags: (overrides.thirdPartyCode ?? true) ? { third_party_code: true } : {},
+  };
+}
+
+const WEBKIT_FULLSCREEN_MESSAGE =
+  "InvalidStateError: The object is in an invalid state.";
+const WEBKIT_MEDIA_RANGES_MESSAGE = "Can't find variable: EmptyRanges";
+
+test("discards tagged webkit media-controls captures on the page", async () => {
+  const beforeSend = startSentry("page");
+  for (const message of [
+    WEBKIT_FULLSCREEN_MESSAGE,
+    "The object is in an invalid state.",
+    WEBKIT_MEDIA_RANGES_MESSAGE,
+    `ReferenceError: ${WEBKIT_MEDIA_RANGES_MESSAGE}`,
+  ]) {
+    await expect(
+      Promise.resolve(beforeSend(userAgentEvent(message), {})),
+    ).resolves.toBeNull();
+  }
+});
+
+test("reports the same messages when they carry an application frame", async () => {
+  const beforeSend = startSentry("page");
+  for (const message of [
+    WEBKIT_FULLSCREEN_MESSAGE,
+    WEBKIT_MEDIA_RANGES_MESSAGE,
+  ]) {
+    const event = userAgentEvent(message, { thirdPartyCode: false });
+    await expect(Promise.resolve(beforeSend(event, {}))).resolves.toBe(event);
+  }
+});
+
+test("reports webkit media-controls messages our own code captures", async () => {
+  const beforeSend = startSentry("page");
+  const handled = userAgentEvent(WEBKIT_FULLSCREEN_MESSAGE, {
+    handled: true,
+    mechanismType: "generic",
+  });
+  await expect(Promise.resolve(beforeSend(handled, {}))).resolves.toBe(handled);
+});
+
+test("reports neighbouring third-party and storage failures", async () => {
+  const beforeSend = startSentry("page");
+  for (const message of [
+    // The recovered IndexedDB failure shares the InvalidStateError name.
+    "InvalidStateError: Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing.",
+    // An unrelated third-party capture must not be suppressed as a class.
+    "Can't find variable: somethingElse",
+  ]) {
+    const event = userAgentEvent(message);
+    await expect(Promise.resolve(beforeSend(event, {}))).resolves.toBe(event);
+  }
+});
+
+test("reports tagged media-controls captures in the shared worker", async () => {
+  const beforeSend = startSentry("shared-worker");
+  const event = userAgentEvent(WEBKIT_FULLSCREEN_MESSAGE);
+  await expect(Promise.resolve(beforeSend(event, {}))).resolves.toBe(event);
+});

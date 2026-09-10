@@ -10,6 +10,7 @@ import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/con
 import { Button, surfaceVariants, cn } from "@okouai/ui";
 import { connectorCurrentConnectionStatus } from "../../../../signals/okou-page/settings/connectors.ts";
 import { ConnectorPermissionRow } from "./connector-permission-row.tsx";
+import { ConnectorEntryCard } from "./connector-entry-card.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   launchConnectorConnect,
@@ -555,79 +556,56 @@ function AccountsConnectorCard({
     }
   };
   return (
-    <div
-      data-slot="connector-card"
-      className={cn(
-        surfaceVariants({ interactive: canActivate }),
-        "relative flex flex-col text-left",
-        showDescription && "overflow-hidden",
-      )}
-    >
-      {canManage || canConnect ? (
-        <button
-          type="button"
-          aria-label={
-            canManage
-              ? t(
-                  ($) => {
-                    return $.connectors.accounts.managerTitle;
-                  },
-                  { connector: connector.label },
-                )
-              : t(
-                  ($) => {
-                    return $.connectors.card.connectAria;
-                  },
-                  { connector: connector.label },
-                )
-          }
-          className={cn(
-            "absolute inset-0 z-10 rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            blocked ? "cursor-default" : "cursor-pointer",
-          )}
-          disabled={blocked}
-          onClick={activate}
-        />
-      ) : null}
-      <div
-        className={cn(
-          "flex items-center gap-2.5 px-5",
-          showDescription ? "pb-1 pt-4" : "h-14",
-        )}
-      >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon icon={connector.icon} size={20} />
-        </span>
-        <span
-          data-testid="connector-card-label"
-          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
-        >
-          {connector.label}
-        </span>
-        {busy || (accountCount === 0 && summaryStatus === "ready") ? (
-          <AccountConnectionIndicator busy={busy} />
-        ) : null}
-      </div>
-      {showDescription ? (
-        <div className="px-5 pb-4 pt-1">
-          <div
-            data-testid="connector-help-text"
-            className="line-clamp-2 text-xs text-muted-foreground"
-          >
-            {connector.description}
-          </div>
-        </div>
-      ) : (
-        <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
-          <ConnectorAccountSummaryText
-            summary={summary}
-            status={summaryStatus}
-            className="min-w-0 flex-1 text-xs text-muted-foreground"
+    <ConnectorEntryCard
+      icon={<ConnectorIcon icon={connector.icon} size={20} />}
+      label={connector.label}
+      description={connector.description}
+      showDescription={showDescription}
+      interactive={canActivate}
+      action={
+        canManage || canConnect ? (
+          <button
+            type="button"
+            aria-label={
+              canManage
+                ? t(
+                    ($) => {
+                      return $.connectors.accounts.managerTitle;
+                    },
+                    { connector: connector.label },
+                  )
+                : t(
+                    ($) => {
+                      return $.connectors.card.connectAria;
+                    },
+                    { connector: connector.label },
+                  )
+            }
+            className={cn(
+              "absolute inset-0 z-10 rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              blocked ? "cursor-default" : "cursor-pointer",
+            )}
+            disabled={blocked}
+            onClick={activate}
           />
-          <div className="relative z-20 min-w-0 max-w-full">{manageAccess}</div>
-        </div>
-      )}
-    </div>
+        ) : null
+      }
+      indicator={
+        busy || (accountCount === 0 && summaryStatus === "ready") ? (
+          <AccountConnectionIndicator busy={busy} />
+        ) : null
+      }
+      status={
+        <ConnectorAccountSummaryText
+          summary={summary}
+          status={summaryStatus}
+          className="min-w-0 flex-1 text-xs text-muted-foreground"
+        />
+      }
+      trailingAction={
+        <div className="relative z-20 min-w-0 max-w-full">{manageAccess}</div>
+      }
+    />
   );
 }
 

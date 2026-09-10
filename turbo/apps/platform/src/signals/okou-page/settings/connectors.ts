@@ -6,10 +6,7 @@ import { withConnectorConnectionProgress } from "../../connector-connection-prog
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import type { ConnectorDeviceAuthStartOptions } from "@okouai/connectors/connector-config";
-import {
-  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
-  isConnectorAppOauthCallbackEnabled,
-} from "@okouai/connectors/app-oauth-callback";
+import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
@@ -55,7 +52,6 @@ import {
   withCleanup,
 } from "../../utils.ts";
 import { setAblyPayloadLoop$ } from "../../realtime.ts";
-import { localStorageSignals } from "../../external/local-storage.ts";
 import { agents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
@@ -75,9 +71,6 @@ import {
 } from "./connector-accounts.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../../bootstrap/google-ads-conversion-milestones.ts";
 
-const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
-  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
-);
 type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
@@ -501,8 +494,10 @@ export const setConnectorsCategoryFilter$ = command(
   },
 );
 
-export const connectorCatalogDiscovery$ =
-  relatedConnectorCatalog(connectorsSearch$);
+export const connectorCatalogDiscovery$ = relatedConnectorCatalog(
+  connectorsSearch$,
+  connectorsCategoryFilter$,
+);
 
 export const relatedCatalogItems$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogDiscovery$);
@@ -2196,7 +2191,7 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
 
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
-    { get, set },
+    { get },
     args: {
       readonly connectorSlug: ConnectorSlug;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
@@ -2215,16 +2210,6 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     readonly options: PostConnectOptions;
   }> => {
     const standalone = isStandaloneMode();
-    if (isConnectorAppOauthCallbackEnabled(args.connectorSlug)) {
-      set(
-        setConnectorAppOauthCallbackMetadata$,
-        JSON.stringify({
-          connectorSlug: args.connectorSlug,
-          icon: args.connectorIcon,
-        }),
-      );
-    }
-
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
     // URL in the external browser instead of blocking it as a popup.
     const popupFeatures = standalone ? undefined : "width=600,height=700";

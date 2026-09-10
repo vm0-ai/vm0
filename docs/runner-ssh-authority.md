@@ -15,16 +15,20 @@ credentials or command. The shared fleet secret authenticates the fleet, not an
 individual machine: the process identity is checked against the Run's immutable
 winning claim. Protecting the fleet secret remains a trust assumption.
 
-Each call joins the current running Run, session, Agent owner,
-Agent SSH grant, exact owner connection and its credential. Ownership and org
-must agree. The hard staff-org gate and current `SshAccess` override both apply.
+Each call joins the current running Run, session, currently visible Agent,
+the Run user's SSH grant, exact user-owned connection and its credential.
+Run, session, grant and host user/workspace identities must agree. The Agent
+must belong to that workspace and be public or owned by the Run user; its
+creator need not own the host. Shared Agents never use their creator's hosts
+on another user's Run. The current `SshAccess` (`sshAccess`) feature switch must be enabled;
+there is no additional staff-org gate.
 SSH access depends on the user's current configuration and the Agent's current
 grant, not how the Run started. All chat channels, workflow schedule/event
 automations, goals, delegated Agents, webhooks, SDK/non-chat and test Runs use
 the same authority path. A chat thread or trigger metadata is not required;
 workflow automation and goal associations do not restrict access. The session
 identifies the Agent without using chat-thread state as an authorization gate.
-The existing staff/feature rollout and official-Runner credential boundary are
+The default-off feature rollout and official-Runner credential boundary are
 unchanged; this does not activate SSH or expose credentials to local Runners.
 
 `POST /api/runners/runs/:runId/ssh/resolve` takes:
@@ -68,9 +72,11 @@ explicit host-key reset, the API sends identifier-only `ssh-authority-invalidate
 messages on `runner-group:<group>` for affected running owner Runs. Payloads are
 `{runId, connectionId}`; null `connectionId` means the whole Run. Recipient discovery
 must not require a grant or connection row that the mutation may have deleted.
-The Run-wide hook accepts an Agent scope; future Agent-access/ownership writers
-must invoke it before SSH activation. Current production access/inventory APIs
-remain a later delivery stage.
+The Run-wide hook accepts an Agent scope. Explicit per-user Agent grant changes
+use that scope; automatic visible-Agent authorization when creating the first
+host invalidates the current user's active Runs. Discovery does not depend on
+a surviving grant. Current Agent visibility is rechecked on live inventory and
+actual resolve/pin calls; the accepted cache lifetime below remains unchanged.
 
 Notices are sent after commit and before the request observes cancellation. A
 failed publish is logged, not reported as failure of the already-committed edit.

@@ -170,7 +170,8 @@ fn forced_storage_cleanup_retains_diagnostics_with_missing_kernel_files() {
         let mut process_guard = ProcessGroupFileGuard::new(pid_path.as_str());
         let (directory, program) = create_program(&slow_program(Path::new(pid_path.as_str())));
         fs::write(directory.path().join("cpu.max"), "max 100000\n").unwrap();
-        let (handle, mut host) = start_with_resources(program, directory.path());
+        let (handle, mut host, timeout_gate) =
+            start_with_timeout_gate(program, Some(directory.path().to_owned()));
         send_request(
             &mut host,
             504,
@@ -180,6 +181,10 @@ fn forced_storage_cleanup_retains_diagnostics_with_missing_kernel_files() {
             b"{}",
         );
         let pid = process_guard.read_pid();
+        assert_eq!(
+            timeout_gate.recv_timeout(Duration::from_secs(3)).unwrap(),
+            pid
+        );
         let resources = if disconnect {
             drop(host);
             join_guest_connection(handle);

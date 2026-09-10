@@ -21,7 +21,7 @@ import {
   holdRunActivityFixture,
 } from "../../../test-fixtures/run-activity";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise } from "../../utils";
+import { createDeferredPromise, settleIncludingAbort } from "../../utils";
 import { chatThreadActivitySummaryRoutes } from "../chat-threads-activity-summary";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -142,7 +142,7 @@ function provider(
         const body = completionBody.parse(await upstream.json());
         if (
           !body.messages[0]?.content.startsWith(
-            "Write one short, user-visible progress phrase",
+            "Write three short, distinct, user-visible progress messages",
           )
         ) {
           return HttpResponse.json({
@@ -277,7 +277,12 @@ describe("thread activity summary", () => {
     const first = await summarize(f.actor, f.run);
     expect(first).toMatchObject({
       status: "fresh",
-      phrase: "Preparing the launch checklist",
+      messages: [
+        {
+          id: "Preparing the launch checklist",
+          text: "Preparing the launch checklist",
+        },
+      ],
       sourceSequence: null,
     });
     expect(inputs[0]!.activity).toStrictEqual([]);
@@ -292,6 +297,27 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it("returns and caches the complete message batch", async () => {
+    const f = await fixture();
+    const messages = [
+      "Preparing the launch checklist",
+      "Reviewing the release evidence",
+      "Checking the remaining tasks",
+    ];
+    const inputs = provider(() => {
+      return messages.join("\n");
+    });
+    const first = await summarize(f.actor, f.run);
+    expect(first).toMatchObject({
+      status: "fresh",
+      messages: messages.map((text) => {
+        return { id: text, text };
+      }),
+    });
+    await expect(summarize(f.actor, f.run)).resolves.toStrictEqual(first);
+    expect(inputs).toHaveLength(1);
+  });
+
   it("ingests content-free activity records through the default production transport at operation granularity", async () => {
     const f = await fixture(true, "PRIVATE_PROMPT");
     const diagnostics = captureDiagnostics();
@@ -303,7 +329,7 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(0);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
       status: "fresh",
-      phrase: "PRIVATE PHRASE",
+      messages: [{ id: "PRIVATE PHRASE", text: "PRIVATE PHRASE" }],
     });
     await summarize(f.actor, f.run);
     await deliver(f, batch);
@@ -371,6 +397,57 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it("retains activity for tool output PostgreSQL cannot store verbatim", async () => {
+    const f = await fixture();
+    const inputs = provider();
+    const diagnostics = captureDiagnostics();
+    // A runtime can emit a NUL byte or a lone surrogate through a tool
+    // argument, and a long tool name can end mid surrogate pair. PostgreSQL
+    // rejects every one of those while parsing the jsonb value, which would
+    // otherwise drop the whole batch rather than the offending characters.
+    const astral = String.fromCodePoint(0x1_f6_00);
+    await deliver(f, [
+      {
+        type: "assistant",
+        sequenceNumber: 0,
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: `call-0${astral}`,
+              name: `${"n".repeat(99)}${astral}${"tail".repeat(20)}`,
+              input: {
+                command: `read${String.fromCharCode(0)}binary${String.fromCharCode(0xd8_3d)}`,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
+      status: "fresh",
+      messages: [
+        {
+          id: "Preparing the launch checklist",
+          text: "Preparing the launch checklist",
+        },
+      ],
+    });
+    expect(inputs).toHaveLength(1);
+    await expect(diagnostics()).resolves.toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity snapshot capture",
+        fields: {
+          context: "api:run-activity",
+          runId: f.run.runId,
+          outcome: "written",
+          eventCount: 1,
+        },
+      }),
+    );
+  });
+
   it("rejects queued and superseded run identities before cached or model output", async () => {
     const f = await fixture();
     const inputs = provider();
@@ -390,7 +467,7 @@ describe("thread activity summary", () => {
         runId: queued.body.runId,
         threadId: queued.body.threadId,
       }),
-    ).resolves.toMatchObject({ status: "ineligible", phrase: null });
+    ).resolves.toMatchObject({ status: "ineligible", messages: [] });
     expect(inputs).toHaveLength(1);
     await runs.requestCancelRun(f.actor, queued.body.runId, [200]);
     await runs.requestCancelRun(f.actor, f.run.runId, [200]);
@@ -415,7 +492,7 @@ describe("thread activity summary", () => {
     await flushWaitUntilForTest();
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
       status: "ineligible",
-      phrase: null,
+      messages: [],
     });
     await expect(
       summarize(f.actor, {
@@ -530,7 +607,7 @@ describe("thread activity summary", () => {
       entered.resolve(undefined);
       return await release.promise;
     });
-    const first = summarize(f.actor, f.run);
+    const first = settleIncludingAbort(summarize(f.actor, f.run));
     await entered.promise;
     const concurrent = await Promise.all([
       summarize(f.actor, f.run),
@@ -538,12 +615,21 @@ describe("thread activity summary", () => {
     ]);
     expect(
       concurrent.every((value) => {
-        return value.status === "pending" && value.phrase === null;
+        // Concurrent followers may hit the production lock budget and degrade
+        // to unavailable. Neither outcome may publish a phrase or claim again.
+        return (
+          (value.status === "pending" || value.status === "unavailable") &&
+          value.messages.length === 0
+        );
       }),
     ).toBeTruthy();
     await deliver(f, [tool(0, "new activity while the provider is working")]);
     release.resolve("Preparing the requested checklist");
-    const finished = await first;
+    const outcome = await first;
+    if (!outcome.ok) {
+      throw outcome.error;
+    }
+    const finished = outcome.value;
     expect(finished.summarySequence).toBeNull();
     expect(finished.sourceSequence).toBe(0);
     expect(finished.summaryRevision).not.toBe(finished.sourceRevision);
@@ -569,7 +655,9 @@ describe("thread activity summary", () => {
     const replacement = await summarize(f.actor, f.run);
     release.resolve("Obsolete preparation phrase");
     await expect(abandoned).resolves.toStrictEqual(replacement);
-    expect(replacement.phrase).toBe("Checking the current launch materials");
+    expect(replacement.messages[0]?.text).toBe(
+      "Checking the current launch materials",
+    );
   });
 
   it("invalidates a cached phrase for a visible steering message without a tool event", async () => {
@@ -639,12 +727,12 @@ describe("thread activity summary", () => {
       release.resolve("This phrase must not revive the run");
       await expect(pending).resolves.toMatchObject({
         status: "ineligible",
-        phrase: null,
+        messages: [],
       });
       if (action !== "delete") {
         await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
           status: "ineligible",
-          phrase: null,
+          messages: [],
         });
       } else {
         await accept(request(f.actor, f.run), [404]);
@@ -653,24 +741,26 @@ describe("thread activity summary", () => {
     },
   );
 
-  it.each(["", "line one\nline two", "**Markdown**"])(
-    "cools down malformed output %j without retrying",
-    async (output) => {
-      const f = await fixture();
-      const inputs = provider(() => {
-        return output;
-      });
-      const failed = await summarize(f.actor, f.run);
-      expect(failed).toMatchObject({
-        status: "cooldown",
-        phrase: null,
-        summaryRevision: null,
-      });
-      expect(failed.retryAfterMs).toBeGreaterThan(50_000);
-      await summarize(f.actor, f.run);
-      expect(inputs).toHaveLength(1);
-    },
-  );
+  it.each([
+    "",
+    "one\ntwo\nthree\nfour\nfive",
+    "**Markdown**",
+    "Valid message\n**Markdown**",
+  ])("cools down malformed output %j without retrying", async (output) => {
+    const f = await fixture();
+    const inputs = provider(() => {
+      return output;
+    });
+    const failed = await summarize(f.actor, f.run);
+    expect(failed).toMatchObject({
+      status: "cooldown",
+      messages: [],
+      summaryRevision: null,
+    });
+    expect(failed.retryAfterMs).toBeGreaterThan(50_000);
+    await summarize(f.actor, f.run);
+    expect(inputs).toHaveLength(1);
+  });
 
   it("accepts existing Codex commands and tool results while bounding graphemes", async () => {
     const f = await fixture();
@@ -725,7 +815,7 @@ describe("thread activity summary", () => {
       },
     ]);
     const summary = await summarize(f.actor, f.run);
-    expect(summary.phrase).toBe("👨‍👩‍👧‍👦".repeat(60));
+    expect(summary.messages[0]?.text).toBe("👨‍👩‍👧‍👦".repeat(60));
     expect(
       inputs[0]!.activity.map((entry) => {
         return entry.sequence;
@@ -776,7 +866,7 @@ describe("thread activity summary", () => {
   it("uses a shared cooldown when the model is unconfigured", async () => {
     const f = await fixture();
     const failed = await summarize(f.actor, f.run);
-    expect(failed).toMatchObject({ status: "cooldown", phrase: null });
+    expect(failed).toMatchObject({ status: "cooldown", messages: [] });
     const inputs = provider();
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(0);
@@ -790,7 +880,7 @@ describe("thread activity summary", () => {
     });
     const result = await summarize(f.actor, f.run);
     release.resolve("Too late");
-    expect(result).toMatchObject({ status: "cooldown", phrase: null });
+    expect(result).toMatchObject({ status: "cooldown", messages: [] });
     expect(result.retryAfterMs).toBeGreaterThan(50_000);
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
@@ -877,7 +967,7 @@ describe("thread activity summary", () => {
     await deliver(f, [tool(0)]);
     await advanceRunActivityClockFixture(f.run.runId, 16_000);
     const failed = await summarize(f.actor, f.run);
-    expect(failed.phrase).toBe(first.phrase);
+    expect(failed.messages).toStrictEqual(first.messages);
     expect(failed.summaryRevision).toBe(first.summaryRevision);
     expect(failed.retryAfterMs).toBeGreaterThan(110_000);
     expect(failed.retryAfterMs).toBeLessThanOrEqual(120_000);
@@ -917,7 +1007,7 @@ describe("thread activity summary", () => {
     expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
-  it("keeps normal publication working when snapshot writes fail and excludes expired evidence", async () => {
+  it("keeps normal publication working when a contended snapshot write is skipped and excludes expired evidence", async () => {
     const f = await fixture();
     const inputs = provider();
     await summarize(f.actor, f.run);
@@ -944,17 +1034,22 @@ describe("thread activity summary", () => {
     ]);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
       status: "unavailable",
-      phrase: null,
+      messages: [],
     });
-    await expect(diagnostics()).resolves.toStrictEqual([
+    const records = await diagnostics();
+    // A concurrent writer for the same run is expected delivery behavior, so the
+    // capture stays below warn while the adjacent real failure keeps its level.
+    expect(records).toStrictEqual([
       expect.objectContaining({
-        level: "warn",
+        level: "info",
         message: "Activity snapshot capture",
         fields: {
           context: "api:run-activity",
           runId: f.run.runId,
-          outcome: "write_failed",
+          outcome: "contended",
           eventCount: 1,
+          stage: "lock",
+          errorCode: "55P03",
         },
       }),
       expect.objectContaining({
@@ -967,6 +1062,13 @@ describe("thread activity summary", () => {
         },
       }),
     ]);
+    // The classification adds a SQLSTATE class code and nothing else: no driver
+    // message, no statement text and no bound evidence.
+    expect(JSON.stringify(records)).not.toContain("lock_timeout");
+    expect(JSON.stringify(records)).not.toContain("run_activity_snapshots");
+    expect(JSON.stringify(records)).not.toContain(
+      "Normal message survives the optional failure",
+    );
     held.release();
     await held.done;
     const page = await chat.listThreadEvents(f.actor, f.run.threadId);
@@ -975,7 +1077,7 @@ describe("thread activity summary", () => {
     await advanceRunActivityClockFixture(f.run.runId, 24 * 60 * 60 * 1000 + 1);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
       status: "unavailable",
-      phrase: null,
+      messages: [],
     });
     expect(inputs).toHaveLength(1);
   });
@@ -989,7 +1091,7 @@ describe("thread activity summary", () => {
     await advanceRunActivityClockFixture(f.run.runId, 24 * 60 * 60 * 1000 + 1);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
       status: "unavailable",
-      phrase: null,
+      messages: [],
     });
     await enable(f.actor, false);
     await accept(

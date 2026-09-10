@@ -1,6 +1,6 @@
 [package]
 name = "sandbox-firecracker"
-version = "0.41.0"
+version = "0.41.1"
 edition.workspace = true
 
 [dependencies]
@@ -9,6 +9,7 @@ futures-util = { workspace = true, features = ["async-await", "async-await-macro
 guest-contracts.workspace = true
 nbd-cow.workspace = true
 libc = { workspace = true, features = ["std"] }
+linux-mountinfo.workspace = true
 nix = { workspace = true, features = ["fs", "inotify", "sched", "signal", "user"] }
 reqwest = { workspace = true, features = ["json", "rustls"] }
 sandbox.workspace = true

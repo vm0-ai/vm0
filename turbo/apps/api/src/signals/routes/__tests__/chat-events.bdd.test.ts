@@ -4,7 +4,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
-  readGoalThreadFixture,
   seedGoalForRunFixture,
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
@@ -24,7 +23,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { cronExtractPiMemoryStage1Contract } from "@okouai/api-contracts/contracts/cron";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
@@ -177,13 +175,12 @@ import {
   createUsagePricingFixture,
   type UsagePricingFixture,
 } from "../../../test-fixtures/usage-pricing";
-import { signSandboxJwtForTests, verifyOkouToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { cronExtractPiMemoryStage1RoutesForTest } from "../cron-extract-pi-memory-stage1";
-import { goalsRoutes } from "../goals";
 import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { modelProvidersRoutes } from "../model-providers";
@@ -3083,25 +3080,6 @@ function threadPiAutomationsClient(
   })(workflowAutomationsContract);
 }
 
-function threadPiGoalHeaders(actor: ApiTestUser, runId: string) {
-  const seconds = Math.floor(now() / 1000);
-  return {
-    authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "okou",
-      userId: actor.userId,
-      orgId: requireOrgId(actor),
-      runId,
-      capabilities: [
-        "goal:read",
-        "goal:agent-result:write",
-        "goal:user-control:write",
-      ],
-      iat: seconds,
-      exp: seconds + 600,
-    })}`,
-  };
-}
-
 async function postThreadPiAutomationEvent(args: {
   readonly webhookUrl: string;
   readonly webhookSecret: string;
@@ -3432,47 +3410,6 @@ describe("thread-bound Pi Automation and Goal execution", () => {
       clearMockNow();
     },
     90_000,
-  );
-
-  it.each(["bootstrap", "continuation"] as const)(
-    "rejects retired Goal %s before Pi subscription execution",
-    async (entry) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const origin =
-        entry === "bootstrap"
-          ? await api.createRun(actor, {
-              agentId,
-              prompt: "old client bootstrap",
-              modelProvider: "anthropic-api-key",
-            })
-          : await sendChatRun(actor, {
-              agentId,
-              prompt: "old client continuation",
-              model: "claude-sonnet-5",
-            });
-      const originClaim = await claimChatRun(runnerGroup, origin.runId);
-      await configureSubscriptionPiModel(
-        actor,
-        { accountId: "goal-owner-account" },
-        "gpt-5.6-luna",
-      );
-      const goal = await accept(
-        setupApp({ context, routes: goalsRoutes })(goalsContract).create({
-          headers: threadPiGoalHeaders(actor, origin.runId),
-          body: { objective: "retired Goal" },
-        }),
-        [409],
-      );
-      expect(goal.body.error.message).toContain("retired");
-      await expect(
-        readGoalThreadFixture({
-          orgId: requireOrgId(actor),
-          userId: actor.userId,
-          agentId,
-        }),
-      ).resolves.toBeNull();
-      await completeChatRunOk(origin.runId, originClaim.sandboxHeaders);
-    },
   );
 });
 
@@ -3926,7 +3863,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT effort: thread configuration", () => {
-  it("rejects requested and saved effort before queue admission until native consumers ship", async () => {
+  it("keeps requested and saved effort closed until native rollout is complete", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     await api.updateOrgModelPolicies(
       actor,
@@ -3989,6 +3926,79 @@ describe("CHAT effort: thread configuration", () => {
     ).resolves.toMatchObject({ selectedModel: "claude-opus-4-8" });
     await cancelChatRun(actor, reset.runId);
   }, 90_000);
+
+  it.each([
+    { model: "gpt-5.6-sol", providerType: "openai-api-key" },
+    { model: "claude-sonnet-5", providerType: "anthropic-api-key" },
+  ] as const)(
+    "keeps queued $model effort closed even when the feature switch is enabled",
+    async ({ model, providerType }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: providerType,
+        secret: "test-staged-effort-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model,
+          isDefault: true,
+          defaultProviderType: providerType,
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: true,
+        [FeatureSwitchKey.PiLoop]: false,
+      });
+      const active = await sendChatRun(actor, {
+        agentId,
+        prompt: "Default effort remains executable during rollout",
+      });
+      const activeClaim = await claimChatRun(runnerGroup, active.runId);
+      const clientEventId = randomUUID();
+      const prompt = "Do not launch explicit effort before native rollout";
+      const queued = await chat.requestSendEvent(
+        actor,
+        { agentId, threadId: active.threadId, prompt, clientEventId },
+        [201],
+      );
+      expect(queued.body).toMatchObject({ runId: null });
+      await chat.updateThreadModelSelection(actor, active.threadId, model, {
+        reasoningEffort: "high",
+      });
+      await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
+      const terminal = await waitForThreadMessages(
+        actor,
+        active.threadId,
+        (events) => {
+          return userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === clientEventId
+            );
+          });
+        },
+      );
+      expect(userMessages(terminal.events)).toContainEqual(
+        expect.objectContaining({
+          eventType: "input.rejected",
+          revokesEventId: clientEventId,
+          error: "bad_request",
+        }),
+      );
+      expect(
+        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+          return run.prompt === prompt;
+        }),
+      ).toHaveLength(0);
+      await expect(
+        chat.readThreadMetadata(actor, active.threadId),
+      ).resolves.toMatchObject({ reasoningEffort: "high" });
+    },
+    90_000,
+  );
 
   it("uses current thread settings and rollout state when a queued message starts", async () => {
     const { actor, agentId, providerId, runnerGroup } =
@@ -4141,7 +4151,7 @@ describe("CHAT effort: thread configuration", () => {
     });
   }, 90_000);
 
-  it("preserves Fast when resetting effort and sending an effort-only override", async () => {
+  it("preserves Fast while effort execution remains closed", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
@@ -4191,6 +4201,25 @@ describe("CHAT effort: thread configuration", () => {
       "OKOU_REASONING_EFFORT",
     );
     await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
+    const explicit = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: thread.id,
+        prompt: "Keep explicit effort closed during native rollout",
+        runOptions: { reasoningEffort: "low" },
+      },
+      [400],
+    );
+    expect(explicit.body).toMatchObject({
+      error: {
+        message:
+          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
+      },
+    });
+    const metadata = await chat.readThreadMetadata(actor, thread.id);
+    expect(metadata.reasoningEffort ?? null).toBeNull();
+    expect(metadata.serviceTier).toBe("priority");
   }, 90_000);
 });
 
@@ -6540,14 +6569,9 @@ async function claimGptPiSandbox(
   runId: string,
   tier: "fast" | undefined,
 ) {
-  for (const generations of tier === "fast"
-    ? [undefined, [1, 2]]
-    : [undefined]) {
+  if (tier === "fast") {
     const oldClaim = await api.requestClaimRunnerJob(true, runId, [404], {
-      capabilities:
-        generations === undefined
-          ? undefined
-          : { piModelConfigGenerations: generations },
+      capabilities: { piModelConfigGenerations: [1, 2] },
     });
     expectApiError(oldClaim.body);
     await expect(api.readRun(actor, runId)).resolves.toMatchObject({
@@ -19491,19 +19515,12 @@ describe("CHAT-02: run-level model overrides", () => {
       await expectNoBuiltInModelUsage(run.runId);
 
       await api.heartbeatRunner(runnerGroup);
-      const oldCapabilities =
-        tier === "fast" ? [undefined, [1, 2]] : [undefined];
-      for (const generations of oldCapabilities) {
+      if (tier === "fast") {
         const oldClaim = await api.requestClaimRunnerJob(
           true,
           run.runId,
           [404],
-          {
-            capabilities:
-              generations === undefined
-                ? undefined
-                : { piModelConfigGenerations: generations },
-          },
+          { capabilities: { piModelConfigGenerations: [1, 2] } },
         );
         expectApiError(oldClaim.body);
         await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
@@ -21798,7 +21815,7 @@ describe("CHAT-02: initial thinking indicator", () => {
             const isInitial = system.includes(
               "Write user-visible progress copy",
             );
-            const isSummary = system.includes("Write one short");
+            const isSummary = system.includes("Write three short");
             if (isInitial || isSummary) {
               indicatorCalls.push(isInitial ? "initial" : "summary");
             } else if (system.includes("Generate a short, descriptive title")) {
@@ -21856,7 +21873,12 @@ describe("CHAT-02: initial thinking indicator", () => {
       if (enabled) {
         expect(requested.status).toBe(200);
         expect(requested.body).toMatchObject({
-          phrase: "Preparing the visible checklist",
+          messages: [
+            {
+              id: "Preparing the visible checklist",
+              text: "Preparing the visible checklist",
+            },
+          ],
           status: "fresh",
           runId: run.runId,
         });
@@ -21867,6 +21889,116 @@ describe("CHAT-02: initial thinking indicator", () => {
       }
       const afterDemand = await chat.listThreadEvents(actor, run.threadId);
       expect(afterDemand.events).toStrictEqual(beforeDemand.events);
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
+  const providerDetail = "private-provider-detail";
+
+  it.each([
+    {
+      name: "an upstream gateway timeout delivered inside a 200 envelope",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          error: { code: 504, message: providerDetail },
+        });
+      },
+      warned: false,
+    },
+    {
+      name: "a provider rate limit",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 429 });
+      },
+      warned: false,
+    },
+    {
+      name: "an upstream bad gateway",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 502 });
+      },
+      warned: false,
+    },
+    // Negative control: an unsupported request is our defect, not the
+    // provider's availability, and stays reportable.
+    {
+      name: "a rejected request",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 400 });
+      },
+      warned: true,
+    },
+    {
+      name: "broken credentials",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 401 });
+      },
+      warned: true,
+    },
+    // An exhausted token budget describes our own request rather than the
+    // provider's availability, so it stays outside the suppressed set.
+    {
+      name: "an exhausted token budget",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "length",
+              native_finish_reason: "MAX_TOKENS",
+              message: { content: providerDetail },
+            },
+          ],
+        });
+      },
+      warned: true,
+    },
+  ])(
+    "omits opening copy and reports a defect only for $name",
+    async ({ thinkingResponse, warned }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            const system = payload.messages[0]?.content ?? "";
+            return system.includes("Write user-visible progress copy")
+              ? thinkingResponse()
+              : HttpResponse.json({
+                  choices: [
+                    {
+                      finish_reason: "stop",
+                      message: { content: "Launch Checklist" },
+                    },
+                  ],
+                });
+          },
+        ),
+      );
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare the launch checklist",
+      });
+      await flushWaitUntilForTest();
+
+      // The optional generation is isolated: no marker, and the run proceeds.
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        events.events.filter((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toStrictEqual([]);
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+
+      const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
+        ([message]) => {
+          return message === "Initial thinking generation failed";
+        },
+      );
+      expect(warnings).toHaveLength(warned ? 1 : 0);
+      expect(JSON.stringify(warnings)).not.toContain(providerDetail);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22696,7 +22828,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  const explainerTemplate: GenerationTemplateRequest = {
+  const introVideoTemplate: GenerationTemplateRequest = {
     type: "video",
     selection: {
       stylePresetId: "explainer-video",
@@ -22716,7 +22848,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     },
   };
 
-  it("gates explainer template sends with the rollout override while preserving ordinary video", async () => {
+  it("gates intro video template sends with the rollout override while preserving ordinary video", async () => {
     const { actor, agentId } = await entitledChatActor();
     const scopedActor = { ...actor, orgId: requireOrgId(actor) };
     await updateFeatureSwitchesForUser(context, scopedActor, {
@@ -22728,8 +22860,8 @@ describe("CHAT-02: generation templates and attachments", () => {
       selection: { stylePresetId: ordinary.id },
     };
     for (const templates of [
-      [explainerTemplate],
-      [ordinaryTemplate, explainerTemplate],
+      [introVideoTemplate],
+      [ordinaryTemplate, introVideoTemplate],
     ]) {
       const rejected = await chat.requestSendEvent(
         actor,
@@ -22753,9 +22885,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         [400],
       );
       expectApiError(rejected.body);
-      expect(rejected.body.error.message).toBe(
-        "Explainer video is not available",
-      );
+      expect(rejected.body.error.message).toBe("Intro video is not available");
     }
     const events = await chat.requestThreadEvents(actor, {}, [200]);
     if (events.status !== 200) {
@@ -22790,24 +22920,25 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toBe(
-      "Explainer video settings are missing",
+      "Intro video settings are missing",
     );
     const explained = await sendChatRun(actor, {
       agentId,
       prompt: "Explain the product",
-      template: explainerTemplate,
+      template: introVideoTemplate,
     });
     const prompt = (await api.readRun(actor, explained.runId))
       .appendSystemPrompt;
     expect(prompt).toContain("Use the $intro-video skill");
-    expect(prompt).toContain("Minimalism");
-    expect(prompt).toContain("No avatar. Do not add a presenter.");
-    expect(prompt).toContain("No voiceover. Do not add narration.");
+    expect(prompt).toContain("- HeyGen style: Minimalism (minimalism)");
+    expect(prompt).toContain("- HeyGen style preview aspect ratio: 16:9");
+    expect(prompt).toContain("- Avatar: No avatar");
+    expect(prompt).toContain("- Voice: No voiceover");
     await cancelChatRun(actor, explained.runId);
   }, 90_000);
 
   it.each(["queued dispatch", "active input"] as const)(
-    "rechecks explainer access before %s",
+    "rechecks intro video access before %s",
     async (delivery) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const scopedActor = { ...actor, orgId: requireOrgId(actor) };
@@ -22829,7 +22960,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           prompt: "Explain the product",
           userMessage: userMessageWithTemplate(
             "Explain the product",
-            explainerTemplate,
+            introVideoTemplate,
           ),
         },
         [201],

@@ -9,6 +9,7 @@ import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
 import { applicationResourcePriorityHtmlPlugin } from "./scripts/app-resource-priority-html.ts";
 import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
+import { clerkUiAssetPlugin } from "./scripts/clerk-ui.ts";
 import {
   APPLICATION_LAZY_CHUNK,
   applicationJavaScriptBundlePlugin,
@@ -16,6 +17,7 @@ import {
   singleWorkerJavaScriptBundlePlugin,
 } from "./scripts/single-bundle.ts";
 import { workerDomGlobalsPlugin } from "./scripts/worker-dom-globals.ts";
+import { SENTRY_APPLICATION_KEY } from "./src/lib/sentry-application-key.ts";
 
 const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
 const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
@@ -77,12 +79,14 @@ export default defineConfig(({ command }) => ({
     react(),
     devArtifactFetchProxy(),
     clerkCoreHtmlPlugin(),
+    clerkUiAssetPlugin(),
     runtimeBuildInfoHtmlPlugin,
     applicationJavaScriptBundlePlugin(),
     applicationResourcePriorityHtmlPlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&
       sentryVitePlugin({
+        applicationKey: SENTRY_APPLICATION_KEY,
         org: process.env.SENTRY_ORG,
         project: process.env.SENTRY_PROJECT,
         authToken: process.env.SENTRY_AUTH_TOKEN,

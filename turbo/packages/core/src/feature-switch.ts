@@ -48,7 +48,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Generate short public activity summaries on visible-thread demand.",
+      "Generate short public activity summaries for active thread subscriptions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -294,6 +294,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelPickerFlyout]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Pick a model from a detached flyout: model types on the left, that type's models in a panel beside it.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -323,8 +330,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Enable explainer videos with style, avatar, and voice selection in the template picker.",
+      "Enable intro videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
@@ -418,13 +426,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
-  },
-  [FeatureSwitchKey.OnboardingChat]: {
-    maintainer: "ming@okou.ai",
-    description:
-      "Show the built-in onboarding chat with Artifact examples and team collaboration guidance.",
-    enabled: false,
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",

@@ -1,32 +1,24 @@
-import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
+import {
+  connectorCatalogContract,
+  type PublicConnectorCatalogIcon,
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
-import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/connectors/app-oauth-callback";
 import { screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { publicStatusItem } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
-const { set$: setCallbackMetadata$ } = localStorageSignals(
-  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
-);
 
 function githubIcon(): PublicConnectorCatalogIcon {
   return {
     url: "https://icons.example.test/github.svg",
     invertInDarkMode: true,
   };
-}
-
-function seedCallbackMetadata(icon: PublicConnectorCatalogIcon): void {
-  context.store.set(
-    setCallbackMetadata$,
-    JSON.stringify({ connectorSlug: "github", icon }),
-  );
 }
 
 test("Complete a custom connector authorization", async () => {
@@ -59,10 +51,31 @@ test("Complete a custom connector authorization", async () => {
 
 test("Complete a GitHub connector authorization", async () => {
   const icon = githubIcon();
-  seedCallbackMetadata(icon);
+  const catalogStarted = context.mocks.deferred<void>();
+  const releaseCatalog = context.mocks.deferred<void>();
+  const callbackStarted = context.mocks.deferred<void>();
+  const requestOrder: string[] = [];
+  context.mocks.api(
+    connectorCatalogContract.get,
+    async ({ params, respond, withSignal }) => {
+      requestOrder.push("catalog");
+      catalogStarted.resolve(undefined);
+      expect(params.connectorSlug).toBe("github");
+      await withSignal(releaseCatalog.promise);
+      return respond(200, {
+        connector: publicStatusItem({
+          connectorSlug: "github",
+          label: "GitHub",
+          icon,
+        }),
+      });
+    },
+  );
   context.mocks.api(
     connectorsSlugCallbackContract.callback,
     ({ params, query, respond }) => {
+      requestOrder.push("callback");
+      callbackStarted.resolve(undefined);
       expect(params.connectorSlug).toBe("github");
       expect(query).toMatchObject({
         code: "oauth-code",
@@ -73,11 +86,18 @@ test("Complete a GitHub connector authorization", async () => {
     },
   );
 
-  await setupPage({
+  const page = setupPage({
     context,
     path: "/connectors/github/callback?code=oauth-code&state=oauth-state",
     auth: null,
   });
+  await callbackStarted.promise;
+  expect(requestOrder).toStrictEqual(["callback"]);
+  await catalogStarted.promise;
+  expect(releaseCatalog.settled()).toBeFalsy();
+  expect(requestOrder).toStrictEqual(["callback", "catalog"]);
+  releaseCatalog.resolve(undefined);
+  await page;
 
   const heading = await screen.findByRole("heading", {
     name: "GitHub connected",

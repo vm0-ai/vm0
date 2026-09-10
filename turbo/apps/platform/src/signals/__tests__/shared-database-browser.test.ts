@@ -12,6 +12,7 @@ import {
   installedSharedDatabaseBridge$,
 } from "../shared-database-bridge-state.ts";
 import { sharedDatabaseConnectionStatus$ } from "../shared-database.ts";
+import { setRootSignal$ } from "../root-signal.ts";
 import { detach, Reason } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -126,6 +127,7 @@ function installSharedWorkerMock(): {
 }
 
 function setupBridge(): void {
+  context.store.set(setRootSignal$, context.signal);
   const clerk = context.mocks.clerk();
   clerk.user(
     {
@@ -278,14 +280,12 @@ test("Reject pending requests and mark the connection disconnected when the work
 
   workers[0]!.fail();
 
-  await expect(query).rejects.toThrow(
-    "SharedWorker module script failed to load",
-  );
+  await expect(query).rejects.toThrow("Shared database worker failed to load");
   await expect(computed).rejects.toThrow(
-    "SharedWorker module script failed to load",
+    "Shared database worker failed to load",
   );
   await expect(bridge.getComputed("chat-thread-indicators")).rejects.toThrow(
-    "SharedWorker module script failed to load",
+    "Shared database worker failed to load",
   );
   expect(context.store.get(sharedDatabaseConnectionStatus$)).toBe(
     "disconnected",

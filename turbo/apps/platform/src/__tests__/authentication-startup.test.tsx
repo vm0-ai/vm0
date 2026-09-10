@@ -33,6 +33,9 @@ function installEarlyBootstrap(options: {
     loadOptions: PRIMARY_LOAD_OPTIONS,
     loaded: options.loaded,
     publishableKey: "test_production_key",
+    resolveClerkUI: () => {
+      return;
+    },
   };
   if (options.clerk) {
     Reflect.set(bootstrap, "clerk", options.clerk);
@@ -190,6 +193,7 @@ test("Authentication startup is reused without a duplicate load", async () => {
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeInTheDocument();
   expect(clerk.loads).toHaveLength(1);
+  expect(clerk.uiRequests).toStrictEqual([]);
 });
 
 test("Authentication startup retries after an early failure", async () => {
@@ -206,6 +210,7 @@ test("Authentication startup retries after an early failure", async () => {
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([]);
   expect(clerk.loads).toHaveLength(1);
+  expect(clerk.uiRequests).toStrictEqual([]);
   expect(window.__okouClerkBootstrap?.loaded).toBeUndefined();
 });
 
@@ -262,9 +267,33 @@ test("Okou production uses production authentication", async () => {
 
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    { publishableKey: "test_production_key" },
   ]);
   expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
+  expect(clerk.uiRequests).toStrictEqual([]);
+  expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+});
+
+test("V1 comparison authentication loads the hosted Clerk UI", async () => {
+  const clerk = context.mocks.clerk();
+  await setupPage({
+    context,
+    host: "app.okou.ai",
+    path: "/v1/sign-in",
+    auth: null,
+  });
+
+  await expect(screen.findByTestId("clerk-sign-in")).resolves.toHaveTextContent(
+    "/v1/sign-in",
+  );
+  expect(screen.queryByTestId("app-auth-v2")).not.toBeInTheDocument();
+  expect(clerk.resourceRequests).toStrictEqual([
+    { publishableKey: "test_production_key" },
+  ]);
+  expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
+  expect(clerk.uiRequests).toStrictEqual([
+    "https://app.example.test/assets/clerk-ui-test.js",
+  ]);
 });
 
 test("Authorized preview hosts use preview authentication", async () => {
@@ -277,7 +306,7 @@ test("Authorized preview hosts use preview authentication", async () => {
   });
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_preview_key" },
+    { publishableKey: "test_preview_key" },
   ]);
 });
 
@@ -293,7 +322,7 @@ test.each(["okou.ai.evil.example", "app.okou.ai.evil.example"])(
     });
     await waitForReadySignIn();
     expect(clerk.resourceRequests).toStrictEqual([
-      { domain: undefined, publishableKey: "test_preview_key" },
+      { publishableKey: "test_preview_key" },
     ]);
   },
 );

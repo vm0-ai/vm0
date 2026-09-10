@@ -1,3 +1,4 @@
+import { mockNow } from "../../../lib/time";
 import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { randomUUID } from "node:crypto";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -73,6 +74,7 @@ test("keeps runless deployments private across switch rollback and only issues o
   expect(history.deployments).toStrictEqual([
     expect.objectContaining({ artifactUrl: canonical, isActive: false }),
   ]);
+  mockNow(new Date("2026-09-09T12:00:00.000Z"));
   const preview = await api.requestPrivateHostedPreview(
     actor,
     draft.deploymentId,
@@ -84,6 +86,7 @@ test("keeps runless deployments private across switch rollback and only issues o
     throw new Error("Expected preview");
   }
   expect(preview.body.url).toMatch(/^https:\/\/pv-[a-f0-9]{48}\.okou\.app\/$/);
+  expect(preview.body.expiresAt).toBe("2026-09-11T12:00:00.000Z");
   const token = new URL(preview.body.url).hostname.slice(3).split(".")[0];
   expect(capture.puts.at(-1)).toStrictEqual({
     key: `private-previews/okou/${token}.json`,

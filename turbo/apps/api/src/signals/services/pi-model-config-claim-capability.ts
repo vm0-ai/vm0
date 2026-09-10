@@ -41,16 +41,9 @@ function configuredGeneration(value: unknown): number | null {
 
 function supportsGeneration(
   generation: number,
-  capabilities: RunnerClaimCapabilities | undefined,
+  capabilities: RunnerClaimCapabilities,
 ): boolean {
-  // Missing capabilities bridge the backend to pre-capability Runner
-  // artifacts. Remove this legacy-only default after #31373 records that
-  // those Runners have drained through their two-hour run/finalization window
-  // and no supported external claimant still uses the old request shape.
-  const supported = capabilities?.piModelConfigGenerations ?? [
-    PI_MODEL_CONFIG_LEGACY_GENERATION,
-  ];
-  return supported.includes(generation);
+  return capabilities.piModelConfigGenerations.includes(generation);
 }
 
 function invalidModelConfig(value: unknown): PiModelConfigClaimResolution {
@@ -65,7 +58,7 @@ function invalidModelConfig(value: unknown): PiModelConfigClaimResolution {
 export function resolvePiModelConfigForClaim(args: {
   readonly cliAgentType: string;
   readonly modelConfig: unknown;
-  readonly capabilities: RunnerClaimCapabilities | undefined;
+  readonly capabilities: RunnerClaimCapabilities;
   readonly environment?: Readonly<Record<string, string>> | null;
   readonly firewalls?: ExecutionFirewalls;
 }): PiModelConfigClaimResolution {

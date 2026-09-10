@@ -5,7 +5,6 @@ import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { hash, pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
-import { setupAttachmentUrlRefresh$ } from "./attachment-resource-url.ts";
 import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
@@ -293,7 +292,7 @@ export const detachedNavigateTo$ = command(
       replace?: boolean;
     },
   ) => {
-    // eslint-disable-next-line ccstate/no-detach-in-signals -- confirmed by ethan@vm0.ai
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- rootSignal$ owns navigation after its event callback returns
     detach(
       set(
         navigate$,
@@ -343,7 +342,6 @@ export const setupPageWrapper = (
 ) => {
   return command(async ({ set }, signal: AbortSignal) => {
     set(setPageSignal$, signal);
-    set(setupAttachmentUrlRefresh$, signal);
     await set(fn, signal);
   });
 };
@@ -372,7 +370,6 @@ export const setupAuthPageWrapper = (
       L.info("redirect unauthenticated user to app sign-in", {
         currentUrl: location.href,
         signInUrl: signInUrl.toString(),
-        domain: signInUrl.searchParams.get("domain"),
         redirectUrl: signInUrl.searchParams.get("redirect_url"),
       });
       window.location.href = signInUrl.toString();

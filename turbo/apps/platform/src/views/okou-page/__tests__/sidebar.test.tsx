@@ -41,6 +41,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
+import type { ChatThreadEventQueryResult } from "../../../shared-database/data-key.ts";
 import { emptySearchImg } from "../platform-assets.ts";
 import {
   testContext,
@@ -246,41 +247,47 @@ function createThread(
   };
 }
 
+function sidebarThreadSnapshot(
+  threads: readonly SidebarThread[],
+): NonNullable<ChatThreadEventQueryResult["snapshot"]> {
+  return {
+    chatThreads: threads.map((thread, index) => {
+      return {
+        id: thread.id,
+        agentId: thread.agent.id,
+        title: thread.title,
+        sortAt:
+          thread.sortAt ??
+          new Date(
+            Date.parse("2026-03-10T00:00:00Z") +
+              (threads.length - index) * 1000,
+          ).toISOString(),
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        pinnedAt: thread.pinnedAt ?? null,
+        renamedAt: thread.renamedAt ?? null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        selectedVideoModel: null,
+      };
+    }),
+    latestEventId: null,
+    latestSeqId: null,
+  };
+}
+
 function mockChatThreadSnapshot(
   threads: () => readonly SidebarThread[],
   activeThreadIds: () => readonly string[] = () => {
     return [];
   },
   targetContext = context,
+  remoteGate?: Promise<void>,
 ): void {
-  targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    const snapshotThreads = threads();
-    const response = respond(200, {
-      chatThreads: snapshotThreads.map((thread, index) => {
-        return {
-          id: thread.id,
-          agentId: thread.agent.id,
-          title: thread.title,
-          sortAt:
-            thread.sortAt ??
-            new Date(
-              Date.parse("2026-03-10T00:00:00Z") +
-                (snapshotThreads.length - index) * 1000,
-            ).toISOString(),
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          pinnedAt: thread.pinnedAt ?? null,
-          renamedAt: thread.renamedAt ?? null,
-          selectedModel: null,
-          serviceTier: null,
-          computerUseHostId: null,
-          selectedVideoModel: null,
-        };
-      }),
-      latestEventId: null,
-      latestSeqId: null,
-    });
-    return response;
+  targetContext.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+    await remoteGate;
+    return respond(200, sidebarThreadSnapshot(threads()));
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
@@ -336,7 +343,10 @@ function menuItemByText(text: string): HTMLElement {
 function queryMenuItemByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("menuitem").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+      return (
+        candidate.getAttribute("aria-label") === text ||
+        candidate.textContent?.replace(/\s+/g, " ").trim() === text
+      );
     }) ?? null
   );
 }
@@ -689,7 +699,8 @@ function mockSidebarThreadStory(
   extraThreads: SidebarThread[] = [],
   activeThreadIds: readonly string[] = [],
   targetContext = context,
-): { threads: SidebarThread[] } {
+  remoteGate?: Promise<void>,
+): ChatThreadEventQueryResult {
   let threads = [...firstPageThreads];
 
   mockChatThreadSnapshot(
@@ -700,6 +711,7 @@ function mockSidebarThreadStory(
       return activeThreadIds;
     },
     targetContext,
+    remoteGate,
   );
 
   targetContext.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -750,10 +762,15 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads };
+  return {
+    snapshot: sidebarThreadSnapshot([...threads, ...extraThreads]),
+    events: [],
+  };
 }
 
-function mockLongSidebarHistory(): void {
+function mockLongSidebarHistory(
+  remoteGate?: Promise<void>,
+): ChatThreadEventQueryResult {
   prepareDefaultAgent();
   const overflowThreads = Array.from({ length: 23 }, (_, index) => {
     return createThread(
@@ -761,12 +778,18 @@ function mockLongSidebarHistory(): void {
       `Refresh overflow ${index + 1}`,
     );
   });
-  mockSidebarThreadStory([
-    createThread(EXISTING_THREAD_ID, "Release plan"),
-    createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ...overflowThreads,
-    createThread(ARCHIVED_THREAD_ID, "Archived context"),
-  ]);
+  return mockSidebarThreadStory(
+    [
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ...overflowThreads,
+      createThread(ARCHIVED_THREAD_ID, "Archived context"),
+    ],
+    [],
+    [],
+    context,
+    remoteGate,
+  );
 }
 
 async function scrollToArchivedContext(): Promise<HTMLElement> {
@@ -792,12 +815,13 @@ async function scrollToArchivedContext(): Promise<HTMLElement> {
 }
 
 test("Browse a long sidebar chat history", async () => {
-  mockLongSidebarHistory();
+  const cachedChatThreadEvents = mockLongSidebarHistory();
   mockSidebarViewport(200, 1000);
 
   await setupSidebarPage({
     context,
     path: `/chats/${EXISTING_THREAD_ID}`,
+    cachedChatThreadEvents,
   });
 
   const scrollArea = await scrollToArchivedContext();
@@ -805,15 +829,19 @@ test("Browse a long sidebar chat history", async () => {
 });
 
 test("Refresh a long sidebar after deleting an offscreen chat", async () => {
-  mockLongSidebarHistory();
+  const remote = context.mocks.deferred<void>();
+  const cachedChatThreadEvents = mockLongSidebarHistory(remote.promise);
   mockSidebarViewport(200, 1000);
 
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    cachedChatThreadEvents,
   });
 
+  // The existing-list scene must be usable before remote synchronization.
   const scrollArea = await scrollToArchivedContext();
+  remote.resolve();
   openThreadMenu("Archived context");
   click(menuItemByText("Delete chat"));
   const dialog = await screen.findByRole("dialog", {
@@ -1172,7 +1200,7 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponse = context.mocks.deferred<void>();
   const draftRequestStarted = context.mocks.deferred<void>();
   const draftResponseReturned = context.mocks.deferred<void>();
-  mockSidebarThreadStory([
+  const cachedChatThreadEvents = mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
@@ -1192,7 +1220,11 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
     return response;
   });
 
-  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    cachedChatThreadEvents,
+  });
 
   await waitFor(() => {
     expect(
@@ -1575,7 +1607,7 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
 test("Show mark all read in the mobile chat-list menu", async () => {
   mockMobileLayout();
   prepareDefaultAgent();
-  mockSidebarThreadStory([
+  const cachedChatThreadEvents = mockSidebarThreadStory([
     createThread(INCIDENT_THREAD_ID, "Unread conversation"),
   ]);
   mockUnreadAgents(() => {
@@ -1585,6 +1617,7 @@ test("Show mark all read in the mobile chat-list menu", async () => {
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    cachedChatThreadEvents,
   });
 
   const list = await waitFor(() => {
@@ -2273,7 +2306,13 @@ test("Recognize and pin sidebar conversation states", async () => {
   }
 
   openThreadMenu("Release plan");
-  click(menuItemByText("Pin chat"));
+  const pinItem = menuItemByText("Pin chat");
+  expect(pinItem).toHaveTextContent("Ctrl+Shift+D");
+  expect(pinItem).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Meta+Shift+D Control+Shift+D",
+  );
+  click(pinItem);
 
   await waitFor(() => {
     expect(
@@ -2288,7 +2327,9 @@ test("Recognize and pin sidebar conversation states", async () => {
       "chat-thread-pinned-indicator",
     ),
   );
-  click(menuItemByText("Unpin chat"));
+  const unpinItem = menuItemByText("Unpin chat");
+  expect(unpinItem).toHaveTextContent("Ctrl+Shift+D");
+  click(unpinItem);
 
   await waitFor(() => {
     expect(
@@ -2299,7 +2340,9 @@ test("Recognize and pin sidebar conversation states", async () => {
   });
 
   openThreadMenu("Running analysis");
-  expect(menuItemByText("Rename chat")).toBeInTheDocument();
+  const renameItem = menuItemByText("Rename chat");
+  expect(renameItem).toHaveTextContent("F2");
+  expect(renameItem).toHaveAttribute("aria-keyshortcuts", "F2");
   expect(menuItemByText("Delete chat")).toBeInTheDocument();
 });
 

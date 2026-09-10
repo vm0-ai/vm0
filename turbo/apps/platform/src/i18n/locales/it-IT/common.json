@@ -617,8 +617,6 @@
       "category": "Categoria modello",
       "chooseVoice": "Scegli una voce per {{title}}",
       "creativeVideo": "Video creativo",
-      "explainerUnavailable": "Questo modello video non è più disponibile. Rimuovilo per inviare il messaggio.",
-      "explainerVideo": "Video esplicativo",
       "filters": {
         "age": "Età",
         "all": "Tutti",
@@ -641,6 +639,8 @@
       "importedSlides_one": "{{count}} diapositiva",
       "importedSlides_many": "{{count}} diapositive",
       "importedSlides_other": "{{count}} diapositive",
+      "introVideo": "Video introduttivo",
+      "introVideoUnavailable": "Questo modello video non è più disponibile. Rimuovilo per inviare il messaggio.",
       "multiAccent": "Multiaccento",
       "needPro": "Richiede Pro",
       "nextSlide": "Anteprima della diapositiva successiva",
@@ -1914,12 +1914,15 @@
       "create": {
         "addStyle": "Aggiungi stile",
         "addTemplate": "Aggiungi modello",
+        "chooseScene": "Scegli cosa creare",
         "chooseType": "Scegli un tipo",
         "description": "Presentazioni, video e immagini",
         "exit": "Esci dalla modalità creazione",
         "image": "Crea immagine",
+        "imageDescription": "Trasforma un'idea in un'immagine",
         "imagePlaceholder": "Descrivi l’immagine che vuoi creare…",
         "presentation": "Crea presentazione",
+        "presentationDescription": "Diapositive per la tua storia",
         "presentationPlaceholder": "Di cosa tratta la tua presentazione?",
         "question": "Cosa vorresti realizzare?",
         "settingsAdjusted": "Alcune impostazioni video sono state adattate a questo modello",
@@ -1928,6 +1931,7 @@
         "slideCountRange": "{{range}} diapositive",
         "title": "Crea",
         "video": "Crea video",
+        "videoDescription": "Metti in movimento le tue idee",
         "videoPlaceholder": "Descrivi il video che vuoi creare…"
       },
       "createWorkflow": "Crea flusso di lavoro",
@@ -1998,7 +2002,6 @@
       "directory": {
         "allCategories": "Tutti",
         "askAdmin": "Chiedi a un amministratore di abilitarlo",
-        "browse": "Esplora i connettori",
         "configure": "Configura",
         "connected": "Connesso",
         "createCustom": "Crea personalizzato",
@@ -2010,8 +2013,6 @@
         "detailPermissions": "Autorizzazioni",
         "emptyCustomBody": "Creane uno da qualsiasi API HTTP o server MCP e Okou potrà usarlo come ogni altro connettore.",
         "emptyCustomTitle": "Nessun connettore personalizzato",
-        "emptyYoursBody": "Connetti un'app e Okou potrà leggerla e agire al posto tuo.",
-        "emptyYoursTitle": "Non hai ancora connesso nulla",
         "matchCount_one": "{{count}} risultato",
         "matchCount_many": "{{count}} risultati",
         "matchCount_other": "{{count}} risultati",
@@ -2026,13 +2027,11 @@
         "permissionCount_one": "{{count}} autorizzazione",
         "permissionCount_many": "{{count}} autorizzazioni",
         "permissionCount_other": "{{count}} autorizzazioni",
-        "searchYours": "Cerca tra i tuoi connettori",
         "showAll_one": "Mostra tutti ({{count}})",
         "showAll_many": "Mostra tutti ({{count}})",
         "showAll_other": "Mostra tutti ({{count}})",
         "tabCustom": "Personalizzati",
-        "tabDiscover": "Scopri",
-        "tabYours": "I tuoi connettori"
+        "tabDiscover": "Scopri"
       },
       "fallsBackTo": "Passa a {{account}} come alternativa",
       "find": "Trova connettori...",
@@ -2071,20 +2070,6 @@
         "usageTitle": "Limite di {{framework}} raggiunto"
       },
       "runCancelled": "In pausa a metà pensiero: riprendilo ogni volta."
-    },
-    "explainerVideo": {
-      "autoVoiceDescription": "Trova una voce adatta ai tuoi contenuti.",
-      "avatarVoice": "Voce dell’avatar",
-      "changeAvatar": "Cambia avatar",
-      "chooseStyle": "Scegli uno stile",
-      "chooseStyleAndVoice": "Scegli uno stile e una voce.",
-      "noMatches": "Nessun risultato. Prova un’altra ricerca o categoria.",
-      "ready": "Pronto all’uso. Aggiungi i tuoi contenuti nella chat.",
-      "searchAvatars": "Cerca avatar",
-      "searchStyles": "Cerca stili",
-      "settings": "Impostazioni del video esplicativo",
-      "style": "Stile",
-      "useSelection": "Usa selezione"
     },
     "feedback": {
       "emailDraftDescription": "una bozza di email (bozza di email ID: {{id}})",
@@ -2131,6 +2116,20 @@
       },
       "footer": {
         "cancel": "Annulla"
+      },
+      "picker": {
+        "autoVoiceDescription": "Trova una voce adatta ai tuoi contenuti.",
+        "avatarVoice": "Voce dell’avatar",
+        "changeAvatar": "Cambia avatar",
+        "chooseStyle": "Scegli uno stile",
+        "chooseStyleAndVoice": "Scegli uno stile e una voce.",
+        "noMatches": "Nessun risultato. Prova un’altra ricerca o categoria.",
+        "ready": "Pronto all’uso. Aggiungi i tuoi contenuti nella chat.",
+        "searchAvatars": "Cerca avatar",
+        "searchStyles": "Cerca stili",
+        "settings": "Impostazioni del video introduttivo",
+        "style": "Stile",
+        "useSelection": "Usa selezione"
       },
       "style": {
         "auto": "Lascia scegliere a Okou",
@@ -2674,7 +2673,7 @@
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
       "cleanupFailed": "Il testo è stato aggiunto, ma non è stato possibile rimuovere la registrazione salvata.",
-      "confirmRecording": "OK",
+      "confirmRecording": "Fatto",
       "discarding": "Rimozione della bozza vocale...",
       "input": "Ingresso vocale",
       "inputLimitReached": "Limite di input vocale raggiunto. Passa a Pro o Team per limiti più alti.",
@@ -2687,41 +2686,16 @@
       "removeDraft": "Rimuovi bozza vocale",
       "restoreFailed": "Impossibile caricare la bozza vocale. Riprova.",
       "retry": "Riprova",
+      "retryingSavedAudio": "Nuovo tentativo con l’audio salvato",
       "retryReady": "La registrazione è conservata. Riprova la trascrizione.",
+      "returningToComposer": "Ritorno al campo di testo",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",
       "storageFailed": "Impossibile salvare l’audio. Riprova recupera solo l’audio già salvato su questo dispositivo.",
+      "textTakingShape": "Il testo sta prendendo forma",
       "transcribing": "Trascrizione",
       "transcribingProgress": "Trascrizione...",
       "transcriptionFailed": "La trascrizione vocale non è riuscita. Riprova."
-    },
-    "welcomeThread": {
-      "content": "# Ciao, sono {{assistantName}}\n\nSono il tuo collega IA. Dimmi quale risultato ti serve e posso lavorare con i tuoi strumenti per riportare qui il risultato finito.\n\n## Cosa posso consegnare\n\n### Immagini\n\nPosso creare visual per campagne, illustrazioni di prodotto, grafiche social e creatività pubblicitarie.\n\n![Visual di campagna consegnato da {{assistantName}}]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Presentazioni\n\nPosso trasformare un brief iniziale in una presentazione strutturata, progettata e pronta per essere presentata.\n\n![Presentazione consegnata da {{assistantName}}]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} slide\n\n### Video\n\nPosso consegnare demo di prodotto montate, video di lancio, spiegazioni e contenuti social con sottotitoli.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · pronto da condividere\n\n### Suggerimenti per l'automazione\n\nPosso analizzare il lavoro ripetitivo del team e restituire un elenco prioritario delle attività che vale la pena automatizzare.\n\n| Priorità | Attività | Trigger | Risultato |\n| --- | --- | --- | --- |\n| 1 | Qualificare i lead in ingresso | Nuova risposta al modulo | Record CRM arricchito e bozza di risposta |\n| 2 | Trasformare le riunioni in follow-up | Chiamata completata | Riepilogo, nota CRM e bozza email |\n| 3 | Revisione settimanale della crescita | Lunedì mattina | Sintesi delle metriche e rapporto sulle anomalie |\n\n## Perché i team ottengono di più da {{assistantName}}\n\nUn buon risultato non deve rimanere nella chat di una sola persona. Salva il processo che funziona come workflow condiviso e il prossimo collega partirà da ciò che ha già dimostrato di funzionare.\n\n```mermaid\nflowchart TB\n  A[\"1. Scopri cosa funziona<br/>Un collega e {{assistantName}} completano insieme l'attività\"]\n  B[\"2. Condividi il workflow<br/>Il processo e il contesto diventano riutilizzabili\"]\n  C[\"3. Riutilizza ciò che funziona<br/>Gli altri partono dal processo collaudato\"]\n  D[\"4. Migliorate insieme<br/>Il feedback migliora le esecuzioni future\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Condividi il workflow, non solo il file finale.**\n- Offri a ogni collega lo stesso contesto iniziale.\n- Migliora un processo una volta e lascia che ne benefici tutto il team.\n\n## Come lavorare con me in team\n\nUna buona risposta aiuta una persona. Un flusso di lavoro salvato aiuta tutte quelle che faranno lo stesso lavoro dopo di lei.\n\n[Schema del flusso di lavoro del team](<{{teamDiagramUrl}}>)\n\n1. **Svolga il compito con me una volta.** Descriva il risultato che vuole invece dei passaggi per arrivarci, e mi corregga mentre il lavoro è ancora in corso. È proprio quella correzione che vale la pena conservare.\n2. **Lo salvi come flusso di lavoro.** Scelga **Crea flusso di lavoro** nella casella del messaggio qui sotto. Le chiederò quale risultato vuole, che cosa deve avviarlo e che cosa fare del risultato, poi lo scriverò come un flusso di lavoro che potrà eseguire di nuovo.\n3. **Porti la sua visibilità su Pubblico.** Apra il flusso di lavoro e imposti **Visibilità**. Un flusso **Privato** resta con lei; uno **Pubblico** può essere eseguito da chiunque nello spazio di lavoro.\n4. **Lo avvii con il suo nome.** Digiti `/` seguito dal nome del flusso di lavoro in qualsiasi chat. Aggiunga un'automazione quando deve partire in base a una pianificazione o a un evento invece che su richiesta.\n\nCominci dal compito che il suo team ripete più spesso, non dal più difficile. Un flusso di lavoro che gira ogni settimana vale più di uno ingegnoso che gira una volta sola.\n\n## Mi parli in Slack\n\nGran parte di questo lavoro viene già discussa in Slack. Una volta che sono installato lì, la risposta arriva nel thread invece che in un'altra scheda.\n\n[Schema della conversazione in Slack](<{{slackDiagramUrl}}>)\n\n**Da configurare una volta sola**\n\n1. Apra **Dove lavora {{assistantName}}** nella barra laterale sinistra.\n2. Sulla scheda di Slack scelga **Installa su Slack** e approvi i permessi. Solo chi amministra lo spazio di lavoro può installare, quindi lo chieda a chi lo amministra se non è il suo caso.\n3. Tutti gli altri aprono la stessa scheda e scelgono **Connettiti** per collegare il proprio account Slack.\n\n**Poi mi usi come qualsiasi altro membro del team**\n\n| In Slack | Che cosa faccio |\n| --- | --- |\n| Mi mandi un messaggio diretto | Lavoriamo in privato, in una conversazione continua |\n| `@{{assistantName}}` in un canale | Rispondo in un thread sul suo messaggio, dove il team può seguire |\n| `@{{assistantName}}` di nuovo dentro un thread | Riprendo quel thread e continuo a lavorarci |\n| `/okou` | Apre il mio elenco di comandi: connettersi, cambiare agente, cambiare modello, disconnettersi |\n\nDue cose vale la pena saperle. In un canale rispondo solo quando vengo menzionato, quindi resto fuori dai thread in cui non sono stato chiamato. E può allegare un file a un messaggio diretto: lo leggerò prima di rispondere.\n\n[Configura Slack]({{worksUrl}}) così i flussi di lavoro salvati qui sopra possono essere avviati senza uscire dal canale.\n\n[Invita il tuo team]({{inviteUrl}}) affinché il prossimo workflow che crei sia già riutilizzabile dalle persone che ne hanno bisogno.\n\n[Leggi la documentazione]({{docsUrl}}) per scoprire come funzionano i workflow condivisi.",
-      "slackDiagram": {
-        "caption": "Dove arriva una risposta in Slack: nel thread sul suo messaggio, o in un messaggio diretto privato",
-        "channelEyebrow": "In un canale",
-        "channelNote": "La risposta resta sul suo messaggio, così il canale non si intasa e il team può comunque seguirla.",
-        "directEyebrow": "In un messaggio diretto",
-        "directLabel": "Lei e {{assistantName}}",
-        "directNote": "Una conversazione privata che mantiene il contesto tra un compito e l'altro.",
-        "mentionLabel": "Lei menziona {{assistantName}}",
-        "replyLabel": "{{assistantName}} risponde nel thread"
-      },
-      "teamDiagram": {
-        "automationBody": "Lo avvia con una pianificazione o un evento, senza che nessuno lo chieda.",
-        "automationTitle": "Un'automazione",
-        "caption": "Una chat riuscita diventa un flusso di lavoro da cui partono tutto il team e il suo calendario",
-        "chatBody": "Lei e {{assistantName}} portate a termine il compito una volta.",
-        "chatTitle": "Una chat che ha funzionato",
-        "savedEyebrow": "Salvato una volta",
-        "teamEyebrow": "Di tutti",
-        "teammateBody": "Lo avvia con il suo nome e parte da ciò che già funziona.",
-        "teammateTitle": "Chiunque nel team",
-        "workflowBody": "Il processo e il suo contesto, conservati e riutilizzabili.",
-        "workflowTitle": "Un flusso di lavoro",
-        "yoursEyebrow": "Suo"
-      },
-      "title": "Ti diamo il benvenuto in {{assistantName}}"
     },
     "workflows": {
       "named": "Flusso di lavoro {{title}}",
@@ -2920,6 +2894,7 @@
         "notConnected": "Nessun connettore rimasto da collegare",
         "search": "Nessun connettore corrispondente a \"{{search}}\""
       },
+      "filterCategory": "Categoria",
       "filters": {
         "agents": "Agenti",
         "all": "Tutto",
@@ -2928,18 +2903,20 @@
         "notConnected": "Non connesso",
         "status": "Stato"
       },
+      "filterWith": "Filtro: {{category}}",
       "iconUnavailable": "Icona del connettore non disponibile",
       "newConnector": "Nuovo connettore",
       "noConnectorsAlt": "Nessun connettore",
       "otherCategory": "Altro",
+      "remoteAccess": "Accesso remoto",
       "search": "Trova connettori",
       "shelf": {
-        "browseAll": "Tutti",
         "moreCategories": "Altre categorie",
         "popular": "Popolari",
         "seeMore_one": "Vedi {{names}} e altro {{count}}",
         "seeMore_many": "Vedi {{names}} e altri {{count}}",
         "seeMore_other": "Vedi {{names}} e altri {{count}}",
+        "top": "Connettori principali",
         "yours": "I tuoi connettori"
       },
       "tabs": {
@@ -5777,6 +5754,11 @@
       "action": "Torna alla home",
       "description": "La pagina che stai cercando non esiste.",
       "title": "Pagina non trovata"
+    },
+    "workerFailure": {
+      "action": "Aggiorna",
+      "description": "La connessione è stata interrotta. Aggiorna la pagina per continuare.",
+      "title": "Aggiorna per continuare"
     }
   },
   "sharedThread": {
@@ -5788,6 +5770,56 @@
     "signIn": "Accedi",
     "signUp": "Registrati",
     "tryItYourself": "Provalo tu"
+  },
+  "ssh": {
+    "accessDescription": "Scegli quali agenti possono usare i tuoi host SSH.",
+    "accessHelp": "Consenti a questo Agent di eseguire comandi su tutti i tuoi host SSH configurati, attuali e futuri. È separato dalle autorizzazioni dei connettori.",
+    "add": "Aggiungi host",
+    "cancel": "Annulla",
+    "chooseFile": "Scegli file",
+    "choosePrivateKeyFile": "Scegli il file della chiave privata",
+    "credentialsHelp": "Le credenziali sono di sola scrittura e restano fuori dal sandbox. Incolla la chiave completa; gli spazi vengono conservati. I campi vengono cancellati all’invio o alla chiusura del modulo.",
+    "delete": "Elimina host",
+    "deleteHelp": "Eliminare questo host e le credenziali salvate? Gli Agents non lo vedranno più nell’inventario attuale.",
+    "description": "Configura host SSH per consentire ai tuoi agenti di eseguire comandi remoti.",
+    "displayName": "Nome visualizzato",
+    "edit": "Modifica host",
+    "editHelp": "La modifica di questi campi non cambia le credenziali. Cambiare l’endpoint cancella la chiave host memorizzata.",
+    "empty": "Nessun host SSH configurato. Aggiungi un host per renderlo disponibile agli Agents con accesso SSH.",
+    "errors": {
+      "agentUnavailable": "Questo agente non è più disponibile. Scegli un altro agente.",
+      "configurationChanged": "Questo host è cambiato durante la modifica. L’elenco è stato aggiornato. Riapri l’host e controlla le impostazioni attuali prima di salvare.",
+      "duplicateEndpoint": "Esiste già un host SSH con questo indirizzo e questa porta. Modifica l’host esistente o usa un altro indirizzo o un’altra porta.",
+      "failed": "Impossibile salvare la modifica SSH. Riprova.",
+      "hostUnavailable": "Questo host SSH non è più disponibile. Torna all’elenco e scegli un host esistente.",
+      "invalidHost": "Inserisci un nome host o un indirizzo IP senza schema URL, percorso o spazi.",
+      "invalidInput": "Alcune impostazioni SSH non sono valide. Controlla i campi e riprova."
+    },
+    "fileReadError": "Impossibile leggere questo file. Selezionalo di nuovo o incolla la chiave privata.",
+    "fileReading": "Lettura del file della chiave privata…",
+    "fileSizeError": "Scegli un file della chiave privata non vuoto e non più grande di 64 KiB.",
+    "fingerprint": "Chiave host memorizzata",
+    "host": "Nome host pubblico o indirizzo IP",
+    "label": "SSH",
+    "loadFailed": "Impossibile caricare le impostazioni SSH. Riprova.",
+    "loading": "Caricamento degli host SSH…",
+    "loadingAccess": "Caricamento degli accessi degli agenti…",
+    "manage": "Gestisci host SSH",
+    "notLearned": "Chiave host non ancora memorizzata",
+    "passphrase": "Passphrase (facoltativa)",
+    "port": "Porta",
+    "privateKey": "Chiave privata",
+    "reset": "Reimposta chiave host",
+    "resetHelp": "Reimposta solo dopo aver verificato indipendentemente la nuova identità del server. La prossima connessione considererà attendibile e memorizzerà una nuova chiave host.",
+    "retry": "Riprova",
+    "rotate": "Sostituisci credenziali",
+    "save": "Salva",
+    "summary_one": "{{count}} host configurato",
+    "summary_many": "{{count}} host configurati",
+    "summary_other": "{{count}} host configurati",
+    "title": "Host SSH",
+    "unavailable": "L’accesso SSH non è disponibile per questo account.",
+    "username": "Nome utente SSH"
   },
   "usage": {
     "displayNames": {

@@ -14,8 +14,8 @@ const L = logger("SignInToken");
  * Setup command for /sign-in-token route.
  *
  * Accepts a Clerk sign-in token via `?token=...` query parameter,
- * authenticates the user on the primary platform domain, and redirects to the
- * validated completion URL.
+ * authenticates the user through Clerk, and redirects to the validated
+ * completion URL.
  *
  * This route has no auth guard — the user is not yet authenticated.
  */

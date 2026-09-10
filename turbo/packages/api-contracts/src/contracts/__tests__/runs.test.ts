@@ -6,6 +6,7 @@ import {
   networkLogEntrySchema,
   unifiedRunRequestSchema,
 } from "../runs";
+import { triggerSourceSchema } from "../logs";
 import { runCreateBodySchema } from "../run-routes";
 
 describe("get run response contract", () => {
@@ -44,6 +45,25 @@ describe("Claude tool entry contract", () => {
 });
 
 describe("unified run request contract", () => {
+  it("keeps historical Goal sources readable while accepting only supported live sources", () => {
+    expect(triggerSourceSchema.parse("goal")).toBe("goal");
+    expect(
+      runCreateBodySchema.safeParse({
+        prompt: "old request",
+        triggerSource: "goal",
+      }).success,
+    ).toBe(false);
+    const input = { agentId: "agent-1", prompt: "ordinary work" };
+    expect(
+      unifiedRunRequestSchema.safeParse({ ...input, triggerSource: "goal" })
+        .success,
+    ).toBe(false);
+    expect(
+      unifiedRunRequestSchema.safeParse({ ...input, triggerSource: "web" })
+        .success,
+    ).toBe(true);
+  });
+
   it("accepts Agent-backed creation and Session-backed continuation", () => {
     expect(
       unifiedRunRequestSchema.safeParse({

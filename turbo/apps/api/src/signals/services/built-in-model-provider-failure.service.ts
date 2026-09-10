@@ -1,6 +1,6 @@
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import type { runnersModelProviderFailuresContract } from "@okouai/api-contracts/contracts/runners";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";

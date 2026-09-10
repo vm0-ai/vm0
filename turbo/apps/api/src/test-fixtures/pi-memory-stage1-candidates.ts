@@ -1,6 +1,6 @@
 import { and, count, eq } from "drizzle-orm";
 
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { conversations } from "@okouai/db/schema/conversation";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryPublicationProvenance } from "@okouai/db/schema/pi-memory-publication-provenance";

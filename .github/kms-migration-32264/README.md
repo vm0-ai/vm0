@@ -85,6 +85,13 @@ provenance is checked before using its configuration. Plaintext credentials,
 database URIs, OIDC tokens, and data keys remain in process memory and child
 environments; only sanitized metadata and checkpoints enter artifacts.
 
+The Linux workflow passes STS input through an anonymous memory file so AWS CLI
+can read its JSON more than once without consuming a pipe or persisting the OIDC
+token. On an AWS CLI failure, `operation.json` retains `awsFailure` with an
+allowlisted operation name, error code, and exit status. Unknown error names and
+raw stdout/stderr remain suppressed; inspect this checkpoint before changing IAM
+permissions or retrying the production job.
+
 The expected deployment is checked before verification, before mutation, and
 after the operation. A concurrent deployment stops successful certification;
 it does not automatically undo completed rows. Keep both keys and both runtime

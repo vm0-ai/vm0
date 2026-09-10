@@ -155,7 +155,7 @@ test.each([
       const action = retry === retries[0] ? "Stop recording" : "Retry";
       click(await findEnabledButton(action));
       await retry.requested.promise;
-      await screen.findByText("Transcribing...");
+      await screen.findByText("Transcribing");
       retry.response.resolve();
       await findEnabledButton("Retry");
     }
@@ -342,7 +342,6 @@ test("Restore audio when voice input v2 enables after the composer mounts", asyn
   await setupPage({
     context: secondContext,
     path: RUN_PATH,
-    cachedFeatureSwitches: { [FeatureSwitchKey.VoiceInputV2]: false },
   });
   await expect(findEnabledButton("Voice input")).resolves.not.toHaveAttribute(
     "aria-keyshortcuts",

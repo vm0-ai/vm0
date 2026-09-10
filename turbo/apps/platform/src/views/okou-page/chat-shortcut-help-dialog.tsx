@@ -74,8 +74,14 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
     titleId: "global",
     shortcuts: [
       ...GLOBAL_NAVIGATION_SHORTCUTS,
-      { key: "f2", labelId: "renameChat" },
-      { key: "mod+shift+d", labelId: "togglePin" },
+      {
+        key: GLOBAL_KEYBOARD_SHORTCUTS.renameChat.binding,
+        labelId: "renameChat",
+      },
+      {
+        key: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatPin.binding,
+        labelId: "togglePin",
+      },
       { key: "shift+f2", labelId: "changeIcon" },
       { key: "ctrl+shift+1", labelId: "setIcon" },
       { key: "ctrl+shift+0", labelId: "clearIcon" },

@@ -8,6 +8,7 @@ import {
 } from "../../lib/api/domains/web";
 import { getBillingStatus } from "../../lib/api/domains/billing";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { createArtifactPresentation } from "./artifact-return";
 import {
   findVideoTemplate,
   listVideoTemplates,
@@ -453,6 +454,9 @@ Output:
   Prints the generated /f/ video file URL and metadata. Use --json for the
   complete result object.
 
+  Successful results include inline-link and rich-preview Markdown guidance.
+  --json includes inlineMarkdownLink, previewMarkdownBlock, and artifactPresentationContext.
+
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
@@ -544,8 +548,12 @@ Models:
           lastFrameImageUrl: options.lastFrameImageUrl,
         });
 
+        const presentation = createArtifactPresentation(
+          result.filename,
+          result.url,
+        );
         if (options.json) {
-          console.log(JSON.stringify(result));
+          console.log(JSON.stringify({ ...result, ...presentation.json }));
           return;
         }
 
@@ -559,6 +567,7 @@ Models:
         );
         console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
         console.log(chalk.dim(`  Model: ${result.model}`));
+        console.log(`\n${presentation.text}`);
       }),
     );
 }

@@ -38,7 +38,7 @@ test("Keep transcription pending until server recovery succeeds without reportin
   click(await findEnabledButton("Voice input"));
   click(await findEnabledButton("Stop recording"));
   await started.promise;
-  await expect(screen.findByText("Transcribing...")).resolves.toBeVisible();
+  await expect(screen.findByText("Transcribing")).resolves.toBeVisible();
   recovered.resolve();
   await waitFor(() => {
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(

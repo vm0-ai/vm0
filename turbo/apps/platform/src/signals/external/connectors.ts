@@ -55,17 +55,29 @@ export const connectorCatalogStatusBySlug$ = computed(async (get) => {
   );
 });
 
+/**
+ * Discovery for a browse surface. A category, when one is chosen, is asked for
+ * by name so the response holds the whole category rather than the slice the
+ * unfiltered call returns for every category.
+ */
 export function relatedConnectorCatalog(
   keyword$: Computed<string>,
+  category$?: Computed<string | null>,
 ): Computed<Promise<PublicConnectorCatalogDiscoveryResponse>> {
   return computed(async (get) => {
     get(connectorsReloadVersion$);
     get(featureSwitch$);
     const keyword = get(keyword$).trim();
+    const category = category$ ? get(category$) : null;
     const createClient = get(apiClient$);
     const client = createClient(connectorCatalogContract);
     const result = await accept(
-      client.discovery({ query: keyword ? { keyword } : {} }),
+      client.discovery({
+        query: {
+          ...(keyword ? { keyword } : {}),
+          ...(!keyword && category ? { category } : {}),
+        },
+      }),
       [200],
     );
     return result.body;
@@ -87,6 +99,27 @@ export function connectorCatalogItemBySlug(
     return result.status === 200 ? result.body.connector : null;
   });
 }
+
+export const loadConnectorCatalogItem$ = command(
+  async (
+    { get },
+    connectorSlug: ConnectorSlug,
+    signal: AbortSignal,
+  ): Promise<PlatformConnectorCatalogStatusItem | null> => {
+    const createClient = get(apiClient$);
+    const client = createClient(connectorCatalogContract);
+    const result = await accept(
+      client.get({
+        params: { connectorSlug },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      signal,
+      { showErrorToast: false },
+    );
+    return result.status === 200 ? result.body.connector : null;
+  },
+);
 
 /**
  * Trigger a reload of connectors data.

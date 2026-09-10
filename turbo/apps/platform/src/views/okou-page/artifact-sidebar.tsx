@@ -34,7 +34,6 @@ import {
   artifactPreviewUrlsMatch,
   publicAttachmentUrl,
 } from "./attachment-url.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource";
 import { lightboxDialogVisible$ } from "../../signals/okou-page/attachment-chips.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { jsonParseOr } from "../../signals/utils.ts";
@@ -218,6 +217,8 @@ function ArtifactSidebarContent({
   useTranslation();
   const fullscreen = fullscreenState.active;
   const toggleFullscreen = fullscreenState.toggle;
+  const resourceUrl = useLastResolved(artifactRef.resourceUrl$) ?? null;
+  const shareUrl = useLastResolved(artifactRef.shareUrl$);
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -228,6 +229,8 @@ function ArtifactSidebarContent({
 
   return (
     <ArtifactSidebarResolvedContent
+      resourceUrl={resourceUrl}
+      shareUrl={shareUrl}
       closePreview={onClose}
       display={display}
       fullscreen={fullscreen}
@@ -243,6 +246,8 @@ function ArtifactSidebarContent({
 }
 
 type ArtifactSidebarResolvedContentProps = {
+  readonly resourceUrl: string | null;
+  readonly shareUrl: string | null | undefined;
   readonly closePreview: () => void;
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
@@ -256,6 +261,8 @@ type ArtifactSidebarResolvedContentProps = {
 };
 
 function ArtifactSidebarResolvedContent({
+  resourceUrl,
+  shareUrl,
   closePreview,
   display,
   fullscreen,
@@ -270,6 +277,7 @@ function ArtifactSidebarResolvedContent({
   return (
     <ArtifactSidebarSurface fullscreen={fullscreen}>
       <ArtifactSidebarHeader
+        shareUrl={shareUrl}
         title={display.filename}
         kind={display.kind}
         artifactKind={display.artifactKind}
@@ -284,6 +292,8 @@ function ArtifactSidebarResolvedContent({
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
         <ArtifactBody
+          resourceUrl={resourceUrl}
+          shareUrl={shareUrl}
           url={display.url}
           kind={display.kind}
           filename={display.filename}
@@ -412,6 +422,7 @@ function resolveArtifactDisplay(
 }
 
 function ArtifactSidebarHeader({
+  shareUrl,
   title,
   kind,
   artifactKind,
@@ -424,6 +435,7 @@ function ArtifactSidebarHeader({
   onToggleFullscreen,
   onClose,
 }: {
+  shareUrl?: string | null;
   title: string;
   kind?: ArtifactKindForBody;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
@@ -472,6 +484,7 @@ function ArtifactSidebarHeader({
         )}
       </div>
       <ArtifactSidebarActions
+        shareUrl={shareUrl}
         compactActions={compactActions}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
@@ -488,6 +501,7 @@ function ArtifactSidebarHeader({
 }
 
 function ArtifactSidebarActions({
+  shareUrl,
   artifactKind,
   compactActions,
   fullscreen,
@@ -499,6 +513,7 @@ function ArtifactSidebarActions({
   title,
   url,
 }: {
+  shareUrl?: string | null;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   compactActions: boolean;
   fullscreen: boolean;
@@ -514,6 +529,7 @@ function ArtifactSidebarActions({
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <ArtifactSidebarPreviewActions
+          shareUrl={shareUrl}
           artifactKind={artifactKind}
           kind={kind}
           shareAvailable={shareAvailable}
@@ -536,6 +552,7 @@ function ArtifactSidebarActions({
 }
 
 function ArtifactSidebarPreviewActions({
+  shareUrl,
   artifactKind,
   kind,
   shareAvailable,
@@ -543,6 +560,7 @@ function ArtifactSidebarPreviewActions({
   title,
   url,
 }: {
+  shareUrl?: string | null;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   kind?: ArtifactKindForBody;
   shareAvailable: boolean;
@@ -556,6 +574,7 @@ function ArtifactSidebarPreviewActions({
       {kind === "html" && <ArtifactOpenExternalAction url={url} />}
       {shareAvailable && (
         <ArtifactShareButton
+          shareUrl={shareUrl}
           ariaLabel={t(($) => {
             return $.artifacts.actions.shareArtifact;
           })}
@@ -692,6 +711,8 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
 }
 
 function ArtifactBody({
+  resourceUrl,
+  shareUrl,
   url,
   kind,
   filename,
@@ -702,6 +723,8 @@ function ArtifactBody({
   markdownTree$,
   text$,
 }: {
+  resourceUrl: string | null;
+  shareUrl: string | null | undefined;
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
@@ -749,6 +772,7 @@ function ArtifactBody({
   if (kind === "image") {
     return (
       <ArtifactImageBody
+        resourceUrl={resourceUrl}
         fullscreen={fullscreen}
         imageCanvasSignals={imageCanvasSignals}
         imageNavigation={imageNavigation}
@@ -758,15 +782,15 @@ function ArtifactBody({
     );
   }
   if (kind === "video") {
-    return <ArtifactVideoBody url={url} filename={filename} />;
+    return <ArtifactVideoBody resourceUrl={resourceUrl} filename={filename} />;
   }
   if (kind === "audio") {
-    return <ArtifactAudioBody url={url} filename={filename} />;
+    return <ArtifactAudioBody resourceUrl={resourceUrl} filename={filename} />;
   }
   if (kind === "html" || kind === "pdf") {
     return (
       <ArtifactIframeBody
-        url={url}
+        resourceUrl={resourceUrl}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
@@ -777,6 +801,7 @@ function ArtifactBody({
   if (isOfficeFilePreview(filename)) {
     return (
       <ArtifactOfficeDocumentBody
+        resourceUrl={shareUrl === undefined ? null : (shareUrl ?? resourceUrl)}
         filename={filename}
         fullscreen={fullscreen}
         url={url}
@@ -1065,12 +1090,14 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
 }
 
 function ArtifactImageBody({
+  resourceUrl,
   fullscreen,
   imageCanvasSignals,
   imageNavigation,
   url,
   filename,
 }: {
+  resourceUrl: string | null;
   fullscreen: boolean;
   imageCanvasSignals: ZoomableImageCanvasSignals;
   imageNavigation?: ArtifactImageNavigationActions;
@@ -1078,7 +1105,6 @@ function ArtifactImageBody({
   filename: string;
 }) {
   const modalOpen = useGet(lightboxDialogVisible$);
-  const resourceUrl = useResolvedAttachmentUrl(url);
 
   if (resourceUrl === null) {
     return <ArtifactSpinner />;
@@ -1126,14 +1152,13 @@ function ArtifactImageBody({
 }
 
 function ArtifactVideoBody({
-  url,
+  resourceUrl,
   filename,
 }: {
-  url: string;
+  resourceUrl: string | null;
   filename: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(url);
   return (
     <ArtifactStageShell centered>
       <div
@@ -1161,14 +1186,13 @@ function ArtifactVideoBody({
 }
 
 function ArtifactAudioBody({
-  url,
+  resourceUrl,
   filename,
 }: {
-  url: string;
+  resourceUrl: string | null;
   filename: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(url);
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
@@ -1194,20 +1218,19 @@ function ArtifactAudioBody({
 }
 
 function ArtifactIframeBody({
-  url,
+  resourceUrl,
   kind,
   filename,
   artifactKind,
   fullscreen,
 }: {
-  url: string;
+  resourceUrl: string | null;
   kind: "html" | "pdf";
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(url);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
@@ -1270,10 +1293,12 @@ function ArtifactIframeBody({
 }
 
 function ArtifactOfficeDocumentBody({
+  resourceUrl,
   filename,
   fullscreen,
   url,
 }: {
+  resourceUrl: string | null;
   filename: string;
   fullscreen: boolean;
   url: string;
@@ -1282,11 +1307,11 @@ function ArtifactOfficeDocumentBody({
     <ArtifactStageShell scrollable={false}>
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <OfficeDocumentPreview
+          resourceUrl={resourceUrl}
           filename={filename}
           focusKey={`${url}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen}
           testId="artifact-sidebar-body-office"
-          url={url}
         />
       </div>
     </ArtifactStageShell>

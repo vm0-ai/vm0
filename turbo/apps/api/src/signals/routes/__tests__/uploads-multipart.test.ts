@@ -8,6 +8,7 @@ import {
   HeadObjectCommand,
   ListObjectsV2Command,
   ListPartsCommand,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
@@ -74,11 +75,22 @@ describe("multipart user artifact uploads", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
+    let publicRegistration: unknown;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       if (command instanceof ListObjectsV2Command) {
         return Promise.resolve({ Contents: [] });
       }
+      if (command instanceof PutObjectCommand) {
+        expect(command.input.Bucket).toBe("test-hosted-sites");
+        publicRegistration = JSON.parse(String(command.input.Body));
+      }
       if (command instanceof CreateMultipartUploadCommand) {
+        expect(publicRegistration).toMatchObject({
+          kind: "legacy-file",
+          filename: "recording.mp4",
+          contentType: "video/mp4",
+          audience: "public",
+        });
         return Promise.resolve({ UploadId: "multipart-upload-1" });
       }
       return Promise.resolve({});
@@ -221,7 +233,7 @@ describe("multipart user artifact uploads", () => {
     });
 
     expect(response.status).toBe(500);
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(3);
+    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
     const abortCommand = context.mocks.s3.send.mock.calls
       .map(([command]) => {
         return command;

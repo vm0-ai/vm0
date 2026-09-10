@@ -8,6 +8,7 @@ import {
 import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
+import { PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS } from "../../lib/private-artifact-preview";
 import { db$ } from "../external/db";
 import { putHostedSitesS3Object } from "../external/s3";
 
@@ -70,7 +71,7 @@ export const createPrivateHostedPreview$ = command(
         : env("ZERO_HOST_SCHEME");
     const token = randomBytes(24).toString("hex");
     const expiresAt = new Date(
-      nowDate().getTime() + 15 * 60 * 1000,
+      nowDate().getTime() + PRIVATE_ARTIFACT_PREVIEW_TTL_SECONDS * 1000,
     ).toISOString();
     const url = new URL(
       `${scheme}://${args.snapshotId ? "ps" : "pv"}-${token}.${hostDomain}/`,

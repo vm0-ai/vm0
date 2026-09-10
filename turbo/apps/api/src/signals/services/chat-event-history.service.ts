@@ -113,7 +113,7 @@ function snapshotObjectDigest(objectKey: string): string {
   return digest;
 }
 
-function readCurrentChatEventHistoryAtSnapshot(
+export function readCurrentChatEventHistoryAtSnapshot(
   runtime: Omit<ChatEventHistoryRuntime, "db"> & {
     readonly db: ChatEventHistoryQueryDb;
   },

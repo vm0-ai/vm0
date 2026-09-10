@@ -18,7 +18,7 @@ import {
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { piMemoryPhase2MaintenanceCallbackPayloadSchema } from "./pi-memory-phase2-maintenance.service";
 import { findPiMemoryPhase2Checkpoint } from "./pi-memory-phase2-checkpoint.service";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
@@ -646,8 +646,8 @@ export const prepareCheckpointHistoryUpload$ = command(
         bucketName,
         s3Key,
         "application/octet-stream",
-        3600,
-        true,
+        { expiresIn: 3600, usePublicEndpoint: true },
+        signal,
       ),
     );
     signal.throwIfAborted();

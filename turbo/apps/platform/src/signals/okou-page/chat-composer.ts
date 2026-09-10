@@ -5,8 +5,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { cloudBrowserEnabledByDefault$ } from "../cloud-browser-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
-import { jsonParseOr, onRef, tapError } from "../utils.ts";
+import { onRef, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
 import {
   parsePresentationPreviewDraft,
@@ -15,7 +14,7 @@ import {
 } from "../../views/okou-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/okou-page/attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
-import { createExplainerVideoPickerSignals } from "./explainer-video-picker.ts";
+import { createIntroVideoPickerSignals } from "./intro-video-picker.ts";
 import { createImportedPresentationTemplateSignals } from "./presentation-template-library.ts";
 import { createModelPickerMenuSignals } from "./model-picker-menu.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
@@ -162,25 +161,6 @@ interface PresentationTemplateDetailSelectionParams {
 interface LoadedTemplateDetailFrame {
   readonly slideIndex: number;
   readonly url: string;
-}
-
-function parseTemplateCardThemeIdBySlug(
-  raw: string | null,
-): Readonly<Record<string, string>> {
-  if (raw === null) {
-    return {};
-  }
-  const parsed = jsonParseOr<unknown>(raw, {});
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return {};
-  }
-  const values: Record<string, string> = {};
-  for (const [slug, themeId] of Object.entries(parsed)) {
-    if (typeof themeId === "string") {
-      values[slug] = themeId;
-    }
-  }
-  return values;
 }
 
 function presentationTemplateDetailSlideCount(
@@ -473,7 +453,7 @@ function createTemplatePickerDialogSignals() {
 
 function createTemplatePickerListSignals() {
   const avatarTemplates = createAvatarTemplatePickerSignals();
-  const explainer = createExplainerVideoPickerSignals();
+  const introVideo = createIntroVideoPickerSignals();
   const internalTemplatePickerCategory$ = state("slides");
   const templatePickerCategory$ = computed((get) => {
     return get(internalTemplatePickerCategory$);
@@ -544,7 +524,7 @@ function createTemplatePickerListSignals() {
 
   return {
     signals: {
-      explainer,
+      introVideo,
       templatePickerCategory$,
       setTemplatePickerCategory$,
       templatePickerSearch$,
@@ -571,7 +551,7 @@ function createOpenTemplatePickerDialogCommand(
     set(list.signals.setTemplatePickerSearch$, "");
     set(list.signals.setTemplatePickerPreviewSlug$, null);
     set(dialog.setTemplatePickerReferenceValue$, options.referenceValue);
-    set(list.signals.explainer.restore$, options.referenceValue);
+    set(list.signals.introVideo.restore$, options.referenceValue);
     set(list.signals.setTemplatePickerCategory$, options.category);
     set(dialog.setTemplatePickerOpen$, true);
   });
@@ -632,15 +612,8 @@ function createTemplateCardSignals() {
   const internalTemplateCardThemeIdBySlug$ = state<
     Readonly<Record<string, string>>
   >({});
-  const {
-    get$: templateCardThemeIdBySlugRaw$,
-    set$: setTemplateCardThemeIdBySlugRaw$,
-  } = localStorageSignals("presentationTemplateThemeIdBySlug");
   const templateCardThemeIdBySlug$ = computed((get) => {
-    return {
-      ...parseTemplateCardThemeIdBySlug(get(templateCardThemeIdBySlugRaw$)),
-      ...get(internalTemplateCardThemeIdBySlug$),
-    };
+    return get(internalTemplateCardThemeIdBySlug$);
   });
   const setTemplateCardThemeId$ = command(
     ({ get, set }, slug: string, themeId: string) => {
@@ -649,7 +622,6 @@ function createTemplateCardSignals() {
         [slug]: themeId,
       };
       set(internalTemplateCardThemeIdBySlug$, next);
-      set(setTemplateCardThemeIdBySlugRaw$, JSON.stringify(next));
     },
   );
 

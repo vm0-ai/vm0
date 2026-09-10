@@ -1,4 +1,4 @@
-import { useLastLoadable } from "ccstate-react";
+import { useLastLoadable, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Plus, Search, TriangleAlert } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -16,9 +16,11 @@ import {
   SegmentControlItem,
 } from "@okouai/ui/components/ui/segment-control";
 import { Button, cn } from "@okouai/ui";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/connector-accounts.ts";
+import { sshSummary$ } from "../../signals/ssh.ts";
+import { REMOTE_ACCESS_CATEGORY } from "../../signals/okou-page/settings/ssh-connector.ts";
 import type {
   ComposerConnectorUiState,
   ConnectorDirectoryTab,
@@ -31,7 +33,6 @@ import {
 } from "./components/settings/connector-card.tsx";
 import {
   ConnectorShelfChips,
-  ConnectorShelfRow,
   ConnectorShelfSection,
 } from "./components/settings/connector-shelf.tsx";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
@@ -42,6 +43,7 @@ import {
 } from "./components/settings/launch-connector-connect.ts";
 import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 import { ConnectorDetailPanel } from "./connector-directory-detail.tsx";
+import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import {
   buildConnectorDirectoryModel,
   type ConnectorDirectoryModel,
@@ -60,10 +62,6 @@ type UpdateDirectoryState = (patch: Partial<ComposerConnectorUiState>) => void;
 type RenderConnectorCard = (
   connector: PlatformConnectorCatalogStatusItem,
   connected: boolean,
-) => React.ReactNode;
-
-type RenderShelfRow = (
-  connector: PlatformConnectorCatalogStatusItem,
 ) => React.ReactNode;
 
 function DirectorySection({
@@ -278,10 +276,12 @@ function CustomConnectorDirectoryCard({
 
 function DirectoryCategoryChips({
   sections,
+  categoryCounts,
   selected,
   onSelect,
 }: {
   readonly sections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly selected: string | null;
   readonly onSelect: (category: string | null) => void;
 }) {
@@ -325,9 +325,14 @@ function DirectoryCategoryChips({
               }}
             >
               {section.menuLabel}
-              <span className="text-[11px] text-muted-foreground/70 tabular-nums">
-                {section.connectors.length}
-              </span>
+              {/* The chip stands for the whole category, not the slice
+                  discovery returned, so it counts only what the server
+                  reported and shows nothing when it reported nothing. */}
+              {categoryCounts?.[section.category] !== undefined && (
+                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                  {categoryCounts[section.category]}
+                </span>
+              )}
             </button>
           );
         })}
@@ -336,100 +341,58 @@ function DirectoryCategoryChips({
   );
 }
 
-function DirectoryYoursPanel({
-  model,
-  renderCard,
-  onBrowse,
-  search,
-}: {
-  readonly model: ConnectorDirectoryModel;
-  readonly renderCard: RenderConnectorCard;
-  readonly onBrowse: () => void;
-  readonly search: string;
-}) {
-  const { t } = useTranslation();
-  if (model.connectedCount === 0) {
-    return (
-      <DirectoryEmptyState
-        icon={<Plus size={24} aria-hidden="true" />}
-        title={t(($) => {
-          return $.chat.connectors.directory.emptyYoursTitle;
-        })}
-        body={t(($) => {
-          return $.chat.connectors.directory.emptyYoursBody;
-        })}
-        action={
-          <Button type="button" onClick={onBrowse}>
-            {t(($) => {
-              return $.chat.connectors.directory.browse;
-            })}
-          </Button>
-        }
-      />
-    );
-  }
-  if (model.attention.length === 0 && model.healthy.length === 0) {
-    return <DirectoryNoResults query={search} />;
-  }
-  return (
-    <>
-      {model.attention.length > 0 && (
-        <DirectorySection
-          tone="warning"
-          title={t(($) => {
-            return $.chat.connectors.directory.needsAttention;
-          })}
-        >
-          {model.attention.map((item) => {
-            return renderCard(item, true);
-          })}
-        </DirectorySection>
-      )}
-      {model.healthy.length > 0 && (
-        <DirectorySection
-          title={t(($) => {
-            return $.chat.connectors.directory.connected;
-          })}
-        >
-          {model.healthy.map((item) => {
-            return renderCard(item, true);
-          })}
-        </DirectorySection>
-      )}
-    </>
-  );
-}
-
 function DirectoryDiscoverPanel({
   model,
+  showSsh,
   renderCard,
-  renderShelfRow,
   search,
   category,
   onSelectCategory,
   onCreateCustom,
 }: {
   readonly model: ConnectorDirectoryModel;
+  readonly showSsh: boolean;
   readonly renderCard: RenderConnectorCard;
-  readonly renderShelfRow: RenderShelfRow;
   readonly search: string;
   readonly category: string | null;
   readonly onSelectCategory: (category: string) => void;
   readonly onCreateCustom: () => void;
 }) {
   const { t } = useTranslation();
-  if (model.discover.length === 0) {
+  // Connection health has no other home in the composer: the connector popover
+  // lists what is connected but not whether it still works.
+  const attention =
+    model.attention.length > 0 ? (
+      <DirectorySection
+        tone="warning"
+        title={t(($) => {
+          return $.chat.connectors.directory.needsAttention;
+        })}
+      >
+        {model.attention.map((item) => {
+          return renderCard(item, true);
+        })}
+      </DirectorySection>
+    ) : null;
+  if (
+    model.discover.length === 0 &&
+    model.matchedConnected.length === 0 &&
+    !showSsh
+  ) {
     return (
-      <DirectoryNoResults
-        query={search}
-        action={
-          <Button type="button" variant="outline" onClick={onCreateCustom}>
-            {t(($) => {
-              return $.chat.connectors.directory.createCustom;
-            })}
-          </Button>
-        }
-      />
+      <>
+        {attention}
+        <DirectoryNoResults
+          query={search}
+          action={
+            <Button type="button" variant="outline" onClick={onCreateCustom}>
+              {t(($) => {
+                return $.chat.connectors.directory.createCustom;
+              })}
+            </Button>
+          }
+        />
+      </>
     );
   }
   // A query or a chosen category is already a filter: show what matched as one
@@ -442,22 +405,40 @@ function DirectoryDiscoverPanel({
     model.shelfLayout.shelves.length === 0
   ) {
     return (
-      <DirectorySection
-        title={t(
-          ($) => {
-            return $.chat.connectors.directory.matchCount;
-          },
-          { count: model.discover.length },
+      <>
+        {attention}
+        {model.matchedConnected.length > 0 && (
+          <DirectorySection
+            title={t(($) => {
+              return $.chat.connectors.directory.connected;
+            })}
+          >
+            {model.matchedConnected.map((item) => {
+              return renderCard(item, true);
+            })}
+          </DirectorySection>
         )}
-      >
-        {model.discover.map((item) => {
-          return renderCard(item, false);
-        })}
-      </DirectorySection>
+        {(model.discover.length > 0 || showSsh) && (
+          <DirectorySection
+            title={t(
+              ($) => {
+                return $.chat.connectors.directory.matchCount;
+              },
+              { count: model.discover.length + Number(showSsh) },
+            )}
+          >
+            {model.discover.map((item) => {
+              return renderCard(item, false);
+            })}
+            {showSsh && <SshConnectorCard configuredCount={0} />}
+          </DirectorySection>
+        )}
+      </>
     );
   }
   return (
     <>
+      {attention}
       {model.shelfLayout.shelves.map((shelf) => {
         return (
           <ConnectorShelfSection
@@ -467,7 +448,7 @@ function DirectoryDiscoverPanel({
             onOpenCategory={onSelectCategory}
           >
             {shelf.connectors.map((item) => {
-              return renderShelfRow(item);
+              return renderCard(item, false);
             })}
           </ConnectorShelfSection>
         );
@@ -476,6 +457,15 @@ function DirectoryDiscoverPanel({
         chips={model.shelfLayout.chips}
         onSelect={onSelectCategory}
       />
+      {showSsh && (
+        <DirectorySection
+          title={t(($) => {
+            return $.connectors.catalog.remoteAccess;
+          })}
+        >
+          <SshConnectorCard configuredCount={0} />
+        </DirectorySection>
+      )}
     </>
   );
 }
@@ -553,11 +543,6 @@ function DirectoryToolbar({
             return $.chat.connectors.title;
           })}
         >
-          <SegmentControlItem value="yours">
-            {t(($) => {
-              return $.chat.connectors.directory.tabYours;
-            })}
-          </SegmentControlItem>
           <SegmentControlItem value="discover">
             {t(($) => {
               return $.chat.connectors.directory.tabDiscover;
@@ -579,15 +564,9 @@ function DirectoryToolbar({
         <Input
           type="text"
           className="pl-9"
-          placeholder={
-            tab === "yours"
-              ? t(($) => {
-                  return $.chat.connectors.directory.searchYours;
-                })
-              : t(($) => {
-                  return $.chat.connectors.find;
-                })
-          }
+          placeholder={t(($) => {
+            return $.chat.connectors.find;
+          })}
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
@@ -601,20 +580,20 @@ function DirectoryToolbar({
 
 function DirectoryBody({
   tab,
+  showSsh,
   loading,
   model,
   renderCard,
-  renderShelfRow,
   search,
   category,
   onUpdateState,
   onConnectCustom,
 }: {
   readonly tab: ConnectorDirectoryTab;
+  readonly showSsh: boolean;
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
-  readonly renderShelfRow: RenderShelfRow;
   readonly search: string;
   readonly category: string | null;
   readonly onUpdateState: UpdateDirectoryState;
@@ -623,24 +602,12 @@ function DirectoryBody({
   if (loading) {
     return <DirectorySkeleton />;
   }
-  if (tab === "yours") {
-    return (
-      <DirectoryYoursPanel
-        model={model}
-        renderCard={renderCard}
-        search={search}
-        onBrowse={() => {
-          onUpdateState({ directoryTab: "discover", directoryActiveIndex: 0 });
-        }}
-      />
-    );
-  }
   if (tab === "discover") {
     return (
       <DirectoryDiscoverPanel
         model={model}
+        showSsh={showSsh}
         renderCard={renderCard}
-        renderShelfRow={renderShelfRow}
         search={search}
         category={category}
         onSelectCategory={(next) => {
@@ -664,23 +631,46 @@ function DirectoryBrowseView({
   tab,
   search,
   category,
+  categoryCounts,
   loading,
   model,
   renderCard,
-  renderShelfRow,
   onUpdateState,
   onConnectCustom,
 }: {
   readonly tab: ConnectorDirectoryTab;
   readonly search: string;
   readonly category: string | null;
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
-  readonly renderShelfRow: RenderShelfRow;
   readonly onUpdateState: UpdateDirectoryState;
   readonly onConnectCustom: (connector: CustomConnectorResponse) => void;
 }) {
+  const { t } = useTranslation();
+  const summary = useLoadable(sshSummary$);
+  const sshAvailable =
+    summary.state === "hasData" && summary.data?.configuredCount === 0;
+  const showSsh =
+    sshAvailable &&
+    (category === null || category === REMOTE_ACCESS_CATEGORY) &&
+    "ssh".includes(search.trim().toLowerCase());
+  const remoteAccessLabel = t(($) => {
+    return $.connectors.catalog.remoteAccess;
+  });
+  const sections = sshAvailable
+    ? [
+        ...model.categorySections,
+        {
+          category: REMOTE_ACCESS_CATEGORY,
+          label: remoteAccessLabel,
+          menuLabel: remoteAccessLabel,
+          groupId: null,
+          connectors: [],
+        },
+      ]
+    : model.categorySections;
   return (
     <>
       <DirectoryToolbar
@@ -698,7 +688,12 @@ function DirectoryBrowseView({
       />
       {tab === "discover" && (
         <DirectoryCategoryChips
-          sections={model.categorySections}
+          sections={sections}
+          categoryCounts={
+            sshAvailable
+              ? { ...categoryCounts, [REMOTE_ACCESS_CATEGORY]: 1 }
+              : categoryCounts
+          }
           selected={category}
           onSelect={(next) => {
             onUpdateState({
@@ -716,10 +711,10 @@ function DirectoryBrowseView({
       >
         <DirectoryBody
           tab={tab}
+          showSsh={showSsh}
           loading={loading}
           model={model}
           renderCard={renderCard}
-          renderShelfRow={renderShelfRow}
           search={search}
           category={category}
           onUpdateState={onUpdateState}
@@ -775,13 +770,7 @@ function navigableDirectorySlugs(
   tab: ConnectorDirectoryTab,
   model: ConnectorDirectoryModel,
 ): readonly ConnectorSlug[] {
-  if (tab === "yours") {
-    return model.yoursSlugs;
-  }
-  if (tab === "discover") {
-    return model.discoverSlugs;
-  }
-  return [];
+  return tab === "discover" ? model.discoverSlugs : [];
 }
 
 function createDirectoryKeyDownHandler({
@@ -806,7 +795,10 @@ function createDirectoryKeyDownHandler({
   readonly onUpdateState: UpdateDirectoryState;
 }) {
   return (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (inDetail) {
+    if (
+      inDetail ||
+      (event.target instanceof HTMLElement && event.target.closest("a, button"))
+    ) {
       return;
     }
     const next = nextDirectoryIndex(
@@ -835,47 +827,6 @@ function createDirectoryKeyDownHandler({
     } else if (!connecting) {
       launchConnectorConnect({ connector: target, ...connectHandlers(target) });
     }
-  };
-}
-
-/**
- * A shelf cell opens what the reader already has and connects what they don't,
- * which is the same split the card grid makes; keeping it here leaves the
- * dialog holding state rather than behaviour.
- */
-function createDirectoryShelfRowRenderer({
-  connecting,
-  activeSlug,
-  connectHandlers,
-  onUpdateState,
-}: {
-  readonly connecting: boolean;
-  readonly activeSlug: ConnectorSlug | undefined;
-  readonly connectHandlers: (
-    connector: PlatformConnectorCatalogStatusItem,
-  ) => ConnectorConnectHandlers;
-  readonly onUpdateState: UpdateDirectoryState;
-}): RenderShelfRow {
-  return (connector) => {
-    return (
-      <ConnectorShelfRow
-        key={connector.slug}
-        connector={connector}
-        connected={connector.connected}
-        busy={connecting}
-        active={activeSlug === connector.slug}
-        onActivate={() => {
-          if (connector.connected) {
-            onUpdateState({ directoryDetailSlug: connector.slug });
-            return;
-          }
-          launchConnectorConnect({
-            connector,
-            ...connectHandlers(connector),
-          });
-        }}
-      />
-    );
   };
 }
 
@@ -920,6 +871,14 @@ interface ConnectorDirectoryDialogProps {
   readonly onUpdateState: UpdateDirectoryState;
   /** Category totals from discovery; a shelf's closing cell stands for these. */
   readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  /**
+   * The catalog's category names, from the same discovery response as the
+   * connectors. Reading them from the full-catalog status endpoint instead
+   * made every chip wait on a 6.7 MB response and show an id-derived name
+   * until it arrived.
+   */
+  readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
+  readonly loading: boolean;
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
   readonly connectedCustom: readonly CustomConnectorResponse[];
@@ -958,6 +917,8 @@ export function ConnectorDirectoryDialog({
   state,
   onUpdateState,
   categoryCounts,
+  categoryMetadata,
+  loading,
   connected,
   unconnected,
   connectedCustom,
@@ -970,7 +931,6 @@ export function ConnectorDirectoryDialog({
 }: ConnectorDirectoryDialogProps) {
   const { t } = useTranslation();
   const accountLabelOf = useConnectorAccountLabel();
-  const catalogLoadable = useLastLoadable(connectorCatalogStatus$);
   const accountsLoadable = useLastLoadable(connectorAccountSummaryByTarget$);
   const accountSummaries: ReadonlyMap<string, ConnectorAccountSummary> =
     accountsLoadable.state === "hasData"
@@ -987,10 +947,7 @@ export function ConnectorDirectoryDialog({
     unconnectedCustom,
     search,
     category,
-    categoryMetadata:
-      catalogLoadable.state === "hasData"
-        ? catalogLoadable.data.categoryMetadata
-        : undefined,
+    categoryMetadata,
     otherCategoryLabel: t(($) => {
       return $.chat.connectors.directory.otherCategory;
     }),
@@ -999,7 +956,6 @@ export function ConnectorDirectoryDialog({
       return $.connectors.catalog.shelf.popular;
     }),
   });
-  const loading = catalogLoadable.state === "loading" && connected.length === 0;
   const navigableSlugs = navigableDirectorySlugs(tab, model);
   const activeSlug = navigableSlugs[state.directoryActiveIndex];
   const detailConnector = state.directoryDetailSlug
@@ -1023,13 +979,6 @@ export function ConnectorDirectoryDialog({
       />
     );
   };
-
-  const renderShelfRow = createDirectoryShelfRowRenderer({
-    connecting,
-    activeSlug,
-    connectHandlers,
-    onUpdateState,
-  });
 
   const handleKeyDown = createDirectoryKeyDownHandler({
     activeIndex: state.directoryActiveIndex,
@@ -1073,10 +1022,10 @@ export function ConnectorDirectoryDialog({
             tab={tab}
             search={search}
             category={category}
+            categoryCounts={categoryCounts}
             loading={loading}
             model={model}
             renderCard={renderCard}
-            renderShelfRow={renderShelfRow}
             onUpdateState={onUpdateState}
             onConnectCustom={onConnectCustom}
           />
