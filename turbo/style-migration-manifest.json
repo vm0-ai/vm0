@@ -462,6 +462,44 @@
       ],
       "status": "implemented",
       "evidence": []
+    },
+    {
+      "id": "icon-button-affordance",
+      "family": "navigation",
+      "tokens": ["icon-button"],
+      "consumers": [
+        "packages/ui/src/components/ui/dialog.tsx",
+        "packages/ui/src/components/ui/sheet.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/usage-pack-pricing-page.tsx"
+      ],
+      "cases": [
+        "recipe-dialog-light",
+        "recipe-dialog-dark",
+        "recipe-dialog-narrow",
+        "recipe-usage-pack-light",
+        "recipe-usage-pack-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
+    },
+    {
+      "id": "dialog-scroll-surface",
+      "family": "page-surfaces",
+      "tokens": ["dialog-scrollable"],
+      "consumers": [
+        "packages/ui/src/components/ui/dialog.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/usage-pack-pricing-page.tsx"
+      ],
+      "cases": [
+        "recipe-dialog-light",
+        "recipe-dialog-dark",
+        "recipe-dialog-narrow",
+        "recipe-usage-pack-light",
+        "recipe-usage-pack-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
     }
   ],
   "caseFiles": [
@@ -471,6 +509,7 @@
     "../e2e/playwright/style-migration/icon-mono-cases.json",
     "../e2e/playwright/style-migration/settings-select-cases.json",
     "../e2e/playwright/style-migration/badge-cases.json",
+    "../e2e/playwright/style-migration/shared-recipe-cases.json",
     "../e2e/playwright/style-migration/chat-emoji-cases.json"
   ]
 }

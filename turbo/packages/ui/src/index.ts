@@ -19,6 +19,7 @@ export {
   cardClassName,
 } from "./components/ui/card";
 export { Badge, type BadgeProps } from "./components/ui/badge";
+export { iconButtonClassName } from "./components/ui/button-base";
 export { Checkbox } from "./components/ui/checkbox";
 export {
   ToggleButton,
@@ -42,6 +43,7 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  dialogScrollableClassName,
 } from "./components/ui/dialog";
 export {
   Command,

@@ -16,6 +16,11 @@ import {
 export const buttonBaseClassName =
   "rounded-lg text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
+// Square icon-only affordances: dialog and sheet close buttons and the inline
+// help trigger. Callers keep their own foreground and opacity.
+export const iconButtonClassName =
+  "flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none";
+
 export type ButtonTooltipOptions =
   | { showTooltip: true; "aria-label": string }
   | { showTooltip?: false };

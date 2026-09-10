@@ -54,7 +54,13 @@ import {
   type ConcurrencyChangeMode,
   type ConcurrencyConfirmDialogState,
 } from "../../../../signals/okou-page/billing.ts";
-import { Badge, Button, Input } from "@okouai/ui";
+import {
+  Badge,
+  Button,
+  Input,
+  dialogScrollableClassName,
+  cn,
+} from "@okouai/ui";
 import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
@@ -1952,7 +1958,12 @@ function StandaloneBillingPricingDialog({
             return $.settings.dialog.sections.billing.title;
           })}
         </DialogTitle>
-        <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+        <div
+          className={cn(
+            dialogScrollableClassName,
+            "flex min-h-0 flex-1 flex-col overflow-y-auto p-5",
+          )}
+        >
           {children}
         </div>
       </DialogContent>

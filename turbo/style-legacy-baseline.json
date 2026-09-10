@@ -3,10 +3,8 @@
   "legacyClassTokens": [
     "animate-in",
     "copied",
-    "dialog-scrollable",
     "ease",
     "fade-in",
-    "icon-button",
     "icon-tooltip-trigger",
     "language-mermaid",
     "lucide",
@@ -3433,69 +3431,6 @@
     "packages/ui/src/styles/globals.css": [
       {
         "atRules": ["@layer components"],
-        "selector": ".icon-button",
-        "property": "@apply",
-        "value": "flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable",
-        "property": "scrollbar-width",
-        "value": "thin",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable",
-        "property": "scrollbar-color",
-        "value": "rgba(128,128,128,0.3) transparent",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar",
-        "property": "width",
-        "value": "6px",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-track",
-        "property": "background",
-        "value": "transparent",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-track",
-        "property": "margin",
-        "value": "4px 0",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-thumb",
-        "property": "background-color",
-        "value": "rgba(128,128,128,0.3)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-thumb",
-        "property": "border-radius",
-        "value": "3px",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-thumb:hover",
-        "property": "background-color",
-        "value": "rgba(128,128,128,0.5)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
         "selector": ".running-indicator",
         "property": "position",
         "value": "relative",
@@ -3819,7 +3754,6 @@
       "okou-btn-morandi": 1
     },
     "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx": {
-      "dialog-scrollable": 1,
       "okou-app": 1,
       "okou-border": 3,
       "okou-border-t": 7
@@ -3840,10 +3774,6 @@
     "apps/platform/src/views/okou-page/components/org-manage/org-usage-tab.tsx": {
       "okou-border": 3,
       "okou-border-t": 1
-    },
-    "apps/platform/src/views/okou-page/components/org-manage/usage-pack-pricing-page.tsx": {
-      "dialog-scrollable": 2,
-      "icon-button": 1
     },
     "apps/platform/src/views/okou-page/components/preferences/personal-providers-tab.tsx": {
       "okou-btn-morandi": 2
@@ -3933,7 +3863,6 @@
     "apps/platform/src/views/okou-page/settings-tab.tsx": {
       "okou-chat-bubble-assistant": 1
     },
-    "apps/platform/src/views/okou-page/sidebar-account.tsx": {},
     "apps/platform/src/views/okou-page/sidebar-dialogs.tsx": {
       "okou-app": 2
     },
@@ -4042,10 +3971,6 @@
     "apps/platform/src/views/workflows-page/workflows-page.tsx": {
       "okou-btn-morandi": 4
     },
-    "packages/ui/src/components/ui/dialog.tsx": {
-      "dialog-scrollable": 1,
-      "icon-button": 1
-    },
     "packages/ui/src/components/ui/dropdown-menu.tsx": {
       "okou-border-t": 1
     },
@@ -4056,9 +3981,6 @@
     },
     "packages/ui/src/components/ui/select.tsx": {
       "okou-border-t": 1
-    },
-    "packages/ui/src/components/ui/sheet.tsx": {
-      "icon-button": 1
     },
     "packages/ui/src/components/ui/sonner.tsx": {
       "toaster": 1

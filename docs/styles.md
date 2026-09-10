@@ -120,6 +120,31 @@ Line height belongs to the badge because a font-size utility with an arbitrary v
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
 
+### Shared component recipes
+
+`iconButtonClassName` from `@okouai/ui` is the square icon-only affordance used
+by the dialog and sheet close buttons and the inline help trigger: a 36px flex
+box with the shared radius, the muted hover fill, and the focus ring. Callers
+keep their own foreground and opacity.
+
+`dialogScrollableClassName` from `@okouai/ui` is the thin scrollbar for dialog
+and drawer scroll containers. Tailwind has no first-class scrollbar utilities,
+so the WebKit pseudo-elements are addressed through arbitrary variants
+(`[&::-webkit-scrollbar-thumb]:…`) rather than a first-party selector.
+
+The App base layer already styles `*::-webkit-scrollbar` for the whole product.
+The recipe only ever differed from that default in three declarations: the
+`scrollbar-color` thumb, the track's `4px 0` margin, and the thumb's own fill
+and hover fill, which use a literal grey rather than the muted foreground. The
+replacement reproduces every declaration, including the ones that duplicate the
+global default, so the scroll container does not silently depend on that rule
+staying as it is.
+
+The `icon-button` and `dialog-scrollable` recipes have been removed from the
+shared stylesheet. `icon-tooltip-trigger` stays for now: its only rule is
+`.wmde-markdown .mermaid-block > .icon-tooltip-trigger`, which belongs to the
+Mermaid block and migrates with it.
+
 ## Exception boundary
 
 Only two exception kinds exist:

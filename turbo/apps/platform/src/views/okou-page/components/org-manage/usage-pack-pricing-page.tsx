@@ -15,6 +15,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Badge,
+  dialogScrollableClassName,
+  iconButtonClassName,
+  cn,
 } from "@okouai/ui";
 import type {
   MemberUsagePack,
@@ -1237,7 +1240,10 @@ function PricingStepDialog({
           </DialogTitle>
           <PricingStepIndicator current={step} total={total} />
           <DialogClose
-            className="icon-button -ml-1 shrink-0 text-muted-foreground hover:text-foreground"
+            className={cn(
+              iconButtonClassName,
+              "-ml-1 shrink-0 text-muted-foreground hover:text-foreground",
+            )}
             aria-label={t(($) => {
               return $.settings.shared.close;
             })}
@@ -1253,7 +1259,10 @@ function PricingStepDialog({
           className={
             flush
               ? "flex min-h-0 flex-1 flex-col"
-              : "dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-5"
+              : cn(
+                  dialogScrollableClassName,
+                  "flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-5",
+                )
           }
         >
           {children}
@@ -1400,7 +1409,12 @@ function PlanSelectionStep({
        height of the body so the frame reads as two columns, not two cards.
        The columns take the scroll; the note stays pinned to the frame. */
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="dialog-scrollable grid min-h-0 flex-1 grid-cols-1 overflow-y-auto sm:grid-cols-2">
+      <div
+        className={cn(
+          dialogScrollableClassName,
+          "grid min-h-0 flex-1 grid-cols-1 overflow-y-auto sm:grid-cols-2",
+        )}
+      >
         {USAGE_PACK_PLANS.map((plan, index) => {
           const action = resolveAction(plan.tier);
           return (

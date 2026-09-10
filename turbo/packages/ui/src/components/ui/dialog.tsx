@@ -5,11 +5,20 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
 import { asChildRender } from "../../lib/base-ui-compat";
+import { iconButtonClassName } from "./button-base";
 import {
   dialogBackdropAnimationClassName,
   dialogPopupAnimationClassName,
 } from "./popup-motion";
 import { cn } from "../../lib/utils";
+
+/**
+ * Slack-style thin scrollbar for dialog and drawer scroll containers. Tailwind
+ * has no first-class scrollbar utilities, so the WebKit pseudo-elements are
+ * addressed through arbitrary variants rather than a first-party selector.
+ */
+export const dialogScrollableClassName =
+  "[scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[rgba(128,128,128,0.3)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgba(128,128,128,0.5)]";
 
 function Dialog(props: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -213,7 +222,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
               <div
                 data-slot="dialog-inner"
                 className={cn(
-                  "grid min-h-0 min-w-0 flex-1 gap-4 p-6 dialog-scrollable",
+                  cn(
+                    "grid min-h-0 min-w-0 flex-1 gap-4 p-6",
+                    dialogScrollableClassName,
+                  ),
                   contentClassName,
                   // A caller's clipping utility must not make footer actions
                   // unreachable when the safe viewport constrains the panel.
@@ -228,7 +240,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
                   render={
                     <button
                       type="button"
-                      className="icon-button absolute right-4 top-4 opacity-70 hover:opacity-100"
+                      className={cn(
+                        iconButtonClassName,
+                        "absolute top-4 right-4 opacity-70 hover:opacity-100",
+                      )}
                       aria-label={closeLabel}
                     />
                   }
