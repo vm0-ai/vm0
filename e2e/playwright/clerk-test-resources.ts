@@ -1,6 +1,7 @@
 import {
   cleanupClerkTestJobRef,
   cleanupCurrentClerkTestGeneration,
+  cleanupRecordedClerkTestResources,
   cleanupStaleClerkTestResources,
   currentClerkTestJobRef,
   parseClerkTestRole,
@@ -18,6 +19,15 @@ async function main(): Promise<void> {
   let result: ClerkCleanupResult;
 
   switch (command) {
+    case "cleanup-recorded": {
+      const roles = parseRoles(requiredArgument(3, "role list"));
+      assertNoExtraArguments(4);
+      if (dryRun) {
+        throw new Error("Recorded cleanup does not support DRY_RUN");
+      }
+      await cleanupRecordedClerkTestResources(roles);
+      return;
+    }
     case "cleanup-generation": {
       const roles = parseRoles(requiredArgument(3, "role list"));
       assertNoExtraArguments(4);
@@ -55,7 +65,7 @@ async function main(): Promise<void> {
     }
     default:
       throw new Error(
-        "Usage: clerk-test-resources.ts cleanup-generation <roles> | cleanup-job-ref | cleanup-stale <roles> --ci-older-than-hours <hours> --staging-browser-older-than-hours <hours>",
+        "Usage: clerk-test-resources.ts cleanup-recorded <roles> | cleanup-generation <roles> | cleanup-job-ref | cleanup-stale <roles> --ci-older-than-hours <hours> --staging-browser-older-than-hours <hours>",
       );
   }
 

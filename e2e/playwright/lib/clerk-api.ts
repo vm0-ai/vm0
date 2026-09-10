@@ -1,5 +1,12 @@
 import { randomBytes } from "node:crypto";
 
+import {
+  forgetClerkResource,
+  readClerkResourceRecords,
+  recordClerkResource,
+  type ClerkResourceRecord,
+} from "./clerk-resource-records";
+
 const DEFAULT_CLERK_API_BASE = "https://api.clerk.com/v1";
 const CLERK_PAGE_LIMIT = 500;
 const CLERK_RETRY_DELAYS_MS = [500, 1_500, 3_500] as const;
@@ -290,6 +297,10 @@ export async function createUser(
       `create Clerk user returned an unexpected response: ${formatClerkResponseSummary(response)}`,
     );
   }
+  const owner = parseClerkTestEmail(email);
+  if (owner) {
+    await recordClerkResource({ kind: "user", id: data.id, owner });
+  }
   return data.id;
 }
 
@@ -299,6 +310,13 @@ export async function createOrganization(
   role: ClerkTestRole,
 ): Promise<string> {
   const owner = currentClerkTestOwner(role);
+  // Keep the user if cancellation loses an organization's creation response.
+  // The existing strict-marker sweep can reconcile that ambiguous outcome.
+  await recordClerkResource({
+    kind: "pending-organization",
+    id: createdByUserId,
+    owner,
+  });
   const response = await requestClerkCreate(
     "create Clerk organization",
     "/organizations",
@@ -318,6 +336,9 @@ export async function createOrganization(
       `create Clerk organization returned an unexpected response: ${formatClerkResponseSummary(response)}`,
     );
   }
+
+  await recordClerkResource({ kind: "organization", id: data.id, owner });
+  await forgetClerkResource("pending-organization", createdByUserId);
 
   try {
     await updateOrganizationMembershipRole(
@@ -397,6 +418,118 @@ export async function cleanupClerkTestJobRef(
     throw new Error(`Invalid Clerk test JOB_REF: ${jobRef}`);
   }
   return await cleanupClerkTestResources({ kind: "job-ref", jobRef }, options);
+}
+
+export async function cleanupRecordedClerkTestResources(
+  roles: readonly ClerkTestRole[],
+  scope: "generation" | "run" = "generation",
+): Promise<void> {
+  assertCleanupRoles(roles);
+  const records = (await readClerkResourceRecords()).map(parseResourceRecord);
+  const jobRef = currentClerkTestJobRef();
+  const generation = currentClerkTestGeneration();
+  const selected = records.filter((record) => {
+    const matchesGeneration =
+      scope === "generation"
+        ? record.owner.generation === generation
+        : clerkTestRunId(record.owner.generation) ===
+          clerkTestRunId(generation);
+    if (
+      record.owner.jobRef !== jobRef ||
+      clerkTestRunId(record.owner.generation) !== clerkTestRunId(generation)
+    ) {
+      throw new Error("Recorded Clerk resource belongs to another CI scope");
+    }
+    return matchesGeneration && roles.includes(record.owner.role);
+  });
+  const pendingUsers = new Set(
+    selected
+      .filter((record) => record.kind === "pending-organization")
+      .map((record) => record.id),
+  );
+  const organizations: string[] = [];
+  const users: string[] = [];
+  // Resolve ownership against Clerk before deleting anything from the record.
+  for (const record of selected) {
+    if (record.kind === "pending-organization") {
+      continue;
+    }
+    const collection = record.kind === "user" ? "users" : "organizations";
+    const response = await requestClerkWithRetry(
+      "verify recorded Clerk resource",
+      "/" + collection + "/" + record.id,
+      { method: "GET", headers: getClerkHeaders() },
+    );
+    if (response.status === 404) {
+      await response.body?.cancel();
+      await forgetClerkResource(record.kind, record.id);
+      continue;
+    }
+    const resource = await readClerkJson(
+      response,
+      "verify recorded Clerk resource",
+    );
+    const email =
+      isClerkUserSummary(resource) && resource.email_addresses.length === 1
+        ? resource.email_addresses[0]?.email_address
+        : undefined;
+    const owner =
+      record.kind === "user" &&
+      isClerkUserSummary(resource) &&
+      resource.id === record.id &&
+      email
+        ? parseClerkTestEmail(email)
+        : record.kind === "organization" &&
+            isClerkOrganizationSummary(resource) &&
+            resource.id === record.id
+          ? parseClerkTestOrganizationMetadata(resource.private_metadata)
+          : null;
+    if (
+      !owner ||
+      clerkTestOwnerKey(owner) !== clerkTestOwnerKey(record.owner)
+    ) {
+      throw new Error("Recorded Clerk resource ownership does not match Clerk");
+    }
+    if (record.kind === "organization") {
+      organizations.push(record.id);
+    } else if (!pendingUsers.has(record.id)) {
+      users.push(record.id);
+    }
+  }
+  const totalDeletes = organizations.length + users.length;
+  for (const [index, id] of organizations.entries()) {
+    await deleteOrganizationById(id);
+    await paceClerkBulkRequest(index + 1, totalDeletes);
+  }
+  for (const [index, id] of users.entries()) {
+    await deleteUserById(id);
+    await paceClerkBulkRequest(organizations.length + index + 1, totalDeletes);
+  }
+  console.log("Cleaned recorded Clerk test resources", {
+    organizations: organizations.length,
+    users: users.length,
+    deferredUsers: pendingUsers.size,
+  });
+}
+
+function parseResourceRecord(value: unknown): ClerkResourceRecord {
+  if (!isRecord(value)) {
+    throw new Error("Invalid Clerk resource record");
+  }
+  const owner = parseClerkTestOrganizationMetadata({ vm0CiTest: value.owner });
+  const { kind, id } = value;
+  if (
+    !owner ||
+    typeof id !== "string" ||
+    !/^(?:user|org)_[a-zA-Z0-9_]+$/.test(id) ||
+    (kind !== "user" &&
+      kind !== "organization" &&
+      kind !== "pending-organization") ||
+    (kind === "organization" ? !id.startsWith("org_") : !id.startsWith("user_"))
+  ) {
+    throw new Error("Invalid Clerk resource record");
+  }
+  return { kind, id, owner };
 }
 
 export async function cleanupStaleClerkTestResources(
@@ -733,6 +866,7 @@ export async function deleteOrganizationById(
       `delete Clerk test organization failed with ${formatClerkResponseSummary(response)}`,
     );
   }
+  await forgetClerkResource("organization", organizationId);
   return response.status !== 404;
 }
 
@@ -775,6 +909,7 @@ async function deleteUserById(userId: string): Promise<boolean> {
       `delete Clerk test user failed with ${formatClerkResponseSummary(response)}`,
     );
   }
+  await forgetClerkResource("user", userId);
   return response.status !== 404;
 }
 
