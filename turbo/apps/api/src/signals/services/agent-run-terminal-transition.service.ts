@@ -1,6 +1,6 @@
 import type { RunStatus } from "@okouai/api-contracts/contracts/runs";
 import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, inArray, type SQL } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";

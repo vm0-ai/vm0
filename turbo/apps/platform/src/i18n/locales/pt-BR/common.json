@@ -617,8 +617,6 @@
       "category": "Categoria de modelo",
       "chooseVoice": "Escolha uma voz para {{title}}",
       "creativeVideo": "Vídeo criativo",
-      "explainerUnavailable": "Este modelo de vídeo não está mais disponível. Remova-o para enviar sua mensagem.",
-      "explainerVideo": "Vídeo explicativo",
       "filters": {
         "age": "Idade",
         "all": "Todos",
@@ -641,6 +639,8 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",
+      "introVideo": "Vídeo de introdução",
+      "introVideoUnavailable": "Este modelo de vídeo não está mais disponível. Remova-o para enviar sua mensagem.",
       "multiAccent": "Várias cores de destaque",
       "needPro": "Requer Pro",
       "nextSlide": "Visualizar próximo slide",
@@ -2067,20 +2067,6 @@
       },
       "runCancelled": "Pausado no meio do raciocínio — retome quando quiser."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "Encontre uma voz que combine com seu conteúdo.",
-      "avatarVoice": "Voz do avatar",
-      "changeAvatar": "Alterar avatar",
-      "chooseStyle": "Escolha um estilo",
-      "chooseStyleAndVoice": "Escolha um estilo e uma voz.",
-      "noMatches": "Nenhum resultado. Tente outra busca ou categoria.",
-      "ready": "Pronto para usar. Adicione seu conteúdo na conversa.",
-      "searchAvatars": "Buscar avatares",
-      "searchStyles": "Buscar estilos",
-      "settings": "Configurações do vídeo explicativo",
-      "style": "Estilo",
-      "useSelection": "Usar seleção"
-    },
     "feedback": {
       "emailDraftDescription": "um rascunho de e-mail (ID do rascunho: {{id}})",
       "partHeading": "Feedback sobre esta parte da resposta:",
@@ -2126,6 +2112,20 @@
       },
       "footer": {
         "cancel": "Cancelar"
+      },
+      "picker": {
+        "autoVoiceDescription": "Encontre uma voz que combine com seu conteúdo.",
+        "avatarVoice": "Voz do avatar",
+        "changeAvatar": "Alterar avatar",
+        "chooseStyle": "Escolha um estilo",
+        "chooseStyleAndVoice": "Escolha um estilo e uma voz.",
+        "noMatches": "Nenhum resultado. Tente outra busca ou categoria.",
+        "ready": "Pronto para usar. Adicione seu conteúdo na conversa.",
+        "searchAvatars": "Buscar avatares",
+        "searchStyles": "Buscar estilos",
+        "settings": "Configurações do vídeo de introdução",
+        "style": "Estilo",
+        "useSelection": "Usar seleção"
       },
       "style": {
         "auto": "Deixar o Okou escolher",

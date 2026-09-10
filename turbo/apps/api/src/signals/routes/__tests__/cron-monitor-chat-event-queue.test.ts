@@ -153,13 +153,12 @@ describe("cron monitor chat event queue", () => {
     ).toMatchObject({
       name: "OrphanedQueuedChatEventsError",
       code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      orphanedMessages: 8,
+      orphanedMessages: 7,
       orphanedMessagesBySource: {
         agentphone: 1,
         automation: 1,
         feishu: 1,
         github: 1,
-        goal: 1,
         slack: 1,
         teams: 1,
         telegram: 1,
@@ -174,13 +173,12 @@ describe("cron monitor chat event queue", () => {
       error: {
         name: "OrphanedQueuedChatEventsError",
         code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-        orphanedMessages: 8,
+        orphanedMessages: 7,
         orphanedMessagesBySource: {
           agentphone: 1,
           automation: 1,
           feishu: 1,
           github: 1,
-          goal: 1,
           slack: 1,
           teams: 1,
           telegram: 1,
@@ -191,41 +189,6 @@ describe("cron monitor chat event queue", () => {
 
   it("does not flag input.automation without legacy encrypted params", async () => {
     const fixture = await trackFixture(seedFixture("orphaned-automation"));
-
-    const response = await accept(
-      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      orphanedMessages: 0,
-    });
-    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-  });
-
-  it("alerts when a pending goal event has lost its goal row", async () => {
-    const fixture = await trackFixture(seedFixture("orphaned-goal"));
-
-    const response = await accept(
-      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
-      [500],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: "Internal server error",
-    });
-    expect(
-      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
-    ).toMatchObject({
-      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      orphanedMessages: 1,
-      orphanedMessagesBySource: { goal: 1 },
-    });
-  });
-
-  it("does not alert for a paused canonical goal continuation", async () => {
-    const fixture = await trackFixture(seedFixture("paused-goal"));
 
     const response = await accept(
       stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),

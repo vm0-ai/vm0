@@ -5,7 +5,7 @@ import {
   type ChatEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   and,

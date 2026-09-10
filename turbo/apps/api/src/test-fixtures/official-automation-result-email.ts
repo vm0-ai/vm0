@@ -1,4 +1,4 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";

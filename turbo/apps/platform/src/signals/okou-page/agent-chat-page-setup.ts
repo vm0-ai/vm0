@@ -118,7 +118,7 @@ export const setupAgentChatPage$ = command(
       if (restored) {
         set(get(agentChatComposerSignals$).template.openTemplatePicker$, {
           kind: "insert",
-          category: "explainer",
+          category: "intro-video",
         });
       }
     }

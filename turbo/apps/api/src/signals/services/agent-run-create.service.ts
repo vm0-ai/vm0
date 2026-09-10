@@ -1,5 +1,5 @@
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
-import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
+import { isUnsupportedRunAdmission } from "./run-admission-input";
 import { createHash, randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
@@ -127,7 +127,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import type {
   AgentRunLaunchSnapshot,
   AgentRunOfficialWorkflowProvenance,
@@ -304,7 +304,6 @@ import type {
 } from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
-  lockGoalQueueFirstRunSource,
   resolveQueueFirstRunAdmission,
   type QueueFirstRunAdmission,
   type QueueFirstRunAssociation,
@@ -575,8 +574,6 @@ interface AgentRunMetadata {
   // Run provenance for workflow schedule automations.
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
-  // Run provenance for autonomous thread-goal continuation.
-  readonly goalId?: string;
   readonly autonomyBudget?: number;
   readonly codexServiceTier?: CodexServiceTier;
   readonly reasoningEffort?: ReasoningEffort | null;
@@ -6464,7 +6461,6 @@ function builtInModelLaunchMetadataValues(
 function agentRunLaunchMetadataInput(metadata: AgentRunMetadata): {
   readonly autonomyBudget: number | undefined;
   readonly workflowAutomationId: string | null;
-  readonly goalId: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly reasoningEffort: ReasoningEffort | null;
   readonly triggerBrief: string | null;
@@ -6472,7 +6468,6 @@ function agentRunLaunchMetadataInput(metadata: AgentRunMetadata): {
   return {
     autonomyBudget: metadata.autonomyBudget,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
-    goalId: metadata.goalId ?? null,
     codexServiceTier: metadata.codexServiceTier ?? null,
     reasoningEffort: metadata.reasoningEffort ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
@@ -7961,16 +7956,6 @@ async function resolveQueueFirstAdmissionForLaunch(args: {
   });
 }
 
-async function lockQueueFirstRunSourceForLaunch(args: {
-  readonly tx: DbTransaction;
-  readonly createArgs: CreateAgentRunArgs;
-}): Promise<void> {
-  const association = args.createArgs.queueFirstAssociation;
-  if (association?.kind === "goal_input") {
-    await lockGoalQueueFirstRunSource(args.tx, association);
-  }
-}
-
 async function claimQueueFirstAssociationForLaunch(args: {
   readonly tx: DbTransaction;
   readonly admission: QueueFirstRunAdmission | undefined;
@@ -8025,10 +8010,6 @@ async function persistFailedLaunch(
       sql`SELECT pg_advisory_xact_lock(hashtext(${args.createArgs.orgId}))`,
     );
   }
-  await lockQueueFirstRunSourceForLaunch({
-    tx,
-    createArgs: args.createArgs,
-  });
   const officialAdmissionFailure = await validateOfficialWorkflowRunForInsert(
     tx,
     {
@@ -8559,10 +8540,6 @@ async function commitPreparedLaunch(
       },
     );
     const admissionLockHeldStartedAt = now();
-    await lockQueueFirstRunSourceForLaunch({
-      tx,
-      createArgs: args.createArgs,
-    });
     return {
       result: await commitPreparedLaunchUnderLock(tx, args, payload),
       admissionLockHeldStartedAt,
@@ -10435,10 +10412,12 @@ export const prepareAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
     if (
-      input.args.body.triggerSource === "goal" ||
-      input.args.queueFirstAssociation?.kind === "goal_input"
+      isUnsupportedRunAdmission(
+        input.args.body.triggerSource,
+        input.args.queueFirstAssociation,
+      )
     ) {
-      return conflict(GOAL_RETIRED_MESSAGE);
+      return conflict("Unsupported run input");
     }
     assertThreadBoundRunHasQueueAssociation(input.args);
     // A preview request that passed the protection guard carries the bypass as
@@ -10507,10 +10486,12 @@ export const completeAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<QueueFirstAgentRunResult> => {
     if (
-      input.prepared.args.body.triggerSource === "goal" ||
-      input.prepared.args.queueFirstAssociation?.kind === "goal_input"
+      isUnsupportedRunAdmission(
+        input.prepared.args.body.triggerSource,
+        input.prepared.args.queueFirstAssociation,
+      )
     ) {
-      return conflict(GOAL_RETIRED_MESSAGE);
+      return conflict("Unsupported run input");
     }
     assertThreadBoundRunHasQueueAssociation(input.prepared.args);
     const db = set(writeDb$);

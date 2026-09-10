@@ -100,10 +100,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     automation_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("read-thread-goal-autonomy-budget"),
-    thread_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("reset-database-pool"),
   }),
   z.object({

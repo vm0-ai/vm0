@@ -1,4 +1,5 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { historicalRunGroupId } from "./run-event-provenance.service";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { FeatureSwitchKey, isFeatureEnabled } from "@okouai/core";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -18,13 +19,14 @@ import {
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
+import {
+  isTransientProviderFailure,
+  openRouterFailureReason,
+} from "../external/openrouter-failure";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
-import {
-  goalIdForRun,
-  visibleChatEventCondition,
-} from "./chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
@@ -269,6 +271,17 @@ export async function generateAndPersistInitialThinkingMessage(args: {
       history,
     }),
     (err) => {
+      // Opening copy is optional, is never retried, and its omission changes no
+      // run outcome, so a provider limit, timeout or upstream gateway failure is
+      // an expected outcome here rather than a defect. Those classes produced
+      // nearly every warning this call site emitted and nothing acted on them.
+      // Narrow suppression only: a rejected request, broken credentials, output
+      // this service cannot interpret and unclassified errors stay visible,
+      // because an unsupported-parameter defect is exactly what this warning
+      // surfaced last.
+      if (isTransientProviderFailure(openRouterFailureReason(err))) {
+        return;
+      }
       log.warn("Initial thinking generation failed", {
         threadId: args.threadId,
         runId: args.runId,
@@ -286,7 +299,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const goalId = await goalIdForRun(args.db, args.runId);
+  const goalId = await historicalRunGroupId(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,

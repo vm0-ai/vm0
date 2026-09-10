@@ -13,7 +13,7 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
-import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
+import { INTRO_VIDEO_TEMPLATE_ID } from "@okouai/core/intro-video-template";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -862,14 +862,13 @@ function createSubmitCurrentInput(
             return (
               part.type === "template" &&
               part.template.type === "video" &&
-              part.template.selection.stylePresetId ===
-                EXPLAINER_VIDEO_TEMPLATE_ID
+              part.template.selection.stylePresetId === INTRO_VIDEO_TEMPLATE_ID
             );
           })
         ) {
           toast.error(
             i18n.t(($) => {
-              return $.artifacts.templates.explainerUnavailable;
+              return $.artifacts.templates.introVideoUnavailable;
             }),
           );
           return false;

@@ -5474,13 +5474,7 @@ function SelectablePagedGroupRow({
   const phase = useGet(thread.sharing.phase$);
   const selectedEventIds = useGet(thread.sharing.selectedEventIds$);
   const toggle = useSet(thread.sharing.toggle$);
-  const visualGroupEvents = [
-    ...(runWorkSection?.hiddenGroups.flatMap((hiddenGroup) => {
-      return hiddenGroup.events;
-    }) ?? []),
-    ...group.events,
-  ];
-  const events = visualGroupEvents.flatMap((event) => {
+  const events = group.events.flatMap((event) => {
     const shareable = shareableEventFromChatEvent(event);
     return shareable ? [shareable] : [];
   });

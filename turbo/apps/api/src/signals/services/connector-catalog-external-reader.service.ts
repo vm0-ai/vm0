@@ -137,6 +137,7 @@ interface ExternalCatalogStatusArgs extends ExternalCatalogReadArgs {
 
 interface ExternalCatalogDiscoveryArgs extends ExternalCatalogStatusArgs {
   readonly keyword: string | undefined;
+  readonly category: string | undefined;
 }
 
 interface ConnectorCatalogReferenceMetadata {
@@ -1085,6 +1086,18 @@ function browseEffectiveConnectors(
   return [...perCategory.values()].flat();
 }
 
+/** Every connector in one category, best-ranked first. */
+function categoryEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+  category: string,
+): EffectiveConnector[] {
+  return withoutInternalConnectors(sortedByPopularity(effective)).filter(
+    (entry) => {
+      return entry.connector.category === category;
+    },
+  );
+}
+
 function searchEffectiveConnectors(
   effective: readonly EffectiveConnector[],
   keyword: string | undefined,
@@ -1121,12 +1134,23 @@ function categoryConnectorCounts(
 
 function discoveryEffectiveConnectors(
   effective: readonly EffectiveConnector[],
-  args: Pick<ExternalCatalogDiscoveryArgs, "connections" | "keyword">,
+  args: Pick<
+    ExternalCatalogDiscoveryArgs,
+    "connections" | "keyword" | "category"
+  >,
 ): EffectiveConnector[] {
   if (args.keyword?.trim()) {
     return searchEffectiveConnectors(effective, args.keyword, {
       excludeInternal: true,
     });
+  }
+  const category = args.category?.trim();
+  if (category) {
+    // A category is asked for by name, so it answers with the whole category
+    // rather than the browse slice. The count the client already shows next to
+    // the category is that same number; returning twelve of it would make the
+    // count a claim the page cannot keep.
+    return categoryEffectiveConnectors(effective, category);
   }
   const connectedSlugs = new Set(
     args.connections.map((connection) => {

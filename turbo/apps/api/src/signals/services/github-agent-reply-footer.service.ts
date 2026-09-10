@@ -4,7 +4,7 @@ import {
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { and, eq, isNotNull } from "drizzle-orm";

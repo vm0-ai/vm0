@@ -12,7 +12,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-telegram-state";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";

@@ -599,8 +599,6 @@
       "category": "टेम्पलेट श्रेणी",
       "chooseVoice": "{{title}} के लिए आवाज़ चुनें",
       "creativeVideo": "क्रिएटिव वीडियो",
-      "explainerUnavailable": "यह वीडियो टेम्पलेट अब उपलब्ध नहीं है। अपना संदेश भेजने के लिए इसे हटाएँ।",
-      "explainerVideo": "व्याख्यात्मक वीडियो",
       "filters": {
         "age": "आयु",
         "all": "सभी",
@@ -622,6 +620,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
+      "introVideo": "इंट्रो वीडियो",
+      "introVideoUnavailable": "यह वीडियो टेम्पलेट अब उपलब्ध नहीं है। अपना संदेश भेजने के लिए इसे हटाएँ।",
       "multiAccent": "बहु-उच्चारण",
       "needPro": "Pro चाहिए",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
@@ -2033,20 +2033,6 @@
       },
       "runCancelled": "विचार के बीच में रुका हुआ - जब भी हो, इसे वापस उठा लें।"
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "अपने कंटेंट के अनुकूल आवाज़ खोजें।",
-      "avatarVoice": "अवतार की आवाज़",
-      "changeAvatar": "अवतार बदलें",
-      "chooseStyle": "शैली चुनें",
-      "chooseStyleAndVoice": "एक शैली और आवाज़ चुनें।",
-      "noMatches": "कोई परिणाम नहीं मिला। दूसरी खोज या श्रेणी आज़माएँ।",
-      "ready": "इस्तेमाल के लिए तैयार। चैट में अपना कंटेंट जोड़ें।",
-      "searchAvatars": "अवतार खोजें",
-      "searchStyles": "शैलियाँ खोजें",
-      "settings": "व्याख्यात्मक वीडियो की सेटिंग",
-      "style": "शैली",
-      "useSelection": "चयन इस्तेमाल करें"
-    },
     "feedback": {
       "emailDraftDescription": "एक ईमेल ड्राफ्ट (मेल ड्राफ्ट ID: {{id}})",
       "partHeading": "आपके उत्तर के इस भाग पर प्रतिक्रिया:",
@@ -2090,6 +2076,20 @@
       },
       "footer": {
         "cancel": "रद्द करें"
+      },
+      "picker": {
+        "autoVoiceDescription": "अपने कंटेंट के अनुकूल आवाज़ खोजें।",
+        "avatarVoice": "अवतार की आवाज़",
+        "changeAvatar": "अवतार बदलें",
+        "chooseStyle": "शैली चुनें",
+        "chooseStyleAndVoice": "एक शैली और आवाज़ चुनें।",
+        "noMatches": "कोई परिणाम नहीं मिला। दूसरी खोज या श्रेणी आज़माएँ।",
+        "ready": "इस्तेमाल के लिए तैयार। चैट में अपना कंटेंट जोड़ें।",
+        "searchAvatars": "अवतार खोजें",
+        "searchStyles": "शैलियाँ खोजें",
+        "settings": "इंट्रो वीडियो की सेटिंग",
+        "style": "शैली",
+        "useSelection": "चयन इस्तेमाल करें"
       },
       "style": {
         "auto": "Okou को चुनने दें",

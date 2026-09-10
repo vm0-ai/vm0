@@ -8,6 +8,8 @@ import type { AgentEvent } from "./event-consumer/verify";
 const ACTIVITY_ENTRY_LIMIT = 16;
 const ACTIVITY_BYTE_LIMIT = 16 * 1024;
 const ACTIVITY_EXCERPT_LIMIT = 700;
+const ACTIVITY_NAME_LIMIT = 100;
+const ACTIVITY_CALL_ID_LIMIT = 160;
 export const ACTIVITY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 function record(value: unknown): Record<string, unknown> {
@@ -15,8 +17,25 @@ function record(value: unknown): Record<string, unknown> {
     ? (value as Record<string, unknown>)
     : {};
 }
+/**
+ * Bound a projected string by code points, dropping the two code points that
+ * PostgreSQL refuses inside a `jsonb` value: `U+0000` and unpaired surrogates.
+ * Both are reachable from real tool output, and either one would reject the
+ * whole snapshot write rather than the offending excerpt. Iterating by code
+ * point also keeps truncation from splitting a surrogate pair into one.
+ */
+function boundedText(value: string, limit: number): string {
+  return Array.from(value)
+    .filter((character) => {
+      // `Array.from` yields one non-empty code point per element.
+      const code = character.codePointAt(0)!;
+      return code !== 0 && (code < 0xd8_00 || code > 0xdf_ff);
+    })
+    .slice(0, limit)
+    .join("");
+}
 export function activityExcerpt(value: string): string {
-  return Array.from(value).slice(0, ACTIVITY_EXCERPT_LIMIT).join("");
+  return boundedText(value, ACTIVITY_EXCERPT_LIMIT);
 }
 function text(value: unknown): string {
   return typeof value === "string" ? activityExcerpt(value) : "";
@@ -102,8 +121,8 @@ function projectEvent(event: AgentEvent): RunActivityEntry[] {
         sequence: event.sequenceNumber,
         index,
         kind,
-        name: text(name).slice(0, 100),
-        callId: text(callId).slice(0, 160),
+        name: boundedText(text(name), ACTIVITY_NAME_LIMIT),
+        callId: boundedText(text(callId), ACTIVITY_CALL_ID_LIMIT),
         excerpt: content,
       });
       if (entries.length > ACTIVITY_ENTRY_LIMIT) {
