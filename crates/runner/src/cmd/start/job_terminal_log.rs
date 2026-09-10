@@ -73,6 +73,7 @@ fn log_job_execution_failed(
                 exit_code,
                 reused,
                 error = %failure.error,
+                error_tail = crate::axiom_layer::error_tail(&failure.error),
                 timeout_ms,
                 elapsed_ms,
                 guest_duration_ms,
