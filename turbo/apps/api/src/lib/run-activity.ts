@@ -27,7 +27,8 @@ function record(value: unknown): Record<string, unknown> {
 function boundedText(value: string, limit: number): string {
   return Array.from(value)
     .filter((character) => {
-      const code = character.codePointAt(0) ?? 0;
+      // `Array.from` yields one non-empty code point per element.
+      const code = character.codePointAt(0)!;
       return code !== 0 && (code < 0xd8_00 || code > 0xdf_ff);
     })
     .slice(0, limit)
