@@ -120,11 +120,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the DocuSign e-signature connector",
     enabled: false,
   },
-  [FeatureSwitchKey.DropboxConnector]: {
-    maintainer: "yuma@okou.ai",
-    description: "Enable the Dropbox file storage connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Figma design connector",
