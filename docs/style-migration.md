@@ -327,3 +327,16 @@ options use the same dark ancestor as the removed selector. Provider
 classification, connector inversion flags, scale, fallback DOM and error events
 remain unchanged. Only this token, one CSS declaration and two production uses
 are pruned. No token or shared component changes are needed.
+
+The [AFTER archive](https://a.okou.io/gywva3k9z6.zip) and
+[comparison image](https://a.okou.io/vfjoaz2ylx.png) record all 20 states
+passing with zero changed pixels and identical icon observations on App/API
+build `29156a9e945af833fdef2bffe024be4c617d4496`, source
+`318f791155657f6efb477a25f8023fd394f87fb1`. Both downloads were anonymously
+hash-verified. The complete style check, affected App types/ESLint/Knip,
+E2E types, formatting and four selected existing page tests passed. The legacy
+inventory is now 93 tokens, 533 declarations, 307 production uses and two
+injections. The implementation pipeline retains a separate `/sign-in`
+navigation timeout during CLI TEST credential provisioning, before test
+execution. The batch remains `implemented` while final-head CI is assessed;
+these screenshots establish bounded Chromium acceptance.
