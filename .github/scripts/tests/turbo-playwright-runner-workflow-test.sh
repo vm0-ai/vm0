@@ -660,6 +660,7 @@ resolve_cleanup_scope = lambda do |prepare_result, runner_result|
   end
 end
 {
+  ["skipped", "skipped"] => "none",
   ["failure", "skipped"] => "generation",
   ["cancelled", "success"] => "generation",
   ["success", "success"] => "run",
@@ -690,15 +691,36 @@ cleanup_node_setup_step = cleanup_steps.find do |step|
 end
 
 conditional_setup_steps = [
-  cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/checkout@") },
   cleanup_pnpm_setup_step,
   cleanup_node_setup_step,
   cleanup_steps.find { |step| step["name"] == "Install E2E dependencies" },
 ]
 unless conditional_setup_steps.all? do |step|
-    step && step["if"] == "steps.cleanup-scope.outputs.scope != 'retain'"
+    step && step["if"] == "steps.cleanup-scope.outputs.scope == 'generation' || steps.cleanup-scope.outputs.scope == 'run'"
   end
-  raise "retained accounts must skip checkout and dependency setup"
+  raise "retained or absent accounts must skip dependency setup"
+end
+
+unless Array(account_cleanup["needs"]).include?("cli-e2e-02-playwright") &&
+    Array(account_cleanup["needs"]).include?("deploy-runner-start")
+  raise "idle cleanup must wait for every shared Runner consumer"
+end
+shared_runner_consumers = jobs.select do |id, job|
+  Array(job["needs"]).include?("deploy-runner-start") &&
+    !["cli-e2e-03-runner-cleanup", "ci-gate-turbo"].include?(id)
+end.keys
+unless (shared_runner_consumers - Array(account_cleanup["needs"])).empty?
+  raise "every preview Runner consumer must finish before idle cleanup: #{shared_runner_consumers}"
+end
+unless account_cleanup.fetch("if").include?("needs.deploy-runner-start.result == 'success'")
+  raise "Playwright-only Runner deployments must remain eligible for cleanup"
+end
+checkout = cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
+raise "idle cleanup needs checkout even with retained accounts" if checkout.key?("if")
+prune_step = cleanup_steps.find { |step| step["name"] == "Reclaim exact idle sandboxes from the deployed runner" }
+unless prune_step && prune_step["if"] == "always() && needs.deploy-runner-start.result == 'success'" &&
+    prune_step.dig("env", "RUNNER_RECEIPT") == "${{ needs.deploy-runner-start.outputs.runner-receipt }}"
+  raise "idle cleanup must use the captured deployment receipt independently of account cleanup"
 end
 
 generation_cleanup_step = cleanup_steps.find do |step|

@@ -16,6 +16,7 @@ mod drain_override;
 mod drain_override_cleanup;
 mod drain_resume;
 mod gate;
+mod prune_idle;
 mod reload;
 mod signal;
 mod state;
@@ -67,6 +68,8 @@ enum ServiceCommand {
     Drain(drain_resume::DrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(drain_resume::ResumeArgs),
+    /// Reclaim only exact idle sandboxes in an explicitly identified process generation
+    PruneIdle(prune_idle::PruneIdleArgs),
     /// Wait until a runner service is active and job-admitting. On success, emit the resolved
     /// max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go
     /// to stderr.
@@ -152,6 +155,7 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
         ServiceCommand::Uninstall(a) => uninstall(a).await,
         ServiceCommand::Drain(a) => drain_resume::run_drain(a).await,
         ServiceCommand::Resume(a) => drain_resume::run_resume(a).await,
+        ServiceCommand::PruneIdle(a) => prune_idle::run(a).await,
         ServiceCommand::WaitRunning(a) => wait_running(a).await,
         ServiceCommand::UnitState(a) => state::run(a).await,
         ServiceCommand::Status(a) => status(a).await,
