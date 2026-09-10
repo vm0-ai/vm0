@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   chatThreadConnectorSelectionContract,
   chatThreadMetadataContract,
+  chatThreadRenameContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -30,6 +31,7 @@ import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { chatThreadGetRoutes } from "../chat-threads-get";
+import { chatThreadRenameRoutes } from "../chat-threads-rename";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { userModelPreferenceRoutes } from "../user-model-preference";
 
@@ -171,6 +173,25 @@ function connectorAccountsClient() {
   return setupApp({ context, routes: connectorAccountRoutes })(
     connectorAccountsContract,
   );
+}
+
+function renameClient() {
+  return setupApp({ context, routes: chatThreadRenameRoutes })(
+    chatThreadRenameContract,
+  );
+}
+
+async function readCreatedThreadEvents(threadId: string, token: string) {
+  const response = await accept(
+    threadsClient().events({
+      headers: { authorization: `Bearer ${token}` },
+      query: {},
+    }),
+    [200],
+  );
+  return response.body.events.filter((candidate) => {
+    return candidate.kind === "created" && candidate.chatThreadId === threadId;
+  });
 }
 
 async function readCreatedThreadEvent(threadId: string, token: string) {
@@ -1064,6 +1085,302 @@ describe("POST /api/chat-threads", () => {
         code: "FORBIDDEN",
         message: "Missing required capability: chat-thread:write",
       },
+    });
+  });
+
+  it("replays one thread when a create request is delivered twice", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {});
+    const connection = await connectorApi.connectManualGrant(
+      fixture.actor,
+      "openai",
+      "api-token",
+      { apiKey: "duplicate-delivery-openai-key" },
+      fixture.agentId,
+    );
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const clientThreadId = randomUUID();
+    const eventId = randomUUID();
+
+    const created = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          clientThreadId,
+          eventId,
+          title: "Duplicate delivery",
+          model: OTHER_WORKSPACE_MODEL,
+          connectorSelections: [
+            {
+              connectionId: connection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    expect(created.body.id).toBe(clientThreadId);
+
+    // The same request, delivered a second time.
+    const replayed = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          clientThreadId,
+          eventId,
+          title: "Duplicate delivery",
+          model: OTHER_WORKSPACE_MODEL,
+          connectorSelections: [
+            {
+              connectionId: connection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    expect(replayed.body).toStrictEqual(created.body);
+
+    await expect(
+      readCreatedThreadEvents(clientThreadId, token),
+    ).resolves.toHaveLength(1);
+    const selections = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: clientThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connection.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+  });
+
+  it("replays the stored thread instead of the repeated request body", async () => {
+    const fixture = await seedAgent();
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const clientThreadId = randomUUID();
+
+    const created = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          clientThreadId,
+          title: "Title from the request",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+    await accept(
+      renameClient().rename({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: clientThreadId },
+        body: { title: "Title the member chose" },
+      }),
+      [204],
+    );
+
+    const replayed = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          clientThreadId,
+          title: "Title from the request",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+    expect(replayed.body).toStrictEqual({
+      id: clientThreadId,
+      title: "Title the member chose",
+      createdAt: created.body.createdAt,
+      selectedModel: OTHER_WORKSPACE_MODEL,
+      serviceTier: null,
+    });
+
+    const metadataResponse = await accept(
+      metadataClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: clientThreadId },
+      }),
+      [200],
+    );
+    expect(metadataResponse.body.title).toBe("Title the member chose");
+  });
+
+  it("creates one thread when two deliveries race on a client thread id", async () => {
+    const fixture = await seedAgent();
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const clientThreadId = randomUUID();
+    const eventId = randomUUID();
+
+    const [first, second] = await Promise.all([
+      accept(
+        threadsClient().create({
+          headers: { authorization: `Bearer ${token}` },
+          body: {
+            agentId: fixture.agentId,
+            clientThreadId,
+            eventId,
+            title: "Raced delivery",
+            model: OTHER_WORKSPACE_MODEL,
+          },
+        }),
+        [201],
+      ),
+      accept(
+        threadsClient().create({
+          headers: { authorization: `Bearer ${token}` },
+          body: {
+            agentId: fixture.agentId,
+            clientThreadId,
+            eventId,
+            title: "Raced delivery",
+            model: OTHER_WORKSPACE_MODEL,
+          },
+        }),
+        [201],
+      ),
+    ]);
+    expect(second.body).toStrictEqual(first.body);
+    expect(first.body.id).toBe(clientThreadId);
+
+    await expect(
+      readCreatedThreadEvents(clientThreadId, token),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("answers a client thread id owned by another member like a missing thread", async () => {
+    const owner = await seedAgent();
+    const ownerToken = okouToken({
+      userId: owner.userId,
+      orgId: owner.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const clientThreadId = randomUUID();
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${ownerToken}` },
+        body: {
+          agentId: owner.agentId,
+          clientThreadId,
+          title: "Owner thread",
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    const other = await seedAgent();
+    const otherToken = okouToken({
+      userId: other.userId,
+      orgId: other.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const collision = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${otherToken}` },
+        body: {
+          agentId: other.agentId,
+          clientThreadId,
+          title: "Colliding thread",
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [404],
+    );
+    expect(collision.body).toStrictEqual({
+      error: { code: "NOT_FOUND", message: "Chat thread not found" },
+    });
+
+    const metadataResponse = await accept(
+      metadataClient().get({
+        headers: { authorization: `Bearer ${ownerToken}` },
+        params: { id: clientThreadId },
+      }),
+      [200],
+    );
+    expect(metadataResponse.body).toMatchObject({
+      agentId: owner.agentId,
+      title: "Owner thread",
+    });
+  });
+
+  it("answers a client thread id held by another agent like a missing thread", async () => {
+    const fixture = await seedAgent();
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const clientThreadId = randomUUID();
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          clientThreadId,
+          title: "First agent thread",
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    bdd.acceptAgentStorageWrites();
+    const otherAgent = await bdd.createAgent(fixture.actor, {
+      displayName: "Second chat thread agent",
+      visibility: "private",
+    });
+    const collision = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: otherAgent.agentId,
+          clientThreadId,
+          title: "Colliding agent thread",
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [404],
+    );
+    expect(collision.body).toStrictEqual({
+      error: { code: "NOT_FOUND", message: "Chat thread not found" },
+    });
+
+    const metadataResponse = await accept(
+      metadataClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: clientThreadId },
+      }),
+      [200],
+    );
+    expect(metadataResponse.body).toMatchObject({
+      agentId: fixture.agentId,
+      title: "First agent thread",
     });
   });
 });

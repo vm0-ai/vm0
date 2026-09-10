@@ -8,7 +8,7 @@ import { updatePage$ } from "../react-router.ts";
 
 export const setupComputerUseAuthorizationPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ComputerUseAuthorizationPage), "minimal");
+    set(updatePage$, createElement(ComputerUseAuthorizationPage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

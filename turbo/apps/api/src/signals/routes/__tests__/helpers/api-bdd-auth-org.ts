@@ -567,9 +567,13 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       context.mocks.clerk.organizations.revokeOrganizationInvitation.mockResolvedValue(
         {},
       );
-      context.mocks.clerk.organizations.updateOrganization.mockResolvedValue(
-        {},
-      );
+      context.mocks.clerk.organizations.updateOrganization.mockResolvedValue({
+        id: actor.orgId,
+        slug,
+        name,
+        createdBy,
+        createdAt,
+      });
       context.mocks.clerk.organizations.updateOrganizationMembership.mockResolvedValue(
         {},
       );
@@ -1326,6 +1330,25 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async requestUpdateAgent(
+      actor: ApiTestUser | null,
+      agentId: string,
+      body: AgentRequest,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        agentsByIdContract,
+      );
+      return await accept(
+        client.update({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
     },
 
     async requestUpdateAgentMetadata(

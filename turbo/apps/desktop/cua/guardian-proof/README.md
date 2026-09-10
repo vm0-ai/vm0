@@ -83,6 +83,25 @@ is retained unchanged. No production path loads these diagnostic files.
 - No SDK-owned descendant may escape the group. If the supported process API or
   pinned launcher violates this invariant, this candidate cannot ship.
 
+### Main responsiveness evidence
+
+The retirement proof records `beats`, `heartbeatIntervalMs`, and
+`maxHeartbeatGapMs`. Responsiveness requires no heartbeat gap over 500 ms during
+the measured retirement window, including the first and last partial intervals.
+The bound is one tenth of the unchanged five-second cleanup budget: it detects
+coarse main-thread stalls, not frame-rate latency. Callback count is diagnostic
+only because timer throughput varies with scheduling. An actual scheduling pause
+over the bound still fails; the measurement alone cannot attribute its cause.
+
+All existing identity, failure-fence, and independent kqueue exit checks remain.
+Two additional real-process cases exercise the same blocked-helper cleanup:
+`slow-heartbeat` uses a 25 ms cadence and must remain responsive; `main-blocks`
+deliberately blocks main for one second and must violate the responsiveness bound.
+Both still require confirmed reclamation and all four process exits within five
+seconds. Evidence is captured before diagnostic rescue, so rescue cannot improve
+the measured result. These cases add approximately six seconds plus startup to
+the macOS proof and do not change production heartbeats or cleanup timing.
+
 The first-party native module is an additional signed native-code inventory
 entry if this proof succeeds. It performs bounded process syscalls only, never
 CUA, UBRN or UniFFI calls. Product integration, fixed-path validation, typed RPC,

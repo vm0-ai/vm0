@@ -26,7 +26,7 @@ import {
  */
 export const setupRedeemCampaignPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(RedeemCampaignPage), "minimal");
+    set(updatePage$, createElement(RedeemCampaignPage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

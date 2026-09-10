@@ -13,12 +13,12 @@ use guest_control_proto::{
 };
 
 use crate::contained_command::{
-    CommandStdio, ContainedChild as Child, ContainedCommand as Command,
+    CommandStdio, ContainedChild as Child, ContainedCommand as Command, ContainedCommandExt,
 };
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
-use crate::process::{ChildProcess, extract_exit_code, kill_and_reap_child};
+use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::process_containment::{
     ExecProcessContainment, ProcessContainmentCleanupMode, ProcessContainmentError,
     ProcessContainmentMode,

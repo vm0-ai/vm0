@@ -104,22 +104,69 @@ pub fn bind_abstract_listener(name: &str) -> io::Result<UnixListener> {
 /// not fit in `sockaddr_un.sun_path`. Socket creation and connect failures are
 /// returned as operating-system `io::Error` values.
 pub fn connect_abstract(name: &str) -> io::Result<UnixStream> {
-    let fd = create_unix_socket()?;
+    connect_abstract_before(name, None)
+}
+
+/// Connect to a Linux abstract Unix endpoint within `timeout`.
+///
+/// The budget starts before socket setup and bounds waiting for space in the
+/// listener's accept queue. The returned stream is blocking and close-on-exec,
+/// with no read or write timeout; callers configure their own handshake limits.
+///
+/// # Errors
+///
+/// Returns `InvalidInput` for an invalid name or an overflowing deadline, and
+/// `TimedOut` for an exhausted (including zero) timeout. Other socket errors,
+/// including interruption, are returned without retrying the connection.
+pub fn connect_abstract_with_timeout(name: &str, timeout: Duration) -> io::Result<UnixStream> {
+    let deadline = Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "connect timeout overflowed"))?;
+    connect_abstract_before(name, Some(deadline))
+}
+
+fn connect_abstract_before(name: &str, deadline: Option<Instant>) -> io::Result<UnixStream> {
     let addr = abstract_sockaddr(name)?;
     let len = sockaddr_len(name);
-    // SAFETY: fd is a valid AF_UNIX socket, addr/len describe a sockaddr_un.
+    let stream = UnixStream::from(create_unix_socket()?);
+    if let Some(deadline) = deadline {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or_else(connect_timed_out)?;
+        // Linux applies SO_SNDTIMEO to blocking connect, including AF_UNIX
+        // accept-queue backpressure. A zero socket timeout would disable it.
+        stream.set_write_timeout(Some(remaining))?;
+    }
+    // SAFETY: stream is a valid AF_UNIX socket, addr/len describe a sockaddr_un.
     let ret = unsafe {
         libc::connect(
-            fd.as_raw_fd(),
+            stream.as_raw_fd(),
             &addr as *const _ as *const libc::sockaddr,
             len,
         )
     };
     if ret != 0 {
-        return Err(io::Error::last_os_error());
+        let error = io::Error::last_os_error();
+        if deadline.is_some()
+            && (error.kind() == io::ErrorKind::WouldBlock
+                || error.raw_os_error() == Some(libc::EINPROGRESS))
+        {
+            return Err(connect_timed_out());
+        }
+        return Err(error);
     }
-    // SAFETY: fd is a valid connected stream and ownership is transferred.
-    Ok(unsafe { UnixStream::from_raw_fd(fd.into_raw_fd()) })
+    if deadline.is_some() {
+        stream.set_write_timeout(None)?;
+    }
+    Ok(stream)
+}
+
+fn connect_timed_out() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        "control endpoint connect timed out",
+    )
 }
 
 /// Send one workload-placement descriptor over a connected control stream.
@@ -622,6 +669,9 @@ mod tests {
 
             let err = connect_abstract(name).unwrap_err();
             assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+            let err = connect_abstract_with_timeout(name, Duration::from_secs(1)).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         }
 
         let too_long = "x".repeat(sockaddr_un_path_len());
@@ -629,6 +679,9 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 
         let err = connect_abstract(&too_long).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+        let err = connect_abstract_with_timeout(&too_long, Duration::from_secs(1)).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
@@ -642,6 +695,44 @@ mod tests {
         let server = accept_with_timeout(&listener, Duration::from_secs(1)).unwrap();
         let _client = client.join().unwrap();
         drop(server);
+    }
+
+    #[test]
+    fn timed_connect_returns_blocking_close_on_exec_stream_without_io_timeouts() {
+        let (name, listener) = bind_test_listener("timed-connect");
+        let mut client = connect_abstract_with_timeout(&name, Duration::from_secs(1)).unwrap();
+        let mut server = accept_with_timeout(&listener, Duration::from_secs(1)).unwrap();
+
+        assert_eq!(client.read_timeout().unwrap(), None);
+        assert_eq!(client.write_timeout().unwrap(), None);
+        // SAFETY: both getters only inspect the live client descriptor.
+        let descriptor_flags = unsafe { libc::fcntl(client.as_raw_fd(), libc::F_GETFD) };
+        let status_flags = unsafe { libc::fcntl(client.as_raw_fd(), libc::F_GETFL) };
+        assert!(descriptor_flags >= 0);
+        assert_ne!(descriptor_flags & libc::FD_CLOEXEC, 0);
+        assert!(status_flags >= 0);
+        assert_eq!(status_flags & libc::O_NONBLOCK, 0);
+
+        server
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        client.write_all(b"hello").unwrap();
+        let mut received = [0; 5];
+        server.read_exact(&mut received).unwrap();
+        assert_eq!(&received, b"hello");
+    }
+
+    #[test]
+    fn timed_connect_rejects_invalid_budgets_and_preserves_connection_errors() {
+        let name = format!("vm0-test-missing-connect-{}", std::process::id());
+        for (timeout, expected) in [
+            (Duration::ZERO, io::ErrorKind::TimedOut),
+            (Duration::MAX, io::ErrorKind::InvalidInput),
+            (Duration::from_secs(1), io::ErrorKind::ConnectionRefused),
+        ] {
+            let error = connect_abstract_with_timeout(&name, timeout).unwrap_err();
+            assert_eq!(error.kind(), expected);
+        }
     }
 
     #[test]

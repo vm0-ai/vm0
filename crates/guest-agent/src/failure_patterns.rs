@@ -12,6 +12,8 @@ const CODEX_RATE_LIMIT_RETRY_EXHAUSTED_MESSAGE: &str =
     "exceeded retry limit, last status: 429 too many requests";
 const CODEX_UNSUPPORTED_MODEL_MESSAGE_SUFFIX: &str =
     "' model is not supported when using Codex with a ChatGPT account.";
+const CONTENT_POLICY_REJECTION_ERROR_TYPE: &str = "invalid_request_error";
+const CONTENT_POLICY_REJECTION_MESSAGE: &str = "Content Exists Risk";
 
 pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
     let message = message.trim().to_ascii_lowercase();
@@ -64,6 +66,61 @@ pub(crate) fn is_codex_chatgpt_account_unsupported_model_message(message: &str) 
         return false;
     };
     !model.is_empty() && !model.contains('\'')
+}
+
+/// Whether a failure message carries an exact content-policy rejection envelope.
+///
+/// Codex passes the upstream provider response through as the failure message,
+/// sometimes wrapped in its own prose, so scan every embedded JSON object
+/// instead of comparing the whole message.
+pub(crate) fn is_content_policy_rejection_message(message: &str) -> bool {
+    let mut search_start = 0;
+    while let Some((value, end_index)) = parse_next_json_object(message, search_start) {
+        if value
+            .as_ref()
+            .is_some_and(is_content_policy_rejection_envelope)
+        {
+            return true;
+        }
+        search_start = end_index;
+    }
+    false
+}
+
+/// Exact OpenAI-compatible content-policy rejection envelope.
+///
+/// Providers behind the OpenAI-compatible surface report a content-safety
+/// rejection as an `invalid_request_error` whose message is a fixed phrase
+/// rather than a request-shape complaint. Match the message, type, and code
+/// together so a genuine malformed request, which shares the same error type,
+/// keeps its unclassified actionable failure.
+fn is_content_policy_rejection_envelope(value: &Value) -> bool {
+    value.get("error").is_some_and(|error| {
+        error.get("type").and_then(Value::as_str) == Some(CONTENT_POLICY_REJECTION_ERROR_TYPE)
+            && error.get("code").and_then(Value::as_str)
+                == Some(CONTENT_POLICY_REJECTION_ERROR_TYPE)
+            && error
+                .get("message")
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.trim() == CONTENT_POLICY_REJECTION_MESSAGE)
+    })
+}
+
+/// Parse the next embedded JSON object, returning the value when it decodes and
+/// the offset to resume scanning from.
+pub(crate) fn parse_next_json_object(
+    message: &str,
+    search_start: usize,
+) -> Option<(Option<Value>, usize)> {
+    let body_start = message[search_start.min(message.len())..]
+        .find('{')
+        .map(|offset| search_start + offset)?;
+    let mut stream = serde_json::Deserializer::from_str(&message[body_start..]).into_iter();
+
+    match stream.next() {
+        Some(Ok(value)) => Some((Some(value), body_start + stream.byte_offset())),
+        Some(Err(_)) | None => Some((None, body_start + 1)),
+    }
 }
 
 pub(crate) fn has_exact_codex_oauth_connector(value: &Value) -> bool {
@@ -165,6 +222,40 @@ mod tests {
         ] {
             assert!(
                 !is_codex_rate_limit_retry_exhausted_message(message),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn content_policy_rejection_matcher_accepts_the_exact_envelope() {
+        for message in [
+            r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+            r#"stream error: {"error":{"message":"Content Exists Risk","type":"invalid_request_error","code":"invalid_request_error"}} (retrying)"#,
+            r#"{"not":"json-object-first"} {"error":{"message":"Content Exists Risk","type":"invalid_request_error","code":"invalid_request_error"}}"#,
+        ] {
+            assert!(
+                is_content_policy_rejection_message(message),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn content_policy_rejection_matcher_rejects_other_invalid_requests() {
+        for message in [
+            r#"{"error":{"message":"Invalid Format","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+            r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error"}}"#,
+            r#"{"error":{"message":"Content Exists Risk","code":"invalid_request_error"}}"#,
+            r#"{"error":{"message":"Content Exists Risk","type":"content_filter","code":"content_filter"}}"#,
+            r#"{"error":{"message":"Content Exists Risk detected in input","type":"invalid_request_error","code":"invalid_request_error"}}"#,
+            r#"{"detail":"Content Exists Risk"}"#,
+            "Content Exists Risk",
+            "{not valid json",
+            "",
+        ] {
+            assert!(
+                !is_content_policy_rejection_message(message),
                 "message: {message}"
             );
         }

@@ -15,6 +15,7 @@ import {
   observePiResponseStatus,
   type PiAgentStreamOptions,
 } from "./stream-options";
+import { guardPiUpstreamErrorBody } from "./upstream-error-body";
 
 function isMessages(model: Model<Api>): model is Model<"anthropic-messages"> {
   return model.api === "anthropic-messages";
@@ -52,7 +53,7 @@ export function streamPiNative(
     ...options,
     maxRetries: 0,
     fetch: observePiResponseStatus(
-      options.fetch ?? nativePublicFetch,
+      guardPiUpstreamErrorBody(options.fetch ?? nativePublicFetch),
       options.onObservedResponseStatus,
     ),
     // Neither ambient cache policy nor provider authentication is inherited.

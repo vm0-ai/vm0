@@ -6,6 +6,7 @@ mod engine;
 mod io;
 mod keys;
 mod network;
+mod observation;
 mod output;
 #[cfg(test)]
 mod tests;
@@ -75,6 +76,7 @@ pub(crate) struct SshRuntime {
     network: Arc<dyn Network>,
     permits: Arc<Semaphore>,
     cpu: Arc<Semaphore>,
+    reports: Arc<Semaphore>,
     cache: cache::Cache,
 }
 
@@ -130,6 +132,7 @@ impl SshRuntime {
             network: Arc::new(PublicNetwork),
             permits: Arc::new(Semaphore::new(RUNNER_CAPACITY)),
             cpu: Arc::new(Semaphore::new(2)),
+            reports: Arc::new(Semaphore::new(4)),
             cache: cache::Cache::new(),
         })))
     }
@@ -281,6 +284,7 @@ impl SshRuntime {
                 &registration,
             )
             .await;
+        let observation = output.connection.finish(result.as_ref().err().copied());
         let outcome = output.terminal(result);
         // A poisoned writer cannot emit a replacement terminal after partial I/O.
         let terminal_scope = Scope {
@@ -294,6 +298,16 @@ impl SshRuntime {
             .is_ok_and(|result| result.is_ok());
         tracing::info!(run_id = %run, connection_id = %connection, outcome = output.outcome(), failure_reason = ?output.failure(), elapsed_ms = started.elapsed().as_millis() as u64,
             stdout_bytes = output.stdout_bytes(), stderr_bytes = output.stderr_bytes(), stdout_truncated = output.stdout_truncated(), stderr_truncated = output.stderr_truncated(), terminal_delivered = delivered, "SSH execution finished");
+        // The guest sees its terminal and EOF before any diagnostic API I/O.
+        drop(writer);
+        drop(lease);
+        if let Some(observation) = observation {
+            if let Ok(_permit) = Arc::clone(&self.reports).try_acquire_owned() {
+                self.authority.observe(run, connection, observation).await;
+            } else {
+                tracing::info!(run_id = %run, connection_id = %connection, "SSH observation report capacity exhausted");
+            }
+        }
     }
 
     async fn execute(
@@ -310,10 +324,41 @@ impl SshRuntime {
         let access = registration.lookup(connection)?;
         let result = async {
             let credential = scope
-                .wait(access.prepare(self.prepare(Arc::clone(&lease), run, connection, scope)))
+                .wait(access.prepare(self.prepare(
+                    Arc::clone(&lease),
+                    run,
+                    connection,
+                    scope,
+                    &mut output.connection,
+                )))
                 .await??;
-            self.execute_prepared(lease, request, credential, scope, writer, output)
-                .await
+            output.connection.generation = Some(
+                credential
+                    .trust
+                    .lock()
+                    .map_err(|_| FailureReason::Protocol)?
+                    .generation,
+            );
+            output.connection.connecting = true;
+            let result = self
+                .execute_prepared(
+                    lease,
+                    request,
+                    Arc::clone(&credential),
+                    scope,
+                    writer,
+                    output,
+                )
+                .await;
+            // TOFU advances trust during this attempt, before user authentication.
+            output.connection.generation = Some(
+                credential
+                    .trust
+                    .lock()
+                    .map_err(|_| FailureReason::Protocol)?
+                    .generation,
+            );
+            result
         }
         .await;
         if result.as_ref().is_err_and(|failure| {
@@ -341,6 +386,7 @@ impl SshRuntime {
         run: RunId,
         connection: uuid::Uuid,
         scope: &Scope,
+        observation: &mut observation::Attempt,
     ) -> Result<PreparedCredential, FailureReason> {
         let credential = scope
             .wait(self.authority.resolve(run, connection))
@@ -349,6 +395,7 @@ impl SshRuntime {
             .try_acquire_owned()
             .map_err(|_| FailureReason::ResourceExhausted)?;
         let worker_scope = scope.clone();
+        let generation = credential.generation;
         let worker_lease = Arc::clone(&lease);
         let worker = tokio::task::spawn_blocking(move || {
             let _permit = cpu;
@@ -370,10 +417,12 @@ impl SshRuntime {
                 key,
             })
         });
-        scope
+        let result = scope
             .wait(worker)
             .await?
-            .map_err(|_| FailureReason::InvalidCredential)?
+            .map_err(|_| FailureReason::InvalidCredential)?;
+        observation.generation = Some(generation);
+        result
     }
 
     async fn execute_prepared(

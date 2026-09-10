@@ -217,7 +217,7 @@ export function RedeemCampaignPage() {
   const info = resolveCard(response, stripeSuccess, orgName, t);
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center px-6 md:-translate-x-[128px]">
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6">
       <div className="flex w-[500px] max-w-full flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
         <ProductBrandMark />
         <div className="flex flex-col items-center gap-4">

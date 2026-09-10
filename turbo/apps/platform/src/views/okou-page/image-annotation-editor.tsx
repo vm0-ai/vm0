@@ -30,6 +30,7 @@ import {
   markBounds,
   markOrdinal,
   nextMarkOrdinal,
+  STROKE_HALO_INNER,
   type AnnotationArrowEnd,
   type AnnotationDrag,
   type AnnotationInk,
@@ -430,10 +431,39 @@ function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
 }
 
 /**
+ * Where a floating editor sits so it stays on the image.
+ *
+ * Anchored from whichever side the mark is nearer, because a fixed-width
+ * popover pinned by its left edge runs off the picture for every mark in the
+ * right-hand half — and the surface it hangs off is the picture.
+ */
+function anchoredPlacement(anchor: AnnotationPoint): {
+  style: { left?: string; right?: string; top?: string; bottom?: string };
+  className: string;
+} {
+  const fromRight = anchor.x > 0.5;
+  const fromBottom = anchor.y > 0.8;
+  return {
+    style: {
+      ...(fromRight
+        ? { right: percent(1 - anchor.x) }
+        : { left: percent(anchor.x) }),
+      ...(fromBottom
+        ? { bottom: percent(1 - anchor.y) }
+        : { top: percent(anchor.y) }),
+    },
+    className: fromBottom ? "-translate-y-2" : "translate-y-2",
+  };
+}
+
+/**
  * The note lives next to the mark it belongs to rather than in a bar at the
  * bottom of the dialog: a field detached from the thing it describes gives no
- * clue which mark is being edited, and text marks were being typed twice —
- * once on the image and once underneath it.
+ * clue which mark is being edited.
+ *
+ * Text marks do not come here at all — they are typed on the image itself (see
+ * `InlineTextEditor`). This is the one sentence a box, an arrow or a stroke can
+ * carry, and it is optional: leaving it empty leaves the mark alone.
  */
 function MarkNotePopover({
   mark,
@@ -447,11 +477,19 @@ function MarkNotePopover({
   const bindNoteField = useSet(signals.bindAnnotationNoteField$);
   const removeMark = useSet(signals.removeAnnotationMark$);
   const deselect = useSet(signals.selectAnnotationMark$);
-  const anchor = markAnchor(mark);
+  const focusPanel = useSet(signals.focusAnnotationPanel$);
+  const placement = anchoredPlacement(markAnchor(mark));
+  // Dismissing the field hands the keyboard back to the editor. Letting focus
+  // fall to the document body instead left the panel out of the tab order for
+  // the rest of the session.
+  const dismiss = () => {
+    deselect(null);
+    focusPanel();
+  };
 
   return (
     <div
-      style={{ left: percent(anchor.x), top: percent(anchor.y) }}
+      style={placement.style}
       // The popover lives inside the drawing surface so it can be positioned
       // against the mark, which means its own clicks would otherwise start a
       // stroke on the canvas underneath it.
@@ -461,13 +499,19 @@ function MarkNotePopover({
       onPointerUp={(event) => {
         event.stopPropagation();
       }}
-      className="absolute z-30 w-[248px] translate-y-2 rounded-xl border border-border bg-popover p-2 shadow-lg"
+      className={cn(
+        // Wide enough for the placeholder in every locale. At 248px the English
+        // prompt was cut off mid-word, which read as a broken field before
+        // anyone had typed anything — bingjie: *"图1 的文本没有展示全"*.
+        "absolute z-30 w-72 select-text rounded-xl border border-border bg-popover p-1.5 shadow-lg",
+        placement.className,
+      )}
       data-testid="annotation-note-popover"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <span
           style={{ background: markInk(mark) }}
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          className="ml-1 h-2.5 w-2.5 shrink-0 rounded-full"
         />
         <Input
           // The element is owned by `bindAnnotationNoteField$`, which is what
@@ -476,10 +520,6 @@ function MarkNotePopover({
           // mounted when the popover is open, and a mount-time attribute cannot
           // fire twice.
           ref={bindNoteField}
-          // Only text marks take the caret on open: focusing the field for
-          // every mark is what made Delete land in the input instead of
-          // removing the mark.
-          autoFocus={mark.shape === "text"}
           value={noteOf(mark)}
           onChange={(event) => {
             setNote(mark.id, event.target.value);
@@ -493,7 +533,7 @@ function MarkNotePopover({
             // as "attach the whole annotation".
             if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
               event.preventDefault();
-              deselect(null);
+              dismiss();
               return;
             }
             // Backspace edits the text. Once the field is empty the next press
@@ -504,18 +544,12 @@ function MarkNotePopover({
               noteOf(mark).length === 0
             ) {
               event.preventDefault();
-              deselect(null);
+              dismiss();
             }
           }}
-          placeholder={
-            mark.shape === "text"
-              ? t(($) => {
-                  return $.artifacts.annotation.textPlaceholder;
-                })
-              : t(($) => {
-                  return $.artifacts.annotation.notePlaceholder;
-                })
-          }
+          placeholder={t(($) => {
+            return $.artifacts.annotation.notePlaceholder;
+          })}
           className="h-8 flex-1 text-sm"
         />
         <Button
@@ -534,6 +568,89 @@ function MarkNotePopover({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The text tool's caret, on the image itself.
+ *
+ * A label used to be typed into the note popover *below* the picture while the
+ * words appeared *on* it, so one string was shown twice and neither place was
+ * where the user was looking — bingjie: *"文本编辑的应该可以做成点击后是一个闪动
+ * 着的光标，然后输入会直接显示到图上"*. The field is drawn where the mark is, in
+ * its ink and its metrics, so typing is the mark appearing.
+ */
+function InlineTextEditor({
+  mark,
+  signals,
+}: {
+  readonly mark: ImageAnnotationMark;
+  readonly signals: ImageAnnotationSignals;
+}) {
+  const { t } = useTranslation();
+  const setNote = useSet(signals.setAnnotationMarkNote$);
+  const bindNoteField = useSet(signals.bindAnnotationNoteField$);
+  const deselect = useSet(signals.selectAnnotationMark$);
+  const focusPanel = useSet(signals.focusAnnotationPanel$);
+
+  if (mark.shape !== "text") {
+    return null;
+  }
+  const placeholder = t(($) => {
+    return $.artifacts.annotation.textPlaceholder;
+  });
+
+  return (
+    <span
+      style={{ left: percent(mark.at.x), top: percent(mark.at.y) }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        event.stopPropagation();
+      }}
+      // `select-text` and the caret cursor are the drawing surface's own
+      // `select-none cursor-crosshair` being undone: a field that cannot be
+      // selected in, under a crosshair, does not read as somewhere to type.
+      className="absolute z-30 inline-grid select-text text-sm font-bold"
+      data-testid="annotation-text-editor"
+    >
+      {/* An invisible copy of the contents in the same grid cell is what gives
+          the field its width, so the caret sits at the end of the words rather
+          than at the end of a box that has to be sized in advance. */}
+      <span
+        aria-hidden
+        className="invisible col-start-1 row-start-1 whitespace-pre px-0.5"
+      >
+        {mark.text || placeholder}
+      </span>
+      <input
+        // Not the shared `Input`: this one is ink on a screenshot, so the
+        // border, ground and ring that make a field legible in a form are
+        // exactly what must not appear over the user's image.
+        ref={bindNoteField}
+        autoFocus
+        value={mark.text}
+        aria-label={placeholder}
+        placeholder={placeholder}
+        style={{
+          color: mark.ink,
+          caretColor: mark.ink,
+          textShadow: `0 0 3px ${STROKE_HALO_INNER}, 0 0 3px ${STROKE_HALO_INNER}`,
+        }}
+        onChange={(event) => {
+          setNote(mark.id, event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
+            event.preventDefault();
+            deselect(null);
+            focusPanel();
+          }
+        }}
+        className="col-start-1 row-start-1 w-full cursor-text bg-transparent px-0.5 outline-none placeholder:text-current placeholder:opacity-50"
+      />
+    </span>
   );
 }
 
@@ -695,6 +812,7 @@ function KeyboardShortcuts({
   // every mark drawn so far. Clicking a note to edit it and pressing Escape to
   // dismiss the caret is now the primary path, which made that the likely one.
   const selectedId = useGet(signals.annotationOpenMarkId$);
+  const focusPanel = useSet(signals.focusAnnotationPanel$);
   const pageSignal = useGet(pageSignal$);
   let cleanup: (() => void) | null = null;
 
@@ -751,6 +869,12 @@ function KeyboardShortcuts({
           return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
+          // A keystroke an input method is still composing belongs to the word
+          // being written, not to a shortcut: picking a candidate for a Chinese
+          // or Japanese note would otherwise switch tools underneath it.
+          if (event.isComposing || event.keyCode === 229) {
+            return;
+          }
           const chord = resolveChord(event);
           if (chord) {
             event.preventDefault();
@@ -760,9 +884,12 @@ function KeyboardShortcuts({
           if (event.key === "Escape") {
             event.preventDefault();
             // Escape backs out one layer at a time: the selection first, the
-            // editor only once nothing is selected.
+            // editor only once nothing is selected. Leaving a note also hands
+            // the keyboard back to the panel, so the next tool letter is read
+            // as a tool letter rather than typed into the field just left.
             if (selectedId) {
               selectMark(null);
+              focusPanel();
             } else {
               close();
             }
@@ -1212,6 +1339,66 @@ function useGrabEndpoint(
 }
 
 /**
+ * Every mark on the image, except the one currently being typed: that one is
+ * drawn by its own field, or the same words would be painted twice.
+ */
+function MarkLayer({
+  aspect,
+  marks,
+  openMarkId,
+  onGrab,
+  onSelect,
+}: {
+  readonly aspect: number;
+  readonly marks: readonly ImageAnnotationMark[];
+  readonly openMarkId: string | null;
+  readonly onGrab: (
+    mark: ImageAnnotationMark,
+    event: ReactPointerEvent<Element>,
+  ) => void;
+  readonly onSelect: (id: string) => void;
+}) {
+  return (
+    <>
+      {marks.map((mark, index) => {
+        if (mark.shape === "text" && mark.id === openMarkId) {
+          return null;
+        }
+        return (
+          <MarkShape
+            key={mark.id}
+            mark={mark}
+            ordinal={markOrdinal(mark, index)}
+            aspect={aspect}
+            onSelect={() => {
+              onSelect(mark.id);
+            }}
+            onGrab={(event) => {
+              onGrab(mark, event);
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/** How the open mark takes its words: on the image, or in a note beside it. */
+function OpenMarkEditor({
+  mark,
+  signals,
+}: {
+  readonly mark: ImageAnnotationMark;
+  readonly signals: ImageAnnotationSignals;
+}) {
+  return mark.shape === "text" ? (
+    <InlineTextEditor mark={mark} signals={signals} />
+  ) : (
+    <MarkNotePopover mark={mark} signals={signals} />
+  );
+}
+
+/**
  * Makes the scrolling stage a size query container, so the image can be bounded
  * by the box it is actually in.
  *
@@ -1326,29 +1513,20 @@ function EditorStage({
             }}
             className="block rounded-lg object-contain"
           />
-          {annotation.marks.map((mark, index) => {
-            return (
-              <MarkShape
-                key={mark.id}
-                mark={mark}
-                ordinal={markOrdinal(mark, index)}
-                aspect={aspect}
-                onSelect={() => {
-                  selectMark(mark.id);
-                }}
-                onGrab={(event) => {
-                  grabMark(mark, event);
-                }}
-              />
-            );
-          })}
+          <MarkLayer
+            aspect={aspect}
+            marks={annotation.marks}
+            openMarkId={openMarkId}
+            onGrab={grabMark}
+            onSelect={selectMark}
+          />
           <NoteLayer marks={annotation.marks} signals={signals} />
           <SelectionLayer
             mark={selectedMark}
             onGrabEndpoint={grabEndpoint}
             onGrabHandle={grabHandle}
           />
-          {openMark && <MarkNotePopover mark={openMark} signals={signals} />}
+          {openMark && <OpenMarkEditor mark={openMark} signals={signals} />}
           {preview && (
             <MarkShape
               mark={preview}
@@ -1398,6 +1576,8 @@ function AnnotationSurface({
 }) {
   const { t } = useTranslation();
   const close = useSet(signals.closeAnnotationEditor$);
+  const bindPanel = useSet(signals.bindAnnotationPanel$);
+  const panelElement = useSet(signals.annotationPanelElement$);
   const resolvedUrl = useLastResolved(signals.annotationResourceUrl$);
 
   if (!resolvedUrl) {
@@ -1426,6 +1606,11 @@ function AnnotationSurface({
           maxWidth={1440}
           height={1000}
           surface="canvas"
+          // The panel takes the opening focus rather than the first control in
+          // the header, so the tool letters and ink digits reach the editor
+          // instead of the composer it opened over — and so no button looks
+          // pressed before anything has been drawn.
+          initialFocus={panelElement}
           overlayClassName="bg-gray-900/45 dark:bg-gray-900/45"
           contentClassName="okou-app flex flex-col gap-0 overflow-hidden bg-background p-0"
           aria-label={t(($) => {
@@ -1435,7 +1620,9 @@ function AnnotationSurface({
         >
           <KeyboardShortcuts signals={signals} />
           <div
-            className="relative flex min-h-0 flex-1 flex-col overflow-hidden text-foreground"
+            ref={bindPanel}
+            tabIndex={-1}
+            className="relative flex min-h-0 flex-1 flex-col overflow-hidden text-foreground outline-none"
             data-testid="image-annotation-panel"
           >
             <EditorHeader filename={target.filename} signals={signals} />

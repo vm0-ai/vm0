@@ -4,7 +4,7 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
-use guest_contracts::diagnostics::{AgentFramework, FailureDetailSource};
+use guest_contracts::diagnostics::{AgentFramework, FailureDetailSource, FailureReason};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -12,10 +12,21 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::Duration;
 
+/// Expected public terminal text for a settled Pi run.
+///
+/// A replaced upstream document cannot be spelled out here because its byte
+/// count and digest come from the discarded page, so that case asserts the
+/// contract instead: the marker, no observed transport evidence, and no markup.
+enum ExpectedTerminalResult<'a> {
+    Exact(&'a str),
+    UpstreamNonApiResponse,
+}
+
 async fn run_settlement_case(
     run_id: &str,
     assistant_messages: &[Value],
-    expected_result: &str,
+    expected_result: ExpectedTerminalResult<'_>,
+    expected_failure_reason: Option<FailureReason>,
     expected_assistant_text: Option<&str>,
     base_path: &OsStr,
     original_directory: &Path,
@@ -147,7 +158,10 @@ fi
         Some(FailureDetailSource::PiResult)
     );
     assert_eq!(terminal_failure.diagnostic.claude_num_turns, None);
-    assert_eq!(terminal_failure.diagnostic.failure_reason, None);
+    assert_eq!(
+        terminal_failure.diagnostic.failure_reason,
+        expected_failure_reason
+    );
 
     let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
     assert!(
@@ -198,7 +212,30 @@ fi
         .ok_or_else(|| std::io::Error::other("terminal result was not delivered"))?;
     assert_eq!(terminal["subtype"], "error_during_execution");
     assert_eq!(terminal["is_error"], true);
-    assert_eq!(terminal["result"], expected_result);
+    let result = terminal["result"]
+        .as_str()
+        .ok_or_else(|| std::io::Error::other("terminal result text was not a string"))?;
+    match expected_result {
+        ExpectedTerminalResult::Exact(expected) => assert_eq!(result, expected),
+        ExpectedTerminalResult::UpstreamNonApiResponse => {
+            assert!(
+                result.starts_with("upstream_non_api_response "),
+                "terminal result should carry the upstream marker: {result}"
+            );
+            assert!(
+                result.contains("status=unknown") && result.contains("content_type=unknown"),
+                "guest-side projection cannot claim transport evidence: {result}"
+            );
+            assert!(
+                !result.contains('<'),
+                "terminal result should not republish the upstream document: {result}"
+            );
+            assert!(
+                result.len() < 128,
+                "terminal result should stay bounded: {result}"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -219,7 +256,8 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "errorMessage": "API Error: Overloaded",
             "timestamp": 1,
         })],
-        "API Error: Overloaded",
+        ExpectedTerminalResult::Exact("API Error: Overloaded"),
+        None,
         Some("ignored assistant text"),
         &base_path,
         &original_directory,
@@ -237,7 +275,8 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "errorMessage": "",
             "timestamp": 1,
         })],
-        "Pi model turn aborted",
+        ExpectedTerminalResult::Exact("Pi model turn aborted"),
+        None,
         Some("ignored assistant text"),
         &base_path,
         &original_directory,
@@ -252,7 +291,56 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
     run_settlement_case(
         "00000000-0000-4000-8000-000000000126",
         std::slice::from_ref(&assistant_end["message"]),
-        "This operation was aborted",
+        ExpectedTerminalResult::Exact("This operation was aborted"),
+        None,
+        None,
+        &base_path,
+        &original_directory,
+    )
+    .await?;
+    // An older sandbox CLI can still hand Guest a whole upstream page. Guest
+    // must bound it without claiming transport evidence it never observed.
+    run_settlement_case(
+        "00000000-0000-4000-8000-000000000128",
+        &[serde_json::json!({
+            "role": "assistant",
+            "content": [],
+            "model": "deepseek-v4-flash",
+            "responseId": "response-upstream-document",
+            "usage": {},
+            "stopReason": "error",
+            "errorMessage": format!(
+                "<html>\n  <head><style global>body{{color:#8e8ea0}}</style></head>\n  <body>{}</body>\n</html>",
+                "<svg viewBox=\"0 0 41 41\"><path d=\"M37.5324 16.8707\" /></svg>".repeat(200)
+            ),
+            "timestamp": 1,
+        })],
+        ExpectedTerminalResult::UpstreamNonApiResponse,
+        None,
+        None,
+        &base_path,
+        &original_directory,
+    )
+    .await?;
+    // A current CLI already replaced the page at its provider boundary, so the
+    // observed status classifies the failure as an upstream server error.
+    run_settlement_case(
+        "00000000-0000-4000-8000-000000000129",
+        &[serde_json::json!({
+            "role": "assistant",
+            "content": [],
+            "model": "deepseek-v4-flash",
+            "responseId": "response-upstream-marker",
+            "usage": {},
+            "stopReason": "error",
+            "errorMessage":
+                "upstream_non_api_response status=502 content_type=html bytes=4711 digest=1a2b3c4d",
+            "timestamp": 1,
+        })],
+        ExpectedTerminalResult::Exact(
+            "upstream_non_api_response status=502 content_type=html bytes=4711 digest=1a2b3c4d",
+        ),
+        Some(FailureReason::ProviderServerError),
         None,
         &base_path,
         &original_directory,
@@ -267,7 +355,8 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
     run_settlement_case(
         "00000000-0000-4000-8000-000000000127",
         &[success["message"].clone(), aborted["message"].clone()],
-        "This operation was aborted",
+        ExpectedTerminalResult::Exact("This operation was aborted"),
+        None,
         None,
         &base_path,
         &original_directory,

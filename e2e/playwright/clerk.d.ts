@@ -4,6 +4,7 @@ declare global {
   interface Window {
     Clerk?: {
       loaded: boolean;
+      user?: { readonly id: string } | null;
       organization?: { readonly id: string } | null;
       setActive(options: { readonly organization: string }): Promise<void>;
       session?: {

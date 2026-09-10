@@ -34,6 +34,7 @@ import {
   VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS,
   type VoiceIoEditorContext,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
@@ -60,6 +61,7 @@ import {
 import {
   avatarFramingEnabled$,
   avatarNeckSweaterEnabled$,
+  featureSwitch$,
 } from "../external/feature-switch.ts";
 import {
   agentMentionText,
@@ -1006,6 +1008,8 @@ function createTemplateAttachmentNodeView(
  */
 interface InlineTemplateNodeActions {
   readonly openTemplate: (category: string) => void;
+  /** Read per render so a Lab toggle applies to the next mounted composer. */
+  readonly coverEnabled: () => boolean;
 }
 
 function createInlineTemplateNodeView(
@@ -1023,26 +1027,48 @@ function createInlineTemplateNodeView(
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
+  // The template was chosen from a grid of covers, so under
+  // ComposerTemplateChipCover the chip leads with that cover. 18px inside this
+  // 28px chip keeps the cover at the proportion the block template-attachment
+  // chip above uses: a 20px cover inside its 32px chip.
+  const glyph = document.createElement("span");
+  glyph.className =
+    "flex size-[18px] shrink-0 items-center justify-center overflow-hidden " +
+    "rounded-[3px]";
+  const cover = document.createElement("img");
+  cover.alt = "";
+  cover.className = "h-full w-full object-cover";
   // Mirrors Lucide's SwatchBook, which the composer template picker button and
-  // sent-message template chips also use.
+  // sent-message template chips also use. It stands in whenever the cover is
+  // switched off or the template's catalog entry carries no cover image.
   const icon = createComposerIcon(13, 1.7, [
     "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z",
     "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7",
     "M 7 17h.01",
     "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8",
   ]);
-  icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");
   title.className =
     "min-w-0 select-none truncate text-[13px] font-medium text-orange-600 " +
     "dark:text-orange-300";
-  openButton.append(icon, title);
+  openButton.append(glyph, title);
   dom.append(openButton);
 
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
+    // The node is rewritten in place when the picker changes the selection, so
+    // the cover has to follow the new attributes rather than only the first.
+    const coverUrl = actions.coverEnabled()
+      ? attachment.previewImageUrl
+      : undefined;
+    if (coverUrl === undefined) {
+      glyph.replaceChildren(icon);
+    } else {
+      cover.src = coverUrl;
+      glyph.replaceChildren(cover);
+    }
     openButton.setAttribute(
       "aria-label",
       templateAttachmentPreviewLabel(attachment),
@@ -1499,6 +1525,12 @@ interface WorkflowComposerRuntime {
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
+  /**
+   * Read on every chip render rather than captured once: the authoritative
+   * feature-switch read resolves after the composer mounts, so a value latched
+   * at mount time would always be the pre-hydration default.
+   */
+  templateChipCover: () => boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1591,7 +1623,12 @@ function createInlineTemplateNode(
         };
         return createInlineTemplateNodeView(
           node,
-          { openTemplate },
+          {
+            openTemplate,
+            coverEnabled: () => {
+              return runtime.templateChipCover();
+            },
+          },
           runtime.localizedUi,
         );
       };
@@ -1803,6 +1840,9 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.removeTemplate = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
+  runtime.templateChipCover = () => {
+    return false;
+  };
 }
 
 function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
@@ -1995,6 +2035,9 @@ function createMountEditorCommand({
 }: MountEditorOptions) {
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      runtime.templateChipCover = () => {
+        return get(featureSwitch$)[FeatureSwitchKey.ComposerTemplateChipCover];
+      };
       runtime.update = (updatedEditor) => {
         set(legacyTemplateAttachment.sync$);
         runtime.replaceFeedbackItems(
@@ -2546,6 +2589,9 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
+    templateChipCover: () => {
+      return false;
+    },
   };
 }
 

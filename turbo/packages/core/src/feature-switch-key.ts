@@ -4,6 +4,7 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
+  WelcomeThread = "welcomeThread",
   ThreadActivitySummary = "threadActivitySummary",
   Dummy = "_dummy",
   AhrefsConnector = "ahrefsConnector",
@@ -11,11 +12,11 @@ export enum FeatureSwitchKey {
   BentomlConnector = "bentomlConnector",
   CanvaConnector = "canvaConnector",
   CalComConnector = "calComConnector",
+  CalendlyOAuthConnector = "calendlyOAuthConnector",
   CopperConnector = "copperConnector",
   DatadogConnector = "datadogConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",
-  DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
   MercuryConnector = "mercuryConnector",
@@ -53,12 +54,12 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
+  ReferenceImages = "referenceImages",
   PrivateArtifacts = "privateArtifacts",
   AgentMessageMath = "agentMessageMath",
   MarkdownTime = "markdownTime",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
-  OnboardingChat = "onboarding-chat",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   StableChatThreadNavigation = "stableChatThreadNavigation",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
@@ -70,7 +71,6 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
-  ChatTouchSelection = "chatTouchSelection",
   VoiceInputV2 = "voiceInputV2",
   ComposerCreateCommands = "composerCreateCommands",
   ComposerTaskChips = "composerTaskChips",
@@ -81,4 +81,5 @@ export enum FeatureSwitchKey {
   AvatarFraming = "avatarFraming",
   ConnectorDirectory = "connectorDirectory",
   ChatThreadHeaderActions = "chatThreadHeaderActions",
+  ComposerTemplateChipCover = "composerTemplateChipCover",
 }

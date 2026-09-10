@@ -87,6 +87,27 @@ pub(super) struct ConnectDeviceOutcome<K: CreateKernel = NativeKernel> {
     lease: DeferredLease,
     result: Option<std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>>,
     kernel: K,
+    runtime: tokio::runtime::Handle,
+}
+
+struct UnobservedConnectCleanup {
+    connected: ConnectedDevice,
+    lease: DeferredLease,
+}
+
+impl UnobservedConnectCleanup {
+    fn run_with(
+        self,
+        ownership: impl FnOnce(u32, Uuid) -> DeviceOwnership,
+        disconnect: impl FnOnce(u32) -> Result<()>,
+    ) {
+        tracing::warn!(
+            device_index = self.connected.index,
+            "NBD connect result dropped before observation; disconnecting owned device"
+        );
+        disconnect_connected_if_owned_with(self.connected, ownership, disconnect);
+        drop(self.lease);
+    }
 }
 
 pub(super) struct ConnectDeviceCriticalSectionResult<K: CreateKernel> {
@@ -128,6 +149,7 @@ impl<K: CreateKernel> ConnectDeviceOutcome<K> {
             lease,
             result: Some(result),
             kernel,
+            runtime: tokio::runtime::Handle::current(),
         }
     }
 
@@ -158,14 +180,8 @@ impl<K: CreateKernel> ConnectDeviceOutcome<K> {
         }
     }
 
-    fn cleanup_unobserved_with(
-        &mut self,
-        ownership: impl FnOnce(u32, Uuid) -> DeviceOwnership,
-        disconnect: impl FnOnce(u32) -> Result<()>,
-    ) {
-        let Some(result) = self.result.take() else {
-            return;
-        };
+    fn take_unobserved_cleanup(&mut self) -> Option<UnobservedConnectCleanup> {
+        let result = self.result.take()?;
 
         let connection_id = match result {
             Ok(success) => success.connection_id,
@@ -175,31 +191,38 @@ impl<K: CreateKernel> ConnectDeviceOutcome<K> {
             Err(
                 netlink::ConnectDeviceError::NotSent { .. }
                 | netlink::ConnectDeviceError::DefiniteAfterSend { .. },
-            ) => return,
+            ) => return None,
         };
 
-        tracing::warn!(
-            device_index = self.device_index,
-            "NBD connect result dropped before observation; disconnecting owned device"
-        );
-        disconnect_connected_if_owned_with(
-            ConnectedDevice {
+        Some(UnobservedConnectCleanup {
+            connected: ConnectedDevice {
                 index: self.device_index,
                 connection_id,
             },
-            ownership,
-            disconnect,
-        );
+            lease: DeferredLease {
+                pool: self.lease.pool.clone(),
+                lease: self.lease.take(),
+            },
+        })
     }
 }
 
 impl<K: CreateKernel> Drop for ConnectDeviceOutcome<K> {
     fn drop(&mut self) {
+        let Some(cleanup) = self.take_unobserved_cleanup() else {
+            return;
+        };
         let kernel = self.kernel.clone();
-        self.cleanup_unobserved_with(
-            |index, id| kernel.ownership(index, id),
-            |index| kernel.disconnect(index),
-        );
+        // Completed JoinHandle output may be dropped on an async worker or
+        // outside an entered runtime. Keep the lease with the blocking work;
+        // if shutdown discards the closure, its non-blocking drop retires the
+        // lease as uncertain without kernel I/O or recursive dispatch.
+        self.runtime.spawn_blocking(move || {
+            cleanup.run_with(
+                |index, id| kernel.ownership(index, id),
+                |index| kernel.disconnect(index),
+            );
+        });
     }
 }
 
@@ -470,13 +493,14 @@ pub fn is_our_thread(tid: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
+    mod cancellation;
+
     use super::*;
     use tracing::Level;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     const TEST_DEVICE_INDEX: u32 = 0;
-    const MISSING_DEVICE_INDEX: u32 = u32::MAX;
 
     const CONNECT_RESULT_DROPPED_MESSAGE: &str =
         "NBD connect result dropped before observation; disconnecting owned device";
@@ -563,7 +587,7 @@ mod tests {
         let disconnect_calls = std::cell::Cell::new(0);
 
         let ((), captured) = capture_events(|| {
-            outcome.cleanup_unobserved_with(
+            outcome.take_unobserved_cleanup().unwrap().run_with(
                 |index, connection_id| {
                     ownership_calls.set(ownership_calls.get() + 1);
                     assert_eq!(index, TEST_DEVICE_INDEX);
@@ -601,10 +625,7 @@ mod tests {
         );
 
         let ((), captured) = capture_events(|| {
-            outcome.cleanup_unobserved_with(
-                |_, _| panic!("non-committed connect must not check ownership"),
-                |_| panic!("non-committed connect must not disconnect"),
-            );
+            assert!(outcome.take_unobserved_cleanup().is_none());
             drop(outcome);
         });
 
@@ -650,41 +671,6 @@ mod tests {
             },
         }))
         .await;
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn dropped_connect_outcome_delegates_cleanup_and_retires_lease() {
-        let (pool, lease, _lock_dir) = acquired_test_lease().await;
-        let outcome = ConnectDeviceOutcome::new(
-            MISSING_DEVICE_INDEX,
-            DeferredLease::new(pool.clone(), lease),
-            Ok(netlink::ConnectDeviceSuccess {
-                connection_id: test_connection_id(),
-            }),
-        );
-
-        let ((), captured) = capture_events(|| drop(outcome));
-
-        let event = event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
-        assert_eq!(event.level, Level::WARN);
-        let expected_device_index = MISSING_DEVICE_INDEX.to_string();
-        assert_eq!(
-            event.fields.get("device_index").map(String::as_str),
-            Some(expected_device_index.as_str())
-        );
-        let ownership_event = event_with_message(
-            &captured,
-            "skipping cancelled-create disconnect: cannot read device backend identity",
-        );
-        assert_eq!(ownership_event.level, Level::WARN);
-        assert_eq!(
-            ownership_event
-                .fields
-                .get("device_index")
-                .map(String::as_str),
-            Some(expected_device_index.as_str())
-        );
-        assert_single_lease_returned(&pool).await;
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -49,7 +49,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 const ZERO_BORDER = {
-  border: "0.7px solid hsl(var(--gray-400))",
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
 } as const;
 
 function AddConnectionMenu() {

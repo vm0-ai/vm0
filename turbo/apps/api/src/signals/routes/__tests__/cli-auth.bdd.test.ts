@@ -626,6 +626,36 @@ describe("CLI-TEST: test-enable-connector", () => {
     });
   });
 
+  it("rejects connector fixtures that would privatize the default agent", async () => {
+    const actor = bdd.user();
+    await authDevice.provisionTestOrg(actor);
+    const status = await bdd.readOnboardingStatus(actor);
+    if (!status.defaultAgentId) {
+      throw new Error("Expected the workspace default agent");
+    }
+    const before = await authDevice.readUserConnectors(
+      actor,
+      status.defaultAgentId,
+    );
+    const response = await authDevice.requestTestEnableConnector(
+      { email: actor.email },
+      { composeId: status.defaultAgentId, connectorSlugs: ["github"] },
+      [400],
+    );
+    expect(response.body).toMatchObject({
+      error: expect.stringContaining("must remain public"),
+    });
+    await expect(
+      bdd.readAgent(actor, status.defaultAgentId),
+    ).resolves.toMatchObject({
+      isDefaultAgent: true,
+      visibility: "public",
+    });
+    await expect(
+      authDevice.readUserConnectors(actor, status.defaultAgentId),
+    ).resolves.toStrictEqual(before);
+  });
+
   it("enables connectors on an agent visible through the user-connectors API", async () => {
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);

@@ -176,8 +176,20 @@ test("Avoid duplicate catalog sections during metadata changes", async () => {
   expect(queryConnectorCard("Billing Stripe")).toBeInTheDocument();
 });
 
+test("Show Mailchimp OAuth without a feature-switch override", async () => {
+  mockConnectors(context, []);
+  await setupPage({ context, path: "/connectors?keywords=mailchimp" });
+
+  await waitFor(() => {
+    expect(getConnectorAction("button", "Connect Mailchimp")).toBeEnabled();
+  });
+});
+
 test("Update connector visibility when availability changes", async () => {
   mockConnectors(context, []);
+  setMockConnectorFeatureSwitches({
+    [FeatureSwitchKey.MailchimpConnector]: false,
+  });
   const switchesReady = context.mocks.deferred<void>();
   context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
     await switchesReady.promise;
@@ -447,6 +459,26 @@ test("Present a connector with no accounts", async () => {
   oauthStarted.resolve();
 });
 
+function shelfCategoryMetadata() {
+  return {
+    categories: [
+      {
+        id: "communication-collaboration",
+        label: "Communication and Collaboration",
+        menuLabel: "Communication",
+        groupId: null,
+      },
+      {
+        id: "ai-voice-audio",
+        label: "Voice / Audio",
+        menuLabel: "Voice and Audio",
+        groupId: null,
+      },
+    ],
+    groups: [],
+  };
+}
+
 function shelfCatalog() {
   // Sixteen, so the category holds more than the twelve discovery returns for
   // it when no category is asked for by name.
@@ -490,7 +522,7 @@ function shelfCatalog() {
 
 test("Browse the catalog as shelves, then enter a category and come back", async () => {
   mockConnectors(context, []);
-  mockPublicConnectorStatus(context, shelfCatalog(), undefined, {
+  mockPublicConnectorStatus(context, shelfCatalog(), shelfCategoryMetadata(), {
     "communication-collaboration": 327,
     "ai-voice-audio": 50,
   });
@@ -541,4 +573,36 @@ test("Browse the catalog as shelves, then enter a category and come back", async
   expect(
     screen.getByTestId("connector-shelf-communication-collaboration"),
   ).toBeInTheDocument();
+});
+
+test("Keep every category in the filter while one of them is open", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(context, shelfCatalog(), shelfCategoryMetadata(), {
+    "communication-collaboration": 327,
+    "ai-voice-audio": 50,
+  });
+  await setupPage({
+    context,
+    path: "/connectors?category=communication-collaboration",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  await waitFor(() => {
+    expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+  });
+
+  // Inside a category the response carries only that category. The filter
+  // describes the catalog, not the response, or it becomes a dead end: the
+  // only way back out would be the breadcrumb.
+  await click(screen.getByLabelText("Filter connectors"));
+  const menu = await screen.findByRole("menu");
+  const options = queryAllByRoleFast("menuitem", menu).map((item) => {
+    return item.textContent;
+  });
+  expect(options).toContain("All");
+  expect(
+    options.some((option) => {
+      return option?.startsWith("Voice");
+    }),
+  ).toBeTruthy();
 });

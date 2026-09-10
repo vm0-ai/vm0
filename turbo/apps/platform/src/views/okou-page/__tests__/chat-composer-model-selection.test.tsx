@@ -740,4 +740,10 @@ test("Choose a model from the flyout without leaving the type list", async () =>
   expect(next).toHaveFocus();
   click(next);
   await expect(findButton("GPT 5.6 Luna")).resolves.toBeVisible();
+  // Picking a model finishes the task, so the panel leaves with it.
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("listbox", { name: "Chat models" }),
+    ).not.toBeInTheDocument();
+  });
 });

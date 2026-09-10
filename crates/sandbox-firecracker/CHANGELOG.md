@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.2](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.1...sandbox-firecracker-v0.41.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **rust:** preserve mountinfo path bytes across consumers ([#33131](https://github.com/vm0-ai/vm0/issues/33131)) ([137593b](https://github.com/vm0-ai/vm0/commit/137593b186149940e8d83550844c59553c044002))
+
 ## [0.41.1](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.0...sandbox-firecracker-v0.41.1) (2026-09-09)
 
 

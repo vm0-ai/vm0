@@ -274,6 +274,144 @@ No expected image, mask or threshold changed. This is bounded Chromium
 acceptance; explicit sidebar readiness remains necessary before using the
 runner as an unattended gate.
 
+## Chat emoji font batch
+
+`chat-emoji-cases.json` and `run-chat-emoji.ts` cover the real chat icon trigger,
+emoji preview and emoji grid in Light/Dark desktop and narrow DPR 2 Chromium.
+Run `pnpm exec tsx playwright/style-migration/run-chat-emoji.ts` from `e2e`, using
+the standard App/API origin, source/build, private storage-state and output
+arguments, plus `--api-build` with the full API deployment SHA.
+
+The isolated TEST account signs in normally. `chat-emoji-fixture.ts` controls
+empty thread metadata, preferences, onboarding, feature switches and header
+context at both fetch and inert HTML bootstrap boundaries. It enables
+`chatThreadHeaderActions` and disables `_realAgentInPreview`; rename and read
+requests stay inside the fixture. No Agent run, connector authorization or
+purchase is performed. The production emoji catalog is unchanged. Each case
+checks colorful emoji, a dual-presentation CJK symbol, hover preview, keyboard
+activation, reload, removing the icon, text fallback and empty search.
+The existing capture, bootstrap and image helpers and their rounding limits
+remain unchanged. Before modifying business styles, capture and archive a
+successful BEFORE/A-A pair with frozen runner, fixture and case hashes.
+
+`chat-emoji-worker.ts` additionally intercepts the SharedWorker's external API
+requests through a local Chromium debugging connection. Page/Context routing
+does not cover those requests. The deployed Worker executes unchanged, and
+its snapshot boundary must be observed in each case. CORS preflight is handled
+at that same fixture boundary. The runner requires the initial loading overlay
+to be hidden and the chat icon to be unobscured before capturing.
+
+The [frozen BEFORE and unchanged replay](https://a.okou.io/3qkwcyzuet.zip)
+passed all 28 states with zero changed pixels and identical computed styles,
+geometry and control observations. Source
+`1e09b73cb906f1202b566255760655db893048c2` deployed as App/API build
+`0d5834c732c37516c2d163613063a763c0fac9f2`. The archive, including every rejected
+calibration and per-file SHA256, was published before editing business CSS.
+The final runner waits for the async connector icon and focuses the existing
+chat region in closed-picker states to avoid the unrelated composer caret.
+
+All three native emoji spans now use
+`font-(family-name:--font-family-emoji)`, reusing the existing App-owned font
+stack without a new alias. The final `.okou-emoji` rule and only its legacy
+baseline entries are removed. DOM, events and size utilities are unchanged.
+Screenshot rename/reload uses a stateful TEST fixture; separate real-page
+selection and reload also passed with an empty TEST thread created using the
+allowed `deepseek-v4-pro` model. No Agent run or paid action was required.
+
+The first AFTER build also included upstream voice-composer fix #33058
+(`724dc63d33064e66f8a41e0bef6ad54e345ef94a`), which was absent from the initial
+BEFORE. All emoji control observations matched, but the complete frames
+correctly failed on unrelated composer pixels. That failed AFTER is retained.
+Main was synchronized to `b440c7b27c62b2b79afe88a9762cc51c790bfb95`; the three
+legacy consumers and their rule are temporarily restored for a refreshed
+BEFORE/A-A deployment. The frozen runner, fixtures, cases and limits are
+unchanged. Publish the refreshed baseline before reapplying the same migration.
+
+The [refreshed BEFORE/A-A archive](https://a.okou.io/z6rgfsqp0b.zip) passed all
+28 states with zero changed pixels, on source
+`4e18c07e3eb936da5778207e5a81508cfce9aaa0` and App/API build
+`e9e64de2da25bbd5514c02f1db0766490b6d9904`. It retains the rejected initial
+AFTER and the source-parent diagnosis. That rejected AFTER also matches the
+refreshed legacy BEFORE exactly in all 28 frames, isolating the upstream
+composer change. After the refreshed baseline was uploaded, the original
+three-consumer font migration and its shrink-only ratchet patch were reapplied.
+
+The [AFTER archive](https://a.okou.io/b1j7myrczw.zip) records all 28 states
+passing with zero raw changed pixels and identical observations on source
+`0c52bbddd94dbefa9451d2bae92af6581a85abe4`, App/API build
+`57e0a0676fcfbd40d2ca8c1c630027ab2de02014`. The 19 focused emoji/header tests,
+App/E2E types, affected lint, Knip, formatting and shrink-only style checks
+passed. Real TEST API selection, reload, removal, reload and restoration also
+passed with zero chat event rows. TEST state must be recreated after a preview
+database reset; authentication material remains private. The batch remains
+`implemented` until current-head CI also passes: the tested source had a
+sidebar test failure and Runner setup HTTP 500 failures outside the changed
+files. The PR records the latest deployment and CI status.
+
+The three consumers now use the shorter named utility `font-family-emoji`.
+Tailwind generates the same `font-family: var(--font-family-emoji)` declaration
+from the existing App theme token; no token rename or alias is required.
+The original frozen BEFORE/A-A evidence, runner and pixel limits remain the
+comparison contract for this syntax simplification.
+
+The [named-utility evidence archive](https://a.okou.io/tuxdll7vug.zip) and
+[comparison image](https://a.okou.io/0ari27pv9w.png) record all 28 states passing
+with zero raw changed pixels and identical computed styles, geometry and
+control observations on source `242fcfd3261fb8f0aa994ecfe78671f9fa67f70b`,
+App/API build `751dc257ecea3ba7c8830c9efd5e90e740aff81e`. All 19 focused tests,
+affected static checks and the [source CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34433235841)
+passed. Real TEST API selection, removal and persistence across reloads also
+passed with zero chat event rows. The archive retains all prior failed evidence,
+the unchanged harness and per-file SHA256; its anonymous HTTPS download and
+archive hash were verified. The PR remains Draft.
+## Tone preview surfaces
+
+The `tone-preview-surfaces` batch covers the user sample bubble and its enclosing
+preview border in Agent profile settings. It replaces two legacy consumption
+sites with existing gray, foreground and surface-border utilities. The assistant
+bubble retains its separate Markdown and native Desktop selection contract;
+the shared legacy border definition remains while other consumers use it.
+
+`pnpm style:migration:tone-preview` uses `tone-preview-cases.json` and requires
+private storage state, an owned synthetic Agent fixture (`--agent-fixture`) and
+the TEST account's frozen feature-switch response (`--feature-fixture`). The
+`--sidebar-fixture` freezes its admin organization and free-tier billing status;
+desktop captures wait for the resulting Get Pro card after navigation and reload.
+Both browser requests and embedded App bootstrap responses use those fixtures.
+The 33 states cover four tones, hover, keyboard activation/focus, Discard,
+pending Save, successful Save and reload in desktop Light/Dark and narrow DPR 2.
+Real API persistence is checked separately; no Agent run is needed.
+
+The `tone-surface-rgba8-v1` observation protocol adds exact geometry and computed
+styles for the `tone-preview` and `tone-preview-user-message` semantic slots.
+Only the user bubble's background color is compared as the browser's exact
+8-bit sRGB canvas readback, including its alpha byte. Serialized alpha must also
+match exactly. Its raw computed CSS is
+also archived: Tailwind's `color-mix` and legacy `rgba` serialize differently.
+This records equivalence for the pinned 8-bit screenshot environment, not
+floating-point color or cross-browser equivalence. Other styles remain literal
+comparisons and the full-page `channel-rounding-v1` limits remain unchanged.
+Freeze and upload the unchanged BEFORE/A/A pair before replacing business
+classes, then replay the same runner, cases and fixtures on the PR deployment.
+
+[PR #33133](https://github.com/vm0-ai/vm0/pull/33133) froze its
+[BEFORE and unchanged-code replay](https://a.okou.io/0ey5ajo2g7.zip) before
+replacing either business class. All 33 states have zero raw changed pixels
+on unmigrated App/API build `047e880cc958225a79c2ebceb961718a0916d5c9`.
+The archive retains setup failures and the first replay's outer exit anomaly;
+the confirming replay completed normally with the same frozen protocol.
+
+The [AFTER archive](https://a.okou.io/uc3wow1q46.zip) and
+[comparison image](https://a.okou.io/seho80x6gx.png) record all 33 states with
+zero raw changed pixels and identical surface/control observations on App/API
+build `1a665b1d0b25311c4c98471c206212a64be79c0d`, from implementation source
+`a9ae349966e02c2db99aad68378a24b9cac31f8a`. Both artifacts were anonymously
+downloaded and hash-verified. Actual TEST API Save, reload, Discard and original
+tone restoration passed, as did all 18 existing Profile tests and the relevant
+static checks. The branch removes one token, two declarations and two legacy
+consumption sites. The batch remains implemented until the complete current-head
+CI and acceptance gates pass; inspect the PR for live CI status.
+
 ## Monochrome icon filter batch
 
 The independent `monochrome-icon-filter` batch covers only `ProviderIcon`,
@@ -353,3 +491,60 @@ has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false
 No live switch was changed. Earlier manual portal navigation attempts are
 explicitly unaccepted diagnostics, distinct from the four passing frozen portal
 states. The archive was anonymously downloaded and hash-verified.
+
+## Settings select surfaces
+
+The `settings-select-surfaces` batch owns the Language and Time zone triggers
+in Preferences. Each native shared `SelectTrigger` retains its dimensions,
+border width, foreground, ref and interaction contract. The two consumers
+compose existing `border-control-border`, `bg-control-surface` and
+`[&:hover]:bg-state-hover-overlay` utilities. The unconditional hover selector
+preserves the old touch-browser treatment. Other `okou-btn-morandi` consumers
+keep their legacy definition until they migrate.
+
+`data-slot="language-setting"` and `data-slot="timezone-setting"` identify the
+existing rows for scoped semantic control queries; neither slot carries styles.
+`settings-select-cases.json` and `run-settings-select.ts` independently cover
+four Light/Dark desktop/narrow DPR 2 cases, with 13 states each. Run
+`pnpm style:migration:settings-select` from `e2e`, supplying App/API origins,
+source/build SHAs, private storage state, `--fixture`, `--locale-assets`, `--out`
+and optional `--baseline`. The runner observes trigger and menu styles, geometry,
+focus, disabled and selected states, and captures full-page PNGs without masks.
+Mobile primary activations use touch; keyboard and hover are explicit additional
+states. A stateful preference response checks pending saves, language changes,
+timezone selection and reload. Default Agent list/detail, onboarding, member,
+organization, billing, feature and disconnected Slack responses are frozen before
+the baseline. Signup attribution returns its contract-valid already-recorded
+response; it does not write attribution or start a follow-up conversion request.
+Rejected runs with background API failures remain in the evidence archive.
+
+[Issue #33157](https://github.com/vm0-ai/vm0/issues/33157) records a pre-existing
+preview limitation discovered during calibration: public Japanese locale JSON
+returns a production-only CDN CORS header. The first attempt and its failure
+are retained. The separate locale fixture pins exactly three immutable URLs,
+original downloaded bytes and hashes; response access is supplied for the PR
+origin without changing the JSON. Those bytes also match the repository's
+Japanese agents/common and Clerk localization files. The runner rejects an
+unfrozen locale resource and changes to the asset fixture on replay. This
+establishes bounded rendering and client behavior under the recorded resource
+boundary; it does not certify or repair unmodified CDN access. Real API
+persistence and unmodified preview behavior are reported separately.
+
+The [frozen BEFORE/A/A archive](https://a.okou.io/e1c28c8g3y.zip) records
+52 passing states with zero raw pixel differences for source `c103ec9c` and
+App/API build `a2085986`. It was anonymously hash-verified and
+[posted before business edits](https://github.com/vm0-ai/vm0/pull/33154#issuecomment-5613793582).
+Retired calibrations, including the PR-closure database cleanup failure, remain
+in the archive. The [AFTER archive](https://a.okou.io/4jznraws1s.zip) records
+all 52 states with zero raw changed pixels and identical control observations
+for implementation source `afc52af7`, App/API build `81670300`. The
+[comparison image](https://a.okou.io/a26g028cl9.png) previews representative states;
+both artifacts were anonymously hash-verified. Actual timezone selection,
+reload persistence and restoration pass. Direct language preference writes,
+subsequent reads and restoration pass; unmodified language UI remains blocked
+by the separately tracked CDN CORS issue.
+
+The batch remains `implemented`: that source's Security and Crates gates pass,
+but Turbo is blocked by Runner SSH preparation for `dev-12.gcp.vm3.ai`. No
+Runner, workflow or timeout change is part of this migration. Latest-head CI
+and preview identity are recorded in the PR before handoff.

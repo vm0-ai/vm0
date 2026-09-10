@@ -146,6 +146,29 @@ test("prepares and cleans one generation of runner accounts", async () => {
   }
 });
 
+test("runner resource records survive preparation and a later cleanup attempt", async () => {
+  const fixture = await startClerkFixture();
+  const directory = await mkdtemp(join(tmpdir(), "runner-records-test-"));
+  try {
+    const environment = runnerEnvironment(fixture.apiUrl, {
+      GITHUB_OUTPUT: join(directory, "github-output"),
+      E2E_CLERK_RESOURCE_DIR: join(directory, "resources"),
+    });
+    await runRunnerAccount("prepare", environment);
+    assert.equal(fixture.state.organizations.length, 4);
+    await runRunnerAccount("cleanup-recorded-run", {
+      ...environment,
+      GITHUB_RUN_ATTEMPT: "4",
+    });
+    assert.deepEqual(fixture.state.organizations, []);
+    assert.deepEqual(fixture.state.users, []);
+    assert.equal(fixture.state.deletionEvents.length, 8);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+    await closeServer(fixture.server);
+  }
+});
+
 test("run cleanup removes every runner generation for the exact workflow run", async () => {
   const fixture = await startClerkFixture();
   const tempDirectory = await mkdtemp(
@@ -332,6 +355,33 @@ async function handleClerkRequest(
 ): Promise<void> {
   const path = request.url ?? "";
   const url = new URL(path, "http://clerk.test");
+  if (request.method === "GET" && url.pathname.startsWith("/v1/users/")) {
+    const id = url.pathname.slice("/v1/users/".length);
+    const user = state.users.find((candidate) => candidate.id === id);
+    sendJson(
+      response,
+      user ? { id, email_addresses: [{ email_address: user.email }] } : {},
+      user ? 200 : 404,
+    );
+    return;
+  }
+  if (
+    request.method === "GET" &&
+    url.pathname.startsWith("/v1/organizations/")
+  ) {
+    const id = url.pathname.slice("/v1/organizations/".length);
+    const organization = state.organizations.find(
+      (candidate) => candidate.id === id,
+    );
+    sendJson(
+      response,
+      organization
+        ? { id, private_metadata: organization.request.private_metadata }
+        : {},
+      organization ? 200 : 404,
+    );
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/v1/users") {
     sendJson(
       response,
@@ -506,7 +556,11 @@ function runnerEnvironment(
 }
 
 async function runRunnerAccount(
-  command: "prepare" | "cleanup-generation" | "cleanup-run",
+  command:
+    | "prepare"
+    | "cleanup-generation"
+    | "cleanup-run"
+    | "cleanup-recorded-run",
   environment: Readonly<NodeJS.ProcessEnv>,
 ): Promise<void> {
   await execFileAsync(

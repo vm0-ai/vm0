@@ -54,7 +54,7 @@ import {
   formatLocalizedNumber,
 } from "../../../../i18n/format.ts";
 
-const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
+const CARD_BORDER = "var(--border-width-surface) solid hsl(var(--gray-400))";
 
 const SOURCE_ICONS = {
   chat: MessageCircle,

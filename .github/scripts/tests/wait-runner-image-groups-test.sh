@@ -39,6 +39,7 @@ if [ "$1" = "api" ]; then
   request="$2"
   artifact_name="${request#*name=}"
   artifact_name="${artifact_name%%&*}"
+  printf 'HTTP/2.0 200 OK\r\n\r\n'
   cat <<JSON
 {
   "artifacts": [

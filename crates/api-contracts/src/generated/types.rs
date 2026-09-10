@@ -1196,6 +1196,67 @@ pub mod runners {
         /// Immutable winning official Runner process.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
+        pub struct ObservationRequestRunnerIdentity {
+            /// Runner UUID.
+            pub runner_id: String,
+            /// Winning process generation.
+            pub heartbeat_generation: i64,
+        }
+
+        /// Allow-listed connection failures, excluding command and authority failures.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ObservationRequestFailureReason {
+            /// Private key or passphrase could not be decoded.
+            #[serde(rename = "invalid_credential")]
+            InvalidCredential,
+            /// Unsupported private key format or algorithm.
+            #[serde(rename = "unsupported_credential")]
+            UnsupportedCredential,
+            /// Credential exceeds the supported decoding envelope.
+            #[serde(rename = "credential_resource_limit")]
+            CredentialResourceLimit,
+            /// Destination does not meet the public address policy.
+            #[serde(rename = "unsafe_destination")]
+            UnsafeDestination,
+            /// DNS or connection failed.
+            #[serde(rename = "network_failure")]
+            NetworkFailure,
+            /// Verified host identity differs from the stored pin.
+            #[serde(rename = "host_key_mismatch")]
+            HostKeyMismatch,
+            /// Host key is unsupported.
+            #[serde(rename = "unsupported_host_key")]
+            UnsupportedHostKey,
+            /// SSH user authentication failed.
+            #[serde(rename = "authentication_failed")]
+            AuthenticationFailed,
+            /// Connection handshake failed before user authentication.
+            #[serde(rename = "protocol")]
+            Protocol,
+            /// Connection did not authenticate before its deadline.
+            #[serde(rename = "timed_out")]
+            TimedOut,
+        }
+
+        /// Latest connection evidence, never commands or authorization.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ObservationRequest {
+            /// Exact owner connection UUID.
+            pub connection_id: String,
+            /// Winning process identity.
+            pub runner_identity: ObservationRequestRunnerIdentity,
+            /// Configuration used, including successful TOFU advancement.
+            pub expected_generation: i64,
+            /// UTC observation time, ordered independently of report delivery.
+            pub observed_at: String,
+            /// Connection failure; null means verified host and authenticated user.
+            pub failure_reason: Option<ObservationRequestFailureReason>,
+        }
+
+        /// Immutable winning official Runner process.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct PinRequestRunnerIdentity {
             /// Runner UUID.
             pub runner_id: String,

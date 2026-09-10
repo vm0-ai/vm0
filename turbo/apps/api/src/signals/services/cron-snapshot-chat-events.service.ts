@@ -69,6 +69,7 @@ interface ChatEventSnapshotStats {
   readonly skippedIncompleteHeads: number;
   readonly skippedFailedHeads: number;
   readonly skippedTimedOutHeads: number;
+  readonly oldestCandidateAgeMs: number;
   readonly scanCursorAdvanced: boolean;
   readonly scanWrapped: boolean;
   readonly duplicateEventIdConflictThreads: number;
@@ -95,6 +96,8 @@ type ChatEventSnapshotScope =
 interface SnapshotCandidate {
   readonly chatThreadId: string;
   readonly indexedSeqId: number;
+  /** Selection timestamp; reported as the batch's archive lag. */
+  readonly lastMessageAt: Date;
   readonly headId: string | null;
   readonly headLastSeqId: number | null;
   readonly headLastEventId: string | null;
@@ -894,16 +897,34 @@ function archivedThreadFromPublication(
   };
 }
 
+/**
+ * Coarse archive phase a candidate had reached when its bounded deadline
+ * fired. It locates a genuinely stuck head without exposing archive content,
+ * object keys or event bodies.
+ */
+type SnapshotArchiveStage =
+  | "resolve_prefix"
+  | "read_events"
+  | "compress"
+  | "put_object"
+  | "publish";
+
+interface SnapshotArchiveStageRecorder {
+  stage: SnapshotArchiveStage;
+}
+
 const archiveThread$ = command(async function archiveThread(
   { get },
   args: {
     readonly db: Db;
     readonly bucket: string;
     readonly candidate: SnapshotCandidate;
+    readonly recorder: SnapshotArchiveStageRecorder;
   },
   signal: AbortSignal,
 ): Promise<ArchivedThread> {
-  const { db, bucket, candidate } = args;
+  const { db, bucket, candidate, recorder } = args;
+  recorder.stage = "resolve_prefix";
   const resolved = await get(
     resolveArchivePrefix({ bucket, candidate }, signal),
   );
@@ -913,6 +934,7 @@ const archiveThread$ = command(async function archiveThread(
   }
   const { source, prefix, terminalSeqId, terminalEventId } = resolved;
   const targetSeqId = Math.max(candidate.indexedSeqId, source?.lastSeqId ?? 0);
+  recorder.stage = "read_events";
   const archive = await readCanonicalEvents(
     db,
     { ...candidate, indexedSeqId: targetSeqId },
@@ -944,6 +966,7 @@ const archiveThread$ = command(async function archiveThread(
     },
     archive,
   );
+  recorder.stage = "compress";
   const compressed = await gzipAsync(prepared.body);
   signal.throwIfAborted();
   const objectKey = chatEventSnapshotObjectKey(
@@ -951,6 +974,7 @@ const archiveThread$ = command(async function archiveThread(
     targetSeqId,
     sha256Hex(compressed),
   );
+  recorder.stage = "put_object";
   const [existingObjectReference] = await db
     .select({ id: chatEventSnapshots.id })
     .from(chatEventSnapshots)
@@ -976,6 +1000,7 @@ const archiveThread$ = command(async function archiveThread(
   }
   signal.throwIfAborted();
 
+  recorder.stage = "publish";
   const published = await settle(
     publishSnapshotVersion(db, candidate, source, {
       lastSeqId: targetSeqId,
@@ -1018,6 +1043,7 @@ export const refreshChatEventSnapshotThread$ = command(
         db,
         bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
         candidate,
+        recorder: { stage: "resolve_prefix" },
       },
       signal,
     );
@@ -1281,6 +1307,7 @@ async function loadSnapshotCandidates(
     .select({
       chatThreadId: chatThreads.id,
       indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
+      lastMessageAt: chatThreads.lastMessageAt,
       headId: currentSnapshot.id,
       headLastSeqId: currentSnapshot.lastSeqId,
       headLastEventId: currentSnapshot.lastEventId,
@@ -1341,6 +1368,7 @@ async function loadSnapshotCandidates(
     return {
       chatThreadId: row.chatThreadId,
       indexedSeqId: row.indexedSeqId,
+      lastMessageAt: row.lastMessageAt,
       headId: row.headId,
       headLastSeqId: row.headLastSeqId,
       headLastEventId: row.headLastEventId,
@@ -1419,29 +1447,46 @@ async function processSnapshotCandidate(
   candidate: SnapshotCandidate,
   archive: (
     candidate: SnapshotCandidate,
+    recorder: SnapshotArchiveStageRecorder,
     signal: AbortSignal,
   ) => Promise<ArchivedThread>,
   signal: AbortSignal,
 ): Promise<SnapshotCandidateOutcome> {
   const timeoutSignal = AbortSignal.timeout(SNAPSHOT_THREAD_TIMEOUT_MS);
   const candidateSignal = AbortSignal.any([signal, timeoutSignal]);
+  const recorder: SnapshotArchiveStageRecorder = { stage: "resolve_prefix" };
+  const startedAt = now();
   const archived = await settleIncludingAbort(
-    awaitWithSignal(archive(candidate, candidateSignal), candidateSignal),
+    awaitWithSignal(
+      archive(candidate, recorder, candidateSignal),
+      candidateSignal,
+    ),
   );
   signal.throwIfAborted();
   if (archived.ok) {
     return { kind: "completed", archived: archived.value };
   }
   if (timeoutSignal.aborted) {
-    log.warn("Timed out Chat Event Snapshot candidate", {
+    // The per-head deadline is designed backpressure, not a failure: the
+    // candidate stays eligible for the next cycle and retention keeps its Raw
+    // Events until a Snapshot covers them. `awaitWithSignal` settles this race
+    // with the deadline's own reason, so no unrelated failure is absorbed
+    // here. `skippedTimedOutHeads` on the terminal event remains the alerting
+    // signal; see docs/chat-event-snapshot-timeout-logging.md.
+    log.info("Timed out Chat Event Snapshot candidate", {
       type: "chat_event_snapshot_candidate_timed_out",
+      expected: true,
       chatThreadId: candidate.chatThreadId,
+      stage: recorder.stage,
+      durationMs: now() - startedAt,
+      timeoutMs: SNAPSHOT_THREAD_TIMEOUT_MS,
     });
     return { kind: "timed_out" };
   }
   log.error("Failed Chat Event Snapshot candidate", {
     type: "chat_event_snapshot_candidate_failed",
     chatThreadId: candidate.chatThreadId,
+    stage: recorder.stage,
     error: archived.error,
   });
   return { kind: "failed" };
@@ -1451,6 +1496,7 @@ async function processSnapshotCandidates(
   candidates: readonly SnapshotCandidate[],
   archive: (
     candidate: SnapshotCandidate,
+    recorder: SnapshotArchiveStageRecorder,
     signal: AbortSignal,
   ) => Promise<ArchivedThread>,
   signal: AbortSignal,
@@ -1554,6 +1600,26 @@ function summarizeSnapshotCandidateOutcomes(
   return stats;
 }
 
+/**
+ * Age of the least recently updated selected candidate. Sustained growth is
+ * the actionable archive-lag signal; one bounded per-head timeout is not.
+ */
+function oldestCandidateAgeMs(
+  candidates: readonly SnapshotCandidate[],
+): number {
+  let oldest: number | null = null;
+  for (const candidate of candidates) {
+    const lastMessageAt = candidate.lastMessageAt.getTime();
+    if (oldest === null || lastMessageAt < oldest) {
+      oldest = lastMessageAt;
+    }
+  }
+  if (oldest === null) {
+    return 0;
+  }
+  return Math.max(0, Math.round(nowDate().getTime() - oldest));
+}
+
 async function finalizeGlobalSnapshotScanState(
   db: Db,
   candidatePage: SnapshotCandidatePage,
@@ -1613,12 +1679,13 @@ export const snapshotChatEvents$ = command(
       ));
     signal.throwIfAborted();
 
+    const candidateAgeMs = oldestCandidateAgeMs(candidates);
     const processed = await processSnapshotCandidates(
       candidates,
-      async (candidate, candidateSignal) => {
+      async (candidate, recorder, candidateSignal) => {
         return await set(
           archiveThread$,
-          { db, bucket, candidate },
+          { db, bucket, candidate, recorder },
           candidateSignal,
         );
       },
@@ -1654,6 +1721,7 @@ export const snapshotChatEvents$ = command(
       selectedCandidates: candidates.length,
       processedCandidates: processed.attemptedCandidates,
       deferredCandidates: processed.deferredCandidates,
+      oldestCandidateAgeMs: candidateAgeMs,
       scanCursorAdvanced,
       scanWrapped: globalCandidatePage?.wrapped ?? false,
       r2ObjectsScanned: r2Gc.scanned,

@@ -95,30 +95,32 @@ class ThreadedHttpTestServer[Request]:
             def log_message(self, message_format: str, *args: object) -> None:
                 return None
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-        server = self._server
+        with ThreadingHTTPServer(("127.0.0.1", 0), _Handler) as server:
+            self._server = server
+            try:
 
-        def serve_forever() -> None:
-            server.serve_forever(poll_interval=0.01)
+                def serve_forever() -> None:
+                    server.serve_forever(poll_interval=0.01)
 
-        thread = threading.Thread(
-            target=serve_forever,
-            name=self._thread_name,
-            daemon=True,
-        )
-        thread.start()
-        try:
-            yield
-        finally:
-            with self._condition:
-                release_events = tuple(self._release_events)
-                self._release_events.clear()
-            for release_event in release_events:
-                release_event.set()
-            server.shutdown()
-            thread.join(timeout=2.0)
-            server.server_close()
-            self._server = None
+                thread = threading.Thread(
+                    target=serve_forever,
+                    name=self._thread_name,
+                    daemon=True,
+                )
+                thread.start()
+                # Only a started serving loop can be shut down and joined.
+                try:
+                    yield
+                finally:
+                    with self._condition:
+                        release_events = tuple(self._release_events)
+                        self._release_events.clear()
+                    for release_event in release_events:
+                        release_event.set()
+                    server.shutdown()
+                    thread.join(timeout=2.0)
+            finally:
+                self._server = None
 
     def _record_request_and_reserve_response(self, request: Request) -> _QueuedResponse:
         with self._condition:
