@@ -7,6 +7,7 @@ import {
   OpenRouterRequestError,
 } from "../external/openrouter";
 import {
+  isTransientProviderFailure,
   openRouterFailureReason,
   openRouterFailureTokenCounts,
   type OpenRouterFailureReason,
@@ -71,14 +72,21 @@ function retryAfterMilliseconds(error: unknown): number | undefined {
 
 /** Reasons the caller can do nothing about: counted, never warned. */
 function isDegradedReason(reason: Reason): boolean {
-  return (
-    reason === "rate_limited" ||
-    reason === "upstream_timeout" ||
-    reason === "network" ||
-    reason === "provider_unavailable" ||
-    reason === "output_truncated" ||
-    reason === "unexpected_tool_calls"
-  );
+  switch (reason) {
+    case "output_truncated":
+    case "unexpected_tool_calls": {
+      return true;
+    }
+    case "caller_cancelled":
+    case "not_applicable":
+    case "none":
+    case "unusable_output": {
+      return false;
+    }
+    default: {
+      return isTransientProviderFailure(reason);
+    }
+  }
 }
 
 const log = logger("api:auxiliary-generation");
