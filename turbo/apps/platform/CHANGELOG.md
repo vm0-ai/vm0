@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.884.4](https://github.com/vm0-ai/vm0/compare/app-v0.884.3...app-v0.884.4) (2026-09-10)
+
+
+### Refactoring
+
+* **platform:** remove computed signal propagation ([#33330](https://github.com/vm0-ai/vm0/issues/33330)) ([c65658a](https://github.com/vm0-ai/vm0/commit/c65658aa52e160f594d799050037cc4827dfc37f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.1
+
 ## [0.884.3](https://github.com/vm0-ai/vm0/compare/app-v0.884.2...app-v0.884.3) (2026-09-10)
 
 
