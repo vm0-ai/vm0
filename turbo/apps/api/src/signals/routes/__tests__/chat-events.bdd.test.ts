@@ -22828,7 +22828,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  const explainerTemplate: GenerationTemplateRequest = {
+  const introVideoTemplate: GenerationTemplateRequest = {
     type: "video",
     selection: {
       stylePresetId: "explainer-video",
@@ -22848,7 +22848,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     },
   };
 
-  it("gates explainer template sends with the rollout override while preserving ordinary video", async () => {
+  it("gates intro video template sends with the rollout override while preserving ordinary video", async () => {
     const { actor, agentId } = await entitledChatActor();
     const scopedActor = { ...actor, orgId: requireOrgId(actor) };
     await updateFeatureSwitchesForUser(context, scopedActor, {
@@ -22860,8 +22860,8 @@ describe("CHAT-02: generation templates and attachments", () => {
       selection: { stylePresetId: ordinary.id },
     };
     for (const templates of [
-      [explainerTemplate],
-      [ordinaryTemplate, explainerTemplate],
+      [introVideoTemplate],
+      [ordinaryTemplate, introVideoTemplate],
     ]) {
       const rejected = await chat.requestSendEvent(
         actor,
@@ -22885,9 +22885,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         [400],
       );
       expectApiError(rejected.body);
-      expect(rejected.body.error.message).toBe(
-        "Explainer video is not available",
-      );
+      expect(rejected.body.error.message).toBe("Intro video is not available");
     }
     const events = await chat.requestThreadEvents(actor, {}, [200]);
     if (events.status !== 200) {
@@ -22922,24 +22920,25 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toBe(
-      "Explainer video settings are missing",
+      "Intro video settings are missing",
     );
     const explained = await sendChatRun(actor, {
       agentId,
       prompt: "Explain the product",
-      template: explainerTemplate,
+      template: introVideoTemplate,
     });
     const prompt = (await api.readRun(actor, explained.runId))
       .appendSystemPrompt;
     expect(prompt).toContain("Use the $intro-video skill");
-    expect(prompt).toContain("Minimalism");
-    expect(prompt).toContain("No avatar. Do not add a presenter.");
-    expect(prompt).toContain("No voiceover. Do not add narration.");
+    expect(prompt).toContain("- HeyGen style: Minimalism (minimalism)");
+    expect(prompt).toContain("- HeyGen style preview aspect ratio: 16:9");
+    expect(prompt).toContain("- Avatar: No avatar");
+    expect(prompt).toContain("- Voice: No voiceover");
     await cancelChatRun(actor, explained.runId);
   }, 90_000);
 
   it.each(["queued dispatch", "active input"] as const)(
-    "rechecks explainer access before %s",
+    "rechecks intro video access before %s",
     async (delivery) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const scopedActor = { ...actor, orgId: requireOrgId(actor) };
@@ -22961,7 +22960,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           prompt: "Explain the product",
           userMessage: userMessageWithTemplate(
             "Explain the product",
-            explainerTemplate,
+            introVideoTemplate,
           ),
         },
         [201],

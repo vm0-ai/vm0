@@ -598,8 +598,6 @@
       "category": "Kategori template",
       "chooseVoice": "Pilih suara untuk {{title}}",
       "creativeVideo": "Video kreatif",
-      "explainerUnavailable": "Template video ini tidak lagi tersedia. Hapus untuk mengirim pesan Anda.",
-      "explainerVideo": "Video penjelasan",
       "filters": {
         "age": "Usia",
         "all": "Semua",
@@ -621,6 +619,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
+      "introVideo": "Video intro",
+      "introVideoUnavailable": "Template video ini tidak lagi tersedia. Hapus untuk mengirim pesan Anda.",
       "multiAccent": "Multi-aksen",
       "needPro": "Perlu Pro",
       "nextSlide": "Pratinjau slide berikutnya",
@@ -2026,20 +2026,6 @@
       },
       "runCancelled": "Tertunda di tengah pikiran — lanjutkan kapan saja."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "Temukan suara yang cocok dengan konten Anda.",
-      "avatarVoice": "Suara avatar",
-      "changeAvatar": "Ubah avatar",
-      "chooseStyle": "Pilih gaya",
-      "chooseStyleAndVoice": "Pilih gaya dan suara.",
-      "noMatches": "Tidak ada hasil. Coba pencarian atau kategori lain.",
-      "ready": "Siap digunakan. Tambahkan konten Anda di obrolan.",
-      "searchAvatars": "Cari avatar",
-      "searchStyles": "Cari gaya",
-      "settings": "Pengaturan video penjelasan",
-      "style": "Gaya",
-      "useSelection": "Gunakan pilihan"
-    },
     "feedback": {
       "emailDraftDescription": "draf email (ID draf mail: {{id}})",
       "partHeading": "Masukan untuk bagian balasan Anda ini:",
@@ -2083,6 +2069,20 @@
       },
       "footer": {
         "cancel": "Batal"
+      },
+      "picker": {
+        "autoVoiceDescription": "Temukan suara yang cocok dengan konten Anda.",
+        "avatarVoice": "Suara avatar",
+        "changeAvatar": "Ubah avatar",
+        "chooseStyle": "Pilih gaya",
+        "chooseStyleAndVoice": "Pilih gaya dan suara.",
+        "noMatches": "Tidak ada hasil. Coba pencarian atau kategori lain.",
+        "ready": "Siap digunakan. Tambahkan konten Anda di obrolan.",
+        "searchAvatars": "Cari avatar",
+        "searchStyles": "Cari gaya",
+        "settings": "Pengaturan video intro",
+        "style": "Gaya",
+        "useSelection": "Gunakan pilihan"
       },
       "style": {
         "auto": "Biarkan Okou memilih",

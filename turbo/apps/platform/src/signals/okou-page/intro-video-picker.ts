@@ -1,18 +1,18 @@
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ExplainerVideoOptions } from "@okouai/api-contracts/contracts/explainer-video";
+import type { IntroVideoOptions } from "@okouai/api-contracts/contracts/intro-video-options";
 import {
-  EXPLAINER_VIDEO_TEMPLATE_ID,
-  explainerVideoTemplateOptions,
-} from "@okouai/core/explainer-video-template";
+  INTRO_VIDEO_TEMPLATE_ID,
+  introVideoTemplateOptions,
+} from "@okouai/core/intro-video-template";
 import { command, computed, state } from "ccstate";
 
-export type ExplainerVideoTab = "style" | "avatar" | "voice";
+export type IntroVideoPickerTab = "style" | "avatar" | "voice";
 
-export function createExplainerVideoPickerSignals() {
-  const tab$ = state<ExplainerVideoTab>("style");
-  const style$ = state<ExplainerVideoOptions["style"] | null>(null);
-  const avatar$ = state<ExplainerVideoOptions["avatar"]>({ kind: "none" });
-  const voice$ = state<ExplainerVideoOptions["voice"] | null>(null);
+export function createIntroVideoPickerSignals() {
+  const tab$ = state<IntroVideoPickerTab>("style");
+  const style$ = state<IntroVideoOptions["style"] | null>(null);
+  const avatar$ = state<IntroVideoOptions["avatar"]>({ kind: "none" });
+  const voice$ = state<IntroVideoOptions["voice"] | null>(null);
   const search$ = state("");
   const group$ = state("all");
   return {
@@ -41,29 +41,27 @@ export function createExplainerVideoPickerSignals() {
         ? {
             type: "video",
             selection: {
-              stylePresetId: EXPLAINER_VIDEO_TEMPLATE_ID,
+              stylePresetId: INTRO_VIDEO_TEMPLATE_ID,
               explainerOptions: { style, avatar: get(avatar$), voice },
             },
           }
         : null;
     }),
-    setTab$: command(({ set }, tab: ExplainerVideoTab) => {
+    setTab$: command(({ set }, tab: IntroVideoPickerTab) => {
       set(tab$, tab);
       set(search$, "");
       set(group$, "all");
     }),
-    setStyle$: command(({ set }, style: ExplainerVideoOptions["style"]) => {
+    setStyle$: command(({ set }, style: IntroVideoOptions["style"]) => {
       set(style$, style);
     }),
-    setAvatar$: command(
-      ({ get, set }, avatar: ExplainerVideoOptions["avatar"]) => {
-        set(avatar$, avatar);
-        if (avatar.kind === "catalog" && get(voice$) === null) {
-          set(voice$, { kind: "default" });
-        }
-      },
-    ),
-    setVoice$: command(({ set }, voice: ExplainerVideoOptions["voice"]) => {
+    setAvatar$: command(({ get, set }, avatar: IntroVideoOptions["avatar"]) => {
+      set(avatar$, avatar);
+      if (avatar.kind === "catalog" && get(voice$) === null) {
+        set(voice$, { kind: "default" });
+      }
+    }),
+    setVoice$: command(({ set }, voice: IntroVideoOptions["voice"]) => {
       set(voice$, voice);
     }),
     setSearch$: command(({ set }, search: string) => {
@@ -73,7 +71,7 @@ export function createExplainerVideoPickerSignals() {
       set(group$, group);
     }),
     restore$: command(({ set }, template: GenerationTemplateRequest | null) => {
-      const options = explainerVideoTemplateOptions(template);
+      const options = introVideoTemplateOptions(template);
       set(tab$, "style");
       set(search$, "");
       set(group$, "all");
@@ -84,6 +82,6 @@ export function createExplainerVideoPickerSignals() {
   };
 }
 
-export type ExplainerVideoPickerSignals = ReturnType<
-  typeof createExplainerVideoPickerSignals
+export type IntroVideoPickerSignals = ReturnType<
+  typeof createIntroVideoPickerSignals
 >;
