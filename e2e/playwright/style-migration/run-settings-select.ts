@@ -156,7 +156,8 @@ async function run() {
       frozen["/api/onboarding/status"] &&
       frozen["/api/feature-switches"] &&
       frozen["/api/billing/status"] &&
-      frozen["/api/org/members"],
+      frozen["/api/org/members"] &&
+      frozen["/api/integrations/slack"],
   );
   const onboarding = frozen["/api/onboarding/status"] as {
     defaultAgentId: string;
@@ -345,6 +346,18 @@ async function run() {
             },
           );
         }
+        // Keep unrelated signup attribution idempotent while using a TEST user.
+        await page.route(
+          (url) =>
+            url.origin === apiOrigin &&
+            url.pathname === "/api/attribution/signup",
+          async (route) => {
+            assert.equal(route.request().method(), "POST");
+            await route.fulfill({
+              json: { recorded: false, googleAdsAccountId: null },
+            });
+          },
+        );
         await page.route(
           (url) =>
             url.origin === apiOrigin &&

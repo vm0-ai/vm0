@@ -375,7 +375,10 @@ focus, disabled and selected states, and captures full-page PNGs without masks.
 Mobile primary activations use touch; keyboard and hover are explicit additional
 states. A stateful preference response checks pending saves, language changes,
 timezone selection and reload. Default Agent list/detail, onboarding, member,
-organization, billing and feature responses are frozen before the baseline.
+organization, billing, feature and disconnected Slack responses are frozen before
+the baseline. Signup attribution returns its contract-valid already-recorded
+response; it does not write attribution or start a follow-up conversion request.
+Rejected runs with background API failures remain in the evidence archive.
 
 [Issue #33157](https://github.com/vm0-ai/vm0/issues/33157) records a pre-existing
 preview limitation discovered during calibration: public Japanese locale JSON
