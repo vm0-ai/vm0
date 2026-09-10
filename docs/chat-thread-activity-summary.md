@@ -110,7 +110,9 @@ sustained unavailability is read by aggregating `fields.outcome`, not from a
 per-batch error level. `interrupted` (`57014`), `snapshot_missing` (the row
 vanished between the upsert and the locking read) and the residual
 `write_failed` keep `warn` because they need an owner. `fields.stage` is one of
-`admission`, `lock`, `persist` or `commit`, and `fields.errorCode` is the
+`begin`, `admission`, `lock`, `persist` or `commit`, where `begin` covers
+connection acquisition and the transaction's own timeout statements. Its
+companion `fields.errorCode` is the
 SQLSTATE class code alone — five characters, validated before it is published,
 and omitted when the driver reports no SQLSTATE. Driver messages, statement
 text, constraint details and bound parameters are never attached.

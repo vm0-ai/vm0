@@ -25,8 +25,12 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 const log = logger("api:run-activity");
 /** The snapshot row disappeared between the upsert and the locking read. */
 const SNAPSHOT_MISSING = "Activity snapshot missing after insert";
-/** Where the transaction stood when it failed. Finite and content-free. */
-type CaptureStage = "admission" | "lock" | "persist" | "commit";
+/**
+ * Where the transaction stood when it failed. Finite and content-free. `begin`
+ * covers connection acquisition and the transaction's own timeout statements,
+ * which run before any of this command's work.
+ */
+type CaptureStage = "begin" | "admission" | "lock" | "persist" | "commit";
 /**
  * Failure classes worth separating in production. `contended` and `run_missing`
  * are expected outcomes of concurrent delivery, not defects; everything else
@@ -137,9 +141,10 @@ export const captureRunActivity$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const payload = get(eventConsumerPayload$);
     const db = set(writeDb$);
-    let stage: CaptureStage = "admission";
+    let stage: CaptureStage = "begin";
     const outcome = await settleIncludingAbort(
       activityTransaction(db, async (tx) => {
+        stage = "admission";
         const [run] = await tx
           .select({
             threadId: agentRuns.chatThreadId,

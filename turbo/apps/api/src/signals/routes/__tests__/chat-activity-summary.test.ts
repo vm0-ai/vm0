@@ -397,6 +397,57 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it("retains activity for tool output PostgreSQL cannot store verbatim", async () => {
+    const f = await fixture();
+    const inputs = provider();
+    const diagnostics = captureDiagnostics();
+    // A runtime can emit a NUL byte or a lone surrogate through a tool
+    // argument, and a long tool name can end mid surrogate pair. PostgreSQL
+    // rejects every one of those while parsing the jsonb value, which would
+    // otherwise drop the whole batch rather than the offending characters.
+    const astral = String.fromCodePoint(0x1_f6_00);
+    await deliver(f, [
+      {
+        type: "assistant",
+        sequenceNumber: 0,
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: `call-0${astral}`,
+              name: `${"n".repeat(99)}${astral}${"tail".repeat(20)}`,
+              input: {
+                command: `read${String.fromCharCode(0)}binary${String.fromCharCode(0xd8_3d)}`,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
+      status: "fresh",
+      messages: [
+        {
+          id: "Preparing the launch checklist",
+          text: "Preparing the launch checklist",
+        },
+      ],
+    });
+    expect(inputs).toHaveLength(1);
+    await expect(diagnostics()).resolves.toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity snapshot capture",
+        fields: {
+          context: "api:run-activity",
+          runId: f.run.runId,
+          outcome: "written",
+          eventCount: 1,
+        },
+      }),
+    );
+  });
+
   it("rejects queued and superseded run identities before cached or model output", async () => {
     const f = await fixture();
     const inputs = provider();
