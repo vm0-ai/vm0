@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
@@ -404,23 +404,32 @@ test.each([
     message: "Steer this active run once",
   },
 ])(
-  "Confirm a message for $scenario without duplicating it",
+  "Confirm a message for $scenario in split chats without duplicating it",
   async ({ caseId, activeRun, message }) => {
     const thread = continuityThread(caseId, 1, "Message confirmation");
+    const side = continuityThread(caseId, 2, "Independent side conversation");
     const initialRunId = "b9000000-0000-4000-a000-000000000001";
+    const sideRunId = "b9000000-0000-4000-a000-000000000003";
     const confirmedRunId = activeRun
       ? initialRunId
       : "b9000000-0000-4000-a000-000000000002";
-    const initialRows = [
+    const mainRows = [
       promptRow(caseId, 1, thread.id, "Existing request", {
         runId: initialRunId,
       }),
       outputRow(caseId, 2, thread.id, "Existing answer", { id: initialRunId }),
       ...(activeRun ? [] : [completedRow(caseId, 3, thread.id, initialRunId)]),
     ];
+    const initialRows = [
+      ...mainRows,
+      promptRow(caseId, 1, side.id, "Existing side request", {
+        runId: sideRunId,
+      }),
+      outputRow(caseId, 2, side.id, "Existing side answer", { id: sideRunId }),
+    ];
     const workspace = installContinuityWorkspace(context, {
       caseId,
-      threads: [thread],
+      threads: [thread, side],
       chatEventRows: initialRows,
     });
     const send = context.mocks.deferred<CapturedSend>();
@@ -446,15 +455,21 @@ test.each([
 
     await setupPage({
       context,
-      path: `/chats/${thread.id}`,
+      path: `/chats/${thread.id}?sidebar=${side.id}`,
       ...workspace.pageOptions,
     });
 
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    const container = threadContainer(thread.id);
     await waitFor(() => {
-      expect(container).toHaveTextContent("Existing answer");
+      expect(threadContainer(thread.id)).toHaveTextContent("Existing answer");
+      expect(threadContainer(side.id)).toHaveTextContent(
+        "Existing side answer",
+      );
     });
+    const container = threadContainer(thread.id);
+    const sideContainer = threadContainer(side.id);
+    const composer = await within(container).findByLabelText("Message");
+    const sideComposer = await within(sideContainer).findByLabelText("Message");
+    expect(sideComposer).toBeVisible();
 
     expect(
       container.querySelectorAll('button[aria-label="Stop"]'),
@@ -470,10 +485,11 @@ test.each([
       expect(userTurnCount(container, message)).toBe(1);
     });
     expect(sent.threadId).toBe(thread.id);
+    expect(sideContainer).not.toHaveTextContent(message);
 
     const confirmedPrompt = promptRow(
       caseId,
-      initialRows.length + 2,
+      mainRows.length + 2,
       thread.id,
       message,
       {
@@ -484,14 +500,14 @@ test.each([
     );
     workspace.setChatEventRows([
       ...initialRows,
-      promptRow(caseId, initialRows.length + 1, thread.id, message, {
+      promptRow(caseId, mainRows.length + 1, thread.id, message, {
         id: sent.clientEventId,
         userMessage: sent.userMessage,
       }),
       confirmedPrompt,
       outputRow(
         caseId,
-        initialRows.length + 3,
+        mainRows.length + 3,
         thread.id,
         "Assistant acknowledged the message",
         { id: confirmedRunId },
@@ -506,5 +522,12 @@ test.each([
     expect(eventAnchorCount(container, confirmedPrompt.id)).toBe(1);
     expect(eventAnchorCount(container, sent.clientEventId)).toBe(0);
     expect(queuedMessage(container)).toBeUndefined();
+    expect(container).toBeVisible();
+    expect(sideContainer).toBeVisible();
+    expect(sideContainer).toHaveTextContent("Existing side answer");
+    expect(sideContainer).not.toHaveTextContent(message);
+    expect(sideContainer).not.toHaveTextContent(
+      "Assistant acknowledged the message",
+    );
   },
 );
