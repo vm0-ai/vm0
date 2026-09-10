@@ -1494,8 +1494,6 @@ describe("CHAT-02: completed chat callback", () => {
     await chatCallbacks.registerPushSubscription(actor);
     chatCallbacks.enableVapid();
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    // Separate the eager title from the callback's three generations.
-    const beforeComplete = auxiliaryResults(context).length;
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "The main answer survives"),
     ]);
@@ -1520,31 +1518,32 @@ describe("CHAT-02: completed chat callback", () => {
     ).toContainEqual(
       expect.objectContaining({ body: "Your task is complete" }),
     );
-    const results = auxiliaryResults(context);
-    expect(results.slice(0, beforeComplete)).toStrictEqual([
-      expect.objectContaining({
-        feature: "chat_title",
-        outcome: "degraded",
-        reason: "rate_limited",
-      }),
-    ]);
+    // The eager title runs at send time; the callback owns the other three.
+    const rateLimited = auxiliaryResults(context).filter((event) => {
+      return event.feature !== "chat_initial_thinking";
+    });
     expect(
-      results
-        .slice(beforeComplete)
+      rateLimited
         .map(({ feature }) => {
           return feature;
         })
         .sort(),
     ).toStrictEqual([
+      "chat_title",
       "notification_summary",
       "recommended_followups",
       "run_summary",
     ]);
     expect(
-      results.every((event) => {
+      rateLimited.every((event) => {
         return event.outcome === "degraded" && event.reason === "rate_limited";
       }),
     ).toBeTruthy();
+    // Only the four are rejected, so the optional progress copy still proves
+    // the boundary reports a real success next to the degraded generations.
+    expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+      expect.objectContaining({ outcome: "success", reason: "none" }),
+    ]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
     expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
   });
@@ -1700,6 +1699,11 @@ describe("CHAT-02: completed chat callback", () => {
           return a.feature.localeCompare(b.feature);
         }),
     ).toStrictEqual([
+      {
+        feature: "chat_initial_thinking",
+        outcome: "success",
+        reason: "none",
+      },
       { feature: "chat_title", outcome: "success", reason: "none" },
       { feature: "notification_summary", outcome: "success", reason: "none" },
       { feature: "recommended_followups", outcome: "success", reason: "none" },

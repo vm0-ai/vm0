@@ -17,6 +17,7 @@ import { onRejection, safeSync, settle } from "../utils";
 type AuxiliaryFeature =
   | "chat_title"
   | "shared_thread_title"
+  | "chat_initial_thinking"
   | "run_summary"
   | "recommended_followups"
   | "notification_summary";
@@ -49,7 +50,23 @@ interface AuxiliaryResult {
   readonly outcome: Outcome;
   readonly reason: Reason;
   readonly tokens: OpenRouterTokenCounts;
+  /** Present only when the provider asked for a delay; bounded upstream. */
+  readonly retryAfterMs?: number;
+  readonly runId?: string;
   readonly startedAt: number;
+}
+
+/**
+ * A `rate_limited` outcome only justifies waiting when the provider says how
+ * long to wait. Nothing consumes this delay yet: record it first so the choice
+ * between honoring `Retry-After` and backing off blindly rests on production
+ * evidence rather than on the header's assumed presence.
+ */
+function retryAfterMilliseconds(error: unknown): number | undefined {
+  return error instanceof OpenRouterRequestError &&
+    error.retryAfterMs !== undefined
+    ? Math.trunc(error.retryAfterMs)
+    : undefined;
 }
 
 /** Reasons the caller can do nothing about: counted, never warned. */
@@ -86,6 +103,12 @@ async function deliverResult(result: AuxiliaryResult): Promise<void> {
         ...(result.tokens.reasoningTokens === undefined
           ? {}
           : { reasoning_tokens: result.tokens.reasoningTokens }),
+        ...(result.retryAfterMs === undefined
+          ? {}
+          : { retry_after_ms: result.retryAfterMs }),
+        // One rate-limit window rejects several independent generations at
+        // once, so an event count alone overstates how many runs it reached.
+        ...(result.runId === undefined ? {} : { run_id: result.runId }),
       },
     ]);
   });
@@ -131,6 +154,7 @@ function diagnose(
           errorCode: error.errorCode,
           errorParam: error.errorParam,
           errorType: error.errorType,
+          retryAfterMs: error.retryAfterMs,
         }
       : {}),
   });
@@ -150,6 +174,7 @@ export async function generateAuxiliary<T>(
   signal?: AbortSignal,
 ): Promise<T | undefined> {
   const startedAt = now();
+  const runId = args.diagnosticContext?.runId;
   let detail: AuxiliaryGenerationDetail | undefined;
   const result = await settle(
     onRejection(
@@ -161,6 +186,7 @@ export async function generateAuxiliary<T>(
             outcome: "skipped",
             reason: "not_applicable",
             tokens: {},
+            ...(runId === undefined ? {} : { runId }),
             startedAt,
           });
           return undefined;
@@ -192,6 +218,7 @@ export async function generateAuxiliary<T>(
               ? "none"
               : "unusable_output",
           tokens: detail?.tokens ?? {},
+          ...(runId === undefined ? {} : { runId }),
           startedAt,
         });
         return value;
@@ -211,11 +238,14 @@ export async function generateAuxiliary<T>(
         if (outcome === "error") {
           diagnose(args.feature, reason, error, args.diagnosticContext);
         }
+        const retryAfterMs = retryAfterMilliseconds(error);
         recordResult({
           feature: args.feature,
           outcome,
           reason,
           tokens: openRouterFailureTokenCounts(error),
+          ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+          ...(runId === undefined ? {} : { runId }),
           startedAt,
         });
       },
