@@ -10609,6 +10609,9 @@ function ComposerConnectorsSlot({
   const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const openAddConnectorsDialog = useSet(
+    signals.connector.openAddConnectorsDialog$,
+  );
 
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
@@ -10780,9 +10783,7 @@ function ComposerConnectorsSlot({
         connectorsLoading={connectorData === undefined}
         actions={actions}
         computerUse={computerUse}
-        onOpenAddDialog={() => {
-          return updateConnectorUi({ showAddDialog: true });
-        }}
+        onOpenAddDialog={openAddConnectorsDialog}
         onToggle={handleToggle}
         onToggleCustom={handleCustomToggle}
       />
