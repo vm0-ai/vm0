@@ -154,7 +154,12 @@ const getAxiomLogger = singleton((): AxiomLogger | null => {
       reportAxiomLogDeliveryError(dataset, error);
     },
   });
+  // State the threshold the SDK would otherwise apply implicitly: `L.debug`
+  // records are dropped here and never reach the dataset, whatever `OKOU_DEBUG`
+  // selects for console output. A signal that must be observable in production
+  // has to be emitted at info or above.
   return new AxiomLogger({
+    logLevel: "info",
     transports: [
       new AxiomJSTransport({
         axiom,

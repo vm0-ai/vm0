@@ -1258,7 +1258,7 @@ async function observeDiscardedProviderResult(
 ): Promise<void> {
   const late = await settleIncludingAbort(operation);
   if (late.ok) {
-    L.debug("Pi API first-turn outcome", {
+    L.info("Pi API first-turn outcome", {
       runId: args.activation.runId,
       ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
       outcome: "discarded_late_provider_result",
@@ -1274,7 +1274,7 @@ async function discardCompletedProviderResult(
   args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
 ): Promise<void> {
-  L.debug("Pi API first-turn outcome", {
+  L.info("Pi API first-turn outcome", {
     runId: args.activation.runId,
     ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
     outcome: "discarded_late_provider_result",
@@ -2182,7 +2182,7 @@ function logCanonicalApiFirstTurnCancellation(
     failure instanceof PiApiFirstTurnCanonicalCancellationError &&
     ownership.stage === "provider-may-have-started"
   ) {
-    L.debug("Pi API first-turn outcome", {
+    L.info("Pi API first-turn outcome", {
       runId: args.activation.runId,
       ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
       outcome: "discarded_late_provider_result",
@@ -2207,7 +2207,7 @@ function logApiFirstTurnAttemptTimedOut(
   ownership: PiApiFirstTurnOwnership,
   failure: PiApiFirstTurnError,
 ): void {
-  L.debug("Pi API first-turn outcome", {
+  L.info("Pi API first-turn outcome", {
     runId: activation.runId,
     ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
     outcome: "api_attempt_timed_out",
@@ -2252,13 +2252,20 @@ function sandboxFirstPublicationOutcome(reason: PiSandboxFirstReason): {
   }
 }
 
+/**
+ * Recovery, late-result and attempt-timeout records are the only production
+ * evidence that a run kept single execution and truthful usage after ownership
+ * moved to Sandbox, so they stay at info. `L.debug` never reaches Axiom, and
+ * warn would report a successful recovery as a failure. Ordinary API
+ * completion stays at debug because it happens on every API-owned first turn.
+ */
 function logSandboxFirstPublication(
   activation: PiApiFirstTurnActivation,
   ownership: PiApiFirstTurnOwnership,
   reason: PiSandboxFirstReason,
   modelFailure: PiApiModelFailureDiagnostic | undefined,
 ): void {
-  L.debug("Pi API first-turn outcome", {
+  L.info("Pi API first-turn outcome", {
     runId: activation.runId,
     ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
     handoffOwner: "sandbox",
