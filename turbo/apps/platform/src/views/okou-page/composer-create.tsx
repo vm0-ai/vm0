@@ -118,7 +118,7 @@ export function ComposerCreateControls({
   const Icon = COMPOSER_CREATE_ICONS[mode ?? "choose"];
   return withChatScrollLayout(
     <div
-      className="@container/create-controls flex shrink-0 items-center gap-2 px-4 pt-4 pb-1"
+      className="@container/create-controls flex shrink-0 items-center gap-1 px-4 pt-4 pb-1"
       data-testid="composer-create-mode"
       onKeyDown={(event) => {
         if (event.key === "Escape" && pickerOpen) {
@@ -176,27 +176,28 @@ export function ComposerCreateControls({
           aria-hidden
         />
       </Button>
-      {choosing && (
-        <span className="min-w-0 truncate text-sm text-muted-foreground @max-[350px]/create-controls:hidden">
-          {t(($) => {
-            return $.chat.composer.create.chooseScene;
-          })}
-        </span>
-      )}
       <Button
         type="button"
         variant="quiet"
         size="icon-sm"
-        className={cn("ml-auto shrink-0", CREATE_CONTROL_FOCUS)}
+        className={cn("shrink-0", CREATE_CONTROL_FOCUS)}
         aria-label={t(($) => {
           return $.chat.composer.create.exit;
         })}
+        showTooltip
         onClick={() => {
           setMode(null);
         }}
       >
         <X aria-hidden />
       </Button>
+      {choosing && (
+        <span className="ml-1 min-w-0 truncate text-sm text-muted-foreground @max-[350px]/create-controls:hidden">
+          {t(($) => {
+            return $.chat.composer.create.chooseScene;
+          })}
+        </span>
+      )}
     </div>,
   );
 }
