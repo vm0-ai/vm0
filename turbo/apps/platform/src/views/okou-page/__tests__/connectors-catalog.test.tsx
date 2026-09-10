@@ -47,6 +47,19 @@ function oauthMethod() {
   };
 }
 
+/** Every row of the open filter menu, in order; separators read as "". */
+function filterMenuRows(): string[] {
+  const content = getConnectorAction("menuitem", "All").closest(
+    '[data-slot="dropdown-menu-content"]',
+  );
+  if (!(content instanceof HTMLElement)) {
+    throw new Error("Expected the connector filter menu to be open");
+  }
+  return Array.from(content.children, (row) => {
+    return row.textContent?.replace(/\s+/gu, " ").trim() ?? "";
+  });
+}
+
 async function expectCards(expected: {
   readonly github: boolean;
   readonly asana: boolean;
@@ -244,14 +257,61 @@ test("Filter connectors by connection state and agent", async () => {
 
   await fill(screen.getByPlaceholderText("Find connectors"), "");
   click(getConnectorAction("button", "Filter connectors"));
-  click(
-    await waitFor(() => {
-      return getConnectorAction("menuitem", "Research Agent");
-    }),
-  );
+  await waitFor(() => {
+    expect(getConnectorAction("menuitem", "Research Agent")).toBeInTheDocument();
+  });
+  // One visibility means no split: the section keeps its own heading.
+  expect(filterMenuRows()).toContain("Agents");
+  click(getConnectorAction("menuitem", "Research Agent"));
   await expectCards({ github: true, asana: false });
   expect(locationSearch()).toContain("connection=agent");
   expect(locationSearch()).toContain(researchId);
+});
+
+test("Split the connector filter agents by visibility", async () => {
+  const defaultId = "c0000000-0000-4000-a000-000000000001";
+  const researchId = "c0000000-0000-4000-a000-000000000010";
+  const soloId = "c0000000-0000-4000-a000-000000000011";
+  mockConnectors(context, [
+    { connectorSlug: "github", externalUsername: "octocat" },
+  ]);
+  context.mocks.data.agents([
+    listAgent(researchId, "Research Agent", "preset:0"),
+    listAgent(defaultId, "Workspace Agent", "preset:0"),
+    listAgent(soloId, "Solo Agent", "preset:0", "private"),
+  ]);
+  context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs: params.id === soloId ? ["github"] : [],
+    });
+  });
+  await setupPage({ context, path: "/connectors" });
+  await expectCards({ github: true, asana: true });
+
+  click(getConnectorAction("button", "Filter connectors"));
+  await waitFor(() => {
+    expect(getConnectorAction("menuitem", "Solo Agent")).toBeInTheDocument();
+  });
+  // The default agent leads its group, and the personal agents sit apart.
+  expect(filterMenuRows()).toStrictEqual([
+    "All",
+    "",
+    "Status",
+    "Connected",
+    "Not connected",
+    "",
+    "Public",
+    "Workspace Agent",
+    "Research Agent",
+    "",
+    "Private",
+    "Solo Agent",
+  ]);
+
+  click(getConnectorAction("menuitem", "Solo Agent"));
+  await expectCards({ github: true, asana: false });
+  expect(locationSearch()).toContain("connection=agent");
+  expect(locationSearch()).toContain(soloId);
 });
 
 test("Navigate the connector catalog with a keyboard", async () => {
