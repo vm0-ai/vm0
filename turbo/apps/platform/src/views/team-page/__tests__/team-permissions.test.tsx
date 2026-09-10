@@ -339,6 +339,46 @@ test("Closing connector permissions discards unapplied changes", async () => {
   expect(exactButton("Apply")).toBeDisabled();
 });
 
+test("Clock skew does not inflate saved permission durations in settings", async () => {
+  const connector = catalogConnectorFixture("slack", "Slack", {
+    permissionCount: 2,
+  });
+  const metadata = permissionMetadataFixture(
+    "slack",
+    "Slack",
+    ["records|read", "records|write"],
+    {
+      categories: { "records|read": "Records", "records|write": "Records" },
+      displayOrder: ["Records"],
+      permissionDefault: "deny",
+    },
+  );
+  const grantedAtMs = Date.parse(FIXED_NOW_ISO) + 1000;
+  const expiresAt = new Date(grantedAtMs + 24 * 60 * 60 * 1000).toISOString();
+  await startPermissionPage(connector, metadata, {
+    initialGrants: [
+      "records|read",
+      "records|write",
+      UNKNOWN_PERMISSION_GRANT,
+    ].map((permission, index) => {
+      const updatedAt = new Date(
+        grantedAtMs - (index === 0 ? 6 * 24 * 60 * 60 * 1000 : 0),
+      ).toISOString();
+      return {
+        ...permissionGrantFixture("slack", permission, "allow", expiresAt),
+        createdAt: updatedAt,
+        updatedAt,
+      };
+    }),
+  });
+
+  await openPermissions("Slack");
+  expect(categoryRow("Records")).toHaveTextContent("24 hours");
+  click(exactButton("Records (2)"));
+  expect(permissionRow("records|write")).toHaveTextContent("24 hours");
+  expect(otherEndpointsRow()).toHaveTextContent("24 hours");
+});
+
 test("An expired allow grant falls back to the connector's current default", async () => {
   const connector = catalogConnectorFixture("slack", "Slack");
   const metadata = permissionMetadataFixture(

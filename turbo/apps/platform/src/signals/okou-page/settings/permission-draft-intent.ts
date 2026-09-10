@@ -67,7 +67,7 @@ type PermissionDraftGroupUniformAllowExpiration =
       readonly kind: "selected";
       readonly expiresIn: Exclude<UserPermissionGrantExpiresIn, "always">;
     }
-  | { readonly kind: "persisted"; readonly expiresAt: string };
+  | { readonly kind: "persisted"; readonly grant: PlatformUserPermissionGrant };
 
 type PermissionDraftGroupAllowExpiration =
   | PermissionDraftGroupUniformAllowExpiration
@@ -455,7 +455,7 @@ function resolvePermissionDraftGroupAllowExpiration({
     return { kind: "selected", expiresIn: selected };
   }
   if (grant?.action === "allow" && grant.expiresAt) {
-    return { kind: "persisted", expiresAt: grant.expiresAt };
+    return { kind: "persisted", grant };
   }
   return { kind: "always" };
 }
@@ -476,7 +476,8 @@ function permissionDraftGroupAllowExpirationsEqual(
     }
     case "persisted": {
       return (
-        second.kind === "persisted" && first.expiresAt === second.expiresAt
+        second.kind === "persisted" &&
+        first.grant.expiresAt === second.grant.expiresAt
       );
     }
   }
@@ -517,7 +518,7 @@ export function resolvePermissionDraftGroupConfiguration({
     return { policy: firstPolicy };
   }
 
-  const firstExpiration = resolvePermissionDraftGroupAllowExpiration({
+  let expiration = resolvePermissionDraftGroupAllowExpiration({
     context,
     draft,
     permissionName: firstPermission.name,
@@ -541,17 +542,22 @@ export function resolvePermissionDraftGroupConfiguration({
       grant: explicitGrants.get(permission.name),
     });
     if (
-      !permissionDraftGroupAllowExpirationsEqual(
-        firstExpiration,
-        currentExpiration,
-      )
+      !permissionDraftGroupAllowExpirationsEqual(expiration, currentExpiration)
     ) {
       expirationMixed = true;
+    } else if (
+      expiration.kind === "persisted" &&
+      currentExpiration.kind === "persisted" &&
+      Date.parse(currentExpiration.grant.updatedAt) >
+        Date.parse(expiration.grant.updatedAt)
+    ) {
+      // Shared deadlines use the newest server timestamp for their countdown.
+      expiration = currentExpiration;
     }
   }
   return {
     policy: "allow",
-    expiration: expirationMixed ? { kind: "mixed" } : firstExpiration,
+    expiration: expirationMixed ? { kind: "mixed" } : expiration,
   };
 }
 
