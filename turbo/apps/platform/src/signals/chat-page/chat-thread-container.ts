@@ -62,6 +62,7 @@ export function createChatThreadContainerSignals(pageSignal: AbortSignal) {
     },
   );
   const setContainerRef$ = onRef(attachContainer$);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const mainContainerRef$ = computed(() => {
     return onRef(
       command(({ set }, el: HTMLElement, mountSignal: AbortSignal) => {

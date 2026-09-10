@@ -84,6 +84,7 @@ function parseDismissedIssueIds(value: string | null): Set<string> {
   );
 }
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const activeInstatusIssues$ = computed(
   async (get): Promise<InstatusIssue[]> => {
     get(refreshVersion$);

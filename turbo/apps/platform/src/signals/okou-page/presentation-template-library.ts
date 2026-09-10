@@ -37,6 +37,7 @@ interface ImportedPresentationTemplateDetailResolver {
 }
 
 const presentationTemplatesVersion$ = state(0);
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const presentationTemplatesRealtimeReady$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });

@@ -13,6 +13,7 @@ function createIntroVideoStyleGallerySignals() {
   const internalReload$ = state(0);
   const internalPreviewId$ = state<string | null>(null);
   return {
+    // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
     catalog$: computed(async (get) => {
       get(internalReload$);
       const signal = get(pageSignal$);

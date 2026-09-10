@@ -434,6 +434,7 @@ export function createBrowserSessionSignals(
   const reloadVersion$ = state(0);
   const screenshotImageLoad = createImageLoadSignals();
   const sessionOverride$ = state<BrowserSession | null | undefined>(undefined);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const session$ = computed(async (get): Promise<BrowserSession | null> => {
     get(reloadVersion$);
     const override = get(sessionOverride$);

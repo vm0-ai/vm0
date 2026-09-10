@@ -152,6 +152,7 @@ function createCatalogArtifactPreviewSignals(
   artifactCatalog: ArtifactCatalogSignals,
   internalArtifactPreviewSignal$: State<AbortSignal>,
 ) {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const selectedArtifactUrls$ = computed(async (get) => {
     get(internalArtifactPreviewSignal$);
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
@@ -167,6 +168,7 @@ function createCatalogArtifactPreviewSignals(
     return (await get(selectedArtifactUrls$))?.shareUrl ?? null;
   });
 
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const selectedArtifactText$ = computed(async (get): Promise<string> => {
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
     if (!detail) {

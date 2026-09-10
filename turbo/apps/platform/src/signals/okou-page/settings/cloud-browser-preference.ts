@@ -9,6 +9,7 @@ const internalCloudBrowserSubmission$ = state<{
   readonly signal: AbortSignal;
 } | null>(null);
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const submittedCloudBrowserEnabledByDefault$ = computed((get) => {
   const submission = get(internalCloudBrowserSubmission$);
   return submission?.signal === get(pageSignal$) ? submission.enabled : null;

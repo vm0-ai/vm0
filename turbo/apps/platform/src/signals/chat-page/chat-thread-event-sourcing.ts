@@ -147,10 +147,12 @@ const registerBootstrapThreadMeta$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const initialLocalChatThreadEventsLoadedDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const initialRemoteChatThreadEventsSyncedDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });
@@ -164,6 +166,7 @@ interface ChatThreadEventSyncBarrier {
   next: ReturnType<typeof createDeferredPromise<void>>;
 }
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const chatThreadEventSyncBarrier$ = computed(
   (get): ChatThreadEventSyncBarrier => {
     return {

@@ -137,6 +137,7 @@ export const setTeamUsageRange$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const loadMyUsageRecordPage$ = computed((get): LoadUsageRecordPage => {
   const range = get(myUsageRangeState$);
   const client = get(apiClient$)(usageRecordContract);

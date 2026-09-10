@@ -71,6 +71,7 @@ function createThinkingSummaryRequest(
   runId: string,
   signal: AbortSignal,
 ) {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     signal.throwIfAborted();
     const response = await accept(

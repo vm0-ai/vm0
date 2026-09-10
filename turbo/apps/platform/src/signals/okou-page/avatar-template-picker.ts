@@ -365,6 +365,7 @@ function createAvatarTemplateCatalogSignals() {
   const internalFilters$ = state<AvatarTemplateFilters>(
     emptyAvatarTemplateFilters(),
   );
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const loadPage$ = computed(
     (get): LoadOffsetCatalogPage<AvatarVideoAvatar> => {
       const client = get(apiClient$)(avatarVideoContract, {
@@ -422,6 +423,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
   const internalVoiceFilters$ = state<AvatarTemplateVoiceFilters>(
     emptyAvatarTemplateVoiceFilters(),
   );
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const loadPage$ = computed((get): LoadOffsetCatalogPage<AvatarVideoVoice> => {
     const client = get(apiClient$)(avatarVideoContract, {
       apiBase: "api",

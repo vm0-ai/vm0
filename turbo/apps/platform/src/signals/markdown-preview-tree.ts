@@ -25,6 +25,7 @@ export function createMarkdownPreviewTree(
   text$: TextPreviewComputed,
   owner: AbortSignal | Computed<AbortSignal> | State<AbortSignal>,
 ): MarkdownPreviewTreeComputed {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get): Promise<Root> => {
     // The preview's error surface can explicitly retry preparation without
     // replacing an otherwise unchanged file.

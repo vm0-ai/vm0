@@ -68,6 +68,7 @@ export function createAttachmentUrls$(
   inputUrl: string,
 ): Computed<Promise<AttachmentUrls>> {
   const url = publicAttachmentUrl(inputUrl);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const reference = parseArtifactReference(url, location.origin);
     if (reference) {

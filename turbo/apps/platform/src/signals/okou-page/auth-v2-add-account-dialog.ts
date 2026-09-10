@@ -91,6 +91,7 @@ export const openAuthV2AddAccountDialog$ = command(
         set(signInSignals.restart$);
       }),
     };
+    // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
     const operationSignal$ = computed(() => {
       return dialogSignal;
     });

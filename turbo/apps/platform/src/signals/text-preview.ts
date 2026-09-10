@@ -76,6 +76,7 @@ export function createTextPreviewComputed(
   resourceUrl$?: Computed<Promise<string | null>>,
 ): TextPreviewComputed {
   const resolvedUrl$ = resourceUrl$ ?? createAttachmentResourceUrl$(url);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     // The canonical attachment URL needs an Authorization header this fetch
     // does not carry, so read the presigned object URL instead.

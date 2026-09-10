@@ -28,6 +28,7 @@ export const defaultAgentId$ = computed(async (get) => {
 const internalAgentByIdReload$ = state(0);
 
 export function agentById(id: string): Computed<Promise<AgentResponse>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     get(internalAgentByIdReload$);
     const client = get(apiClient$)(agentsByIdContract);

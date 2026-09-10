@@ -166,6 +166,7 @@ const activateDesktopOrganization$ = command(
 );
 
 function createDesktopMemberships(lifetime: AbortSignal) {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const signal = lifetime;
     const clerk = await get(clerk$);

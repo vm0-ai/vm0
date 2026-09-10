@@ -224,6 +224,7 @@ function createConnectorAccountActionSignals(
       };
     },
   );
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const status$ = computed(
     async (get): Promise<ConnectorAccountActionStatus> => {
       get(reload$);

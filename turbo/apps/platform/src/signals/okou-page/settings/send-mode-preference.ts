@@ -10,6 +10,7 @@ const internalSendModeSubmission$ = state<{
   readonly signal: AbortSignal;
 } | null>(null);
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const submittedSendMode$ = computed((get) => {
   const submission = get(internalSendModeSubmission$);
   return submission?.signal === get(pageSignal$) ? submission.value : null;

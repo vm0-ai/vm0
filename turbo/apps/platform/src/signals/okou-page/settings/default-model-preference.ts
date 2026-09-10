@@ -17,6 +17,7 @@ const internalDefaultModelSubmission$ = state<DefaultModelSubmission | null>(
   null,
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const defaultModelSubmission$ = computed((get) => {
   const submission = get(internalDefaultModelSubmission$);
   return submission?.signal === get(pageSignal$)

@@ -90,6 +90,7 @@ export function createVoiceDraftSegmentResult(
   const { key, recordingId, segment } = options;
   const final = segment?.final ?? true;
   const segmentEnd = segment?.endSample;
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const previous = options.previous$
       ? await get(options.previous$)

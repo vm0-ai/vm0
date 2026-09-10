@@ -237,6 +237,7 @@ export function createConnectorAccountListSignals(
   const includeBuiltinScopeMismatch =
     options.includeBuiltinScopeMismatch === true;
   const querySignals = createConnectorAccountQuerySignals();
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const firstPage$ = computed(async (get): Promise<ConnectorAccountList> => {
     const query = get(querySignals.query$);
     if (!query) {
@@ -284,6 +285,7 @@ export function createConnectorAccountListSignals(
         return;
       }
       const pageSignal = AbortSignal.any([query.signal, signal]);
+      // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
       const nextPage$ = computed(async (get): Promise<ConnectorAccountList> => {
         const [previous, page] = await Promise.all([
           get(previousPage$),

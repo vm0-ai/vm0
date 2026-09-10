@@ -178,6 +178,7 @@ export function createPagedCatalogSignals<T>(
   };
 }
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const avatarPageLoader$ = computed((get): CatalogLoader<IntroVideoAvatar> => {
   const client = get(apiClient$)(introVideoPresenterContract, {
     apiBase: "api",

@@ -5,6 +5,7 @@ import { rootSignal$ } from "./root-signal.ts";
 
 export type KatexBrowserRuntime = typeof katex;
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const katexBrowserRuntime$ = computed(async (get) => {
   const signal = get(rootSignal$);
   signal.throwIfAborted();

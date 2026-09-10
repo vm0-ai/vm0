@@ -139,6 +139,7 @@ interface UserPermissionGrantsByAgentParams {
 export function userPermissionGrantsByAgent(
   params: UserPermissionGrantsByAgentParams,
 ): Computed<Promise<readonly PlatformUserPermissionGrant[]>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(apiClient$)(userPermissionGrantsContract);
@@ -158,6 +159,7 @@ export function userPermissionGrantsByAgent(
 export function userPermissionGrantsByAgentIfExists(
   params: UserPermissionGrantsByAgentParams,
 ): Computed<Promise<readonly PlatformUserPermissionGrant[] | null>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(apiClient$)(userPermissionGrantsContract);

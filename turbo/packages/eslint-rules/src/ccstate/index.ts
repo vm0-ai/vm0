@@ -9,7 +9,7 @@
  * - no-catch-abort: Enforce throwIfAbort in catch blocks
  * - no-package-variable: Prevent mutable vars at package scope
  * - no-get-signal: Prevent getting AbortSignal from state
- * - no-computed-signal: Prevent computed callbacks from consuming lifecycle options
+ * - no-computed-signal: Prevent computed callbacks from consuming AbortSignal
  * - test-context-in-hooks: Ensure testContext() in test hooks
  * - computed-const-args-package-scope: Enforce package scope for constant functions
  * - no-store-in-params: Prevent Store type in function params

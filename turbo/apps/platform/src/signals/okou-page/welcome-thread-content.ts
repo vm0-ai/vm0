@@ -150,6 +150,7 @@ export const createWelcomeThreadContentSignals$ = command(
         { kind: "welcome-diagram", diagram: "slack" },
       ],
     ]);
+    // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
     const tree$ = computed((get): Root => {
       get(locale$);
       const origin = window.location.origin;
