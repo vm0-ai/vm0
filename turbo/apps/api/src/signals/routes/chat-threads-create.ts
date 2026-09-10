@@ -18,7 +18,6 @@ import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
-import { logger } from "../../lib/log";
 import {
   createChatThread$,
   type CreatedChatThread,
@@ -33,8 +32,6 @@ import {
 import { chatThreadModelPinColumns } from "../services/chat-thread-model.service";
 import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
-
-const L = logger("ChatThreadCreate");
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
 
@@ -71,6 +68,10 @@ function chatThreadCreatedResponse(
  * The created thread, or the one a duplicate delivery replays. A replay answers
  * with the stored settings rather than the repeated request, because the member
  * may have renamed or repinned the thread since the original delivery.
+ *
+ * A replay is an expected, non-actionable outcome, so it emits no log of its
+ * own: the request log already records both deliveries under one
+ * `x_client_request_id`, now as two 201s instead of a 201 and a 500.
  */
 function chatThreadCreateResponse(
   thread: CreatedChatThread | ExistingChatThread,
@@ -79,9 +80,6 @@ function chatThreadCreateResponse(
   if (thread.kind === "created") {
     return chatThreadCreatedResponse(thread, requested);
   }
-  // Duplicate deliveries are expected and non-actionable, so they stay out of
-  // the error channel while remaining countable in production.
-  L.info("Replayed chat thread create for an existing client thread id");
   return chatThreadCreatedResponse(thread, {
     title: thread.title,
     selectedModel: thread.selectedModel ?? requested.selectedModel,
