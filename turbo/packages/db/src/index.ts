@@ -129,6 +129,7 @@ import * as officialWorkflowCatalogSchema from "./schema/official-workflow-catal
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
+import * as imageReferenceSchema from "./schema/image-reference";
 import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
 import * as memorySummaryProjectionSchema from "./schema/memory-summary-projection";
 import * as piMemoryStage1CandidateSchema from "./schema/pi-memory-stage1-candidate";
@@ -271,6 +272,7 @@ export const schema = {
   ...mailDraftSchema,
   ...browserSessionSchema,
   ...presentationTemplateSchema,
+  ...imageReferenceSchema,
   ...piResourceSnapshotSchema,
   ...memorySummaryProjectionSchema,
   ...piMemoryStage1CandidateSchema,

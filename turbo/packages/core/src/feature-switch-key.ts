@@ -53,6 +53,7 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
+  ReferenceImages = "referenceImages",
   PrivateArtifacts = "privateArtifacts",
   AgentMessageMath = "agentMessageMath",
   MarkdownTime = "markdownTime",
