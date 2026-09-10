@@ -1,3 +1,4 @@
+import { EVENT } from "@axiomhq/logging";
 import { desktopUpdatesContract } from "@okouai/api-contracts/contracts/desktop-updates";
 import { testDesktopUpdateManifestStateContract } from "@okouai/api-contracts/contracts/test-desktop-update-manifest-state";
 import { HttpResponse, http } from "msw";
@@ -413,6 +414,17 @@ describe("desktop update routes", () => {
     );
   }
 
+  // The logger attaches the emitting context and lifts the recognized root
+  // fields into the Axiom event root, so asserting the whole record also
+  // proves the event was promoted rather than passed through unrecognized.
+  function loggedManifestEvent(fields: Record<string, unknown>) {
+    return {
+      ...fields,
+      context: "DesktopUpdates",
+      [EVENT]: { source: "api", ...fields },
+    };
+  }
+
   function manifestLogFields(
     calls: readonly (readonly unknown[])[],
   ): readonly Record<string, unknown>[] {
@@ -464,7 +476,7 @@ describe("desktop update routes", () => {
     expect(
       manifestLogFields(context.mocks.axiomLogging.warn.mock.calls),
     ).toStrictEqual([
-      {
+      loggedManifestEvent({
         type: "desktop_update_manifest_upstream",
         outcome: "unavailable",
         provider: "github_release_asset",
@@ -475,7 +487,7 @@ describe("desktop update routes", () => {
         method: "GET",
         route:
           "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
-      },
+      }),
     ]);
   });
 
@@ -521,7 +533,7 @@ describe("desktop update routes", () => {
     expect(
       manifestLogFields(context.mocks.axiomLogging.warn.mock.calls),
     ).toStrictEqual([
-      {
+      loggedManifestEvent({
         type: "desktop_update_manifest_upstream",
         outcome: "unavailable",
         provider: "github_release_asset",
@@ -531,7 +543,7 @@ describe("desktop update routes", () => {
         method: "GET",
         route:
           "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
-      },
+      }),
     ]);
   });
 
@@ -583,7 +595,7 @@ describe("desktop update routes", () => {
       expect(
         manifestLogFields(context.mocks.axiomLogging.debug.mock.calls),
       ).toStrictEqual([
-        {
+        loggedManifestEvent({
           type: "desktop_update_manifest_upstream",
           outcome: "served_stale",
           provider: "github_release_asset",
@@ -591,7 +603,7 @@ describe("desktop update routes", () => {
           attempts: 3,
           stale_age_ms: 30 * 60_000 - 1,
           line: "ai-okou-desktop",
-        },
+        }),
       ]);
     });
   });
