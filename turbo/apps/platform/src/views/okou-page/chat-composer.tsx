@@ -8937,7 +8937,7 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 }
 
 const VOICE_DRAFT_TRAY_CLASS =
-  "min-h-12 rounded-xl bg-neutral-50 py-2 dark:bg-neutral-900";
+  "min-h-12 rounded-xl bg-neutral-50 px-3 py-2 dark:bg-neutral-900";
 
 function VoiceDraftFooter({
   signals,
@@ -8964,10 +8964,7 @@ function VoiceDraftFooter({
   if (status === "failed") {
     return (
       <div
-        className={cn(
-          "flex w-full items-center gap-3 px-1",
-          VOICE_DRAFT_TRAY_CLASS,
-        )}
+        className={cn("flex w-full items-center gap-3", VOICE_DRAFT_TRAY_CLASS)}
         data-composer-voice-tray
       >
         <span
@@ -9041,7 +9038,6 @@ function VoiceDraftFooter({
       <div
         className={cn(
           "grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 text-sm",
-          "px-1",
           VOICE_DRAFT_TRAY_CLASS,
         )}
         role="status"
@@ -9066,10 +9062,7 @@ function VoiceDraftFooter({
   });
   return (
     <div
-      className={cn(
-        "flex w-full items-center gap-2 px-3",
-        VOICE_DRAFT_TRAY_CLASS,
-      )}
+      className={cn("flex w-full items-center gap-2", VOICE_DRAFT_TRAY_CLASS)}
       data-composer-voice-tray
     >
       <span
@@ -9383,13 +9376,6 @@ function ComposerInputSlot({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const hasInput = useGet(signals.editor.hasInput$);
-  const showVoiceTranscriptionSkeleton =
-    voiceInputV2Enabled &&
-    !hasInput &&
-    (actions.voiceAction === "finish" || actions.voiceAction === "retry");
-
   const handlePaste = (event: ComposerPasteEvent) => {
     if (
       restoreChatClipboardPayload({
@@ -9499,15 +9485,6 @@ function ComposerInputSlot({
         />
       </div>
       <ComposerCreatePicker signals={signals} />
-      {showVoiceTranscriptionSkeleton ? (
-        <div
-          className="pointer-events-none col-start-1 row-start-1 flex min-h-0 flex-col justify-center gap-2 bg-card px-6"
-          aria-hidden="true"
-        >
-          <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />
-          <span className="h-2 w-[44%] animate-pulse rounded-full bg-muted/50 [animation-delay:-350ms] motion-reduce:animate-none" />
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -10904,11 +10881,7 @@ function ComposerFooter({
     <div
       className={cn(
         "flex shrink-0 items-center justify-between gap-1 sm:gap-2",
-        activeVoiceDraftStatus === "recording"
-          ? "px-2 pb-3 pt-3"
-          : activeVoiceDraftStatus
-            ? "px-3 pb-3 pt-3"
-            : "px-4 pb-4 pt-1",
+        activeVoiceDraftStatus ? "px-2 pb-3 pt-3" : "px-4 pb-4 pt-1",
         narrowVideoGap,
         createMode === "video" && "@max-[344px]/composer:px-3",
       )}
@@ -11017,9 +10990,8 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
             actions={actions}
             minimumHeightClassName={layoutHeightClassNames.input}
           />
-          {/* Recording retains the established 8px/12px outer tray spacing,
-              with 12px/8px inner padding for the taller voice controls. Other
-              voice states retain their 12px tray inset. */}
+          {/* Voice states share 8px/12px outer tray spacing and 12px/8px
+              inner padding so their surfaces stay aligned through handoff. */}
           <ComposerFooter
             signals={signals}
             actions={actions}
