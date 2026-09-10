@@ -1,3 +1,4 @@
+import { withPrecontractGoalSchema } from "../../../test-fixtures/goal-schema-contraction";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -17,6 +18,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
+  seedLiteralGoalArchive,
   seedGoalRetirementHistory,
   applyGoalRetirementFixture,
   removeSnapshottedGoalFixtureEvents,
@@ -153,251 +155,296 @@ describe("retired Goal logical history", () => {
     ).toBe(`${prefix}Before  after`);
   });
 
-  it.each(["active", "paused", "blocked", "complete"] as const)(
-    "preserves one literal %s archive through hot/snapshot reads, repair, sharing, export and retry",
-    async (status) => {
-      const actor = bdd.user({ orgId: `org_${randomUUID()}` });
-      const agent = await bdd.createAgent(actor, {
-        displayName: "Retirement history",
-      });
-      const thread = await chat.createThread(actor, { agentId: agent.agentId });
-      const objective =
-        " \n完整目标 🧭 e\u0301\t\r\nBefore <oai-mem-citation>archiveneedle</oai-mem-citation> after\n" +
-        "Inline `<oai-mem-citation>` and ```xml\n<oai-mem-citation>fenced literal</oai-mem-citation>\n```\n" +
-        "'quoted'; $$ | </tag>\nExplain <oai-mem-citation>unmatchedneedle and keep all later original text\n\n";
-      // S1 rejects Goal creation. This narrowly scoped historical fixture executes
-      // the actual migration; all observable assertions use production endpoints.
-      await seedGoalRetirementHistory(thread.id, objective, status);
-      await applyGoalRetirementFixture(thread.id);
-      await applyGoalRetirementFixture(thread.id);
-      const before = await chat.listThreadEvents(actor, thread.id);
-      const archives = before.events.filter((event) => {
-        return event.eventType === "output.message";
-      });
-      expect(archives).toHaveLength(1);
-      expect(archives[0]?.content).toContain(
-        `Original recorded status: ${status}`,
-      );
-      expect(archives[0]?.content?.endsWith(objective)).toBeTruthy();
-      expect(
-        before.events.filter((event) => {
-          return event.eventType === "goal.close";
-        }),
-      ).toHaveLength(1);
-      expect(archives[0]?.runId).toBeUndefined();
-      const archive = archives[0];
-      if (!archive?.content) {
-        throw new Error("Expected archive");
-      }
-      const shares = setupApp({ context, routes: sharedThreadRoutes })(
-        sharedThreadsContract,
-      );
-      const createShare = async () => {
-        routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-        const created = await accept(
-          shares.create({
-            params: { threadId: thread.id },
-            headers: { authorization: "Bearer clerk-session" },
-            body: { eventIds: [archive.id] },
-          }),
-          [201],
+  it.each(
+    (["active", "paused", "blocked", "complete"] as const).flatMap((status) => {
+      return [
+        { status, transition: false },
+        { status, transition: true },
+      ];
+    }),
+  )(
+    "preserves literal $status history (pre-contract recovery: $transition)",
+    async ({ status, transition }) => {
+      const work = async () => {
+        const actor = bdd.user({ orgId: `org_${randomUUID()}` });
+        const agent = await bdd.createAgent(actor, {
+          displayName: "Retirement history",
+        });
+        const thread = await chat.createThread(actor, {
+          agentId: agent.agentId,
+        });
+        const objective =
+          " \n完整目标 🧭 e\u0301\t\r\nBefore <oai-mem-citation>archiveneedle</oai-mem-citation> after\n" +
+          "Inline `<oai-mem-citation>` and ```xml\n<oai-mem-citation>fenced literal</oai-mem-citation>\n```\n" +
+          "'quoted'; $$ | </tag>\nExplain <oai-mem-citation>unmatchedneedle and keep all later original text\n\n";
+        // S1 rejects Goal creation. This narrowly scoped historical fixture executes
+        // the actual migration; all observable assertions use production endpoints.
+        if (transition) {
+          await seedGoalRetirementHistory(thread.id, objective, status);
+          await applyGoalRetirementFixture(thread.id);
+          await applyGoalRetirementFixture(thread.id);
+        } else {
+          await seedLiteralGoalArchive(thread.id, objective, status);
+        }
+        const before = await chat.listThreadEvents(actor, thread.id);
+        const archives = before.events.filter((event) => {
+          return event.eventType === "output.message";
+        });
+        expect(archives).toHaveLength(1);
+        expect(archives[0]?.content).toContain(
+          `Original recorded status: ${status}`,
         );
-        const shared = await accept(
-          shares.get({ params: { id: created.body.id } }),
+        expect(archives[0]?.content?.endsWith(objective)).toBeTruthy();
+        expect(
+          before.events.filter((event) => {
+            return event.eventType === "goal.close";
+          }),
+        ).toHaveLength(1);
+        expect(archives[0]?.runId).toBeUndefined();
+        const archive = archives[0];
+        if (!archive?.content) {
+          throw new Error("Expected archive");
+        }
+        const shares = setupApp({ context, routes: sharedThreadRoutes })(
+          sharedThreadsContract,
+        );
+        const createShare = async () => {
+          routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+          const created = await accept(
+            shares.create({
+              params: { threadId: thread.id },
+              headers: { authorization: "Bearer clerk-session" },
+              body: { eventIds: [archive.id] },
+            }),
+            [201],
+          );
+          const shared = await accept(
+            shares.get({ params: { id: created.body.id } }),
+            [200],
+          );
+          expect(shared.body.messages).toStrictEqual([
+            { messageIndex: 0, role: "assistant", content: archive.content },
+          ]);
+          return created.body.id;
+        };
+        const hotShareId = await createShare();
+
+        await accept(
+          setupApp({ context, routes: testChatEventSearchProjectionRoutes })(
+            testChatEventSearchProjectionContract,
+          ).project({ body: { chat_thread_ids: [thread.id] } }),
           [200],
         );
-        expect(shared.body.messages).toStrictEqual([
-          { messageIndex: 0, role: "assistant", content: archive.content },
-        ]);
-        return created.body.id;
-      };
-      const hotShareId = await createShare();
-
-      await accept(
-        setupApp({ context, routes: testChatEventSearchProjectionRoutes })(
-          testChatEventSearchProjectionContract,
-        ).project({ body: { chat_thread_ids: [thread.id] } }),
-        [200],
-      );
-      const searchable = await chat.searchChat(actor, "archiveneedle");
-      expect(
-        searchable.results.map((result) => {
-          return result.matchedMessage.content;
-        }),
-      ).toStrictEqual([archive.content]);
-      // Also repair the old projector's hot-row window before retention.
-      await seedFilteredGoalArchiveProjections(thread.id);
-      const unexpectedSnapshot = () => {
-        throw new Error("Unexpected snapshot for hot history");
-      };
-      await recoverGoalArchiveSearchFixture(
-        thread.id,
-        unexpectedSnapshot,
-        false,
-      );
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results,
-      ).toStrictEqual([]);
-      await recoverGoalArchiveSearchFixture(
-        thread.id,
-        unexpectedSnapshot,
-        true,
-      );
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results.map(
-          (result) => {
+        const searchable = await chat.searchChat(actor, "archiveneedle");
+        expect(
+          searchable.results.map((result) => {
             return result.matchedMessage.content;
-          },
-        ),
-      ).toStrictEqual([archive.content]);
-      const oldShareId = await seedFilteredGoalArchiveProjections(thread.id);
-      const oldShare = await accept(
-        shares.get({ params: { id: oldShareId } }),
-        [200],
-      );
-      expect(oldShare.body.messages[0]?.content).not.toContain("archiveneedle");
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results,
-      ).toStrictEqual([]);
-
-      await accept(
-        setupApp({ context, routes: testChatEventSnapshotRoutes })(
-          testChatEventSnapshotContract,
-        ).snapshot({
-          body: { chat_thread_ids: [thread.id], r2_object_keys: [] },
-        }),
-        [200],
-      );
-      expect(puts.length).toBeGreaterThan(0);
-      await removeSnapshottedGoalFixtureEvents(thread.id);
-      await chat.requestListThreadEvents(actor, thread.id, {}, [410]);
-      await applyGoalRetirementFixture(thread.id);
-      routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-      const download = await accept(
-        setupApp({ context, routes: chatThreadRoutes })(
-          chatThreadEventsContract,
-        ).snapshot({
-          headers: {
-            authorization: "Bearer clerk-session",
-            [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-              CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-          },
-          params: { threadId: thread.id },
-        }),
-        [200],
-      );
-      const cursor = download.body;
-      if (cursor.lastEventId === null) {
-        throw new Error("Expected nonempty retirement snapshot");
-      }
-      const snapshotPut = puts.at(-1);
-      if (snapshotPut === undefined) {
-        throw new Error("Expected snapshot publication");
-      }
-      const snapshotRows = gunzipSync(snapshotPut.body)
-        .toString("utf8")
-        .trimEnd()
-        .split("\n")
-        .map((line) => {
-          return chatEventRowSchema.parse(JSON.parse(line));
-        });
-      expect(projectChatEventRows(snapshotRows)).toStrictEqual(before.events);
-      const snapshotBytes = (key: string) => {
-        const put = puts.find((item) => {
-          return item.key === key;
-        });
-        if (!put) {
-          throw new Error("Expected canonical snapshot bytes");
+          }),
+        ).toStrictEqual([archive.content]);
+        if (transition) {
+          // Also repair the old projector's hot-row window before retention.
+          await seedFilteredGoalArchiveProjections(thread.id);
+          const unexpectedSnapshot = () => {
+            throw new Error("Unexpected snapshot for hot history");
+          };
+          await recoverGoalArchiveSearchFixture(
+            thread.id,
+            unexpectedSnapshot,
+            false,
+          );
+          expect(
+            (await chat.searchChat(actor, "archiveneedle")).results,
+          ).toStrictEqual([]);
+          await recoverGoalArchiveSearchFixture(
+            thread.id,
+            unexpectedSnapshot,
+            true,
+          );
+          expect(
+            (await chat.searchChat(actor, "archiveneedle")).results.map(
+              (result) => {
+                return result.matchedMessage.content;
+              },
+            ),
+          ).toStrictEqual([archive.content]);
         }
-        return Promise.resolve(put.body);
-      };
-      await expect(
-        recoverGoalArchiveSearchFixture(
+        const oldShareId = await seedFilteredGoalArchiveProjections(
           thread.id,
-          () => {
-            return Promise.resolve(Buffer.from("corrupt snapshot"));
+          transition,
+        );
+        const oldShare = await accept(
+          shares.get({ params: { id: oldShareId } }),
+          [200],
+        );
+        expect(oldShare.body.messages[0]?.content).not.toContain(
+          "archiveneedle",
+        );
+        if (transition) {
+          expect(
+            (await chat.searchChat(actor, "archiveneedle")).results,
+          ).toStrictEqual([]);
+        }
+
+        await accept(
+          setupApp({ context, routes: testChatEventSnapshotRoutes })(
+            testChatEventSnapshotContract,
+          ).snapshot({
+            body: { chat_thread_ids: [thread.id], r2_object_keys: [] },
+          }),
+          [200],
+        );
+        expect(puts.length).toBeGreaterThan(0);
+        await removeSnapshottedGoalFixtureEvents(thread.id);
+        await chat.requestListThreadEvents(actor, thread.id, {}, [410]);
+        if (transition) {
+          await applyGoalRetirementFixture(thread.id);
+        }
+        routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+        const download = await accept(
+          setupApp({ context, routes: chatThreadRoutes })(
+            chatThreadEventsContract,
+          ).snapshot({
+            headers: {
+              authorization: "Bearer clerk-session",
+              [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+                CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+            },
+            params: { threadId: thread.id },
+          }),
+          [200],
+        );
+        const cursor = download.body;
+        if (cursor.lastEventId === null) {
+          throw new Error("Expected nonempty retirement snapshot");
+        }
+        const snapshotPut = puts.at(-1);
+        if (snapshotPut === undefined) {
+          throw new Error("Expected snapshot publication");
+        }
+        const snapshotRows = gunzipSync(snapshotPut.body)
+          .toString("utf8")
+          .trimEnd()
+          .split("\n")
+          .map((line) => {
+            return chatEventRowSchema.parse(JSON.parse(line));
+          });
+        expect(projectChatEventRows(snapshotRows)).toStrictEqual(before.events);
+        if (transition) {
+          const snapshotBytes = (key: string) => {
+            const put = puts.find((item) => {
+              return item.key === key;
+            });
+            if (!put) {
+              throw new Error("Expected canonical snapshot bytes");
+            }
+            return Promise.resolve(put.body);
+          };
+          await expect(
+            recoverGoalArchiveSearchFixture(
+              thread.id,
+              () => {
+                return Promise.resolve(Buffer.from("corrupt snapshot"));
+              },
+              true,
+            ),
+          ).rejects.toThrow("invalid_snapshot_digest");
+          await recoverGoalArchiveSearchFixture(
+            thread.id,
+            snapshotBytes,
+            false,
+          );
+          expect(
+            (await chat.searchChat(actor, "archiveneedle")).results,
+          ).toStrictEqual([]);
+          await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, true);
+          await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, true);
+        } else {
+          await accept(
+            setupApp({ context, routes: testChatEventSearchProjectionRoutes })(
+              testChatEventSearchProjectionContract,
+            ).project({ body: { chat_thread_ids: [thread.id] } }),
+            [200],
+          );
+        }
+        const repaired = await chat.searchChat(actor, "unmatchedneedle");
+        expect(
+          repaired.results.map((result) => {
+            return result.matchedMessage.content;
+          }),
+        ).toStrictEqual([archive.content]);
+        await createShare();
+        expect(
+          (await accept(shares.get({ params: { id: hotShareId } }), [200])).body
+            .messages[0]?.content,
+        ).toBe(archive.content);
+        expect(
+          (await accept(shares.get({ params: { id: oldShareId } }), [200]))
+            .body,
+        ).toStrictEqual(oldShare.body);
+
+        const after = await chat.listThreadEvents(actor, thread.id, {
+          sinceSeqId: cursor.lastSeqId,
+          sinceEventId: cursor.lastEventId,
+        });
+        expect(after.events).toStrictEqual([]);
+
+        const sent = await chat.requestSendEvent(
+          actor,
+          {
+            agentId: agent.agentId,
+            threadId: thread.id,
+            prompt: "Continue with a regular message",
           },
-          true,
-        ),
-      ).rejects.toThrow("invalid_snapshot_digest");
-      await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, false);
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results,
-      ).toStrictEqual([]);
-      await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, true);
-      await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, true);
-      const repaired = await chat.searchChat(actor, "unmatchedneedle");
-      expect(
-        repaired.results.map((result) => {
-          return result.matchedMessage.content;
-        }),
-      ).toStrictEqual([archive.content]);
-      await createShare();
-      expect(
-        (await accept(shares.get({ params: { id: hotShareId } }), [200])).body
-          .messages[0]?.content,
-      ).toBe(archive.content);
-      expect(
-        (await accept(shares.get({ params: { id: oldShareId } }), [200])).body,
-      ).toStrictEqual(oldShare.body);
+          [201],
+        );
+        expect(sent.status).toBe(201);
+        const continued = await chat.listThreadEvents(actor, thread.id, {
+          sinceSeqId: cursor.lastSeqId,
+          sinceEventId: cursor.lastEventId,
+        });
+        expect(
+          continued.events.filter((event) => {
+            return event.eventType === "output.message";
+          }),
+        ).toStrictEqual([]);
+        expect(
+          continued.events.some((event) => {
+            return event.eventType === "input.prompt";
+          }),
+        ).toBeTruthy();
 
-      const after = await chat.listThreadEvents(actor, thread.id, {
-        sinceSeqId: cursor.lastSeqId,
-        sinceEventId: cursor.lastEventId,
-      });
-      expect(after.events).toStrictEqual([]);
-
-      const sent = await chat.requestSendEvent(
-        actor,
-        {
-          agentId: agent.agentId,
-          threadId: thread.id,
-          prompt: "Continue with a regular message",
-        },
-        [201],
-      );
-      expect(sent.status).toBe(201);
-      const continued = await chat.listThreadEvents(actor, thread.id, {
-        sinceSeqId: cursor.lastSeqId,
-        sinceEventId: cursor.lastEventId,
-      });
-      expect(
-        continued.events.filter((event) => {
-          return event.eventType === "output.message";
-        }),
-      ).toStrictEqual([]);
-      expect(
-        continued.events.some((event) => {
-          return event.eventType === "input.prompt";
-        }),
-      ).toBeTruthy();
-
-      const exports = createOpsLogsApi(context);
-      const started = await exports.requestPostUserExport(actor, [202]);
-      await flushWaitUntilForTest();
-      const exportStatus = await exports.requestGetUserExport(actor, [200]);
-      expect(exportStatus.body.job).toMatchObject({
-        id: started.body.jobId,
-        status: "completed",
-      });
-      const entry = exportedZip().getEntry(
-        `conversations/chat-thread-${thread.id}.json`,
-      );
-      expect(entry).not.toBeNull();
-      const messages = JSON.parse(entry!.getData().toString("utf8")) as {
-        role: string;
-        content: string;
-      }[];
-      expect(
-        messages.filter((message) => {
-          return message.content === archives[0]?.content;
-        }),
-      ).toHaveLength(1);
-      expect(
-        messages.some((message) => {
-          return message.content === "Continue with a regular message";
-        }),
-      ).toBeTruthy();
+        const exports = createOpsLogsApi(context);
+        const started = await exports.requestPostUserExport(actor, [202]);
+        await flushWaitUntilForTest();
+        const exportStatus = await exports.requestGetUserExport(actor, [200]);
+        expect(exportStatus.body.job).toMatchObject({
+          id: started.body.jobId,
+          status: "completed",
+        });
+        const entry = exportedZip().getEntry(
+          `conversations/chat-thread-${thread.id}.json`,
+        );
+        expect(entry).not.toBeNull();
+        const messages = JSON.parse(entry!.getData().toString("utf8")) as {
+          role: string;
+          content: string;
+        }[];
+        expect(
+          messages.filter((message) => {
+            return message.content === archives[0]?.content;
+          }),
+        ).toHaveLength(1);
+        expect(
+          messages.some((message) => {
+            return message.content === "Continue with a regular message";
+          }),
+        ).toBeTruthy();
+      };
+      if (transition) {
+        await withPrecontractGoalSchema(work);
+      } else {
+        await work();
+      }
     },
     60_000,
   );

@@ -16,8 +16,6 @@ import { sql } from "drizzle-orm";
 import { agents } from "./agent";
 import { registerAgentRunReferences } from "./agent-run-reference";
 
-import { threadGoals } from "./thread-goal";
-
 import type { AgentSessionStorageMounts } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
 /**
@@ -31,12 +29,6 @@ export const agentRuns = pgTable(
     ...agentRunColumns(() => {
       return agentSessions.id;
     }),
-    goalId: uuid("goal_id").references(
-      (): AnyPgColumn => {
-        return threadGoals.id;
-      },
-      { onDelete: "set null" },
-    ),
   },
   (table) => {
     return [
@@ -68,9 +60,6 @@ export const agentRuns = pgTable(
       index("idx_agent_runs_workflow_automation")
         .on(table.workflowAutomationId)
         .where(sql`${table.workflowAutomationId} IS NOT NULL`),
-      index("idx_agent_runs_goal")
-        .on(table.goalId)
-        .where(sql`${table.goalId} IS NOT NULL`),
       check(
         "agent_runs_autonomy_budget_check",
         sql`${table.autonomyBudget} >= 0 AND ${table.autonomyBudget} <= 10`,
@@ -82,7 +71,6 @@ export const agentRuns = pgTable(
             ${table.triggerSource} IS NULL AND
             ${table.autonomyBudget} IS NULL AND
             ${table.workflowAutomationId} IS NULL AND
-            ${table.goalId} IS NULL AND
             ${table.modelProvider} IS NULL AND
             ${table.modelProviderId} IS NULL AND
             ${table.modelProviderCredentialScope} IS NULL AND
