@@ -52,6 +52,15 @@ async function expectPrimary(page: Page, button: Locator): Promise<void> {
   await expect(button).toHaveCSS("text-decoration-line", "none");
 }
 
+async function expectInputBoundary(
+  input: Locator,
+  theme: "light" | "dark",
+): Promise<void> {
+  const expectedBorderColor =
+    theme === "light" ? "rgb(207, 204, 203)" : "rgb(86, 84, 84)";
+  await expect(input).toHaveCSS("border-color", expectedBorderColor);
+}
+
 async function expectSeparated(above: Locator, below: Locator): Promise<void> {
   await expect(above).toBeVisible();
   await expect(below).toBeVisible();
@@ -264,6 +273,7 @@ for (const device of [
         );
         await expectLogo(page);
         await expect(email).toHaveValue("theme-preview@example.com");
+        await expectInputBoundary(email, "dark");
 
         await toggle.click();
         await expect(page.locator("html")).toHaveAttribute(
@@ -273,6 +283,7 @@ for (const device of [
         await expect(logo).toHaveAttribute("src", lightLogoSrc);
         await expectLogo(page);
         await expect(email).toHaveValue("theme-preview@example.com");
+        await expectInputBoundary(email, "light");
       }
     });
 

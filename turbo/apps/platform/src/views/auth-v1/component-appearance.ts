@@ -9,6 +9,12 @@ type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 const AUTH_V1_PRIMARY_ACTION_CLASS =
   "border-transparent bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed";
 
+// Clerk owns the field geometry and behavior. Keep the public input slot on
+// the application's standard control boundary so fields remain distinguishable
+// from the card surface in every theme.
+const AUTH_V1_TEXT_INPUT_CLASS =
+  "border border-[hsl(var(--gray-400))] bg-input shadow-none focus:border-primary focus:ring-[3px] focus:ring-primary/10 aria-invalid:border-destructive aria-invalid:focus:border-destructive";
+
 // Clerk's OTP slots are visual divs; its accessible textbox owns focus. Match
 // the shared Input boundary while adapting focus and error states through the
 // public attributes that Clerk exposes on each slot.
@@ -40,6 +46,7 @@ export function getAuthV1ComponentAppearance(
       // accessible link color at provider level, then give only the CTA the
       // application's semantic filled-action colors.
       formButtonPrimary: AUTH_V1_PRIMARY_ACTION_CLASS,
+      formFieldInput: AUTH_V1_TEXT_INPUT_CLASS,
       otpCodeFieldInput: AUTH_V1_OTP_INPUT_CLASS,
     },
   };
