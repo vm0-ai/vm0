@@ -177,7 +177,7 @@ export function LanguageSettings() {
               aria-label={t(($) => {
                 return $.settings.preferences.language.label;
               })}
-              className="okou-btn-morandi"
+              className="border-control-border bg-control-surface [&:hover]:bg-state-hover-overlay"
             >
               <SelectValue />
             </SelectTrigger>

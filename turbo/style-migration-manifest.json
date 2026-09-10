@@ -336,8 +336,16 @@
         "settings-select-dark",
         "settings-select-dark-mobile"
       ],
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-aa-with-retained-calibration",
+          "url": "https://a.okou.io/e1c28c8g3y.zip",
+          "sha256": "f517cb04ba3e5808a194f2e302a7c3500fa93179f8ee438e11d08f273074d5e7",
+          "commit": "c103ec9c5b67ce683290d3250002fa2674ff76ea"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33154"
     }
   ],
   "caseFiles": [

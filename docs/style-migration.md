@@ -391,3 +391,11 @@ unfrozen locale resource and changes to the asset fixture on replay. This
 establishes bounded rendering and client behavior under the recorded resource
 boundary; it does not certify or repair unmodified CDN access. Real API
 persistence and unmodified preview behavior are reported separately.
+
+The [frozen BEFORE/A/A archive](https://a.okou.io/e1c28c8g3y.zip) records
+52 passing states with zero raw pixel differences for source `c103ec9c` and
+App/API build `a2085986`. It was anonymously hash-verified and
+[posted before business edits](https://github.com/vm0-ai/vm0/pull/33154#issuecomment-5613793582).
+Retired calibrations, including the PR-closure database cleanup failure, remain
+in the archive. The two consumer classes are implemented; final replay and
+real preview verification are recorded separately.
