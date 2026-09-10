@@ -139,6 +139,19 @@ patterns that can hide an effect from a syntax-based rule, including:
 Treat a gap as both a code finding and a potential lint-rule coverage finding.
 Do not weaken or suppress the rule.
 
+## RC-10: Duplicate Request Lifecycle State
+
+Do not store request status or submitted command arguments in a separate State
+when a loadable already represents the same request lifecycle. A value used only
+while the command's loadable is loading is a lifecycle sidecar even when it is
+not named `loading` or `pending`.
+
+Use `useLoadable` or `useLoadableSet` for loading, transport errors, and
+completion. Keep explicit state only when the product understands it as a domain
+phase or an identity-scoped draft. Such a draft needs an explicit owner,
+identity, invalidation or reconciliation rule, and release path; it must not
+depend on a separate loadable to acquire meaning.
+
 ## Avoiding False Positives
 
 The following patterns are not defects by themselves:
@@ -146,6 +159,8 @@ The following patterns are not defects by themselves:
 - a stable callback ref returned by `useSet`;
 - `onRef` paired with its provided `AbortSignal` and cleanup;
 - a signal factory owned by a clear domain lifecycle with teardown;
+- a product-visible domain phase or identity-scoped draft with explicit
+  lifecycle and reconciliation;
 - normal ccstate `computed` memoization;
 - a cache with a proven finite domain or hard capacity plus explicit
   invalidation and release.
