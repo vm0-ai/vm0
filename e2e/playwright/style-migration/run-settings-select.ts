@@ -355,8 +355,7 @@ async function run() {
           if (!item.isMobile)
             await expect(
               page.getByRole("button", {
-                name: "Get Pro",
-                exact: true,
+                name: /^Get Pro(?: |$)/,
                 includeHidden: true,
               }),
             ).toBeVisible();
@@ -469,9 +468,9 @@ async function run() {
         await expect(language).toHaveText(/日本語/);
         await capture("language-saved");
         await activate(language);
-        await page
-          .getByRole("option", { name: "English", exact: true })
-          .click();
+        await activate(
+          page.getByRole("option", { name: "English", exact: true }),
+        );
         await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
         await expect(language).toBeEnabled();
         await timezone.scrollIntoViewIfNeeded();
