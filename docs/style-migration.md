@@ -347,3 +347,9 @@ database reset; authentication material remains private. The batch remains
 `implemented` until current-head CI also passes: the tested source had a
 sidebar test failure and Runner setup HTTP 500 failures outside the changed
 files. The PR records the latest deployment and CI status.
+
+The three consumers now use the shorter named utility `font-family-emoji`.
+Tailwind generates the same `font-family: var(--font-family-emoji)` declaration
+from the existing App theme token; no token rename or alias is required.
+The original frozen BEFORE/A-A evidence, runner and pixel limits remain the
+comparison contract for this syntax simplification.

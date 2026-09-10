@@ -879,7 +879,7 @@ function ChatThreadEmojiMenuButton({
                 {emoji ? (
                   <span
                     aria-hidden="true"
-                    className="font-(family-name:--font-family-emoji) text-base leading-none"
+                    className="font-family-emoji text-base leading-none"
                   >
                     {emoji}
                   </span>
@@ -1284,7 +1284,7 @@ function ChatThreadEmojiPreview() {
         <>
           <span
             aria-hidden="true"
-            className="font-(family-name:--font-family-emoji) text-lg leading-none"
+            className="font-family-emoji text-lg leading-none"
           >
             {preview.emoji}
           </span>
@@ -1520,10 +1520,7 @@ function ChatThreadEmojiGrid({
               onSelect(item.emoji);
             }}
           >
-            <span
-              aria-hidden="true"
-              className="font-(family-name:--font-family-emoji)"
-            >
+            <span aria-hidden="true" className="font-family-emoji">
               {item.emoji}
             </span>
             {shortcutDigit !== null && (
