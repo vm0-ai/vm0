@@ -6,10 +6,14 @@ retained or dropped batches can be billing-impacting underbilling signals:
 - ``started`` marks enqueue/admission start.
 - ``enqueued`` marks enqueue/admission completion and may include retained
   counters for batches kept for retry.
-- ``failed`` marks an enqueue exception or permanent asynchronous delivery
-  failure and logs at error level.
+- ``failed`` marks an enqueue/admission exception and logs at error level.
 - ``retained`` marks asynchronous delivery outcomes kept for retry.
 - ``dropped`` marks retained batches whose retry budget was exhausted.
+
+For permanent billing webhook delivery failures (for example, HTTP 400),
+operators should inspect error-level ``usage_event`` webhook records in the
+run's proxy log. These outcomes do not emit ``phase=failed`` flush summaries
+and are not retained for retry or reported as retry-budget drops.
 
 Dropped retained billing batches always emit ``usage_underbilling`` with
 ``reason=retry_budget_exhausted`` and ``underbilling_class=confirmed``.
