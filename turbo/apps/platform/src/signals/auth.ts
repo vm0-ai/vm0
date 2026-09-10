@@ -26,6 +26,7 @@ import { sessionStorageSignals } from "./external/session-storage.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
+const clerkIdentityVersion$ = state(0);
 
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
@@ -363,6 +364,8 @@ export const setupClerk$ = command(
     // changes (sign-in / sign-out), not on token refreshes which fire the
     // Clerk listener but don't change the user.
     let prevUserId = clerk.user?.id ?? null;
+    let prevOrgId = clerk.organization?.id;
+    let prevSessionId = clerk.session?.id;
     const unsubscribe = clerk.addListener(() => {
       // Update Sentry user context on auth state change
       if (clerk.user) {
@@ -384,8 +387,24 @@ export const setupClerk$ = command(
         return x + 1;
       });
       const currentUserId = clerk.user?.id ?? null;
-      if (currentUserId !== prevUserId) {
+      const currentOrgId = clerk.organization?.id;
+      const currentSessionId = clerk.session?.id;
+      const userChanged = currentUserId !== prevUserId;
+      // Credential ownership changes only with identity, not token or profile
+      // updates. Keep its async projections stable across ordinary refreshes.
+      if (
+        userChanged ||
+        currentOrgId !== prevOrgId ||
+        currentSessionId !== prevSessionId
+      ) {
         prevUserId = currentUserId;
+        prevOrgId = currentOrgId;
+        prevSessionId = currentSessionId;
+        set(clerkIdentityVersion$, (x) => {
+          return x + 1;
+        });
+      }
+      if (userChanged) {
         set(writeConnectionDiagnostic$, { action: "clear" });
         set(reload$, (x) => {
           return x + 1;
@@ -480,6 +499,19 @@ export const authenticatedIdentity$ = computed(async (get) => {
     orgId: clerk.organization.id,
     email: clerk.user.primaryEmailAddress?.emailAddress,
   };
+});
+
+/** Live credential identity, invalidated only by user, org, or session changes. */
+export const currentClerkIdentity$ = computed(async (get) => {
+  get(clerkIdentityVersion$);
+  const clerk = await get(clerk$);
+  const userId = clerk.user?.id;
+  const orgId = clerk.organization?.id;
+  const sessionId = clerk.session?.id;
+  if (!userId || !orgId || !sessionId) {
+    return null;
+  }
+  return { userId, orgId, sessionId };
 });
 
 /**

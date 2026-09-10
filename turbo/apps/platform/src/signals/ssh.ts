@@ -12,7 +12,7 @@ import {
   updateSshConnectionRequestSchema,
   SSH_PRIVATE_KEY_MAX_LENGTH,
 } from "@okouai/api-contracts/contracts/ssh-connections";
-import { clerk$, currentOrgInfo$, currentUserInfo$ } from "./auth.ts";
+import { clerk$, currentClerkIdentity$, currentOrgInfo$ } from "./auth.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { apiClient$ } from "./api-client.ts";
@@ -103,11 +103,10 @@ export const sshIdentity$ = computed(async (get) => {
   if (!enabled) {
     return null;
   }
-  const [org, user] = await Promise.all([
-    get(currentOrgInfo$),
-    get(currentUserInfo$),
-  ]);
-  return org && user ? `${org.id}:${user.id}` : null;
+  const identity = await get(currentClerkIdentity$);
+  return identity
+    ? `${identity.orgId}:${identity.userId}:${identity.sessionId}`
+    : null;
 });
 const reload$ = state(0);
 const sshClients$ = computed(async (get) => {
@@ -120,7 +119,8 @@ const sshClients$ = computed(async (get) => {
       !identity ||
       !sessionId ||
       sessionId !== clerk.session?.id ||
-      identity !== `${clerk.organization?.id}:${clerk.user?.id}`
+      identity !==
+        `${clerk.organization?.id}:${clerk.user?.id}:${clerk.session?.id}`
     ) {
       throw new DOMException("SSH owner changed", "AbortError");
     }

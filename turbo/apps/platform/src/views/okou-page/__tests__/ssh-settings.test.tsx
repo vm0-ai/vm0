@@ -46,6 +46,127 @@ const base: SshConnectionResponse = Object.freeze({
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
 
+test.each(["token", "profile"])(
+  "A same-owner Clerk %s refresh preserves an unsaved SSH host",
+  async (refresh) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [base] });
+    });
+    await page();
+    await screen.findByText("deploy@ssh.example.com:22");
+    click(getAction("button", "Add host"));
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Display name"), "Unsaved host");
+    await fill(
+      within(dialog).getByLabelText("Public hostname or IP address"),
+      "unsaved.example.com",
+    );
+    await fill(within(dialog).getByLabelText("Port"), "2222");
+    await fill(within(dialog).getByLabelText("SSH username"), "unsaved-user");
+    await fill(within(dialog).getByLabelText("Private key"), "unsaved-key");
+    await fill(
+      within(dialog).getByLabelText("Passphrase (optional)"),
+      "unsaved-passphrase",
+    );
+    await userEvent.click(within(dialog).getByLabelText("Private key"));
+
+    const clerk = context.mocks.clerk();
+    act(() => {
+      if (refresh === "profile") {
+        clerk.user(
+          { ...auth.user, fullName: "Updated profile" },
+          { token: "refreshed-token" },
+        );
+      }
+      clerk.stateChanged();
+    });
+
+    const current = within(await screen.findByRole("dialog"));
+    expect(current.getByLabelText("Display name")).toHaveValue("Unsaved host");
+    expect(current.getByLabelText("Public hostname or IP address")).toHaveValue(
+      "unsaved.example.com",
+    );
+    expect(current.getByLabelText("Port")).toHaveValue(2222);
+    expect(current.getByLabelText("SSH username")).toHaveValue("unsaved-user");
+    expect(current.getByLabelText("Private key")).toHaveValue("unsaved-key");
+    expect(current.getByLabelText("Private key")).toHaveFocus();
+    expect(current.getByLabelText("Passphrase (optional)")).toHaveValue(
+      "unsaved-passphrase",
+    );
+    expect(screen.getByText("deploy@ssh.example.com:22")).toBeInTheDocument();
+    click(getAction("button", "Cancel", await screen.findByRole("dialog")));
+    const displayName =
+      refresh === "profile" ? "Updated profile" : auth.user.fullName;
+    await waitFor(() => {
+      expect(getAction("button", displayName)).toBeVisible();
+    });
+  },
+);
+
+test("Replacing a Clerk session clears an unsaved SSH credential form", async () => {
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [base] });
+  });
+  await page();
+  await screen.findByText("deploy@ssh.example.com:22");
+  click(getAction("button", "Add host"));
+  const dialog = await screen.findByRole("dialog");
+  await fill(within(dialog).getByLabelText("Private key"), "old-session-key");
+  await fill(
+    within(dialog).getByLabelText("Passphrase (optional)"),
+    "old-session-passphrase",
+  );
+
+  const clerk = context.mocks.clerk();
+  act(() => {
+    clerk.user(auth.user, {
+      id: "replacement-session",
+      token: "replacement-token",
+    });
+    clerk.stateChanged();
+  });
+
+  await waitFor(() => {
+    expect(getAction("button", "Add host")).toBeEnabled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  click(getAction("button", "Add host"));
+  const replacement = within(await screen.findByRole("dialog"));
+  expect(replacement.getByLabelText("Private key")).toHaveValue("");
+  expect(replacement.getByLabelText("Passphrase (optional)")).toHaveValue("");
+});
+
+test.each(["session", "organization"])(
+  "Losing the Clerk %s clears an unsaved SSH credential form",
+  async (missing) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [base] });
+    });
+    await page();
+    await screen.findByText("deploy@ssh.example.com:22");
+    click(getAction("button", "Add host"));
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Private key"), "old-session-key");
+    await fill(
+      within(dialog).getByLabelText("Passphrase (optional)"),
+      "old-session-passphrase",
+    );
+
+    const clerk = context.mocks.clerk();
+    act(() => {
+      if (missing === "session") {
+        clerk.user(auth.user, null);
+      } else {
+        clerk.organization({ ...auth.organization, activeOrg: null });
+      }
+      clerk.stateChanged();
+    });
+
+    await screen.findByText("SSH access is not available for this account.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+);
+
 test("Live notifications refresh hosts across reconnect without clearing an open credential form", async () => {
   let host = base;
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
