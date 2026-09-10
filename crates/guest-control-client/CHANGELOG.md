@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.20.0...guest-control-client-v0.20.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **guest-control:** classify oom metadata apart from terminal diagnostics ([#33238](https://github.com/vm0-ai/vm0/issues/33238)) ([7e0a677](https://github.com/vm0-ai/vm0/commit/7e0a67723010f1088d5365e8dcce1801217e772c))
+
 ## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.7...guest-control-client-v0.20.0) (2026-09-09)
 
 

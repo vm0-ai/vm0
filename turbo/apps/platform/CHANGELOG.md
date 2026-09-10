@@ -11,6 +11,64 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.884.0](https://github.com/vm0-ai/vm0/compare/app-v0.883.0...app-v0.884.0) (2026-09-10)
+
+
+### Features
+
+* **app:** show the template cover on the inline template chip behind a switch ([#33293](https://github.com/vm0-ai/vm0/issues/33293)) ([20d1c99](https://github.com/vm0-ai/vm0/commit/20d1c9967ec42823bf71b01366290880012dda09))
+* **chat:** move selected task chips into the composer ([#33188](https://github.com/vm0-ai/vm0/issues/33188)) ([4900aee](https://github.com/vm0-ai/vm0/commit/4900aee045c28658175a01f42d25d08a78f624b5))
+* enable mailchimp oauth with doppler credentials ([#33193](https://github.com/vm0-ai/vm0/issues/33193)) ([bb87ee9](https://github.com/vm0-ai/vm0/commit/bb87ee9e24001ea97fb270856cd6e010dcccf2e6))
+* **lint:** prohibit nested ccstate commands ([#33166](https://github.com/vm0-ai/vm0/issues/33166)) ([fcab1ad](https://github.com/vm0-ai/vm0/commit/fcab1adf39a2157c21810604e94288455628a1fb))
+* **platform:** add compact workflow result cards ([#33291](https://github.com/vm0-ai/vm0/issues/33291)) ([0f7500c](https://github.com/vm0-ai/vm0/commit/0f7500c195db2b49604535530a6dd049ec6d2513))
+* **platform:** add debug welcome threads and official example previews ([#33295](https://github.com/vm0-ai/vm0/issues/33295)) ([999dc57](https://github.com/vm0-ai/vm0/commit/999dc5711d8bd7ac299a5efa30688ad542bd0b18))
+* **ssh:** surface host connection failures and recovery ([#33165](https://github.com/vm0-ai/vm0/issues/33165)) ([f56df60](https://github.com/vm0-ai/vm0/commit/f56df6068d35f5591020a5bb61fb4197cb6cd820))
+
+
+### Bug Fixes
+
+* **agent:** protect default okou identity and visibility ([#33266](https://github.com/vm0-ai/vm0/issues/33266)) ([58e76a8](https://github.com/vm0-ai/vm0/commit/58e76a815bcdaa297f8ac6086b50cd10c55316eb))
+* **api:** describe every category while browsing one of them ([#33292](https://github.com/vm0-ai/vm0/issues/33292)) ([1bc57b1](https://github.com/vm0-ai/vm0/commit/1bc57b173e6fdfb0ee8bacda13e4a552f2ef30c8))
+* **app:** keep conversation locator interactions inside the gutter ([#33254](https://github.com/vm0-ai/vm0/issues/33254)) ([0ea0628](https://github.com/vm0-ai/vm0/commit/0ea06284d716ef9c047b46d81902883a87af3f52))
+* **app:** rank compact workflow fuzzy matches first ([#33186](https://github.com/vm0-ai/vm0/issues/33186)) ([27d2b3e](https://github.com/vm0-ai/vm0/commit/27d2b3e050bce49da91532134240a929f3f9faa7))
+* **app:** rework annotation notes and inline text editing ([#33006](https://github.com/vm0-ai/vm0/issues/33006)) ([57df8ac](https://github.com/vm0-ai/vm0/commit/57df8ac9e1b60d5c96b2543b593abbd4e3ef78e6))
+* **app:** round permission expiry countdowns ([#33268](https://github.com/vm0-ai/vm0/issues/33268)) ([4e87038](https://github.com/vm0-ai/vm0/commit/4e87038ce61afa75b1de22ca2b48fa85f1698bb9))
+* **app:** show installed status for official workflows ([#33247](https://github.com/vm0-ai/vm0/issues/33247)) ([8b2b78a](https://github.com/vm0-ai/vm0/commit/8b2b78a0b2b9daac574032aace5f313a53115aa9))
+* **app:** show the whole category in the composer connector directory ([#33272](https://github.com/vm0-ai/vm0/issues/33272)) ([8b78070](https://github.com/vm0-ai/vm0/commit/8b780704d120bd80f42995a7eb4cc0cb1fe0f53a))
+* **artifacts:** use a.okou.io for public file sharing ([#32959](https://github.com/vm0-ai/vm0/issues/32959)) ([50663a2](https://github.com/vm0-ai/vm0/commit/50663a2f204f55d9fe296c7767fdf7c63c4b61c7))
+* **auth:** stabilize Clerk runtime binding ([#33155](https://github.com/vm0-ai/vm0/issues/33155)) ([7d58a96](https://github.com/vm0-ai/vm0/commit/7d58a96709f6d8aa8062547b0dca15be04af7c4e))
+* **platform:** align recovery card icons with titles ([#33229](https://github.com/vm0-ai/vm0/issues/33229)) ([875944b](https://github.com/vm0-ai/vm0/commit/875944bddb121e76dc435bad2e338cb3b1d8e7d0))
+* **platform:** align thinking status scale ([#33014](https://github.com/vm0-ai/vm0/issues/33014)) ([43bd7ed](https://github.com/vm0-ai/vm0/commit/43bd7ed8bfca1721590ffa85bf930cf9988f9f79))
+* **platform:** align voice transcription layout ([#33103](https://github.com/vm0-ai/vm0/issues/33103)) ([f12532c](https://github.com/vm0-ai/vm0/commit/f12532cfbfcf9892c09fb0e49348965f1280b698))
+* **platform:** open a model type's panel only after the pointer settles ([#33290](https://github.com/vm0-ai/vm0/issues/33290)) ([0f61960](https://github.com/vm0-ai/vm0/commit/0f6196009c59fc8f69b737fb38905612bc459138))
+* **platform:** recover realtime subscriptions after a connection gap ([#33134](https://github.com/vm0-ai/vm0/issues/33134)) ([fc05f14](https://github.com/vm0-ai/vm0/commit/fc05f140ec37bedaa679b832b88440b93b9bcae8))
+* **platform:** remove floating pinned agent drag handles ([#33232](https://github.com/vm0-ai/vm0/issues/33232)) ([802ea1b](https://github.com/vm0-ai/vm0/commit/802ea1b0272e5ea4b99f25bebc9f746cc231319d))
+* **platform:** remove sidebar shells from standalone pages ([#33182](https://github.com/vm0-ai/vm0/issues/33182)) ([c9be408](https://github.com/vm0-ai/vm0/commit/c9be408218e8863c2fa03a1421cc74a7d9047d7e))
+* **platform:** reset add connectors browsing state on reopen ([#33248](https://github.com/vm0-ai/vm0/issues/33248)) ([766c289](https://github.com/vm0-ai/vm0/commit/766c2894f302bcac3826f5b0566b9dac7cbb5d97))
+* **platform:** reset agent deletion attempts and preserve copied workflows ([#33230](https://github.com/vm0-ai/vm0/issues/33230)) ([d29651b](https://github.com/vm0-ai/vm0/commit/d29651bb927ddfc910a275602998de534ebc3b98))
+* **platform:** reset workspace deletion confirmation between attempts ([#33242](https://github.com/vm0-ai/vm0/issues/33242)) ([a54fc2d](https://github.com/vm0-ai/vm0/commit/a54fc2d110a7ce56c38a99639eab24b43a0c002d))
+
+
+### Refactoring
+
+* **app:** give the product one border-width token ([#33269](https://github.com/vm0-ai/vm0/issues/33269)) ([e18b803](https://github.com/vm0-ai/vm0/commit/e18b8031c60cc90efb727267cbc18b4d17177d6b))
+* **app:** simplify thinking summary demand ([#33170](https://github.com/vm0-ai/vm0/issues/33170)) ([985dad1](https://github.com/vm0-ai/vm0/commit/985dad1cab2eb8bbbbc5290790e99deeb659275e))
+* **platform:** migrate chat emoji font styling ([#33233](https://github.com/vm0-ai/vm0/issues/33233)) ([8898a45](https://github.com/vm0-ai/vm0/commit/8898a4588bdee88e15db8ca0e78d412511ccfb23))
+* **platform:** remove chat preference submission state ([#33162](https://github.com/vm0-ai/vm0/issues/33162)) ([91fa524](https://github.com/vm0-ai/vm0/commit/91fa5247a8a24dbe1f5975bcdcb5e9598f9b745a))
+* **platform:** split attachment url signals ([#33171](https://github.com/vm0-ai/vm0/issues/33171)) ([6e595b5](https://github.com/vm0-ai/vm0/commit/6e595b53cad4f43fb8099e74c8409c902e66c268))
+* **ui:** migrate settings select surfaces to utilities ([#33231](https://github.com/vm0-ai/vm0/issues/33231)) ([fc8dfd5](https://github.com/vm0-ai/vm0/commit/fc8dfd5b37c9312beece8ecdae02cfb550536bbd))
+* **ui:** replace the badge, pill, and divider selectors with a shared badge component ([#33246](https://github.com/vm0-ai/vm0/issues/33246)) ([c3b8551](https://github.com/vm0-ai/vm0/commit/c3b85519e88af6b2af3eb854cd31ce1ba107903d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.0
+    * @okouai/connectors bumped to 3.9.0
+    * @okouai/core bumped to 8.650.0
+    * @okouai/ui bumped to 1.8.2
+
 ## [0.883.0](https://github.com/vm0-ai/vm0/compare/app-v0.882.5...app-v0.883.0) (2026-09-10)
 
 
