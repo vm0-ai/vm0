@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -46,6 +46,106 @@ async function setupChips(enabled = true): Promise<HTMLElement> {
   return await findComposerEditor();
 }
 
+function selectedTask(editor: HTMLElement, task: string): HTMLElement {
+  const card = editor.closest<HTMLElement>('[data-slot="chat-composer-card"]');
+  if (!card) {
+    throw new Error("Expected composer card");
+  }
+  return within(card).getByRole("group", { name: task });
+}
+
+function ideaButtons(ideas: HTMLElement): HTMLElement[] {
+  return queryAllByRoleFast("button", ideas).filter((item) => {
+    return !["More ideas", "More templates"].includes(
+      item.textContent?.trim() ?? "",
+    );
+  });
+}
+
+test("The start page shows only task choices until one is selected", async () => {
+  mockTemplateChat();
+  await setupChips();
+  const tasks = screen.getByRole("group", { name: "Choose a task" });
+  expect(
+    queryAllByRoleFast("button", tasks).map((item) => {
+      return item.textContent?.trim();
+    }),
+  ).toStrictEqual(["Workflow", "Presentation", "Image", "Video", "Website"]);
+  expect(
+    screen.queryByRole("group", { name: "Ideas to get started" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("group", { name: "Presentation templates" }),
+  ).toBeNull();
+});
+
+test.each(["Workflow", "Presentation", "Image", "Video", "Website"])(
+  "%s moves into the composer and can be removed without losing the draft",
+  async (task) => {
+    mockTemplateChat();
+    const editor = await setupChips();
+    await fill(editor, "Keep my draft");
+    click(button(task, screen.getByRole("group", { name: "Choose a task" })));
+    const selected = selectedTask(editor, task);
+    expect(selected).toBeVisible();
+    expect(screen.queryByRole("group", { name: "Choose a task" })).toBeNull();
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveTextContent("Keep my draft");
+    await screen.findByRole("group", {
+      name:
+        task === "Presentation"
+          ? "Presentation templates"
+          : "Ideas to get started",
+    });
+    click(button(`Remove ${task}`, selected));
+    await screen.findByRole("group", { name: "Choose a task" });
+    expect(screen.queryByRole("group", { name: task })).toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Ideas to get started" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Presentation templates" }),
+    ).toBeNull();
+    expect(editor).toHaveTextContent("Keep my draft");
+    expect(editor).toHaveFocus();
+  },
+);
+
+test.each(["Workflow", "Presentation", "Image", "Video", "Website"])(
+  "Backspace removes %s from an empty composer",
+  async (task) => {
+    mockTemplateChat();
+    const user = userEvent.setup({ delay: null });
+    const editor = await setupChips();
+    click(button(task, screen.getByRole("group", { name: "Choose a task" })));
+    expect(selectedTask(editor, task)).toBeVisible();
+    await user.keyboard("{Backspace}");
+    await screen.findByRole("group", { name: "Choose a task" });
+    expect(screen.queryByRole("group", { name: task })).toBeNull();
+    expect(editor).toHaveFocus();
+  },
+);
+
+test("Backspace edits a nonempty draft and preserves task selection during composition", async () => {
+  mockTemplateChat();
+  const user = userEvent.setup({ delay: null });
+  const editor = await setupChips();
+  click(
+    button("Workflow", screen.getByRole("group", { name: "Choose a task" })),
+  );
+  await fill(editor, "Keep");
+  await user.keyboard("{Backspace}");
+  expect(editor).toHaveTextContent("Kee");
+  expect(selectedTask(editor, "Workflow")).toBeVisible();
+  await fill(editor, "");
+  fireEvent.keyDown(editor, {
+    key: "Backspace",
+    isComposing: true,
+    keyCode: 229,
+  });
+  expect(selectedTask(editor, "Workflow")).toBeVisible();
+});
+
 test("The original start cards remain when task chips are disabled", async () => {
   mockTemplateChat();
   await setupChips(false);
@@ -65,18 +165,16 @@ test.each([
   },
 ])(
   "$task enters and submits the existing create mode with only the chip switch enabled",
-  async ({ task, mode, instruction }) => {
+  async ({ task, instruction }) => {
     const capture = mockTemplateChat();
     const editor = await setupChips();
     const tasks = screen.getByRole("group", { name: "Choose a task" });
     await fill(editor, "My launch next week");
     click(button(task, tasks));
     await waitFor(() => {
-      expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
-        `Create ${mode}`,
-      );
+      expect(selectedTask(editor, task)).toBeVisible();
     });
-    expect(button(task, tasks)).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("group", { name: "Choose a task" })).toBeNull();
     expect(editor).toHaveTextContent("My launch next week");
     expect(capture.sentMessages).toHaveLength(0);
     click(button("Send"));
@@ -120,11 +218,15 @@ test("Task changes preserve uploaded files and the draft, and toggling off resto
   const tasks = screen.getByRole("group", { name: "Choose a task" });
   click(button("Image", tasks));
   await screen.findByRole("combobox", { name: "Image models" });
-  click(button("Video", tasks));
+  click(button("Remove Image", selectedTask(editor, "Image")));
+  const restoredTasks = await screen.findByRole("group", {
+    name: "Choose a task",
+  });
+  click(button("Video", restoredTasks));
   await screen.findByRole("combobox", { name: "Video models" });
   click(screen.getByRole("combobox", { name: "Ratio" }));
   click(await screen.findByRole("option", { name: "9:16" }));
-  click(button("Video", tasks));
+  click(button("Remove Video", selectedTask(editor, "Video")));
   await screen.findByRole("combobox", { name: "Claude Sonnet 4.6" });
   expect(screen.queryByTestId("composer-create-mode")).toBeNull();
   expect(editor).toHaveTextContent("Keep my draft");
@@ -151,11 +253,13 @@ test.each([
   {
     task: "Image",
     first: "Put my product in a new scene",
-    next: "Make a photo ready for my store",
+    next: "Make a cover for my newsletter",
     prompt: "Put my product in a new scene.",
     cycle: [
-      "Make a photo ready for my store",
+      "Make a cover for my newsletter",
+      "Design a birthday invitation",
       "Create an image for my website",
+      "Make a personal greeting card",
       "Put my product in a new scene",
     ],
   },
@@ -179,12 +283,11 @@ test.each([
     const capture = mockTemplateChat();
     const editor = await setupChips();
     const tasks = screen.getByRole("group", { name: "Choose a task" });
-    if (task !== "Workflow") {
-      click(button(task, tasks));
-    }
+    click(button(task, tasks));
     const ideas = await screen.findByRole("group", {
       name: "Ideas to get started",
     });
+    expect(ideaButtons(ideas)).toHaveLength(4);
     await fill(editor, "Keep this context");
     click(button(first, ideas));
     await waitFor(() => {
@@ -200,6 +303,7 @@ test.each([
     for (const label of cycle.slice(1)) {
       click(button("More ideas", ideas));
       await within(ideas).findByText(label);
+      expect(ideaButtons(ideas)).toHaveLength(4);
       expect(editor.textContent).toBe(draft);
     }
     expect(editor).toHaveTextContent("Keep this context");
@@ -207,24 +311,27 @@ test.each([
   },
 );
 
-test("Slash commands and the create mode picker keep task chips in sync", async () => {
+test("Slash commands keep the selected task and recommendations in sync", async () => {
   mockTemplateChat();
   const editor = await setupChips();
   await fill(editor, "A quiet garden /create image");
   const menu = await screen.findByTestId("slash-workflow-menu");
   click(button("Create image", menu));
-  const tasks = screen.getByRole("group", { name: "Choose a task" });
   await waitFor(() => {
-    expect(button("Image", tasks)).toHaveAttribute("aria-pressed", "true");
+    expect(selectedTask(editor, "Image")).toBeVisible();
   });
+  expect(screen.queryByRole("group", { name: "Choose a task" })).toBeNull();
   expect(editor).toHaveTextContent("A quiet garden");
   expect(editor).not.toHaveTextContent("/create image");
-  click(screen.getByRole("combobox", { name: "Choose a type" }));
-  click(await screen.findByRole("option", { name: "Video" }));
+  await fill(editor, "A quiet garden /create video");
+  const videoMenu = await screen.findByTestId("slash-workflow-menu");
+  click(button("Create video", videoMenu));
   await waitFor(() => {
-    expect(button("Video", tasks)).toHaveAttribute("aria-pressed", "true");
+    expect(selectedTask(editor, "Video")).toBeVisible();
   });
-  expect(button("Image", tasks)).toHaveAttribute("aria-pressed", "false");
+  expect(screen.queryByRole("group", { name: "Image" })).toBeNull();
+  await screen.findByText("Turn a photo into a video");
+  expect(editor).toHaveTextContent("A quiet garden");
 });
 
 test("A presentation suggestion inserts a canonical template and preserves the prompt", async () => {
@@ -378,14 +485,14 @@ test("More templates and Website open the existing library in the matching categ
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
-  click(button("Website", tasks));
+  click(button("Remove Presentation", selectedTask(editor, "Presentation")));
+  const restoredTasks = await screen.findByRole("group", {
+    name: "Choose a task",
+  });
+  click(button("Website", restoredTasks));
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(button("Website", tasks)).toHaveAttribute("aria-pressed", "true");
-  expect(
-    queryAllByRoleFast("button", tasks).map((item) => {
-      return item.textContent?.trim();
-    }),
-  ).not.toContain("More");
+  expect(selectedTask(editor, "Website")).toBeVisible();
+  expect(screen.queryByRole("group", { name: "Choose a task" })).toBeNull();
   await screen.findByText("Build a website for my business");
   click(button("More templates"));
   await screen.findByRole("dialog");
@@ -416,6 +523,9 @@ test("Starting ideas use the active app language", async () => {
     featureSwitches: { [FeatureSwitchKey.ComposerTaskChips]: true },
   });
   const editor = await findComposerEditor();
+  click(
+    button("ワークフロー", screen.getByRole("group", { name: "タスクを選ぶ" })),
+  );
   const idea = "毎朝、重要なメールをまとめる";
   click(button(idea));
   await waitFor(() => {

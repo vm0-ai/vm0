@@ -2,7 +2,7 @@ import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Globe, Workflow, X } from "lucide-react";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { resolveVideoRunOptions } from "../../signals/okou-page/video-run-options.ts";
 import { Button } from "@okouai/ui";
@@ -49,6 +49,71 @@ const CREATE_MODE_ICON_CLASS = {
   video: "text-artifact-video",
   image: "text-artifact-image",
 } satisfies Record<ComposerCreateMode, string>;
+
+const TASK_ICONS = {
+  ...COMPOSER_CREATE_ICONS,
+  workflow: Workflow,
+  website: Globe,
+} as const;
+
+export function ComposerSelectedTask({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const task = useGet(signals.taskChips.task$);
+  const selectTask = useSet(signals.taskChips.selectTask$);
+  const labels = t(
+    ($) => {
+      return $.chat.taskChips.tasks;
+    },
+    { returnObjects: true },
+  );
+  if (!task) {
+    return withChatScrollLayout(null);
+  }
+  const Icon = TASK_ICONS[task];
+  return withChatScrollLayout(
+    <div className="flex min-w-0 px-4 pt-4">
+      <div
+        role="group"
+        aria-label={labels[task]}
+        className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-gray-50 pl-2.5 pr-1 text-[13px]"
+      >
+        <Icon
+          size={16}
+          className={cn(
+            "shrink-0",
+            task === "workflow" || task === "website"
+              ? "text-muted-foreground"
+              : CREATE_MODE_ICON_CLASS[task],
+          )}
+          aria-hidden
+        />
+        <span className="truncate">{labels[task]}</span>
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-xs"
+          className={cn("shrink-0 hover:bg-state-hover", CREATE_CONTROL_FOCUS)}
+          showTooltip
+          aria-label={t(
+            ($) => {
+              return $.chat.taskChips.removeTask;
+            },
+            { task: labels[task] },
+          )}
+          onClick={() => {
+            selectTask(null);
+          }}
+        >
+          <X size={14} aria-hidden />
+        </Button>
+      </div>
+    </div>,
+  );
+}
 
 function handleCreateTypeNavigation(event: KeyboardEvent<HTMLDivElement>) {
   if (event.altKey || event.ctrlKey || event.metaKey) {
@@ -109,10 +174,11 @@ export function ComposerCreateControls({
   const { t } = useTranslation();
   const choosing = useGet(signals.create.choosing$);
   const mode = useGet(signals.create.mode$);
+  const task = useGet(signals.taskChips.task$);
   const pickerOpen = useGet(signals.create.pickerOpen$);
   const setPickerOpen = useSet(signals.create.setPickerOpen$);
   const setMode = useSet(signals.create.setMode$);
-  if (!choosing && !mode) {
+  if (task || (!choosing && !mode)) {
     return withChatScrollLayout(null);
   }
   const Icon = COMPOSER_CREATE_ICONS[mode ?? "choose"];

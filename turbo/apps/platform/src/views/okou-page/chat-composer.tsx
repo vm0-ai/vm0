@@ -12,6 +12,7 @@ import {
   ComposerCreatePicker,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
+  ComposerSelectedTask,
 } from "./composer-create.tsx";
 import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
@@ -11008,6 +11009,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerCreateControls signals={signals} />
           <ComposerAttachments signals={signals} />
+          <ComposerSelectedTask signals={signals} />
           <ComposerInputSlot
             signals={signals}
             actions={actions}

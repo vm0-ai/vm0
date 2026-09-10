@@ -2532,6 +2532,7 @@
       "moreIdeas": "More ideas",
       "moreTemplates": "More templates",
       "presentationTemplates": "Presentation templates",
+      "removeTask": "Remove {{task}}",
       "tasks": {
         "image": "Image",
         "presentation": "Presentation",
