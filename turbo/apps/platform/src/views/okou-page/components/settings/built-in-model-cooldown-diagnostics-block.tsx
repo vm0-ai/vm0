@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  badgeVariants,
 } from "@okouai/ui";
 import {
   useGet,
@@ -60,7 +61,9 @@ function CooldownDiagnosticsSummary({
           })}
         </span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span className="okou-badge rounded-md px-2 py-0.5">
+          <span
+            className={badgeVariants({ className: "rounded-md px-2 py-0.5" })}
+          >
             {t(($) => {
               return $.settings.preferences.debug.builtInModelCooldown
                 .globalActive;

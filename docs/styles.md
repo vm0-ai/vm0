@@ -92,6 +92,19 @@ Integration and connector tests scope controls through the documented `data-slot
 
 The `okou-card` selector and its consumers have been removed. This equivalent migration also removes background, border, shadow, and focus-ring overrides that the old unlayered selector had suppressed; activating those overrides would be a separate visual change. Existing `--okou-card-*` variables still consumed by other legacy components remain frozen until those components migrate; they are not a supported API for new surfaces.
 
+### Inline badges
+
+`badgeVariants` from `@okouai/ui` owns the shared inline badge and tag treatment: role labels, status pills, version chips, and diagnostic values. Like `surfaceVariants`, it applies to the existing host element through `className` and adds no wrapper.
+
+| Decision | Shared token / utility                             | Theme contract                                                      |
+| -------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| Fill     | `bg-gray-0`                                        | The neutral base of the gray scale in each theme                    |
+| Border   | `--color-surface-border`, `--border-width-surface` | Gray 400 at 0.7 CSS pixels; the browser rounds for its device scale |
+
+The variant owns only the stroke and the fill, because its consumers legitimately differ in display, radius, padding, typography, and foreground: some badges are inline text, others are `inline-flex` rows with an icon, and one is a `<code>` element. Declare those with layout and typography utilities on the consumer, and use `text-muted-foreground` where a badge reads as secondary. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
+
+The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r-(length:--border-width-surface) border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke.
+
 ## Exception boundary
 
 Only two exception kinds exist:

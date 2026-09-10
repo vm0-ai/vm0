@@ -502,13 +502,6 @@ body {
   user-select: text;
 }
 
-/* Pill/tag (e.g. status badge, "Super agent") */
-.okou-app .okou-pill {
-  background-color: hsl(var(--gray-0));
-  border: 0.7px solid hsl(var(--gray-400));
-  color: hsl(var(--muted-foreground));
-}
-
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
 /* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
    glyphs render in color. Without this, dual-presentation codepoints fall back
@@ -522,9 +515,6 @@ body {
 }
 .okou-border-t {
   border-top: 0.7px solid hsl(var(--gray-400));
-}
-.okou-border-r {
-  border-right: 0.7px solid hsl(var(--gray-300));
 }
 
 /* Avatar / logo thumbnails: a hairline lighter than okou-border, so the edge of
@@ -566,12 +556,6 @@ body {
     stroke-dasharray: none;
     animation: none;
   }
-}
-
-/* Role / status badge: pill with 0.7px border on neutral background */
-.okou-badge {
-  border: 0.7px solid hsl(var(--gray-400));
-  background-color: hsl(var(--gray-0));
 }
 
 /* Left nav */

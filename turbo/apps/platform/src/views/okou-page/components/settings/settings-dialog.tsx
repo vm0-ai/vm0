@@ -382,7 +382,7 @@ function SettingsDialog({
           </div>
 
           {/* Desktop: sidebar nav */}
-          <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto okou-border-r bg-[hsl(var(--gray-0))]">
+          <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto border-r-(length:--border-width-surface) border-r-gray-300 bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => {
               return (
                 <div key={group.label} className="shrink-0">

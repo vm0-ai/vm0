@@ -35,6 +35,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  badgeVariants,
 } from "@okouai/ui";
 import {
   orgRoleSchema,
@@ -1111,7 +1112,12 @@ function MemberRow({
         />
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
+        <span
+          className={badgeVariants({
+            className:
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
+          })}
+        >
           <ShieldCheck
             size={12}
             className={
@@ -1511,7 +1517,12 @@ function PendingInvitationRow({
         </div>
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
+        <span
+          className={badgeVariants({
+            className:
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
+          })}
+        >
           <Clock size={12} className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
@@ -1669,7 +1680,12 @@ function MembershipRequestRow({
         <div className="text-[13px] text-muted-foreground">—</div>
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
+        <span
+          className={badgeVariants({
+            className:
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
+          })}
+        >
           <UserPlus size={12} className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;

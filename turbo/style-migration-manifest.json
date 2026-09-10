@@ -321,11 +321,43 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33062"
+    },
+    {
+      "id": "hairline-badge-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-badge", "okou-pill", "okou-border-r"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/build-info-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/built-in-model-cooldown-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connection-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-catalog-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/indexeddb-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/settings-dialog.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-invoices-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-members-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/usage-pack-pricing-page.tsx",
+        "apps/platform/src/views/okou-page/components/log-views/status-badge.tsx",
+        "apps/platform/src/views/queue-page/queue-drawer.tsx"
+      ],
+      "cases": [
+        "badge-debug-light",
+        "badge-debug-dark",
+        "badge-debug-narrow",
+        "badge-debug-narrow-dark",
+        "badge-people-light",
+        "badge-people-dark",
+        "badge-billing-light",
+        "badge-billing-dark"
+      ],
+      "status": "planned",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
     "../e2e/playwright/style-migration/tone-cases.json",
-    "../e2e/playwright/style-migration/icon-mono-cases.json"
+    "../e2e/playwright/style-migration/icon-mono-cases.json",
+    "../e2e/playwright/style-migration/badge-cases.json"
   ]
 }

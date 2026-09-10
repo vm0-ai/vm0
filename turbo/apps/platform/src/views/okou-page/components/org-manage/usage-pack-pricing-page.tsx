@@ -14,6 +14,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  badgeVariants,
 } from "@okouai/ui";
 import type {
   MemberUsagePack,
@@ -429,14 +430,24 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
             {member.name}
           </span>
           {member.isCurrent && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground okou-badge">
+            <span
+              className={badgeVariants({
+                className:
+                  "shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground",
+              })}
+            >
               {i18n.t(($) => {
                 return $.settings.workspace.members.you;
               })}
             </span>
           )}
           {member.isPending && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground okou-badge">
+            <span
+              className={badgeVariants({
+                className:
+                  "shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground",
+              })}
+            >
               {i18n.t(($) => {
                 return $.settings.workspace.members.pending;
               })}
@@ -2957,7 +2968,12 @@ function migrationPlanComparisonRows({
       current: (
         <span className="inline-flex items-center justify-end gap-1.5">
           <span>{planName(sourceTier)}</span>
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground okou-badge">
+          <span
+            className={badgeVariants({
+              className:
+                "rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground",
+            })}
+          >
             {i18n.t(($) => {
               return $.billing.plans.legacy;
             })}
