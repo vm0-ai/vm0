@@ -22,7 +22,7 @@ export interface SharedThreadRichContentState {
 export interface SharedThreadRichContentSignals {
   readonly state$: Computed<SharedThreadRichContentState>;
   readonly load$: Command<Promise<void>, [AbortSignal]>;
-  readonly retry$: Command<Promise<void>, []>;
+  readonly retry$: Command<Promise<void>, [AbortSignal]>;
 }
 
 /**
@@ -85,10 +85,9 @@ export function createSharedThreadRichContentSignals(
     set(internalState$, { status: "ready", trees });
   });
 
-  const retry$ = command(({ set }): Promise<void> => {
-    ownerSignal.throwIfAborted();
+  const retry$ = command(async ({ set }, signal: AbortSignal) => {
     set(retryRichMarkdown$);
-    return set(load$, ownerSignal);
+    await set(load$, signal);
   });
 
   return { load$, retry$, state$ };
