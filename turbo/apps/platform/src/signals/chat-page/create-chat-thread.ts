@@ -3982,7 +3982,7 @@ function createChatPanelSignalsWithDraft(
     chatEvents.chatEvents$,
     threadMeta$,
   );
-  const container = createChatThreadContainerSignals(signal);
+  const container = createChatThreadContainerSignals();
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
   const composer = createThreadComposerSignalsWithContext(

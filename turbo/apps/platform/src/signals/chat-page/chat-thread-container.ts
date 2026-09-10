@@ -48,7 +48,7 @@ const attachMainThreadFocusFallback$ = command(
   },
 );
 
-export function createChatThreadContainerSignals(pageSignal: AbortSignal) {
+export function createChatThreadContainerSignals() {
   const internalContainerEl$ = state<HTMLElement | null>(null);
   const containerEl$ = computed((get) => {
     return get(internalContainerEl$);
@@ -62,16 +62,11 @@ export function createChatThreadContainerSignals(pageSignal: AbortSignal) {
     },
   );
   const setContainerRef$ = onRef(attachContainer$);
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-  const mainContainerRef$ = computed(() => {
-    return onRef(
-      command(({ set }, el: HTMLElement, mountSignal: AbortSignal) => {
-        const signal = AbortSignal.any([mountSignal, pageSignal]);
-        signal.throwIfAborted();
-        set(attachContainer$, el, signal);
-        set(attachMainThreadFocusFallback$, el, signal);
-      }),
-    );
-  });
-  return { containerEl$, setContainerRef$, mainContainerRef$ };
+  const setMainContainerRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      set(attachContainer$, el, signal);
+      set(attachMainThreadFocusFallback$, el, signal);
+    }),
+  );
+  return { containerEl$, setContainerRef$, setMainContainerRef$ };
 }
