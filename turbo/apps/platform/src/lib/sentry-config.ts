@@ -62,6 +62,10 @@ const EXPECTED_ERROR_MESSAGES: ReadonlySet<string> = new Set([
 // throws a message-less InvalidStateError while a fullscreen transition is
 // already in flight, and the controls call it unguarded, so rapid taps on an
 // inline video report an error no application code can observe or prevent.
+// Each condition has two spellings because the SDK keeps a DOMException's bare
+// message when it carries a stack and prefixes the name when it does not.
+// Production has shown the prefixed fullscreen value and the bare ranges value;
+// the opposite spelling of each is kept for the other WebKit capture shape.
 const USER_AGENT_MEDIA_CONTROLS_MESSAGES: ReadonlySet<string> = new Set([
   "InvalidStateError: The object is in an invalid state.",
   "The object is in an invalid state.",
