@@ -2532,6 +2532,7 @@
       "moreIdeas": "Weitere Ideen",
       "moreTemplates": "Weitere Vorlagen",
       "presentationTemplates": "Präsentationsvorlagen",
+      "removeTask": "{{task}} entfernen",
       "tasks": {
         "image": "Bild",
         "presentation": "Folien",

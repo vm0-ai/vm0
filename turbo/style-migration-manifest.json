@@ -356,6 +356,46 @@
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33062"
     },
     {
+      "id": "chat-emoji-font",
+      "family": "local-controls",
+      "tokens": ["okou-emoji"],
+      "consumers": ["apps/platform/src/views/okou-page/chat-thread-page.tsx"],
+      "cases": [
+        "chat-emoji-light",
+        "chat-emoji-dark",
+        "chat-emoji-narrow",
+        "chat-emoji-narrow-dark"
+      ],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-all-rejected-calibrations",
+          "url": "https://a.okou.io/3qkwcyzuet.zip",
+          "sha256": "b455d3943ee52b0e4188ddbf47c6e21fa29ba43f40f25805959de85549712819",
+          "commit": "1e09b73cb906f1202b566255760655db893048c2"
+        },
+        {
+          "kind": "refreshed-before-and-unchanged-replay-after-upstream-composer-change",
+          "url": "https://a.okou.io/z6rgfsqp0b.zip",
+          "sha256": "18a6c9fe37af3ab5cdafb67caf2fd1ea3bbe9ef4d0d1fb08d545bf8389b54438",
+          "commit": "4e18c07e3eb936da5778207e5a81508cfce9aaa0"
+        },
+        {
+          "kind": "after-raw-diffs-and-real-api-persistence",
+          "url": "https://a.okou.io/b1j7myrczw.zip",
+          "sha256": "6ab10971d95a34027b10b73cabf2cafcd96b3c29a282762a8b074bf108259e10",
+          "commit": "0c52bbddd94dbefa9451d2bae92af6581a85abe4"
+        },
+        {
+          "kind": "after-named-font-utility-with-all-retained-evidence",
+          "url": "https://a.okou.io/tuxdll7vug.zip",
+          "sha256": "c46f81d1f94309c46a408998663e74ec4f25adc99ba12984890c7269742c2dc2",
+          "commit": "242fcfd3261fb8f0aa994ecfe78671f9fa67f70b"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33064"
+    },
+    {
       "id": "color-theme-swatch",
       "family": "local-controls",
       "tokens": ["okou-color-theme-swatch"],
@@ -401,8 +441,9 @@
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
     "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/tone-preview-cases.json",
     "../e2e/playwright/style-migration/icon-mono-cases.json",
-    "../e2e/playwright/style-migration/swatch-cases.json",
-    "../e2e/playwright/style-migration/tone-preview-cases.json"
+    "../e2e/playwright/style-migration/chat-emoji-cases.json",
+    "../e2e/playwright/style-migration/swatch-cases.json"
   ]
 }

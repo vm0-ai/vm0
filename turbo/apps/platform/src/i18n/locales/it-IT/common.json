@@ -2577,6 +2577,7 @@
       "moreIdeas": "Altre idee",
       "moreTemplates": "Altri modelli",
       "presentationTemplates": "Modelli di presentazione",
+      "removeTask": "Rimuovi {{task}}",
       "tasks": {
         "image": "Immagine",
         "presentation": "Diapositive",
