@@ -88,11 +88,17 @@ async function uploadedAudio(request: Request) {
 }
 
 test.each(
-  targets.flatMap((target) => {
-    return ["recording", "transcribing", "failed"].map((interruption) => {
-      return { ...target, interruption };
-    });
-  }),
+  targets
+    .flatMap((target) => {
+      return ["recording", "transcribing", "failed"].map((interruption) => {
+        return { ...target, interruption };
+      });
+    })
+    // The thread case covers reload during active recording; the remaining
+    // agent cases retain destination-specific recovery coverage.
+    .filter(({ target, interruption }) => {
+      return target !== "agent" || interruption !== "recording";
+    }),
 )(
   "Recover a forwarded $target recording after reloading while $interruption",
   async ({ name, path, interruption }) => {
