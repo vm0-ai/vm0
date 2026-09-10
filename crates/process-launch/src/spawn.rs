@@ -11,14 +11,28 @@ use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::time::{Duration, Instant};
 
-use crate::contained_command::{CommandStdio, ContainedChild, ContainedCommand};
-use crate::process::{kill_and_reap_child, private_descriptor};
-use crate::user::UserCredentials;
+use crate::command::set_nofile_limit;
+use crate::{Child, Command, Stdio, private_descriptor};
+
+/// Already-resolved child credentials; identity lookup belongs to the caller.
+#[derive(Clone, Copy)]
+pub struct Credentials<'a> {
+    pub uid: libc::uid_t,
+    pub gid: libc::gid_t,
+    pub groups: &'a [libc::gid_t],
+}
+
+/// Child setup that cannot be represented by opaque pre-exec callbacks.
+#[derive(Clone, Copy, Default)]
+pub struct SpawnOptions<'a> {
+    pub credentials: Option<Credentials<'a>>,
+    pub deny_process_inspection: bool,
+}
 
 const CLONE_CLEAR_SIGHAND: u64 = 1 << 32;
 const CLONE_INTO_CGROUP: u64 = 1 << 33;
 const CLOSE_RANGE_CLOEXEC: u32 = 1 << 2;
-const EXEC_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+pub(super) const EXEC_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 // Linux UAPI clone_args, including the v2 cgroup field (Linux 5.7).
 #[repr(C)]
@@ -43,17 +57,28 @@ struct PreparedStdio {
 }
 
 impl PreparedStdio {
-    fn new(value: CommandStdio, input: bool) -> io::Result<Self> {
+    fn new(value: Stdio, input: bool) -> io::Result<Self> {
         match value {
-            CommandStdio::Inherit => Ok(Self {
+            Stdio::Inherit => Ok(Self {
                 child: None,
                 parent: None,
             }),
-            CommandStdio::Owned(fd) => Ok(Self {
+            Stdio::Null => {
+                let file = if input {
+                    std::fs::OpenOptions::new().read(true).open("/dev/null")?
+                } else {
+                    std::fs::OpenOptions::new().write(true).open("/dev/null")?
+                };
+                Ok(Self {
+                    child: Some(private_descriptor(file.into())?),
+                    parent: None,
+                })
+            }
+            Stdio::Owned(fd) => Ok(Self {
                 child: Some(private_descriptor(fd)?),
                 parent: None,
             }),
-            CommandStdio::Piped => {
+            Stdio::Piped => {
                 let (reader, writer) = pipe()?;
                 let (child, parent) = if input {
                     (reader, writer)
@@ -114,12 +139,61 @@ fn executable_paths(
         .collect()
 }
 
-pub(crate) fn spawn(
-    command: ContainedCommand,
+pub fn spawn(
+    command: Command,
     cgroup: BorrowedFd<'_>,
-    credentials: Option<&UserCredentials>,
-    deny_process_inspection: bool,
-) -> io::Result<ContainedChild> {
+    options: SpawnOptions<'_>,
+) -> io::Result<Child> {
+    let pending = spawn_with_admission(command, cgroup, options, (), None)?;
+    exec_handshake(
+        &pending.error_reader,
+        Instant::now() + EXEC_HANDSHAKE_TIMEOUT,
+    )?;
+    pending.finish()
+}
+
+/// Own the unacknowledged child until exec succeeds or cleanup finishes.
+///
+/// Callers still own resources such as the placement cgroup. On failure or
+/// cancellation, reap before returning control so they can release those resources.
+pub(super) struct PendingChild {
+    child: Option<Child>,
+    pub(super) error_reader: File,
+}
+
+impl PendingChild {
+    pub(super) fn new(child: Child, error_reader: File) -> Self {
+        Self {
+            child: Some(child),
+            error_reader,
+        }
+    }
+
+    pub(super) fn finish(mut self) -> io::Result<Child> {
+        self.child
+            .take()
+            .ok_or_else(|| io::Error::other("pending child ownership already released"))
+    }
+}
+
+impl Drop for PendingChild {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.take() {
+            let _ = child.kill_and_reap();
+        }
+    }
+}
+
+// Only the parent may release admission. The copied child takes the existing
+// non-returning syscall-only branch and never runs this guard's destructor.
+pub(super) fn spawn_with_admission<G>(
+    command: Command,
+    cgroup: BorrowedFd<'_>,
+    options: SpawnOptions<'_>,
+    admission: G,
+    deadline: Option<Instant>,
+) -> io::Result<PendingChild> {
+    check_deadline(deadline)?;
     let mut environment: BTreeMap<OsString, OsString> = if command.inherit_environment {
         std::env::vars_os().collect()
     } else {
@@ -174,8 +248,9 @@ pub(crate) fn spawn(
         argv: &argv,
         envp: &envp,
         directory: directory.as_deref(),
-        credentials,
-        deny_process_inspection,
+        credentials: options.credentials,
+        deny_process_inspection: options.deny_process_inspection,
+        nofile_limit: command.nofile_limit,
         stdio: [
             stdin.child.as_ref(),
             stdout.child.as_ref(),
@@ -191,6 +266,7 @@ pub(crate) fn spawn(
         cgroup: cgroup.as_raw_fd() as u64,
         ..CloneArguments::default()
     };
+    check_deadline(deadline)?;
     let old_mask = set_signal_mask(u64::MAX)?;
     // SAFETY: without CLONE_VM/FILES/THREAD, the child owns its copied address
     // space, stack and descriptor table. All referenced input is prepared and
@@ -201,20 +277,31 @@ pub(crate) fn spawn(
     }
     let clone_error = (pid < 0).then(io::Error::last_os_error);
     let restore = set_signal_mask(old_mask);
+    // Capture errno and restore the parent's signal mask before waking another
+    // launch task. The host yields separately while awaiting acknowledgement.
+    drop(admission);
     if let Some(error) = clone_error {
         restore?;
         return Err(error);
     }
-    let mut child = ContainedChild::direct(pid as libc::pid_t);
+    let mut child = Child::direct(pid as libc::pid_t);
     child.stdin = stdin.parent.map(Into::into);
     child.stdout = stdout.parent.map(Into::into);
     child.stderr = stderr.parent.map(Into::into);
     drop((stdin.child, stdout.child, stderr.child, error_writer));
-    if let Err(error) = restore.and_then(|_| exec_handshake(error_reader)) {
-        kill_and_reap_child(child);
-        return Err(error);
+    let pending = PendingChild::new(child, File::from(error_reader));
+    restore?;
+    Ok(pending)
+}
+
+fn check_deadline(deadline: Option<Instant>) -> io::Result<()> {
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "process launch timed out before clone3",
+        ));
     }
-    Ok(child)
+    Ok(())
 }
 
 fn set_signal_mask(mask: u64) -> io::Result<u64> {
@@ -237,9 +324,7 @@ fn set_signal_mask(mask: u64) -> io::Result<u64> {
     Ok(old)
 }
 
-fn exec_handshake(reader: OwnedFd) -> io::Result<()> {
-    let deadline = Instant::now() + EXEC_HANDSHAKE_TIMEOUT;
-    let mut reader = File::from(reader);
+fn exec_handshake(reader: &File, deadline: Instant) -> io::Result<()> {
     let mut poll = libc::pollfd {
         fd: reader.as_raw_fd(),
         events: libc::POLLIN,
@@ -247,6 +332,12 @@ fn exec_handshake(reader: OwnedFd) -> io::Result<()> {
     };
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "process exec handshake timed out",
+            ));
+        }
         let timeout = i32::try_from(remaining.as_millis()).unwrap_or(i32::MAX);
         // SAFETY: poll points to one initialized descriptor record.
         let ready = unsafe { libc::poll(&mut poll, 1, timeout) };
@@ -263,14 +354,36 @@ fn exec_handshake(reader: OwnedFd) -> io::Result<()> {
             }
             return Err(error);
         }
-        let mut bytes = [0; size_of::<i32>()];
-        match reader.read(&mut bytes) {
-            Ok(0) => return Ok(()),
-            Ok(4) => return Err(io::Error::from_raw_os_error(i32::from_ne_bytes(bytes))),
-            Ok(_) => return Err(io::Error::other("incomplete process exec error")),
+        match read_exec_result(reader) {
+            Ok(result) => return result.into_result(),
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(error) => return Err(error),
         }
+    }
+}
+
+pub(super) enum ExecResult {
+    Success,
+    Error(i32),
+}
+
+impl ExecResult {
+    pub(super) fn into_result(self) -> io::Result<()> {
+        match self {
+            Self::Success => Ok(()),
+            Self::Error(errno) => Err(io::Error::from_raw_os_error(errno)),
+        }
+    }
+}
+
+// Transport errors alone may trigger an I/O retry. An errno reported by the
+// child is terminal even when its numeric value is EINTR or EAGAIN.
+pub(super) fn read_exec_result(mut reader: &File) -> io::Result<ExecResult> {
+    let mut bytes = [0; size_of::<i32>()];
+    match reader.read(&mut bytes)? {
+        0 => Ok(ExecResult::Success),
+        4 => Ok(ExecResult::Error(i32::from_ne_bytes(bytes))),
+        _ => Err(io::Error::other("incomplete process exec error")),
     }
 }
 
@@ -280,8 +393,9 @@ struct ChildInputs<'a> {
     argv: &'a [*const libc::c_char],
     envp: &'a [*const libc::c_char],
     directory: Option<&'a CStr>,
-    credentials: Option<&'a UserCredentials>,
+    credentials: Option<Credentials<'a>>,
     deny_process_inspection: bool,
+    nofile_limit: Option<libc::rlim_t>,
     stdio: [Option<RawFd>; 3],
     error_fd: RawFd,
     sigpipe: &'a libc::sigaction,
@@ -303,6 +417,11 @@ fn child_exec(inputs: &ChildInputs<'_>, old_mask: u64) -> ! {
             }
         }
         if libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, CLOSE_RANGE_CLOEXEC) != 0 {
+            child_errno(inputs.error_fd);
+        }
+        if let Some(limit) = inputs.nofile_limit
+            && set_nofile_limit(limit) != 0
+        {
             child_errno(inputs.error_fd);
         }
         if let Some(credentials) = inputs.credentials
@@ -384,7 +503,7 @@ fn child_error(error_fd: RawFd, error: i32) -> ! {
 mod tests {
     use super::*;
     use std::os::fd::AsFd;
-    use std::process::Command;
+    use std::process::Command as StandardCommand;
 
     fn signal_mask() -> u64 {
         let mut mask = 0u64;
@@ -405,20 +524,47 @@ mod tests {
     }
 
     #[test]
+    fn exec_acknowledgement_does_not_restart_an_expired_launch_budget() {
+        let (reader, writer) = pipe().unwrap();
+        drop(writer);
+        let error = exec_handshake(&File::from(reader), Instant::now() - Duration::from_secs(1))
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+
+        let (reader, writer) = pipe().unwrap();
+        drop(writer);
+        exec_handshake(&File::from(reader), Instant::now() + EXEC_HANDSHAKE_TIMEOUT).unwrap();
+    }
+
+    #[test]
+    fn child_retry_errnos_are_terminal_exec_failures() {
+        use std::io::Write;
+
+        for errno in [libc::EINTR, libc::EAGAIN] {
+            let (reader, writer) = pipe().unwrap();
+            File::from(writer).write_all(&errno.to_ne_bytes()).unwrap();
+            let error =
+                exec_handshake(&File::from(reader), Instant::now() + EXEC_HANDSHAKE_TIMEOUT)
+                    .unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(errno));
+        }
+    }
+
+    #[test]
     fn rejected_cgroup_never_falls_back_or_changes_the_parent_mask() {
         let directory = tempfile::tempdir().unwrap();
         let marker = directory.path().join("must-not-exist");
         let not_a_cgroup = File::open(directory.path()).unwrap();
         let before = signal_mask();
-        let mut command = ContainedCommand::new("/bin/sh");
+        let mut command = Command::new("/bin/sh");
         command
             .arg("-c")
             .arg("touch \"$MARKER\"")
             .env("MARKER", &marker);
-        match spawn(command, not_a_cgroup.as_fd(), None, false) {
+        match spawn(command, not_a_cgroup.as_fd(), SpawnOptions::default()) {
             Err(error) => assert!(error.raw_os_error().is_some(), "{error}"),
             Ok(child) => {
-                kill_and_reap_child(child);
+                let _ = child.kill_and_reap();
                 panic!("an ordinary directory cannot authorize a cgroup launch");
             }
         }
@@ -431,7 +577,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let descriptor = File::open(directory.path()).unwrap();
         for invalid in ["argument", "environment", "directory"] {
-            let mut command = ContainedCommand::new("/bin/true");
+            let mut command = Command::new("/bin/true");
             match invalid {
                 "argument" => {
                     command.arg("bad\0argument");
@@ -443,10 +589,10 @@ mod tests {
                     command.current_dir("bad\0directory");
                 }
             }
-            let error = match spawn(command, descriptor.as_fd(), None, false) {
+            let error = match spawn(command, descriptor.as_fd(), SpawnOptions::default()) {
                 Err(error) => error,
                 Ok(child) => {
-                    kill_and_reap_child(child);
+                    let _ = child.kill_and_reap();
                     panic!("invalid input unexpectedly spawned");
                 }
             };
@@ -475,11 +621,11 @@ mod tests {
             // SAFETY: all assertions completed; the OS owns final fd cleanup.
             unsafe { libc::_exit(0) };
         }
-        let mut command = Command::new(std::env::current_exe().unwrap());
+        let mut command = StandardCommand::new(std::env::current_exe().unwrap());
         command
             .args([
                 "--exact",
-                "cgroup_spawn::tests::private_pipes_preserve_closed_standard_descriptors",
+                "spawn::tests::private_pipes_preserve_closed_standard_descriptors",
             ])
             .env(CHILD_ENV, "1");
         assert!(command.status().unwrap().success());

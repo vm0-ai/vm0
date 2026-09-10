@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use tokio::process::Command;
+use process_launch::Command;
 
 // The counted sections keep paths in argv while allowing restore to run all
 // stale unmount attempts before either mode starts its ordered bind sequence.
@@ -129,7 +129,7 @@ mod tests {
             Path::new("/run/firecracker api.sock"),
         );
 
-        assert_eq!(command.as_std().get_program(), OsStr::new("unshare"));
+        assert_eq!(command.program.as_os_str(), OsStr::new("unshare"));
         assert_eq!(
             command_args(&command),
             vec![
@@ -178,7 +178,7 @@ mod tests {
             Path::new("/run/firecracker api.sock"),
         );
 
-        assert_eq!(command.as_std().get_program(), OsStr::new("unshare"));
+        assert_eq!(command.program.as_os_str(), OsStr::new("unshare"));
         assert_eq!(
             command_args(&command),
             vec![
@@ -278,11 +278,7 @@ ip <netns> <exec> <network namespace> </firecracker binary> <--api-sock> </api s
     }
 
     fn command_args(command: &Command) -> Vec<OsString> {
-        command
-            .as_std()
-            .get_args()
-            .map(OsStr::to_os_string)
-            .collect()
+        command.args.clone()
     }
 
     fn fake_host_commands() -> (tempfile::TempDir, std::path::PathBuf) {

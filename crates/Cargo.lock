@@ -1761,6 +1761,7 @@ dependencies = [
  "guest-control-proto",
  "libc",
  "process-control-ipc",
+ "process-launch",
  "serde_json",
  "shell-quote",
  "tempfile",
@@ -3047,6 +3048,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-launch"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "proptest"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3737,6 +3747,7 @@ dependencies = [
  "linux-mountinfo",
  "nbd-cow",
  "nix",
+ "process-launch",
  "proptest",
  "reqwest",
  "runner-rpc-proto",

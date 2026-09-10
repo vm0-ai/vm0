@@ -39,7 +39,7 @@ pub(crate) struct HostCpuCgroupManager {
 
 pub(crate) struct GuestCpuCgroupLease {
     leaf_path: Option<PathBuf>,
-    placement_file: Option<File>,
+    placement_directory: Option<File>,
 }
 
 impl HostCpuCgroupManager {
@@ -176,9 +176,9 @@ impl HostCpuCgroupManager {
             message: format!("create Guest CPU cgroup {}: {error}", leaf_path.display()),
         })?;
         match configure_guest_leaf(&leaf_path, vcpu) {
-            Ok(placement_file) => Ok(GuestCpuCgroupLease {
+            Ok(placement_directory) => Ok(GuestCpuCgroupLease {
                 leaf_path: Some(leaf_path),
-                placement_file: Some(placement_file),
+                placement_directory: Some(placement_directory),
             }),
             Err(error) => {
                 if let Err(cleanup_error) = fs::remove_dir(&leaf_path) {
@@ -200,15 +200,15 @@ impl HostCpuCgroupManager {
 }
 
 impl GuestCpuCgroupLease {
-    pub(crate) fn clone_placement_file(&self) -> io::Result<File> {
-        self.placement_file
+    pub(crate) fn clone_placement_directory(&self) -> io::Result<File> {
+        self.placement_directory
             .as_ref()
             .ok_or_else(|| io::Error::other("Guest CPU cgroup lease already released"))?
             .try_clone()
     }
 
     pub(crate) fn release(mut self) -> io::Result<()> {
-        drop(self.placement_file.take());
+        drop(self.placement_directory.take());
         match self.leaf_path.take() {
             Some(leaf_path) => fs::remove_dir(leaf_path),
             None => Ok(()),
@@ -216,17 +216,17 @@ impl GuestCpuCgroupLease {
     }
 
     #[cfg(test)]
-    pub(crate) fn from_test_file(leaf_path: PathBuf, placement_file: File) -> Self {
+    pub(crate) fn from_test_file(leaf_path: PathBuf, placement_directory: File) -> Self {
         Self {
             leaf_path: Some(leaf_path),
-            placement_file: Some(placement_file),
+            placement_directory: Some(placement_directory),
         }
     }
 }
 
 impl Drop for GuestCpuCgroupLease {
     fn drop(&mut self) {
-        drop(self.placement_file.take());
+        drop(self.placement_directory.take());
         if let Some(leaf_path) = self.leaf_path.take()
             && let Err(error) = fs::remove_dir(&leaf_path)
             && error.kind() != io::ErrorKind::NotFound
@@ -537,10 +537,11 @@ fn configure_guest_leaf(leaf_path: &Path, vcpu: u32) -> io::Result<File> {
             weight_path.display()
         )));
     }
-    OpenOptions::new()
-        .write(true)
-        .custom_flags(libc::O_CLOEXEC)
-        .open(leaf_path.join(CGROUP_PROCS))
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(leaf_path)?;
+    process_launch::private_descriptor(directory.into()).map(File::from)
 }
 
 #[cfg(test)]
