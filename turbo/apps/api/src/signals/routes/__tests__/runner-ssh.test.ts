@@ -4,6 +4,7 @@ import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import {
   runnerSshContract,
   type RunnerSshResolveRequest,
+  type RunnerSshObservationRequest,
 } from "@okouai/api-contracts/contracts/runner-ssh";
 import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
 import {
@@ -16,6 +17,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
+import { now, nowDate } from "../../../lib/time";
 import { createDeferredPromise, onRejection } from "../../utils";
 import { runnerSshRoutes } from "../runner-ssh";
 import { sshConnectionsRoutes } from "../ssh-connections";
@@ -372,6 +374,223 @@ async function list(f: Fixture) {
 beforeEach(() => {
   mockEnv("OFFICIAL_RUNNER_SECRET", runnerSecret);
   useSecretKmsProbe();
+});
+
+describe("SSH connection observations", () => {
+  async function observe(
+    f: Fixture,
+    overrides: Partial<RunnerSshObservationRequest> = {},
+  ) {
+    return (
+      await accept(
+        client().observe({
+          params: { runId: f.runId },
+          headers: runnerHeaders,
+          body: {
+            connectionId: f.connectionId,
+            runnerIdentity: f.runnerIdentity,
+            expectedGeneration: 1,
+            observedAt: nowDate().toISOString(),
+            failureReason: "authentication_failed",
+            ...overrides,
+          },
+        }),
+        [200],
+      )
+    ).body;
+  }
+
+  async function observations(f: Owner) {
+    authenticate(f);
+    return (
+      await accept(config().observations({ headers: sessionHeaders }), [200])
+    ).body.observations;
+  }
+
+  it("records bounded owner-only failures and recovery without changing configuration or invalidating credentials", async () => {
+    const f = await fixture();
+    const original = await list(f);
+    const kms = useSecretKmsProbe();
+    context.mocks.ably.publish.mockClear();
+    const failedAt = new Date(now() - 1000).toISOString();
+    await expect(observe(f, { observedAt: failedAt })).resolves.toStrictEqual({
+      outcome: "recorded",
+    });
+    await expect(observations(f)).resolves.toStrictEqual([
+      {
+        connectionId: f.connectionId,
+        generation: 1,
+        observedAt: failedAt,
+        failureReason: "authentication_failed",
+      },
+    ]);
+    await expect(list(f)).resolves.toStrictEqual(original);
+    expect(kms.decryptCalls).toBe(0);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
+    ]);
+    const other = await fixture();
+    await expect(observations(other)).resolves.toStrictEqual([]);
+    const recoveredAt = nowDate().toISOString();
+    await expect(
+      observe(f, { observedAt: recoveredAt, failureReason: null }),
+    ).resolves.toStrictEqual({ outcome: "recorded" });
+    await expect(observations(f)).resolves.toStrictEqual([
+      {
+        connectionId: f.connectionId,
+        generation: 1,
+        observedAt: recoveredAt,
+        failureReason: null,
+      },
+    ]);
+    await expect(observe(f, { observedAt: failedAt })).resolves.toStrictEqual({
+      outcome: "ignored",
+    });
+    await expect(
+      observe(f, { observedAt: recoveredAt }),
+    ).resolves.toStrictEqual({
+      outcome: "ignored",
+    });
+    await expect(
+      observe(f, {
+        observedAt: new Date(now() + 120_000).toISOString(),
+      }),
+    ).resolves.toStrictEqual({ outcome: "ignored" });
+    expect((await observations(f))[0]?.failureReason).toBeNull();
+    context.mocks.ably.publish.mockClear();
+    await expect(
+      observe(f, {
+        observedAt: new Date(now() + 1000).toISOString(),
+        failureReason: null,
+      }),
+    ).resolves.toStrictEqual({ outcome: "recorded" });
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  it("fences configuration changes and uses the post-TOFU generation", async () => {
+    const f = await fixture();
+    await observe(f);
+    await expect(pin(f)).resolves.toStrictEqual({
+      outcome: "pinned",
+      generation: 2,
+    });
+    await expect(observations(f)).resolves.toStrictEqual([]);
+    await expect(observe(f)).resolves.toStrictEqual({ outcome: "ignored" });
+    await expect(observe(f, { expectedGeneration: 2 })).resolves.toStrictEqual({
+      outcome: "recorded",
+    });
+    expect((await observations(f))[0]?.generation).toBe(2);
+    await accept(
+      config().update({
+        headers: sessionHeaders,
+        params: { connectionId: f.connectionId },
+        body: {
+          expectedGeneration: 2,
+          credentials: { privateKey: "replacement" },
+        },
+      }),
+      [200],
+    );
+    await expect(observations(f)).resolves.toStrictEqual([]);
+    await expect(observe(f, { expectedGeneration: 2 })).resolves.toStrictEqual({
+      outcome: "ignored",
+    });
+    await expect(observe(f, { expectedGeneration: 3 })).resolves.toStrictEqual({
+      outcome: "recorded",
+    });
+    await accept(
+      config().delete({
+        headers: sessionHeaders,
+        params: { connectionId: f.connectionId },
+      }),
+      [204],
+    );
+    await expect(observations(f)).resolves.toStrictEqual([]);
+    await expect(observe(f, { expectedGeneration: 3 })).resolves.toStrictEqual({
+      outcome: "unavailable",
+    });
+  });
+
+  it("requires official authentication and current winning-runner, owner, Run and grant authority", async () => {
+    const f = await fixture();
+    const body = {
+      connectionId: f.connectionId,
+      runnerIdentity: f.runnerIdentity,
+      expectedGeneration: 1,
+      observedAt: nowDate().toISOString(),
+      failureReason: null,
+    };
+    for (const headers of [
+      sessionHeaders,
+      { authorization: `Bearer ${f.sandboxToken}` },
+      { authorization: "Bearer vm0_official_wrong" },
+    ]) {
+      expect(
+        (await client().observe({ params: { runId: f.runId }, headers, body }))
+          .status,
+      ).toBe(401);
+    }
+    await expect(
+      observe(f, {
+        runnerIdentity: { ...f.runnerIdentity, runnerId: randomUUID() },
+      }),
+    ).resolves.toStrictEqual({ outcome: "unavailable" });
+    await expect(
+      observe(f, {
+        runnerIdentity: { ...f.runnerIdentity, heartbeatGeneration: 1 },
+      }),
+    ).resolves.toStrictEqual({ outcome: "unavailable" });
+    const other = await fixture();
+    await expect(
+      observe(f, { connectionId: other.connectionId }),
+    ).resolves.toStrictEqual({ outcome: "unavailable" });
+    const completed = await fixture({ status: "completed" });
+    await expect(observe(completed)).resolves.toStrictEqual({
+      outcome: "unavailable",
+    });
+    await access(f, false);
+    await expect(observe(f)).resolves.toStrictEqual({ outcome: "unavailable" });
+    await access(f, true);
+    await updateFeatureSwitchesForUser(context, f, {
+      [FeatureSwitchKey.SshAccess]: false,
+    });
+    await expect(observe(f)).resolves.toStrictEqual({ outcome: "unavailable" });
+    authenticate(f);
+    expect(
+      (await config().observations({ headers: sessionHeaders })).status,
+    ).toBe(404);
+  });
+
+  it("rejects diagnostic text and command outcomes instead of storing them as connection failures", async () => {
+    const f = await fixture();
+    const raw = setupRawAppRequest({ context, routes: runnerSshRoutes });
+    const body = {
+      connectionId: f.connectionId,
+      runnerIdentity: f.runnerIdentity,
+      expectedGeneration: 1,
+      observedAt: nowDate().toISOString(),
+      failureReason: null,
+    };
+    for (const extra of [
+      { error: privateKey },
+      { command: "id" },
+      { failureReason: "exec_rejected" },
+      { failureReason: "cancelled" },
+      { observedAt: "invalid" },
+      { expectedGeneration: 0 },
+    ]) {
+      const response = await raw(
+        `/api/runners/runs/${f.runId}/ssh/observations`,
+        {
+          method: "POST",
+          headers: { ...runnerHeaders, "content-type": "application/json" },
+          body: JSON.stringify({ ...body, ...extra }),
+        },
+      );
+      expect(response.status).toBe(400);
+    }
+    await expect(observations(f)).resolves.toStrictEqual([]);
+  });
 });
 
 describe("official Runner SSH authority", () => {

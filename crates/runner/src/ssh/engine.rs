@@ -7,7 +7,11 @@ use russh::{
     ChannelMsg, Preferred, Sig, client,
     keys::{Algorithm, EcdsaCurve, HashAlg, PrivateKeyWithHashAlg},
 };
-use std::{borrow::Cow, sync::Arc, time::Duration};
+use std::{
+    borrow::Cow,
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 use tokio::net::TcpStream;
 
 use super::{
@@ -45,16 +49,18 @@ impl Execution {
             scope.clone(),
         );
         let failure = Arc::clone(&handler.failure);
-        let mut session = scope
+        let authority_pending = Arc::clone(&handler.authority_pending);
+        let connection = scope
             .wait(client::connect_stream(Arc::new(config()), stream, handler))
-            .await?
-            .map_err(|_| {
-                failure
-                    .lock()
-                    .ok()
-                    .and_then(|failure| *failure)
-                    .unwrap_or(FailureReason::Protocol)
-            })?;
+            .await;
+        output.connection.connecting = !authority_pending.load(Ordering::Acquire);
+        let mut session = connection?.map_err(|_| {
+            failure
+                .lock()
+                .ok()
+                .and_then(|failure| *failure)
+                .unwrap_or(FailureReason::Protocol)
+        })?;
         let result = async {
             let hash = if matches!(self.credential.key.0.algorithm(), Algorithm::Rsa { .. }) {
                 match scope
@@ -79,6 +85,7 @@ impl Execution {
             if !authentication.success() {
                 return Err(FailureReason::AuthenticationFailed);
             }
+            output.connection.authenticated_at = Some(chrono::Utc::now());
             let mut channel = scope
                 .wait(session.channel_open_session())
                 .await?

@@ -13,10 +13,12 @@ import { command, computed } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { listSshConnectionObservations } from "../services/ssh-connection-observations.service";
 import {
   createSshConnection,
   deleteSshConnection,
@@ -242,7 +244,30 @@ const resetSshConnectionHostKeyInner$ = command(
   },
 );
 
+const listSshObservationsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(setResHeader$, "Cache-Control", "no-store");
+    const auth = get(organizationAuthContext$);
+    const featureContext = await get(sshFeatureContext$);
+    signal.throwIfAborted();
+    if (!featureContext) {
+      return sshConfigurationUnavailable;
+    }
+    const observations = await listSshConnectionObservations(
+      get(db$),
+      auth.orgId,
+      auth.userId,
+    );
+    signal.throwIfAborted();
+    return { status: 200 as const, body: { observations } };
+  },
+);
+
 export const sshConnectionsRoutes: readonly RouteEntry[] = [
+  {
+    route: sshConnectionsContract.observations,
+    handler: authRoute(sshAuth, listSshObservationsInner$),
+  },
   {
     route: sshConnectionsContract.list,
     handler: authRoute(sshAuth, listSshConnectionsInner$),

@@ -10,7 +10,10 @@ import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/con
 import { Button, surfaceVariants, cn } from "@okouai/ui";
 import { connectorCurrentConnectionStatus } from "../../../../signals/okou-page/settings/connectors.ts";
 import { ConnectorPermissionRow } from "./connector-permission-row.tsx";
-import { ConnectorEntryCard } from "./connector-entry-card.tsx";
+import {
+  ConnectorEntryCard,
+  ConnectorEntryStatus,
+} from "./connector-entry-card.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   launchConnectorConnect,
@@ -427,14 +430,13 @@ export function ConnectorAccountSummaryText({
   }
   if (status === "unavailable") {
     return (
-      <span className={cn("flex min-w-0 items-center gap-2", className)}>
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-        <span className="min-w-0 truncate text-amber-600 dark:text-amber-400">
-          {t(($) => {
-            return $.connectors.accounts.accountsUnavailable;
-          })}
-        </span>
-      </span>
+      <ConnectorEntryStatus
+        className={className}
+        tone="warning"
+        label={t(($) => {
+          return $.connectors.accounts.accountsUnavailable;
+        })}
+      />
     );
   }
   const accountCount = summary?.accountCount ?? 0;
@@ -471,30 +473,17 @@ export function ConnectorAccountSummaryText({
     );
   }
   return (
-    <span className={cn("flex min-w-0 items-center gap-2", className)}>
-      <span
-        className={cn(
-          "h-1.5 w-1.5 shrink-0 rounded-full",
-          accountCount === 0 && "bg-muted-foreground/50",
-          accountCount > 0 && summary?.attentionCount === 0 && "bg-emerald-500",
-          accountCount > 0 &&
-            summary !== undefined &&
-            summary.attentionCount > 0 &&
-            "bg-amber-500",
-        )}
-      />
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          summary !== undefined &&
-            summary.attentionCount > 0 &&
-            "text-amber-600 dark:text-amber-400",
-        )}
-        title={summaryText}
-      >
-        {summaryText}
-      </span>
-    </span>
+    <ConnectorEntryStatus
+      className={className}
+      label={summaryText}
+      tone={
+        accountCount === 0
+          ? "neutral"
+          : summary?.attentionCount === 0
+            ? "success"
+            : "warning"
+      }
+    />
   );
 }
 

@@ -14,6 +14,7 @@ import {
 import { ROUTES } from "../../../../signals/route-paths.ts";
 import { Link } from "../../../router/link.tsx";
 import { ConnectorEntryCard } from "./connector-entry-card.tsx";
+import { SshConnectionSummary } from "../../ssh-connection-status.tsx";
 
 export function SshConnectorCard({
   configuredCount,
@@ -59,22 +60,7 @@ export function SshConnectorCard({
           </span>
         ) : null
       }
-      status={
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50"
-            aria-hidden="true"
-          />
-          <span className="truncate">
-            {t(
-              ($) => {
-                return $.ssh.summary;
-              },
-              { count: configuredCount },
-            )}
-          </span>
-        </span>
-      }
+      status={<SshConnectionSummary configuredCount={configuredCount} />}
       trailingAction={
         configuredCount > 0 ? (
           <div className="relative z-20 min-w-0 max-w-full">
