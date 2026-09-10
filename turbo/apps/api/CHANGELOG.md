@@ -8,6 +8,20 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.582.1](https://github.com/vm0-ai/vm0/compare/api-v1.582.0...api-v1.582.1) (2026-09-10)
+
+
+### Refactoring
+
+* retire completed goal transition validation ([#33326](https://github.com/vm0-ai/vm0/issues/33326)) ([e7d8cc5](https://github.com/vm0-ai/vm0/commit/e7d8cc5fa0af14ccf84d931e3f3357f061aa6a22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.251.2
+
 ## [1.582.0](https://github.com/vm0-ai/vm0/compare/api-v1.581.0...api-v1.582.0) (2026-09-10)
 
 
