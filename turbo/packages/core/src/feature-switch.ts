@@ -45,6 +45,11 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.WelcomeThread]: {
+    maintainer: "lancy@okou.ai",
+    description: "Manually create a welcome conversation with fixed examples",
+    enabled: false,
+  },
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -94,6 +99,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@okou.ai",
     description: "Enable the Canva design connector",
     enabled: false,
+  },
+  [FeatureSwitchKey.CalendlyOAuthConnector]: {
+    maintainer: "yuma@okou.ai",
+    description: "Enable Calendly OAuth connections",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CalComConnector]: {
     maintainer: "yuma@okou.ai",
@@ -188,7 +199,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Mailchimp email marketing connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ResendConnector]: {
     maintainer: "yuma@okou.ai",
@@ -355,12 +366,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatTouchSelection]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Use custom text selection handles and passage actions on touch devices.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",
     description:
@@ -380,6 +385,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ReferenceImages]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Enable reusable private and organization-visible image references.",
+    enabled: false,
   },
   // Every artifact privacy slice in #32492 uses this same rollout switch.
   [FeatureSwitchKey.PrivateArtifacts]: {

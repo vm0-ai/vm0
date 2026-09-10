@@ -49,6 +49,7 @@ export SELECTED_HOST
 echo "Selected runner service host: ${SELECTED_HOST}"
 
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/runner-reconcile-start.XXXXXX")
+export RUNNER_RECEIPT_FILE="${work_dir}/receipt.json"
 trap 'rm -rf "$work_dir"' EXIT
 check_output="${work_dir}/check.out"
 
@@ -171,6 +172,23 @@ reconcile_service_on_host() {
   echo "Runner ready on ${HOST}: max_concurrent=${MC}"
   # shellcheck disable=SC2029
   ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_SERVICE_SUFFIX}"
+
+  # Capture the deployed generation while the caller still owns its lifecycle
+  # lock. Cleanup must not discover a replacement generation later.
+  local IDENTITY
+  IDENTITY=$(ssh "$REMOTE" bash -s -- "$RUNNER_DIR" <<'REMOTE_SCRIPT'
+set -euo pipefail
+runner_id=$(sudo cat "$1/runner_id")
+generation=$(sudo cat "$1/heartbeat_generation")
+[[ "$runner_id" =~ ^[0-9a-f-]{36}$ && "$generation" =~ ^[1-9][0-9]*$ ]]
+printf '{"runnerId":"%s","heartbeatGeneration":%s}\n' "$runner_id" "$generation"
+REMOTE_SCRIPT
+  )
+  jq -ce --arg host "$HOST" --arg service "$RUNNER_SERVICE_SUFFIX" --arg binDir "$BIN_DIR" '
+    select((.runnerId | type == "string" and test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")) and
+      (.heartbeatGeneration | type == "number" and . > 0 and . <= 9007199254740991 and . == floor)) |
+    . + {host: $host, service: $service, binDir: $binDir}
+  ' <<<"$IDENTITY" >"$RUNNER_RECEIPT_FILE"
   echo "=== Runner started on ${HOST} ==="
 }
 
@@ -311,4 +329,8 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  receipt=$(jq -ce . "$RUNNER_RECEIPT_FILE")
+  printf 'runner-receipt=%s\n' "$receipt" >>"$GITHUB_OUTPUT"
+fi
 RUNNER_START_SUCCEEDED=1

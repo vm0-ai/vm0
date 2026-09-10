@@ -62,6 +62,9 @@ function orgMetadataColumnsAfterFirstPartySource() {
     acquisitionLandingPath: text("acquisition_landing_path"),
     acquisitionReferrerDomain: text("acquisition_referrer_domain"),
     acquisitionRecordedAt: timestamp("acquisition_recorded_at"),
+    // Impact keeps the latest partner click independently of acquisition first touch.
+    impactClickId: text("impact_click_id"),
+    impactClickAt: timestamp("impact_click_at"),
     // Auto-recharge configuration
     autoRechargeEnabled: boolean("auto_recharge_enabled")
       .notNull()

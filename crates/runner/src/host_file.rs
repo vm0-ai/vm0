@@ -153,6 +153,36 @@ pub(crate) fn validate_private_file_destination(path: &Path, context: &str) -> i
     secure_regular_private_file(&file, path, context)
 }
 
+/// Create a new file with `0600` permissions before writing its contents.
+///
+/// Existing paths, including symlinks, are refused. Permissions are normalized
+/// on the opened descriptor regardless of umask, and writes are flushed before
+/// returning. The caller owns parent-directory trust, failed-file cleanup, and
+/// publication. This operation does not fsync the file.
+#[cfg(unix)]
+pub(crate) async fn write_private_new(
+    path: &Path,
+    content: &[u8],
+    context: &str,
+) -> io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
+    let mut file = options
+        .open(path)
+        .await
+        .map_err(|e| wrap_io(e, format!("open {context} {}", path.display())))?;
+    chmod_private_file_fd(&file, path, context)?;
+    file.write_all(content)
+        .await
+        .map_err(|e| wrap_io(e, format!("write {context} {}", path.display())))?;
+    file.flush()
+        .await
+        .map_err(|e| wrap_io(e, format!("flush {context} {}", path.display())))?;
+    Ok(())
+}
+
 /// Publish a private file through same-directory atomic replacement on Unix.
 ///
 /// The caller remains responsible for parent-directory trust. This operation
@@ -166,7 +196,6 @@ pub(crate) async fn write_private_atomic(
     context: &str,
 ) -> io::Result<()> {
     use std::ffi::OsString;
-    use tokio::io::AsyncWriteExt;
 
     let file_name = path.file_name().ok_or_else(|| {
         io::Error::new(
@@ -183,20 +212,7 @@ pub(crate) async fn write_private_atomic(
     let tmp = path.with_file_name(tmp_name);
 
     let result = async {
-        let mut options = tokio::fs::OpenOptions::new();
-        options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
-        let mut file = options
-            .open(&tmp)
-            .await
-            .map_err(|e| wrap_io(e, format!("open {context} tmp {}", tmp.display())))?;
-        chmod_private_file_fd(&file, &tmp, context)?;
-        file.write_all(content)
-            .await
-            .map_err(|e| wrap_io(e, format!("write {context} tmp {}", tmp.display())))?;
-        file.flush()
-            .await
-            .map_err(|e| wrap_io(e, format!("flush {context} tmp {}", tmp.display())))?;
-        drop(file);
+        write_private_new(&tmp, content, context).await?;
 
         tokio::fs::rename(&tmp, path)
             .await
@@ -760,6 +776,27 @@ mod tests {
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[tokio::test]
+    async fn write_private_new_preserves_existing_files_and_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("existing.json");
+        std::fs::write(&path, b"existing content").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o660)).unwrap();
+        let link = dir.path().join("link.json");
+        symlink(&path, &link).unwrap();
+
+        for destination in [&path, &link] {
+            let error = write_private_new(destination, b"replacement", "test file")
+                .await
+                .unwrap_err();
+
+            assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+            assert_eq!(std::fs::read(&path).unwrap(), b"existing content");
+            assert_eq!(mode(&path), 0o660);
+        }
+        assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
     }
 
     #[tokio::test]

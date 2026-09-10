@@ -65,7 +65,7 @@ pub(super) struct SnapshotProcessCleanupReport {
 }
 
 pub(super) struct SnapshotProcess {
-    child: Option<tokio::process::Child>,
+    child: Option<process_launch::asynchronous::Child>,
     stdout_handle: Option<JoinHandle<()>>,
     stderr_handle: Option<JoinHandle<()>>,
     stderr_buf: StderrBuf,
@@ -83,7 +83,7 @@ impl Default for SnapshotProcess {
 }
 
 impl SnapshotProcess {
-    pub(super) fn spawn(&mut self, spawn: SnapshotProcessSpawn<'_>) -> std::io::Result<()> {
+    pub(super) async fn spawn(&mut self, spawn: SnapshotProcessSpawn<'_>) -> std::io::Result<()> {
         let command = build_command(
             SnapshotMountMode::Creation {
                 rootfs: BindMount::new(spawn.cow_device_path, spawn.drive_bind),
@@ -93,7 +93,7 @@ impl SnapshotProcess {
             spawn.binary_path,
             spawn.api_sock,
         );
-        let mut child = spawn_firecracker(command, spawn.current_dir, None)?;
+        let mut child = spawn_firecracker(command, spawn.current_dir, None).await?;
 
         // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
         // Stderr is also retained in a bounded ring buffer so that an early
@@ -130,7 +130,7 @@ impl SnapshotProcess {
         let child_status = self
             .child
             .as_mut()
-            .map_or(Ok(None), tokio::process::Child::try_wait);
+            .map_or(Ok(None), process_launch::asynchronous::Child::try_wait);
         drain_stderr_forwarder_after_spawn_exit(&child_status, &mut self.stderr_handle).await;
         let result = rewrap_spawn_chain_exit(result, child_status, &self.stderr_buf);
 
@@ -150,7 +150,7 @@ impl SnapshotProcess {
 
     pub(super) fn signal_for_drop(&self) {
         if let Some(child) = self.child.as_ref() {
-            let _ = kill_process_group(child);
+            let _ = kill_process_group(child.id());
         }
     }
 
@@ -184,7 +184,7 @@ impl SnapshotProcess {
 
     #[cfg(test)]
     pub(super) fn track_child_for_test(&mut self, child: tokio::process::Child) {
-        self.child = Some(child);
+        self.child = Some(child.into());
     }
 
     #[cfg(test)]
@@ -198,7 +198,9 @@ impl SnapshotProcess {
     }
 }
 
-fn spawn_stdout_forwarder(child: &mut tokio::process::Child) -> Option<JoinHandle<()>> {
+fn spawn_stdout_forwarder(
+    child: &mut process_launch::asynchronous::Child,
+) -> Option<JoinHandle<()>> {
     child.stdout.take().map(|stdout| {
         // Intentionally detached: stdout has no cleanup decision input, and
         // EOF on the child pipe ends the task after Firecracker exits.
@@ -207,7 +209,7 @@ fn spawn_stdout_forwarder(child: &mut tokio::process::Child) -> Option<JoinHandl
 }
 
 fn spawn_stderr_forwarder(
-    child: &mut tokio::process::Child,
+    child: &mut process_launch::asynchronous::Child,
     stderr_buf: &StderrBuf,
 ) -> Option<JoinHandle<()>> {
     child.stderr.take().map(|stderr| {
@@ -280,16 +282,16 @@ async fn drain_stderr_forwarder_after_spawn_exit(
     }
 }
 
-async fn kill_and_reap_firecracker(child: &mut tokio::process::Child) {
-    let _ = kill_process_group(child);
+async fn kill_and_reap_firecracker(child: &mut process_launch::asynchronous::Child) {
+    let _ = kill_process_group(child.id());
     let _ = child.wait().await;
 }
 
 async fn kill_and_reap_firecracker_bounded(
-    child: &mut tokio::process::Child,
+    child: &mut process_launch::asynchronous::Child,
     timeout: Duration,
 ) -> bool {
-    let _ = kill_process_group(child);
+    let _ = kill_process_group(child.id());
     match tokio::time::timeout(timeout, child.wait()).await {
         Ok(Ok(_)) => true,
         Ok(Err(e)) => {

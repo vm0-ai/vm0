@@ -103,6 +103,7 @@ mod job_terminal_log;
 mod mitm_restart;
 mod orphan_reap;
 mod ownership;
+mod prune_idle;
 mod sandbox_finalization;
 mod signals;
 
@@ -1799,6 +1800,34 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         )));
     }
 
+    let prune_listener = match crate::idle_prune_control::PruneIdleListener::bind(
+        &paths.home,
+        &paths.base_dir,
+        runner.identity,
+    ) {
+        Ok(listener) => listener,
+        Err(error) => {
+            shutdown_startup_resources_after_startup_failure(
+                StartupFailureResources {
+                    provider: provider_state.provider.as_ref(),
+                    runtime: Some(runtime.as_mut()),
+                    mitm: &mut mitm,
+                    kmsg_handle,
+                    dns_handle,
+                    memory_prefetch: &mut memory_prefetch,
+                    status: shared.status.as_ref(),
+                },
+                "prune_control_startup_failure",
+            )
+            .await;
+            if let Some(handler_task) = signal_handler_task.take() {
+                abort_signal_handler_task(handler_task, "prune_control_startup_failure").await;
+            }
+            return Err(error.into());
+        }
+    };
+    let prune_admission = Arc::new(tokio::sync::Semaphore::new(1));
+
     if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
         let startup_readiness_cancelled = provider_state.cancel.is_cancelled();
         let cleanup_reason = if startup_readiness_cancelled {
@@ -2188,6 +2217,29 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .and_then(JobCandidate::runner_preference)
             .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
+            connection = prune_listener.accept() => {
+                match connection {
+                    Ok(stream) => {
+                        if let Ok(permit) = Arc::clone(&prune_admission).try_acquire_owned() {
+                            let context = prune_idle::PruneIdleContext {
+                                identity: runner.identity,
+                                pool: Arc::clone(&shared.idle_pool),
+                                status: Arc::clone(&shared.status),
+                                lifecycle: lifecycle.clone(),
+                                tracker: idle_destroy_tracker.clone(),
+                            };
+                            idle_destroy_tracker.spawn_cleanup(
+                                prune_idle::handle(stream, context, permit), "operator_prune_idle",
+                            );
+                        }
+                        // Busy requests are closed without admitting any work.
+                    }
+                    Err(error) => {
+                        terminal_error = Some(error.into());
+                        break;
+                    }
+                }
+            }
             result = blank_pool.wait_for_preparation(), if blank_pool.is_preparing() => {
                 if let Some(result) = result {
                     blank_pool
@@ -2567,6 +2619,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
     let teardown = TeardownTimer::start();
+    drop(prune_listener);
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
 

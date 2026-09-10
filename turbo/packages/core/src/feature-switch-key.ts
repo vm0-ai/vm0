@@ -4,6 +4,7 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
+  WelcomeThread = "welcomeThread",
   ThreadActivitySummary = "threadActivitySummary",
   Dummy = "_dummy",
   AhrefsConnector = "ahrefsConnector",
@@ -11,6 +12,7 @@ export enum FeatureSwitchKey {
   BentomlConnector = "bentomlConnector",
   CanvaConnector = "canvaConnector",
   CalComConnector = "calComConnector",
+  CalendlyOAuthConnector = "calendlyOAuthConnector",
   CopperConnector = "copperConnector",
   DatadogConnector = "datadogConnector",
   DeelConnector = "deelConnector",
@@ -52,6 +54,7 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
+  ReferenceImages = "referenceImages",
   PrivateArtifacts = "privateArtifacts",
   AgentMessageMath = "agentMessageMath",
   MarkdownTime = "markdownTime",
@@ -68,7 +71,6 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
-  ChatTouchSelection = "chatTouchSelection",
   VoiceInputV2 = "voiceInputV2",
   ComposerCreateCommands = "composerCreateCommands",
   ComposerTaskChips = "composerTaskChips",

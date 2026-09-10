@@ -1,7 +1,30 @@
 /** Content-free diagnostics carried by the existing terminal error string. */
-const STAGES = ["output_validation", "mounted_apply", "unknown"] as const;
+const STAGES = [
+  "workspace_stage",
+  "session_create",
+  "model_turn",
+  "final_response",
+  "output_validation",
+  "mounted_apply",
+  "commit",
+  "unknown",
+] as const;
 const REASONS = [
   "unknown",
+  "unexpected_error",
+  "workspace_stage_failed",
+  "session_create_failed",
+  "model_turn_failed",
+  "final_message_missing",
+  "final_stop_error",
+  "final_stop_length",
+  "final_stop_tool_use",
+  "final_stop_pending",
+  "final_stop_aborted",
+  "provider_result_missing",
+  "heartbeat_stopped",
+  "caller_disposed",
+  "result_missing",
   "filesystem",
   "unsafe_path",
   "unsafe_tree",
@@ -136,6 +159,36 @@ export class Phase2OutputInvalidError extends Error {
   }
 }
 
+/**
+ * Read only a data property: raw text and arbitrary getters stay outside this
+ * best-effort diagnostic boundary.
+ */
+function phase2Errno(error: unknown): PiMemoryPhase2Diagnostic["errno"] {
+  try {
+    const value: unknown =
+      error !== null && typeof error === "object"
+        ? Object.getOwnPropertyDescriptor(error, "code")?.value
+        : undefined;
+    return allowed(ERRNOS, value);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Attribute a bounded lifecycle stage without inspecting failure content. */
+export function phase2StageDiagnostic(
+  stage: PiMemoryPhase2Diagnostic["stage"],
+  reason: PiMemoryPhase2Diagnostic["reason"],
+  error?: unknown,
+): PiMemoryPhase2Diagnostic {
+  const errno = error === undefined ? undefined : phase2Errno(error);
+  return sanitizePiMemoryPhase2Diagnostic({
+    stage,
+    reason,
+    ...(errno === undefined ? {} : { errno }),
+  });
+}
+
 export function phase2DiagnosticForError(
   error: unknown,
   stage: PiMemoryPhase2Diagnostic["stage"],
@@ -144,18 +197,7 @@ export function phase2DiagnosticForError(
   if (error instanceof Phase2OutputInvalidError) {
     return sanitizePiMemoryPhase2Diagnostic({ ...error.diagnostic, stage });
   }
-  // Read only a data property: raw text and arbitrary getters stay outside
-  // this best-effort diagnostic boundary.
-  let errno: PiMemoryPhase2Diagnostic["errno"];
-  try {
-    const value: unknown =
-      error !== null && typeof error === "object"
-        ? Object.getOwnPropertyDescriptor(error, "code")?.value
-        : undefined;
-    errno = allowed(ERRNOS, value);
-  } catch {
-    errno = undefined;
-  }
+  const errno = phase2Errno(error);
   return sanitizePiMemoryPhase2Diagnostic({
     stage,
     reason: errno && errno !== "unknown" ? "filesystem" : "unknown",

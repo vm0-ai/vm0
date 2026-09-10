@@ -19,6 +19,7 @@ const checkboxTheme = `
   @theme {
     --spacing: 0.25rem;
     --radius-md: 0.375rem;
+    --default-border-width: 0.5px;
     --color-border: rgb(10 20 30);
     --color-input: rgb(40 50 60);
     --color-primary: rgb(70 80 90);

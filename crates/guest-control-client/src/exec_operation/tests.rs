@@ -146,6 +146,99 @@ fn clean_terminal_result() -> guest_control_proto::DecodedExecResult<'static> {
     }
 }
 
+fn memory_snapshot(role: &str) -> guest_contracts::oom_evidence::MemorySnapshot {
+    use guest_contracts::oom_evidence::{EvidenceStatus, MemoryEvents, MemorySnapshot};
+    MemorySnapshot {
+        role: role.to_string(),
+        cgroup: format!("/vm0-exec/exec-7-1-1/{role}"),
+        inode: Some(4_096),
+        status: EvidenceStatus::Available,
+        current: Some(4_096),
+        peak: Some(8_192),
+        limit: Some("8192".to_string()),
+        initial_limit: Some("8192".to_string()),
+        anon: Some(2_048),
+        file: Some(1_024),
+        kernel: Some(512),
+        baseline: MemoryEvents::default(),
+        events: MemoryEvents::default(),
+        delta: MemoryEvents::default(),
+        local_baseline: MemoryEvents::default(),
+        local_events: MemoryEvents::default(),
+        local_delta: MemoryEvents::default(),
+    }
+}
+
+/// One bounded evidence envelope exactly as the guest transports it. `proof`
+/// selects between a proven OOM decision and an inspected-and-empty capture
+/// candidate, which is the distinction the terminal classifier must make.
+fn oom_evidence_diagnostic(proof: bool) -> String {
+    use guest_contracts::oom_evidence::{
+        CaptureReason, EVIDENCE_PREFIX, EvidenceStatus, KernelOomEvent, OomEvidence, OomIncident,
+    };
+    let mut groups = [
+        memory_snapshot("workload"),
+        memory_snapshot("runtime"),
+        memory_snapshot("tools"),
+    ];
+    let mut kernel_events = Vec::new();
+    if proof {
+        groups[0].delta.oom_kill = Some(1);
+        groups[0].events.oom_kill = Some(1);
+        kernel_events.push(KernelOomEvent {
+            source: "guest".to_string(),
+            sequence: 42,
+            boottime_us: 1_000_000,
+            constraint: "CONSTRAINT_MEMCG".to_string(),
+            oom_cgroup: Some("/vm0-exec/exec-7-1-1/workload".to_string()),
+            victim_pid: 1234,
+            victim_comm: "node".to_string(),
+            task_cgroup: "/vm0-exec/exec-7-1-1/workload/tools".to_string(),
+        });
+    }
+    let evidence = OomEvidence {
+        operation_id: "11111111-1111-4111-8111-111111111111".to_string(),
+        guest_boot_id: Some("22222222-2222-4222-8222-222222222222".to_string()),
+        started_boottime_us: 500_000,
+        sampled_at: "2026-09-09T07:19:59.000Z".to_string(),
+        kernel_cursor: proof.then_some(42),
+        kernel_status: if proof {
+            EvidenceStatus::Available
+        } else {
+            EvidenceStatus::Missing
+        },
+        groups: groups.clone(),
+        incidents: vec![OomIncident {
+            id: "11111111-1111-4111-8111-111111111111:1".to_string(),
+            captured_at: "2026-09-09T07:19:59.000Z".to_string(),
+            reason: if proof {
+                CaptureReason::Sample
+            } else {
+                CaptureReason::CliError
+            },
+            after_observation: true,
+            before_cleanup: true,
+            kernel_status: if proof {
+                EvidenceStatus::Available
+            } else {
+                EvidenceStatus::Missing
+            },
+            kernel_events,
+            groups,
+        }],
+        dropped_incidents: 0,
+    };
+    assert_eq!(
+        guest_contracts::oom_evidence::evidence_has_proof(&evidence),
+        proof,
+        "fixture must exercise the intended branch"
+    );
+    format!(
+        "{EVIDENCE_PREFIX}{}",
+        serde_json::to_string(&evidence).unwrap()
+    )
+}
+
 fn capture_terminal_log_levels(
     lifecycle: ExecTerminalLogLifecycle,
     slow: bool,
@@ -784,7 +877,9 @@ fn clean_terminal_log_context(
         stdout_truncated: false,
         stderr_truncated: false,
         stream_overflowed: false,
-        diagnostic_present: false,
+        actionable_diagnostic: false,
+        evidence_has_proof: false,
+        evidence_malformed: false,
         host_cancel_requested: false,
     }
 }
@@ -829,7 +924,7 @@ fn exec_terminal_log_decision_reports_low_cardinality_reason() {
     assert_eq!(slow_decision.reason, ExecTerminalLogReason::Slow);
 
     let notable = ExecTerminalLogContext {
-        diagnostic_present: true,
+        actionable_diagnostic: true,
         ..clean_terminal_log_context(
             ExecTerminalLogLifecycle::OneShot,
             true,
@@ -935,7 +1030,7 @@ fn exec_terminal_log_severity_warns_for_notable_slow_supervised_result() {
             ..clean_slow
         },
         ExecTerminalLogContext {
-            diagnostic_present: true,
+            actionable_diagnostic: true,
             ..clean_slow
         },
         ExecTerminalLogContext {
@@ -972,7 +1067,7 @@ fn exec_terminal_log_severity_warns_for_notable_result_metadata() {
                 ..clean
             },
             ExecTerminalLogContext {
-                diagnostic_present: true,
+                actionable_diagnostic: true,
                 ..clean
             },
         ] {
@@ -1026,7 +1121,11 @@ fn exec_terminal_log_severity_warns_for_expected_host_cancel_with_metadata() {
             ..clean_cancel
         },
         ExecTerminalLogContext {
-            diagnostic_present: true,
+            actionable_diagnostic: true,
+            ..clean_cancel
+        },
+        ExecTerminalLogContext {
+            evidence_malformed: true,
             ..clean_cancel
         },
     ] {
@@ -1035,6 +1134,225 @@ fn exec_terminal_log_severity_warns_for_expected_host_cancel_with_metadata() {
             Some(ExecTerminalLogSeverity::Warn)
         );
     }
+}
+
+#[test]
+fn exec_operation_diagnostic_does_not_warn_for_capture_candidate_metadata() {
+    let candidate = oom_evidence_diagnostic(false);
+    for exit_code in [0, 1, 124] {
+        let result = guest_control_proto::DecodedExecResult {
+            termination: ExecTermination::Exited { exit_code },
+            diagnostic: candidate.as_str(),
+            ..clean_terminal_result()
+        };
+
+        assert!(
+            capture_terminal_log_events_with_context(
+                ExecTerminalLogLifecycle::Supervised,
+                false,
+                &result,
+                false,
+                false,
+            )
+            .is_empty(),
+            "metadata-only terminal result must not be logged; exit_code={exit_code}"
+        );
+    }
+}
+
+#[test]
+fn exec_operation_diagnostic_reports_metadata_counts_without_the_payload() {
+    let diagnostic = oom_evidence_diagnostic(true);
+    let result = guest_control_proto::DecodedExecResult {
+        diagnostic: diagnostic.as_str(),
+        ..clean_terminal_result()
+    };
+    let events = capture_terminal_log_events_with_context(
+        ExecTerminalLogLifecycle::Supervised,
+        false,
+        &result,
+        false,
+        false,
+    );
+
+    assert_eq!(events.len(), 1, "captured events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::WARN);
+    assert_terminal_log_field(event, "terminal_reason", "oom_evidence");
+    assert_terminal_log_field(event, "termination", "Exited { exit_code: 0 }");
+    assert_terminal_log_field(event, "diagnostic_present", "false");
+    assert_terminal_log_field(event, "oom_evidence", "true");
+    assert_terminal_log_field(event, "oom_evidence_proof", "true");
+    assert_terminal_log_field(event, "oom_evidence_malformed", "false");
+    assert_terminal_log_field(event, "oom_incidents", "1");
+    assert_terminal_log_field(event, "oom_kernel_events", "1");
+    assert_terminal_log_field(event, "oom_dropped_incidents", "0");
+    assert!(
+        !event
+            .fields
+            .values()
+            .any(|value| value.contains("OKOU_OOM_EVIDENCE_V1") || value.contains("victim_comm")),
+        "metadata payload must never be logged; event={event:#?}"
+    );
+}
+
+#[test]
+fn exec_operation_diagnostic_preserves_a_real_diagnostic_carried_beside_metadata() {
+    let diagnostic = format!(
+        "Failed to wait: no child processes\n{}",
+        oom_evidence_diagnostic(false)
+    );
+    let result = guest_control_proto::DecodedExecResult {
+        termination: ExecTermination::WaitFailed,
+        diagnostic: diagnostic.as_str(),
+        ..clean_terminal_result()
+    };
+    let events = capture_terminal_log_events_with_context(
+        ExecTerminalLogLifecycle::Supervised,
+        false,
+        &result,
+        false,
+        false,
+    );
+
+    assert_eq!(events.len(), 1, "captured events: {events:#?}");
+    assert_eq!(events[0].level, Level::WARN);
+    assert_terminal_log_field(&events[0], "terminal_reason", "notable");
+    assert_terminal_log_field(&events[0], "diagnostic_present", "true");
+    assert_terminal_log_field(&events[0], "oom_evidence", "true");
+}
+
+#[test]
+fn exec_operation_diagnostic_warns_for_a_broken_metadata_envelope() {
+    for diagnostic in [
+        format!("{}not json", guest_contracts::oom_evidence::EVIDENCE_PREFIX),
+        format!(
+            "{}{}",
+            guest_contracts::oom_evidence::EVIDENCE_PREFIX,
+            "x".repeat(guest_contracts::oom_evidence::MAX_EVIDENCE_BYTES + 1)
+        ),
+    ] {
+        let result = guest_control_proto::DecodedExecResult {
+            diagnostic: diagnostic.as_str(),
+            ..clean_terminal_result()
+        };
+        let events = capture_terminal_log_events_with_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            &result,
+            false,
+            false,
+        );
+
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::WARN);
+        assert_terminal_log_field(&events[0], "terminal_reason", "notable");
+        assert_terminal_log_field(&events[0], "oom_evidence_malformed", "true");
+        assert_terminal_log_field(&events[0], "oom_evidence", "false");
+        // A broken envelope is never promoted into a user-facing diagnostic.
+        assert_terminal_log_field(&events[0], "diagnostic_present", "false");
+    }
+}
+
+#[test]
+fn exec_terminal_log_severity_keeps_expected_host_cancel_with_capture_candidate() {
+    let context = ExecTerminalLogContext {
+        host_cancel_requested: true,
+        ..clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::Cancelled,
+        )
+    };
+
+    // Bounded metadata rides the diagnostic transport; it must not turn a
+    // host-requested cancellation into an actionable warning.
+    assert_eq!(
+        exec_terminal_log_severity(context),
+        Some(ExecTerminalLogSeverity::Info)
+    );
+}
+
+#[test]
+fn exec_terminal_log_severity_keeps_expected_timeout_with_capture_candidate() {
+    let context = ExecTerminalLogContext {
+        timeout_is_expected: true,
+        ..clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::TimedOut,
+        )
+    };
+
+    assert_eq!(
+        exec_terminal_log_severity(context),
+        Some(ExecTerminalLogSeverity::Info)
+    );
+}
+
+#[test]
+fn exec_terminal_log_severity_ignores_a_capture_candidate_on_an_ordinary_exit() {
+    for (lifecycle, slow, expected) in [
+        (ExecTerminalLogLifecycle::Supervised, false, None),
+        (ExecTerminalLogLifecycle::OneShot, false, None),
+        (
+            ExecTerminalLogLifecycle::Supervised,
+            true,
+            Some(ExecTerminalLogSeverity::Info),
+        ),
+        (
+            ExecTerminalLogLifecycle::OneShot,
+            true,
+            Some(ExecTerminalLogSeverity::Warn),
+        ),
+    ] {
+        for exit_code in [0, 1, 124] {
+            let context =
+                clean_terminal_log_context(lifecycle, slow, ExecTermination::Exited { exit_code });
+
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                expected,
+                "candidate metadata must classify exactly like no metadata; \
+                 lifecycle={lifecycle:?} slow={slow} exit_code={exit_code}"
+            );
+        }
+    }
+}
+
+#[test]
+fn exec_terminal_log_decision_reports_proven_oom_on_an_ordinary_exit() {
+    for exit_code in [0, 1] {
+        let context = ExecTerminalLogContext {
+            evidence_has_proof: true,
+            ..clean_terminal_log_context(
+                ExecTerminalLogLifecycle::Supervised,
+                false,
+                ExecTermination::Exited { exit_code },
+            )
+        };
+        let decision = exec_terminal_log_decision(context).unwrap();
+
+        assert_eq!(decision.severity, ExecTerminalLogSeverity::Warn);
+        assert_eq!(decision.reason, ExecTerminalLogReason::OomEvidence);
+    }
+}
+
+#[test]
+fn exec_terminal_log_decision_prefers_a_real_failure_over_proven_oom() {
+    let context = ExecTerminalLogContext {
+        evidence_has_proof: true,
+        actionable_diagnostic: true,
+        ..clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::WaitFailed,
+        )
+    };
+    let decision = exec_terminal_log_decision(context).unwrap();
+
+    assert_eq!(decision.severity, ExecTerminalLogSeverity::Warn);
+    assert_eq!(decision.reason, ExecTerminalLogReason::Notable);
 }
 
 #[test]

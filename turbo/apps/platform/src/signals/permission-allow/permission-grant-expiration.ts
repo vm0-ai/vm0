@@ -5,7 +5,6 @@ import { now } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
-const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 export const DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN: UserPermissionGrantExpiresIn =
@@ -63,15 +62,17 @@ export function permissionGrantExpiryText(
       return $.authorization.permission.expiration.expired;
     });
   }
-  if (remainingMs >= DAY_MS) {
+  // Round before choosing a unit so tiny clock differences keep the same label.
+  const hourCount = Math.round(remainingMs / HOUR_MS);
+  if (hourCount > 24) {
     return i18n.t(
       ($) => {
         return $.authorization.permission.expiration.inDays;
       },
-      { count: Math.ceil(remainingMs / DAY_MS) },
+      { count: Math.round(remainingMs / DAY_MS) },
     );
   }
-  if (remainingMs < HOUR_MS - MINUTE_MS) {
+  if (hourCount < 1) {
     return i18n.t(($) => {
       return $.authorization.permission.expiration.lessThanHour;
     });
@@ -80,7 +81,7 @@ export function permissionGrantExpiryText(
     ($) => {
       return $.authorization.permission.expiration.inHours;
     },
-    { count: Math.ceil(remainingMs / HOUR_MS) },
+    { count: hourCount },
   );
 }
 

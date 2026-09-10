@@ -14,6 +14,43 @@ function respondWith(
   };
 }
 
+interface ChunkedResponseOptions {
+  readonly errorAfterChunks?: unknown;
+  readonly headers?: Record<string, string>;
+  readonly onCancel?: (reason: unknown) => void;
+}
+
+function respondWithChunks(
+  status: number,
+  chunks: readonly Uint8Array[],
+  options: ChunkedResponseOptions = {},
+): NonNullable<Parameters<typeof preserveProviderErrorStatus>[0]> {
+  return () => {
+    let nextChunk = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks[nextChunk];
+        if (chunk !== undefined) {
+          nextChunk += 1;
+          controller.enqueue(chunk);
+          return;
+        }
+        if (options.errorAfterChunks !== undefined) {
+          controller.error(options.errorAfterChunks);
+          return;
+        }
+        controller.close();
+      },
+      cancel(reason) {
+        options.onCancel?.(reason);
+      },
+    });
+    return Promise.resolve(
+      new Response(stream, { status, headers: options.headers }),
+    );
+  };
+}
+
 async function normalizedBody(
   status: number,
   body: string | null,
@@ -103,12 +140,123 @@ describe("Pi provider error body boundary", () => {
     },
   );
 
-  it("passes an oversized body through without normalization", async () => {
-    const body = "x".repeat(70 * 1024);
+  it("passes a multi-chunk oversized opaque body through without cancellation", async () => {
+    const body = "gateway unavailable ".repeat(5_000);
+    const bytes = new TextEncoder().encode(body);
+    let upstreamCancelled = false;
+    const response = await preserveProviderErrorStatus(
+      respondWithChunks(
+        503,
+        [
+          bytes.slice(0, 40_960),
+          bytes.slice(40_960, 69_632),
+          bytes.slice(69_632),
+        ],
+        {
+          headers: { "content-length": String(bytes.byteLength) },
+          onCancel() {
+            upstreamCancelled = true;
+          },
+        },
+      ),
+    )(REQUEST_URL);
 
-    const { text } = await normalizedBody(503, body);
+    expect(await response.text()).toBe(body);
+    expect(response.headers.get("content-length")).toBe(
+      String(bytes.byteLength),
+    );
+    expect(upstreamCancelled).toBe(false);
+  });
 
-    expect(text).toBe(body);
+  it("preserves a multi-chunk oversized provider envelope without cancellation", async () => {
+    const original = JSON.stringify({
+      padding: "x".repeat(70 * 1024),
+      error: {
+        code: "usage_limit_reached",
+        message: "You have hit your ChatGPT usage limit.",
+      },
+    });
+    const bytes = new TextEncoder().encode(original);
+    let upstreamCancelled = false;
+    const response = await preserveProviderErrorStatus(
+      respondWithChunks(
+        429,
+        [
+          bytes.slice(0, 40_960),
+          bytes.slice(40_960, 69_632),
+          bytes.slice(69_632),
+        ],
+        {
+          headers: {
+            "content-length": String(bytes.byteLength),
+            "content-type": "application/json",
+          },
+          onCancel() {
+            upstreamCancelled = true;
+          },
+        },
+      ),
+    )(REQUEST_URL);
+    const text = await response.text();
+
+    expect(bytes.byteLength).toBe(71_784);
+    expect(text).toBe(original);
+    expect(JSON.parse(text)).toStrictEqual({
+      padding: "x".repeat(70 * 1024),
+      error: {
+        code: "usage_limit_reached",
+        message: "You have hit your ChatGPT usage limit.",
+      },
+    });
+    expect(response.headers.get("content-length")).toBe(
+      String(bytes.byteLength),
+    );
+    expect(upstreamCancelled).toBe(false);
+  });
+
+  it("propagates an upstream error after an oversized prefix", async () => {
+    const error = new Error("provider stream failed");
+    const bytes = new TextEncoder().encode("x".repeat(70 * 1024));
+    const response = await preserveProviderErrorStatus(
+      respondWithChunks(
+        503,
+        [bytes.slice(0, 40_960), bytes.slice(40_960, 69_632)],
+        { errorAfterChunks: error },
+      ),
+    )(REQUEST_URL);
+
+    await expect(response.text()).rejects.toThrow("provider stream failed");
+  });
+
+  it("cancels upstream when a consumer abandons an oversized pass-through", async () => {
+    const bytes = new TextEncoder().encode("x".repeat(70 * 1024));
+    const reason = new Error("consumer stopped");
+    let cancellationReason: unknown;
+    const response = await preserveProviderErrorStatus(
+      respondWithChunks(
+        503,
+        [
+          bytes.slice(0, 40_960),
+          bytes.slice(40_960, 69_632),
+          bytes.slice(69_632),
+        ],
+        {
+          onCancel(value) {
+            cancellationReason = value;
+          },
+        },
+      ),
+    )(REQUEST_URL);
+    const body = response.body;
+    if (body === null) {
+      throw new Error("expected oversized response body");
+    }
+    const reader = body.getReader();
+    expect((await reader.read()).value).toStrictEqual(bytes.slice(0, 40_960));
+
+    await reader.cancel(reason);
+
+    expect(cancellationReason).toBe(reason);
   });
 
   it.each([200, 201])(

@@ -57,6 +57,7 @@ interface PermissionEditorOptions {
 
 function agentFixture(): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     displayName: "Research Bot",

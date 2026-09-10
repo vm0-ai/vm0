@@ -5,6 +5,7 @@ import {
   type RunnerSshResolveResponse,
   type RunnerSshPinRequest,
   type RunnerSshPinResponse,
+  type RunnerSshObservationRequest,
 } from "@okouai/api-contracts/contracts/runner-ssh";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -13,8 +14,9 @@ import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
+import { sshConnectionObservations } from "@okouai/db/schema/ssh-connection-observation";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, lt, ne, or, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -230,4 +232,90 @@ export async function pinRunnerSsh(
   }
   signal.throwIfAborted();
   return result;
+}
+
+export async function recordRunnerSshObservation(
+  db: Db,
+  input: RunnerSshObservationRequest & { readonly runId: string },
+  signal: AbortSignal,
+): Promise<{ readonly outcome: "recorded" | "ignored" | "unavailable" }> {
+  const initial = await currentConnection(db, input, false, signal);
+  if (!initial) {
+    return unavailable;
+  }
+  const observedAt = new Date(input.observedAt);
+  // Fleet clocks need not be exact, but cannot poison future observation ordering.
+  if (observedAt.getTime() > nowDate().getTime() + 60_000) {
+    return { outcome: "ignored" };
+  }
+  const result = await db.transaction<{
+    readonly outcome: "recorded" | "ignored" | "unavailable";
+    readonly notify: boolean;
+  }>(async (tx) => {
+    const [locked] = await tx
+      .select({ id: sshConnections.id })
+      .from(sshConnections)
+      .where(
+        and(
+          eq(sshConnections.id, initial.id),
+          eq(sshConnections.orgId, initial.orgId),
+          eq(sshConnections.userId, initial.userId),
+        ),
+      )
+      .for("update");
+    signal.throwIfAborted();
+    if (!locked) {
+      return { ...unavailable, notify: false };
+    }
+    const row = await currentConnection(tx, input, true, signal);
+    if (!row) {
+      return { ...unavailable, notify: false };
+    }
+    if (row.generation !== input.expectedGeneration) {
+      return { outcome: "ignored", notify: false };
+    }
+    const [previous] = await tx
+      .select({ failureReason: sshConnectionObservations.failureReason })
+      .from(sshConnectionObservations)
+      .where(
+        and(
+          eq(sshConnectionObservations.connectionId, row.id),
+          eq(sshConnectionObservations.generation, row.generation),
+        ),
+      );
+    const values = {
+      connectionId: row.id,
+      generation: row.generation,
+      observedAt,
+      failureReason: input.failureReason,
+    };
+    const [written] = await tx
+      .insert(sshConnectionObservations)
+      .values(values)
+      .onConflictDoUpdate({
+        target: sshConnectionObservations.connectionId,
+        set: values,
+        setWhere: or(
+          ne(sshConnectionObservations.generation, row.generation),
+          lt(sshConnectionObservations.observedAt, observedAt),
+        ),
+      })
+      .returning({ connectionId: sshConnectionObservations.connectionId });
+    signal.throwIfAborted();
+    return {
+      outcome: written ? "recorded" : "ignored",
+      notify:
+        Boolean(written) &&
+        (input.failureReason !== null ||
+          (previous !== undefined && previous.failureReason !== null)),
+    };
+  });
+  if (result.notify) {
+    await publishSshClientInvalidation({
+      orgId: initial.orgId,
+      userId: initial.userId,
+    });
+  }
+  signal.throwIfAborted();
+  return { outcome: result.outcome };
 }

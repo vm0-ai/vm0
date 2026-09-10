@@ -729,6 +729,33 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "calendly",
+    label: "Calendly",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "calendly",
+        prefix: "CALENDLY",
+        tokenEnvironmentNames: ["CALENDLY_TOKEN"],
+        scopes: [
+          "users:read",
+          "scheduled_events:read",
+          "scheduled_events:write",
+        ],
+      }),
+      manualMethod({
+        fields: [
+          manualField({
+            privateName: "CALENDLY_TOKEN",
+            publicId: "accessToken",
+            label: "Personal Access Token",
+            storage: "secret",
+          }),
+        ],
+        envBindings: { CALENDLY_TOKEN: secret("CALENDLY_TOKEN") },
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "canva",
     label: "Canva",
     authMethods: [

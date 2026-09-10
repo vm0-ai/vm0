@@ -1,4 +1,5 @@
 import type { AgentVisibility } from "@okouai/api-contracts/contracts/agents";
+import { agentIdentityUpdateError } from "@okouai/core/agent-protection";
 import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
@@ -49,27 +50,21 @@ async function applyAgentUpdate(
   const resolvedAvatarUrl = hasAvatar ? resolveAvatarUrl(options) : undefined;
 
   const current = await getAgent(agentId);
-
-  const avatarUrl = hasAvatar
-    ? resolvedAvatarUrl
-    : (current.avatarUrl ?? undefined);
-
-  await updateAgent(agentId, {
-    displayName:
-      options.displayName !== undefined
-        ? options.displayName
-        : (current.displayName ?? undefined),
-    description:
-      options.description !== undefined
-        ? options.description
-        : (current.description ?? undefined),
-    sound:
-      options.sound !== undefined
-        ? options.sound
-        : (current.sound ?? undefined),
+  const update = {
+    displayName: options.displayName,
+    description: options.description,
+    sound: options.sound,
     visibility: options.visibility,
-    avatarUrl,
-  });
+    avatarUrl: resolvedAvatarUrl,
+  };
+  const identityError = agentIdentityUpdateError(
+    current.isDefaultAgent,
+    update,
+  );
+  if (identityError) {
+    throw new Error(identityError.message);
+  }
+  await updateAgent(agentId, update);
 }
 
 export const editCommand = new Command()
@@ -139,6 +134,7 @@ Examples:
   Update yourself:         okou agent edit $OKOU_AGENT_ID --description "new role"
 
 Notes:
+  - The workspace default Okou agent's name, avatar, and Public visibility are fixed
   - At least one option is required
   - Unspecified fields are preserved (not cleared)
   - To attach workflows to agents, use: okou workflow attach --help`,

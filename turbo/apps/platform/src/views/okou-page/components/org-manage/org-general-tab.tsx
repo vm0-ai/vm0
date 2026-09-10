@@ -35,6 +35,7 @@ import {
   setLogoLoaded$,
   deleteConfirm$,
   setDeleteConfirm$,
+  resetDeleteConfirm$,
   loadOrgLogo$,
   saveOrgProfile$,
   leaveOrg$,
@@ -44,7 +45,7 @@ import {
 import { readImageDimensions } from "./read-image-dimensions.ts";
 
 const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
 } as const;
 
 const MIN_LOGO_DIMENSION = 100;
@@ -318,6 +319,7 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
 
   const deleteConfirm = useGet(deleteConfirm$);
   const setDeleteConfirm = useSet(setDeleteConfirm$);
+  const resetDeleteConfirm = useSet(resetDeleteConfirm$);
 
   const handleLeave = async () => {
     if (leaving || !modalSignal) {
@@ -439,7 +441,12 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
                   })}
                 </p>
               </div>
-              <Dialog>
+              <Dialog
+                onOpenChange={() => {
+                  // Opening also resets after an org refresh unmounts the dialog.
+                  resetDeleteConfirm();
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button
                     variant="destructive"

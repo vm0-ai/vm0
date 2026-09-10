@@ -12,6 +12,7 @@ use crate::failure_patterns;
 use crate::paths;
 use crate::session_history;
 use crate::session_metadata::CapturedSessionMetadata;
+use crate::upstream_error_text::upstream_non_api_response_status;
 use guest_contracts::diagnostics::{
     AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
     EventDeliveryDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
@@ -303,6 +304,12 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::UnsupportedModel);
     }
+    if matches!(framework, AgentFramework::Pi)
+        && source == FailureDetailSource::PiResult
+        && let Some(reason) = pi_upstream_non_api_response_reason(failure_message)
+    {
+        return Some(reason);
+    }
 
     let normalized = failure_message.to_ascii_lowercase();
     if is_insufficient_credits_error(&normalized) {
@@ -435,6 +442,20 @@ fn pi_provider_http_failure_reason(
                 _ => None,
             }
         })
+}
+
+/// Classify a Pi model error whose upstream answered with a document.
+///
+/// Only a status the Pi runtime actually observed is trusted. An unknown status
+/// stays unclassified so the failure keeps its error-level report instead of
+/// being presented as an expected upstream condition.
+fn pi_upstream_non_api_response_reason(failure_message: &str) -> Option<FailureReason> {
+    match upstream_non_api_response_status(failure_message)? {
+        429 => Some(FailureReason::ProviderRateLimited),
+        529 => Some(FailureReason::ProviderOverloaded),
+        500..=599 => Some(FailureReason::ProviderServerError),
+        _ => None,
+    }
 }
 
 fn is_codex_safety_policy_refusal(source: FailureDetailSource, failure_message: &str) -> bool {
@@ -717,7 +738,23 @@ fn cli_failure_message(
         };
     }
 
-    if stderr_lines.is_empty() {
+    // Structured agent telemetry shares stderr with real failure output. It
+    // stays in the guest log below, but must never become the user-visible
+    // reason a run failed.
+    let mut reported_lines = Vec::with_capacity(stderr_lines.len());
+    for line in stderr_lines {
+        if is_structured_agent_diagnostic_line(line) {
+            log_info!(
+                LOG_TAG,
+                "CLI stderr diagnostic: {}",
+                truncate_cli_stderr_line(line)
+            );
+        } else {
+            reported_lines.push(line);
+        }
+    }
+
+    if reported_lines.is_empty() {
         return CliFailureMessage {
             message: format!("Agent exited with code {code}"),
             source: FailureDetailSource::FallbackExitCode,
@@ -726,11 +763,11 @@ fn cli_failure_message(
     }
 
     log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-    let omitted_lines = stderr_lines
+    let omitted_lines = reported_lines
         .len()
         .saturating_sub(MAX_LOGGED_CLI_STDERR_LINES);
     let mut message_lines = Vec::with_capacity(
-        stderr_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(omitted_lines > 0),
+        reported_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(omitted_lines > 0),
     );
     if omitted_lines > 0 {
         log_warn!(
@@ -742,7 +779,7 @@ fn cli_failure_message(
             "...[omitted {omitted_lines} earlier stderr line(s)]"
         ));
     }
-    for line in stderr_lines.iter().skip(omitted_lines) {
+    for line in reported_lines.into_iter().skip(omitted_lines) {
         let line = truncate_cli_stderr_line(line);
         log_warn!(LOG_TAG, "CLI stderr: {line}");
         message_lines.push(line.into_owned());
@@ -752,6 +789,23 @@ fn cli_failure_message(
         source: FailureDetailSource::Stderr,
         failure_reason: stdout_failure_reason,
     }
+}
+
+/// Structured agent telemetry envelopes that agent runtimes emit on stderr.
+///
+/// Only these exact `type` values are recognized. Any other JSON object, and
+/// any line that is not a JSON object, remains user-visible failure output.
+const STRUCTURED_AGENT_DIAGNOSTIC_TYPES: [&str; 2] =
+    ["pi_memory_recall_outcome", "pi_memory_tool_source_use"];
+
+fn is_structured_agent_diagnostic_line(line: &str) -> bool {
+    let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(line.trim()) else {
+        return false;
+    };
+    fields
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|value| STRUCTURED_AGENT_DIAGNOSTIC_TYPES.contains(&value))
 }
 
 fn is_generic_stdout_failure_diagnostic(source: FailureDetailSource, message: &str) -> bool {

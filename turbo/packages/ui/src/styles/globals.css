@@ -140,6 +140,23 @@
   --color-brand-text: hsl(var(--brand-text));
   --color-brand-text-hover: hsl(var(--brand-text-hover));
 
+  /* ===================================
+   * Border width
+   *
+   * One hairline for the whole product. Tailwind's bare `border`, `border-t`,
+   * `divide-y`, and friends all read this key, so components ask for "a border"
+   * and the system decides how thick it is. Components must not hand-write a
+   * width; `border-0` and the deliberate emphasis widths (`border-2`) remain
+   * the only exceptions.
+   *
+   * Sub-pixel is a declaration of intent as much as a measurement: Blink and
+   * Gecko round a non-zero border up to one device pixel, so this renders
+   * identically to 1px there, while WebKit can draw the true hairline on a
+   * high-density display. Layout is unaffected in every engine, because the
+   * used value is the rounded one.
+   * =================================== */
+  --default-border-width: 0.5px;
+
   /* Radius */
   --radius-xl: 14px;
   --radius-lg: var(--radius);
@@ -149,7 +166,7 @@
   /* Page surfaces: theme-neutral geometry, theme-aware fill and elevation. */
   --radius-surface: 1.25rem;
   --radius-surface-compact: 12px;
-  --border-width-surface: 0.7px;
+  --border-width-surface: var(--default-border-width);
   --shadow-surface: var(--surface-shadow);
   --ease-surface: ease;
 

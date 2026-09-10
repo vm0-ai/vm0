@@ -8,6 +8,43 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.580.0](https://github.com/vm0-ai/vm0/compare/api-v1.579.3...api-v1.580.0) (2026-09-10)
+
+
+### Features
+
+* **api:** answer a named category with the whole category ([#33112](https://github.com/vm0-ai/vm0/issues/33112)) ([04d3c7e](https://github.com/vm0-ai/vm0/commit/04d3c7e5b600b195e272e80b2bcef2b66ffc7c26))
+* **api:** hand the intro-video skill its entry form and name it intro video everywhere ([#33119](https://github.com/vm0-ai/vm0/issues/33119)) ([850ec24](https://github.com/vm0-ai/vm0/commit/850ec247513051216bc44da4b246fd047fcb0ceb))
+
+
+### Bug Fixes
+
+* **api:** avoid unrelated archives for current chat writes ([#33175](https://github.com/vm0-ai/vm0/issues/33175)) ([077a9a6](https://github.com/vm0-ai/vm0/commit/077a9a644986e13bed4750796f91e55c4a876aad))
+* **api:** classify transient provider failures from completion envelopes ([#33115](https://github.com/vm0-ai/vm0/issues/33115)) ([04a0686](https://github.com/vm0-ai/vm0/commit/04a0686614dc4e96d9e8276a7181061c9e98fdc4))
+* **api:** reconcile intro videos when heygen session lookup fails ([#32988](https://github.com/vm0-ai/vm0/issues/32988)) ([00eed51](https://github.com/vm0-ai/vm0/commit/00eed51b3f7cc78fbb10fd52172eee3385cc17d6))
+* **api:** record expected chat event snapshot timeouts without warn noise ([#33114](https://github.com/vm0-ai/vm0/issues/33114)) ([c6d8cee](https://github.com/vm0-ai/vm0/commit/c6d8cee88c8a8aa1a729ea8074310c3dbafd5a2e))
+* **api:** retain safe causes for failed activity snapshot writes ([#33132](https://github.com/vm0-ai/vm0/issues/33132)) ([8bf5810](https://github.com/vm0-ai/vm0/commit/8bf5810b283571936daa288f349872409a6f1a0a))
+* **api:** silence expected oauth refresh failures without stopping retries ([#33110](https://github.com/vm0-ai/vm0/issues/33110)) ([5c14cdc](https://github.com/vm0-ai/vm0/commit/5c14cdc5664aebebcc6e2cf4a951e3ae5609bae3))
+* **guest-agent:** classify upstream content policy rejections ([#33180](https://github.com/vm0-ai/vm0/issues/33180)) ([f61db10](https://github.com/vm0-ai/vm0/commit/f61db105d0965c93bffb84f061d1027db8d79e36))
+* recognize invalid claude oauth tokens ([#33113](https://github.com/vm0-ai/vm0/issues/33113)) ([4803ac0](https://github.com/vm0-ai/vm0/commit/4803ac067beffb4501a0b15160bd39a87430adf8))
+
+
+### Refactoring
+
+* **ads:** normalize okou attribution with rollout compatibility ([#33149](https://github.com/vm0-ai/vm0/issues/33149)) ([a222108](https://github.com/vm0-ai/vm0/commit/a222108b4eccfdab77fa3f6f3c08fa6ea2bdfac7))
+* remove dropbox connector feature switch ([#33130](https://github.com/vm0-ai/vm0/issues/33130)) ([bd0f81c](https://github.com/vm0-ai/vm0/commit/bd0f81c3c9baddabf67a28f01c57d6a16b1f8f63))
+* retire goal backend authority and application orm consumers ([#33105](https://github.com/vm0-ai/vm0/issues/33105)) ([2c23176](https://github.com/vm0-ai/vm0/commit/2c231766e383b651867893852cfb47dcc78af0bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.425.0
+    * @okouai/core bumped to 8.649.0
+    * @okouai/db bumped to 1.250.5
+    * @okouai/pi-agent-runtime bumped to 1.24.12
+
 ## [1.579.3](https://github.com/vm0-ai/vm0/compare/api-v1.579.2...api-v1.579.3) (2026-09-09)
 
 

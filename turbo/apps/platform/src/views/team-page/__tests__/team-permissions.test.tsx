@@ -339,6 +339,55 @@ test("Closing connector permissions discards unapplied changes", async () => {
   expect(exactButton("Apply")).toBeDisabled();
 });
 
+test.each([
+  { durationMs: 60 * 60 * 1000, durationLabel: "1 hour" },
+  { durationMs: 24 * 60 * 60 * 1000, durationLabel: "24 hours" },
+  { durationMs: 7 * 24 * 60 * 60 * 1000, durationLabel: "7 days" },
+])(
+  "Saved $durationLabel permissions share one countdown in settings",
+  async ({ durationMs, durationLabel }) => {
+    const connector = catalogConnectorFixture("slack", "Slack", {
+      permissionCount: 2,
+    });
+    const metadata = permissionMetadataFixture(
+      "slack",
+      "Slack",
+      ["records|read", "records|write"],
+      {
+        categories: { "records|read": "Records", "records|write": "Records" },
+        displayOrder: ["Records"],
+        permissionDefault: "deny",
+      },
+    );
+    const grantedAtMs = Date.parse(FIXED_NOW_ISO) + 1000;
+    const expiresAt = new Date(grantedAtMs + durationMs).toISOString();
+    await startPermissionPage(connector, metadata, {
+      initialGrants: [
+        "records|read",
+        "records|write",
+        UNKNOWN_PERMISSION_GRANT,
+      ].map((permission, index) => {
+        const updatedAt = new Date(
+          grantedAtMs -
+            (index === 0 ? 7 * 24 * 60 * 60 * 1000 - durationMs : 0),
+        ).toISOString();
+        return {
+          ...permissionGrantFixture("slack", permission, "allow", expiresAt),
+          createdAt: updatedAt,
+          updatedAt,
+        };
+      }),
+    });
+
+    await openPermissions("Slack");
+    expect(categoryRow("Records")).toHaveTextContent(durationLabel);
+    click(exactButton("Records (2)"));
+    expect(permissionRow("records|read")).toHaveTextContent(durationLabel);
+    expect(permissionRow("records|write")).toHaveTextContent(durationLabel);
+    expect(otherEndpointsRow()).toHaveTextContent(durationLabel);
+  },
+);
+
 test("An expired allow grant falls back to the connector's current default", async () => {
   const connector = catalogConnectorFixture("slack", "Slack");
   const metadata = permissionMetadataFixture(
@@ -503,7 +552,7 @@ test("A user can change one connector permission from temporary to permanent", a
 
   await openPermissions("Axiom");
   const annotation = permissionRow("annotations|create");
-  expect(annotation).toHaveTextContent("< 1 hour");
+  expect(annotation).toHaveTextContent("1 hour");
   chooseDuration("annotations|create", "Allow always");
   click(exactButton("Apply"));
   await waitFor(() => {

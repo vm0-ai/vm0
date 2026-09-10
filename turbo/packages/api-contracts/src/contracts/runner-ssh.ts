@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { runnerHeartbeatGenerationSchema } from "./runner-primitives";
+import { sshConnectionFailureReasonSchema } from "./ssh-connection-observations";
 import {
   SSH_HOST_MAX_LENGTH,
   SSH_PASSPHRASE_MAX_LENGTH,
@@ -90,6 +91,29 @@ const pinResponseSchema = z.discriminatedUnion("outcome", [
 ]);
 
 export const runnerSshContract = c.router({
+  observe: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/ssh/observations",
+    pathParams: z.object({ runId: z.uuid() }).strict(),
+    headers: authHeadersSchema,
+    body: resolveRequestSchema
+      .extend({
+        expectedGeneration: generationSchema,
+        observedAt: z.string().datetime(),
+        failureReason: sshConnectionFailureReasonSchema.nullable(),
+      })
+      .strict(),
+    responses: {
+      200: z
+        .object({ outcome: z.enum(["recorded", "ignored", "unavailable"]) })
+        .strict(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Record bounded SSH connection evidence from the winning Runner",
+  },
   resolve: {
     method: "POST",
     path: "/api/runners/runs/:runId/ssh/resolve",
@@ -127,3 +151,6 @@ export type RunnerSshResolveRequest = z.infer<typeof resolveRequestSchema>;
 export type RunnerSshResolveResponse = z.infer<typeof resolveResponseSchema>;
 export type RunnerSshPinRequest = z.infer<typeof pinRequestSchema>;
 export type RunnerSshPinResponse = z.infer<typeof pinResponseSchema>;
+export type RunnerSshObservationRequest = z.infer<
+  typeof runnerSshContract.observe.body
+>;

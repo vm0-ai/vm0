@@ -15,6 +15,7 @@ const CURRENT_ORG_AGENT_ID = "c0000000-0000-4000-a000-000000000005";
 
 function mockCurrentOrganizationAgents() {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId: CURRENT_ORG_AGENT_ID,
     ownerId: "test-user-123",
     displayName: "Current organization agent",

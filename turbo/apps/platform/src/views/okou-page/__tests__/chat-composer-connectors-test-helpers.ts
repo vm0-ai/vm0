@@ -230,6 +230,27 @@ function connectorResponse(
   };
 }
 
+/** What the API returns per category when no category is asked for by name. */
+const DISCOVERY_PER_CATEGORY = 12;
+
+/**
+ * Discovery keeps every connected connector and slices the rest per category,
+ * so a fixture of connected connectors is returned whole.
+ */
+function browseSlice<
+  T extends { readonly category: string; readonly connection: unknown },
+>(connectors: readonly T[]): T[] {
+  const shownPerCategory = new Map<string, number>();
+  return connectors.filter((connector) => {
+    if (connector.connection) {
+      return true;
+    }
+    const shown = shownPerCategory.get(connector.category) ?? 0;
+    shownPerCategory.set(connector.category, shown + 1);
+    return shown < DISCOVERY_PER_CATEGORY;
+  });
+}
+
 export function installComposerConnectorFixture(
   options: ConnectorFixtureOptions = {},
 ): ComposerConnectorFixture {
@@ -315,6 +336,15 @@ export function installComposerConnectorFixture(
             return options.featuredConnectorSlugs?.includes(connector.slug);
           })
         : catalog;
+      // Production answers a named category with the whole category, and a
+      // keyword-free browse with every connected connector plus a slice of
+      // each category. The fixture does the same, or a category view is
+      // tested against a response the API never returns.
+      const browsed = query.category
+        ? featured.filter((connector) => {
+            return connector.category === query.category;
+          })
+        : browseSlice(featured);
       const connectors = keyword
         ? catalog.filter((connector) => {
             return [connector.slug, connector.label, ...connector.tags].some(
@@ -323,7 +353,7 @@ export function installComposerConnectorFixture(
               },
             );
           })
-        : featured;
+        : browsed;
       return respond(200, {
         connectors,
         totalConnectorCount: catalog.length,

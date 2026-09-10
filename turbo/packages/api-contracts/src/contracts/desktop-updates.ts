@@ -66,6 +66,14 @@ const squirrelMacReleasesSchema = z.object({
 
 export type SquirrelMacReleases = z.infer<typeof squirrelMacReleasesSchema>;
 
+/**
+ * Every route that resolves a release reads the same upstream release-asset
+ * manifest, so they all share the same `503`: the manifest host was
+ * unreachable, the API retried within its bound, and no manifest recent enough
+ * to serve was cached. It is deliberately distinct from `404` ("this feed
+ * resolves to no release") and from `500` ("the manifest is missing or
+ * invalid"), which stay loud because they need a human.
+ */
 export const desktopUpdatesContract = c.router({
   migrationPolicy: {
     method: "GET",
@@ -86,6 +94,7 @@ export const desktopUpdatesContract = c.router({
     responses: {
       302: c.noBody(),
       404: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Redirect to the current desktop release page",
   },
@@ -100,6 +109,7 @@ export const desktopUpdatesContract = c.router({
     responses: {
       302: c.noBody(),
       404: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Redirect to the current desktop DMG download",
   },
@@ -115,6 +125,7 @@ export const desktopUpdatesContract = c.router({
     responses: {
       302: c.noBody(),
       404: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Redirect to an identity-specific desktop release page",
   },
@@ -130,6 +141,7 @@ export const desktopUpdatesContract = c.router({
     responses: {
       302: c.noBody(),
       404: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Redirect to an identity-specific desktop DMG download",
   },
@@ -146,6 +158,7 @@ export const desktopUpdatesContract = c.router({
       200: squirrelMacReleasesSchema,
       400: apiErrorSchema,
       404: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Get an identity-specific desktop auto-update feed",
   },

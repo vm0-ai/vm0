@@ -13,7 +13,7 @@ export const setupDirectedAuthorizePage$ = command(
     const connectorSlug =
       typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
-    set(updatePage$, createElement(DirectedAuthorizePage), "minimal");
+    set(updatePage$, createElement(DirectedAuthorizePage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(

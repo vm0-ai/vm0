@@ -73,6 +73,34 @@ memory usage; the profile budget is not a measurement of resident memory.
 
 ## Idle Workspace Reclamation Concurrency
 
+### One-shot CI idle reclamation
+
+`runner service prune-idle --name <service-suffix> --expected-runner-id <uuid>
+--expected-heartbeat-generation <generation> --timeout-secs 120` reclaims only
+the exact idle inventory owned by that Runner when the request is accepted.
+Blank sandboxes, active/reserved sandboxes, admission and later parking remain
+unchanged. This is not service drain, a no-idle mode, or host-wide GC.
+
+CI captures the Runner UUID and heartbeat generation at deployment readiness.
+`cli-e2e-03-runner-cleanup` waits for BATS and shared Playwright consumers, then
+uses that receipt even when failed-test accounts are retained. The command
+resolves the service's exact config/live process and uses a private,
+generation-scoped local socket. Missing services, old binaries without the
+command, generation changes and control failures fail visibly without signals
+or a fallback to another process.
+
+The command reports selected, completed and uncertain counts only after the
+selected reclamation attempts finish; uncertain destruction fails the command.
+Transport/status failures also fail. A client timeout or disconnect does not
+cancel admitted destruction. Normal Runner shutdown waits for these tasks.
+Workspace promotion and workspace/session-history disk caches are preserved;
+the existing reclamation limits below still apply. Later runs may lose exact
+hot reuse but retain blank/cache paths. Blank replenishment may use newly freed
+capacity under its unchanged policy, so reclaimed budget is not an RSS savings
+measurement.
+
+### Reclamation admission
+
 Workspace promotion uses two independent runner-process-local admission gates,
 each sized as `(host_cpus / 2).clamp(1, 4)`. Cache clones share the gates.
 The existing sidecar export gate covers guest export execution only. Idle

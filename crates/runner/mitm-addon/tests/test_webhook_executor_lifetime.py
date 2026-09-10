@@ -15,8 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
+import thread_pool
 import usage
-import usage.executor
 from tests.pending_helpers import assert_current_pending
 
 
@@ -34,7 +34,7 @@ def observed_pools() -> Iterator[list[ThreadPoolExecutor]]:
             pools.append(self)
 
     # Observe the real standard-library executor, without changing submission.
-    with patch.object(usage.executor, "ThreadPoolExecutor", ObservedPool):
+    with patch.object(thread_pool, "ThreadPoolExecutor", ObservedPool):
         yield pools
 
 
