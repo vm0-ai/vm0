@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockNow } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
@@ -798,7 +798,7 @@ describe("cron snapshot chat events", () => {
     // forward by a known offset must be reflected in the reported lag. This
     // fails if the counter stops measuring the selected candidates.
     const lagMs = 60_000;
-    mockNow(new Date(Date.now() + lagMs));
+    mockNow(new Date(now() + lagMs));
     const pending = await runSnapshotCron([threadId]);
     expect(pending).toMatchObject({
       success: true,
