@@ -558,25 +558,27 @@ async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pi
     stream.write_all(&ready).await.unwrap();
 }
 
-fn monitored_cat_process() -> tokio::process::Child {
+fn monitored_cat_process() -> process_launch::asynchronous::Child {
     tokio::process::Command::new("cat")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap()
+        .into()
 }
 
-fn monitored_cat_process_without_log_pipes() -> tokio::process::Child {
+fn monitored_cat_process_without_log_pipes() -> process_launch::asynchronous::Child {
     tokio::process::Command::new("cat")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap()
+        .into()
 }
 
-fn stdout_stderr_writing_process() -> tokio::process::Child {
+fn stdout_stderr_writing_process() -> process_launch::asynchronous::Child {
     tokio::process::Command::new("bash")
         .args(["-c", "printf 'stdout-line\\n'; printf 'stderr-line\\n' >&2"])
         .stdin(std::process::Stdio::null())
@@ -584,9 +586,10 @@ fn stdout_stderr_writing_process() -> tokio::process::Child {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap()
+        .into()
 }
 
-fn stdout_closing_process() -> tokio::process::Child {
+fn stdout_closing_process() -> process_launch::asynchronous::Child {
     tokio::process::Command::new("bash")
         .args(["-c", "exec 1>&-; sleep 60"])
         .process_group(0)
@@ -595,9 +598,12 @@ fn stdout_closing_process() -> tokio::process::Child {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap()
+        .into()
 }
 
-fn parent_exits_with_child_process(pid_file: &std::path::Path) -> tokio::process::Child {
+fn parent_exits_with_child_process(
+    pid_file: &std::path::Path,
+) -> process_launch::asynchronous::Child {
     tokio::process::Command::new("bash")
         .args([
             "-c",
@@ -611,6 +617,7 @@ fn parent_exits_with_child_process(pid_file: &std::path::Path) -> tokio::process
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap()
+        .into()
 }
 
 struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
@@ -4344,7 +4351,7 @@ async fn spawn_and_wait_for_api_adopts_process_and_secures_socket() {
     let mut api = MockFirecrackerApi::repeating(MockResponse::ok());
     std::fs::set_permissions(api.socket_path(), std::fs::Permissions::from_mode(0o666)).unwrap();
 
-    let mut command = tokio::process::Command::new("bash");
+    let mut command = process_launch::Command::new("bash");
     command.args(["-c", "sleep 60"]);
 
     let _client = sandbox
@@ -4386,7 +4393,7 @@ async fn spawn_and_wait_for_api_reports_process_exit_before_readiness() {
     let mut sandbox = test_sandbox_with_state(SandboxState::Created);
     sandbox.sandbox_paths = SandboxPaths::new(workspace.path().to_path_buf());
 
-    let mut command = tokio::process::Command::new("bash");
+    let mut command = process_launch::Command::new("bash");
     command.args(["-c", "exit 23"]);
 
     let result = tokio::time::timeout(
@@ -5152,7 +5159,7 @@ async fn stop_logs_unexpected_shutdown_response_and_kills_process() {
     let child_pid = child.id().unwrap();
     let process = monitor_process(
         &sandbox.id,
-        child,
+        child.into(),
         Arc::clone(&sandbox.state),
         Arc::clone(&sandbox.state_publish_lock),
         sandbox.state_tx.clone(),

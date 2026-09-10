@@ -13,7 +13,7 @@ use guest_control_proto::{
 };
 
 use crate::contained_command::{
-    CommandStdio, ContainedChild as Child, ContainedCommand as Command,
+    CommandStdio, ContainedChild as Child, ContainedCommand as Command, ContainedCommandExt,
 };
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;

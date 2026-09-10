@@ -46,7 +46,6 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
 
 use crate::contained_command::ContainedChild as Child;
-use crate::process::ChildProcess;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
