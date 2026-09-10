@@ -3,7 +3,7 @@ import {
   MEMORY_ARTIFACT_NAME,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";

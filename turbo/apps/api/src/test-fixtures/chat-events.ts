@@ -10,7 +10,7 @@ import type {
 } from "@okouai/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@okouai/db/jsonb-contracts/chat-teams-context";
 import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
@@ -1207,26 +1207,6 @@ export async function removeAcknowledgedCancellationLifecycleFixture(args: {
       throw new Error("Expected one cancelled lifecycle event");
     }
   });
-}
-
-/** Make the canonical chat callback fail validation before terminal processing. */
-export async function invalidateChatCallbackPayloadFixture(
-  runId: string,
-): Promise<void> {
-  const callbacks = await db()
-    .update(agentRunCallbacks)
-    .set({ payload: {} })
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, runId),
-        eq(agentRunCallbacks.internalKind, "chat"),
-        eq(agentRunCallbacks.status, "pending"),
-      ),
-    )
-    .returning({ id: agentRunCallbacks.id });
-  if (callbacks.length !== 1) {
-    throw new Error("Expected one pending canonical chat callback");
-  }
 }
 
 /** Reproduce a pending chat callback persisted before publicBrand existed. */
@@ -2783,11 +2763,37 @@ async function insertCanonicalSingleWrites(
     runId: randomUUID(),
     runGroupId: single.goalId,
   });
-  await insertChatEvent(tx, {
+  await appendHistoricalGoalMarker(tx, {
     id: single.goalOpenId,
     chatThreadId: threadId,
     eventType: "goal.open",
     content: "goal opened",
+  });
+}
+
+async function appendHistoricalGoalMarker(
+  tx: Tx,
+  event: {
+    readonly id: string;
+    readonly chatThreadId: string;
+    readonly eventType: "goal.open" | "goal.close";
+    readonly content?: string;
+  },
+) {
+  const [thread] = await tx
+    .update(chatThreads)
+    .set({ lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 1` })
+    .where(eq(chatThreads.id, event.chatThreadId))
+    .returning({ seqId: chatThreads.lastChatEventSeqId });
+  if (!thread) {
+    throw new Error("Missing historical marker thread");
+  }
+  await tx.insert(chatEvents).values({
+    id: event.id,
+    chatThreadId: event.chatThreadId,
+    eventType: event.eventType,
+    seqId: thread.seqId,
+    payload: event.content === undefined ? null : { content: event.content },
   });
 }
 
@@ -2819,11 +2825,6 @@ async function insertCanonicalBatchWrites(
       eventType: "browser.close",
     },
     {
-      id: batch.goalCloseId,
-      chatThreadId: threadId,
-      eventType: "goal.close",
-    },
-    {
       id: batch.usageId,
       chatThreadId: threadId,
       eventType: "usage.recorded",
@@ -2842,6 +2843,11 @@ async function insertCanonicalBatchWrites(
       },
     },
   ]);
+  await appendHistoricalGoalMarker(tx, {
+    id: batch.goalCloseId,
+    chatThreadId: threadId,
+    eventType: "goal.close",
+  });
 }
 
 async function insertCanonicalReplacementWrite(

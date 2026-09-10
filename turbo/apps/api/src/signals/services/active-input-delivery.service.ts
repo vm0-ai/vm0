@@ -8,7 +8,7 @@ import {
   activeInputDeliveries,
   activeInputDeliveryItems,
 } from "@okouai/db/schema/active-input-delivery";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   and,

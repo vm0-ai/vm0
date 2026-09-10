@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";

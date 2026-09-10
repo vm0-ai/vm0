@@ -1,6 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";

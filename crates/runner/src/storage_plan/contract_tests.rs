@@ -213,3 +213,54 @@ fn changed_instructions_promote_without_removing_cached_child() {
     assert!(!home.join("skills/untracked").exists());
     assert!(!runtime_dir.join("storage-instructions/0").exists());
 }
+
+#[test]
+fn omitted_goal_mount_removes_old_guidance_and_preserves_other_nested_skills() {
+    let dir = tempfile::tempdir().unwrap();
+    let skills = dir.path().join(".claude/skills");
+    let removed = skills.join("goal");
+    let retained = skills.join("workflow");
+    fs::create_dir_all(&removed).unwrap();
+    fs::create_dir_all(retained.join("custom/goal")).unwrap();
+    fs::write(removed.join("SKILL.md"), "obsolete automatic guidance").unwrap();
+    fs::write(
+        retained.join("custom/goal/SKILL.md"),
+        "user-owned nested skill",
+    )
+    .unwrap();
+    let previous = StorageFingerprints {
+        storages: HashMap::from([
+            (
+                removed.to_string_lossy().into_owned(),
+                StorageFingerprint::new("goal", "v1"),
+            ),
+            (
+                retained.to_string_lossy().into_owned(),
+                StorageFingerprint::new("workflow", "v1"),
+            ),
+        ]),
+        artifacts: HashMap::new(),
+    };
+    let manifest = StorageManifest {
+        storages: vec![storage(
+            &retained,
+            "workflow",
+            "v1",
+            "file:///unused-cached-archive".into(),
+            None,
+        )],
+        artifacts: Vec::new(),
+    };
+    let plan = build_storage_plan(
+        &manifest,
+        dir.path().join("runtime").to_str().unwrap(),
+        Some(&previous),
+    )
+    .unwrap();
+    run_plan(plan);
+    assert!(!removed.exists());
+    assert_eq!(
+        fs::read_to_string(retained.join("custom/goal/SKILL.md")).unwrap(),
+        "user-owned nested skill"
+    );
+}

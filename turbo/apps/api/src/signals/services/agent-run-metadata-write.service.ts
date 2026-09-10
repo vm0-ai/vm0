@@ -1,5 +1,5 @@
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import type { SQL } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
@@ -10,7 +10,6 @@ type StoredRunMetadataValues = Pick<
   | "triggerSource"
   | "autonomyBudget"
   | "workflowAutomationId"
-  | "goalId"
   | "modelProvider"
   | "modelProviderId"
   | "modelProviderCredentialScope"
@@ -97,7 +96,6 @@ export function normalizeRunMetadata(
     triggerSource: input.triggerSource,
     autonomyBudget: input.autonomyBudget ?? 10,
     workflowAutomationId: input.workflowAutomationId ?? null,
-    goalId: input.goalId ?? null,
     ...normalizeRunModelMetadata(input),
     selectedVideoModel: input.selectedVideoModel ?? null,
     selectedImageModel: input.selectedImageModel ?? null,

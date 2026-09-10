@@ -1145,7 +1145,11 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  userMessage: userMessageDocumentSchema,
+  userMessage: userMessageDocumentSchema.refine((message) => {
+    return message.parts.every((part) => {
+      return part.type !== "goal";
+    });
+  }, "Goal input is no longer supported"),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
   hasTextContent: z.boolean(),
