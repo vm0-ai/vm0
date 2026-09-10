@@ -372,14 +372,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "{{assistantName}}에게 물어보세요.",
-      "cloud": "잠시 쉬세요. {{assistantName}}는 계속 일해요.",
-      "employee": "AI 동료를 고용하세요.",
-      "ideas": "아이디어와 계획은 {{assistantName}}에게 맡기세요.",
-      "model": "작업에 맞는 모델을 고르세요.",
-      "schedule": "작업을 예약하고 시간을 아끼세요.",
-      "support": "{{supportEmail}}로 연락하세요.",
-      "workflow": "워크플로는 팀과 공유할 수 있는 스킬이에요."
+      "ask": "기능 사용법을 모르겠다면 {{assistantName}}에게 물어보세요.",
+      "cloud": "자리를 비워도 {{assistantName}}는 클라우드에서 계속 일해요.",
+      "employee": "단순히 도구를 사는 게 아니라 AI 동료를 고용하는 거예요.",
+      "ideas": "{{assistantName}}에게 작업을 나누고 새 아이디어를 제안해 달라고 해보세요.",
+      "model": "모든 작업에 가장 강력한 모델이 필요한 건 아니에요.",
+      "schedule": "반복 작업을 예약해 직접 해야 할 일을 줄이세요.",
+      "support": "아직 해결이 안 되나요? {{supportEmail}}로 연락하세요.",
+      "workflow": "워크플로는 재사용하고 팀과 공유할 수 있는 스킬이에요."
     }
   },
   "appShell": {

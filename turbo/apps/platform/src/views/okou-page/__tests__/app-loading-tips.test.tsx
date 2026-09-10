@@ -6,7 +6,7 @@ import { mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const EMPLOYEE_TIP = "Hire an AI teammate.";
+const EMPLOYEE_TIP = "You're hiring an AI teammate, not just buying a tool.";
 
 test("Loading rotates all eight tips, offers support, and stops when the page is ready", async () => {
   let time = new Date("2026-09-10T08:00:00Z").getTime();
@@ -21,21 +21,20 @@ test("Loading rotates all eight tips, offers support, and stops when the page is
   await expect(within(loading).findByText(EMPLOYEE_TIP)).resolves.toBeVisible();
 
   for (const text of [
-    "Match the model to the task.",
-    "Schedule tasks. Save time.",
-    "Step away. Okou keeps working.",
-    "Let Okou brainstorm and plan.",
-    "Workflows are skills your team can share.",
-    "Just ask Okou.",
-    "Email contact@okou.ai.",
+    "Not every task needs the most powerful model.",
+    "Schedule recurring tasks to reduce manual work.",
+    "Okou keeps working in the cloud while you're away.",
+    "Let Okou break down your task and spark ideas.",
+    "Workflows are reusable skills you can share with your team.",
+    "Not sure how to use a feature? Ask Okou.",
+    "Still stuck? Email us at contact@okou.ai.",
   ]) {
     time += 8000;
     await expect(within(loading).findByText(text)).resolves.toBeVisible();
   }
-  expect(within(loading).getByText("Email contact@okou.ai.")).toHaveAttribute(
-    "href",
-    "mailto:contact@okou.ai",
-  );
+  expect(
+    within(loading).getByText("Still stuck? Email us at contact@okou.ai."),
+  ).toHaveAttribute("href", "mailto:contact@okou.ai");
 
   time += 8000;
   await expect(within(loading).findByText(EMPLOYEE_TIP)).resolves.toBeVisible();
@@ -70,7 +69,8 @@ test("The initial HTML loading avatar shows tips in the browser's supported lang
 
   await startPage({ context, path: "/v1/sign-in", auth: null });
 
-  const tip = "Recrutez un collègue IA.";
+  const tip =
+    "Vous recrutez un collègue IA, vous n'achetez pas un simple outil.";
   await expect(within(loading).findByText(tip)).resolves.toBeVisible();
   expect(screen.queryByText(EMPLOYEE_TIP)).not.toBeInTheDocument();
 

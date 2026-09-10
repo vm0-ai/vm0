@@ -386,14 +386,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "Pergunte ao {{assistantName}}.",
-      "cloud": "Descanse. {{assistantName}} segue trabalhando.",
-      "employee": "Contrate um colega de IA.",
-      "ideas": "Deixe {{assistantName}} pensar e planejar.",
-      "model": "Escolha o modelo certo para a tarefa.",
-      "schedule": "Agende tarefas. Ganhe tempo.",
-      "support": "Escreva para {{supportEmail}}.",
-      "workflow": "Workflows: habilidades para compartilhar com a equipe."
+      "ask": "Não sabe usar um recurso? Pergunte ao {{assistantName}}.",
+      "cloud": "{{assistantName}} continua trabalhando na nuvem enquanto você está fora.",
+      "employee": "Você está contratando um colega de IA, não só comprando uma ferramenta.",
+      "ideas": "Peça ao {{assistantName}} para dividir sua tarefa em etapas e sugerir ideias.",
+      "model": "Nem toda tarefa precisa do modelo mais potente.",
+      "schedule": "Agende tarefas recorrentes para reduzir o trabalho manual.",
+      "support": "Ainda precisa de ajuda? Escreva para {{supportEmail}}.",
+      "workflow": "Workflows são habilidades reutilizáveis que você pode compartilhar com a equipe."
     }
   },
   "appShell": {

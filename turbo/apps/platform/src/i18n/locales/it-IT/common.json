@@ -386,14 +386,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "Chiedi a {{assistantName}}.",
-      "cloud": "Fai una pausa. {{assistantName}} lavora.",
-      "employee": "Assumi un collega AI.",
-      "ideas": "Pensa e pianifica con {{assistantName}}.",
-      "model": "Scegli il modello adatto al compito.",
-      "schedule": "Programma le attività. Risparmia tempo.",
-      "support": "Scrivi a {{supportEmail}}.",
-      "workflow": "Workflow: competenze da condividere col team."
+      "ask": "Non sai come usare una funzione? Chiedi a {{assistantName}}.",
+      "cloud": "{{assistantName}} continua a lavorare nel cloud mentre sei via.",
+      "employee": "Stai assumendo un collega AI, non solo comprando uno strumento.",
+      "ideas": "Lascia che {{assistantName}} suddivida il compito in passi e suggerisca idee.",
+      "model": "Non tutte le attività richiedono il modello più potente.",
+      "schedule": "Programma le attività ricorrenti per ridurre il lavoro manuale.",
+      "support": "Hai ancora difficoltà? Scrivici a {{supportEmail}}.",
+      "workflow": "I workflow sono competenze riutilizzabili da condividere con il team."
     }
   },
   "appShell": {

@@ -372,14 +372,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "Just ask {{assistantName}}.",
-      "cloud": "Step away. {{assistantName}} keeps working.",
-      "employee": "Hire an AI teammate.",
-      "ideas": "Let {{assistantName}} brainstorm and plan.",
-      "model": "Match the model to the task.",
-      "schedule": "Schedule tasks. Save time.",
-      "support": "Email {{supportEmail}}.",
-      "workflow": "Workflows are skills your team can share."
+      "ask": "Not sure how to use a feature? Ask {{assistantName}}.",
+      "cloud": "{{assistantName}} keeps working in the cloud while you're away.",
+      "employee": "You're hiring an AI teammate, not just buying a tool.",
+      "ideas": "Let {{assistantName}} break down your task and spark ideas.",
+      "model": "Not every task needs the most powerful model.",
+      "schedule": "Schedule recurring tasks to reduce manual work.",
+      "support": "Still stuck? Email us at {{supportEmail}}.",
+      "workflow": "Workflows are reusable skills you can share with your team."
     }
   },
   "appShell": {

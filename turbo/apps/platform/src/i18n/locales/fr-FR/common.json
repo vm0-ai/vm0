@@ -386,14 +386,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "Demandez à {{assistantName}}.",
-      "cloud": "Faites une pause. {{assistantName}} continue.",
-      "employee": "Recrutez un collègue IA.",
-      "ideas": "Imaginez et planifiez avec {{assistantName}}.",
-      "model": "Choisissez le modèle adapté à la tâche.",
-      "schedule": "Planifiez les tâches. Gagnez du temps.",
-      "support": "Écrivez à {{supportEmail}}.",
-      "workflow": "Workflows : des compétences à partager en équipe."
+      "ask": "Vous ne savez pas utiliser une fonction ? Demandez à {{assistantName}}.",
+      "cloud": "{{assistantName}} continue à travailler dans le cloud pendant votre absence.",
+      "employee": "Vous recrutez un collègue IA, vous n'achetez pas un simple outil.",
+      "ideas": "Laissez {{assistantName}} décomposer votre tâche et proposer des idées.",
+      "model": "Toutes les tâches n'exigent pas le modèle le plus puissant.",
+      "schedule": "Planifiez les tâches récurrentes pour réduire le travail manuel.",
+      "support": "Encore besoin d'aide ? Écrivez-nous à {{supportEmail}}.",
+      "workflow": "Les workflows sont des compétences réutilisables à partager avec votre équipe."
     }
   },
   "appShell": {
