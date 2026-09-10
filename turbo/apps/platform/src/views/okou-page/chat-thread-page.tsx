@@ -4307,9 +4307,7 @@ function ThinkingLoader({
       <span
         aria-hidden
         data-thinking-loader="spinner"
-        // The font's visible glyphs sit above the centre of its 20px line box.
-        // Lift the frame so the visible spinner follows that optical centre.
-        className="okou-thinking-spinner-frame relative -top-px inline-flex size-4 shrink-0 items-center justify-center"
+        className="okou-thinking-spinner-frame inline-flex size-4 shrink-0 items-center justify-center"
       >
         <img
           src={thinkingSpinnerImg}
