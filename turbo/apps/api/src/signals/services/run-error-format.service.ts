@@ -12,7 +12,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";

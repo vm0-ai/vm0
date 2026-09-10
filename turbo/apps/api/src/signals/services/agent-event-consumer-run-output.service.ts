@@ -18,7 +18,7 @@ import {
   lte,
   sql,
 } from "drizzle-orm";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runOutputLegacyPiEvents } from "@okouai/db/schema/run-output-legacy-pi-event";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";

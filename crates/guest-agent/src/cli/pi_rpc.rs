@@ -90,11 +90,13 @@
 //! Once the initial acknowledgement arrives, accepted active input keeps the
 //! existing `steer` command for sandbox-first and pending-tool continuation. A
 //! settled transfer has no active model turn, so its newly owned continuation
-//! uses `prompt`. In both cases the command ID is the delivery UUID, and the
-//! matching successful response is required before
-//! `mark_backend_accepted_without_replay` records ownership. A failed or
-//! interrupted command marks the delivery failed and enters the abort/error
-//! path.
+//! uses `prompt` with `streamingBehavior: "steer"`. Prompt acknowledgements are
+//! preflight acceptance, not turn completion: the SDK starts an idle turn or
+//! steers an already running one for each subsequent input. In both cases the
+//! command ID is the delivery UUID, and the matching successful response is
+//! required before `mark_backend_accepted_without_replay` records ownership.
+//! A failed or interrupted command marks the delivery failed and enters the
+//! abort/error path.
 //!
 //! Normal response waits reject an unexpected ID, unexpected command,
 //! unsuccessful response, or a closed response channel. Abort is different in
@@ -978,18 +980,18 @@ async fn request_prompt(
     responses: &mut mpsc::Receiver<PiRpcResponse>,
     id: &str,
     message: &str,
+    streaming_behavior: Option<&str>,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command_with_cancellation(
-        stdin,
-        &json!({
-            "id": id,
-            "type": "prompt",
-            "message": message,
-        }),
-        cancellation,
-    )
-    .await?;
+    let mut command = serde_json::Map::from_iter([
+        ("id".to_owned(), json!(id)),
+        ("type".to_owned(), json!("prompt")),
+        ("message".to_owned(), json!(message)),
+    ]);
+    if let Some(streaming_behavior) = streaming_behavior {
+        command.insert("streamingBehavior".to_owned(), json!(streaming_behavior));
+    }
+    write_command_with_cancellation(stdin, &Value::Object(command), cancellation).await?;
     tokio::select! {
         biased;
         () = cancellation.cancelled() => Ok(false),
@@ -1038,7 +1040,15 @@ async fn deliver_active_input(
     active_input.mark_writing(&frame.uuid);
     let request = match ownership_transfer_mode {
         PiRpcOwnershipTransferMode::SettledSessionContinuation => {
-            request_prompt(stdin, responses, &frame.uuid, &frame.text, cancellation).await
+            request_prompt(
+                stdin,
+                responses,
+                &frame.uuid,
+                &frame.text,
+                Some("steer"),
+                cancellation,
+            )
+            .await
         }
         PiRpcOwnershipTransferMode::SandboxFirst
         | PiRpcOwnershipTransferMode::PendingToolContinuation => {
@@ -1106,6 +1116,7 @@ pub(super) async fn write_commands(
         &mut responses,
         &prompt_id,
         prompt,
+        None,
         &cancellation,
     )
     .await?
@@ -1144,10 +1155,12 @@ pub(super) async fn write_commands(
 #[cfg(test)]
 mod tests {
     use std::process::Stdio;
+    use std::time::Duration;
 
     use tokio::io::{AsyncBufReadExt, BufReader};
 
     use crate::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
+    use crate::http::HttpClient;
 
     use super::*;
 
@@ -1560,8 +1573,7 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn writer_uses_official_steer_ack_for_active_input_receipts() {
+    async fn exercise_steer_writer(ownership_transfer_mode: PiRpcOwnershipTransferMode) {
         let mut child = tokio::process::Command::new("cat")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -1618,7 +1630,7 @@ mod tests {
             "initial prompt must wait for boundary installation"
         );
         startup_tx
-            .send(PiRpcOwnershipTransferMode::PendingToolContinuation)
+            .send(ownership_transfer_mode)
             .expect("startup mode should route");
 
         let initial = next_command(&mut stdout).await;
@@ -1670,99 +1682,213 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn settled_writer_uses_prompt_ack_for_newly_owned_input() {
+    async fn sandbox_first_writer_uses_steer_ack_for_active_input_receipts() {
+        exercise_steer_writer(PiRpcOwnershipTransferMode::SandboxFirst).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn pending_tool_writer_uses_steer_ack_for_active_input_receipts() {
+        exercise_steer_writer(PiRpcOwnershipTransferMode::PendingToolContinuation).await;
+    }
+
+    #[derive(Clone, Copy)]
+    enum SecondPromptOutcome {
+        Accepted,
+        Rejected,
+        Cancelled,
+    }
+
+    async fn exercise_settled_writer(second_outcome: SecondPromptOutcome) {
+        let directory = tempfile::tempdir().expect("receipt directory should exist");
+        let journal_path = directory.path().join("active-input-receipts.json");
         let mut child = tokio::process::Command::new("cat")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .expect("cat should spawn");
         let stdin = child.stdin.take().expect("cat stdin should exist");
         let stdout = child.stdout.take().expect("cat stdout should exist");
         let mut stdout = BufReader::new(stdout);
-        let active_input = ActiveInputRuntime::new_for_test("run", "original prompt");
+        let active_input = ActiveInputRuntime::new_with_receipts(
+            "run",
+            "original prompt",
+            &journal_path,
+            HttpClient::with_retry_delay(Duration::ZERO).expect("HTTP client should build"),
+        )
+        .expect("active-input runtime should start");
         let controller = active_input.controller();
-        let delivery_id = "22222222-2222-4222-8222-222222222222";
-        let payload = json!({
-            "type": "active-input",
-            "deliveryId": delivery_id,
-            "text": "newly owned continuation",
-        });
-        assert_eq!(
-            controller.handle_control_payload(&serde_json::to_vec(&payload).expect("payload")),
-            ActiveInputControlOutcome::Accepted
-        );
+        let first_id = "22222222-2222-4222-8222-222222222222";
+        let second_id = "33333333-3333-4333-8333-333333333333";
+        let idle_id = "44444444-4444-4444-8444-444444444444";
+        let enqueue = |delivery_id: &str, text: &str| {
+            let payload = guest_contracts::active_input::encode_active_input(delivery_id, text)
+                .expect("active input should encode");
+            assert_eq!(
+                controller.handle_control_payload(&payload),
+                ActiveInputControlOutcome::Accepted
+            );
+        };
+        let receipts = || {
+            guest_contracts::active_input_receipts::read_active_input_receipt_journal(
+                &journal_path,
+                "run",
+            )
+            .expect("receipt journal should be readable")
+        };
+        enqueue(first_id, "newly owned continuation");
         let (response_tx, response_rx) = response_channel();
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
-        let writer = tokio::spawn(write_commands(
+        let cancellation = CancellationToken::new();
+        let writer = write_commands(
             stdin,
             "run",
             "original prompt",
             active_input.into_writer(),
             response_rx,
             startup_rx,
-            CancellationToken::new(),
-        ));
+            cancellation.clone(),
+        );
+        let respond = |command: &Value, success: bool, error: &str| {
+            response_tx
+                .try_send(
+                    json!({
+                        "id": command["id"],
+                        "type": "response",
+                        "command": command["type"],
+                        "success": success,
+                        "error": error,
+                    }),
+                    1,
+                )
+                .expect("RPC response should route");
+        };
+        let peer = async {
+            let state = next_command(&mut stdout).await;
+            assert_eq!(state["type"], "get_state");
+            respond(&state, true, "");
+            startup_tx
+                .send(PiRpcOwnershipTransferMode::SettledSessionContinuation)
+                .expect("startup mode should route");
 
-        let state = next_command(&mut stdout).await;
-        assert_eq!(state["type"], "get_state");
-        response_tx
-            .try_send(
-                json!({
-                    "id": state["id"],
-                    "type": "response",
-                    "command": "get_state",
-                    "success": true,
-                }),
-                1,
-            )
-            .expect("state response should route");
-        startup_tx
-            .send(PiRpcOwnershipTransferMode::SettledSessionContinuation)
-            .expect("startup mode should route");
+            // The settled host acknowledges startup without replaying the original prompt.
+            let initial = next_command(&mut stdout).await;
+            assert_eq!(initial["id"], "run:pi:initial-prompt");
+            assert_eq!(initial["type"], "prompt");
+            assert_eq!(initial["message"], "original prompt");
+            assert!(initial.get("streamingBehavior").is_none());
+            respond(&initial, true, "");
 
-        let initial = next_command(&mut stdout).await;
-        assert_eq!(initial["type"], "prompt");
-        assert_eq!(initial["message"], "original prompt");
-        response_tx
-            .try_send(
-                json!({
-                    "id": initial["id"],
-                    "type": "response",
-                    "command": "prompt",
-                    "success": true,
-                }),
-                1,
-            )
-            .expect("startup acknowledgement should route");
+            // An idle SDK starts a turn on prompt; a steer command alone would not start it.
+            let first = next_command(&mut stdout).await;
+            assert_eq!(first["id"], first_id);
+            assert_eq!(first["type"], "prompt");
+            assert_eq!(first["message"], "newly owned continuation");
+            assert!(receipts().is_empty());
+            respond(&first, true, "");
+            controller
+                .wait_for_sink_idle()
+                .await
+                .expect("first input should settle");
+            assert_eq!(receipts(), vec![first_id]);
 
-        let continuation = next_command(&mut stdout).await;
-        assert_eq!(continuation["id"], delivery_id);
-        assert_eq!(continuation["type"], "prompt");
-        assert_eq!(continuation["message"], "newly owned continuation");
-        response_tx
-            .try_send(
-                json!({
-                    "id": delivery_id,
-                    "type": "response",
-                    "command": "prompt",
-                    "success": true,
-                }),
-                1,
-            )
-            .expect("continuation acknowledgement should route");
-        controller.close_terminal();
-
-        writer
-            .await
-            .expect("writer task should join")
-            .expect("writer should succeed");
+            // Admit B only after A's durable acceptance, keeping A's model turn open.
+            enqueue(second_id, "steer the running continuation");
+            let second = next_command(&mut stdout).await;
+            assert_eq!(second["id"], second_id);
+            assert_eq!(second["type"], "prompt");
+            assert_eq!(second["message"], "steer the running continuation");
+            assert_eq!(receipts(), vec![first_id]);
+            match second_outcome {
+                SecondPromptOutcome::Accepted => {
+                    // Mirror SDK 0.85.1's preflight rejection of a bare streaming prompt.
+                    let accepted = second["streamingBehavior"] == "steer";
+                    respond(
+                        &second,
+                        accepted,
+                        "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+                    );
+                    controller
+                        .wait_for_sink_idle()
+                        .await
+                        .expect("second input should settle");
+                    if accepted {
+                        assert_eq!(receipts(), vec![first_id, second_id]);
+                        // A later idle turn must still start, rather than only queue a steer.
+                        enqueue(idle_id, "start another idle continuation");
+                        let idle = next_command(&mut stdout).await;
+                        assert_eq!(idle["id"], idle_id);
+                        assert_eq!(idle["type"], "prompt");
+                        assert_eq!(idle["message"], "start another idle continuation");
+                        respond(&idle, true, "");
+                    }
+                }
+                SecondPromptOutcome::Rejected => {
+                    respond(&second, false, "forced preflight rejection");
+                }
+                SecondPromptOutcome::Cancelled => {
+                    cancellation.cancel();
+                    let abort = next_command(&mut stdout).await;
+                    assert_eq!(abort["id"], "run:pi:abort");
+                    assert_eq!(abort["type"], "abort");
+                    respond(&abort, true, "");
+                }
+            }
+            controller.close_terminal();
+        };
+        let (result, ()) =
+            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(writer, peer) })
+                .await
+                .expect("settled writer exchange should finish");
+        let expected_receipts = match second_outcome {
+            SecondPromptOutcome::Accepted => {
+                result.expect("streaming and idle inputs should both succeed");
+                vec![
+                    first_id.to_string(),
+                    second_id.to_string(),
+                    idle_id.to_string(),
+                ]
+            }
+            SecondPromptOutcome::Rejected => {
+                assert!(
+                    result
+                        .expect_err("failed prompt must fail closed")
+                        .to_string()
+                        .contains("Pi RPC prompt failed: forced preflight rejection")
+                );
+                vec![first_id.to_string()]
+            }
+            SecondPromptOutcome::Cancelled => {
+                result.expect("cancellation should finish after abort acknowledgement");
+                vec![first_id.to_string()]
+            }
+        };
         assert_eq!(
             controller
                 .finalize_receipts()
                 .await
                 .expect("receipts should finalize"),
-            vec![delivery_id.to_string()]
+            expected_receipts
         );
-        child.wait().await.expect("cat should exit");
+        assert_eq!(receipts(), expected_receipts);
+        tokio::time::timeout(Duration::from_secs(5), child.wait())
+            .await
+            .expect("cat should exit promptly")
+            .expect("cat should exit");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn settled_writer_accepts_sequential_streaming_and_idle_inputs() {
+        exercise_settled_writer(SecondPromptOutcome::Accepted).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn settled_writer_does_not_receipt_a_rejected_second_input() {
+        exercise_settled_writer(SecondPromptOutcome::Rejected).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn settled_writer_aborts_without_receipting_a_cancelled_second_input() {
+        exercise_settled_writer(SecondPromptOutcome::Cancelled).await;
     }
 }

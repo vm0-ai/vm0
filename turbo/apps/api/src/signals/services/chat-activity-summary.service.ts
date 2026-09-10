@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ActivitySummaryResponse } from "@okouai/api-contracts/contracts/chat-thread-activity-summary";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { runActivitySnapshots } from "@okouai/db/schema/run-activity-snapshot";

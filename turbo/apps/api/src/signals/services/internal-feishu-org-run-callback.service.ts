@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";

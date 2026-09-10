@@ -103,7 +103,7 @@ function control(
   return found;
 }
 
-async function openExplainer() {
+async function openIntroVideo() {
   const user = userEvent.setup({ delay: null });
   await setupPage({
     context,
@@ -112,17 +112,17 @@ async function openExplainer() {
   });
   const dialog = await openTemplatePicker(user);
   expect(control("Creative video", dialog, "tab")).toBeVisible();
-  click(control("Explainer video", dialog, "tab"));
+  click(control("Intro video", dialog, "tab"));
   await within(dialog).findByText("Minimalism");
   return { user, dialog };
 }
 
 test.each([
   `/agents/${AGENT_ID}/chat`,
-  `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
-  "/?templatePicker=explainer",
+  `/agents/${AGENT_ID}/chat?templatePicker=intro-video`,
+  "/?templatePicker=intro-video",
 ])(
-  "Disabled explainer entry keeps ordinary Video available at %s",
+  "Disabled intro video entry keeps ordinary Video available at %s",
   async (path) => {
     mockTemplateChat();
     await setupPage({
@@ -135,16 +135,16 @@ test.each([
     expect(control("Video", dialog, "tab")).toBeVisible();
     expect(
       queryAllByRoleFast("tab", dialog).some((tab) => {
-        return tab.textContent === "Explainer video";
+        return tab.textContent === "Intro video";
       }),
     ).toBeFalsy();
   },
 );
 
 test.each([
-  `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
-  "/?templatePicker=explainer",
-])("Explainer deep links wait for feature hydration at %s", async (path) => {
+  `/agents/${AGENT_ID}/chat?templatePicker=intro-video`,
+  "/?templatePicker=intro-video",
+])("Intro video deep links wait for feature hydration at %s", async (path) => {
   installCatalogs();
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   const featureResponse = createDeferredPromise<void>(context.signal);
@@ -165,12 +165,12 @@ test.each([
   await page.ready;
 
   const dialog = await screen.findByRole("dialog");
-  expect(control("Explainer video", dialog, "tab")).toBeVisible();
+  expect(control("Intro video", dialog, "tab")).toBeVisible();
 });
 
 test("Expanded style tags combine with search and preserve the selected style", async () => {
   installCatalogs();
-  const { dialog } = await openExplainer();
+  const { dialog } = await openIntroVideo();
   expect(control("Use selection", dialog)).toBeDisabled();
   const tags = within(dialog).getByRole("group", { name: "Browse by style" });
   expect(queryAllByRoleFast("button", tags)).toHaveLength(6);
@@ -201,7 +201,7 @@ test("Expanded style tags combine with search and preserve the selected style", 
 
 test("Avatar looks require Use, and explicit voice choices survive removing the avatar", async () => {
   const capture = installCatalogs();
-  const { dialog, user } = await openExplainer();
+  const { dialog, user } = await openIntroVideo();
   click(control("Select style Minimalism", dialog));
   click(control("Avatar", dialog, "tab"));
   await within(dialog).findByText("Daphne");
@@ -219,7 +219,7 @@ test("Avatar looks require Use, and explicit voice choices survive removing the 
   click(within(dialog).getByText("No avatar"));
   expect(control("Voice", dialog, "tab")).toHaveTextContent("Annie");
   click(control("Use selection", dialog));
-  await expectInlineTemplate("Explainer video");
+  await expectInlineTemplate("Intro video");
   await sendComposerMessage(user, "Explain our product");
   await waitFor(() => {
     return expect(capture.selectedTemplates).toHaveLength(1);
@@ -239,12 +239,12 @@ test("Avatar looks require Use, and explicit voice choices survive removing the 
 
 test("Applying and reopening a template restores all settings without creating another chip", async () => {
   installCatalogs();
-  const { dialog, user } = await openExplainer();
+  const { dialog, user } = await openIntroVideo();
   click(control("Select style Watercolor", dialog));
   click(control("Voice", dialog, "tab"));
   click(within(dialog).getByText("No voiceover"));
   click(control("Use selection", dialog));
-  const chip = await expectInlineTemplate("Explainer video");
+  const chip = await expectInlineTemplate("Intro video");
   const edit = chip.querySelector("button");
   if (!edit) {
     throw new Error("Missing template edit button");
@@ -263,7 +263,7 @@ test("Applying and reopening a template restores all settings without creating a
 
 test("Cancelling does not apply the selection", async () => {
   installCatalogs();
-  const { dialog } = await openExplainer();
+  const { dialog } = await openIntroVideo();
   click(control("Select style Minimalism", dialog));
   click(control("Cancel", dialog));
   const message = await screen.findByRole("textbox", { name: "Message" });
@@ -308,7 +308,7 @@ test("Style loading retries a failed later page and excludes portrait-only refer
   const user = userEvent.setup({ delay: null });
   await setupPage({
     context,
-    path: `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
+    path: `/agents/${AGENT_ID}/chat?templatePicker=intro-video`,
     featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
   });
   const dialog = await screen.findByRole("dialog");
@@ -323,7 +323,7 @@ test("Style loading retries a failed later page and excludes portrait-only refer
 
 test("Style preview playback and failure do not select a style or resume after leaving the gallery", async () => {
   installCatalogs();
-  const { dialog } = await openExplainer();
+  const { dialog } = await openIntroVideo();
   click(control("Preview Minimalism", dialog));
   const preview = within(dialog).getByLabelText("Minimalism");
   expect(preview.tagName).toBe("VIDEO");
@@ -347,7 +347,7 @@ test("Style preview playback and failure do not select a style or resume after l
 
 test("Switching settings with the keyboard preserves the selection", async () => {
   installCatalogs();
-  const { dialog, user } = await openExplainer();
+  const { dialog, user } = await openIntroVideo();
   click(control("Select style Minimalism", dialog));
   const tab = control("Style", dialog, "tab");
   tab.focus();
@@ -365,7 +365,7 @@ test("Switching settings with the keyboard preserves the selection", async () =>
   );
 });
 
-test("Desktop recording handoff keeps both uploaded files with the explainer selection", async () => {
+test("Desktop recording handoff keeps both uploaded files with the intro video selection", async () => {
   const capture = installCatalogs();
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     return respond(200, {
@@ -394,7 +394,7 @@ test("Desktop recording handoff keeps both uploaded files with the explainer sel
   click(control("Voice", dialog, "tab"));
   click(within(dialog).getByText("No voiceover"));
   click(control("Use selection", dialog));
-  await expectInlineTemplate("Explainer video");
+  await expectInlineTemplate("Intro video");
   const message = screen.getByRole("textbox", { name: "Message" });
   expect(message).toHaveTextContent("desktop screen recording");
   const user = userEvent.setup({ delay: null });
@@ -421,7 +421,7 @@ test("Desktop recording handoff keeps both uploaded files with the explainer sel
   ).toHaveLength(2);
 });
 
-test("A saved explainer draft cannot send outside the rollout and remains editable", async () => {
+test("A saved intro video draft cannot send outside the rollout and remains editable", async () => {
   const capture = mockTemplateChat();
   context.mocks.api(agentDraftContract.get, ({ respond }) => {
     return respond(200, {
@@ -431,7 +431,7 @@ test("A saved explainer draft cannot send outside the rollout and remains editab
           { type: "text", text: "Explain this product " },
           {
             type: "template",
-            titleSnapshot: "Explainer video",
+            titleSnapshot: "Intro video",
             template: {
               type: "video",
               selection: {
@@ -454,7 +454,7 @@ test("A saved explainer draft cannot send outside the rollout and remains editab
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
   });
-  await expectInlineTemplate("Explainer video");
+  await expectInlineTemplate("Intro video");
   const message = await screen.findByRole("textbox", { name: "Message" });
   const user = userEvent.setup({ delay: null });
   await user.click(message);
@@ -464,7 +464,7 @@ test("A saved explainer draft cannot send outside the rollout and remains editab
   );
   expect(capture.sentMessages).toHaveLength(0);
   expect(message).toHaveTextContent("Explain this product");
-  await expectInlineTemplate("Explainer video");
+  await expectInlineTemplate("Intro video");
   await user.keyboard(
     "{Control>}a{/Control}{Backspace}A regular message{Enter}",
   );

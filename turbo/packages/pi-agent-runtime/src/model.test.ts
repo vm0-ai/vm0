@@ -3,10 +3,47 @@ import { once } from "node:events";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
+import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
 import { materializePiAgentModelConfig } from "./credential";
 
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
+
+const CODEX_ROUTE = {
+  provider: "openai-codex",
+  baseUrl: "https://chatgpt.com/backend-api",
+  model: "gpt-5.6-terra",
+  apiKey: "opaque-not-a-jwt",
+  accountId: "account-id-from-binding",
+  dialect: "openai-codex-responses",
+  transport: "sse",
+} as const;
+
+async function codexFailureResult(response: () => Response) {
+  const model = resolvePiAgentModel(CODEX_ROUTE);
+  if (!model || model.api !== "openai-codex-responses") {
+    throw new Error("Expected a native Codex Responses model");
+  }
+  const providerFetch = vi.fn(() => {
+    return Promise.resolve(response());
+  });
+  const stream = piAgentStreamForConfig(CODEX_ROUTE)(
+    model,
+    {
+      messages: [{ role: "user", content: "hello", timestamp: 1 }],
+      tools: [],
+    },
+    {
+      apiKey: CODEX_ROUTE.apiKey,
+      fetch: providerFetch,
+      signal: AbortSignal.timeout(5_000),
+    },
+  );
+  for await (const _event of stream) {
+    // Drain the failing provider answer before inspecting its canonical result.
+  }
+  return { providerFetch, result: await stream.result() };
+}
 
 const OPENAI_TERRA = {
   provider: "openai",
@@ -504,5 +541,41 @@ describe("Pi agent model adapter", () => {
         },
       ],
     });
+  });
+
+  it("keeps a gateway status in an opaque Codex Responses failure", async () => {
+    const { providerFetch, result } = await codexFailureResult(() => {
+      return new Response("no healthy upstream", {
+        status: 503,
+        headers: { "content-type": "text/plain" },
+      });
+    });
+
+    expect(providerFetch).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      stopReason: "error",
+      errorMessage: "provider HTTP 503: no healthy upstream",
+    });
+    // The recorded status is what lets the session retry budget recover a
+    // transient gateway answer instead of ending the run on its first hit.
+    expect(isRetryableAssistantError(result)).toBe(true);
+  });
+
+  it("leaves a provider-authored usage limit terminal and unchanged", async () => {
+    const { providerFetch, result } = await codexFailureResult(() => {
+      return new Response(
+        JSON.stringify({
+          error: { code: "usage_limit_reached", plan_type: "Plus" },
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    expect(providerFetch).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      stopReason: "error",
+      errorMessage: "You have hit your ChatGPT usage limit (plus plan).",
+    });
+    expect(isRetryableAssistantError(result)).toBe(false);
   });
 });

@@ -494,8 +494,10 @@ export const setConnectorsCategoryFilter$ = command(
   },
 );
 
-export const connectorCatalogDiscovery$ =
-  relatedConnectorCatalog(connectorsSearch$);
+export const connectorCatalogDiscovery$ = relatedConnectorCatalog(
+  connectorsSearch$,
+  connectorsCategoryFilter$,
+);
 
 export const relatedCatalogItems$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogDiscovery$);

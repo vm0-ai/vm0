@@ -9,7 +9,7 @@ import {
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
 } from "@okouai/db/schema/run-uploaded-file";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import type { ChatEventAttachFileMetadata } from "@okouai/db/schema/chat-event";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 

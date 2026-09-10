@@ -29,7 +29,7 @@ const queueEventRevoker = alias(chatEvents, "queue_event_revoker");
 interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
-  readonly eventType: "input.prompt" | "input.automation" | "input.goal";
+  readonly eventType: "input.prompt" | "input.automation";
   readonly seqId: number;
   readonly createdAt: Date;
 }
@@ -87,7 +87,7 @@ export function pendingActiveInputCondition(
 
 export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
   return and(
-    chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
+    chatEventTypeIn(["input.prompt", "input.automation"]),
     isNull(chatEvents.runId),
     unrevokedQueueEventCondition(db),
   );
@@ -97,16 +97,13 @@ export function chatQueueEventPriority(): SQL {
   return sql`CASE ${chatEvents.eventType}
     WHEN 'input.prompt' THEN 0
     WHEN 'input.automation' THEN 1
-    WHEN 'input.goal' THEN 2
-    ELSE 3
+    ELSE 2
   END`;
 }
 
 /**
  * List one thread's pending queue in its authoritative database order. User
- * input keeps absolute priority over the rest; automation input stays ahead of
- * goal continuation, because a goal continues itself after every run and would
- * otherwise leave no idle window for an automation event to be claimed. Each
+ * input keeps absolute priority over automation input. Each
  * class is FIFO by the original event timestamp and id. Keep the sort in
  * PostgreSQL so sub-millisecond timestamp precision matches the final
  * queue-claim queries.
@@ -141,8 +138,7 @@ export async function listPendingChatQueueEvents(
   return rows.flatMap((event) => {
     if (
       event.eventType !== "input.prompt" &&
-      event.eventType !== "input.automation" &&
-      event.eventType !== "input.goal"
+      event.eventType !== "input.automation"
     ) {
       return [];
     }
@@ -185,8 +181,7 @@ export async function loadPendingChatQueueEvent(
   if (
     !event ||
     (event.eventType !== "input.prompt" &&
-      event.eventType !== "input.automation" &&
-      event.eventType !== "input.goal")
+      event.eventType !== "input.automation")
   ) {
     return null;
   }

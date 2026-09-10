@@ -6,9 +6,6 @@ export const CAPABILITIES = [
   "agent:write",
   "agent:delete",
   "agent-run:read",
-  "goal:read",
-  "goal:agent-result:write",
-  "goal:user-control:write",
   "github:read",
   "github:write",
   "slack:read",
@@ -68,15 +65,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "agent:write": { group: "Agent", label: "Create & update agents" },
   "agent:delete": { group: "Agent", label: "Delete agents" },
   "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
-  "goal:read": { group: "Goals", label: "Read thread goals" },
-  "goal:agent-result:write": {
-    group: "Goals",
-    label: "Complete or block thread goals",
-  },
-  "goal:user-control:write": {
-    group: "Goals",
-    label: "Create and manage thread goals",
-  },
   "github:read": {
     group: "Integrations",
     label: "Download GitHub files",

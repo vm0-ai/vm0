@@ -16,7 +16,7 @@ import {
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -35,7 +35,7 @@ import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { officialWorkflowDefinitionRevisions } from "@okouai/db/schema/official-workflow-catalog";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
+
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
@@ -831,8 +831,7 @@ type AutonomyBudgetFixtureAction = Extract<
       | "read-run-autonomy-budget"
       | "set-workflow-automation-autonomy-budget"
       | "read-workflow-automation-autonomy-state"
-      | "read-latest-workflow-automation-run"
-      | "read-thread-goal-autonomy-budget";
+      | "read-latest-workflow-automation-run";
   }
 >;
 
@@ -845,7 +844,6 @@ function isAutonomyBudgetFixtureAction(
     "set-workflow-automation-autonomy-budget",
     "read-workflow-automation-autonomy-state",
     "read-latest-workflow-automation-run",
-    "read-thread-goal-autonomy-budget",
   ].includes(body.action);
 }
 
@@ -952,21 +950,6 @@ async function autonomyBudgetFixtureActionResponse(
                 autonomy_budget: run.autonomyBudget,
               }
             : null,
-        },
-      };
-    }
-    case "read-thread-goal-autonomy-budget": {
-      const [goal] = await db
-        .select({ autonomyBudget: threadGoals.autonomyBudget })
-        .from(threadGoals)
-        .where(eq(threadGoals.chatThreadId, body.thread_id))
-        .limit(1);
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          autonomy_budget: goal?.autonomyBudget ?? null,
         },
       };
     }
@@ -2108,7 +2091,6 @@ function isCompatibilityFixtureAction(
     "set-workflow-automation-autonomy-budget",
     "read-workflow-automation-autonomy-state",
     "read-latest-workflow-automation-run",
-    "read-thread-goal-autonomy-budget",
     "insert-legacy-artifact-catalog-file",
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",

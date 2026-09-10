@@ -28,6 +28,7 @@ import {
 import { resolveComputerUseApiBaseUrl } from "./desktop-api-base-url";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { ComputerUseCommandSession } from "./computer-use-driver";
+import type { DesktopAuthRequestOptions } from "./desktop-auth-session";
 
 const HEARTBEAT_POLL_MS = 2_000;
 const COMMAND_COLD_POLL_MS = 5_000;
@@ -61,15 +62,22 @@ export type ComputerUseHostFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+type ComputerUseSessionFetch = (
+  input: string,
+  init?: RequestInit,
+  options?: DesktopAuthRequestOptions,
+) => Promise<Response>;
+
 type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
+  readonly refreshRegistrationAuth?: boolean;
   readonly commandClock?: ComputerUseCommandClock;
   readonly platformUrl: URL;
   readonly installationId: string;
   readonly hostName: string;
   readonly appVersion: string;
-  readonly sessionFetch: ComputerUseHostFetch;
+  readonly sessionFetch: ComputerUseSessionFetch;
   readonly hostFetch: ComputerUseHostFetch;
   readonly addClientHeaders: DesktopClientHeaderInjector;
   readonly getPermissions: (
@@ -250,7 +258,8 @@ export class ComputerUseHostRuntime {
   private readonly installationId: string;
   private readonly hostName: string;
   private readonly appVersion: string;
-  private readonly sessionFetch: ComputerUseHostFetch;
+  private readonly sessionFetch: ComputerUseSessionFetch;
+  private refreshRegistrationAuth: boolean;
   private readonly hostFetchRequest: ComputerUseHostFetch;
   private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
@@ -297,6 +306,7 @@ export class ComputerUseHostRuntime {
     this.hostName = options.hostName;
     this.appVersion = options.appVersion;
     this.sessionFetch = options.sessionFetch;
+    this.refreshRegistrationAuth = options.refreshRegistrationAuth ?? true;
     this.hostFetchRequest = options.hostFetch;
     this.addClientHeaders = options.addClientHeaders;
     this.getPermissions = options.getPermissions;
@@ -314,10 +324,14 @@ export class ComputerUseHostRuntime {
   private readonly acquireCommand: ComputerUseHostRuntimeOptions["acquireCommand"];
   private readonly commandClock: ComputerUseCommandClock;
 
-  async start(): Promise<void> {
+  async start(
+    options: { readonly userInitiated?: boolean } = {},
+  ): Promise<void> {
     if (this.running) {
       return;
     }
+    // Only a user action can reset a rejected recovery attempt's budget.
+    if (options.userInitiated) this.refreshRegistrationAuth = true;
     this.running = true;
     this.sessionGeneration++;
     const generation = this.sessionGeneration;
@@ -818,6 +832,12 @@ export class ComputerUseHostRuntime {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(runtimeBody),
       },
+      // Auth refresh retires this runtime; its replacement owns registration.
+      // Keep the original response readable so a late success can be stopped.
+      {
+        retryAfterRefresh: false,
+        refreshOn401: this.refreshRegistrationAuth,
+      },
     );
     if (!this.running || generation !== this.sessionGeneration) {
       if (response.ok) {
@@ -827,6 +847,14 @@ export class ComputerUseHostRuntime {
       return null;
     }
     if (response.status === 401) {
+      if (!this.refreshRegistrationAuth) {
+        this.setRuntimeErrorState(
+          "start",
+          "Computer Use registration was rejected after authentication refreshed. Sign in and retry.",
+          { hostId: null },
+        );
+        return null;
+      }
       const authenticated = await this.hasAuthenticatedSession();
       if (!this.running || generation !== this.sessionGeneration) return null;
       if (authenticated) {
@@ -873,6 +901,8 @@ export class ComputerUseHostRuntime {
       return null;
     }
     this.hostToken = body.hostToken;
+    // A later reconnect is a new episode once this registration succeeds.
+    this.refreshRegistrationAuth = true;
     this.lastCommandActivityAtMs = null;
     this.lastCommandCompletionAtMs = null;
     this.clearRecoveryTimer();

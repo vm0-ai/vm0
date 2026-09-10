@@ -7,7 +7,7 @@ import {
   type NetworkLogsResponse,
   type RunEvent,
 } from "@okouai/api-contracts/contracts/runs";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, eq } from "drizzle-orm";
 
 import { db$, type Db } from "../external/db";

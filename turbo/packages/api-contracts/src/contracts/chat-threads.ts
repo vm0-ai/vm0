@@ -13,7 +13,7 @@ import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
-import { explainerVideoOptionsSchema } from "./explainer-video";
+import { introVideoOptionsSchema } from "./intro-video-options";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
@@ -445,7 +445,8 @@ const videoGenerationTemplateRequestSchema = z.object({
     stylePresetId: z.string().min(1),
     avatarOptions: avatarGenerationOptionsSchema.optional(),
     // Keep the video envelope readable by previously deployed clients.
-    explainerOptions: explainerVideoOptionsSchema.optional(),
+    /** Intro Video selections; the key predates the product name and is persisted with the message. */
+    explainerOptions: introVideoOptionsSchema.optional(),
 
     /**
      * The four fields below are no longer written: the web-client floor has
@@ -1145,7 +1146,11 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  userMessage: userMessageDocumentSchema,
+  userMessage: userMessageDocumentSchema.refine((message) => {
+    return message.parts.every((part) => {
+      return part.type !== "goal";
+    });
+  }, "Goal input is no longer supported"),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
   hasTextContent: z.boolean(),

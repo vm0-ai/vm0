@@ -16,7 +16,7 @@ import {
   type RunFailureReasonToken,
 } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 
@@ -821,7 +821,6 @@ const dispatchTerminalCompleteSideEffects$ = command(
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             apiStartTime: input.apiStartTime,
-            goalSchedulerOrigin: "terminal_callback_fallback",
           },
           signal,
         ),

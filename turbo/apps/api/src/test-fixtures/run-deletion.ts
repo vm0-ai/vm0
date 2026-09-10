@@ -1,5 +1,5 @@
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 

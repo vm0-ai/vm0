@@ -19,8 +19,7 @@ type AuxiliaryFeature =
   | "shared_thread_title"
   | "run_summary"
   | "recommended_followups"
-  | "notification_summary"
-  | "goal_objective_brief";
+  | "notification_summary";
 type Outcome = "success" | "degraded" | "cancelled" | "error" | "skipped";
 type Reason =
   | OpenRouterFailureReason

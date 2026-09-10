@@ -330,7 +330,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Enable explainer videos with style, avatar, and voice selection in the template picker.",
+      "Enable intro videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -426,13 +426,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
-  },
-  [FeatureSwitchKey.OnboardingChat]: {
-    maintainer: "ming@okou.ai",
-    description:
-      "Show the built-in onboarding chat with Artifact examples and team collaboration guidance.",
-    enabled: false,
-    enabledEmailHashes: ["5a4bda06"], // ming@okou.ai
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",

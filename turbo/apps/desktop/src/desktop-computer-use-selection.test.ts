@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -81,6 +82,12 @@ lines.on('line', line => {
   );
   chmodSync(helper, 0o755);
   let identity = "first";
+  const authReplies: Promise<string | null>[] = [];
+  let authWindows = 0;
+  let rejectIdentityOnce = false;
+  let rejectHostStartOnce = false;
+  let rejectHostStarts = false;
+  const stoppedHostTokens: (string | null)[] = [];
   let debug = true;
   let hostGranted = true;
   let failLoad = false;
@@ -128,8 +135,13 @@ lines.on('line', line => {
     tokenUrl: `${api}/token`,
     selectOrgUrl: `${api}/select-org`,
     consumeUrl: () => `${api}/consume`,
-    runAuthWindow: async () => identity,
+    runAuthWindow: async () => {
+      authWindows++;
+      return await (authReplies.shift() ?? Promise.resolve(identity));
+    },
     onChange: () => authChanged(),
+    onBackgroundRefresh: (event) =>
+      controller.handleBackgroundAuthRefresh(event),
   });
   let developerChanged = () => {};
   const developer = new DeveloperToolsController({
@@ -208,9 +220,10 @@ lines.on('line', line => {
     preparePlugins: () => plugin.prepareForHost(),
     transitionTimeoutMs: 1234,
     lifecycleTimers: { setTimeout: schedule, clearTimeout: clear },
-    createRuntime: () =>
+    createRuntime: (options) =>
       createDesktopComputerUseHostRuntime(
         {
+          refreshRegistrationAuth: options.refreshRegistrationAuth,
           platformUrl: new URL("https://app.okou.ai"),
           installationId: readOrCreateComputerUseInstallationId(file),
           hostName: "fixture",
@@ -264,6 +277,10 @@ lines.on('line', line => {
       const user =
         request.headers.get("authorization")?.replace("Bearer ", "") ??
         "unknown";
+      if (url.pathname === "/api/auth/me" && rejectIdentityOnce) {
+        rejectIdentityOnce = false;
+        return new HttpResponse(null, { status: 401 });
+      }
       if (url.pathname === "/api/auth/me")
         return HttpResponse.json({
           userId: user,
@@ -277,11 +294,18 @@ lines.on('line', line => {
         await featureRead?.();
         return HttpResponse.json({ effectiveSwitches: { _debug: enabled } });
       }
-      if (url.pathname.endsWith("/hosts/start"))
+      if (url.pathname.endsWith("/hosts/start")) {
+        if (rejectHostStartOnce || rejectHostStarts) {
+          rejectHostStartOnce = false;
+          return new HttpResponse(null, { status: 401 });
+        }
         return HttpResponse.json({
           hostId: `host-${++hostStarts}`,
-          hostToken: "host-token",
+          hostToken: `host-token-${hostStarts}`,
         });
+      }
+      if (url.pathname.endsWith("/host/stop"))
+        stoppedHostTokens.push(request.headers.get("authorization"));
       if (url.pathname.endsWith("/commands/next")) {
         const next = command;
         command = null;
@@ -328,6 +352,22 @@ lines.on('line', line => {
     directory,
     tick,
     completed,
+    expireIdentity: () => {
+      rejectIdentityOnce = true;
+    },
+    rejectHostStart: () => {
+      rejectHostStartOnce = true;
+    },
+    set rejectHostStarts(value: boolean) {
+      rejectHostStarts = value;
+    },
+    acceptedHosts: () => hostStarts,
+    stoppedHostTokens,
+    authWindows: () => authWindows,
+    authReply: (reply: Promise<string | null>) => authReplies.push(reply),
+    settle: async () => {
+      while (pending.size) await Promise.allSettled([...pending]);
+    },
     holdNativePermissions: () => writeFileSync(permissionGate, "hold"),
     releaseNativeExit: () => {
       rmSync(permissionGate, { force: true });
@@ -1024,3 +1064,357 @@ it.each(["refresh", "sign-out", "quit"] as const)(
     ).toBe(false);
   },
 );
+
+it.each(["okou", "cua"] as const)(
+  "recovers %s after repeated hidden identity refresh and executes a new command",
+  async (selectedDriver) => {
+    const app = desktop(
+      JSON.stringify({
+        computerUseDriver: {
+          experimentalCuaEnabled: selectedDriver === "cua",
+          selectedDriver,
+        },
+      }),
+    );
+    await app.authorize();
+    await app.restore();
+    await app.controller.start({ userInitiated: true });
+    expect(app.controller.getHostState().status).toBe("online");
+    for (let refresh = 0; refresh < 2; refresh++) {
+      const previousAuthority = app.auth.getAuthority();
+      const previousHost = app.controller.getHostState().hostId;
+      app.expireIdentity();
+      expect(await app.auth.getAuthState()).toMatchObject({
+        status: "signed_in",
+      });
+      expect(app.auth.getAuthority()).not.toBe(previousAuthority);
+      await vi.waitFor(() => {
+        expect(app.controller.getHostState().status).toBe("online");
+        expect(app.controller.getHostState().hostId).not.toBe(previousHost);
+      });
+      expect(
+        app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+      ).toHaveLength(refresh + 2);
+      expect(
+        app.requests.filter((request) => request.path.endsWith("/host/stop")),
+      ).toHaveLength(refresh + 1);
+    }
+    expect(app.authWindows()).toBe(3);
+    app.command = { id: "after-refresh", kind: "apps.list", payload: {} };
+    app.tick(5000);
+    expect(await app.completed.promise).toMatchObject({ status: "succeeded" });
+    await vi.waitFor(() =>
+      expect(app.controller.getHostState().localCommandLog).toHaveLength(1),
+    );
+    expect(app.controller.getHostState().localCommandLog[0]).toMatchObject({
+      status: "succeeded",
+      driver: { id: selectedDriver },
+    });
+    if (selectedDriver === "cua")
+      expect(app.boundaries.filter((boundary) => boundary.live)).toHaveLength(
+        1,
+      );
+  },
+);
+
+it("waits for old CUA cleanup and renewed developer access before recovering hidden auth", async () => {
+  const app = desktop();
+  await app.authorize();
+  await app.selection.select("cua");
+  await app.controller.start({ userInitiated: true });
+  const old = app.boundaries[0]!;
+  const exit = deferred<void>();
+  const feature = deferred<void>();
+  const featureEntered = deferred<void>();
+  old.intercept = async (name) => {
+    if (name === "stop") await exit.promise;
+  };
+  app.featureRead = async () => {
+    featureEntered.resolve();
+    await feature.promise;
+  };
+  try {
+    app.expireIdentity();
+    const refreshing = app.auth.getAuthState();
+    await old.stopEntered.promise;
+    expect(app.driver.getCapabilities()).toHaveLength(0);
+    expect(await refreshing).toMatchObject({ status: "signed_in" });
+    await featureEntered.promise;
+    expect(app.controller.getHostState().status).toBe("offline");
+    expect(app.boundaries).toHaveLength(1);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(1);
+    exit.resolve();
+    await vi.waitFor(() => expect(old.live).toBe(false));
+    expect(app.boundaries).toHaveLength(1);
+    app.featureRead = null;
+    feature.resolve();
+    await vi.waitFor(() =>
+      expect(app.controller.getHostState().status).toBe("online"),
+    );
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(2);
+    expect(app.boundaries.filter((boundary) => boundary.live)).toHaveLength(1);
+  } finally {
+    exit.resolve();
+    feature.resolve();
+  }
+});
+
+it.each([
+  ["okou", "stop"],
+  ["okou", "quit"],
+  ["okou", "sign-out"],
+  ["cua", "stop"],
+  ["cua", "quit"],
+  ["cua", "sign-out"],
+] as const)(
+  "does not recover %s when %s supersedes a hidden refresh",
+  async (selectedDriver, action) => {
+    const app = desktop(
+      JSON.stringify({
+        computerUseDriver: {
+          experimentalCuaEnabled: selectedDriver === "cua",
+          selectedDriver,
+        },
+      }),
+    );
+    await app.authorize();
+    await app.restore();
+    await app.controller.start({ userInitiated: true });
+    const reply = deferred<string | null>();
+    app.authReply(reply.promise);
+    app.expireIdentity();
+    const refreshing = app.auth.getAuthState();
+    try {
+      await vi.waitFor(() => expect(app.authWindows()).toBe(2));
+      if (action === "stop") await app.controller.stop();
+      else if (action === "quit") await app.controller.stopForQuit();
+      else app.auth.signOut();
+      reply.resolve("first");
+      expect(await refreshing).toMatchObject({
+        status: action === "sign-out" ? "signed_out" : "signed_in",
+      });
+      await app.settle();
+      await nextTurn();
+      expect(app.controller.getHostState().status).toBe("offline");
+      expect(
+        app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+      ).toHaveLength(1);
+      expect(app.driver.getCapabilities()).toHaveLength(0);
+      expect(app.boundaries.every((boundary) => !boundary.live)).toBe(true);
+    } finally {
+      reply.resolve(null);
+      await refreshing;
+    }
+  },
+);
+
+it.each([
+  ["okou", "failed"],
+  ["okou", "different identity"],
+  ["cua", "failed"],
+  ["cua", "different identity"],
+] as const)(
+  "does not reuse %s online intent after a hidden refresh returns %s",
+  async (selectedDriver, outcome) => {
+    const app = desktop(
+      JSON.stringify({
+        computerUseDriver: {
+          experimentalCuaEnabled: selectedDriver === "cua",
+          selectedDriver,
+        },
+      }),
+    );
+    await app.authorize();
+    await app.restore();
+    await app.controller.start({ userInitiated: true });
+    app.authReply(Promise.resolve(outcome === "failed" ? null : "second"));
+    app.expireIdentity();
+    expect(await app.auth.getAuthState()).toMatchObject({
+      status: outcome === "failed" ? "signed_out" : "signed_in",
+    });
+    await app.settle();
+    await nextTurn();
+    expect(app.controller.getHostState().status).toBe("offline");
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(1);
+    expect(app.driver.getCapabilities()).toHaveLength(0);
+    expect(app.boundaries.every((boundary) => !boundary.live)).toBe(true);
+  },
+);
+
+it.each(["okou", "cua"] as const)(
+  "finishes initial hidden authentication triggered by %s startup",
+  async (selectedDriver) => {
+    const app = desktop(
+      JSON.stringify({
+        computerUseDriver: {
+          experimentalCuaEnabled: selectedDriver === "cua",
+          selectedDriver,
+        },
+      }),
+    );
+    await app.restore();
+    await app.controller.start();
+    await vi.waitFor(() =>
+      expect(app.controller.getHostState().status).toBe("online"),
+    );
+    expect(app.authWindows()).toBe(1);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(1);
+    expect(app.selection.getState().actual).toMatchObject({
+      id: selectedDriver,
+    });
+  },
+);
+
+it.each(["okou", "cua"] as const)(
+  "preserves a newer manual Start for %s while hidden authentication is pending",
+  async (selectedDriver) => {
+    const app = desktop(
+      JSON.stringify({
+        computerUseDriver: {
+          experimentalCuaEnabled: selectedDriver === "cua",
+          selectedDriver,
+        },
+      }),
+    );
+    await app.authorize();
+    await app.restore();
+    await app.controller.start({ userInitiated: true });
+    const reply = deferred<string | null>();
+    app.authReply(reply.promise);
+    app.expireIdentity();
+    const refreshing = app.auth.getAuthState();
+    try {
+      await vi.waitFor(() => expect(app.authWindows()).toBe(2));
+      await app.controller.stop();
+      const starting = app.controller.start({ userInitiated: true });
+      reply.resolve("first");
+      await refreshing;
+      await starting;
+      await vi.waitFor(() =>
+        expect(app.controller.getHostState().status).toBe("online"),
+      );
+      expect(
+        app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+      ).toHaveLength(2);
+      expect(app.selection.getState().actual).toMatchObject({
+        id: selectedDriver,
+      });
+    } finally {
+      reply.resolve(null);
+      await refreshing;
+    }
+  },
+);
+
+it.each(["okou", "cua"] as const)(
+  "keeps %s offline when hidden authentication refresh has no online intent",
+  async (selectedDriver) => {
+    const app = desktop(
+      JSON.stringify({
+        computerUseDriver: {
+          experimentalCuaEnabled: selectedDriver === "cua",
+          selectedDriver,
+        },
+      }),
+    );
+    await app.authorize();
+    await app.restore();
+    app.expireIdentity();
+    expect(await app.auth.getAuthState()).toMatchObject({
+      status: "signed_in",
+    });
+    await app.settle();
+    await nextTurn();
+    expect(app.controller.getHostState().status).toBe("offline");
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(0);
+    expect(app.nativeStarts()).toBe(0);
+    expect(app.boundaries).toHaveLength(0);
+  },
+);
+
+it("recovers a hidden refresh triggered by host registration without registering a retired owner", async () => {
+  const app = desktop();
+  await app.authorize();
+  await app.restore();
+  app.rejectHostStart();
+  await app.controller.start({ userInitiated: true });
+  await vi.waitFor(() =>
+    expect(app.controller.getHostState().status).toBe("online"),
+  );
+  app.command = {
+    id: "after-registration-refresh",
+    kind: "apps.list",
+    payload: {},
+  };
+  app.tick(5000);
+  expect(await app.completed.promise).toMatchObject({ status: "succeeded" });
+  await vi.waitFor(() =>
+    expect(app.controller.getHostState().localCommandLog).toHaveLength(1),
+  );
+  await app.settle();
+  expect({
+    registrationAttempts: app.requests.filter((request) =>
+      request.path.endsWith("/hosts/start"),
+    ).length,
+    acceptedHosts: app.acceptedHosts(),
+    stoppedHostTokens: app.stoppedHostTokens,
+    onlineHost: app.controller.getHostState().hostId,
+    nativeStarts: app.nativeStarts(),
+    nativeActive: app.driver.getCapabilities().length > 0,
+  }).toEqual({
+    registrationAttempts: 2,
+    acceptedHosts: 1,
+    stoppedHostTokens: [],
+    onlineHost: "host-1",
+    nativeStarts: 2,
+    nativeActive: true,
+  });
+});
+
+it("keeps a terminal CUA registration error after developer access is refreshed", async () => {
+  const app = desktop();
+  await app.authorize();
+  await app.selection.select("cua");
+  const unexpectedRefresh = deferred<string | null>();
+  app.authReply(Promise.resolve("first"));
+  // Bound a broken automatic retry loop without granting another refresh.
+  app.authReply(unexpectedRefresh.promise);
+  app.rejectHostStarts = true;
+  try {
+    await app.controller.start({ userInitiated: true });
+    await vi.waitFor(() =>
+      expect(app.controller.getHostState().status).toBe("error"),
+    );
+    expect(app.authWindows()).toBe(2);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(2);
+    expect(app.acceptedHosts()).toBe(0);
+
+    app.developer.requestRefresh();
+    await vi.waitFor(() =>
+      expect(app.developer.getAvailability()).toBe("available"),
+    );
+    await app.settle();
+    await nextTurn();
+    expect(app.controller.getHostState().status).toBe("error");
+    expect(app.authWindows()).toBe(2);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(2);
+    expect(app.acceptedHosts()).toBe(0);
+  } finally {
+    app.auth.signOut();
+    unexpectedRefresh.resolve(null);
+  }
+});
