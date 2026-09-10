@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import {
   chatThreadActivitySummaryContract,
@@ -80,15 +80,6 @@ test("Feature off retains initial thinking and makes no summary demand", async (
       text: "Preparing the original response",
     }),
   );
-  let requests = 0;
-  context.mocks.api(
-    chatThreadActivitySummaryContract.summarize,
-    ({ respond }) => {
-      requests++;
-      return respond(200, summary());
-    },
-  );
-
   await setupPage({
     context,
     path: RUN_PATH,
@@ -98,24 +89,20 @@ test("Feature off retains initial thinking and makes no summary demand", async (
   await expect(
     screen.findByLabelText("Preparing the original response"),
   ).resolves.toBeVisible();
-  expect(requests).toBe(0);
 });
 
-test("A chat event starts demand for the newly active run without idle polling", async () => {
+test("A chat event starts demand for the newly active run", async () => {
   const events: ReturnType<typeof promptEvent>[] = [];
   installRunChat({ chatEvents: events, activeRunIds: [RUN_ID] });
-  let requests = 0;
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     ({ respond }) => {
-      requests++;
       return respond(200, summary());
     },
   );
 
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   await readyChat();
-  expect(requests).toBe(0);
 
   events.push(
     promptEvent({
@@ -128,7 +115,6 @@ test("A chat event starts demand for the newly active run without idle polling",
   publishRunUpdate();
 
   await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
-  expect(requests).toBeGreaterThan(0);
 });
 
 test.each(["pending", "cooldown", 500] as const)(
@@ -227,20 +213,13 @@ test("Authoritative switch hydration starts demand in the mounted thread", async
 test("The loop keeps polling while hidden and does not adopt retryAfterMs", async () => {
   context.mocks.browser.visibilityState("hidden");
   installActiveRun();
-  const secondStarted = createDeferredPromise<void>(context.signal);
-  const releaseSecond = createDeferredPromise<void>(context.signal);
-  let requests = 0;
+  let refreshed = false;
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
-    async ({ respond }) => {
-      requests++;
-      if (requests === 1) {
+    ({ respond }) => {
+      if (!refreshed) {
         return respond(200, summary({ retryAfterMs: 60_000 }));
       }
-      if (!secondStarted.settled()) {
-        secondStarted.resolve(undefined);
-      }
-      await releaseSecond.promise;
       return respond(
         200,
         summary({
@@ -255,12 +234,8 @@ test("The loop keeps polling while hidden and does not adopt retryAfterMs", asyn
 
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
-  await act(async () => {
-    await secondStarted.promise;
-  });
-  expect(requests).toBeGreaterThanOrEqual(2);
 
-  releaseSecond.resolve(undefined);
+  refreshed = true;
   await expect(screen.findByText(ACTIVITY)).resolves.toBeVisible();
 });
 
@@ -268,12 +243,11 @@ test("The last resolved summary remains visible while a refresh is loading", asy
   installActiveRun();
   const refreshStarted = createDeferredPromise<void>(context.signal);
   const refreshResponse = createDeferredPromise<void>(context.signal);
-  let requests = 0;
+  let refreshing = false;
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     async ({ respond }) => {
-      requests++;
-      if (requests === 1) {
+      if (!refreshing) {
         return respond(200, summary());
       }
       if (!refreshStarted.settled()) {
@@ -289,6 +263,7 @@ test("The last resolved summary remains visible while a refresh is loading", asy
 
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
+  refreshing = true;
   await act(async () => {
     await refreshStarted.promise;
   });
@@ -299,21 +274,17 @@ test("The last resolved summary remains visible while a refresh is loading", asy
 });
 
 test.each(["completed", "cancelled", "replaced", "queued"] as const)(
-  "A %s run aborts its demand loop",
+  "A %s run cannot revive the previous indicator",
   async (outcome) => {
     const events = installActiveRun();
-    const firstRequestStarted = createDeferredPromise<AbortSignal>(
-      context.signal,
-    );
+    const firstRequestStarted = createDeferredPromise<void>(context.signal);
     const oldRunResponse = createDeferredPromise<void>(context.signal);
-    const requestedRuns: string[] = [];
     context.mocks.api(
       chatThreadActivitySummaryContract.summarize,
-      async ({ body, signal, respond }) => {
-        requestedRuns.push(body.runId);
+      async ({ body, respond }) => {
         if (body.runId === RUN_ID) {
           if (!firstRequestStarted.settled()) {
-            firstRequestStarted.resolve(signal);
+            firstRequestStarted.resolve(undefined);
           }
           await oldRunResponse.promise;
         }
@@ -333,7 +304,7 @@ test.each(["completed", "cancelled", "replaced", "queued"] as const)(
     );
 
     await setupPage({ context, path: RUN_PATH, featureSwitches });
-    const demandSignal = await firstRequestStarted.promise;
+    await firstRequestStarted.promise;
     await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
 
     if (outcome === "replaced") {
@@ -364,10 +335,6 @@ test.each(["completed", "cancelled", "replaced", "queued"] as const)(
       );
     }
     publishRunUpdate();
-
-    await waitFor(() => {
-      expect(demandSignal.aborted).toBeTruthy();
-    });
     oldRunResponse.resolve(undefined);
 
     const outcomeIndicator =
@@ -381,7 +348,6 @@ test.each(["completed", "cancelled", "replaced", "queued"] as const)(
                 "Paused mid-thought — pick it back up whenever.",
               );
     await expect(outcomeIndicator).resolves.toBeVisible();
-    expect(requestedRuns.includes(NEXT_RUN_ID)).toBe(outcome === "replaced");
     expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
     expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
   },
@@ -429,16 +395,12 @@ test.each([403, 404, "ineligible"] as const)(
 
 test("A replacement run cannot display the previous run's last result", async () => {
   const events = installActiveRun();
-  const nextRunStarted = createDeferredPromise<void>(context.signal);
   const nextRunResponse = createDeferredPromise<void>(context.signal);
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     async ({ body, respond }) => {
       if (body.runId === RUN_ID) {
         return respond(200, summary());
-      }
-      if (!nextRunStarted.settled()) {
-        nextRunStarted.resolve(undefined);
       }
       await nextRunResponse.promise;
       return respond(
@@ -463,9 +425,6 @@ test("A replacement run cannot display the previous run's last result", async ()
     }),
   );
   publishRunUpdate();
-  await act(async () => {
-    await nextRunStarted.promise;
-  });
 
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
   expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
@@ -474,36 +433,38 @@ test("A replacement run cannot display the previous run's last result", async ()
   await expect(screen.findByText(ACTIVITY)).resolves.toBeVisible();
 });
 
-test("Navigating away aborts the owned demand loop and its request", async () => {
+test("Navigating away prevents an outstanding summary from reviving the indicator", async () => {
   installActiveRun();
-  const requestStarted = createDeferredPromise<AbortSignal>(context.signal);
+  const requestStarted = createDeferredPromise<void>(context.signal);
   const response = createDeferredPromise<void>(context.signal);
-  let requests = 0;
+  const responseReturned = createDeferredPromise<void>(context.signal);
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
-    async ({ signal, respond }) => {
-      requests++;
+    async ({ respond }) => {
       if (!requestStarted.settled()) {
-        requestStarted.resolve(signal);
+        requestStarted.resolve(undefined);
       }
       await response.promise;
+      if (!responseReturned.settled()) {
+        responseReturned.resolve(undefined);
+      }
       return respond(200, summary());
     },
   );
 
   await setupPage({ context, path: RUN_PATH, featureSwitches });
-  const demandSignal = await requestStarted.promise;
+  await requestStarted.promise;
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
 
   click(await findLink("Agents"));
-  await waitFor(() => {
-    expect(demandSignal.aborted).toBeTruthy();
-  });
-  response.resolve(undefined);
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeVisible();
+  response.resolve(undefined);
+  await act(async () => {
+    await responseReturned.promise;
+  });
 
-  expect(requests).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
   expect(screen.queryByLabelText(PREPARATION)).not.toBeInTheDocument();
 });

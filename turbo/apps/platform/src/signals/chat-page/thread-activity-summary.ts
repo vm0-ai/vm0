@@ -104,23 +104,30 @@ function createThinkingSummaryDemand(
   const subscribe$ = command(async ({ set }, signal: AbortSignal) => {
     signal.throwIfAborted();
     let activeDemand = Promise.resolve();
-    const ensureSummaryDemand$ = command(({ get, set }) => {
-      signal.throwIfAborted();
-      const runId = get(currentActiveRunId$);
-      if (runId === get(summaryDemandRunId$)) {
-        return;
-      }
-      summaryDemandSignal = null;
-      const demandSignal = set(resetSummaryDemand$, signal);
-      set(summaryDemandRunId$, runId);
-      if (runId) {
-        summaryDemandSignal = demandSignal;
-        activeDemand = set(startSummaryDemand$, demandSignal);
-      }
-    });
+    const ensureSummaryDemand$ = command(
+      async ({ get, set }, demandOwnerSignal: AbortSignal) => {
+        demandOwnerSignal.throwIfAborted();
+        const runId = get(currentActiveRunId$);
+        if (runId === get(summaryDemandRunId$)) {
+          return;
+        }
+        summaryDemandSignal = null;
+        const previousDemand = activeDemand;
+        const demandSignal = set(resetSummaryDemand$, demandOwnerSignal);
+        set(summaryDemandRunId$, runId);
+        await previousDemand;
+        demandOwnerSignal.throwIfAborted();
+        if (runId !== get(summaryDemandRunId$)) {
+          return;
+        }
+        if (runId) {
+          summaryDemandSignal = demandSignal;
+          activeDemand = set(startSummaryDemand$, demandSignal);
+        }
+      },
+    );
     const afterEventsChange$ = command(({ set }) => {
-      set(ensureSummaryDemand$);
-      return Promise.resolve();
+      return set(ensureSummaryDemand$, signal);
     });
     set(
       registerChatEventChangeHandler$,
@@ -128,18 +135,17 @@ function createThinkingSummaryDemand(
       afterEventsChange$,
       signal,
     );
-    set(ensureSummaryDemand$);
-
     const ensureHydratedSummaryDemand$ = command(
       async ({ get, set }, signal: AbortSignal) => {
         await get(initialFeatureSwitchHydration$);
         signal.throwIfAborted();
-        set(ensureSummaryDemand$);
+        await set(ensureSummaryDemand$, signal);
       },
     );
     const subscriptionEnd = createDeferredPromise<void>(signal);
     await withCleanup(
       Promise.all([
+        set(ensureSummaryDemand$, signal),
         set(ensureHydratedSummaryDemand$, signal),
         subscriptionEnd.promise,
       ]),
