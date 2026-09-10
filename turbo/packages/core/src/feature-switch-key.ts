@@ -15,7 +15,6 @@ export enum FeatureSwitchKey {
   DatadogConnector = "datadogConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",
-  DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
   MercuryConnector = "mercuryConnector",
