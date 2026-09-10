@@ -24,6 +24,7 @@ import {
   observePiResponseStatus,
   type PiAgentStreamOptions,
 } from "./stream-options";
+import { guardPiUpstreamErrorBody } from "./upstream-error-body";
 
 const PI_AGENT_USER_AGENT = "okou-pi-agent/1.0";
 
@@ -315,15 +316,20 @@ export function piAgentStreamForConfig(
     ) {
       return streamPiNative(config, model, context, configuredOptions);
     }
-    const responseOptions = configuredOptions.onObservedResponseStatus
-      ? {
-          ...configuredOptions,
-          fetch: observePiResponseStatus(
-            configuredOptions.fetch ?? globalThis.fetch,
+    // Every public route drops an upstream markup error page before the
+    // adapter can fold it into its terminal message.
+    const guardedFetch = guardPiUpstreamErrorBody(
+      configuredOptions.fetch ?? globalThis.fetch,
+    );
+    const responseOptions = {
+      ...configuredOptions,
+      fetch: configuredOptions.onObservedResponseStatus
+        ? observePiResponseStatus(
+            guardedFetch,
             configuredOptions.onObservedResponseStatus,
-          ),
-        }
-      : configuredOptions;
+          )
+        : guardedFetch,
+    };
     if (config.dialect === "openai-responses") {
       if (!isResponsesModel(model)) {
         throw new Error(

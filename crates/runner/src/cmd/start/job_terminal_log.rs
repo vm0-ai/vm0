@@ -767,6 +767,30 @@ mod tests {
     }
 
     #[test]
+    fn pi_result_upstream_server_error_logs_job_execution_failed_at_info() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Pi,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::PiResult)
+        .with_session_history_status(SessionHistoryStatus::NotApplicable)
+        .with_failure_reason(FailureReason::ProviderServerError);
+        let error =
+            "upstream_non_api_response status=502 content_type=html bytes=4711 digest=1a2b3c4d";
+        let failure = executor::ExecutionFailure::new(1, error, Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::INFO);
+        assert_field_eq(&event, "error", error);
+        assert_field_eq(&event, "failure_reason", "provider_server_error");
+        assert_field_eq(&event, "failure_framework", "pi");
+        assert_field_eq(&event, "failure_detail_source", "pi_result");
+    }
+
+    #[test]
     fn claude_result_provider_overloaded_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,

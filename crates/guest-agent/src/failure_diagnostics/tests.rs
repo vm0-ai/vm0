@@ -929,6 +929,68 @@ fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_pi_upstream_non_api_response_by_observed_status() {
+    for (status, expected_reason) in [
+        (429, Some(FailureReason::ProviderRateLimited)),
+        (500, Some(FailureReason::ProviderServerError)),
+        (502, Some(FailureReason::ProviderServerError)),
+        (529, Some(FailureReason::ProviderOverloaded)),
+        // A client-side status is not an expected upstream condition, so it
+        // stays unclassified and keeps its error-level report.
+        (403, None),
+        (404, None),
+    ] {
+        let message = format!(
+            "upstream_non_api_response status={status} content_type=html bytes=4711 digest=1a2b3c4d"
+        );
+
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            &message,
+        );
+
+        assert_eq!(reason, expected_reason, "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_pi_upstream_status_without_runtime_evidence() {
+    for message in [
+        // The guest-side fallback never observed the transport.
+        "upstream_non_api_response status=unknown content_type=unknown bytes=4711 digest=1a2b3c4d",
+        // Model prose must never be read as a transport status.
+        "The upstream returned status=502 to my request",
+        "API Error: Overloaded",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+
+    // Only the Pi result boundary produces this marker.
+    let marker =
+        "upstream_non_api_response status=502 content_type=html bytes=4711 digest=1a2b3c4d";
+    for (framework, source) in [
+        (AgentFramework::Pi, FailureDetailSource::Stderr),
+        (
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+        ),
+        (AgentFramework::Codex, FailureDetailSource::CodexJsonl),
+    ] {
+        assert_eq!(
+            super::classify_cli_failure_reason(framework, source, marker),
+            None
+        );
+    }
+}
+
+#[test]
 fn cli_failure_reason_classifies_claude_output_token_limit() {
     for message in [
         "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",

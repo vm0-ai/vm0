@@ -213,8 +213,13 @@
 //! Each assistant `message_end` updates `PiAssistantTerminal`; it does not
 //! itself close the public run. `stopReason` values `error` and `aborted` set
 //! the cached failure flag. The result text uses `errorMessage` when present,
-//! otherwise the joined non-empty assistant text. If both are empty, it falls
-//! back to `Pi model turn <stopReason>` when a stop reason exists.
+//! otherwise the joined non-empty assistant text. An `errorMessage` is
+//! upstream-controlled, so it passes through
+//! [`crate::upstream_error_text::project_model_error_text`]: a markup document
+//! becomes a bounded content-free description and any other message keeps its
+//! exact text under a size bound. Assistant text is the run's own answer and is
+//! never bounded here. If both are empty, it falls back to
+//! `Pi model turn <stopReason>` when a stop reason exists.
 //!
 //! When `agent_settled` arrives, the cached state is consumed and the public
 //! result contains `type: "result"`, `subtype: "error_during_execution"` and
@@ -241,6 +246,7 @@ use tokio_util::sync::CancellationToken;
 use super::pi_memory_citation::{CitationProjection, project_segments};
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use crate::error::AgentError;
+use crate::upstream_error_text::project_model_error_text;
 
 const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const PI_RPC_RESPONSE_QUEUE_CAPACITY: usize = 2;
@@ -448,10 +454,14 @@ impl PiAssistantTerminal {
     fn from_message(message: &Value, preserve_empty_result: bool) -> Self {
         let stop_reason = message.get("stopReason").and_then(Value::as_str);
         let failed = matches!(stop_reason, Some("error" | "aborted"));
+        // A model error is upstream-controlled text. Bounding it here keeps the
+        // public result, the delivered event and the failure diagnostic on the
+        // same actionable value; assistant text stays untouched because it is
+        // the run's own answer.
         let result = message
             .get("errorMessage")
             .and_then(Value::as_str)
-            .map_or_else(|| assistant_text(message), ToString::to_string);
+            .map_or_else(|| assistant_text(message), project_model_error_text);
         let result = if result.is_empty() && !preserve_empty_result {
             stop_reason.map_or_else(String::new, |reason| format!("Pi model turn {reason}"))
         } else {
