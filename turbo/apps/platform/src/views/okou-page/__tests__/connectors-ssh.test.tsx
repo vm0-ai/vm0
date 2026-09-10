@@ -167,6 +167,19 @@ test.each([0, 2])(
           connected: false,
         });
       }),
+      // Discovery always names the catalog's categories, and the filter is
+      // built from that list rather than from the connectors that came back.
+      {
+        categories: [
+          {
+            id: "communication-collaboration",
+            label: "Communication and Collaboration",
+            menuLabel: "Communication",
+            groupId: null,
+          },
+        ],
+        groups: [],
+      },
     );
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
       return respond(200, { configuredCount });
