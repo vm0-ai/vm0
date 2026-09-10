@@ -12851,6 +12851,15 @@ describe("CHAT-02: model-first provider policies", () => {
         outcome: "sandbox_retry_started",
       }),
     );
+    // Reaching sandbox_retry_started through the deadline path requires the
+    // attempt-timeout record, so pin its level here too.
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "api_attempt_timed_out",
+      }),
+    );
     expect(warningCallsForRun(run.runId)).toStrictEqual([]);
   }, 90_000);
 
