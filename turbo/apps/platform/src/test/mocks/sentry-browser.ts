@@ -1,4 +1,4 @@
-import type { BrowserOptions, Integration } from "@sentry/browser";
+import type { BrowserOptions } from "@sentry/browser";
 
 import {
   recordSentryException,
@@ -39,6 +39,8 @@ export function thirdPartyErrorFilterIntegration(
   _options: Parameters<
     typeof import("@sentry/browser").thirdPartyErrorFilterIntegration
   >[0],
-): Integration {
+): ReturnType<
+  typeof import("@sentry/browser").thirdPartyErrorFilterIntegration
+> {
   return { name: "ThirdPartyErrorsFilter" };
 }
