@@ -183,6 +183,13 @@
       "when": 1789032100587,
       "tag": "1103_minor_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1104,
+      "version": "7",
+      "when": 1789037955969,
+      "tag": "1104_privacy_choices",
+      "breakpoints": true
     }
   ]
 }
