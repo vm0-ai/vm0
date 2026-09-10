@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   BadgeCheck,
   Bot,
+  Check,
   Layers3,
   Loader2,
   RotateCcw,
@@ -125,8 +126,10 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
 
 function OfficialWorkflowCard({
   workflow,
+  installed,
 }: {
   readonly workflow: OfficialWorkflowCatalogSummary;
+  readonly installed: boolean;
 }) {
   return (
     <article
@@ -165,16 +168,31 @@ function OfficialWorkflowCard({
               { count: workflow.blueprints.length },
             )}
           </span>
-          <Button asChild type="button" size="sm" className="h-9 rounded-lg">
-            <Link
-              pathname={ROUTES.officialWorkflowDetail}
-              options={{ pathParams: { definitionName: workflow.name } }}
+          {installed ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-lg"
+              disabled
             >
+              <Check size={14} />
               {i18n.t(($) => {
-                return $.workflows.official.viewAndInstall;
+                return $.workflows.official.installedStatus;
               })}
-            </Link>
-          </Button>
+            </Button>
+          ) : (
+            <Button asChild type="button" size="sm" className="h-9 rounded-lg">
+              <Link
+                pathname={ROUTES.officialWorkflowDetail}
+                options={{ pathParams: { definitionName: workflow.name } }}
+              >
+                {i18n.t(($) => {
+                  return $.workflows.official.viewAndInstall;
+                })}
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
     </article>
@@ -260,6 +278,7 @@ function OfficialWorkflowCatalogPage() {
                   <OfficialWorkflowCard
                     key={workflow.name}
                     workflow={workflow}
+                    installed={workflow.installed}
                   />
                 );
               })}

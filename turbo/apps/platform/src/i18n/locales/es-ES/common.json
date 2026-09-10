@@ -6554,6 +6554,7 @@
       "install": "Instalar",
       "installDescription": "Elige un agente y completa todos los parámetros obligatorios. Se instalarán todas las automatizaciones incluidas.",
       "installed": "Flujo de trabajo oficial instalado",
+      "installedStatus": "Instalado",
       "installErrorDescription": "Comprueba el agente y los valores de los parámetros e inténtalo de nuevo.",
       "installErrorTitle": "No se pudo instalar el flujo de trabajo oficial",
       "installTitle": "Instalar {{name}}",
