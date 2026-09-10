@@ -52,8 +52,6 @@
     "okou-nav-title-row",
     "okou-pill",
     "okou-pwa-fixed-cover",
-    "okou-realtime-cloud-flow",
-    "okou-realtime-status-reconnecting",
     "okou-shimmer-text",
     "okou-sidebar-header",
     "okou-thinking-enter",
@@ -733,62 +731,6 @@
         "selector": ".okou-thumb-border",
         "property": "border",
         "value": "0.5px solid hsl(var(--gray-400))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-realtime-status-reconnecting",
-        "property": "opacity",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-realtime-status-reconnecting",
-        "property": "animation",
-        "value": "okou-realtime-status-reveal 160ms cubic-bezier(0.16,1,0.3,1) 300ms forwards",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-realtime-cloud-flow",
-        "property": "stroke-dasharray",
-        "value": "3 6",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-realtime-cloud-flow",
-        "property": "animation",
-        "value": "okou-realtime-cloud-flow 1.05s linear infinite",
-        "important": false
-      },
-      {
-        "atRules": ["@media (prefers-reduced-motion:reduce)"],
-        "selector": ".okou-realtime-status-reconnecting",
-        "property": "opacity",
-        "value": "0.8",
-        "important": false
-      },
-      {
-        "atRules": ["@media (prefers-reduced-motion:reduce)"],
-        "selector": ".okou-realtime-status-reconnecting",
-        "property": "animation",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@media (prefers-reduced-motion:reduce)"],
-        "selector": ".okou-realtime-cloud-flow",
-        "property": "stroke-dasharray",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@media (prefers-reduced-motion:reduce)"],
-        "selector": ".okou-realtime-cloud-flow",
-        "property": "animation",
-        "value": "none",
         "important": false
       },
       {
@@ -4095,10 +4037,6 @@
       "okou-border": 1,
       "okou-bubble-cool": 1,
       "okou-chat-bubble-assistant": 1
-    },
-    "apps/platform/src/views/okou-page/sidebar-account.tsx": {
-      "okou-realtime-cloud-flow": 1,
-      "okou-realtime-status-reconnecting": 1
     },
     "apps/platform/src/views/okou-page/sidebar-dialogs.tsx": {
       "okou-app": 2

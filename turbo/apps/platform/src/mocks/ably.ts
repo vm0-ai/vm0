@@ -74,6 +74,8 @@ interface MockChannelStateChange {
   readonly current: MockChannelState;
   readonly previous: MockChannelState;
   readonly reason?: MockErrorInfo;
+  /** Ably's continuity signal: false means the reattach could not replay. */
+  readonly resumed: boolean;
 }
 type ChannelStateListener = (stateChange: MockChannelStateChange) => void;
 
@@ -175,12 +177,27 @@ class FakeChannel {
     this.transition("suspended", reason);
   }
 
+  /**
+   * Reattach after a drop. Ably discards channel state on suspension, so this
+   * reattach reports `resumed: false`; use `resume()` for a short interruption
+   * that Ably was able to replay.
+   */
   reconnect(): void {
     if (this.state !== "suspended") {
       return;
     }
     this.transition("attaching");
     this.transition("attached");
+  }
+
+  /** Reattach with continuity preserved, as after a brief disconnect. */
+  resume(): void {
+    if (this.state === "attached") {
+      this.transition("attached", undefined, true);
+      return;
+    }
+    this.transition("attaching");
+    this.transition("attached", undefined, true);
   }
 
   on(callback: ChannelStateListener): void {
@@ -191,10 +208,14 @@ class FakeChannel {
     this.stateListeners.delete(callback);
   }
 
-  private transition(state: MockChannelState, reason?: MockErrorInfo): void {
+  private transition(
+    state: MockChannelState,
+    reason?: MockErrorInfo,
+    resumed = false,
+  ): void {
     const previous = this.state;
     this.state = state;
-    const stateChange = { current: state, previous, reason };
+    const stateChange = { current: state, previous, reason, resumed };
     for (const listener of this.stateListeners) {
       listener(stateChange);
     }
@@ -633,6 +654,21 @@ export function triggerAblyReauth(): Promise<AuthCallbackToken> {
 /** Token bodies returned by every successful auth callback invocation. */
 export function getAuthTokenHistory(): readonly AuthCallbackToken[] {
   return tokenBodies;
+}
+
+/**
+ * Reattach every channel with continuity preserved, as Ably does after a brief
+ * disconnect it could replay. Subscribers must not re-read their baseline.
+ */
+export function triggerAblyResume(): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "closed") {
+      continue;
+    }
+    for (const channel of realtime.allChannels()) {
+      channel.resume();
+    }
+  }
 }
 
 /** Fire a reconnect event on every connected Realtime instance. */

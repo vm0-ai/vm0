@@ -33,7 +33,6 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
   prepare(signal: AbortSignal): Promise<void> {
     this.bindOwner(signal);
     if (!this.bridge) {
-      this.options.events.statusChanged("connecting");
       this.bridge = this.options.createBridge(this.options.events, signal);
     }
     return Promise.resolve();
@@ -51,12 +50,14 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     scope: SharedDatabaseRealtimeScope,
     topic: string,
     listener: (message: SharedDatabaseRealtimeMessage) => void,
+    onResync: () => void,
   ): Promise<void> {
     return this.requireRegistered(this.bridge).subscribeRealtime(
       subscriptionId,
       scope,
       topic,
       listener,
+      onResync,
     );
   }
 

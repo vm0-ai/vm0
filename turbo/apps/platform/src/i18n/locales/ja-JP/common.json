@@ -3546,9 +3546,7 @@
       "requestFailed": "リクエストが失敗しました"
     },
     "realtime": {
-      "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
-      "disconnected": "リアルタイム接続が切断されました",
-      "reconnecting": "リアルタイム接続を再接続中"
+      "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。"
     }
   },
   "invitationRedirect": {

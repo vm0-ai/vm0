@@ -17,8 +17,6 @@ import {
   DatabaseBackup,
   FlaskConical,
   Coins,
-  Cloud,
-  CloudOff,
 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
@@ -31,7 +29,6 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-  cn,
 } from "@okouai/ui";
 import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
 import {
@@ -70,10 +67,6 @@ import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.ts
 import { UserAvatar } from "../components/avatar.tsx";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
-import {
-  okouDebugRealtimeIndicator$,
-  type OkouDebugRealtimeIndicator,
-} from "../../signals/okou-page/realtime-status.ts";
 import { openAuthV2AddAccountDialog$ } from "../../signals/okou-page/auth-v2-add-account-dialog.ts";
 
 interface SessionAccount {
@@ -166,58 +159,9 @@ function accountDisplayFrom(
   };
 }
 
-function RealtimeStatusIcon({
-  status,
-}: {
-  status: Exclude<OkouDebugRealtimeIndicator, null>;
-}) {
-  const label =
-    status === "disconnected"
-      ? i18n.t(($) => {
-          return $.global.realtime.disconnected;
-        })
-      : i18n.t(($) => {
-          return $.global.realtime.reconnecting;
-        });
-
-  return (
-    <span
-      role="status"
-      aria-label={label}
-      title={label}
-      className={cn(
-        "relative mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground",
-        status === "reconnecting"
-          ? "okou-realtime-status-reconnecting"
-          : "opacity-80",
-      )}
-    >
-      {status === "disconnected" ? (
-        <CloudOff size={14} strokeWidth={1.75} aria-hidden="true" />
-      ) : (
-        <>
-          <Cloud
-            size={14}
-            strokeWidth={1.75}
-            className="absolute opacity-40"
-            aria-hidden="true"
-          />
-          <Cloud
-            size={14}
-            strokeWidth={1.75}
-            className="okou-realtime-cloud-flow"
-            aria-hidden="true"
-          />
-        </>
-      )}
-    </span>
-  );
-}
-
 function renderAccountTrigger(
   display: AccountDisplay,
   collapsed: boolean,
-  realtimeIndicator: OkouDebugRealtimeIndicator,
   avatarShape: "circle" | "square",
 ) {
   if (collapsed) {
@@ -257,9 +201,6 @@ function renderAccountTrigger(
       <span className="min-w-0 flex-1 text-left text-sm font-medium leading-tight truncate">
         {display.name}
       </span>
-      {realtimeIndicator !== null ? (
-        <RealtimeStatusIcon status={realtimeIndicator} />
-      ) : null}
     </button>
   );
 }
@@ -650,7 +591,6 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   // The account mark aligns with the rounded-square workspace logo in the rail.
   const avatarShape = "square";
-  const realtimeIndicator = useGet(okouDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
   const reloadCreditBalances = useSet(reloadAccountMenuCreditBalances$);
@@ -781,12 +721,7 @@ export function AccountDropdown({
     <>
       <DropdownMenu onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
-          {renderAccountTrigger(
-            accountDisplay,
-            collapsed,
-            realtimeIndicator,
-            avatarShape,
-          )}
+          {renderAccountTrigger(accountDisplay, collapsed, avatarShape)}
         </DropdownMenuTrigger>
 
         <DropdownMenuContent

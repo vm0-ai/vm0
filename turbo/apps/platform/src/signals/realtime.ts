@@ -37,7 +37,6 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
-export type RealtimeConnectionState = ConnectionStateChange["current"];
 
 /**
  * Register listeners without Ably's default implicit attach.
@@ -106,10 +105,19 @@ interface RealtimeMessage {
 
 type ChannelCallback = (message: RealtimeMessage) => void;
 
+/**
+ * Called when Ably reports that message continuity on the channel was lost, so
+ * the subscription has to re-read whatever baseline it established when it
+ * first went live. Ably replays everything it can by itself; this only fires
+ * for the gap it cannot replay.
+ */
+type ChannelResyncCallback = () => void;
+
 interface RealtimeSubscriptionChannel {
   readonly subscribe: (
     topic: string | null,
     callback: ChannelCallback,
+    onResync: ChannelResyncCallback,
   ) => Promise<unknown>;
   readonly unsubscribe: (
     topic: string | null,
@@ -138,7 +146,11 @@ class SharedWorkerRealtimeChannel implements RealtimeSubscriptionChannel {
     private readonly scope: RealtimeChannelScope,
   ) {}
 
-  subscribe(topic: string | null, callback: ChannelCallback): Promise<unknown> {
+  subscribe(
+    topic: string | null,
+    callback: ChannelCallback,
+    onResync: ChannelResyncCallback,
+  ): Promise<unknown> {
     if (topic === null) {
       throw new Error("Shared Worker realtime subscriptions require a topic");
     }
@@ -152,6 +164,7 @@ class SharedWorkerRealtimeChannel implements RealtimeSubscriptionChannel {
       this.scope,
       topic,
       callback,
+      onResync,
     );
   }
 
@@ -176,47 +189,6 @@ export const setSharedWorkerRealtimeBridge$ = command(
 );
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
-type RealtimeConnectionStateListener = (state: RealtimeConnectionState) => void;
-const realtimeConnectionStateListeners$ = state<
-  ReadonlySet<RealtimeConnectionStateListener>
->(new Set());
-
-const notifyRealtimeConnectionState$ = command(
-  ({ get }, state: RealtimeConnectionState): void => {
-    for (const listener of get(realtimeConnectionStateListeners$)) {
-      listener(state);
-    }
-  },
-);
-
-export const subscribeRealtimeConnectionState$ = command(
-  (
-    { get, set },
-    listener: RealtimeConnectionStateListener,
-    signal: AbortSignal,
-  ): void => {
-    signal.throwIfAborted();
-    set(realtimeConnectionStateListeners$, (listeners) => {
-      return new Set([...listeners, listener]);
-    });
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(realtimeConnectionStateListeners$, (listeners) => {
-          const updatedListeners = new Set(listeners);
-          updatedListeners.delete(listener);
-          return updatedListeners;
-        });
-      },
-      { once: true },
-    );
-    const session = get(internalRealtimeSession$);
-    if (session) {
-      listener(session.ably.connection.state);
-    }
-  },
-);
-
 interface PendingAblySubscription {
   readonly scope: RealtimeChannelScope;
   topic: string | null;
@@ -230,6 +202,8 @@ const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
 
 interface RealtimeSubscribeOptions {
   readonly onSubscribed?: () => void;
+  /** Observe a continuity gap in addition to the loop's own recovery. */
+  readonly onResync?: () => void;
   readonly runOnSubscribe?: boolean;
 }
 
@@ -280,6 +254,7 @@ interface SetAblyPayloadLoopArgs {
 interface RealtimePayloadLoopState {
   deferred: ReturnType<typeof createDeferredPromise<boolean>>;
   poked: boolean;
+  resyncPending: boolean;
   transientRetryCount: number;
   readonly pendingPayloads: unknown[];
 }
@@ -289,6 +264,10 @@ interface RealtimePayloadLoopIterationArgs {
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
+  >;
+  readonly initializeCommand$?: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
   >;
   readonly pokeLoop: () => void;
 }
@@ -310,11 +289,12 @@ interface SubscribeChannelArgs {
   readonly channel: RealtimeSubscriptionChannel;
   readonly topic: string | null;
   readonly callback: ChannelCallback;
+  readonly onResync: ChannelResyncCallback;
   readonly run: () => Promise<void>;
 }
 
 async function subscribeChannel(
-  { channel, topic, callback, run }: SubscribeChannelArgs,
+  { channel, topic, callback, onResync, run }: SubscribeChannelArgs,
   signal: AbortSignal,
 ): Promise<void> {
   signal.throwIfAborted();
@@ -325,8 +305,22 @@ async function subscribeChannel(
   };
   signal.addEventListener("abort", unsubscribeChannel, { once: true });
 
-  await onRejection(channel.subscribe(topic, callback), unsubscribeChannel);
+  // The attach that brings this subscription up also reports a continuity gap,
+  // because it replayed nothing. That is not a gap for a subscription that had
+  // no baseline yet, so resyncs only count once the subscription is live.
+  let live = false;
+  const handleResync = () => {
+    if (live) {
+      onResync();
+    }
+  };
+
+  await onRejection(
+    channel.subscribe(topic, callback, handleResync),
+    unsubscribeChannel,
+  );
   signal.throwIfAborted();
+  live = true;
   await withCleanup(run(), unsubscribeChannel);
   signal.throwIfAborted();
 }
@@ -365,6 +359,16 @@ const runWithChannel$ = command(
         channel,
         topic,
         callback,
+        // A continuity gap is indistinguishable from an unseen event on this
+        // topic: both mean the loop body has to read current state again.
+        onResync: () => {
+          if (signal.aborted) {
+            return;
+          }
+          L.debug("resyncing topic after a continuity gap", topic);
+          options?.onResync?.();
+          pokeLoop();
+        },
         run: async () => {
           options?.onSubscribed?.();
           if (options?.runOnSubscribe) {
@@ -416,16 +420,59 @@ const runWithChannel$ = command(
   },
 );
 
+/**
+ * Read the subscription's baseline state. Runs once when the subscription goes
+ * live, and again after every continuity gap Ably could not replay. Resolves
+ * true when the subscription is finished and its loop should stop.
+ */
+const runSubscriptionBaseline$ = command(
+  async (
+    { set },
+    initializeCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const initialized = await settle(
+      (async () => {
+        return await set(initializeCommand$, signal);
+      })(),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!initialized.ok) {
+      L.warn("realtime subscription initialization failed", initialized.error);
+      set(notifyRealtimeDegraded$);
+      return false;
+    }
+    return initialized.value;
+  },
+);
+
 const runPayloadLoopIteration$ = command(
   async (
     { set },
-    { state, loopCommand$, pokeLoop }: RealtimePayloadLoopIterationArgs,
+    {
+      state,
+      loopCommand$,
+      initializeCommand$,
+      pokeLoop,
+    }: RealtimePayloadLoopIterationArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
     await state.deferred.promise;
     signal.throwIfAborted();
     state.deferred = createDeferredPromise(signal);
     state.poked = false;
+
+    if (state.resyncPending) {
+      state.resyncPending = false;
+      if (
+        initializeCommand$ &&
+        (await set(runSubscriptionBaseline$, initializeCommand$, signal))
+      ) {
+        return true;
+      }
+      signal.throwIfAborted();
+    }
 
     if (state.pendingPayloads.length === 0) {
       return false;
@@ -488,6 +535,7 @@ const runWithChannelPayload$ = command(
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
+      resyncPending: false,
       transientRetryCount: 0,
       pendingPayloads: [],
     };
@@ -513,26 +561,26 @@ const runWithChannelPayload$ = command(
         channel,
         topic,
         callback,
+        // Ably replays what it can; this only fires for the gap it cannot, so
+        // the subscription re-reads its baseline on the next loop iteration.
+        onResync: () => {
+          if (signal.aborted) {
+            return;
+          }
+          L.debug("resyncing payload topic after a gap", subscriptionLabel);
+          state.resyncPending = true;
+          options?.onResync?.();
+          pokeLoop();
+        },
         run: async () => {
           options?.onSubscribed?.();
-          if (initializeCommand$) {
-            const initialized = await settle(
-              (async () => {
-                return await set(initializeCommand$, signal);
-              })(),
-              signal,
-            );
-            signal.throwIfAborted();
-            if (!initialized.ok) {
-              L.warn(
-                "realtime subscription initialization failed",
-                initialized.error,
-              );
-              set(notifyRealtimeDegraded$);
-            } else if (initialized.value) {
-              return;
-            }
+          if (
+            initializeCommand$ &&
+            (await set(runSubscriptionBaseline$, initializeCommand$, signal))
+          ) {
+            return;
           }
+          signal.throwIfAborted();
           L.debug("subscribed to payload topic: " + subscriptionLabel);
 
           await setLoop(
@@ -542,6 +590,7 @@ const runWithChannelPayload$ = command(
                 {
                   state,
                   loopCommand$,
+                  ...(initializeCommand$ ? { initializeCommand$ } : {}),
                   pokeLoop,
                 },
                 loopSignal,
@@ -560,6 +609,7 @@ const runWithChannelPayload$ = command(
 interface ActiveChannelSubscription {
   readonly topic: string | null;
   readonly ablyCallback: (message: InboundMessage) => void;
+  readonly onResync: ChannelResyncCallback;
 }
 
 function subscribeToRealtimeChannel(
@@ -631,13 +681,33 @@ function createRealtimeSubscriptionChannel(
   signal: AbortSignal,
 ): RealtimeSubscriptionChannel {
   const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
+  // `resumed` is Ably's own continuity signal: false means the reattach could
+  // not replay everything, so each subscriber has to re-read its baseline.
+  // A preserved reattach reports true and must not trigger extra reads.
+  const handleChannelStateChange = (stateChange: ChannelStateChange): void => {
+    if (stateChange.current !== "attached" || stateChange.resumed) {
+      return;
+    }
+    for (const subscription of subscriptions.values()) {
+      subscription.onResync();
+    }
+  };
+  channel.on(handleChannelStateChange);
+  signal.addEventListener(
+    "abort",
+    () => {
+      channel.off(handleChannelStateChange);
+    },
+    { once: true },
+  );
   return {
-    subscribe: async (topic, callback) => {
+    subscribe: async (topic, callback, onResync) => {
       const subscription: ActiveChannelSubscription = {
         topic,
         ablyCallback: (message) => {
           callback({ data: message.data, name: message.name ?? null });
         },
+        onResync,
       };
       subscriptions.set(callback, subscription);
       await trackRealtimeSubscription(
@@ -795,10 +865,7 @@ interface ConnectedRealtimeClient {
 }
 
 const connectRealtimeClient$ = command(
-  async (
-    { get, set },
-    signal: AbortSignal,
-  ): Promise<ConnectedRealtimeClient> => {
+  async ({ get }, signal: AbortSignal): Promise<ConnectedRealtimeClient> => {
     const identity = await get(runtimeAuthenticatedIdentity$);
     signal.throwIfAborted();
     const createClient = get(apiClient$);
@@ -819,7 +886,6 @@ const connectRealtimeClient$ = command(
     const handleConnectionStateChange = (
       stateChange: ConnectionStateChange,
     ): void => {
-      set(notifyRealtimeConnectionState$, stateChange.current);
       publishConnectionDiagnostic({
         details: connectionStateDetails(stateChange),
         event: "realtime.connection",
@@ -959,7 +1025,6 @@ export const setupRealtime$ = command(
       ably: connected.ably,
       channels,
     });
-    set(notifyRealtimeConnectionState$, connected.ably.connection.state);
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {

@@ -468,6 +468,119 @@ test("A terminal channel failure still stops the subscription", async () => {
   expect(result.ok).toBeFalsy();
 });
 
+test("A continuity gap re-reads the subscription baseline", async () => {
+  mockSignedInUser();
+  const topic = "test:continuity-gap";
+  const subscriber = testSubscriber();
+  let baselineReads = 0;
+  const initialize$ = command((_ctx, _signal: AbortSignal) => {
+    baselineReads += 1;
+    return false;
+  });
+
+  await setupAuthAndRealtime();
+  detach(
+    context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: keepAlivePayloadLoop$,
+        initializeCommand$: initialize$,
+      },
+      subscriber.signal,
+    ),
+    Reason.Daemon,
+    "continuity gap loop",
+  );
+  await waitFor(() => {
+    expect(baselineReads).toBe(1);
+  });
+
+  // Ably could not replay this reattach, so the subscription has to read its
+  // baseline again; without it the tab keeps whatever it had before the gap.
+  context.mocks.ably.triggerConnectionState("suspended", {
+    code: 80_003,
+    message: "Unable to connect (network unreachable)",
+  });
+  context.mocks.ably.triggerConnectionState("connected");
+
+  await waitFor(() => {
+    expect(baselineReads).toBe(2);
+  });
+});
+
+test("A replayed reattach does not re-read the subscription baseline", async () => {
+  mockSignedInUser();
+  const topic = "test:continuity-preserved";
+  const subscriber = testSubscriber();
+  let baselineReads = 0;
+  const initialize$ = command((_ctx, _signal: AbortSignal) => {
+    baselineReads += 1;
+    return false;
+  });
+
+  await setupAuthAndRealtime();
+  detach(
+    context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: keepAlivePayloadLoop$,
+        initializeCommand$: initialize$,
+      },
+      subscriber.signal,
+    ),
+    Reason.Daemon,
+    "continuity preserved loop",
+  );
+  await waitFor(() => {
+    expect(baselineReads).toBe(1);
+  });
+
+  // Ably reports `resumed` when it replayed the gap itself. Re-reading here
+  // would refetch on every brief network blip for no reason.
+  context.mocks.ably.triggerResume();
+  await vi.waitFor(() => {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+  });
+  expect(baselineReads).toBe(1);
+});
+
+test("A continuity gap pokes a topic loop", async () => {
+  mockSignedInUser();
+  const topic = "test:continuity-gap-topic";
+  const subscriber = testSubscriber();
+  let runs = 0;
+  const loop$ = command((_ctx, _signal: AbortSignal) => {
+    runs += 1;
+    return false;
+  });
+
+  await setupAuthAndRealtime();
+  detach(
+    context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: loop$, options: { runOnSubscribe: true } },
+      subscriber.signal,
+    ),
+    Reason.Daemon,
+    "continuity gap topic loop",
+  );
+  await waitFor(() => {
+    expect(runs).toBe(1);
+  });
+
+  context.mocks.ably.triggerConnectionState("suspended", {
+    code: 80_003,
+    message: "Unable to connect (network unreachable)",
+  });
+  context.mocks.ably.triggerConnectionState("connected");
+
+  await waitFor(() => {
+    expect(runs).toBe(2);
+  });
+});
+
 test("An update arriving during processing is not lost", async () => {
   mockSignedInUser();
   const topic = "test:in-flight-notification";

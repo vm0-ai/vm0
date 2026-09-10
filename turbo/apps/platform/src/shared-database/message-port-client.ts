@@ -66,6 +66,7 @@ interface PendingRequest {
 interface PendingRealtimeSubscription {
   readonly deferred: ReturnType<typeof createDeferredPromise<void>>;
   readonly listener: (message: SharedDatabaseRealtimeMessage) => void;
+  readonly onResync: () => void;
 }
 
 export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
@@ -90,7 +91,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   ) {
     bridgeSignal.throwIfAborted();
     this.handleBridgeAbort = () => {
-      this.close(bridgeSignal.reason, false);
+      this.close(bridgeSignal.reason);
     };
     this.handleMessage = onDomEventFn(async (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
@@ -115,10 +116,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.chatThreadReadCursorUpdated(message.payload);
         return;
       }
-      if (message.type === "status") {
-        this.events.statusChanged(message.status);
-        return;
-      }
       if (message.type === "realtime-subscribed") {
         const subscription = this.pendingRealtimeSubscriptions.get(
           message.subscriptionId,
@@ -126,6 +123,12 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         if (subscription && !subscription.deferred.settled()) {
           subscription.deferred.resolve();
         }
+        return;
+      }
+      if (message.type === "realtime-resync") {
+        this.pendingRealtimeSubscriptions
+          .get(message.subscriptionId)
+          ?.onResync();
         return;
       }
       if (message.type === "realtime-event") {
@@ -195,6 +198,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     scope: SharedDatabaseRealtimeScope,
     topic: string,
     listener: (message: SharedDatabaseRealtimeMessage) => void,
+    onResync: () => void,
   ): Promise<void> {
     this.requireRegistration();
     if (this.closed) {
@@ -207,6 +211,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     this.pendingRealtimeSubscriptions.set(subscriptionId, {
       deferred,
       listener,
+      onResync,
     });
     this.emit({ type: "realtime-subscribe", subscriptionId, scope, topic });
     return deferred.promise;
@@ -335,7 +340,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     this.port.postMessage(message);
   }
 
-  private close(reason: unknown, reportDisconnected = true): void {
+  private close(reason: unknown): void {
     if (this.closed) {
       return;
     }
@@ -357,8 +362,5 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       }
     }
     this.pendingRealtimeSubscriptions.clear();
-    if (reportDisconnected) {
-      this.events.statusChanged("disconnected");
-    }
   }
 }
