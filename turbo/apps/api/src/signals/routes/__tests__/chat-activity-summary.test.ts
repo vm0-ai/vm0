@@ -1007,6 +1007,123 @@ describe("thread activity summary", () => {
     expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
+  it("records a missed deadline as an accepted degradation, not a failure", async () => {
+    const f = await fixture();
+    const entered = createDeferredPromise<void>(context.signal);
+    const stalled = createDeferredPromise<string>(context.signal);
+    const inputs = provider(async (_input, index) => {
+      if (index === 1) {
+        return "Preparing the launch checklist";
+      }
+      entered.resolve(undefined);
+      return await stalled.promise;
+    });
+    const first = await summarize(f.actor, f.run);
+    const diagnostics = captureDiagnostics();
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const deadline = new AbortController();
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      return milliseconds === 10_000 ? deadline.signal : undefined;
+    });
+    const pending = summarize(f.actor, f.run);
+    await entered.promise;
+    deadline.abort(
+      new DOMException("Summary deadline reached", "TimeoutError"),
+    );
+    stalled.resolve("This phrase arrives after its own deadline");
+    const missed = await pending;
+    // The caller keeps its last real phrase and a bounded, self-recovering wait.
+    expect(missed.messages).toStrictEqual(first.messages);
+    expect(missed.status).toBe("cooldown");
+    expect(missed.summaryRevision).toBe(first.summaryRevision);
+    expect(missed.retryAfterMs).toBeGreaterThan(50_000);
+    expect(missed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(inputs).toHaveLength(2);
+    const logs = await diagnostics();
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "timeout",
+          durationMs: expect.any(Number),
+          cooldownMs: 60_000,
+        },
+      }),
+    );
+    // An expected deadline must not reach an operator through any record.
+    expect(
+      logs.filter((event) => {
+        return event.level === "warn" || event.level === "error";
+      }),
+    ).toStrictEqual([]);
+  });
+
+  it("charges no cooldown when the instance stops before the provider answers", async () => {
+    const f = await fixture();
+    const entered = createDeferredPromise<void>(context.signal);
+    const release = createDeferredPromise<string>(context.signal);
+    const inputs = provider(async (_input, index) => {
+      if (index === 1) {
+        entered.resolve(undefined);
+        return await release.promise;
+      }
+      return "Checking the current launch materials";
+    });
+    const diagnostics = captureDiagnostics();
+    const shutdown = new AbortController();
+    createRouteMocks(context).clerk.session(
+      f.actor.userId,
+      f.actor.orgId,
+      f.actor.orgRole,
+    );
+    const abandoned = settleIncludingAbort(
+      setupApp({
+        context,
+        routes: chatThreadActivitySummaryRoutes,
+        signal: shutdown.signal,
+      })(chatThreadActivitySummaryContract).summarize({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: f.run.threadId },
+        body: { runId: f.run.runId },
+      }),
+    );
+    await entered.promise;
+    shutdown.abort(new DOMException("API instance stopping", "AbortError"));
+    release.resolve("This phrase never reaches an absent caller");
+    await abandoned;
+    const logs = await diagnostics();
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "cancelled",
+          durationMs: expect.any(Number),
+          cooldownMs: 0,
+        },
+      }),
+    );
+    expect(
+      logs.filter((event) => {
+        return event.level === "warn" || event.level === "error";
+      }),
+    ).toStrictEqual([]);
+    // Only the attempt interval was ever charged, so the next viewer generates
+    // again instead of waiting out a failure cooldown it never caused.
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const recovered = await summarize(f.actor, f.run);
+    expect(recovered.messages[0]?.text).toBe(
+      "Checking the current launch materials",
+    );
+    expect(inputs).toHaveLength(2);
+  });
+
   it("keeps normal publication working when a contended snapshot write is skipped and excludes expired evidence", async () => {
     const f = await fixture();
     const inputs = provider();
