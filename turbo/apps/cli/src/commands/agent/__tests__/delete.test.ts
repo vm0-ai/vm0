@@ -15,6 +15,7 @@ import chalk from "chalk";
 
 const mockAgent = {
   agentId: "my-agent",
+  isDefaultAgent: false,
   displayName: "My Agent",
   description: null,
   sound: null,
@@ -60,6 +61,33 @@ describe("okou agent delete command", () => {
       expect(logCalls).toContain("deleted");
     });
   });
+
+  it.each([
+    [true, "cannot be deleted"],
+    [undefined, "Agent identity is unavailable"],
+  ])(
+    "rejects deletion before confirmation for identity %s",
+    async (identity, message) => {
+      let deletes = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
+          return HttpResponse.json({ ...mockAgent, isDefaultAgent: identity });
+        }),
+        http.delete("http://localhost:3000/api/agents/my-agent", () => {
+          deletes++;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      await expect(
+        deleteCommand.parseAsync(["node", "cli", "my-agent", "--yes"]),
+      ).rejects.toThrow("process.exit called");
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(message!),
+      );
+      expect(deletes).toBe(0);
+    },
+  );
 
   describe("error handling", () => {
     it("should handle not found error", async () => {

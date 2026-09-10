@@ -115,6 +115,7 @@ export function listAgent(
   avatarUrl: string | null = null,
 ): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: "test-user-123",
     displayName,

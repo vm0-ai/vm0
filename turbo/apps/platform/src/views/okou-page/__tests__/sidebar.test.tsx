@@ -120,6 +120,7 @@ function prepareDefaultAgent(
 function prepareAgents(targetContext = context): AgentResponse[] {
   const agents: AgentResponse[] = [
     {
+      isDefaultAgent: false,
       agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
@@ -132,6 +133,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       visibility: "public",
     },
     {
+      isDefaultAgent: false,
       agentId: RESEARCH_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Research Agent",
@@ -144,6 +146,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       visibility: "public",
     },
     {
+      isDefaultAgent: false,
       agentId: SUPPORT_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Support Agent",
@@ -164,6 +167,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       [SUPPORT_AGENT_ID]: "Support Agent",
     };
     return respond(200, {
+      isDefaultAgent: false,
       agentId: params.id,
       ownerId: "test-user-123",
       description: null,

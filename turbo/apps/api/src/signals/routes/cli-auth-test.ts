@@ -18,14 +18,15 @@ import {
   type ConnectorOutputTarget,
 } from "@okouai/connectors/connector-auth-method";
 import { agents } from "@okouai/db/schema/agent";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, notExists } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -342,6 +343,24 @@ const createTestConnector$ = command(
   },
 );
 
+function excludeDefaultAgentCondition(
+  writeDb: Pick<Db, "select">,
+  orgId: string,
+  agentId: string,
+) {
+  return notExists(
+    writeDb
+      .select({ orgId: orgMetadata.orgId })
+      .from(orgMetadata)
+      .where(
+        and(
+          eq(orgMetadata.orgId, orgId),
+          eq(orgMetadata.defaultAgentId, agentId),
+        ),
+      ),
+  );
+}
+
 const enableTestConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!testEndpointAllowed(get(request$))) {
@@ -434,11 +453,24 @@ const enableTestConnectors$ = command(
       );
     }
 
-    await writeDb
+    const updated = await writeDb
       .update(agents)
       .set({ visibility: "private", updatedAt: nowDate() })
-      .where(and(eq(agents.orgId, orgId), eq(agents.id, agent.id)));
+      .where(
+        and(
+          eq(agents.orgId, orgId),
+          eq(agents.id, agent.id),
+          excludeDefaultAgentCondition(writeDb, orgId, agent.id),
+        ),
+      )
+      .returning({ id: agents.id });
     signal.throwIfAborted();
+    if (updated.length === 0) {
+      return stringError(
+        400,
+        "Use a custom agent for private connector fixtures; the workspace default Okou agent must remain public.",
+      );
+    }
 
     await writeDb.insert(userConnectors).values(
       connectorSlugs.map((connectorSlug) => {

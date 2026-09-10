@@ -18,6 +18,7 @@ import chalk from "chalk";
 
 const mockAgent = {
   agentId: "my-agent",
+  isDefaultAgent: false,
   displayName: "My Agent",
   description: null,
   sound: null,
@@ -210,7 +211,7 @@ describe("okou agent edit command", () => {
         "Updated",
       ]);
 
-      expect(capturedBody?.avatarUrl).toBe("svg:r2s1h3c3f1m");
+      expect(capturedBody).not.toHaveProperty("avatarUrl");
     });
 
     describe("with instructions file", () => {
@@ -253,6 +254,127 @@ describe("okou agent edit command", () => {
         const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
         expect(logCalls).toContain("updated");
       });
+    });
+  });
+
+  describe("default agent protection", () => {
+    it.each([
+      ["--display-name", "Renamed", "must keep the name Okou"],
+      ["--avatar", "preset:2", "must keep its default avatar"],
+      ["--visibility", "private", "must remain public"],
+    ])(
+      "rejects %s before metadata and instructions writes",
+      async (flag, value, message) => {
+        let writes = 0;
+        server.use(
+          http.get("http://localhost:3000/api/agents/my-agent", () => {
+            return HttpResponse.json({
+              ...mockAgent,
+              isDefaultAgent: true,
+              displayName: "Okou",
+              visibility: "public",
+            });
+          }),
+          http.put("http://localhost:3000/api/agents/my-agent", () => {
+            writes++;
+            return HttpResponse.json(mockAgent);
+          }),
+          http.put(
+            "http://localhost:3000/api/agents/my-agent/instructions",
+            () => {
+              writes++;
+              return HttpResponse.json(mockAgent);
+            },
+          ),
+        );
+        await expect(
+          editCommand.parseAsync([
+            "node",
+            "cli",
+            "my-agent",
+            flag!,
+            value!,
+            "--description",
+            "Must not be saved",
+            "--instructions-file",
+            "/unused-on-rejected-edit.md",
+          ]),
+        ).rejects.toThrow("process.exit called");
+        expect(mockExit).toHaveBeenCalledWith(1);
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(message!),
+        );
+        expect(writes).toBe(0);
+      },
+    );
+
+    it("rejects protected edits when the API omits identity", async () => {
+      let writes = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
+          return HttpResponse.json({ ...mockAgent, isDefaultAgent: undefined });
+        }),
+        http.put("http://localhost:3000/api/agents/my-agent", () => {
+          writes++;
+          return HttpResponse.json(mockAgent);
+        }),
+      );
+      await expect(
+        editCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent",
+          "--visibility",
+          "private",
+        ]),
+      ).rejects.toThrow("process.exit called");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Agent identity is unavailable"),
+      );
+      expect(writes).toBe(0);
+    });
+
+    it("edits a default description and repeats canonical fields", async () => {
+      const requests: unknown[] = [];
+      server.use(
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
+          return HttpResponse.json({
+            ...mockAgent,
+            isDefaultAgent: true,
+            displayName: "Okou",
+            visibility: "public",
+          });
+        }),
+        http.put(
+          "http://localhost:3000/api/agents/my-agent",
+          async ({ request }) => {
+            requests.push(await request.json());
+            return HttpResponse.json(mockAgent);
+          },
+        ),
+      );
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--description",
+        "New role",
+        "--sound",
+        "friendly",
+      ]);
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--display-name",
+        "Okou",
+        "--visibility",
+        "public",
+      ]);
+      expect(requests).toStrictEqual([
+        { description: "New role", sound: "friendly" },
+        { displayName: "Okou", visibility: "public" },
+      ]);
     });
   });
 
