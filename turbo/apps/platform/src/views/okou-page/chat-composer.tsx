@@ -9323,12 +9323,48 @@ function useComposerFileUpload(
   };
 }
 
+interface ComposerLayoutHeightClassNames {
+  readonly input: string;
+  readonly shell: string;
+}
+
+// The idle footer is 52px tall and an active voice footer is 72px tall. Keep
+// the shell stable and let its flexible input region absorb that 20px change.
+// A template chip reserves the same additional 38px in both footer modes.
+function composerLayoutHeightClassNames(
+  singleLineOnMobile: boolean,
+  hasTemplateAttachment: boolean,
+): ComposerLayoutHeightClassNames {
+  if (hasTemplateAttachment) {
+    return singleLineOnMobile
+      ? {
+          input: "min-h-[86px] md:min-h-[114px]",
+          shell: "min-h-[158px] md:min-h-[186px]",
+        }
+      : {
+          input: "min-h-[114px]",
+          shell: "min-h-[186px]",
+        };
+  }
+  return singleLineOnMobile
+    ? {
+        input: "min-h-12 md:min-h-[76px]",
+        shell: "min-h-[120px] md:min-h-[148px]",
+      }
+    : {
+        input: "min-h-[76px]",
+        shell: "min-h-[148px]",
+      };
+}
+
 function ComposerInputSlot({
   signals,
   actions,
+  minimumHeightClassName,
 }: {
   signals: ComposerSignals;
   actions: ComposerActions;
+  minimumHeightClassName: string;
 }) {
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
@@ -9441,17 +9477,24 @@ function ComposerInputSlot({
   };
 
   return (
-    <div className="relative">
-      <TiptapWorkflowComposer
-        signals={signals}
-        onDraftChange={notifyDraftChanged}
-        sending={sending}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-      />
+    <div
+      className={cn(
+        "grid flex-1 grid-cols-1 grid-rows-1",
+        minimumHeightClassName,
+      )}
+    >
+      <div className="col-start-1 row-start-1 min-h-0">
+        <TiptapWorkflowComposer
+          signals={signals}
+          onDraftChange={notifyDraftChanged}
+          sending={sending}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+        />
+      </div>
       {showVoiceTranscriptionSkeleton ? (
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 flex h-24 flex-col justify-center gap-2 bg-card px-6"
+          className="pointer-events-none col-start-1 row-start-1 flex min-h-0 flex-col justify-center gap-2 bg-card px-6"
           aria-hidden="true"
         >
           <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />
@@ -10848,7 +10891,7 @@ function ComposerFooter({
   return withChatScrollLayout(
     <div
       className={cn(
-        "flex items-center justify-between gap-1 sm:gap-2",
+        "flex shrink-0 items-center justify-between gap-1 sm:gap-2",
         activeVoiceDraftStatus === "recording"
           ? "px-2 pb-3 pt-3"
           : activeVoiceDraftStatus
@@ -10906,10 +10949,15 @@ function ComposerFooter({
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
   const actions = useComposerActions(signals);
   const connectorActions = useComposerConnectorActions(signals.connector);
+  const hasTemplateAttachment = useGet(signals.template.hasTemplateAttachment$);
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
   const notifyDraftChanged = useComposerDraftChange(signals);
+  const layoutHeightClassNames = composerLayoutHeightClassNames(
+    signals.editor.singleLineOnMobile,
+    hasTemplateAttachment,
+  );
 
   return (
     <Card
@@ -10943,11 +10991,18 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
         }
       }}
     >
-      <CardContent className="p-0">
-        <div ref={actions.bind} className="flex flex-col">
+      <CardContent className="overflow-hidden rounded-[inherit] p-0">
+        <div
+          ref={actions.bind}
+          className={cn("flex flex-col", layoutHeightClassNames.shell)}
+        >
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
-          <ComposerInputSlot signals={signals} actions={actions} />
+          <ComposerInputSlot
+            signals={signals}
+            actions={actions}
+            minimumHeightClassName={layoutHeightClassNames.input}
+          />
           {/* Recording retains the established 8px/12px outer tray spacing,
               with 12px/8px inner padding for the taller voice controls. Other
               voice states retain their 12px tray inset. */}
