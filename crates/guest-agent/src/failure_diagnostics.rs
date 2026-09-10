@@ -720,19 +720,20 @@ fn cli_failure_message(
     // Structured agent telemetry shares stderr with real failure output. It
     // stays in the guest log below, but must never become the user-visible
     // reason a run failed.
-    let reported_lines: Vec<&String> = stderr_lines
-        .iter()
-        .filter(|line| !is_structured_agent_diagnostic_line(line))
-        .collect();
-
-    if reported_lines.is_empty() {
-        for line in stderr_lines {
+    let mut reported_lines = Vec::with_capacity(stderr_lines.len());
+    for line in stderr_lines {
+        if is_structured_agent_diagnostic_line(line) {
             log_info!(
                 LOG_TAG,
                 "CLI stderr diagnostic: {}",
                 truncate_cli_stderr_line(line)
             );
+        } else {
+            reported_lines.push(line);
         }
+    }
+
+    if reported_lines.is_empty() {
         return CliFailureMessage {
             message: format!("Agent exited with code {code}"),
             source: FailureDetailSource::FallbackExitCode,
