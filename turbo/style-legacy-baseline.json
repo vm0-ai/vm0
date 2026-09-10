@@ -38,7 +38,6 @@
     "okou-desktop-titlebar-drag-region",
     "okou-emoji",
     "okou-fixed-viewport-shell",
-    "okou-icon-mono",
     "okou-managed-bottom-safe-area",
     "okou-markdown-card",
     "okou-mobile-fixed-safe-area",
@@ -691,13 +690,6 @@
         "selector": ".okou-app .okou-pill",
         "property": "color",
         "value": "hsl(var(--muted-foreground))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ":where([data-theme=\"dark\"]) .okou-icon-mono",
-        "property": "filter",
-        "value": "invert(1)",
         "important": false
       },
       {
@@ -4019,9 +4011,6 @@
       "okou-badge": 4,
       "okou-border": 1
     },
-    "apps/platform/src/views/okou-page/components/settings/connector-icons.tsx": {
-      "okou-icon-mono": 1
-    },
     "apps/platform/src/views/okou-page/components/settings/indexeddb-diagnostics-block.tsx": {
       "okou-badge": 3,
       "okou-border": 1
@@ -4037,9 +4026,6 @@
     },
     "apps/platform/src/views/okou-page/components/settings/preference-card-row.tsx": {
       "okou-border": 1
-    },
-    "apps/platform/src/views/okou-page/components/settings/provider-icons.tsx": {
-      "okou-icon-mono": 1
     },
     "apps/platform/src/views/okou-page/components/settings/sections/account-section.tsx": {
       "okou-border": 1

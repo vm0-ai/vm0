@@ -293,8 +293,15 @@
         "icon-mono-providers-narrow-dark",
         "icon-mono-connectors-narrow-dark"
       ],
-      "status": "planned",
-      "evidence": [],
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-aa-with-rejected-calibration",
+          "url": "https://a.okou.io/aeguxfgxpx.zip",
+          "sha256": "af8a4226a522d7ad41510bbb4ccb8b05b4dd44b7cafcd9c3794789367d02def8",
+          "commit": "ad820032f6237598b8abed4c46e31979d7007ae2"
+        }
+      ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33062"
     }
   ],

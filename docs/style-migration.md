@@ -311,3 +311,19 @@ DOM or CSS. A fresh before/A/A pair passed all 20 states with zero changed
 pixels. The interruption of the earlier A/A returned SIGTERM with an unconfirmed
 cause; per-capture append-only records now preserve measurements before final
 manifest creation. This calibration does not claim unattended reproducibility.
+
+The [frozen BEFORE and unchanged A/A archive](https://a.okou.io/aeguxfgxpx.zip)
+was uploaded and anonymously hash-verified before business edits. It pins source
+`52557ce17da42acce602164a838381039d4407f6` and App/API build
+`ad820032f6237598b8abed4c46e31979d7007ae2`, after integrating main
+`29dfab14531307e67d16322d5fa3972df9c42a99`. All 20 states pass with zero
+changed pixels and identical icon observations. Both original business files,
+the CSS entry point and legacy baseline were byte-identical to that main.
+
+Both consumers now use the existing `dark:invert` utility. The dark variant also
+supports a theme attribute on the element itself, but neither image accepts
+that attribute or caller filter classes; the current consumers and portaled
+options use the same dark ancestor as the removed selector. Provider
+classification, connector inversion flags, scale, fallback DOM and error events
+remain unchanged. Only this token, one CSS declaration and two production uses
+are pruned. No token or shared component changes are needed.
