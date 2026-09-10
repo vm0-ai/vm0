@@ -384,6 +384,18 @@
       "timeout": "Délai d'attente"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "Si vous hésitez sur la prochaine étape, demandez à {{assistantName}}.",
+      "cloud": "Faites une pause quand vous en avez besoin. {{assistantName}} peut continuer à travailler dans le cloud.",
+      "employee": "Recrutez un collègue IA et gardez du temps pour l'essentiel.",
+      "ideas": "Une première idée suffit pour commencer. {{assistantName}} peut la décomposer en étapes et vous inspirer de nouvelles idées.",
+      "model": "Choisissez le modèle adapté à chaque tâche pour mieux utiliser votre budget.",
+      "schedule": "Planifiez les tâches récurrentes et ayez une chose de moins à faire.",
+      "support": "Pour plus d'aide, contactez-nous à {{supportEmail}}.",
+      "workflow": "Un flux de travail est une compétence réutilisable. Partagez-le avec votre équipe pour que chacun puisse s'en servir."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Fermer les raccourcis clavier",

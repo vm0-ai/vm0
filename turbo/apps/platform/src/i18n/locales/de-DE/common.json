@@ -370,6 +370,18 @@
       "timeout": "Time-out"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "Wenn du beim nächsten Schritt unsicher bist, frag einfach {{assistantName}}.",
+      "cloud": "Mach eine Pause, wenn du sie brauchst. {{assistantName}} kann in der Cloud weiterarbeiten.",
+      "employee": "Stelle einen KI-Kollegen ein und schaffe mehr Zeit für das Wesentliche.",
+      "ideas": "Eine grobe Idee reicht für den Anfang. {{assistantName}} kann sie in Schritte aufteilen und neue Ideen anregen.",
+      "model": "Wähle für jede Aufgabe das passende Modell und nutze dein Budget besser.",
+      "schedule": "Plane wiederkehrende Aufgaben und habe eine Sache weniger zu erledigen.",
+      "support": "Für weitere Hilfe erreichst du uns unter {{supportEmail}}.",
+      "workflow": "Ein Workflow ist eine wiederverwendbare Fähigkeit. Teile ihn mit deinem Team, damit alle ihn nutzen können."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Tastaturkürzel schließen",

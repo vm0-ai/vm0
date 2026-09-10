@@ -1,3 +1,5 @@
+import { AppLoadingTips } from "./app-loading-tips.tsx";
+
 function SkeletonIllustration() {
   return (
     <svg
@@ -183,7 +185,10 @@ export function AppSkeleton({
           : "opacity-0 pointer-events-none transition-opacity duration-300"
       }`}
     >
-      <SkeletonIllustration />
+      <div className="relative">
+        <SkeletonIllustration />
+        {visible && <AppLoadingTips />}
+      </div>
     </div>
   );
 }

@@ -384,6 +384,18 @@
       "timeout": "Tempo esgotado"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "Se não souber qual é o próximo passo, pergunte ao {{assistantName}}.",
+      "cloud": "Faça uma pausa quando precisar. {{assistantName}} pode continuar trabalhando na nuvem.",
+      "employee": "Contrate um colega de equipe de IA e tenha mais tempo para o que importa.",
+      "ideas": "Comece com uma ideia inicial. {{assistantName}} pode dividi-la em etapas e trazer novas ideias.",
+      "model": "Escolha o modelo certo para cada tarefa e faça seu orçamento render mais.",
+      "schedule": "Agende tarefas recorrentes e tenha uma coisa a menos para fazer.",
+      "support": "Para mais ajuda, entre em contato pelo e-mail {{supportEmail}}.",
+      "workflow": "Um fluxo de trabalho é uma habilidade reutilizável. Compartilhe com sua equipe para todos aproveitarem."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Fechar atalhos de teclado",
