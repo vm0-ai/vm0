@@ -276,6 +276,53 @@
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32958"
     },
     {
+      "id": "monochrome-icon-filter",
+      "family": "local-controls",
+      "tokens": ["okou-icon-mono"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/provider-icons.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-icons.tsx"
+      ],
+      "cases": [
+        "icon-mono-providers-light",
+        "icon-mono-connectors-light",
+        "icon-mono-providers-dark",
+        "icon-mono-connectors-dark",
+        "icon-mono-providers-narrow",
+        "icon-mono-connectors-narrow",
+        "icon-mono-providers-narrow-dark",
+        "icon-mono-connectors-narrow-dark"
+      ],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-aa-with-rejected-calibration",
+          "url": "https://a.okou.io/aeguxfgxpx.zip",
+          "sha256": "af8a4226a522d7ad41510bbb4ccb8b05b4dd44b7cafcd9c3794789367d02def8",
+          "commit": "ad820032f6237598b8abed4c46e31979d7007ae2"
+        },
+        {
+          "kind": "after-with-before-raw-diffs-and-focused-checks",
+          "url": "https://a.okou.io/gywva3k9z6.zip",
+          "sha256": "4a50697ce0fc0243ea64be3b0314f0255b76acdc606d07efd45f0631d4e1181d",
+          "commit": "29156a9e945af833fdef2bffe024be4c617d4496"
+        },
+        {
+          "kind": "before-after-raw-diff-comparison-image",
+          "url": "https://a.okou.io/vfjoaz2ylx.png",
+          "sha256": "6b77a43d84c569f85ef9e9cd2a7cbb9277bfd9bb780d9b5018d015125b7a15ad",
+          "commit": "29156a9e945af833fdef2bffe024be4c617d4496"
+        },
+        {
+          "kind": "evidence-only-head-after-replay-with-ci-and-live-preview",
+          "url": "https://a.okou.io/okin45nt2v.zip",
+          "sha256": "96b259d89bfbbdae4eb4c9effd1f7539087988f0f5745d7497333b99078c9e68",
+          "commit": "a7aae2beca69ca7c0075bf79af4b9cccaf4f006b"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33062"
+    },
+    {
       "id": "color-theme-swatch",
       "family": "local-controls",
       "tokens": ["okou-color-theme-swatch"],
@@ -321,6 +368,7 @@
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
     "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/icon-mono-cases.json",
     "../e2e/playwright/style-migration/swatch-cases.json"
   ]
 }

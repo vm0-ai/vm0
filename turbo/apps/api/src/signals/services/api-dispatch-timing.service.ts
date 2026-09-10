@@ -141,25 +141,6 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_slack_create_run"
   | "api_dispatch_pre_create_agent_teams_entrypoint_gap"
   | "api_dispatch_pre_create_agent_teams_create_run"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_goal_handoff"
-  | "api_dispatch_pre_create_agent_goal_drain_event_queue_age"
-  | "api_dispatch_pre_create_agent_goal_drain_load_event"
-  | "api_dispatch_pre_create_agent_goal_drain_load_event_lock_thread"
-  | "api_dispatch_pre_create_agent_goal_drain_load_event_select_candidate"
-  | "api_dispatch_pre_create_agent_goal_drain_load_target"
-  | "api_dispatch_pre_create_agent_goal_drain_revoke_invalid_event"
-  | "api_dispatch_pre_create_agent_goal_drain_resolve_model_context"
-  | "api_dispatch_pre_create_agent_goal_drain_model_context_load_initial_feature_switches"
-  | "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_persisted_model_policy"
-  | "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_built_in_route"
-  | "api_dispatch_pre_create_agent_goal_drain_build_run_input"
-  | "api_dispatch_pre_create_agent_goal_drain_handoff_run"
   | "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap"
   | "api_dispatch_pre_create_agent_workflow_automation_queue_admission"
   | "api_dispatch_pre_create_agent_workflow_automation_check_active_run"
@@ -297,27 +278,6 @@ interface ApiDispatchPhaseRecord {
   readonly finishedAt: number;
 }
 
-export type GoalSchedulerTimingOrigin =
-  | "chat_callback"
-  | "terminal_callback_fallback"
-  | "run_recovery"
-  | "direct"
-  | "stale_sweep";
-
-type GoalSchedulerTimingActionType =
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain"
-  | "api_dispatch_pre_create_agent_goal_drain_scheduler_goal_handoff";
-
-interface GoalSchedulerTimingRecord {
-  readonly actionType: GoalSchedulerTimingActionType;
-  readonly startedAt: number;
-  readonly finishedAt: number;
-}
-
 export class ApiDispatchPhaseCollector {
   private readonly records: ApiDispatchPhaseRecord[] = [];
   private previousBoundaryAt: number;
@@ -346,53 +306,6 @@ export class ApiDispatchPhaseCollector {
         "top_level",
         record.startedAt,
         record.finishedAt,
-      );
-    }
-  }
-}
-
-/** Hold shared scheduler phases until a created goal run owns their flush. */
-export class GoalSchedulerTimingCollector {
-  private readonly records: GoalSchedulerTimingRecord[] = [];
-  private previousBoundaryAt: number;
-  readonly origin: GoalSchedulerTimingOrigin;
-
-  constructor(startedAt: number, origin: GoalSchedulerTimingOrigin) {
-    this.previousBoundaryAt = startedAt;
-    this.origin = origin;
-  }
-
-  checkpoint(
-    actionType: GoalSchedulerTimingActionType,
-    finishedAt: number = now(),
-  ): void {
-    const boundedFinishedAt = Math.max(this.previousBoundaryAt, finishedAt);
-    this.records.push({
-      actionType,
-      startedAt: this.previousBoundaryAt,
-      finishedAt: boundedFinishedAt,
-    });
-    this.previousBoundaryAt = boundedFinishedAt;
-  }
-
-  checkpointZero(actionType: GoalSchedulerTimingActionType): void {
-    this.checkpoint(actionType, this.previousBoundaryAt);
-  }
-
-  appendTo(
-    timing: ApiDispatchTimingCollector,
-    dimensions: ApiDispatchTimingDimensions,
-  ): void {
-    for (const record of this.records.splice(0)) {
-      timing.recordElapsed(
-        record.actionType,
-        "nested",
-        record.startedAt,
-        record.finishedAt,
-        {
-          ...dimensions,
-          goal_scheduler_origin: this.origin,
-        },
       );
     }
   }
@@ -495,7 +408,7 @@ export class ApiDispatchTimingCollector {
     readonly dimensions?: ApiDispatchTimingDimensions;
   }): void {
     const records = this.records.splice(0);
-    // Goal scheduling can construct a collector for an empty drain. Only a
+    // A scheduler can construct a collector for an empty drain. Only a
     // run-associated telemetry flush should advance the dispatch ordinal.
     if (records.length === 0) {
       recordSandboxOperations([]);

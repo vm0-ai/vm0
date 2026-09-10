@@ -1,12 +1,8 @@
-import { dispatchGoalRetirementEffects$ } from "./goal-retirement-effects.service";
 import { command } from "ccstate";
 
 import type { PiApiFirstTurnActivation } from "./pi-api-first-turn-config";
 import { runPiApiFirstTurn$ } from "./pi-api-first-turn.service";
-import {
-  dispatchCompleteSideEffects$,
-  drainOrgQueue$,
-} from "./agent-run-lifecycle.service";
+import { dispatchCompleteSideEffects$ } from "./agent-run-lifecycle.service";
 import { configurePiApiFirstTurnCommand } from "./pi-api-first-turn-dispatch.service";
 import { registerPiApiFirstTurnCancellation } from "./pi-api-first-turn-lifecycle.service";
 
@@ -28,20 +24,6 @@ const configuredPiApiFirstTurn$ = command(
         activation,
         cancellation.signal,
       );
-      if (sideEffects?.kind === "goal-retired") {
-        const committedSignal = new AbortController().signal;
-        await set(
-          dispatchGoalRetirementEffects$,
-          sideEffects.run,
-          committedSignal,
-        );
-        await set(
-          drainOrgQueue$,
-          { orgId: sideEffects.run.orgId },
-          committedSignal,
-        );
-        return;
-      }
       cancellation.signal.throwIfAborted();
       if (sideEffects) {
         await set(

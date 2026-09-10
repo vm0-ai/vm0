@@ -166,12 +166,6 @@ const EDITOR_CONTENT_CLASS =
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";
 
-function editorContentClass(singleLineOnMobile: boolean): string {
-  return singleLineOnMobile
-    ? `${EDITOR_CONTENT_CLASS} min-h-[68px] md:min-h-[96px]`
-    : `${EDITOR_CONTENT_CLASS} min-h-[96px]`;
-}
-
 const WORKFLOW_HIGHLIGHT_CLASS = "text-brand-text";
 function composerPlaceholder(): string {
   return i18n.t(($) => {
@@ -1754,10 +1748,7 @@ function workflowComposerDocumentForDraft(
   );
 }
 
-function configureMountedWorkflowEditor(
-  editor: Editor,
-  singleLineOnMobile: boolean,
-): void {
+function configureMountedWorkflowEditor(editor: Editor): void {
   editor.setOptions({
     editorProps: {
       clipboardTextSerializer: workflowComposerClipboardText,
@@ -1767,7 +1758,7 @@ function configureMountedWorkflowEditor(
         }),
         placeholder: composerPlaceholder(),
         tabindex: "0",
-        class: editorContentClass(singleLineOnMobile),
+        class: EDITOR_CONTENT_CLASS,
       },
     },
   });
@@ -1931,12 +1922,10 @@ interface MountEditorOptions {
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
   autoFocus: boolean;
-  singleLineOnMobile: boolean;
 }
 
 interface WorkflowComposerOptions {
   readonly autoFocus?: boolean;
-  readonly singleLineOnMobile?: boolean;
 }
 
 function focusMountedEditorAtEnd(editor: Editor): void {
@@ -2003,7 +1992,6 @@ function createMountEditorCommand({
   syncWorkflowNames$,
   syncAgentMentionAvatars$,
   autoFocus,
-  singleLineOnMobile,
 }: MountEditorOptions) {
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
@@ -2045,7 +2033,7 @@ function createMountEditorCommand({
       runtime.removeTemplate = () => {
         set(legacyTemplateAttachment.remove$);
       };
-      configureMountedWorkflowEditor(editor, singleLineOnMobile);
+      configureMountedWorkflowEditor(editor);
       setWorkflowComposerDocument(
         editor,
         workflowComposerDocumentForDraft(editor, {
@@ -2678,7 +2666,6 @@ export function createWorkflowComposerSignals<
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
     autoFocus: options.autoFocus ?? false,
-    singleLineOnMobile: options.singleLineOnMobile ?? false,
   });
   const suggestionInsertionCommands = createSuggestionInsertionCommands(
     editor,

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { PI_MEMORY_ROOT } from "@okouai/api-contracts/contracts/runners";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";

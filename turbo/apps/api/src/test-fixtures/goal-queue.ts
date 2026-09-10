@@ -6,24 +6,16 @@ import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { createStore } from "ccstate";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
-import { pgTextDecoder } from "../lib/db-structured-result";
 import { now } from "../lib/time";
 import { ApiDispatchTimingCollector } from "../signals/services/api-dispatch-timing.service";
-import {
-  claimQueueFirstRunAssociation,
-  lockGoalQueueFirstRunSource,
-} from "../signals/services/chat-queued-event.service";
+import { claimQueueFirstRunAssociation } from "../signals/services/chat-queued-event.service";
 import { requirePiApiFirstTurnExecutionContext } from "../signals/services/pi-api-first-turn-config";
 import { runPiApiFirstTurn$ } from "../signals/services/pi-api-first-turn.service";
 
 import { db } from "../lib/db";
+import type { Tx } from "../lib/db-types";
 import { dispatchFailedRunCallbacks } from "../signals/services/agent-run-callback.service";
-import {
-  lockChatQueueThread,
-  pendingChatQueueEventCondition,
-} from "../signals/services/chat-event-queue.service";
-import { insertChatEvent } from "../signals/services/chat-event.service";
-import { appendGoalOpenMarker } from "../signals/services/chat-goal-marker.service";
+import { lockChatQueueThread } from "../signals/services/chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
@@ -49,13 +41,12 @@ export async function admitGoalQueueEventFixture(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
           eq(chatEvents.eventType, "input.goal"),
-          pendingChatQueueEventCondition(tx),
         ),
       );
     if (pending) {
       return { kind: "coalesced" };
     }
-    const event = await insertChatEvent(tx, {
+    const event = await appendHistoricalGoalEvent(tx, {
       chatThreadId: args.threadId,
       eventType: "input.goal",
       content: null,
@@ -115,9 +106,10 @@ export async function seedGoalForRunFixture(
       throw new Error("Expected a historical Goal fixture");
     }
     if (status === "active") {
-      await appendGoalOpenMarker(tx, {
+      await appendHistoricalGoalEvent(tx, {
         chatThreadId: goal.chatThreadId,
-        objectiveBrief: objective,
+        eventType: "goal.open",
+        content: objective,
       });
     }
     return goal;
@@ -184,7 +176,6 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
 export async function drainChatThreadQueueFixture(args: {
   readonly threadId: string;
   readonly signal: AbortSignal;
-  readonly goalContinuationAdmitted?: boolean;
   readonly queueItemCreatedBefore?: Date;
 }): Promise<void> {
   await createStore().set(
@@ -192,9 +183,6 @@ export async function drainChatThreadQueueFixture(args: {
     {
       chatThreadId: args.threadId,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-      ...(args.goalContinuationAdmitted === undefined
-        ? {}
-        : { goalContinuationAdmitted: args.goalContinuationAdmitted }),
       queueItemCreatedBefore: args.queueItemCreatedBefore,
     },
     args.signal,
@@ -238,39 +226,7 @@ export async function pauseGoalQueueTargetFixture(
   }
 }
 
-/**
- * Resolve the thread provisioned for a goal created from a non-chat run. The
- * goal API intentionally does not expose its backing thread id.
- */
-export async function readGoalThreadFixture(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly agentId?: string;
-  readonly threadId?: string;
-}): Promise<{ readonly goalId: string; readonly threadId: string } | null> {
-  const [goal] = await db()
-    .select({
-      goalId: threadGoals.id,
-      threadId: threadGoals.chatThreadId,
-    })
-    .from(threadGoals)
-    .where(
-      and(
-        eq(threadGoals.orgId, args.orgId),
-        eq(threadGoals.ownerUserId, args.userId),
-        args.agentId ? eq(threadGoals.agentId, args.agentId) : undefined,
-        args.threadId ? eq(threadGoals.chatThreadId, args.threadId) : undefined,
-      ),
-    )
-    .limit(1);
-  return goal ?? null;
-}
-
-/**
- * Create an active goal and its pending internal trigger on an existing
- * automation thread. The product does not offer a cross-source setup endpoint;
- * this narrow fixture makes the shared queue-priority invariant observable.
- */
+/** Seed retained Goal input beside supported automation input for queue tests. */
 export async function createActiveGoalQueueEventFixture(args: {
   readonly threadId: string;
   readonly orgId: string;
@@ -312,27 +268,18 @@ export async function claimPreparedGoalFixture(args: {
   readonly runId: string;
 }): Promise<"claimed" | "lost"> {
   return await db().transaction(async (tx) => {
-    const [revision] = await tx
-      .select({
-        value: sql`${threadGoals.updatedAt}::text`.mapWith(pgTextDecoder),
-      })
-      .from(threadGoals)
-      .where(eq(threadGoals.id, args.goal.id));
-    if (!revision) {
-      throw new Error("Expected the captured Goal revision");
-    }
+    // Simulate a captured pre-retirement runtime value without adding it back
+    // to the live TypeScript admission union.
     const association = {
-      kind: "goal_input" as const,
+      kind: "user_message" as const,
       threadId: args.goal.chatThreadId,
       eventId: args.eventId,
-      prompt: "captured continuation",
-      goalId: args.goal.id,
-      goalObjectiveBrief: args.goal.objectiveBrief,
-      goalStateRevision: revision.value,
-      orgId: args.goal.orgId,
-      userId: args.goal.ownerUserId,
+      admissionTime: now(),
     };
-    await lockGoalQueueFirstRunSource(tx, association);
+    Object.defineProperty(association, "kind", {
+      value: "goal_input",
+      enumerable: true,
+    });
     await lockChatQueueThread(tx, association.threadId);
     const claim = await claimQueueFirstRunAssociation(tx, {
       ...association,
@@ -396,4 +343,73 @@ export async function activateLegacyGoalPiFixture(
     },
     signal,
   );
+}
+
+async function appendHistoricalGoalEvent(
+  tx: Tx,
+  event: {
+    readonly chatThreadId: string;
+    readonly eventType: "goal.open" | "input.goal";
+    readonly content?: string | null;
+    readonly runId?: string | null;
+    readonly contextType?: "goal";
+    readonly runGroupId?: string;
+    readonly userMessage?: ReturnType<typeof createUserMessageDocument>;
+  },
+) {
+  const [thread] = await tx
+    .update(chatThreads)
+    .set({
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 1`,
+    })
+    .where(eq(chatThreads.id, event.chatThreadId))
+    .returning({ seqId: chatThreads.lastChatEventSeqId });
+  if (!thread) {
+    throw new Error("Missing historical fixture thread");
+  }
+  const [row] = await tx
+    .insert(chatEvents)
+    .values({
+      chatThreadId: event.chatThreadId,
+      eventType: event.eventType,
+      runId: event.runId,
+      contextType: event.contextType,
+      contextId: event.runGroupId,
+      payload: event.userMessage
+        ? { userMessage: event.userMessage }
+        : event.content === null || event.content === undefined
+          ? null
+          : { content: event.content },
+      seqId: thread.seqId,
+    })
+    .returning({ id: chatEvents.id });
+  return row;
+}
+
+export async function setHistoricalGoalStatusFixture(
+  runId: string,
+  status: "active" | "paused" | "blocked" | "complete",
+): Promise<void> {
+  const [run] = await db()
+    .select({ threadId: agentRuns.chatThreadId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId));
+  if (!run?.threadId) {
+    throw new Error("Missing historical fixture run");
+  }
+  await db()
+    .update(threadGoals)
+    .set({ status })
+    .where(eq(threadGoals.chatThreadId, run.threadId));
+}
+
+export async function historicalGoalStatusFixture(
+  runId: string,
+): Promise<string | undefined> {
+  const [goal] = await db()
+    .select({ status: threadGoals.status })
+    .from(threadGoals)
+    .innerJoin(agentRuns, eq(agentRuns.chatThreadId, threadGoals.chatThreadId))
+    .where(eq(agentRuns.id, runId));
+  return goal?.status;
 }

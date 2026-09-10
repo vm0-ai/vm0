@@ -8,7 +8,7 @@ import {
   usageRecordKindSchema,
   usageRecordSourceSchema,
 } from "@okouai/api-contracts/contracts/usage-record";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   and,

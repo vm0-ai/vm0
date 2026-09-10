@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { and, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
@@ -8,7 +8,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
-import { settle, tapError } from "../utils";
+import { settle } from "../utils";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -34,7 +34,6 @@ import {
   handleWorkflowAutomationResultEmailInternalCallback,
   handleWorkflowAutomationResultEmailInternalCallback$,
 } from "./internal-workflow-automation-result-email-callback.service";
-import { handleTerminalGoalContinuation$ } from "./goal-continuation.service";
 import { handlePiMemoryPhase2MaintenanceCallback } from "./pi-memory-phase2-maintenance.service";
 
 const L = logger("AgentRunCallback");
@@ -110,13 +109,11 @@ interface DispatchInternalRunCallbackInput {
   readonly result?: Record<string, unknown>;
   readonly error?: string;
   readonly kind: InternalRunCallbackKind;
-  readonly handleTerminalGoal: boolean;
 }
 
 interface DispatchInternalCallbackInput {
   readonly kind: InternalRunCallbackKind;
   readonly envelope: InternalRunCallbackEnvelope;
-  readonly handleTerminalGoal: boolean;
 }
 
 const dispatchInternalCallback$ = command(
@@ -133,50 +130,21 @@ const dispatchInternalCallback$ = command(
         };
       }
       case "chat": {
-        const db = set(writeDb$);
         return await set(
           handleChatInternalCallback$,
           {
             callback: input.envelope,
-            drainThreadQueue: async (
-              chatThreadId,
-              inputSignal,
-              timing,
-              goalContinuationAdmitted,
-            ) => {
+            drainThreadQueue: async (chatThreadId, inputSignal, timing) => {
               await set(
                 drainChatThreadQueueForThread$,
                 {
                   chatThreadId,
                   dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-                  goalSchedulerOrigin: "chat_callback",
                   timing,
-                  goalContinuationAdmitted,
                 },
                 inputSignal,
               );
             },
-            handleTerminalGoal: input.handleTerminalGoal
-              ? async (runId, inputSignal) => {
-                  await tapError(
-                    set(
-                      handleTerminalGoalContinuation$,
-                      {
-                        db,
-                        runId,
-                      },
-                      inputSignal,
-                    ),
-                    (error) => {
-                      L.error("Goal continuation dispatch failed", {
-                        runId,
-                        error,
-                      });
-                    },
-                  );
-                  return false;
-                }
-              : undefined,
           },
           signal,
         );
@@ -234,9 +202,8 @@ const dispatchInternalCallback$ = command(
         );
       }
       case "pi-memory:phase2": {
-        const db = set(writeDb$);
         return await handlePiMemoryPhase2MaintenanceCallback(
-          db,
+          set(writeDb$),
           input.envelope,
         );
       }
@@ -265,7 +232,6 @@ const dispatchSingleInternalCallback$ = command(
         {
           kind: input.kind,
           envelope: callbackEnvelope(input),
-          handleTerminalGoal: input.handleTerminalGoal,
         },
         signal,
       ),
@@ -465,13 +431,8 @@ export const dispatchRunCallbacks$ = command(
     signal.throwIfAborted();
 
     const results: DispatchResult[] = [];
-    let terminalGoalOwnedByChatCallback = false;
     for (const callback of callbacks) {
       const internalKind = internalRunCallbackKindForRecord(callback);
-      const handleTerminalGoal: boolean =
-        redriveChatCallbackId === undefined &&
-        internalKind === "chat" &&
-        !terminalGoalOwnedByChatCallback;
       const dispatchResult: DispatchResult = internalKind
         ? await set(
             dispatchSingleInternalCallback$,
@@ -483,7 +444,6 @@ export const dispatchRunCallbacks$ = command(
               result,
               error,
               kind: internalKind,
-              handleTerminalGoal,
             },
             signal,
           )
@@ -498,27 +458,6 @@ export const dispatchRunCallbacks$ = command(
           });
       signal.throwIfAborted();
       results.push(dispatchResult);
-      terminalGoalOwnedByChatCallback ||=
-        handleTerminalGoal && dispatchResult.success;
-    }
-    if (
-      redriveChatCallbackId === undefined &&
-      !terminalGoalOwnedByChatCallback
-    ) {
-      await tapError(
-        set(
-          handleTerminalGoalContinuation$,
-          {
-            db,
-            runId,
-          },
-          signal,
-        ),
-        (error) => {
-          L.error("Goal continuation dispatch failed", { runId, error });
-        },
-      );
-      signal.throwIfAborted();
     }
     return results;
   },

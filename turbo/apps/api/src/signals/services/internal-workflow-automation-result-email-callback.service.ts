@@ -4,7 +4,7 @@ import {
   MORNING_BRIEF_PREFERENCES_PATH,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
 import type { AgentRunOfficialWorkflowProvenance } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
 import { users } from "@okouai/db/schema/user";

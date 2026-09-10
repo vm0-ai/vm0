@@ -1,7 +1,7 @@
 import { command, computed, state, type Command } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 
 import { request$ } from "../../signals/context/hono";
 import type { SignalRouteHandler } from "../../signals/context/route";

@@ -318,3 +318,83 @@ runner gained failure diagnostics and began waiting for the post-save GET,
 then a fresh BEFORE/A/A pair passed. No pixel or timeout limits changed.
 This is bounded Chromium acceptance; broader browser/native and unattended
 coverage remain outside this batch.
+
+## Monochrome icon filter batch
+
+The independent `monochrome-icon-filter` batch covers only `ProviderIcon`,
+`ConnectorIcon`, and their final `okou-icon-mono` declaration. Run
+`pnpm exec tsx playwright/style-migration/run-icon-mono.ts` from `e2e` using
+`--app-url`, `--api-url`, `--expected-build`, `--api-build`, `--source-sha`,
+`--storage-state`, `--executable-path`, `--out`, and optional `--baseline`.
+`icon-mono-cases.json` and `icon-mono-fixtures.json` are frozen alongside the
+runner before business-style changes. API bootstrap scripts and browser requests
+receive the same deterministic responses. Credentials remain outside evidence.
+
+Twenty states cover the real Models settings dialog, its portaled model
+options, personal provider marks, and the Connector page in Light/Dark desktop
+and narrow touch/DPR 2 Chromium. Monochrome, colorful, missing-metadata and failed
+image fixtures are distinct. Missing catalog display metadata is intentional
+fault injection for the existing defensive fallback. Synthetic HTTPS icon
+requests are fulfilled locally; no provider authorization or Agent run occurs.
+Automatic signup attribution is fulfilled without writing to the API.
+
+Healthy images use the unchanged shared `capture.ts`. Its mandatory image decode
+cannot accept an intentionally broken image. Only failed-image states use the
+batch's capture function: it verifies the failed image is complete, hidden and
+undecodable, decodes all other images, waits for fonts and finite animations,
+pauses infinite animations at zero, and requires three identical full-page
+frames. It changes no DOM or styles. Both paths use the unchanged `images.ts`
+rounding limits and retain every raw changed pixel without masks. This is bounded
+Chromium evidence; it does not certify native, WebKit or normal-motion behavior.
+
+Icon-mono calibration found narrow Dark DPR 2 raster differences confined to the
+unrelated dotted price underlines (96/96/16 pixels, maximum channel delta 4).
+Those captures remain rejected under the original limits. Before each capture,
+the independent runner now requests a complete repaint by changing the viewport
+width by one pixel and restoring the exact case dimensions, without changing
+DOM or CSS. A fresh before/A/A pair passed all 20 states with zero changed
+pixels. The interruption of the earlier A/A returned SIGTERM with an unconfirmed
+cause; per-capture append-only records now preserve measurements before final
+manifest creation. This calibration does not claim unattended reproducibility.
+
+The [frozen BEFORE and unchanged A/A archive](https://a.okou.io/aeguxfgxpx.zip)
+was uploaded and anonymously hash-verified before business edits. It pins source
+`52557ce17da42acce602164a838381039d4407f6` and App/API build
+`ad820032f6237598b8abed4c46e31979d7007ae2`, after integrating main
+`29dfab14531307e67d16322d5fa3972df9c42a99`. All 20 states pass with zero
+changed pixels and identical icon observations. Both original business files,
+the CSS entry point and legacy baseline were byte-identical to that main.
+
+Both consumers now use the existing `dark:invert` utility. The dark variant also
+supports a theme attribute on the element itself, but neither image accepts
+that attribute or caller filter classes; the current consumers and portaled
+options use the same dark ancestor as the removed selector. Provider
+classification, connector inversion flags, scale, fallback DOM and error events
+remain unchanged. Only this token, one CSS declaration and two production uses
+are pruned. No token or shared component changes are needed.
+
+The [AFTER archive](https://a.okou.io/gywva3k9z6.zip) and
+[comparison image](https://a.okou.io/vfjoaz2ylx.png) record all 20 states
+passing with zero changed pixels and identical icon observations on App/API
+build `29156a9e945af833fdef2bffe024be4c617d4496`, source
+`318f791155657f6efb477a25f8023fd394f87fb1`. Both downloads were anonymously
+hash-verified. The complete style check, affected App types/ESLint/Knip,
+E2E types, formatting and four selected existing page tests passed. The legacy
+inventory is now 93 tokens, 533 declarations, 307 production uses and two
+injections. The implementation pipeline retains a separate `/sign-in`
+navigation timeout during CLI TEST credential provisioning, before test
+execution. The batch remains `implemented` while final-head CI is assessed;
+these screenshots establish bounded Chromium acceptance.
+
+The [evidence-only head replay](https://a.okou.io/okin45nt2v.zip) pins source
+`6d4d25d653e49be29d900cd6e73b208d5c1fbc1b` and App/API build
+`a7aae2beca69ca7c0075bf79af4b9cccaf4f006b`, including main
+`724dc63d33064e66f8a41e0bef6ad54e345ef94a`. All 20 states again pass with
+zero changed pixels and equal observations; that source's complete Turbo CI
+passes. Actual Models and Connector pages loaded with the independent TEST
+account. The archive records actual feature switches separately: the fixture
+sets `modelPickerMenu=true` to exercise portaled icons; the live TEST response
+has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false`.
+No live switch was changed. Earlier manual portal navigation attempts are
+explicitly unaccepted diagnostics, distinct from the four passing frozen portal
+states. The archive was anonymously downloaded and hash-verified.

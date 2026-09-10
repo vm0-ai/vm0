@@ -3,7 +3,7 @@ import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact
 import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/host";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import {
   RUN_UPLOADED_FILE_SOURCES,
   runUploadedFiles,
