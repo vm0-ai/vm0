@@ -17,6 +17,7 @@ fi
 
 worker_entrypoint="${repo_root}/turbo/apps/app-worker/src/index.ts"
 for module_path in \
+  '../assets/favicon.ico.bin' \
   '../shell/index.html' \
   '../shell/sw.txt' \
   '../shell/manifest.txt' \
@@ -48,4 +49,5 @@ cp "${repo_root}/turbo/apps/app-worker/src/worker.js" "${tmp_dir}/worker.mjs"
 node "${repo_root}/.github/scripts/tests/okou-app-worker-test.mjs" \
   "${tmp_dir}/worker.mjs" \
   "${repo_root}/turbo/apps/platform/index.html" \
-  "${repo_root}/turbo/apps/platform/public/manifest.webmanifest"
+  "${repo_root}/turbo/apps/platform/public/manifest.webmanifest" \
+  "${repo_root}/turbo/apps/app-worker/assets/favicon.ico.bin"
