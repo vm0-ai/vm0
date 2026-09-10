@@ -643,6 +643,12 @@ test("Tone selection is accessible and follows preview, discard and saved profil
     }
   }
   expectSelected("Professional");
+  click(toneButton("Professional"));
+  expectSelected("Professional");
+  expect(screen.getByText("Clear and polished")).toBeVisible();
+  expect(
+    screen.queryByText("You have unsaved changes"),
+  ).not.toBeInTheDocument();
   for (const [label, hint, sample] of [
     [
       "Friendly",

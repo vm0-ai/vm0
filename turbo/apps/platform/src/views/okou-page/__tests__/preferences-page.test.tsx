@@ -266,6 +266,17 @@ test("Cookie theme and account-backed color theme are restored and saved", async
     expect.objectContaining({ theme: "dark" }),
   );
 
+  const selectedAppearance = ["Light", "Dark", "System"].find((name) => {
+    return getFastRole("button", name).getAttribute("aria-pressed") === "true";
+  });
+  if (!selectedAppearance) {
+    throw new Error("Expected a selected appearance option");
+  }
+  const resolvedTheme = document.documentElement.dataset.theme;
+  click(getFastRole("button", selectedAppearance));
+  expectSelected(getFastRole("button", selectedAppearance));
+  expect(document.documentElement).toHaveAttribute("data-theme", resolvedTheme);
+
   click(getFastRole("button", "Limelight", colorTheme));
 
   await waitFor(() => {
@@ -461,7 +472,16 @@ test("A user can save message-send and time-zone preferences", async () => {
 
   await waitFor(() => {
     expect(updates).toContainEqual({ sendMode: "cmd-enter" });
+    expect(getFastRole("button", "⌘ Enter")).toBeEnabled();
+    expectSelected(getFastRole("button", "⌘ Enter"));
   });
+
+  click(getFastRole("button", "⌘ Enter"));
+  expectSelected(getFastRole("button", "⌘ Enter"));
+  expect(getFastRole("button", "Enter")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 
   const timezone = getFastRole("combobox", /UTC/u);
   click(timezone);

@@ -343,6 +343,10 @@ async function run() {
           const image = `${id}.png`;
           await expect(page.locator("#app-bootstrap-skeleton")).toBeHidden();
           await expect(changeIcon).toBeVisible();
+          if (!item.isMobile)
+            await expect(
+              page.getByText("More credits & concurrent runs", { exact: true }),
+            ).toBeVisible();
           await expect(
             page.getByRole("button", { name: "Voice input", exact: true }),
           ).toBeEnabled();

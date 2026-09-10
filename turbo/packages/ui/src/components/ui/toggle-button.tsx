@@ -2,9 +2,17 @@ import type { ComponentProps } from "react";
 import { cva } from "class-variance-authority";
 
 import { cn } from "../../lib/utils";
+import {
+  ButtonBase,
+  buttonBaseClassName,
+  type ButtonTooltipOptions,
+} from "./button-base";
 
-const choiceButtonVariants = cva(
-  "rounded-lg border-[0.7px] text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed",
+const toggleButtonVariants = cva(
+  [
+    buttonBaseClassName,
+    "border-[0.7px] transition-all duration-200 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed",
+  ],
   {
     variants: {
       layout: {
@@ -21,7 +29,7 @@ const choiceButtonVariants = cva(
   },
 );
 
-interface ChoiceButtonProps extends Omit<
+interface ToggleButtonBaseProps extends Omit<
   ComponentProps<"button">,
   "aria-pressed"
 > {
@@ -29,22 +37,22 @@ interface ChoiceButtonProps extends Omit<
   layout?: "inline" | "tile";
 }
 
-/** A standalone selectable choice that retains native button and ref behavior. */
-export function ChoiceButton({
+export type ToggleButtonProps = ToggleButtonBaseProps & ButtonTooltipOptions;
+
+/** A controlled pressed-state button; callers own activation and group selection. */
+export function ToggleButton({
   selected,
   layout = "inline",
   className,
-  children,
   ...props
-}: ChoiceButtonProps) {
+}: ToggleButtonProps) {
   return (
-    <button
+    <ButtonBase
       type="button"
       {...props}
       aria-pressed={selected}
-      className={cn(choiceButtonVariants({ selected, layout }), className)}
-    >
-      {children}
-    </button>
+      className={cn(toggleButtonVariants({ selected, layout }), className)}
+      tooltipFullWidth={layout === "tile"}
+    />
   );
 }

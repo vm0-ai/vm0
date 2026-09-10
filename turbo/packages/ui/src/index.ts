@@ -19,7 +19,10 @@ export {
   cardClassName,
 } from "./components/ui/card";
 export { Checkbox } from "./components/ui/checkbox";
-export { ChoiceButton } from "./components/ui/choice-button";
+export {
+  ToggleButton,
+  type ToggleButtonProps,
+} from "./components/ui/toggle-button";
 export { CopyButton, type CopyButtonProps } from "./components/ui/copy-button";
 export { Input } from "./components/ui/input";
 export { Kbd, KbdGroup } from "./components/ui/kbd";
