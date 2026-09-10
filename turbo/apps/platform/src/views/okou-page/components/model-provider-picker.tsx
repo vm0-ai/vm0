@@ -1463,24 +1463,14 @@ function SubscribedExplicitModelFirstModelPickerContent({
   );
 }
 
-function EnabledExplicitModelFirstModelPicker(
-  props: ModelProviderPickerProps & {
-    placeholder: string;
-    mobileIconTrigger: boolean;
-    fastLabel: string;
-  },
+function useExplicitModelSelectionChange(
+  props: Pick<ModelProviderPickerProps, "value" | "onChange">,
 ) {
   const resolveSelection = useSet(resolveExplicitModelSelection$);
   const openBillingPlans = useSet(openSettingsBillingPlans$);
   const openSettings = useSet(setSettingsDialogOpen$);
   const pageSignal = useGet(pageSignal$);
-  const state = resolveExplicitModelFirstModelPickerState({
-    value: props.value,
-    placeholder: props.placeholder,
-    codexFastModeEnabled: props.codexFastModeEnabled ?? false,
-    fastLabel: props.fastLabel,
-  });
-  const handleSelectionChange = (selection: ModelProviderSelection | null) => {
+  return (selection: ModelProviderSelection | null) => {
     detach(
       (async () => {
         const result = await resolveSelection(
@@ -1500,6 +1490,22 @@ function EnabledExplicitModelFirstModelPicker(
       Reason.DomCallback,
     );
   };
+}
+
+function EnabledExplicitModelFirstModelPicker(
+  props: ModelProviderPickerProps & {
+    placeholder: string;
+    mobileIconTrigger: boolean;
+    fastLabel: string;
+  },
+) {
+  const handleSelectionChange = useExplicitModelSelectionChange(props);
+  const state = resolveExplicitModelFirstModelPickerState({
+    value: props.value,
+    placeholder: props.placeholder,
+    codexFastModeEnabled: props.codexFastModeEnabled ?? false,
+    fastLabel: props.fastLabel,
+  });
   const handleRawValueChange = (raw: string) => {
     const selection = modelFirstSelectionFromInteraction(
       raw,
