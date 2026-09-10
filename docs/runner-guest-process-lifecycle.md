@@ -138,7 +138,7 @@ Tokio adapter.
 
 Direct placement requires cgroup v2 and Linux 5.7; the launcher's
 `close_range(CLOSE_RANGE_CLOEXEC)` additionally requires Linux 5.11. The
-committed guest kernel is 6.1.155. Fixed process-group-only helpers and explicit
+committed guest kernel is 6.18.44. Fixed process-group-only helpers and explicit
 local TestNoop backends still use standard process creation. Guest Agent's
 internal CLI launcher and the managed tool's migrate-self/exec boundary are
 unchanged. There is no persistent cgroup pool, resident launcher or cgroup
