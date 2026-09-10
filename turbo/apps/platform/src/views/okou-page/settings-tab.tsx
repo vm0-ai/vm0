@@ -38,7 +38,6 @@ import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/inline-settings-row.tsx";
 import {
   AgentDeleteDialog,
-  type AgentDeleteWorkflow,
   type AgentDeleteCopyTarget,
 } from "./components/delete-agent-dialog.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -52,6 +51,7 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { AvatarMaker } from "./avatar-maker.tsx";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
+  type AgentDeleteWorkflow,
   settingsFormDraft$,
   patchSettingsForm$,
   resetSettingsForm$,
@@ -69,6 +69,7 @@ interface SettingsTabProps {
   canEditVisibility?: boolean;
   /** Workflows bound to this agent, offered for rescue in the delete dialog. */
   deleteWorkflows?: readonly AgentDeleteWorkflow[];
+  deleteWorkflowsState: "loading" | "error" | "ready";
   /** Agents the caller can copy a workflow onto before deleting this agent. */
   deleteCopyTargets?: readonly AgentDeleteCopyTarget[];
   /** Copy a workflow onto another agent before the agent is deleted. */
@@ -286,7 +287,8 @@ export function SettingsTab({
   inputId = "okou-agent-name",
   isDefaultAgent,
   onDelete,
-  deleteWorkflows = [],
+  deleteWorkflows,
+  deleteWorkflowsState,
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: SettingsTabProps) {
@@ -652,9 +654,11 @@ export function SettingsTab({
 
         {isDefaultAgent === false && onDelete && (
           <AgentDeleteDialog
+            agentId={agentId}
             resolvedAgentName={presentedAgentName}
             onDelete={onDelete}
             deleteWorkflows={deleteWorkflows}
+            deleteWorkflowsState={deleteWorkflowsState}
             deleteCopyTargets={deleteCopyTargets}
             onCopyWorkflowBeforeDelete={onCopyWorkflowBeforeDelete}
           />

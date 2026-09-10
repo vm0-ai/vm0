@@ -7,6 +7,10 @@ import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 import { reloadAgents$ } from "../../agent.ts";
 import { i18n } from "../../../i18n/index.ts";
+import {
+  currentAgentVisibleWorkflows$,
+  reloadWorkflows$,
+} from "../../workflows-page/workflows-signals.ts";
 
 // ---------------------------------------------------------------------------
 // Delete agent
@@ -24,6 +28,12 @@ export const deleteAgent$ = command(
     if (identityError) {
       throw new Error(identityError.message);
     }
+
+    // Copy acknowledgements belong to the rescue session. Waiting here keeps a
+    // failed refresh from forgetting successful copies or racing agent deletion.
+    set(reloadWorkflows$);
+    await get(currentAgentVisibleWorkflows$);
+    signal.throwIfAborted();
 
     const client = get(apiClient$)(agentsByIdContract);
     await accept(

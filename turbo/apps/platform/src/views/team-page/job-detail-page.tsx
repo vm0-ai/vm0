@@ -101,8 +101,8 @@ import {
 import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import {
-  currentAgentVisibleWorkflows$,
   copyWorkflow$,
+  currentAgentVisibleWorkflows$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
@@ -1021,7 +1021,9 @@ function AgentProfileSettings({
 }) {
   const pageSignal = useGet(pageSignal$);
   const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
-  const agentsLoadable = useLoadable(agents$);
+  const workflowsStatus = useLoadable(currentAgentVisibleWorkflows$);
+  const agentsLoadable = useLastLoadable(agents$);
+  const user = useLastResolved(user$);
   const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
 
   const deleteWorkflows =
@@ -1032,12 +1034,12 @@ function AgentProfileSettings({
             title: workflow.displayName ?? workflow.name,
           };
         })
-      : [];
+      : undefined;
   const deleteCopyTargets =
     agentsLoadable.state === "hasData"
       ? agentsLoadable.data
           .filter((agent) => {
-            return agent.agentId !== agentId;
+            return agent.agentId !== agentId && agent.ownerId === user?.id;
           })
           .map((agent) => {
             return { id: agent.agentId, displayName: agent.displayName };
@@ -1066,6 +1068,13 @@ function AgentProfileSettings({
       isDefaultAgent={isDefaultAgent}
       onDelete={onDelete}
       deleteWorkflows={deleteWorkflows}
+      deleteWorkflowsState={
+        workflowsStatus.state === "hasData"
+          ? "ready"
+          : workflowsStatus.state === "hasError"
+            ? "error"
+            : "loading"
+      }
       deleteCopyTargets={deleteCopyTargets}
       onCopyWorkflowBeforeDelete={copyWorkflowBeforeDelete}
     />
