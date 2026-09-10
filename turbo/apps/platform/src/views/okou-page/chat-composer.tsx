@@ -9,6 +9,7 @@ import {
 } from "./composer-actions.ts";
 import {
   ComposerCreateControls,
+  ComposerCreatePicker,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
 } from "./composer-create.tsx";
@@ -34,14 +35,14 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
-import { explainerVideoTemplateOptions } from "@okouai/core/explainer-video-template";
+import { introVideoTemplateOptions } from "@okouai/core/intro-video-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { ExplainerVideoPicker } from "./explainer-video-picker.tsx";
+import { IntroVideoPicker } from "./intro-video-picker.tsx";
 import {
   avatarSelectionLabel,
   styleSelectionLabel,
   voiceSelectionLabel,
-} from "./explainer-video-selection-labels.ts";
+} from "./intro-video-selection-labels.ts";
 import {
   importPresentationTemplateDeck$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
@@ -4342,11 +4343,11 @@ function IllustrationTemplateCard({
 
 function resolveTemplatePickerCategory(
   category: string,
-  explainerEnabled: boolean,
+  introVideoEnabled: boolean,
 ): string {
   switch (category) {
-    case "explainer": {
-      return explainerEnabled ? category : "video";
+    case "intro-video": {
+      return introVideoEnabled ? category : "video";
     }
     case "slides":
     case "website":
@@ -4364,11 +4365,11 @@ function resolveTemplatePickerCategory(
 
 function TemplatePickerCategoryNav({
   selectedCategory,
-  explainerEnabled,
+  introVideoEnabled,
   onChange,
 }: {
   selectedCategory: string;
-  explainerEnabled: boolean;
+  introVideoEnabled: boolean;
   onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
@@ -4401,18 +4402,18 @@ function TemplatePickerCategoryNav({
     {
       value: "video",
       label: t(($) => {
-        return explainerEnabled
+        return introVideoEnabled
           ? $.artifacts.templates.creativeVideo
           : $.artifacts.kinds.video;
       }),
       Icon: Video,
     },
-    ...(explainerEnabled
+    ...(introVideoEnabled
       ? [
           {
-            value: "explainer",
+            value: "intro-video",
             label: t(($) => {
-              return $.artifacts.templates.explainerVideo;
+              return $.artifacts.templates.introVideo;
             }),
             Icon: Presentation,
           },
@@ -6124,10 +6125,10 @@ function TemplatePickerDialog({
   });
 
   const features = useGet(featureSwitch$);
-  const explainerEnabled = features[FeatureSwitchKey.IntroVideo] === true;
+  const introVideoEnabled = features[FeatureSwitchKey.IntroVideo] === true;
   const selectedCategory = resolveTemplatePickerCategory(
     category,
-    explainerEnabled,
+    introVideoEnabled,
   );
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar";
@@ -6420,13 +6421,13 @@ function TemplatePickerDialog({
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
             <TemplatePickerCategoryNav
               selectedCategory={selectedCategory}
-              explainerEnabled={explainerEnabled}
+              introVideoEnabled={introVideoEnabled}
               onChange={handleCategoryChange}
             />
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              {selectedCategory === "explainer" ? (
-                <ExplainerVideoPicker
-                  signals={signals.template.explainer}
+              {selectedCategory === "intro-video" ? (
+                <IntroVideoPicker
+                  signals={signals.template.introVideo}
                   onCancel={closeTemplatePicker}
                   onSelect={(template) => {
                     onChange(template);
@@ -6718,22 +6719,22 @@ function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
 ): ComposerTemplateAttachment | undefined {
-  const explainer = explainerVideoTemplateOptions(value);
-  if (explainer) {
+  const introVideo = introVideoTemplateOptions(value);
+  if (introVideo) {
     return {
       type: "video",
-      category: "explainer",
+      category: "intro-video",
       title: [
         i18n.t(($) => {
-          return $.artifacts.templates.explainerVideo;
+          return $.artifacts.templates.introVideo;
         }),
-        styleSelectionLabel(i18n.t, explainer.style),
-        avatarSelectionLabel(i18n.t, explainer.avatar),
-        voiceSelectionLabel(i18n.t, explainer.voice, explainer.avatar),
+        styleSelectionLabel(i18n.t, introVideo.style),
+        avatarSelectionLabel(i18n.t, introVideo.avatar),
+        voiceSelectionLabel(i18n.t, introVideo.voice, introVideo.avatar),
       ].join(" · "),
       previewImageUrl:
-        explainer.style.kind === "catalog"
-          ? explainer.style.style.thumbnailUrl
+        introVideo.style.kind === "catalog"
+          ? introVideo.style.style.thumbnailUrl
           : undefined,
     };
   }
@@ -6840,7 +6841,7 @@ function TemplatePickerButton({
   const mounted = useGet(signals.template.templatePickerMounted$);
   const open = useGet(signals.template.templatePickerOpen$);
   const category = useGet(signals.template.templatePickerCategory$);
-  const explainerEnabled =
+  const introVideoEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
   const createMode = useGet(signals.create.mode$);
@@ -6868,7 +6869,7 @@ function TemplatePickerButton({
     templateMode === "presentation"
       ? "slides"
       : (templateMode ??
-        resolveTemplatePickerCategory(category, explainerEnabled));
+        resolveTemplatePickerCategory(category, introVideoEnabled));
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -9359,6 +9360,7 @@ function ComposerInputSlot({
   actions: ComposerActions;
   minimumHeightClassName: string;
 }) {
+  const createPickerOpen = useGet(signals.create.pickerOpen$);
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
@@ -9469,7 +9471,10 @@ function ComposerInputSlot({
         minimumHeightClassName,
       )}
     >
-      <div className="col-start-1 row-start-1 min-h-0">
+      <div
+        className="col-start-1 row-start-1 min-h-0"
+        hidden={createPickerOpen}
+      >
         <TiptapWorkflowComposer
           signals={signals}
           onDraftChange={notifyDraftChanged}
@@ -9478,6 +9483,7 @@ function ComposerInputSlot({
           onPaste={handlePaste}
         />
       </div>
+      <ComposerCreatePicker signals={signals} />
     </div>
   );
 }
@@ -9709,6 +9715,9 @@ function ComposerRunModelPickerControl({
             : undefined
         }
         flyoutLayout={modelFlyoutEnabled}
+        onSelected={() => {
+          setModelPickerOpen(false);
+        }}
         compactTrigger
         mobileIconTrigger
         open={modelPickerOpen}
@@ -10970,6 +10979,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           className={cn("flex flex-col", layoutHeightClassNames.shell)}
         >
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
+          <ComposerCreateControls signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot
             signals={signals}
@@ -11004,7 +11014,6 @@ export function ChatComposer({
         className="relative flex w-full min-w-0 flex-col"
       >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
-        <ComposerCreateControls signals={signals} />
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />

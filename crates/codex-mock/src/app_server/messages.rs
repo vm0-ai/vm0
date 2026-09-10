@@ -577,14 +577,13 @@ pub(super) fn turn_failed_notification(
     turn_id: &str,
     failure: TurnFailure,
 ) -> Value {
+    let message = turn_failure_message(failure);
     let error = match turn_failure_error_info(failure) {
         Some(codex_error_info) => json!({
-            "message": "mock codex primary failure",
+            "message": message,
             "codexErrorInfo": codex_error_info
         }),
-        None => json!({
-            "message": "mock codex primary failure"
-        }),
+        None => json!({ "message": message }),
     };
 
     json!({
@@ -605,9 +604,23 @@ pub(super) fn turn_failed_notification(
     })
 }
 
+fn turn_failure_message(failure: TurnFailure) -> &'static str {
+    match failure {
+        TurnFailure::ContentPolicyRejection => {
+            r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#
+        }
+        TurnFailure::InvalidRequestFormat => {
+            r#"{"error":{"message":"Invalid Format","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#
+        }
+        _ => "mock codex primary failure",
+    }
+}
+
 fn turn_failure_error_info(failure: TurnFailure) -> Option<Value> {
     match failure {
-        TurnFailure::Generic => None,
+        TurnFailure::Generic
+        | TurnFailure::ContentPolicyRejection
+        | TurnFailure::InvalidRequestFormat => None,
         TurnFailure::ContextWindowExceeded => Some(json!("contextWindowExceeded")),
         TurnFailure::InternalServerError => Some(json!("internalServerError")),
         TurnFailure::ResponseStreamConnectionFailed => Some(json!({

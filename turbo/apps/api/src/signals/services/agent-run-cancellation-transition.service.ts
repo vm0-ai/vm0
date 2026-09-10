@@ -1,5 +1,5 @@
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { eq } from "drizzle-orm";
 

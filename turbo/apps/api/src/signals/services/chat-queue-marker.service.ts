@@ -1,4 +1,4 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, eq, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";

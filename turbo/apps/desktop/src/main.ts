@@ -560,6 +560,8 @@ function getAuthSession(): DesktopAuthSession {
       return await authWindow.run(request);
     },
     onChange: notifyAuthChanged,
+    onBackgroundRefresh: (event) =>
+      computerUseController.handleBackgroundAuthRefresh(event),
     onAuthCompleted: maybeStartComputerUseAfterAuth,
   });
 
@@ -750,12 +752,15 @@ function supportedPluginCapabilities(): readonly string[] {
   ];
 }
 
-function createComputerUseHostRuntime(): ComputerUseHostRuntime {
+function createComputerUseHostRuntime(options: {
+  readonly refreshRegistrationAuth: boolean;
+}): ComputerUseHostRuntime {
   const installationId = readOrCreateComputerUseInstallationId(
     desktopPreferencesPath(),
   );
   return createDesktopComputerUseHostRuntime(
     {
+      refreshRegistrationAuth: options.refreshRegistrationAuth,
       platformUrl: config.platformUrl,
       installationId,
       hostName: readSystemHostName(config.identity.displayName),

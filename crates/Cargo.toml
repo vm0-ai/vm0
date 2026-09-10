@@ -17,6 +17,7 @@ members = [
     "guest-state-restore",
     "guest-write-file",
     "guest-workspace-mount",
+    "linux-mountinfo",
     "nbd-cow",
     "runner",
     "sandbox",
@@ -53,6 +54,7 @@ codex-mock = { path = "codex-mock" }
 guest-state-restore = { path = "guest-state-restore" }
 guest-write-file = { path = "guest-write-file" }
 guest-workspace-mount = { path = "guest-workspace-mount" }
+linux-mountinfo = { path = "linux-mountinfo" }
 nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }
 sandbox-firecracker = { path = "sandbox-firecracker" }
@@ -95,7 +97,7 @@ reqwest = { version = "0.13", default-features = false }
 rmp-serde = { version = "1", default-features = false }
 rmpv = { version = "1", default-features = false }
 rsa = { version = "=0.10.0-rc.18", default-features = false }
-russh = { version = "=0.63.2", default-features = false }
+russh = { version = "=0.63.3", default-features = false }
 rustix = { version = "1", default-features = false }
 sentry = { version = "0.49", default-features = false }
 serde = { version = "1", default-features = false }

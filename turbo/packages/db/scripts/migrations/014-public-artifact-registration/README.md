@@ -55,6 +55,9 @@ Never point this inventory at the private-artifact bucket.
 Run from `turbo/packages/db`:
 
 ```bash
+# Check pending multipart registrations without scanning objects or using the DB.
+pnpm exec tsx scripts/migrations/014-public-artifact-registration/multipart.ts --report multipart.json
+
 # Default: two read-only inventories, DB reconciliation and conflict report.
 pnpm exec tsx scripts/migrations/014-public-artifact-registration/backfill.ts --report inventory.json
 
@@ -70,6 +73,23 @@ pnpm exec tsx scripts/migrations/014-public-artifact-registration/backfill.ts --
 
 `--migrate` always performs exact read-back; `--verify` also permits independent
 read-only verification.
+
+The standalone multipart command uses only the R2 environment variables above;
+it does not need `DATABASE_URL`. It lists pending uploads and reads their frozen
+v1 registry records. It writes an aggregate report before exiting: zero for a
+clear multipart gate, one for unregistered sessions. Both outcomes have
+`verified: false` and `finalized: false`; this preflight cannot establish full
+object coverage. Invalid registrations, incomplete pagination or storage errors
+also fail the command. It accepts no migration, verification or finalization
+flags and never writes storage, completes uploads or aborts parts.
+
+The report includes the scan interval, pending/unregistered counts, oldest and
+newest unregistered initiation times, and a count of sessions whose optional
+initiation time is absent. It contains no object keys, upload IDs or filenames.
+Missing initiation times stay unknown; a present invalid timestamp fails the
+check. Consult the actual bucket lifecycle separately before estimating expiry.
+Age alone does not prove storage has aborted a session, so recheck the live
+multipart gate before scheduling full verification.
 
 Every pass is paginated and limited to 100,000 objects per bucket by default;
 `--max-objects` can explicitly raise that bound. Production already exceeds this
@@ -128,8 +148,18 @@ click-only records and later optional pointer/typing fields are recognized.
    Its artifact preserves `public-artifact-registration.json` for the backfill
    and `public-artifact-registration-verification.json` for the independent pass,
    including the first report if the second pass fails. The `verify` mode remains
-   available for a standalone read-only run. All modes use production R2 credentials
-   and read-only Neon queries and never pass `--finalize`. Accept coverage only
+   available for a standalone read-only run. It first checks multipart registrations
+   before resolving the database or scanning objects. The explicit `multipart-check`
+   mode runs only that same preflight, preserving
+   `public-artifact-registration-multipart.json` even when sessions block it.
+   It never resolves the production database or starts the historical inventory.
+   A clear preflight still requires the full independent pass, including the
+   original multipart check immediately before its final object inventory; the
+   early check does not replace this race boundary. The historical `dry-run` and
+   `migrate` modes keep their existing sequence, so a pending upload cannot stop
+   an authorized backfill of already-completed objects before its writes.
+   All modes use production R2 credentials; full inventories also use read-only
+   Neon queries. No workflow mode passes `--finalize`. Accept coverage only
    with zero missing, conflicting or unclassified records and zero unregistered
    pending multipart uploads.
 3. Review the separate `a.okou.io` delivery cutover (#32959) after coverage is

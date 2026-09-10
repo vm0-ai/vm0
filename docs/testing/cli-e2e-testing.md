@@ -104,6 +104,23 @@ Runner BATS must not mutate shared account-level preferences from parallel
 shards. Coverage that needs mutable account-level state requires a dedicated
 identity or a serialized lane.
 
+The default runner and feature-test accounts use limited-free onboarding. The
+dedicated Codex, Claude, and mock-Claude accounts still require Pro for their
+paid-model and BYOK policies. Runner preparation completes onboarding through
+the public API, creates a public usage-pack checkout, completes hosted Stripe
+payment, and verifies the resulting public entitlement before publishing tokens.
+Only the dedicated paid-onboarding spec exercises the video onboarding UI.
+
+Clerk resource creation records exact IDs in `E2E_CLERK_RESOURCE_DIR`. Normal
+cleanup verifies those IDs' ownership against Clerk and deletes organizations
+before users. Runner records travel with their workflow attempt so successful
+reruns can clean earlier attempts without listing the whole Clerk instance.
+Failed runner shards retain their accounts for reruns. An uncertain organization
+creation keeps its owner user for the existing strict-marker stale sweep.
+Playwright's setup project owns the feature account; unrelated lanes create no
+unused global account. Failed checkouts report HTTP status, request ID, and
+Retry-After, and product Playwright lanes retain traces on the first failure.
+
 Use a different organization-scoped connector slug in each file that can run in
 parallel. Assert sandbox-visible output and Okou-owned telemetry; do not treat an
 external provider's exact response status or body as the test oracle.

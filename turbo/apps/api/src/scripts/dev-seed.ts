@@ -12,7 +12,7 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
+import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { skills } from "@okouai/db/schema/skill";
@@ -86,7 +86,6 @@ const DEV_SEED_SKILL_VOLUMES: readonly DevSeedSkillVolume[] =
 
 const PREVIEW_E2E_VOLUME_SKILL_NAMES: readonly string[] = [
   ...SEED_SKILLS,
-  GOAL_SKILL_NAME,
   "github",
   "slack",
   "discord-webhook",

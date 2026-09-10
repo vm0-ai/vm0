@@ -165,6 +165,7 @@ const discoverConnectorCatalogInner$ = command(
         featureStates: context.featureStates,
         connections: connectorState.value,
         keyword: query.keyword,
+        category: query.category,
       }),
       signal,
     );

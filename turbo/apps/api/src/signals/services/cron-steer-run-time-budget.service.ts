@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, lte } from "drizzle-orm";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 

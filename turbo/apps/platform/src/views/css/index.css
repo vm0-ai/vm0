@@ -509,12 +509,6 @@ body {
   color: hsl(var(--muted-foreground));
 }
 
-/* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
-   Scoped to [data-theme="dark"] only—not .okou-app—so portaled popovers/dropdowns still match. */
-:where([data-theme="dark"]) .okou-icon-mono {
-  filter: invert(1);
-}
-
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
 /* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
    glyphs render in color. Without this, dual-presentation codepoints fall back
@@ -719,12 +713,6 @@ body {
   .okou-app .okou-chat-card {
     background-color: hsl(var(--card));
   }
-}
-
-/* Message bubble (e.g. Meet Okou tone samples) */
-.okou-app .okou-bubble-cool {
-  background-color: hsl(var(--gray-100) / 0.95);
-  color: hsl(var(--foreground));
 }
 
 /* Gray-100 clears 1.06:1 against the white canvas, so

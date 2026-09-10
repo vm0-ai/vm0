@@ -5,6 +5,8 @@ first waits for the pending counters to drain, then ``done()`` flushes
 submitted futures during mitmproxy shutdown. Falls back to synchronous
 delivery if submission fails during shutdown or worker startup so reports
 are not silently lost. A worker and fallback share one delivery claim.
+Workers start before payloads enter the pool, so failed startup cannot retain
+completed fallback deliveries in an undrained executor queue.
 """
 
 import json
@@ -13,7 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import Executor
 from functools import partial
 from typing import Literal
 
@@ -22,6 +24,7 @@ from logging_utils import log_proxy_entry
 from platform_api import build_api_opener, make_api_request
 
 from .counters import PendingReportLease, admit_pending_report
+from .executor import WebhookExecutor
 
 WebhookDeliveryOutcome = Literal["success", "retryable_failure", "permanent_failure"]
 _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
@@ -296,7 +299,7 @@ def _is_retryable_http_error(exc: urllib.error.HTTPError) -> bool:
 USAGE_WEBHOOK_WORKERS = 4
 MAX_PENDING_WEBHOOK_PAYLOADS = USAGE_WEBHOOK_WORKERS * 4
 
-usage_executor = ThreadPoolExecutor(
+usage_executor = WebhookExecutor(
     max_workers=USAGE_WEBHOOK_WORKERS,
     thread_name_prefix="usage",
 )

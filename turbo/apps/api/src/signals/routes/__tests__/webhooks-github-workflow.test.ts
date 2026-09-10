@@ -1313,7 +1313,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected the automation event run to expose OKOU_TOKEN");
     }
     expect(verifyOkouToken(okouToken)?.capabilities).toContain(
-      "goal:user-control:write",
+      "chat-thread:write",
     );
     expect(claim.prompt).toContain(
       'GitHub Actions workflow "Turbo" completed with conclusion "failure"',

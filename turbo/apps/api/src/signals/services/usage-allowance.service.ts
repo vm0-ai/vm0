@@ -3,7 +3,7 @@ import {
   orgUsageAllowanceWindows,
   usageAllowanceAllocations,
 } from "@okouai/db/schema/org-usage-allowance";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import {
   and,
   asc,

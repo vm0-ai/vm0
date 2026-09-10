@@ -182,7 +182,7 @@ fn init_from_env_values(
 /// runner's production env surface — production code should always call
 /// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
 #[cfg(test)]
-fn init_with_base_url(
+pub(crate) fn init_with_base_url(
     base_url: &str,
     token: &str,
     suffix: &str,
