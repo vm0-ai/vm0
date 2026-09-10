@@ -1,7 +1,9 @@
 # Runner SSH execution
 
 #32387 implements the Runner-owned execution slice of #32013 (under #31932).
-It does not activate SSH, expose a CLI/UI, or support local/PAT Runners.
+The [CLI and owner/Agent UI](ssh-access.md) were delivered by #32014 / PR #32722.
+SSH defaults to enabled for staff organizations through the existing feature
+switch; local/PAT Runners remain unsupported.
 Current [API authority](runner-ssh-authority.md), including the feature
 gate and current Agent grant, is required on a cache miss and for first-use pinning.
 Successful authority snapshots follow the Run-scoped lifetime below. Run source,
@@ -88,9 +90,10 @@ API mutations publish `ssh-authority-invalidated` on the existing Runner-group
 Ably channel, with `{runId, connectionId}`; a null connection ID evicts all entries
 for that Run. Notices contain no credentials and cannot grant access or establish
 trust. Connection edits/rotation, deletion and explicit host-key reset notify
-active owner Runs after commit. New Agent-access/inventory writers must use the
-Run-wide invalidation hook before activation. First-use pin/match records the
-confirmed identity locally only after the authorized N+1 response.
+active owner Runs after commit. Agent grant changes publish Run-wide invalidation
+for the affected user's Agent Runs, including after revocation removes the grant.
+First-use pin/match records the confirmed identity locally only after the
+authorized N+1 response.
 
 Before subscription readiness or while disconnected/failed, the Runner bypasses
 shared caching and resolves each command. Observed connection loss clears cached
@@ -184,10 +187,26 @@ reservation until it exits. Telemetry contains only owned identifiers, fixed
 outcomes, timing, byte counts, truncation and terminal-delivery state. Production
 fmt/Axiom sinks suppress raw russh/ssh-key/ssh-cipher diagnostics at every level.
 
-## Remaining delivery gates
+## Connection observations
 
-Agent inventory/CLI/UI delivery, packaged-helper verification in fresh/restored
-KVM guests, complete Runner/rootfs convergence and controlled production
-activation remain later parent-owned slices. Local mocked-boundary/real-peer
-tests do not establish those rollout gates. No SSH activation is authorized by
-this implementation.
+PR #33165 adds best-effort [connection observations](runner-ssh-authority.md#diagnostic-connection-observations)
+after terminal delivery is attempted. Reports carry only Run/Runner/connection
+identifiers, configuration generation, observation time and an allow-listed failure code or
+authenticated-success observation, never commands, output or credentials.
+They are separate from command outcomes: successful authentication can clear a
+host warning even if its command later fails. Reporting cannot change or replay
+the command, and missing reports do not prove a host is healthy.
+
+## Rollout and validation
+
+Staff-default availability is configured in `sshAccess`; explicit overrides and
+current owner/Agent/Run authority still apply. It is not general availability or
+evidence that every deployed artifact is current. API, Platform, Runner/rootfs
+and the selected CLI retain their [deployment compatibility](deployment-compatibility.md)
+boundaries.
+
+PR #32722 records two-host, same-Run, non-chat and snapshot restore/reuse SSH
+acceptance. Native generic RPC has separate fresh/restored/reused KVM coverage.
+Actual API-backed Runs use the snapshot provider; a separate cold-boot business
+SSH mode is not required. Historical validation retains its recorded revision
+and artifacts, rather than claiming a fresh deployed test of later changes.

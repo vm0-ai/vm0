@@ -50,7 +50,7 @@ describe("isFeatureEnabled", () => {
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.SshAccess]).toEqual({
       maintainer: "liangyou@okou.ai",
       description: "Enable standalone Runner-mediated SSH configuration",
-      rolloutStage: "alpha",
+      rolloutStage: "beta",
     });
   });
 
@@ -203,7 +203,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SshAccess]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.SshAccess]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadHeaderActions]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
