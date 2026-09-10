@@ -5776,6 +5776,15 @@
           "description": "Choisissez le modèle pour la saisie vocale v2. Les modèles de transcription utilisent {{model}} pour améliorer le texte.",
           "title": "Modèle de saisie vocale",
           "unavailable": "Modèle indisponible ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "Cet identifiant de requête appartient à une autre discussion. Fermez les paramètres et lancez une nouvelle création.",
+          "create": "Créer une discussion de bienvenue",
+          "creating": "Création…",
+          "defaultAgentNotReady": "Configurez l’agent par défaut de l’espace de travail, puis réessayez.",
+          "description": "Créez une discussion de bienvenue avec la présentation et les exemples.",
+          "failed": "Impossible de créer la discussion de bienvenue. Réessayez.",
+          "title": "Discussion de bienvenue"
         }
       },
       "emailSubscription": {

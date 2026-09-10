@@ -5716,6 +5716,15 @@
           "description": "Wähle das Modell für Spracheingabe v2. Spracherkennungsmodelle verwenden {{model}} zur Textbereinigung.",
           "title": "Modell für Spracheingabe",
           "unavailable": "Modell nicht verfügbar ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "Diese Anfrage-ID gehört zu einem anderen Chat. Schließe die Einstellungen und starte eine neue Willkommensaktion.",
+          "create": "Willkommenschat erstellen",
+          "creating": "Wird erstellt…",
+          "defaultAgentNotReady": "Konfiguriere den Standardagenten des Arbeitsbereichs und versuche es erneut.",
+          "description": "Erstelle einen Willkommenschat mit einer Einführung und Beispielen.",
+          "failed": "Der Willkommenschat konnte nicht erstellt werden. Versuche es erneut.",
+          "title": "Willkommenschat"
         }
       },
       "emailSubscription": {

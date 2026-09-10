@@ -5776,6 +5776,15 @@
           "description": "Scegli il modello per input vocale v2. I modelli di trascrizione usano {{model}} per rifinire il testo.",
           "title": "Modello di input vocale",
           "unavailable": "Modello non disponibile ({{model}})"
+        },
+        "welcomeThread": {
+          "conflict": "Questo ID richiesta appartiene a un’altra chat. Chiudi le impostazioni e avvia una nuova creazione.",
+          "create": "Crea chat di benvenuto",
+          "creating": "Creazione…",
+          "defaultAgentNotReady": "Configura l’agente predefinito dell’area di lavoro, poi riprova.",
+          "description": "Crea una chat di benvenuto con l’introduzione e gli esempi.",
+          "failed": "Impossibile creare la chat di benvenuto. Riprova.",
+          "title": "Chat di benvenuto"
         }
       },
       "emailSubscription": {
