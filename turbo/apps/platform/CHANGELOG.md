@@ -11,6 +11,31 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.884.5](https://github.com/vm0-ai/vm0/compare/app-v0.884.4...app-v0.884.5) (2026-09-10)
+
+
+### Bug Fixes
+
+* **platform:** restore hosted auth last-used badge ([#33334](https://github.com/vm0-ai/vm0/issues/33334)) ([f8ddf76](https://github.com/vm0-ai/vm0/commit/f8ddf76a38fd5bd0e909b6eaf462576359cfecce))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33343](https://github.com/vm0-ai/vm0/issues/33343)) ([f670a02](https://github.com/vm0-ai/vm0/commit/f670a0233ae13a11d43f3a2ad72ff30831cab822))
+
+
+### Performance Improvements
+
+* **platform:** unmount template gallery during previews ([#33339](https://github.com/vm0-ai/vm0/issues/33339)) ([75095c2](https://github.com/vm0-ai/vm0/commit/75095c26e72eb7deb40f5c15b920aa0764d94ceb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+    * @okouai/core bumped to 8.651.2
+
 ## [0.884.4](https://github.com/vm0-ai/vm0/compare/app-v0.884.3...app-v0.884.4) (2026-09-10)
 
 
