@@ -267,9 +267,11 @@ async function run() {
     sidebarFixtureBytes.toString(),
   );
   assert.equal((sidebarFixture["/api/org"] as { role: string }).role, "admin");
-  assert.equal(
-    (sidebarFixture["/api/billing/status"] as { tier: string }).tier,
-    "free",
+  assert(
+    ["free", "limited-free-1"].includes(
+      (sidebarFixture["/api/billing/status"] as { tier: string }).tier,
+    ),
+    "Use a TEST free-tier account with the Get Pro sidebar card",
   );
   const featureFixture: Record<string, unknown> = JSON.parse(
     featureFixtureBytes.toString(),
