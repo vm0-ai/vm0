@@ -38,7 +38,6 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -62,6 +61,7 @@ import {
 import {
   avatarFramingEnabled$,
   avatarNeckSweaterEnabled$,
+  featureSwitch$,
 } from "../external/feature-switch.ts";
 import {
   agentMentionText,
