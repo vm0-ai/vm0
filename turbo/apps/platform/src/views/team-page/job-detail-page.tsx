@@ -1022,6 +1022,7 @@ function AgentProfileSettings({
 }) {
   const pageSignal = useGet(pageSignal$);
   const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
+  const workflowsStatus = useLoadable(currentAgentVisibleWorkflows$);
   const agentsLoadable = useLastLoadable(agents$);
   const user = useLastResolved(user$);
   const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
@@ -1068,6 +1069,13 @@ function AgentProfileSettings({
       isDefaultAgent={isDefaultAgent}
       onDelete={onDelete}
       deleteWorkflows={deleteWorkflows}
+      deleteWorkflowsState={
+        workflowsStatus.state === "hasData"
+          ? "ready"
+          : workflowsStatus.state === "hasError"
+            ? "error"
+            : "loading"
+      }
       deleteCopyTargets={deleteCopyTargets}
       onCopyWorkflowBeforeDelete={copyWorkflowBeforeDelete}
     />

@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import type { Tone } from "../../../views/okou-page/tone-constants.ts";
 import { onRejection, withCleanup } from "../../utils.ts";
-import { currentAgentVisibleWorkflows$ } from "../../workflows-page/workflows-signals.ts";
+import {
+  currentAgentVisibleWorkflows$,
+  reloadWorkflows$,
+} from "../../workflows-page/workflows-signals.ts";
 
 interface SettingsFormValues {
   name: string;
@@ -54,7 +57,7 @@ export interface AgentDeleteWorkflow {
   readonly title: string;
 }
 
-interface AgentDeleteSession {
+export interface AgentDeleteSession {
   readonly id: symbol;
   readonly agentId: string;
   readonly owner: AbortSignal;
@@ -91,7 +94,12 @@ export const setAgentDeleteDialogOpen$ = command(
       previous?.agentId === agentId && previous.owner === signal;
     if (!open) {
       if (sameOwner && previous.phase === "idle") {
-        set(internalAgentDeleteSession$, { ...previous, open: false });
+        set(internalAgentDeleteSession$, {
+          ...previous,
+          open: false,
+          choices: {},
+          error: null,
+        });
         return true;
       }
       return false;
@@ -135,6 +143,17 @@ export const setAgentDeleteCopyChoices$ = command(
     const session = get(internalAgentDeleteSession$);
     if (session?.id === sessionId && session.open && session.phase === "idle") {
       set(internalAgentDeleteSession$, { ...session, choices, workflows });
+    }
+  },
+);
+
+export const reloadAgentDeleteWorkflows$ = command(
+  ({ get, set }, sessionId: symbol) => {
+    const session = get(internalAgentDeleteSession$);
+    if (session?.id === sessionId && session.open && session.phase === "idle") {
+      session.owner.throwIfAborted();
+      set(internalAgentDeleteSession$, { ...session, error: null });
+      set(reloadWorkflows$);
     }
   },
 );
@@ -189,6 +208,9 @@ export const deleteAgent$ = command(
     await withCleanup(
       onRejection(
         (async () => {
+          // Never start a rescue from an unavailable source-workflow list.
+          await get(currentAgentVisibleWorkflows$);
+          signal.throwIfAborted();
           if (copyWorkflow) {
             for (const [workflowId, toAgentId] of rescues) {
               await copyWorkflow(workflowId, toAgentId);
@@ -230,7 +252,11 @@ export const deleteAgent$ = command(
       () => {
         const current = get(internalAgentDeleteSession$);
         if (current?.id === sessionId) {
-          set(internalAgentDeleteSession$, { ...current, phase: "idle" });
+          set(internalAgentDeleteSession$, {
+            ...current,
+            phase: "idle",
+            choices: {},
+          });
         }
       },
     );

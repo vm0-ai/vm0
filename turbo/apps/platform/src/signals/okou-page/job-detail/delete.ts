@@ -31,7 +31,10 @@ export const deleteAgent$ = command(
 
     const client = get(apiClient$)(agentsByIdContract);
     await accept(
-      client.delete({ params: { id: detail.agentId } }),
+      client.delete({
+        params: { id: detail.agentId },
+        fetchOptions: { signal },
+      }),
       [204],
       signal,
     );

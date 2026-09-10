@@ -29,7 +29,9 @@ import {
   agentDeleteSession$,
   setAgentDeleteCopyChoices$,
   setAgentDeleteDialogOpen$,
+  reloadAgentDeleteWorkflows$,
   type AgentDeleteWorkflow,
+  type AgentDeleteSession,
 } from "../../../signals/okou-page/settings/settings-tab.ts";
 
 export interface AgentDeleteCopyTarget {
@@ -72,9 +74,28 @@ function DeleteDangerHeader({ agentName }: { agentName: string }) {
   );
 }
 
+function DeleteDangerZoneHeader() {
+  const { t } = useTranslation("agents");
+  return (
+    <div className="min-w-0 sm:max-w-[46%]">
+      <h3 className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.delete.dangerZone;
+        })}
+      </h3>
+      <p className="text-xs text-muted-foreground mt-1 leading-snug">
+        {t(($) => {
+          return $.delete.dangerZoneDescription;
+        })}
+      </p>
+    </div>
+  );
+}
+
 interface DeleteConfirmButtonProps {
   deleting: boolean;
   copying: boolean;
+  workflowsReady: boolean;
   onDelete: () => void;
   className?: string;
 }
@@ -82,6 +103,7 @@ interface DeleteConfirmButtonProps {
 function DeleteConfirmButton({
   deleting,
   copying,
+  workflowsReady,
   onDelete,
   className,
 }: DeleteConfirmButtonProps) {
@@ -102,7 +124,7 @@ function DeleteConfirmButton({
       variant="destructive"
       size="sm"
       className={className}
-      disabled={deleting || copying}
+      disabled={deleting || copying || !workflowsReady}
       onClick={onDelete}
     >
       {label}
@@ -114,6 +136,7 @@ interface AgentDeleteReconcileViewProps {
   agentName: string;
   deleting: boolean;
   copying: boolean;
+  workflowsReady: boolean;
   onDelete: () => void;
   deleteWorkflows: readonly AgentDeleteWorkflow[];
   deleteCopyTargets: readonly AgentDeleteCopyTarget[];
@@ -125,6 +148,7 @@ function AgentDeleteReconcileView({
   agentName,
   deleting,
   copying,
+  workflowsReady,
   onDelete,
   deleteWorkflows,
   deleteCopyTargets,
@@ -142,6 +166,7 @@ function AgentDeleteReconcileView({
           <DeleteConfirmButton
             deleting={deleting}
             copying={copying}
+            workflowsReady={workflowsReady}
             onDelete={onDelete}
             className="w-full"
           />
@@ -182,7 +207,7 @@ function AgentDeleteReconcileView({
                 </span>
                 <Select
                   value={copyChoices[workflow.id] ?? DELETE_WITH_AGENT}
-                  disabled={deleting || copying}
+                  disabled={deleting || copying || !workflowsReady}
                   onOpenChange={(open) => {
                     if (open) {
                       reloadAgents();
@@ -236,6 +261,7 @@ interface AgentDeleteSimpleViewProps {
   agentName: string;
   deleting: boolean;
   copying: boolean;
+  workflowsReady: boolean;
   onDelete: () => void;
 }
 
@@ -243,6 +269,7 @@ function AgentDeleteSimpleView({
   agentName,
   deleting,
   copying,
+  workflowsReady,
   onDelete,
 }: AgentDeleteSimpleViewProps) {
   const { t } = useTranslation("agents");
@@ -263,6 +290,7 @@ function AgentDeleteSimpleView({
         <DeleteConfirmButton
           deleting={deleting}
           copying={copying}
+          workflowsReady={workflowsReady}
           onDelete={onDelete}
         />
       </DialogFooter>
@@ -278,6 +306,7 @@ interface AgentDeleteDialogProps {
   onDelete: () => Promise<void>;
   /** Workflows bound to this agent, offered for rescue in the delete dialog. */
   deleteWorkflows?: readonly AgentDeleteWorkflow[];
+  deleteWorkflowsState: "loading" | "error" | "ready";
   /** Agents the caller can copy a workflow onto before deleting this agent. */
   deleteCopyTargets?: readonly AgentDeleteCopyTarget[];
   /** Copy a workflow onto another agent before the agent is deleted. */
@@ -303,11 +332,103 @@ function AgentDeleteError({ error }: { error: unknown }) {
   );
 }
 
+function AgentDeleteFeedback({
+  session,
+  deleteWorkflowsState,
+  deleteCopyTargets,
+  onRetry,
+}: {
+  session: AgentDeleteSession | null;
+  deleteWorkflowsState: "loading" | "error" | "ready";
+  deleteCopyTargets: readonly AgentDeleteCopyTarget[];
+  onRetry: (sessionId: symbol) => void;
+}) {
+  const { t } = useTranslation("agents");
+  const busy = session !== null && session.phase !== "idle";
+  return (
+    <>
+      {deleteWorkflowsState === "loading" && (
+        <p role="status" className="px-6 pb-6 text-sm text-muted-foreground">
+          {t(($) => {
+            return $.delete.workflows.loading;
+          })}
+        </p>
+      )}
+      {deleteWorkflowsState === "error" ? (
+        <div
+          role="alert"
+          className="space-y-3 px-6 pb-6 text-sm text-destructive"
+        >
+          <p>
+            {t(($) => {
+              return $.delete.workflows.loadFailed;
+            })}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (session) {
+                onRetry(session.id);
+              }
+            }}
+            disabled={busy}
+          >
+            {t(($) => {
+              return $.actions.retry;
+            })}
+          </Button>
+        </div>
+      ) : (
+        <AgentDeleteError error={session?.error ?? null} />
+      )}
+      {session && session.completedRescues.length > 0 && (
+        <div role="status" className="space-y-2 px-6 pb-6 text-sm">
+          <p className="font-medium">
+            {t(($) => {
+              return $.delete.workflows.copiedTitle;
+            })}
+          </p>
+          <ul className="space-y-1 break-words text-muted-foreground">
+            {session.completedRescues.map(([workflowId, targetId]) => {
+              const workflowTitle =
+                session.workflows.find((workflow) => {
+                  return workflow.id === workflowId;
+                })?.title ??
+                t(($) => {
+                  return $.delete.workflows.untitled;
+                });
+              const agentName =
+                deleteCopyTargets.find((target) => {
+                  return target.id === targetId;
+                })?.displayName ??
+                t(($) => {
+                  return $.fallbackName;
+                });
+              return (
+                <li key={`${workflowId}:${targetId}`}>
+                  {t(
+                    ($) => {
+                      return $.delete.workflows.copiedTo;
+                    },
+                    { workflowTitle, agentName },
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function AgentDeleteDialog({
   agentId,
   resolvedAgentName,
   onDelete,
   deleteWorkflows,
+  deleteWorkflowsState,
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: AgentDeleteDialogProps) {
@@ -322,11 +443,13 @@ export function AgentDeleteDialog({
       : null;
   const setOpen = useSet(setAgentDeleteDialogOpen$);
   const updateCopyChoices = useSet(setAgentDeleteCopyChoices$);
+  const reloadWorkflows = useSet(reloadAgentDeleteWorkflows$);
   const copyChoices = session?.choices ?? {};
   // Retain this confirmation's last known workflow rows if a refresh fails.
   const workflows = deleteWorkflows ?? session?.workflows ?? [];
   const copying = session?.phase === "copying";
   const deleting = session?.phase === "deleting";
+  const workflowsReady = deleteWorkflowsState === "ready";
   const setCopyChoices = (choices: Record<string, string>) => {
     if (session) {
       updateCopyChoices(session.id, choices, workflows);
@@ -336,7 +459,7 @@ export function AgentDeleteDialog({
     workflows.length > 0 && onCopyWorkflowBeforeDelete !== undefined;
 
   const handleDelete = () => {
-    if (!session) {
+    if (!session || !workflowsReady) {
       return;
     }
     detach(
@@ -359,18 +482,7 @@ export function AgentDeleteDialog({
     <Card className={surfaceVariants({ className: "overflow-hidden mt-4" })}>
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-          <div className="min-w-0 sm:max-w-[46%]">
-            <h3 className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.delete.dangerZone;
-              })}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              {t(($) => {
-                return $.delete.dangerZoneDescription;
-              })}
-            </p>
-          </div>
+          <DeleteDangerZoneHeader />
           <div className="flex w-full shrink-0 justify-end sm:w-auto">
             <Dialog
               open={session?.open ?? false}
@@ -411,6 +523,7 @@ export function AgentDeleteDialog({
                     agentName={resolvedAgentName}
                     deleting={deleting}
                     copying={copying}
+                    workflowsReady={workflowsReady}
                     onDelete={handleDelete}
                     deleteWorkflows={workflows}
                     deleteCopyTargets={deleteCopyTargets}
@@ -422,10 +535,16 @@ export function AgentDeleteDialog({
                     agentName={resolvedAgentName}
                     deleting={deleting}
                     copying={copying}
+                    workflowsReady={workflowsReady}
                     onDelete={handleDelete}
                   />
                 )}
-                <AgentDeleteError error={session?.error ?? null} />
+                <AgentDeleteFeedback
+                  session={session}
+                  deleteWorkflowsState={deleteWorkflowsState}
+                  deleteCopyTargets={deleteCopyTargets}
+                  onRetry={reloadWorkflows}
+                />
               </DialogContent>
             </Dialog>
           </div>

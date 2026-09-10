@@ -1020,6 +1020,9 @@ test.each(["copy", "delete"])(
       expect(within(dialog).getByText("Delete agent")).toBeEnabled();
     });
     expect(within(dialog).getByRole("combobox")).toBeEnabled();
+    expect(within(dialog).getByRole("combobox")).toHaveTextContent(
+      "Delete with agent",
+    );
     click(within(dialog).getByText("Cancel"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -1182,23 +1185,30 @@ test.each([false, true])(
     );
     expect(within(dialog).getByText("Delete agent")).toBeEnabled();
     expect(screen.getByDisplayValue("Research Agent")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Daily research copied to Zero"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Weekly research copied to Zero"),
+    ).not.toBeInTheDocument();
+    for (const select of within(dialog).getAllByRole("combobox")) {
+      expect(select).toHaveTextContent("Delete with agent");
+    }
 
     if (reopen) {
-      const closed = waitForElementToBeRemoved(dialog);
-      click(within(dialog).getByText("Cancel"));
-      await closed;
-      click(screen.getByText("Delete agent"));
+      const user = userEvent.setup({ delay: null });
+      await user.click(within(dialog).getByText("Cancel"));
+      await user.click(screen.getByText("Delete agent"));
       dialog = await screen.findByRole("dialog");
     }
     for (const select of within(dialog).getAllByRole("combobox")) {
-      expect(select).toHaveTextContent(
-        reopen ? "Delete with agent" : "Copy to Zero",
-      );
+      expect(select).toHaveTextContent("Delete with agent");
     }
-    if (reopen) {
-      await chooseWorkflowCopy(dialog);
-      await chooseWorkflowCopy(dialog, "Weekly research");
-    }
+    expect(
+      within(dialog).getByText("Daily research copied to Zero"),
+    ).toBeInTheDocument();
+    await chooseWorkflowCopy(dialog);
+    await chooseWorkflowCopy(dialog, "Weekly research");
     allowSecondCopy = true;
     click(within(dialog).getByText("Delete agent"));
     await screen.findByText("Agent deleted");
@@ -1380,7 +1390,11 @@ test("Recover from a workflow rescue network failure with visible feedback", asy
   );
   expect(within(dialog).getByText("Delete agent")).toBeEnabled();
   expect(within(dialog).getByText("Cancel")).toBeEnabled();
+  expect(within(dialog).getByRole("combobox")).toHaveTextContent(
+    "Delete with agent",
+  );
   offline = false;
+  await chooseWorkflowCopy(dialog);
   click(within(dialog).getByText("Delete agent"));
   await screen.findByText("Agent deleted");
 });
@@ -1423,11 +1437,18 @@ test("Keep the source agent when its workflow refresh fails after copying", asyn
   click(within(dialog).getByText("Delete agent"));
 
   await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
-    "Refresh failed",
+    "Could not load workflows. Retry before deleting this agent.",
   );
   await waitFor(() => {
-    expect(within(dialog).getByText("Delete agent")).toBeEnabled();
+    expect(within(dialog).getByText("Delete agent")).toBeDisabled();
   });
+  expect(within(dialog).getByRole("combobox")).toHaveTextContent(
+    "Delete with agent",
+  );
+  expect(within(dialog).getByRole("combobox")).toBeDisabled();
+  expect(
+    within(dialog).getByText("Daily research copied to Zero"),
+  ).toBeInTheDocument();
   click(within(dialog).getByText("Cancel"));
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -1436,13 +1457,58 @@ test("Keep the source agent when its workflow refresh fails after copying", asyn
   expect(nameInput).toBeInTheDocument();
   click(screen.getByText("Delete agent"));
   const reopened = await screen.findByRole("dialog");
-  expect(within(reopened).getByText("Delete agent")).toBeEnabled();
+  expect(within(reopened).getByText("Delete agent")).toBeDisabled();
   expect(within(reopened).getByText("Cancel")).toBeEnabled();
   expect(within(reopened).getByRole("combobox")).toHaveTextContent(
     "Delete with agent",
   );
-  await chooseWorkflowCopy(reopened);
   refreshRecovered = true;
+  click(within(reopened).getByText("Retry"));
+  await waitFor(() => {
+    expect(within(reopened).getByText("Delete agent")).toBeEnabled();
+  });
+  expect(within(reopened).queryByRole("alert")).not.toBeInTheDocument();
+  await chooseWorkflowCopy(reopened);
   click(within(reopened).getByText("Delete agent"));
   await screen.findByText("Agent deleted");
+});
+
+test("Load the agent's workflows before enabling deletion after an initial list failure", async () => {
+  prepareAgentProfile();
+  const workflow = prepareDeleteWorkflow();
+  const recoveredList = context.mocks.deferred<void>();
+  let canLoad = false;
+  context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
+    if (!canLoad) {
+      return respond(403, {
+        error: { code: "FORBIDDEN", message: "Workflows unavailable" },
+      });
+    }
+    await recoveredList.promise;
+    return respond(200, [workflow]);
+  });
+
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  await findAgentNameInput();
+  click(screen.getByText("Delete agent"));
+  const dialog = await screen.findByRole("dialog");
+  const alert = await within(dialog).findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Could not load workflows. Retry before deleting this agent.",
+  );
+  expect(within(dialog).getByText("Delete agent")).toBeDisabled();
+  expect(within(dialog).getByText("Cancel")).toBeEnabled();
+
+  canLoad = true;
+  click(within(dialog).getByText("Retry"));
+  await within(dialog).findByText("Loading workflows…");
+  expect(within(dialog).getByText("Delete agent")).toBeDisabled();
+  recoveredList.resolve();
+  const select = await within(dialog).findByRole("combobox");
+  expect(select).toHaveTextContent("Delete with agent");
+  expect(select).toBeEnabled();
+  expect(within(dialog).getByText("Delete agent")).toBeEnabled();
+  expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+  await chooseWorkflowCopy(dialog);
+  expect(select).toHaveTextContent("Copy to Zero");
 });

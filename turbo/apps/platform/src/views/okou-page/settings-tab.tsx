@@ -69,6 +69,7 @@ interface SettingsTabProps {
   canEditVisibility?: boolean;
   /** Workflows bound to this agent, offered for rescue in the delete dialog. */
   deleteWorkflows?: readonly AgentDeleteWorkflow[];
+  deleteWorkflowsState: "loading" | "error" | "ready";
   /** Agents the caller can copy a workflow onto before deleting this agent. */
   deleteCopyTargets?: readonly AgentDeleteCopyTarget[];
   /** Copy a workflow onto another agent before the agent is deleted. */
@@ -239,6 +240,7 @@ export function SettingsTab({
   isDefaultAgent = false,
   onDelete,
   deleteWorkflows,
+  deleteWorkflowsState,
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: SettingsTabProps) {
@@ -597,6 +599,7 @@ export function SettingsTab({
             resolvedAgentName={presentedAgentName}
             onDelete={onDelete}
             deleteWorkflows={deleteWorkflows}
+            deleteWorkflowsState={deleteWorkflowsState}
             deleteCopyTargets={deleteCopyTargets}
             onCopyWorkflowBeforeDelete={onCopyWorkflowBeforeDelete}
           />
