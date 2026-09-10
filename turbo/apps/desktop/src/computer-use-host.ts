@@ -28,6 +28,7 @@ import {
 import { resolveComputerUseApiBaseUrl } from "./desktop-api-base-url";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { ComputerUseCommandSession } from "./computer-use-driver";
+import type { DesktopAuthRequestOptions } from "./desktop-auth-session";
 
 const HEARTBEAT_POLL_MS = 2_000;
 const COMMAND_COLD_POLL_MS = 5_000;
@@ -61,6 +62,12 @@ export type ComputerUseHostFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+type ComputerUseSessionFetch = (
+  input: string,
+  init?: RequestInit,
+  options?: DesktopAuthRequestOptions,
+) => Promise<Response>;
+
 type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
@@ -69,7 +76,7 @@ interface ComputerUseHostRuntimeOptions {
   readonly installationId: string;
   readonly hostName: string;
   readonly appVersion: string;
-  readonly sessionFetch: ComputerUseHostFetch;
+  readonly sessionFetch: ComputerUseSessionFetch;
   readonly hostFetch: ComputerUseHostFetch;
   readonly addClientHeaders: DesktopClientHeaderInjector;
   readonly getPermissions: (
@@ -250,7 +257,7 @@ export class ComputerUseHostRuntime {
   private readonly installationId: string;
   private readonly hostName: string;
   private readonly appVersion: string;
-  private readonly sessionFetch: ComputerUseHostFetch;
+  private readonly sessionFetch: ComputerUseSessionFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
   private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
@@ -270,7 +277,6 @@ export class ComputerUseHostRuntime {
   private commandExecutionRunning = false;
   private draining = false;
   private sessionGeneration = 0;
-  private registrationController: AbortController | null = null;
   private pauseGeneration = 0;
   private commandDrained = createComputerUseDrain();
   private readonly commandRequests = new Set<Promise<unknown>>();
@@ -340,7 +346,6 @@ export class ComputerUseHostRuntime {
 
   async stop(): Promise<void> {
     this.running = false;
-    this.registrationController?.abort();
     for (const controller of this.reportingControllers) controller.abort();
     this.sessionGeneration++;
     this.pauseGeneration++;
@@ -813,22 +818,17 @@ export class ComputerUseHostRuntime {
     this.setState({ status: "connecting", lastError: null });
     const runtimeBody = await this.runtimeBody();
     if (!this.running || generation !== this.sessionGeneration) return null;
-    const registration = new AbortController();
-    this.registrationController = registration;
     const response = await this.sessionFetch(
       `${this.apiBaseUrl}/api/computer-use/hosts/start`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(runtimeBody),
-        // A background auth refresh can retire this runtime while fetching a
-        // new bearer. Its original registration must not retry after retirement.
-        signal: registration.signal,
       },
-    ).finally(() => {
-      if (this.registrationController === registration)
-        this.registrationController = null;
-    });
+      // Auth refresh retires this runtime; its replacement owns registration.
+      // Keep the original response readable so a late success can be stopped.
+      { retryAfterRefresh: false },
+    );
     if (!this.running || generation !== this.sessionGeneration) {
       if (response.ok) {
         const body = (await response.json()) as ComputerUseHostStartResponse;

@@ -21,6 +21,11 @@ export type DesktopAuthRefreshEvent =
     }
   | { readonly phase: "failed"; readonly signal: AbortSignal };
 
+export interface DesktopAuthRequestOptions {
+  /** Stateful callers can let their fresh runtime own retry after auth refresh. */
+  readonly retryAfterRefresh?: boolean;
+}
+
 interface DesktopAuthSessionOptions {
   /** Pre-resolved API base URL (`resolveComputerUseApiBaseUrl(platformUrl)`). */
   readonly apiBaseUrl: string;
@@ -159,8 +164,9 @@ export class DesktopAuthSession {
   async fetchWithSessionAuth(
     requestUrl: URL,
     init?: RequestInit,
+    options?: DesktopAuthRequestOptions,
   ): Promise<Response> {
-    return await this.fetchWithAppAuth(requestUrl, init);
+    return await this.fetchWithAppAuth(requestUrl, init, options);
   }
 
   getCachedToken(): string | null {
@@ -419,6 +425,7 @@ export class DesktopAuthSession {
   private async fetchWithAppAuth(
     requestUrl: URL,
     init?: RequestInit,
+    options?: DesktopAuthRequestOptions,
   ): Promise<Response> {
     const token = await this.getToken();
     if (!token || token !== this.token)
@@ -438,6 +445,7 @@ export class DesktopAuthSession {
     const refreshed = await refresh;
     // A successful refresh is not permission to replay another identity's request.
     if (
+      options?.retryAfterRefresh === false ||
       !refreshed ||
       refreshed !== this.token ||
       refreshLifetime !== this.lifetime ||
