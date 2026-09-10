@@ -16,6 +16,7 @@ import aws_sigv4_body_admission as admission
 import aws_sigv4_hash_executor
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import thread_pool
 from aws_sigv4 import AwsSigV4BodyHash, hash_request_body
 from tests.aws_sigv4_helpers import RESOLVED_AWS_ACCESS_KEY_ID
 from tests.test_request_handler_aws_sigv4_body import (
@@ -102,9 +103,7 @@ async def test_worker_start_failures_release_bodies_and_recover(
                 auth, "get_firewall_headers", AsyncMock(return_value=_resolved_token_meta())
             ),
             patch.object(auth, "hash_request_body", observe_hash),
-            patch.object(
-                aws_sigv4_hash_executor, "ThreadPoolExecutor", side_effect=create_executor
-            ),
+            patch.object(thread_pool, "ThreadPoolExecutor", side_effect=create_executor),
         ):
             with patch.object(threading.Thread, "start", fail_start):
                 # Five distinct maximum-size bodies exceed the aggregate 128 MiB bound.
