@@ -121,7 +121,7 @@ export function TimezoneSettings() {
     : [currentTimezone, ...COMMON_TIMEZONES];
 
   return (
-    <div className="flex flex-col gap-3">
+    <div data-slot="timezone-setting" className="flex flex-col gap-3">
       <PreferenceCardRow
         icon={Clock}
         title={t(($) => {

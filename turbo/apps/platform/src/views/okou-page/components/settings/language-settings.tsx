@@ -153,7 +153,7 @@ export function LanguageSettings() {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div data-slot="language-setting" className="flex flex-col gap-3">
       <PreferenceCardRow
         icon={Globe}
         title={t(($) => {

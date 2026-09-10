@@ -274,10 +274,28 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32958"
+    },
+    {
+      "id": "settings-select-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-btn-morandi"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/language-settings.tsx",
+        "apps/platform/src/views/okou-page/components/settings/timezone-settings.tsx"
+      ],
+      "cases": [
+        "settings-select-light",
+        "settings-select-light-mobile",
+        "settings-select-dark",
+        "settings-select-dark-mobile"
+      ],
+      "status": "planned",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
-    "../e2e/playwright/style-migration/tone-cases.json"
+    "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/settings-select-cases.json"
   ]
 }
