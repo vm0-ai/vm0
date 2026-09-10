@@ -391,8 +391,12 @@ async function fetchDesktopUpdateManifestOnce(
 
   const body = await settle(response.json(), signal);
   if (!body.ok) {
-    // A body that does not arrive intact is an unreadable host, not a
-    // malformed manifest: the bytes never got here to be judged.
+    // A body that never arrived intact is an unreadable host. Invalid JSON is
+    // the opposite: the bytes did arrive and they are not a manifest, which is
+    // a broken release and must stay as loud as a schema failure.
+    if (body.error instanceof SyntaxError) {
+      throw body.error;
+    }
     return { ok: false, providerStatus: null, cause: body.error };
   }
 

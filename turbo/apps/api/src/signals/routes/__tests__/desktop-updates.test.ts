@@ -687,6 +687,26 @@ describe("desktop update routes", () => {
     expect(invalidResponse.status).toBe(500);
   });
 
+  // Invalid JSON is not an unreadable host. The bytes arrived and they are not
+  // a manifest, so it must not be retried, absorbed, or answered from cache.
+  it("fails loudly when the manifest body is not json", async () => {
+    const upstream = countingManifestHandler(() => {
+      return new HttpResponse("not-a-manifest", {
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const response = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json",
+    );
+
+    expect(response.status).toBe(500);
+    expect(upstream.attempts()).toBe(1);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "SyntaxError" }),
+    );
+  });
+
   // A cached manifest must not paper over a broken release: the loud failures
   // above stay loud even when an older copy is sitting in the cache.
   it("does not answer a broken manifest from the cache", async () => {
