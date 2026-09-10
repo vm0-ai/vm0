@@ -11,6 +11,19 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.884.2](https://github.com/vm0-ai/vm0/compare/app-v0.884.1...app-v0.884.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **platform:** preserve welcome synchronization after settings dismissal ([#33306](https://github.com/vm0-ai/vm0/issues/33306)) ([4fb323c](https://github.com/vm0-ai/vm0/commit/4fb323c921126cd8bd829128989f926a6000e963))
+
+
+### Refactoring
+
+* **platform:** route voice draft observer through shared loop ([#33321](https://github.com/vm0-ai/vm0/issues/33321)) ([22005a5](https://github.com/vm0-ai/vm0/commit/22005a583bdaa308627884b07105922058710936))
+* **platform:** stabilize realtime handlers ([#33325](https://github.com/vm0-ai/vm0/issues/33325)) ([d155ea2](https://github.com/vm0-ai/vm0/commit/d155ea25935ece634cb91fccf02a2333ab30e6eb))
+
 ## [0.884.1](https://github.com/vm0-ai/vm0/compare/app-v0.884.0...app-v0.884.1) (2026-09-10)
 
 
