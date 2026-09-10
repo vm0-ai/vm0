@@ -57,6 +57,10 @@ credential-shaped argument keys are additionally redacted.
   excerpts. Keep sequence and block identity, discard oldest evidence first,
   and canonicalize object keys before hashing so JSONB ordering cannot create
   false revisions. Relevant late events can merge into the retained window.
+- Bound every projected string by code points and drop the two code points
+  PostgreSQL refuses inside a `jsonb` value: `U+0000` and unpaired surrogates.
+  Both are reachable from real tool output, and either one would otherwise
+  reject the whole snapshot write instead of the offending excerpt.
 - Merge and claim under a short row-locking transaction with a 250 ms lock
   timeout and 3 second statement timeout. Provider I/O runs outside the
   transaction. Optional capture failures cannot reject accepted execution
@@ -86,18 +90,30 @@ failed operations so they survive the default Axiom transport's `info` threshold
 The shared logger and unrelated debug filtering are unchanged. Axiom events
 retain `source: api`, the stable message, and the following nested `fields`:
 
-| Message                        | Context                | Level                                             | Safe fields besides context                                                                                |
-| ------------------------------ | ---------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `Activity summary cache`       | `api:activity-summary` | info                                              | `runId`, `outcome` (existing response status)                                                              |
-| `Activity summary attempt`     | `api:activity-summary` | info                                              | `runId`                                                                                                    |
-| `Activity summary completion`  | `api:activity-summary` | info on success; warn otherwise                   | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` only for `OpenRouterRequestError` |
-| `Activity summary unavailable` | `api:activity-summary` | warn                                              | `runId`, `outcome: storage_failed`                                                                         |
-| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged; warn for write_failed | `runId`, `outcome`, `eventCount`                                                                           |
-| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                  | `outcome`, `removed`, `retentionMs`                                                                        |
+| Message                        | Context                | Level                                                                  | Safe fields besides context                                                                                |
+| ------------------------------ | ---------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Activity summary cache`       | `api:activity-summary` | info                                                                   | `runId`, `outcome` (existing response status)                                                              |
+| `Activity summary attempt`     | `api:activity-summary` | info                                                                   | `runId`                                                                                                    |
+| `Activity summary completion`  | `api:activity-summary` | info on success; warn otherwise                                        | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` only for `OpenRouterRequestError` |
+| `Activity summary unavailable` | `api:activity-summary` | warn                                                                   | `runId`, `outcome: storage_failed`                                                                         |
+| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                       |
+| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                       | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                |
 
 Completion outcomes remain `success`, `timeout`, `provider_failure`, and
 `invalid_or_unconfigured`. A provider HTTP 429 is distinguishable by
 `fields.providerStatus: 429`; no error object or provider body is attached.
+
+A failed capture is classified into a finite set instead of one opaque
+`write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected
+consequences of concurrent delivery for one run, so they record at `info`;
+sustained unavailability is read by aggregating `fields.outcome`, not from a
+per-batch error level. `interrupted` (`57014`), `snapshot_missing` (the row
+vanished between the upsert and the locking read) and the residual
+`write_failed` keep `warn` because they need an owner. `fields.stage` is one of
+`admission`, `lock`, `persist` or `commit`, and `fields.errorCode` is the
+SQLSTATE class code alone — five characters, validated before it is published,
+and omitted when the driver reports no SQLSTATE. Driver messages, statement
+text, constraint details and bound parameters are never attached.
 
 Granularity is unchanged: one cache record for a request resolved without a
 claim, one attempt/completion pair per generation attempt, one unavailable
@@ -106,7 +122,8 @@ batch (including unchanged duplicates), and one cleanup record per maintenance
 operation (including zero removals). Disabled, irrelevant, and ineligible
 captures remain silent. `eventCount` counts the submitted batch, not new retained
 entries. Failed cleanup reports `removed: 0` with `outcome: failed`; that is not a
-successful empty cleanup.
+successful empty cleanup. A skipped capture still drops that batch's evidence:
+the runner already holds its `200`, and no redelivery or retry is attempted.
 
 These records never contain prompts, phrases, messages, arguments, evidence,
 credentials, database-driver errors, or provider response bodies. The tests call

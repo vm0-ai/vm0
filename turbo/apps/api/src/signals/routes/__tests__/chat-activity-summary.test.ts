@@ -956,7 +956,7 @@ describe("thread activity summary", () => {
     expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
-  it("keeps normal publication working when snapshot writes fail and excludes expired evidence", async () => {
+  it("keeps normal publication working when a contended snapshot write is skipped and excludes expired evidence", async () => {
     const f = await fixture();
     const inputs = provider();
     await summarize(f.actor, f.run);
@@ -985,15 +985,20 @@ describe("thread activity summary", () => {
       status: "unavailable",
       messages: [],
     });
-    await expect(diagnostics()).resolves.toStrictEqual([
+    const records = await diagnostics();
+    // A concurrent writer for the same run is expected delivery behavior, so the
+    // capture stays below warn while the adjacent real failure keeps its level.
+    expect(records).toStrictEqual([
       expect.objectContaining({
-        level: "warn",
+        level: "info",
         message: "Activity snapshot capture",
         fields: {
           context: "api:run-activity",
           runId: f.run.runId,
-          outcome: "write_failed",
+          outcome: "contended",
           eventCount: 1,
+          stage: "lock",
+          errorCode: "55P03",
         },
       }),
       expect.objectContaining({
@@ -1006,6 +1011,13 @@ describe("thread activity summary", () => {
         },
       }),
     ]);
+    // The classification adds a SQLSTATE class code and nothing else: no driver
+    // message, no statement text and no bound evidence.
+    expect(JSON.stringify(records)).not.toContain("lock_timeout");
+    expect(JSON.stringify(records)).not.toContain("run_activity_snapshots");
+    expect(JSON.stringify(records)).not.toContain(
+      "Normal message survives the optional failure",
+    );
     held.release();
     await held.done;
     const page = await chat.listThreadEvents(f.actor, f.run.threadId);
