@@ -285,8 +285,16 @@
         "tone-preview-dark",
         "tone-preview-mobile"
       ],
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-setup-attempts",
+          "url": "https://a.okou.io/0ey5ajo2g7.zip",
+          "sha256": "a644613bdfca1f205962bfc9f77c94de4e124485817bbbe89762ed613079cf0e",
+          "commit": "047e880cc958225a79c2ebceb961718a0916d5c9"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33133"
     }
   ],
   "caseFiles": [

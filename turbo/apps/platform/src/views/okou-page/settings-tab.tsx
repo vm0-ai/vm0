@@ -540,7 +540,7 @@ export function SettingsTab({
                 </div>
                 <div
                   data-slot="tone-preview"
-                  className="rounded-lg bg-muted/30 px-3 py-2 w-full okou-border"
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full border-(length:--border-width-surface) border-solid border-surface-border"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -551,7 +551,7 @@ export function SettingsTab({
                     <div className="flex justify-end">
                       <div
                         data-slot="tone-preview-user-message"
-                        className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200"
+                        className="bg-gray-100/95 text-foreground max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200"
                       >
                         {toneCopy[tone].user}
                       </div>

@@ -303,3 +303,10 @@ floating-point color or cross-browser equivalence. Other styles remain literal
 comparisons and the full-page `channel-rounding-v1` limits remain unchanged.
 Freeze and upload the unchanged BEFORE/A/A pair before replacing business
 classes, then replay the same runner, cases and fixtures on the PR deployment.
+
+[PR #33133](https://github.com/vm0-ai/vm0/pull/33133) froze its
+[BEFORE and unchanged-code replay](https://a.okou.io/0ey5ajo2g7.zip) before
+replacing either business class. All 33 states have zero raw changed pixels
+on unmigrated App/API build `047e880cc958225a79c2ebceb961718a0916d5c9`.
+The archive retains setup failures and the first replay's outer exit anomaly;
+the confirming replay completed normally with the same frozen protocol.
