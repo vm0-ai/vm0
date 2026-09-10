@@ -15,7 +15,8 @@ import {
   SheetTitle,
   Button,
   Input,
-  badgeVariants,
+  badgeClassName,
+  cn,
 } from "@okouai/ui";
 import { Crown, Minus, Plus } from "lucide-react";
 import {
@@ -300,10 +301,10 @@ function UpgradeCard({
           {upgrade.targetLabel}
         </h3>
         <span
-          className={badgeVariants({
-            className:
-              "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
-          })}
+          className={cn(
+            badgeClassName,
+            "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
+          )}
         >
           <Crown size={12} className="text-amber-500" />
           {t(($) => {
@@ -502,10 +503,10 @@ function ConcurrencyPurchaseCard({
           })}
         </h3>
         <span
-          className={badgeVariants({
-            className:
-              "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
-          })}
+          className={cn(
+            badgeClassName,
+            "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
+          )}
         >
           <Crown size={12} className="text-amber-500" />
           {t(($) => {

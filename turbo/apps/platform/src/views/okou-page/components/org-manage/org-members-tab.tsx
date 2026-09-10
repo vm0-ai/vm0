@@ -35,7 +35,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  badgeVariants,
+  badgeClassName,
 } from "@okouai/ui";
 import {
   orgRoleSchema,
@@ -1113,10 +1113,10 @@ function MemberRow({
       )}
       <div>
         <span
-          className={badgeVariants({
-            className:
-              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
-          })}
+          className={cn(
+            badgeClassName,
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
+          )}
         >
           <ShieldCheck
             size={12}
@@ -1518,10 +1518,10 @@ function PendingInvitationRow({
       )}
       <div>
         <span
-          className={badgeVariants({
-            className:
-              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
-          })}
+          className={cn(
+            badgeClassName,
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
+          )}
         >
           <Clock size={12} className="text-amber-500" />
           {t(($) => {
@@ -1681,10 +1681,10 @@ function MembershipRequestRow({
       )}
       <div>
         <span
-          className={badgeVariants({
-            className:
-              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
-          })}
+          className={cn(
+            badgeClassName,
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground",
+          )}
         >
           <UserPlus size={12} className="text-blue-500" />
           {t(($) => {

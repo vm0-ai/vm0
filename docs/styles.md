@@ -94,7 +94,7 @@ The `okou-card` selector and its consumers have been removed. This equivalent mi
 
 ### Inline badges
 
-`badgeVariants` from `@okouai/ui` owns the shared inline badge and tag treatment: role labels, status pills, version chips, and diagnostic values. Like `surfaceVariants`, it applies to the existing host element through `className` and adds no wrapper.
+`badgeClassName` from `@okouai/ui` owns the shared inline badge and tag treatment: role labels, status pills, version chips, and diagnostic values. Compose it with `cn()` on the existing host element; it adds no wrapper. It is a class constant rather than a `cva()` variant because it carries no variant axis, which also lets `cn()` resolve a consumer that overrides the stroke or the fill.
 
 | Decision | Shared token / utility                             | Theme contract                                                      |
 | -------- | -------------------------------------------------- | ------------------------------------------------------------------- |

@@ -1,5 +1,5 @@
 import { Button } from "@okouai/ui/components/ui/button";
-import { badgeVariants } from "@okouai/ui";
+import { badgeClassName, cn } from "@okouai/ui";
 import {
   useLastResolved,
   useLoadable,
@@ -52,25 +52,19 @@ function IndexedDbDiagnosticsSummary({
           })}
         </span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span
-            className={badgeVariants({ className: "rounded-md px-2 py-0.5" })}
-          >
+          <span className={cn(badgeClassName, "rounded-md px-2 py-0.5")}>
             {t(($) => {
               return $.settings.preferences.debug.indexedDb.schema;
             })}
             : {diagnostics.version}
           </span>
-          <span
-            className={badgeVariants({ className: "rounded-md px-2 py-0.5" })}
-          >
+          <span className={cn(badgeClassName, "rounded-md px-2 py-0.5")}>
             {t(($) => {
               return $.settings.preferences.debug.indexedDb.stores;
             })}
             : {formatLocalizedNumber(diagnostics.stores.length)}
           </span>
-          <span
-            className={badgeVariants({ className: "rounded-md px-2 py-0.5" })}
-          >
+          <span className={cn(badgeClassName, "rounded-md px-2 py-0.5")}>
             {t(($) => {
               return $.settings.preferences.debug.indexedDb.records;
             })}

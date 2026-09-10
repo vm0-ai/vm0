@@ -9,7 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
-import { badgeVariants } from "@okouai/ui";
+import { badgeClassName, cn } from "@okouai/ui";
 
 import { now } from "../../../../lib/time.ts";
 import {
@@ -52,18 +52,14 @@ function ConnectionDiagnosticsSummary({
         <span className="text-sm font-medium text-foreground">{title}</span>
         <span className="text-sm text-muted-foreground">{description}</span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span
-            className={badgeVariants({ className: "rounded-md px-2 py-0.5" })}
-          >
+          <span className={cn(badgeClassName, "rounded-md px-2 py-0.5")}>
             {t(($) => {
               return $.settings.preferences.debug.connectionDiagnostics
                 .connection;
             })}
             : {connectionState}
           </span>
-          <span
-            className={badgeVariants({ className: "rounded-md px-2 py-0.5" })}
-          >
+          <span className={cn(badgeClassName, "rounded-md px-2 py-0.5")}>
             {t(($) => {
               return $.settings.preferences.debug.connectionDiagnostics.channel;
             })}

@@ -6,7 +6,7 @@ import {
   ClockAlert,
   Ban,
 } from "lucide-react";
-import { badgeVariants } from "@okouai/ui";
+import { badgeClassName, cn } from "@okouai/ui";
 import type { LogStatus } from "../../../../signals/okou-page/log-types.ts";
 import { i18n } from "../../../../i18n/index.ts";
 
@@ -113,10 +113,10 @@ export function StatusBadge({ status, shellStyle }: StatusBadgeProps) {
       data-status={status}
       className={
         shellStyle
-          ? badgeVariants({
-              className:
-                "inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-muted-foreground",
-            })
+          ? cn(
+              badgeClassName,
+              "inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-muted-foreground",
+            )
           : "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
       }
     >

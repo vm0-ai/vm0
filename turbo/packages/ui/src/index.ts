@@ -18,7 +18,7 @@ export {
   CardContent,
   cardClassName,
 } from "./components/ui/card";
-export { badgeVariants } from "./components/ui/badge";
+export { badgeClassName } from "./components/ui/badge";
 export { Checkbox } from "./components/ui/checkbox";
 export {
   ToggleButton,

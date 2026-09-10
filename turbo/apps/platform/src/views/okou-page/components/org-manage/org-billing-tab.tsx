@@ -54,7 +54,7 @@ import {
   type ConcurrencyChangeMode,
   type ConcurrencyConfirmDialogState,
 } from "../../../../signals/okou-page/billing.ts";
-import { Button, Input, badgeVariants } from "@okouai/ui";
+import { Button, Input, badgeClassName, cn } from "@okouai/ui";
 import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
@@ -2100,10 +2100,10 @@ function CurrentPlanTitle({
       <span>{label}</span>
       {legacy && (
         <span
-          className={badgeVariants({
-            className:
-              "rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground",
-          })}
+          className={cn(
+            badgeClassName,
+            "rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground",
+          )}
         >
           {i18n.t(($) => {
             return $.billing.plans.legacy;

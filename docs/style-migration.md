@@ -361,7 +361,7 @@ consumption sites on ten pages, several of which need real organization,
 billing, and queue data to render. Its
 [frozen archive](https://a.okou.io/cq91krcx32.zip) records the cheaper check that
 covers all 23 at once. A script reads the BEFORE class strings from `main` and
-the AFTER class strings from the branch, including the `badgeVariants` base read
+the AFTER class strings from the branch, including the `badgeClassName` base read
 back from its own source, so neither side is hand-written. It compiles the real
 App stylesheet at both commits with the App's own Tailwind compiler, renders both
 class lists on identical markup inside `.okou-app`, and compares full-page pixels

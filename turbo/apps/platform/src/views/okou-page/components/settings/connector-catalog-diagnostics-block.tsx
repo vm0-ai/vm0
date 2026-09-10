@@ -7,7 +7,7 @@ import { ChevronDown, ChevronUp, Plug } from "lucide-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { badgeVariants } from "@okouai/ui";
+import { badgeClassName, cn } from "@okouai/ui";
 
 import {
   formatLocalizedNumber,
@@ -244,9 +244,10 @@ function CatalogDiagnosticsSummary({
         </span>
         <span className="flex min-w-0 flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
           <span
-            className={badgeVariants({
-              className: "max-w-full rounded-md px-2 py-0.5 break-all",
-            })}
+            className={cn(
+              badgeClassName,
+              "max-w-full rounded-md px-2 py-0.5 break-all",
+            )}
           >
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
@@ -255,9 +256,10 @@ function CatalogDiagnosticsSummary({
             : {formatEnumValue(diagnostics.state)}
           </span>
           <span
-            className={badgeVariants({
-              className: "max-w-full rounded-md px-2 py-0.5 break-all",
-            })}
+            className={cn(
+              badgeClassName,
+              "max-w-full rounded-md px-2 py-0.5 break-all",
+            )}
           >
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
@@ -266,9 +268,10 @@ function CatalogDiagnosticsSummary({
             : {activeVersion}
           </span>
           <span
-            className={badgeVariants({
-              className: "max-w-full rounded-md px-2 py-0.5 break-all",
-            })}
+            className={cn(
+              badgeClassName,
+              "max-w-full rounded-md px-2 py-0.5 break-all",
+            )}
           >
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
@@ -277,9 +280,10 @@ function CatalogDiagnosticsSummary({
             : {lastAttempt}
           </span>
           <span
-            className={badgeVariants({
-              className: "max-w-full rounded-md px-2 py-0.5 break-all",
-            })}
+            className={cn(
+              badgeClassName,
+              "max-w-full rounded-md px-2 py-0.5 break-all",
+            )}
           >
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
