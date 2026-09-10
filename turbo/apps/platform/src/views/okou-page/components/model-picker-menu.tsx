@@ -472,16 +472,18 @@ function ModelPickerFlyoutTypeRow({
   onActivate: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       role="tab"
       aria-selected={active}
       aria-posinset={index + 1}
       aria-setsize={total}
       tabIndex={active ? 0 : -1}
       className={cn(
-        "flex h-11 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors",
-        "hover:bg-state-hover focus-visible:ring-inset",
+        // shrink-0 keeps the row at its own height: a flex column with a
+        // max-height compresses its children before it will scroll.
+        "h-11 w-full shrink-0 justify-start gap-2 px-2 text-left font-normal",
         active && "bg-state-hover",
       )}
       onMouseEnter={onActivate}
@@ -504,7 +506,7 @@ function ModelPickerFlyoutTypeRow({
         aria-hidden="true"
         className="shrink-0 text-muted-foreground"
       />
-    </button>
+    </Button>
   );
 }
 
@@ -524,8 +526,9 @@ function ModelPickerFlyoutOption({
   onSelect: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       role="option"
       aria-selected={selected}
       aria-posinset={index + 1}
@@ -535,10 +538,12 @@ function ModelPickerFlyoutOption({
       aria-disabled={disabled || undefined}
       tabIndex={-1}
       className={cn(
-        "relative flex h-9 w-full items-center gap-2 rounded-lg py-0 pl-2 pr-8 text-left",
-        "text-[13px] font-normal text-foreground transition-colors",
-        "focus-visible:ring-inset",
-        disabled ? "opacity-55" : "hover:bg-state-hover",
+        // shrink-0: without it a long list compresses every row instead of
+        // scrolling, so the same row is 36px in a short list and 26px in a
+        // long one.
+        "relative h-9 w-full shrink-0 justify-start gap-2 pl-2 pr-8 text-left",
+        "text-[13px] font-normal text-foreground",
+        disabled && "opacity-55 hover:bg-transparent active:bg-transparent",
       )}
       onClick={() => {
         if (!disabled) {
@@ -550,7 +555,7 @@ function ModelPickerFlyoutOption({
       {selected && (
         <Check size={15} aria-hidden="true" className="absolute right-2" />
       )}
-    </button>
+    </Button>
   );
 }
 
