@@ -1368,6 +1368,56 @@ async fn execute_inner_nonzero_records_agent_execute_error() {
 }
 
 #[tokio::test]
+async fn execute_inner_reports_a_broken_oom_evidence_envelope_without_leaking_it() {
+    for payload in [
+        "not json".to_string(),
+        "x".repeat(guest_contracts::oom_evidence::MAX_EVIDENCE_BYTES + 1),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut exit = ProcessExit::new(1, 1, Vec::new(), Vec::new());
+        exit.diagnostic = format!(
+            "{}{payload}",
+            guest_contracts::oom_evidence::EVIDENCE_PREFIX
+        );
+        overrides.push_wait_process_exit(exit);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let evidence_path = config.log_paths.oom_evidence_log(ctx.run_id);
+
+        let (outcome, events) = capture_async_events(run_new_sandbox_outcome(
+            &factory,
+            &ctx,
+            &config,
+            &default_params(),
+        ))
+        .await;
+        let outcome = outcome.unwrap();
+
+        // A broken envelope is still metadata: it is dropped from the
+        // diagnostic, never retained, and never shown to the user.
+        assert_eq!(outcome.exit_code(), 1);
+        assert!(!tokio::fs::try_exists(&evidence_path).await.unwrap());
+        assert!(
+            !outcome
+                .failure
+                .as_ref()
+                .unwrap()
+                .error
+                .as_str()
+                .contains("OKOU_OOM_EVIDENCE")
+        );
+        let event = captured_event(&events, "guest oom evidence envelope malformed");
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("malformed_lines").map(String::as_str),
+            Some("1")
+        );
+    }
+}
+
+#[tokio::test]
 async fn execute_inner_retains_trusted_oom_evidence_and_attributes_agent_domain_sigkill() {
     let evidence =
         include_str!("../../../../../guest-contracts/tests/fixtures/oom-evidence-v1.json");
