@@ -12,6 +12,7 @@ import { setLogErrorHandler } from "../signals/log.ts";
 import { SharedDatabaseHttpError } from "../shared-database/http-error.ts";
 import { ApiError } from "./api-error.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
+import { SENTRY_APPLICATION_KEY } from "./sentry-application-key.ts";
 
 type PlatformSentryRuntime = "page" | "shared-worker";
 
@@ -68,29 +69,15 @@ const USER_AGENT_MEDIA_CONTROLS_MESSAGES: ReadonlySet<string> = new Set([
   "Can't find variable: EmptyRanges",
 ]);
 
-// Application code always ships as a JavaScript asset. The user-agent script
-// carries no such frame: its only frame is the document URL of the page.
-const APPLICATION_SCRIPT_FILENAME = /\.m?js($|[?#])/u;
-
 const GLOBAL_ONERROR_MECHANISM = "auto.browser.global_handlers.onerror";
 
-function hasApplicationStackFrame(event: ErrorEvent): boolean {
-  return (event.exception?.values ?? []).some((value) => {
-    return (value.stacktrace?.frames ?? []).some((frame) => {
-      return (
-        frame.filename !== undefined &&
-        APPLICATION_SCRIPT_FILENAME.test(frame.filename)
-      );
-    });
-  });
-}
-
 // Narrow to the exact user-agent condition: an unhandled global capture that
-// matches a known media-controls message and attributes no application frame.
-// The same message raised from our own code keeps its asset frame and reports.
+// matches a known media-controls message and whose frames are exclusively
+// third-party, as tagged by thirdPartyErrorFilterIntegration. The same message
+// raised from our own bundle keeps an application frame and still reports.
 function isUserAgentMediaControlsCapture(event: ErrorEvent): boolean {
   const values = event.exception?.values;
-  if (values === undefined || hasApplicationStackFrame(event)) {
+  if (values === undefined || event.tags?.third_party_code !== true) {
     return false;
   }
   return values.some((value) => {
@@ -156,6 +143,19 @@ export function createPlatformSentryOptions(
     // Without a release every capture reports `<not logged>`, so a filter or
     // fix cannot be verified against the build that produced the events.
     release: __OKOU_APP_VERSION__,
+
+    // Only the page bundle carries the application key: the shared worker is
+    // built by a separate Vite worker pipeline that the Sentry plugin does not
+    // process, so tagging its frames as third-party code would be wrong.
+    integrations:
+      runtime === "page"
+        ? [
+            Sentry.thirdPartyErrorFilterIntegration({
+              behaviour: "apply-tag-if-exclusively-contains-third-party-frames",
+              filterKeys: [SENTRY_APPLICATION_KEY],
+            }),
+          ]
+        : [],
 
     initialScope: {
       tags: {
