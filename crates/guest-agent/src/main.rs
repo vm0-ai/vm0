@@ -867,9 +867,9 @@ async fn complete_execution(
         match cp_result {
             Ok(checkpoint) => {
                 // Persist the prepared checkpoint and terminal state together
-                // before returning to the top-level final telemetry pass. The
-                // runner still posts a checkpoint-less /complete after VM
-                // exit; its call is idempotency-short-circuited.
+                // before returning to the top-level final telemetry pass. See
+                // the `complete` module docs for the runner's idempotent fallback
+                // and provider-specific finalization ordering.
                 log_info!(LOG_TAG, "▷ Cleanup");
                 let result = complete::report_checkpoint_for_run(
                     runtime,
