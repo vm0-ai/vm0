@@ -278,7 +278,7 @@ export function OfficialWorkflowConfigurationFields({
         return (
           <section
             key={blueprint.key}
-            className="rounded-2xl border-[0.7px] border-border bg-gray-50 p-4"
+            className="rounded-2xl border border-border bg-gray-50 p-4"
           >
             <div className="mb-3">
               <h3 className="text-sm font-semibold text-foreground">

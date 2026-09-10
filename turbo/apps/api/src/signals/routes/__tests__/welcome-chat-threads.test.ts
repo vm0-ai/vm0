@@ -30,6 +30,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
+import { seedLegacyPrivateDefaultAgentFixture } from "../../../test-fixtures/legacy-default-agent";
 import { occupyWelcomeSeedFixture } from "../../../test-fixtures/welcome-thread";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { welcomeChatThreadRoutes } from "../welcome-chat-threads";
@@ -245,7 +246,9 @@ describe("POST /api/welcome-chat-threads", () => {
 
   it("does not grant access to another member's private default agent", async () => {
     const { actor, agentId } = await fixture();
-    await bdd.updateAgentMetadata(actor, agentId, { visibility: "private" });
+    // Current agent APIs prevent private defaults. Preserve access-denial
+    // coverage for historical data through the explicit legacy fixture.
+    await seedLegacyPrivateDefaultAgentFixture(agentId);
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
     await enable(member);
     const clientThreadId = randomUUID();

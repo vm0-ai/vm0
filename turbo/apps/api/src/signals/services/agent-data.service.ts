@@ -31,6 +31,7 @@ export function agentResponse(row: {
 }): AgentResponse {
   return {
     agentId: row.agentId,
+    isDefaultAgent: row.agentId === row.defaultAgentId,
     ownerId: row.owner,
     displayName: agentDisplayName({
       agentId: row.agentId,

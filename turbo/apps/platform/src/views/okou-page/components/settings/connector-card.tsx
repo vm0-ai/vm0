@@ -195,8 +195,7 @@ function CatalogConnectorCard({
  * the way the other portalled surfaces already do; adopting `surfaceVariants`
  * here would newly pick up the gradient-theme elevation and change pixels.
  */
-export const DIRECTORY_HAIRLINE =
-  "border-[0.7px] border-[hsl(var(--gray-400))]";
+export const DIRECTORY_HAIRLINE = "border border-[hsl(var(--gray-400))]";
 export const DIRECTORY_SURFACE = cn(
   "rounded-[1.25rem] bg-card transition-colors",
   DIRECTORY_HAIRLINE,

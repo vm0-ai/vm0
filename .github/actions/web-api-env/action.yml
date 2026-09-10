@@ -246,7 +246,7 @@ runs:
         add_env PUBLIC_ARTIFACTS_BASE_URL "$public_artifacts_base_url"
         add_var OKOU_PUBLIC_ARTIFACTS_BASE_URL OKOU_PUBLIC_ARTIFACTS_BASE_URL
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
-          add_env PUBLIC_ARTIFACT_SHARES_BASE_URL "https://f.okou.io"
+          add_env PUBLIC_ARTIFACT_SHARES_BASE_URL "https://a.okou.io"
         else
           add_env PUBLIC_ARTIFACT_SHARES_BASE_URL "https://files.sites.vm7.io"
         fi
@@ -345,6 +345,7 @@ runs:
           CANVA
           CLOUDFLARE
           HUBSPOT
+          MAILCHIMP
           CLOSE
           META_ADS
           TIKTOK_ADS
@@ -355,6 +356,7 @@ runs:
           ASANA
           POSTHOG
           QUICKBOOKS
+          RAMP
           GUMROAD
           MERCURY
           SPOTIFY

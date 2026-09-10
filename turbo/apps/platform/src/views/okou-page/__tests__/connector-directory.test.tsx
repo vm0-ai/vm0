@@ -227,6 +227,8 @@ function rankedCatalog() {
   // Four ranked connectors earn "mail" a shelf; "voice" has one, so it stays a
   // counted chip rather than opening on the alphabet.
   return [
+    // Sixteen, so the category holds more than the twelve a keyword-free
+    // browse response returns for it.
     ...[
       "Gmail",
       "Outlook Mail",
@@ -238,6 +240,12 @@ function rankedCatalog() {
       "Zendesk",
       "Intercom",
       "Mailchimp",
+      "Resend",
+      "Twilio",
+      "Front",
+      "Missive",
+      "Crisp",
+      "Help Scout",
     ].map((label, index) => {
       return builtinConnector({
         slug: `mail-${index}` as ConnectorSlug,
@@ -386,4 +394,50 @@ test("Count the whole category on a chip, not the slice discovery returned", asy
       name: "Communication and Collaboration",
     }),
   ).toBeVisible();
+});
+
+test("Show the whole category the chip counted, not the browse slice", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({
+    catalog: rankedCatalog(),
+    categoryConnectorCounts: { mail: 16, voice: 50 },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  const dialog = await openDirectory(user);
+  const chip = await waitFor(() => {
+    const match = Array.from(
+      dialog.querySelectorAll<HTMLElement>("[data-connector-category-chip]"),
+    ).find((element) => {
+      return element.textContent === "Mail16";
+    });
+    if (!match) {
+      throw new Error("Expected the Mail category chip to count sixteen");
+    }
+    return match;
+  });
+
+  // The chip says sixteen, so entering it has to show sixteen -- a browse
+  // response carries at most twelve of any one category.
+  await user.click(chip);
+  await waitFor(() => {
+    expect(within(dialog).getByText("Help Scout")).toBeVisible();
+  });
+  expect(within(dialog).getAllByTestId("connector-card-label")).toHaveLength(
+    16,
+  );
+
+  // The chip row still offers every category, so the reader can pick another.
+  expect(
+    Array.from(
+      dialog.querySelectorAll<HTMLElement>("[data-connector-category-chip]"),
+    ).map((element) => {
+      return element.textContent;
+    }),
+  ).toContain("Voice50");
 });

@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectConfigDeliveryBucket",
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketAcl", "s3:ListBucket"],
+      "Resource": "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2"
+    },
+    {
+      "Sid": "DeliverConfigurationRecords",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2/AWSLogs/251964670836/Config/*",
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-acl": "bucket-owner-full-control"
+        }
+      }
+    }
+  ]
+}

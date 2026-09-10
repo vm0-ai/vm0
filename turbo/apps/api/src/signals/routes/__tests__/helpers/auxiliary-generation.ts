@@ -9,10 +9,10 @@ const resultSchema = z
     feature: z.enum([
       "chat_title",
       "shared_thread_title",
+      "chat_initial_thinking",
       "run_summary",
       "recommended_followups",
       "notification_summary",
-      "goal_objective_brief",
     ]),
     outcome: z.enum(["success", "degraded", "cancelled", "error", "skipped"]),
     reason: z.enum([
@@ -45,10 +45,30 @@ const resultSchema = z
       .nonnegative()
       .max(Number.MAX_SAFE_INTEGER)
       .optional(),
+    // Present only when the provider sent Retry-After on this failure.
+    retry_after_ms: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+    // Present only when the caller supplied a run to correlate against.
+    run_id: z.string().optional(),
   })
   .strict();
 
-export function auxiliaryResults(context: TestContext) {
+type AuxiliaryFeature = z.infer<typeof resultSchema>["feature"];
+
+export function auxiliaryResults(
+  context: TestContext,
+  feature?: AuxiliaryFeature,
+) {
+  return allAuxiliaryResults(context).filter((result) => {
+    return feature === undefined || result.feature === feature;
+  });
+}
+
+function allAuxiliaryResults(context: TestContext) {
   return [
     ...context.mocks.axiom.ingest.mock.calls,
     ...context.mocks.axiom.sdkIngest.mock.calls,

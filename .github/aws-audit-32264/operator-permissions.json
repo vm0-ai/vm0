@@ -1,0 +1,125 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageOnlyConfigRecorderRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:CreateRole",
+        "iam:TagRole",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::251964670836:role/vm0-dcf478-config-recorder-role"
+    },
+    {
+      "Sid": "AttachOnlyAwsConfigReadPolicy",
+      "Effect": "Allow",
+      "Action": "iam:AttachRolePolicy",
+      "Resource": "arn:aws:iam::251964670836:role/vm0-dcf478-config-recorder-role",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+        }
+      }
+    },
+    {
+      "Sid": "PassOnlyConfigServiceRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::251964670836:role/vm0-dcf478-config-recorder-role",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "config.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "DiscoverOwnedBuckets",
+      "Effect": "Allow",
+      "Action": "s3:ListAllMyBuckets",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ConfigureOnlyTargetAuditBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketAcl",
+        "s3:GetBucketTagging",
+        "s3:PutBucketTagging",
+        "s3:GetBucketPolicy",
+        "s3:PutBucketPolicy",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "s3:PutEncryptionConfiguration",
+        "s3:GetBucketVersioning",
+        "s3:PutBucketVersioning",
+        "s3:GetBucketOwnershipControls",
+        "s3:PutBucketOwnershipControls",
+        "s3:GetLifecycleConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::vm0-cloudtrail-logs-251964670836-us-west-2",
+        "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2"
+      ]
+    },
+    {
+      "Sid": "ReadOnlyTargetDeliveredAuditRecords",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::vm0-cloudtrail-logs-251964670836-us-west-2/AWSLogs/251964670836/CloudTrail/*",
+        "arn:aws:s3:::vm0-dcf478-aws-config-251964670836-us-west-2/AWSLogs/251964670836/Config/*"
+      ]
+    },
+    {
+      "Sid": "ManageOnlyTargetTrail",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:CreateTrail",
+        "cloudtrail:GetTrail",
+        "cloudtrail:GetTrailStatus",
+        "cloudtrail:GetEventSelectors",
+        "cloudtrail:PutEventSelectors",
+        "cloudtrail:StartLogging",
+        "cloudtrail:AddTags"
+      ],
+      "Resource": "arn:aws:cloudtrail:us-west-2:251964670836:trail/vm0-drata-cloudtrail",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "ConfigureAndVerifyTargetConfig",
+      "Effect": "Allow",
+      "Action": [
+        "config:DescribeConfigurationRecorders",
+        "config:DescribeConfigurationRecorderStatus",
+        "config:DescribeDeliveryChannels",
+        "config:DescribeDeliveryChannelStatus",
+        "config:PutConfigurationRecorder",
+        "config:PutDeliveryChannel",
+        "config:StartConfigurationRecorder",
+        "config:DeliverConfigSnapshot",
+        "config:ListDiscoveredResources"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-west-2"
+        }
+      }
+    }
+  ]
+}

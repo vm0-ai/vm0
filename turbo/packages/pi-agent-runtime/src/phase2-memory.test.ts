@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { PiMemoryPhase2Diagnostic } from "./phase2-memory-diagnostics";
 import { renderPiMemoryPhase2Prompt } from "./phase2-memory-prompt";
 import { PI_MEMORY_PHASE2_TOOL_NAMES } from "./phase2-memory-tools";
 import {
@@ -168,7 +169,13 @@ type ProviderStep =
       readonly name: string;
       readonly arguments: Record<string, unknown>;
     }
-  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "text";
+      readonly text: string;
+      /** Reproduce a provider that returns no response id for the turn. */
+      readonly omitResponseId?: true;
+    }
+  | { readonly type: "incomplete"; readonly reason: string }
   | { readonly type: "http-error" }
   | { readonly type: "hang"; readonly onRequest?: () => void };
 
@@ -255,7 +262,15 @@ function toolSse(
   ]);
 }
 
-function textSse(response: ServerResponse, index: number, text: string): void {
+function textSse(
+  response: ServerResponse,
+  index: number,
+  step: ProviderStep,
+): void {
+  if (step.type !== "text") {
+    throw new Error("Expected text provider step");
+  }
+  const text = step.text;
   const responseId = `resp_phase2_final_${index.toString()}`;
   const messageId = `msg_phase2_${index.toString()}`;
   const item = {
@@ -269,7 +284,7 @@ function textSse(response: ServerResponse, index: number, text: string): void {
     {
       type: "response.created",
       response: {
-        id: responseId,
+        ...(step.omitResponseId ? {} : { id: responseId }),
         object: "response",
         status: "in_progress",
         output: [],
@@ -291,9 +306,61 @@ function textSse(response: ServerResponse, index: number, text: string): void {
     {
       type: "response.completed",
       response: {
-        id: responseId,
+        ...(step.omitResponseId ? {} : { id: responseId }),
         object: "response",
         status: "completed",
+        output: [item],
+        usage: usage(),
+      },
+    },
+  ]);
+}
+
+/** A turn the provider truncated, such as an exhausted output budget. */
+function incompleteSse(
+  response: ServerResponse,
+  index: number,
+  reason: string,
+): void {
+  const responseId = `resp_phase2_incomplete_${index.toString()}`;
+  const messageId = `msg_phase2_${index.toString()}`;
+  const item = {
+    type: "message",
+    id: messageId,
+    role: "assistant",
+    status: "incomplete",
+    content: [{ type: "output_text", text: "truncated", annotations: [] }],
+  };
+  writeSse(response, [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { ...item, status: "in_progress", content: [] },
+    },
+    {
+      type: "response.output_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: "truncated",
+    },
+    { type: "response.output_item.done", output_index: 0, item },
+    {
+      type: "response.incomplete",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "incomplete",
+        incomplete_details: { reason },
         output: [item],
         usage: usage(),
       },
@@ -332,7 +399,11 @@ async function startProvider(steps: readonly ProviderStep[]): Promise<{
           return;
         }
         case "text": {
-          textSse(response, index, step.text);
+          textSse(response, index, step);
+          return;
+        }
+        case "incomplete": {
+          incompleteSse(response, index, step.reason);
           return;
         }
         case "http-error": {
@@ -384,6 +455,7 @@ function metadataWithoutContents<
 function expectBoundedFailure(
   promise: Promise<unknown>,
   errorClass: PiMemoryPhase2EngineError["errorClass"],
+  diagnostic?: PiMemoryPhase2Diagnostic,
 ): Promise<void> {
   return promise.then(
     () => {
@@ -394,6 +466,16 @@ function expectBoundedFailure(
       expect(error).toMatchObject({ errorClass });
       expect(error).not.toHaveProperty("files");
       expect(JSON.stringify(error)).not.toContain("SECRET_");
+      if (!diagnostic) {
+        return;
+      }
+      if (!(error instanceof PiMemoryPhase2EngineError)) {
+        throw new Error("Expected a Pi memory Phase 2 engine error");
+      }
+      expect(error.diagnostic).toStrictEqual(diagnostic);
+      expect(error.terminalMessage()).toBe(
+        `${error.message} pi_memory_phase2=${JSON.stringify(diagnostic)}`,
+      );
     },
   );
 }
@@ -866,16 +948,34 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     const cases: ReadonlyArray<{
       readonly steps: readonly ProviderStep[];
       readonly errorClass: PiMemoryPhase2EngineError["errorClass"];
+      readonly diagnostic?: PiMemoryPhase2Diagnostic;
       readonly input?: Partial<PiMemoryPhase2ConsolidationArgs>;
     }> = [
       {
         steps: [{ type: "http-error" }],
         errorClass: "model_failed",
+        diagnostic: {
+          stage: "final_response",
+          reason: "final_stop_error",
+        },
         input: { baseFiles: [] },
       },
       {
-        steps: [{ type: "text", text: "" }],
+        steps: [{ type: "incomplete", reason: "max_output_tokens" }],
         errorClass: "session_failed",
+        diagnostic: {
+          stage: "final_response",
+          reason: "final_stop_length",
+        },
+        input: { baseFiles: [] },
+      },
+      {
+        steps: [{ type: "incomplete", reason: "content_filter" }],
+        errorClass: "model_failed",
+        diagnostic: {
+          stage: "final_response",
+          reason: "final_stop_error",
+        },
         input: { baseFiles: [] },
       },
       {
@@ -913,11 +1013,87 @@ describe("Pi memory Phase 2 consolidation engine", () => {
           new AbortController().signal,
         ),
         testCase.errorClass,
+        testCase.diagnostic,
       );
       await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
         code: "ENOENT",
       });
     }
+  });
+
+  it("accepts a validated result without completion text or a response id", async () => {
+    const provider = await startProvider([
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/MEMORY.md",
+          content: "# Task Group: silent completion\n",
+        },
+      },
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/memory_summary.md",
+          content: "v1\n## User Profile\n- silent completion\n",
+        },
+      },
+      { type: "text", text: "", omitResponseId: true },
+    ]);
+
+    const result = await runPiMemoryPhase2Consolidation(
+      args(provider.baseUrl),
+      new AbortController().signal,
+    );
+
+    expect(result.status).toBe("prepared");
+    expect(result.responseId).toBeNull();
+    expect(result.usage.output).toBeGreaterThan(0);
+    const files = new Map(
+      result.files.map((file) => {
+        return [
+          file.path,
+          Buffer.from(file.contentBase64, "base64").toString(),
+        ];
+      }),
+    );
+    expect(files.get("MEMORY.md")).toBe("# Task Group: silent completion\n");
+    expect(files.get("memory_summary.md")).toBe(
+      "v1\n## User Profile\n- silent completion\n",
+    );
+  });
+
+  it("attributes an unexpected engine failure to a bounded stage and errno", async () => {
+    const provider = await startProvider([
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/MEMORY.md",
+          content: "# Task Group: unexpected\n",
+        },
+      },
+      { type: "text", text: "done" },
+    ]);
+
+    await expectBoundedFailure(
+      runPiMemoryPhase2ConsolidationForTest(
+        args(provider.baseUrl),
+        {
+          beforeOutputValidation() {
+            return Promise.reject(
+              Object.assign(new Error("PRIVATE_ENGINE_SECRET_33066"), {
+                code: "ENOSPC",
+              }),
+            );
+          },
+        },
+        new AbortController().signal,
+      ),
+      "session_failed",
+      { stage: "unknown", reason: "unexpected_error", errno: "ENOSPC" },
+    );
   });
 
   it("confirms the heartbeat before model use and aborts on periodic lease loss", async () => {

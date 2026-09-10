@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { agentDeletionError } from "@okouai/core/agent-protection";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { apiClient$ } from "../../api-client.ts";
@@ -19,8 +20,20 @@ export const deleteAgent$ = command(
       throw new Error("No agent detail loaded");
     }
 
+    const identityError = agentDeletionError(detail.isDefaultAgent);
+    if (identityError) {
+      throw new Error(identityError.message);
+    }
+
     const client = get(apiClient$)(agentsByIdContract);
-    await accept(client.delete({ params: { id: detail.agentId } }), [204]);
+    await accept(
+      client.delete({
+        params: { id: detail.agentId },
+        fetchOptions: { signal },
+      }),
+      [204],
+      signal,
+    );
     signal.throwIfAborted();
 
     toast.success(

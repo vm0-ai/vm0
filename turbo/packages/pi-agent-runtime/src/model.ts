@@ -25,6 +25,7 @@ import {
   observePiResponseStatus,
   type PiAgentStreamOptions,
 } from "./stream-options";
+import { guardPiUpstreamErrorBody } from "./upstream-error-body";
 
 const PI_AGENT_USER_AGENT = "okou-pi-agent/1.0";
 
@@ -320,11 +321,11 @@ export function piAgentStreamForConfig(
     ) {
       return streamPiNative(config, model, context, configuredOptions);
     }
-    // Both OpenAI Responses routes answer an opaque gateway body with the raw
-    // text alone, so the observed status has to be preserved here to stay in
-    // the terminal error at all.
+    // Every public route drops an upstream markup error page before the
+    // adapter can fold it into its terminal message. Other opaque gateway
+    // bodies then retain their observed status in the terminal error.
     const boundaryFetch = preserveProviderErrorStatus(
-      configuredOptions.fetch ?? globalThis.fetch,
+      guardPiUpstreamErrorBody(configuredOptions.fetch ?? globalThis.fetch),
     );
     const responseOptions = {
       ...configuredOptions,

@@ -5171,7 +5171,7 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:items-center"
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
     >
       {recovery.kind === "usage-limit" ||
       recovery.kind === "execution-timeout" ? (
@@ -5225,7 +5225,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
       <div
         className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
         style={{
-          border: "0.7px solid hsl(var(--border))",
+          border: "var(--border-width-surface) solid hsl(var(--border))",
           borderRadius: "12px",
         }}
       >

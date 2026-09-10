@@ -9,6 +9,7 @@ members = [
     "runner-rpc-client",
     "guest-tool-exec",
     "process-control-ipc",
+    "process-launch",
     "guest-telemetry",
     "guest-storage-apply",
     "guest-init",
@@ -46,6 +47,7 @@ session-history-selector = { path = "session-history-selector" }
 runner-rpc-client = { path = "runner-rpc-client" }
 guest-tool-exec = { path = "guest-tool-exec" }
 process-control-ipc = { path = "process-control-ipc" }
+process-launch = { path = "process-launch" }
 guest-telemetry = { path = "guest-telemetry" }
 guest-storage-apply = { path = "guest-storage-apply" }
 guest-init = { path = "guest-init" }

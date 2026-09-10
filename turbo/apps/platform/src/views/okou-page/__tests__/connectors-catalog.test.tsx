@@ -176,8 +176,20 @@ test("Avoid duplicate catalog sections during metadata changes", async () => {
   expect(queryConnectorCard("Billing Stripe")).toBeInTheDocument();
 });
 
+test("Show Mailchimp OAuth without a feature-switch override", async () => {
+  mockConnectors(context, []);
+  await setupPage({ context, path: "/connectors?keywords=mailchimp" });
+
+  await waitFor(() => {
+    expect(getConnectorAction("button", "Connect Mailchimp")).toBeEnabled();
+  });
+});
+
 test("Update connector visibility when availability changes", async () => {
   mockConnectors(context, []);
+  setMockConnectorFeatureSwitches({
+    [FeatureSwitchKey.MailchimpConnector]: false,
+  });
   const switchesReady = context.mocks.deferred<void>();
   context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
     await switchesReady.promise;

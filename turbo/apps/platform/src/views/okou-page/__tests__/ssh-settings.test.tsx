@@ -854,6 +854,7 @@ test("Changing owner closes the credential form and clears its fields", async ()
 
 test("A visible shared Agent offers the current user's SSH authorization", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: "another-owner",
     displayName: "Shared Agent",
@@ -894,6 +895,7 @@ test("A visible shared Agent offers the current user's SSH authorization", async
 
 test("Changing users hides the previous user's SSH grant while the new grant loads", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: "shared-agent-owner",
     displayName: "Shared Agent",
@@ -943,6 +945,7 @@ test("Changing users hides the previous user's SSH grant while the new grant loa
 
 test("A last-host deletion notification hides Authorization without clearing its retained grant", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: auth.user.id,
     displayName: "SSH Research",
@@ -987,6 +990,7 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
     return respond(200, { configuredCount: 1 });
   });
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: auth.user.id,
     displayName: "Research",
@@ -1057,6 +1061,7 @@ test.each([false, true])(
       return respond(200, { configuredCount: 1 });
     });
     const agent: AgentResponse = {
+      isDefaultAgent: false,
       agentId,
       ownerId: auth.user.id,
       displayName: "Research",

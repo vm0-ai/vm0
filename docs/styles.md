@@ -33,6 +33,10 @@ Token names describe meaning rather than a page or component. A reusable interac
 
 Components must not introduce local CSS variables as an alternate token registry. A runtime value that is genuinely computed by the component may use a narrowly named custom property as data, while its visual semantics still come from Tailwind utilities and registered tokens.
 
+One hairline serves the whole product. `--default-border-width` in the shared `@theme` is 0.5px, and Tailwind's bare `border`, `border-t`, `border-x`, `divide-y`, and their siblings all read it, so a component asks for "a border" and the system decides how thick it is. Components must not hand-write a width: an arbitrary width such as `border-[0.7px]`, or a literal width inside a `style` prop, is a second registry for a decision this token already owns. `border-0` and the deliberate emphasis widths such as `border-2` stay available, because they express a different decision rather than a competing value for the same one.
+
+The sub-pixel value is a declaration of intent as much as a measurement. Blink and Gecko round a non-zero border up to one device pixel, so it renders exactly like 1px there and layout is unchanged in every engine; WebKit can draw the true hairline on a high-density display. Do not treat a width below 1px as a way to make a border visibly lighter in Chromium — reach for the border color for that.
+
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
 ## Token and variant governance
@@ -80,7 +84,7 @@ remain available without hovering.
 | Decision        | Shared token / utility                                    | Theme contract                                                                                       |
 | --------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Fill            | `bg-card`                                                 | Existing semantic card fill in each theme                                                            |
-| Border          | `--color-surface-border`, `--border-width-surface`        | Gray 400 at 0.7 CSS pixels; the browser rounds for its device scale                                  |
+| Border          | `--color-surface-border`, `--border-width-surface`        | Gray 400 at the shared `--default-border-width` hairline; the browser rounds for its device scale    |
 | Radius          | `rounded-surface`, `rounded-surface-compact`              | 1.25rem and a fixed 12px respectively in every theme                                                 |
 | Elevation       | `shadow-surface` via `--surface-shadow`                   | Neutral lift in Light/Dark; the gradient theme uses the canonical state-layer hue with reduced alpha |
 | Pointer overlay | `bg-state-hover-overlay`                                  | The shared interaction-state overlay painted above the opaque card fill                              |
