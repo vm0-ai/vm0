@@ -7,13 +7,16 @@ import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
  *
  * Guest-agent recognizes the same token when it projects a Pi terminal result
  * and classifies the failure, so the spelling is a cross-language contract.
- * Keep it in sync with `PI_UPSTREAM_NON_API_RESPONSE_MARKER` in
- * `crates/guest-agent/src/failure_patterns.rs`.
+ * Keep it in sync with `UPSTREAM_NON_API_RESPONSE_MARKER` in
+ * `crates/guest-agent/src/upstream_error_text.rs`.
  */
 export const UPSTREAM_NON_API_RESPONSE_MARKER = "upstream_non_api_response";
 
 /** Only the leading bytes decide whether a failed body is a markup document. */
 const MARKUP_PROBE_CHARS = 512;
+
+/** A UTF-8 code point needs at most four bytes in the bounded probe. */
+const MARKUP_PROBE_BYTES = MARKUP_PROBE_CHARS * 4;
 
 /** Enough to group repeated pages in logs without republishing any of one. */
 const DIGEST_CHARS = 8;
@@ -64,12 +67,26 @@ export function describeUpstreamNonApiResponse(args: {
     .update(args.body, "utf8")
     .digest("hex")
     .slice(0, DIGEST_CHARS);
+  return describeUpstreamNonApiResponseMetadata({
+    status: args.status,
+    contentType: args.contentType,
+    bytes,
+    digest,
+  });
+}
+
+function describeUpstreamNonApiResponseMetadata(args: {
+  readonly status: number;
+  readonly contentType: string | null;
+  readonly bytes: number;
+  readonly digest: string;
+}): string {
   return [
     UPSTREAM_NON_API_RESPONSE_MARKER,
     `status=${args.status}`,
     `content_type=${contentTypeFamily(args.contentType)}`,
-    `bytes=${bytes}`,
-    `digest=${digest}`,
+    `bytes=${args.bytes}`,
+    `digest=${args.digest}`,
   ].join(" ");
 }
 
@@ -100,26 +117,89 @@ export function guardPiUpstreamErrorBody(
     if (response.ok || response.body === null) {
       return response;
     }
-    const body = await response.text();
-    if (!isMarkupDocumentBody(body)) {
-      // Genuine provider errors keep their exact text; only the framing that
-      // the consumed body invalidated is rebuilt.
-      return new Response(body, {
-        headers: replayableHeaders(response.headers),
-        status: response.status,
-        statusText: response.statusText,
-      });
+
+    // A non-markup provider error must keep streaming exactly as supplied. For
+    // markup, retain only a bounded probe while consuming the other branch to
+    // count and hash the discarded document. This avoids buffering an
+    // arbitrarily large gateway page merely to make its safe description.
+    const [inspectionBody, passthroughBody] = response.body.tee();
+    const reader = inspectionBody.getReader();
+    const hasher = createHash("sha256");
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    let probe = "";
+    let markup: boolean | undefined;
+
+    try {
+      while (markup === undefined) {
+        const next = await reader.read();
+        if (next.done) {
+          probe = `${probe}${decoder.decode()}`.trimStart();
+          markup = isMarkupDocumentBody(probe);
+          break;
+        }
+
+        bytes += next.value.byteLength;
+        hasher.update(next.value);
+        for (
+          let offset = 0;
+          offset < next.value.byteLength && markup === undefined;
+          offset += MARKUP_PROBE_BYTES
+        ) {
+          const segment = next.value.subarray(
+            offset,
+            Math.min(offset + MARKUP_PROBE_BYTES, next.value.byteLength),
+          );
+          probe = `${probe}${decoder.decode(segment, { stream: true })}`
+            .trimStart()
+            .slice(0, MARKUP_PROBE_CHARS);
+          if (probe.length > 0 && !probe.startsWith("<")) {
+            markup = false;
+          } else if (
+            isMarkupDocumentBody(probe) ||
+            probe.length === MARKUP_PROBE_CHARS
+          ) {
+            markup = isMarkupDocumentBody(probe);
+          }
+        }
+      }
+
+      if (!markup) {
+        // The untouched tee branch preserves the original body and framing.
+        void reader.cancel().catch(() => {});
+        return new Response(passthroughBody, {
+          headers: response.headers,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      }
+
+      // The passthrough branch is intentionally discarded before the full
+      // markup stream is drained for metadata only.
+      void passthroughBody.cancel().catch(() => {});
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) {
+          break;
+        }
+        bytes += next.value.byteLength;
+        hasher.update(next.value);
+      }
+    } finally {
+      reader.releaseLock();
     }
+
     const headers = replayableHeaders(response.headers);
     headers.set("content-type", "application/json");
     return new Response(
       JSON.stringify({
         error: {
           type: UPSTREAM_NON_API_RESPONSE_MARKER,
-          message: describeUpstreamNonApiResponse({
+          message: describeUpstreamNonApiResponseMetadata({
             status: response.status,
             contentType: response.headers.get("content-type"),
-            body,
+            bytes,
+            digest: hasher.digest("hex").slice(0, DIGEST_CHARS),
           }),
         },
       }),

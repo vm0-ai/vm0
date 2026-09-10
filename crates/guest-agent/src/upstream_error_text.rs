@@ -83,17 +83,38 @@ pub(crate) fn project_model_error_text(raw: &str) -> String {
 /// Returns `None` when the message carries no marker or no parsable status, so
 /// an unproven failure is never given a semantic reason.
 pub(crate) fn upstream_non_api_response_status(message: &str) -> Option<u16> {
-    const STATUS_FIELD: &str = "status=";
+    const STATUS_PREFIX: &str = " status=";
 
-    let marker_end =
-        message.find(UPSTREAM_NON_API_RESPONSE_MARKER)? + UPSTREAM_NON_API_RESPONSE_MARKER.len();
-    let tail = &message[marker_end..];
-    let status_start = tail.find(STATUS_FIELD)? + STATUS_FIELD.len();
-    let digits: String = tail[status_start..]
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
+    message
+        .match_indices(UPSTREAM_NON_API_RESPONSE_MARKER)
+        .find_map(|(index, _)| {
+            if message[..index]
+                .chars()
+                .next_back()
+                .is_some_and(is_marker_identifier_char)
+            {
+                return None;
+            }
+            let status = message[index + UPSTREAM_NON_API_RESPONSE_MARKER.len()..]
+                .strip_prefix(STATUS_PREFIX)?;
+            let status_len = status
+                .find(|character: char| !character.is_ascii_digit())
+                .unwrap_or(status.len());
+            let (digits, suffix) = status.split_at(status_len);
+            if digits.is_empty()
+                || suffix
+                    .chars()
+                    .next()
+                    .is_some_and(|character| !character.is_ascii_whitespace())
+            {
+                return None;
+            }
+            digits.parse().ok()
+        })
+}
+
+fn is_marker_identifier_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
 }
 
 fn body_digest(body: &str) -> String {
@@ -197,6 +218,17 @@ mod tests {
             ("status=502 without any marker".to_string(), None),
         ] {
             assert_eq!(upstream_non_api_response_status(&message), expected);
+        }
+    }
+
+    #[test]
+    fn status_requires_the_runtime_marker_and_its_exact_status_field() {
+        for message in [
+            "not_upstream_non_api_response status=502 content_type=html bytes=4711 digest=1a2b3c4d",
+            "upstream_non_api_response detail status=502 content_type=html bytes=4711 digest=1a2b3c4d",
+            "upstream_non_api_response status=502unexpected content_type=html bytes=4711 digest=1a2b3c4d",
+        ] {
+            assert_eq!(upstream_non_api_response_status(message), None);
         }
     }
 

@@ -172,6 +172,39 @@ describe("Pi upstream error body guard", () => {
     );
   });
 
+  it("does not buffer a non-markup error before returning it", async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const upstream = new Response(
+      new ReadableStream<Uint8Array>({
+        start(next) {
+          controller = next;
+          next.enqueue(new TextEncoder().encode("no healthy upstream"));
+        },
+      }),
+      { status: 503, headers: { "content-type": "text/plain" } },
+    );
+    const guarded = guardPiUpstreamErrorBody(() => {
+      return Promise.resolve(upstream);
+    });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const response = await Promise.race([
+      guarded("https://provider.example/v1/responses"),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error("non-markup error body was buffered before return"));
+        }, 1_000);
+      }),
+    ]);
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    controller.close();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).toBe("text/plain");
+    await expect(response.text()).resolves.toBe("no healthy upstream");
+  });
+
   it("drops transfer framing the consumed body invalidated", async () => {
     const guarded = guardPiUpstreamErrorBody(
       respondWith(ERROR_PAGE, {
