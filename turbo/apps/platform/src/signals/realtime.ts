@@ -1,6 +1,7 @@
 import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type {
+  ChannelOptions,
   ChannelStateChange,
   ConnectionStateChange,
   InboundMessage,
@@ -37,6 +38,22 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
 export type RealtimeConnectionState = ConnectionStateChange["current"];
+
+/**
+ * Register listeners without Ably's default implicit attach.
+ *
+ * With the default, `channel.subscribe()` attaches as a side effect, and that
+ * attach rejects outright while the connection is suspended, closing, closed
+ * or failed. This module then dropped the listener it had just registered, and
+ * a channel without listeners never recovers: `Channels.onTransportActive()`
+ * reattaches the channel, but it cannot restore a listener we removed.
+ *
+ * Subscribing therefore only registers the listener. Attaching happens once,
+ * while the connection is known to be usable, and Ably owns it from there.
+ */
+function realtimeChannelOptions(): ChannelOptions {
+  return { attachOnSubscribe: false };
+}
 
 function connectionStateDetails(
   stateChange: ConnectionStateChange,
@@ -611,6 +628,7 @@ async function trackRealtimeSubscription(
 
 function createRealtimeSubscriptionChannel(
   channel: RealtimeChannel,
+  signal: AbortSignal,
 ): RealtimeSubscriptionChannel {
   const subscriptions = new Map<ChannelCallback, ActiveChannelSubscription>();
   return {
@@ -625,7 +643,12 @@ function createRealtimeSubscriptionChannel(
       await trackRealtimeSubscription(
         () => {
           return onRejection(
-            subscribeToRealtimeChannel(channel, subscription),
+            // Registering the listener cannot fail on a transport condition;
+            // waiting for `attached` is what makes the subscription live.
+            async () => {
+              await subscribeToRealtimeChannel(channel, subscription);
+              await whenChannelAttached(channel, signal);
+            },
             () => {
               subscriptions.delete(callback);
               unsubscribeFromRealtimeChannel(channel, subscription);
@@ -661,10 +684,89 @@ function connectedRealtimeChannels(
   orgId: string,
 ): ConnectedRealtimeChannels {
   return {
-    credential: ably.channels.get(`user-org:${userId}:${orgId}`),
-    user: ably.channels.get(`user:${userId}`),
-    org: ably.channels.get(`org:${orgId}`),
+    credential: ably.channels.get(
+      `user-org:${userId}:${orgId}`,
+      realtimeChannelOptions(),
+    ),
+    user: ably.channels.get(`user:${userId}`, realtimeChannelOptions()),
+    org: ably.channels.get(`org:${orgId}`, realtimeChannelOptions()),
   };
+}
+
+function realtimeChannelList(
+  channels: ConnectedRealtimeChannels,
+): readonly RealtimeChannel[] {
+  return [channels.credential, channels.user, channels.org];
+}
+
+/**
+ * Hand every channel to Ably's own reattachment, once.
+ *
+ * The caller runs this while the connection is `connected`, which is the one
+ * moment an attach is guaranteed to be accepted. Reaching `attaching` is all
+ * that is required: from there `Channels.onTransportActive()` reattaches the
+ * channel after every later drop, and a channel that drops is `suspended`
+ * rather than `initialized`, so it never falls out of that set again.
+ *
+ * A rejected attach is reported, not propagated. It is not a subscription
+ * failure, and callers wait on channel state rather than on this call.
+ */
+async function attachRealtimeChannels(
+  channels: ConnectedRealtimeChannels,
+): Promise<void> {
+  await Promise.all(
+    realtimeChannelList(channels).map(async (channel) => {
+      const result = await settle(channel.attach());
+      if (result.ok) {
+        return;
+      }
+      L.warn("realtime channel attach failed", {
+        channelState: channel.state,
+        error: result.error,
+      });
+      publishConnectionDiagnostic({
+        details: {
+          ...connectionDiagnosticError(result.error),
+          channelState: channel.state,
+        },
+        event: "realtime.channel",
+        phase: "error",
+      });
+    }),
+  );
+}
+
+/**
+ * Resolve once the channel carries messages. Callers rely on this ordering:
+ * subscription initialization and catch-up must not run against a channel that
+ * is not attached yet, or they would leave a gap for the events in between.
+ */
+function whenChannelAttached(
+  channel: RealtimeChannel,
+  signal: AbortSignal,
+): Promise<void> {
+  if (channel.state === "attached") {
+    return Promise.resolve();
+  }
+  const deferred = createDeferredPromise<void>(signal);
+  const handleStateChange = (stateChange: ChannelStateChange): void => {
+    if (deferred.settled()) {
+      return;
+    }
+    if (stateChange.current === "attached") {
+      deferred.resolve(undefined);
+      return;
+    }
+    if (stateChange.current === "failed") {
+      deferred.reject(
+        stateChange.reason ?? new Error("Realtime channel attach failed"),
+      );
+    }
+  };
+  channel.on(handleStateChange);
+  return withCleanup(deferred.promise, () => {
+    channel.off(handleStateChange);
+  });
 }
 
 function observeRealtimeChannels(
@@ -791,6 +893,8 @@ const connectRealtimeClient$ = command(
       identity.orgId,
     );
     const stopObservingChannels = observeRealtimeChannels(channels);
+    await attachRealtimeChannels(channels);
+    signal.throwIfAborted();
     publishConnectionDiagnostic({
       details: { channelState: channels.user.state },
       event: "realtime.channel",
@@ -846,9 +950,10 @@ export const setupRealtime$ = command(
     const channels: RealtimeSessionChannels = {
       credential: createRealtimeSubscriptionChannel(
         connected.channels.credential,
+        signal,
       ),
-      user: createRealtimeSubscriptionChannel(connected.channels.user),
-      org: createRealtimeSubscriptionChannel(connected.channels.org),
+      user: createRealtimeSubscriptionChannel(connected.channels.user, signal),
+      org: createRealtimeSubscriptionChannel(connected.channels.org, signal),
     };
     set(internalRealtimeSession$, {
       ably: connected.ably,

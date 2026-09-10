@@ -19,7 +19,12 @@ import { setApiClientRuntime$ } from "../api-client-runtime.ts";
 import { setAuthenticatedIdentity$ } from "../auth-context.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
-import { createChildAbortController, detach, Reason } from "../utils.ts";
+import {
+  createChildAbortController,
+  detach,
+  Reason,
+  settle,
+} from "../utils.ts";
 import type { SharedDatabaseBridge } from "../../shared-database/bridge.ts";
 import type {
   ComputedKey,
@@ -63,6 +68,12 @@ const finishLoop$ = command((_ctx, _signal: AbortSignal) => {
 const keepAliveLoop$ = command((_ctx, _signal: AbortSignal) => {
   return Promise.resolve(false);
 });
+
+const keepAlivePayloadLoop$ = command(
+  (_ctx, _payload: unknown, _signal: AbortSignal) => {
+    return Promise.resolve(false);
+  },
+);
 
 const failSubscriptionInitialization$ = command(
   (_ctx, _signal: AbortSignal) => {
@@ -313,6 +324,148 @@ test("Live updates remain usable after the transport reconnects", async () => {
   await waitFor(() => {
     expect(runs).toBe(2);
   });
+});
+
+test("A subscription created while the connection is suspended still starts", async () => {
+  mockSignedInUser();
+  const topic = "test:subscribe-while-suspended";
+  const subscriber = testSubscriber();
+  let runs = 0;
+  const loop$ = command((_ctx, _signal: AbortSignal) => {
+    runs += 1;
+    return false;
+  });
+
+  await setupAuthAndRealtime();
+  // Ably refuses to attach while suspended, so this subscription cannot go
+  // live yet — but it must survive until the connection can carry it.
+  context.mocks.ably.triggerConnectionState("suspended", {
+    code: 80_003,
+    message: "Unable to connect (network unreachable)",
+  });
+
+  const loopPromise = context.store.set(
+    setAblyLoop$,
+    { topic, loopCommand$: loop$ },
+    subscriber.signal,
+  );
+  detach(loopPromise, Reason.Daemon, "suspended realtime loop");
+
+  // The listener has to survive the whole offline episode; asserting it before
+  // the reconnect is what keeps this test honest about the recovery.
+  await vi.waitFor(() => {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+  });
+
+  context.mocks.ably.triggerConnectionState("connected");
+  context.mocks.ably.trigger(topic);
+  await waitFor(() => {
+    expect(runs).toBe(1);
+  });
+});
+
+test("A suspended connection keeps the listener instead of failing", async () => {
+  mockSignedInUser();
+  const topic = "test:suspended-no-failure";
+  const subscriber = testSubscriber();
+
+  await setupAuthAndRealtime();
+  context.mocks.ably.triggerConnectionState("suspended", {
+    code: 80_003,
+    message: "Unable to connect (network unreachable)",
+  });
+
+  const loopPromise = context.store.set(
+    setAblyLoop$,
+    { topic, loopCommand$: keepAliveLoop$ },
+    subscriber.signal,
+  );
+  let loopSettled = false;
+  const observeLoop = async (): Promise<void> => {
+    await settle(loopPromise);
+    loopSettled = true;
+  };
+  detach(observeLoop(), Reason.Daemon, "suspended realtime loop");
+
+  // The transport is unavailable, not broken. Dropping the listener here is
+  // what used to strand the subscription: Ably reattaches the channel on
+  // reconnect, but it cannot restore a listener the application removed.
+  await vi.waitFor(() => {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+  });
+  expect(loopSettled).toBeFalsy();
+});
+
+test("Subscription initialization runs only after the channel attaches", async () => {
+  mockSignedInUser();
+  const topic = "test:initialize-after-attach";
+  const subscriber = testSubscriber();
+  let reconnected = false;
+  const initializeOrder: string[] = [];
+  const initialize$ = command((_ctx, _signal: AbortSignal) => {
+    initializeOrder.push(reconnected ? "after-attach" : "before-attach");
+    return false;
+  });
+
+  await setupAuthAndRealtime();
+  context.mocks.ably.triggerConnectionState("suspended", {
+    code: 80_003,
+    message: "Unable to connect (network unreachable)",
+  });
+
+  detach(
+    context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: keepAlivePayloadLoop$,
+        initializeCommand$: initialize$,
+      },
+      subscriber.signal,
+    ),
+    Reason.Daemon,
+    "initialize after attach",
+  );
+
+  // Catch-up must not run against a channel that cannot deliver messages yet,
+  // or it would leave a gap for everything published in between.
+  await vi.waitFor(() => {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+  });
+  expect(initializeOrder).toHaveLength(0);
+
+  reconnected = true;
+  context.mocks.ably.triggerConnectionState("connected");
+  await waitFor(() => {
+    expect(initializeOrder).toStrictEqual(["after-attach"]);
+  });
+});
+
+test("A terminal channel failure still stops the subscription", async () => {
+  mockSignedInUser();
+  const topic = "test:terminal-channel-failure";
+  const subscriber = testSubscriber();
+
+  await setupAuthAndRealtime();
+  context.mocks.ably.triggerConnectionState("suspended", {
+    code: 80_003,
+    message: "Unable to connect (network unreachable)",
+  });
+  const loopPromise = context.store.set(
+    setAblyLoop$,
+    { topic, loopCommand$: keepAliveLoop$ },
+    subscriber.signal,
+  );
+  await vi.waitFor(() => {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+  });
+
+  // Waiting for `attached` must not swallow a terminal channel state:
+  // authentication revocation keeps its existing terminal semantics.
+  context.mocks.ably.triggerFailure("connection failed");
+
+  const result = await settle(loopPromise);
+  expect(result.ok).toBeFalsy();
 });
 
 test("An update arriving during processing is not lost", async () => {
