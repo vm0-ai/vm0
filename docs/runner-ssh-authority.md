@@ -24,10 +24,11 @@ on another user's Run. The current `SshAccess` (`sshAccess`) feature switch must
 there is no additional staff-org gate.
 SSH access depends on the user's current configuration and the Agent's current
 grant, not how the Run started. All chat channels, workflow schedule/event
-automations, goals, delegated Agents, webhooks, SDK/non-chat and test Runs use
-the same authority path. A chat thread or trigger metadata is not required;
-workflow automation and goal associations do not restrict access. The session
-identifies the Agent without using chat-thread state as an authorization gate.
+automations, delegated Agents, webhooks, SDK/non-chat and test Runs use the same
+authority path. A chat thread or trigger metadata is not required; workflow
+associations and retained historical Goal provenance add no eligibility gate.
+The Goal lifecycle is retired; that provenance cannot create or resume work.
+The session identifies the Agent without using chat-thread state as an authorization gate.
 The switch defaults to enabled for staff organizations and disabled elsewhere;
 explicit user overrides remain effective. This rollout default does not replace
 authorization or expose credentials to local/PAT Runners.

@@ -37,10 +37,11 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * Physical storage for the immutable ChatEvent stream.
  * Each row is one typed event belonging to a chat_thread.
  *
- * User, automation, goal, and budget inputs are persisted immediately. A
- * run-less, unrevoked prompt, automation, or goal is pending thread queue
- * state. A run-scoped budget is pending active input. Their run-attributed
- * replacements are the immutable claims.
+ * Current user, automation, and budget inputs are persisted immediately. A
+ * run-less, unrevoked prompt or automation is pending thread queue state. A
+ * run-scoped budget is pending active input. Their run-attributed replacements
+ * are the immutable claims. Retained input.goal and goal.open/goal.close rows
+ * describe historical work; they grant no queue or lifecycle authority.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -68,7 +69,7 @@ export const chatEvents = pgTable(
       )
       .notNull(),
     // Attribution only: identifies the run that consumed or produced this row.
-    // A null value on an unrevoked input identifies pending queue or active-input state.
+    // A null value on an eligible current unrevoked input identifies pending state.
     runId: uuid("run_id"),
     revokesEventId: uuid("revokes_event_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
@@ -87,9 +88,10 @@ export const chatEvents = pgTable(
      *
      * `web` identifies a source without a context row; current rows use reserved
      * UUID sentinels for public-brand launch identity, while legacy rows are null.
-     * `goal` uses the goal ID as its canonical context pointer. For other values,
-     * contextId selects the row in the table named by contextType. contextId is
-     * not unique: when a pending event is claimed, the revoke + insert
+     * Historical `goal` retains its original ID as inert provenance; the Goal
+     * table no longer exists. For other values, contextId selects the row in the
+     * table named by contextType. contextId is not unique: when a pending event
+     * is claimed, the revoke + insert
      * replacement reuses it. Legal
      * (eventType, contextType) combinations are enforced by the NewChatEvent
      * TypeScript write union, not by SQL.

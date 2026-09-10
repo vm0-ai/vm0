@@ -4,7 +4,22 @@
 [independent controller production acceptance](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5604844349).
 The [completed recovery record](goal-archive-search-recovery.md) retains the
 final apply, full verification and retired execution-source evidence. The
-migration/replay and physical-schema gates below remain required through S5.
+historical S2/S4/S5 procedures below document the accepted rollout; pre-contract
+SQL is no longer applicable to the current schema and is not an execution guide.
+
+**S5 completed 2026-09-10:**
+[independent production acceptance](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5623079780)
+accepts physical contraction through Ethan's successful release #33307,
+`9c777819776d2bed0cfdb110653e46dcaffc0e8b` (API 1.582.0 / App 0.884.1).
+Release #33253's production DDL failed with `40P01`; its smoke clone was not
+production success. The accepted frontier uses the byte-verified actual
+1106 DDL → helper cleanup/timeout resets → awaited journal INSERT →
+`Migrations complete` path at **2026-09-10 17:21:49.5878347 UTC**, plus fresh
+physical metadata under unchanged masking policy. MaskDB exposes no journal or
+constraint/procedure catalogs; no direct SELECT of those rows is claimed.
+[The recorded migration gates](../turbo/packages/db/MIGRATIONS.md#retired-goal-transition-validators-2026-09-10)
+explain retirement of the two validators and four pre-contract API variants.
+Permanent history, SQL, accounting, security and rollback coverage remain.
 
 Issue [#32797](https://github.com/vm0-ai/vm0/issues/32797) implements S2 of
 [#32653](https://github.com/vm0-ai/vm0/issues/32653). The normal production S1
@@ -16,6 +31,8 @@ runless Goal inputs had canonical revokers, with an empty subsequent input tail.
 These observations were paginated live reads, not an atomic snapshot.
 
 ## Delivery and recovery
+
+This section describes the completed S2 migration and its historical retry contract.
 
 `1093_goal_retirement_receipt` adds nullable event-ID/sequence receipt columns
 with paired-nullability and positive JavaScript-safe sequence constraints. It
@@ -66,8 +83,10 @@ The implementation PR's merge is not production migration or release evidence.
 
 ## Count-only production acceptance
 
-Controller/release owners perform these checks after authorized delivery using
-an approved database path. This does not expand the seven-column MaskDB policy.
+These were the S2 pre-contract acceptance checks for controller/release owners
+using an approved database path. S5 removed `thread_goals` and its receipts, so
+these queries must not be run against the contracted schema. They did not expand
+the seven-column MaskDB policy.
 Do not select objective or payload content into logs or application processes.
 Record the exact release, migration journal frontier and query timestamps.
 
@@ -129,15 +148,18 @@ unrelated deployment or chat-run completion.
 
 ## Removal point
 
-The procedure is dropped on successful migration; its immutable SQL remains the
-replay source. Keep the physical Goal table, receipt columns, `agent_runs.goal_id`
-and historical events through S4. Only after the consumer-free S4 release is
-serving may S5 recreate this idempotent preservation/settlement operation,
-recheck every remainder and preservation gate, then drop obsolete physical
-state and its temporary helpers in that later migration. The transition test
-stays until the deployed S5 contract completes and surviving history invariants
-are covered permanently, per [MIGRATIONS.md](../turbo/packages/db/MIGRATIONS.md).
-No elapsed waiting period replaces these gates.
+S2 dropped its temporary procedure after success. S4 retained the physical Goal
+table, receipts and `agent_runs.goal_id` while removing application consumers.
+After the consumer-free S4 release and its ordinary-write repair were accepted,
+S5 replayed preservation/settlement, passed the residual and preservation gates,
+and dropped those physical objects and helpers. Historical events remain.
+
+S6a retires the completed transition validators under
+[MIGRATIONS.md](../turbo/packages/db/MIGRATIONS.md#retired-goal-transition-validators-2026-09-10).
+The original numbered 014 README/code/exports and shipped 1093/1094/1105/1106
+SQL, snapshots and journal remain unchanged as historical records. Operation
+014 is complete and must not be replayed against the contracted schema. No
+elapsed waiting period replaced the accepted gates.
 
 ## Literal historical projection (#32834)
 
@@ -166,8 +188,8 @@ Title/followup context selection uses the provenance-aware projection because it
 thread-wide query can include runless historical output. No callback, queue,
 notification, usage, budget, or native-runtime policy is changed.
 
-An old search projector can advance its watermark after stripping objective text.
-The bounded, idempotent [014 search recovery](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md)
+Before projector repair, an old search projector could advance its watermark
+after stripping objective text. The completed, bounded [014 search recovery](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md)
 reads only receipt-addressed canonical history inside the authorized repair process
 and replaces only those derived search documents. Its default is read-only; its
 reports contain counts and opaque cursors, never objective text. This operational
@@ -185,12 +207,13 @@ cancelled apply's attributable commit count remains **UNKNOWN**.
 
 The [dated completed recovery record](goal-archive-search-recovery.md) links the
 full operator/controller certificates and immutable accepted source
-`30c84e22f32fb43bfc12af672fa1aec9a8969c47`. S3 #33023 removes the temporary
+`30c84e22f32fb43bfc12af672fa1aec9a8969c47`. S3 #33023 removed the temporary
 GitHub workflow, wrapper and dedicated tests after that acceptance. Their
 dispatch instructions are retired; no further recovery execution is expected.
 The controller already deleted the separate Okou S2 watcher and verified absence.
-The numbered 014 operation, its exports, 1093/1094 and S5 transition validator
-remain; physical schema removal still waits for the later S4/S5 gates above.
+The numbered 014 operation and its exports remain as permanent historical
+records. S5 subsequently contracted the physical schema; S6a retires the expired
+transition validation while retaining current-schema reader coverage.
 
 Public shares are intentionally immutable copies. A previously stripped copy is
 not automatically changed or republished. Its owner can explicitly create a new
@@ -219,19 +242,20 @@ INSERT defaults, SELECT and RETURNING. Application imports and the runtime DB
 registry use this mapping. It is outside Drizzle's unchanged `src/schema/*` glob
 and is not re-exported by files under that glob.
 
-`src/schema/agent-run-session-conversation.ts` adds the retained physical
-`goal_id` column and retains the original FK, indexes and checks. The common
-factory prevents divergent non-Goal columns. Physical `thread_goals`, paired
-receipts, 014, 1093/1094, snapshots and `test-goal-retirement-migration.ts` remain
-unchanged. Migration consistency still generates and compares the complete
-physical schema. S4 adds no production migration.
+During S4, `src/schema/agent-run-session-conversation.ts` still added the physical
+`goal_id` column and retained the original FK, indexes and checks; the common
+factory prevented divergent non-Goal columns. S4 preserved physical
+`thread_goals` and paired receipts and added no production migration. S5 later
+removed those definitions. Migration consistency still generates and compares
+the complete current physical schema.
 
-The isolated `goal-schema-contraction.test.ts` database replays real migrations,
-then removes only its own obsolete Goal objects. Real failed-launch INSERT and
+The retained `goal-schema-contraction.test.ts` fixture now runs the complete
+current migration sequence in a test-owned database. Real failed-launch INSERT and
 successful launch CTE, run reads/metadata, claimed terminal callback and late
 usage execute there. OpenTelemetry captures the actual application statements;
 the test verifies both insertion forms and the absence of obsolete SQL names.
-This fixture is evidence of consumer independence, not an S5 migration.
+This fixture preserves current-schema consumer and accounting coverage; it does
+not perform a production migration.
 
 ### Historical provenance and accounting
 
@@ -278,7 +302,7 @@ Retained Goal references are intentionally limited to:
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Historical compatibility | canonical context/group projections, hot/snapshot decoding, strict literal 1094 archives, draft/log annotations, search/export and immutable shares |
 | Conservative security    | legacy banking unattended classification, reuse-key rejection and unsupported captured-input guards                                                 |
-| Physical S5 state        | migration-facing tables/columns/receipts, immutable migration files and the active transition validator/consistency entry                           |
+| Migration history        | immutable shipped SQL, snapshots/journal and original numbered 014 records; permanent current-schema consistency coverage                           |
 | Historical test evidence | deliberate old-row fixtures and behavior tests; these do not expose Goal product writers                                                            |
 | Separate S6 resources    | official published resources, user storage and durable instructions, outside this PR                                                                |
 
@@ -304,10 +328,10 @@ instruction or durable workflow is rewritten. A specifically identified stale
 ordinary payload must be assessed within its own bounded context; token TTL or
 an old owner launch package is not a global drain certificate.
 
-Controller code acceptance and normal-production verification follow merge in
-separate ownership. S5 must prove a serving consumer-free S4 rollback target and
-repeat preservation/zero-residual gates before any physical contraction. The
-permanent S1 ancestry floor alone is insufficient. S6 publication/storage cleanup
+Controller code acceptance and normal-production verification followed merge in
+separate ownership. Accepted S5 established a serving consumer-free S4 rollback
+target and repeated preservation/zero-residual gates before physical contraction.
+The permanent S1 ancestry floor alone is insufficient. S6 publication/storage cleanup
 remains separate; Codex `features.goals=false` stays intact.
 
 ## S5 physical contraction (#33285)
@@ -318,6 +342,9 @@ and its ordinary-write repair; see [the compatibility boundary](deployment-compa
 Implementation merge is not production contraction or EPIC acceptance.
 
 ### Ordered migration and retry contract
+
+This is the shipped S5 migration's historical execution and recovery contract;
+its production frontier has passed the acceptance recorded above.
 
 1. `1105_prepare_goal_metadata_contraction` adds
    `agent_runs_metadata_without_goal_check` with `NOT VALID`, retaining the
@@ -379,17 +406,17 @@ This pointer coverage is **not a fresh full-content certificate**. The
 [accepted S2 certificate](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5604844349)
 and unchanged canonical reader checksum/schema/order validation preserve the
 external object boundary. Current-main hot/snapshot/search/share/export tests
-run against the complete contracted schema. Genuine 1094/014 transition cases
-run separately in private databases stopped before S5; they never restore Goal
-tables in the current schema. The transition validators remain active through
-independent production acceptance under MIGRATIONS.md. The pre-contract API
-recovery cases and their private migration setup share that removal gate; keep
-the current-schema history cases when retiring those transition cases.
+run against the complete contracted schema and remain permanent coverage.
+S6a removes only the four pre-contract API variants, their 1094/014 fixture
+branches and the two expired DB validators after independent S5 acceptance.
+All four recorded statuses, exact literal content, malformed provenance,
+old-share immutability and ordinary continuation remain exercised.
 
-The S5 validator uses 4,162 Goals, 101,626 hot Goal inputs and 113,789 historical
-linked runs within 271,758 total runs. It compares retained run/event/snapshot
-records and unrelated constraints before/after contraction, tests actual
-constraint failures, and measures online validation, replay and final lock-held
+The [historical S5 validator](https://github.com/vm0-ai/vm0/blob/1cd69b0219c6fe67b7d2fd15bcb7e914ffd8f52e/turbo/packages/db/scripts/test-goal-schema-contraction.ts)
+used 4,162 Goals, 101,626 hot Goal inputs and 113,789 historical
+linked runs within 271,758 total runs. It compared retained run/event/snapshot
+records and unrelated constraints before/after contraction, tested actual
+constraint failures, and measured online validation, replay and final lock-held
 work separately. Hot-input counts do not enumerate all snapshot history.
 Replay census/reconciliation and final notices report remaining counts; compare
 these with legitimate concurrent clear counts without reconstructing objectives.
