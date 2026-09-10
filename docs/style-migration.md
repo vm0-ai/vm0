@@ -353,3 +353,14 @@ Tailwind generates the same `font-family: var(--font-family-emoji)` declaration
 from the existing App theme token; no token rename or alias is required.
 The original frozen BEFORE/A-A evidence, runner and pixel limits remain the
 comparison contract for this syntax simplification.
+
+The [named-utility evidence archive](https://a.okou.io/tuxdll7vug.zip) and
+[comparison image](https://a.okou.io/0ari27pv9w.png) record all 28 states passing
+with zero raw changed pixels and identical computed styles, geometry and
+control observations on source `242fcfd3261fb8f0aa994ecfe78671f9fa67f70b`,
+App/API build `751dc257ecea3ba7c8830c9efd5e90e740aff81e`. All 19 focused tests,
+affected static checks and the [source CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34433235841)
+passed. Real TEST API selection, removal and persistence across reloads also
+passed with zero chat event rows. The archive retains all prior failed evidence,
+the unchanged harness and per-file SHA256; its anonymous HTTPS download and
+archive hash were verified. The PR remains Draft.
