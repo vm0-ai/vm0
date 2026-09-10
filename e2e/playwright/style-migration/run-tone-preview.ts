@@ -56,6 +56,7 @@ interface Manifest {
   ariaMode: "legacy" | "pressed";
   fixtureSha256: string;
   featureFixtureSha256: string;
+  sidebarFixtureSha256: string;
   failures: string[];
 }
 
@@ -72,6 +73,7 @@ const { values } = parseArgs({
     "agent-fixture": { type: "string" },
     "aria-mode": { type: "string", default: "pressed" },
     "feature-fixture": { type: "string" },
+    "sidebar-fixture": { type: "string" },
   },
 });
 
@@ -176,7 +178,10 @@ async function observeSurfaces(section: Locator) {
     const canvas = document.createElement("canvas");
     canvas.width = 1;
     canvas.height = 1;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
+    const context = canvas.getContext("2d", {
+      willReadFrequently: true,
+      colorSpace: "srgb",
+    });
     if (!context) throw new Error("Missing sRGB color observation context");
     const observation = [];
     const rawStyles = [];
@@ -197,7 +202,13 @@ async function observeSurfaces(section: Locator) {
       // Compare only this bubble's background as exact sRGB RGBA8 paint;
       // retain raw styles and the unchanged full-page pixel protocol.
       let background: string | number[] = styles["background-color"];
+      let backgroundAlpha: number | undefined;
       if (slot === "tone-preview-user-message") {
+        const alpha =
+          background.match(/\/\s*([\d.]+)\s*\)$/)?.[1] ??
+          background.match(/^rgba\(.*,\s*([\d.]+)\)$/)?.[1] ??
+          "1";
+        backgroundAlpha = Number(alpha);
         context.clearRect(0, 0, 1, 1);
         context.fillStyle = background;
         context.fillRect(0, 0, 1, 1);
@@ -207,6 +218,7 @@ async function observeSurfaces(section: Locator) {
         slot,
         tag: surface.tagName,
         text: surface.textContent?.trim(),
+        backgroundAlpha,
         box: { x: box.x, y: box.y, width: box.width, height: box.height },
         styles: {
           ...styles,
@@ -250,6 +262,15 @@ async function run() {
   assert(ariaMode === "legacy" || ariaMode === "pressed");
   const fixtureBytes = await readFile(required("agent-fixture"));
   const featureFixtureBytes = await readFile(required("feature-fixture"));
+  const sidebarFixtureBytes = await readFile(required("sidebar-fixture"));
+  const sidebarFixture: Record<string, unknown> = JSON.parse(
+    sidebarFixtureBytes.toString(),
+  );
+  assert.equal((sidebarFixture["/api/org"] as { role: string }).role, "admin");
+  assert.equal(
+    (sidebarFixture["/api/billing/status"] as { tier: string }).tier,
+    "free",
+  );
   const featureFixture: Record<string, unknown> = JSON.parse(
     featureFixtureBytes.toString(),
   );
@@ -301,6 +322,11 @@ async function run() {
       sha256(featureFixtureBytes),
       "Frozen feature fixture changed",
     );
+    assert.equal(
+      baseline.sidebarFixtureSha256,
+      sha256(sidebarFixtureBytes),
+      "Frozen sidebar fixture changed",
+    );
   }
   // Deliberately exclusive: no command can replace a frozen archive or failed attempt.
   await mkdir(out);
@@ -325,6 +351,7 @@ async function run() {
     ariaMode,
     fixtureSha256: sha256(fixtureBytes),
     featureFixtureSha256: sha256(featureFixtureBytes),
+    sidebarFixtureSha256: sha256(sidebarFixtureBytes),
     failures: [],
   };
   try {
@@ -430,6 +457,15 @@ async function run() {
           },
         );
         let profile = { ...fixture };
+        await page.route(
+          (url) => url.origin === apiOrigin && url.pathname in sidebarFixture,
+          async (route) => {
+            assert.equal(route.request().method(), "GET");
+            await route.fulfill({
+              json: sidebarFixture[new URL(route.request().url()).pathname],
+            });
+          },
+        );
         const onboarding = () => ({
           needsOnboarding: false,
           onboardingComplete: true,
@@ -454,6 +490,7 @@ async function run() {
           },
         );
         await fixtureBootstrap(page, appOrigin, () => ({
+          ...sidebarFixture,
           "/api/user-preferences": preferences,
           "/api/onboarding/status": onboarding(),
           "/api/agents": [profile],
@@ -537,6 +574,13 @@ async function run() {
         ).toHaveAttribute("content", appBuildSha);
         const group = page.getByRole("group", { name: "Tone", exact: true });
         await expect(group).toBeVisible();
+        async function expectSidebarReady() {
+          if (!item.isMobile)
+            await expect(
+              page.getByRole("button", { name: /^Get Pro/ }),
+            ).toBeVisible();
+        }
+        await expectSidebarReady();
         const section = page.getByRole("group", {
           name: `How ${fixture.displayName} sounds`,
           exact: true,
@@ -738,6 +782,7 @@ async function run() {
         await capture("saved");
         await page.reload({ waitUntil: "domcontentloaded" });
         await expectTone(1);
+        await expectSidebarReady();
         await expect(save).not.toBeVisible();
         await group.scrollIntoViewIfNeeded();
         await capture("reloaded");
