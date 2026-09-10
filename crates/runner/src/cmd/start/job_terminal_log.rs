@@ -685,6 +685,37 @@ mod tests {
     }
 
     #[test]
+    fn codex_content_policy_rejection_logs_job_execution_failed_at_info() {
+        const ENVELOPE: &str = r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#;
+        let diagnostic = job_failure_diagnostic(Some(FailureReason::SafetyPolicyRefusal));
+        let failure = executor::ExecutionFailure::new(1, ENVELOPE, Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::INFO);
+        assert_field_eq(&event, "error", ENVELOPE);
+        assert_field_eq(&event, "failure_reason", "safety_policy_refusal");
+        assert_field_eq(&event, "failure_framework", "codex");
+        assert_field_eq(&event, "failure_class", "cli_nonzero");
+        assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
+    }
+
+    #[test]
+    fn unclassified_codex_provider_envelope_stays_at_error() {
+        let diagnostic = job_failure_diagnostic(None);
+        let failure = executor::ExecutionFailure::new(
+            1,
+            r#"{"error":{"message":"Invalid Format","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+            Some(diagnostic),
+        );
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert!(!event.fields.contains_key("failure_reason"));
+    }
+
+    #[test]
     fn oversized_codex_input_logs_cli_execution_failure_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliExecutionError,

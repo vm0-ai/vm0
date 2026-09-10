@@ -276,6 +276,39 @@
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32958"
     },
     {
+      "id": "tone-preview-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-bubble-cool", "okou-border"],
+      "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
+      "cases": [
+        "tone-preview-light",
+        "tone-preview-dark",
+        "tone-preview-mobile"
+      ],
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-setup-attempts",
+          "url": "https://a.okou.io/0ey5ajo2g7.zip",
+          "sha256": "a644613bdfca1f205962bfc9f77c94de4e124485817bbbe89762ed613079cf0e",
+          "commit": "047e880cc958225a79c2ebceb961718a0916d5c9"
+        },
+        {
+          "kind": "after-raw-diffs-and-live-persistence",
+          "url": "https://a.okou.io/uc3wow1q46.zip",
+          "sha256": "21a6751c30b32927858510a317e57e00f1068a2c16d992a6b77695664b393a25",
+          "commit": "1a665b1d0b25311c4c98471c206212a64be79c0d"
+        },
+        {
+          "kind": "before-after-comparison-image",
+          "url": "https://a.okou.io/seho80x6gx.png",
+          "sha256": "13468571ad46d0c397740e81295ec4112eb0b96c0f96aff127131ac8aae0ab01",
+          "commit": "1a665b1d0b25311c4c98471c206212a64be79c0d"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33133"
+    },
+    {
       "id": "monochrome-icon-filter",
       "family": "local-controls",
       "tokens": ["okou-icon-mono"],
@@ -363,6 +396,7 @@
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
     "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/tone-preview-cases.json",
     "../e2e/playwright/style-migration/icon-mono-cases.json",
     "../e2e/playwright/style-migration/settings-select-cases.json"
   ]

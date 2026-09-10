@@ -1074,6 +1074,18 @@ const connectors = [
     ]),
   }),
   connector({
+    connectorSlug: "google-analytics",
+    label: "Google Analytics",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "google-analytics",
+        prefix: "GOOGLE_ANALYTICS",
+        tokenEnvironmentNames: ["GOOGLE_ANALYTICS_TOKEN"],
+        scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "google-calendar",
     label: "Google Calendar",
     authMethods: [

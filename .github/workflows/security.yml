@@ -263,6 +263,7 @@ jobs:
             .github/scripts/verify-okou-app-assets.sh \
             .github/scripts/verify-okou-app-runtime.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
+            .github/scripts/prune-runner-idle.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
             .github/actions/report-memory-peak/report.sh \
             .github/scripts/resolve-desktop-version-change.sh \
@@ -302,8 +303,10 @@ jobs:
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
             .github/scripts/tests/reconcile-and-start-runner-groups-test.sh \
+            .github/scripts/tests/prune-runner-idle-test.sh \
             .github/scripts/tests/report-cgroup-memory-peak-test.sh \
             .github/scripts/tests/runner-lifecycle-lock-test.sh \
+            .github/scripts/tests/runner-lifecycle-lock-diagnostics-test.sh \
             .github/scripts/tests/rust-ci-memory-workflow-test.sh \
             .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \

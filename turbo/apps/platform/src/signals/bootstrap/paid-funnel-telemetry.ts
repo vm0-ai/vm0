@@ -1,3 +1,4 @@
+import { compatibleGoogleAdsAttribution } from "@okouai/core/google-ads-attribution";
 // Paid-onboarding funnel telemetry. Every event carries the first-touch ad
 // attribution captured on the marketing-site hop so PostHog can segment the
 // funnel by campaign, and the two website-tag conversion actions that Google
@@ -74,7 +75,9 @@ function attributionProperties(
     return properties;
   }
 
-  for (const [key, value] of Object.entries(attribution)) {
+  for (const [key, value] of Object.entries(
+    compatibleGoogleAdsAttribution(attribution),
+  )) {
     if (typeof value === "string" && value) {
       properties[key] = value;
     }

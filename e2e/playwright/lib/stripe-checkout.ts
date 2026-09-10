@@ -543,10 +543,6 @@ async function disableLinkSaveInfo(page: Page): Promise<void> {
 export async function fillStripeCheckout(page: Page): Promise<void> {
   await expect(page).toHaveURL(/checkout\.stripe\.com/, { timeout: 30_000 });
 
-  await fillFirst(
-    page.getByLabel(/email/i).or(page.locator('input[name="email"]')),
-    `billing-e2e-${Date.now()}@vm0-e2e.ai`,
-  );
   // Stripe can commit the hosted Checkout navigation while its form is still
   // a skeleton. Use the final purchase control as the single layout-neutral
   // readiness boundary before inspecting Card controls or field frames.
@@ -573,6 +569,16 @@ export async function fillStripeCheckout(page: Page): Promise<void> {
       .or(page.locator('input[name="billingPostalCode"]')),
     "94107",
   );
+
+  // Fill email after the other form actions and verify it before payment.
+  const email = page
+    .getByLabel(/email/i)
+    .or(page.locator('input[name="email"]'))
+    .filter({ visible: true })
+    .first();
+  const emailAddress = `billing-e2e-${Date.now()}@vm0-e2e.ai`;
+  await email.fill(emailAddress, { timeout: 5_000 });
+  await expect(email).toHaveValue(emailAddress);
 
   await checkoutSubmitLocator(page).click({ timeout: 30_000 });
 }

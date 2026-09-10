@@ -17,6 +17,7 @@ import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acq
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
+import { impactStripeMetadata$ } from "../services/impact-attribution.service";
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { logger } from "../../lib/log";
@@ -510,7 +511,13 @@ const googleAdsPaidConversion$ = command(
     const attribution = snapshots.find((metadata) => {
       return (
         metadata &&
-        ["gclid", "gbraid", "wbraid", "vm0_campaign_id"].some((key) => {
+        [
+          "gclid",
+          "gbraid",
+          "wbraid",
+          "okou_campaign_id",
+          "vm0_campaign_id",
+        ].some((key) => {
           return metadata[key];
         })
       );
@@ -529,8 +536,8 @@ const googleAdsPaidConversion$ = command(
         .limit(1);
       signal.throwIfAborted();
       googleAdsAccountId = googleAdsAccountForAttribution({
-        vm0_campaign_id: org?.campaignId ?? undefined,
-        vm0_ad_group_id: org?.adGroupId ?? undefined,
+        okou_campaign_id: org?.campaignId ?? undefined,
+        okou_ad_group_id: org?.adGroupId ?? undefined,
       });
     }
     // Legacy paid conversions are UPLOAD_CLICKS and remain on the offline path.
@@ -616,12 +623,16 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   } = bodyResult.data;
   const previewEnabled = supportsInAppPreview === true;
   const clerk = get(clerk$);
-  const resolvedAttribution = await checkoutAttribution(
+  const acquisition = await checkoutAttribution(
     clerk,
     auth.userId,
     adAttribution,
     signal,
   );
+  const resolvedAttribution = {
+    ...acquisition,
+    ...(await set(impactStripeMetadata$, auth.orgId, signal)),
+  };
 
   if (!checkoutRedirectsAllowed(successUrl, cancelUrl)) {
     return badRequestMessage(
@@ -828,12 +839,16 @@ const usagePackCheckoutAuthed$ = command(
 
     const previewEnabled = body.supportsInAppPreview === true;
     const clerk = get(clerk$);
-    const resolvedAttribution = await checkoutAttribution(
+    const acquisition = await checkoutAttribution(
       clerk,
       auth.userId,
       body.adAttribution,
       signal,
     );
+    const resolvedAttribution = {
+      ...acquisition,
+      ...(await set(impactStripeMetadata$, auth.orgId, signal)),
+    };
 
     if (!checkoutRedirectsAllowed(body.successUrl, body.cancelUrl)) {
       return badRequestMessage(
