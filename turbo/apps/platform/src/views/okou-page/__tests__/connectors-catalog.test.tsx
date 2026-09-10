@@ -445,6 +445,8 @@ test("Present a connector with no accounts", async () => {
 });
 
 function shelfCatalog() {
+  // Sixteen, so the category holds more than the twelve discovery returns for
+  // it when no category is asked for by name.
   const mail = [
     "Gmail",
     "Outlook Mail",
@@ -454,6 +456,14 @@ function shelfCatalog() {
     "Telegram",
     "Lark",
     "Zendesk",
+    "Intercom",
+    "Mailchimp",
+    "Resend",
+    "Twilio",
+    "Front",
+    "Missive",
+    "Crisp",
+    "Help Scout",
   ].map((label, index) => {
     return publicStatusItem({
       connectorSlug: `mail-${index}` as ConnectorSlug,
@@ -489,7 +499,7 @@ test("Browse the catalog as shelves, then enter a category and come back", async
 
   // Six per shelf, closed by the products it stands for rather than a count.
   await waitFor(() => {
-    expect(screen.getByText("See Zendesk and 321 more")).toBeVisible();
+    expect(screen.getByText(/^See .* and 321 more$/u)).toBeVisible();
   });
   expect(
     screen.getByTestId("connector-shelf-communication-collaboration"),
@@ -502,7 +512,7 @@ test("Browse the catalog as shelves, then enter a category and come back", async
   expect(screen.queryByLabelText("Filter connectors")).toBeInTheDocument();
 
   // A category is a place: entering it filters the page and leaves a way back.
-  await click(screen.getByText("See Zendesk and 321 more"));
+  await click(screen.getByText(/^See .* and 321 more$/u));
   await waitFor(() => {
     expect(locationSearch()).toContain("category=communication-collaboration");
   });
@@ -510,6 +520,13 @@ test("Browse the catalog as shelves, then enter a category and come back", async
     screen.queryByTestId("connector-shelf-communication-collaboration"),
   ).toBeNull();
   expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+
+  // Entering a category asks the API for that category, so the view holds all
+  // of it -- the count on the way in is a promise the page has to keep.
+  // All sixteen, not the twelve the unfiltered response slices per category:
+  // the count offered on the way in is a promise this view has to keep.
+  expect(screen.getAllByTestId("connector-card-label")).toHaveLength(16);
+  expect(screen.queryByTestId("connector-category-grid")).toBeInTheDocument();
 
   const back = queryAllByRoleFast("button").find((element) => {
     return element.textContent === "Connectors";

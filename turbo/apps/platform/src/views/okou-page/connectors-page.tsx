@@ -810,6 +810,15 @@ function discoveryCategoryCounts(
 
 interface ConnectorsBrowseModel {
   readonly showShelves: boolean;
+  /**
+   * The chosen category's connectors, or null when no category is open. The
+   * breadcrumb and the filter already name the category, so this view renders
+   * the cards alone rather than repeating the name in a group and a section
+   * heading above them.
+   */
+  readonly categoryConnectors:
+    | readonly PlatformConnectorCatalogStatusItem[]
+    | null;
   readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly chipSections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
@@ -875,6 +884,10 @@ function buildConnectorsBrowseModel({
     // Shelves need something to shelve: a catalog too small for any category to
     // fill one falls through to the plain list.
     showShelves: ready && !filtered && layout.shelves.length > 0,
+    categoryConnectors:
+      ready && categoryFilter !== null && catalogItems.length > 0
+        ? catalogItems
+        : null,
     layout,
     connected: catalogItems.filter((connector) => {
       return connector.connected;
@@ -912,6 +925,13 @@ function ConnectorsBuiltinPanel({
           layout={browse.layout}
           renderCard={renderCard}
         />
+      ) : browse.categoryConnectors ? (
+        <div
+          data-testid="connector-category-grid"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {browse.categoryConnectors.map(renderCard)}
+        </div>
       ) : (
         fallback
       )}
