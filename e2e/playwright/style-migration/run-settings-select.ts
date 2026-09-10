@@ -6,6 +6,7 @@ import {
   chromium,
   expect as playwrightExpect,
   type Page,
+  type Locator,
 } from "@playwright/test";
 import { seedPreviewBypassCookie } from "../lib/preview-bypass";
 import { compareImages, roundingTolerance, sha256 } from "./images";
@@ -140,6 +141,16 @@ async function run() {
       frozen["/api/feature-switches"] &&
       frozen["/api/billing/status"],
   );
+  const onboarding = frozen["/api/onboarding/status"] as {
+    defaultAgentId: string;
+  };
+  const defaultAgent = frozen[`/api/agents/${onboarding.defaultAgentId}`] as {
+    agentId: string;
+  };
+  const agents = frozen["/api/agents"] as { agentId: string }[];
+  assert(defaultAgent, "Freeze the default Agent detail response");
+  assert.equal(defaultAgent.agentId, onboarding.defaultAgentId);
+  assert(agents.some((agent) => agent.agentId === onboarding.defaultAgentId));
   const runnerSha256 = sha256(
     Buffer.concat(
       await Promise.all(
@@ -221,8 +232,7 @@ async function run() {
       });
       let releaseSave: (() => void) | undefined;
       let savePending: Promise<void> | undefined;
-      let saveArrived: Promise<void> | undefined;
-      let markSaveArrived: (() => void) | undefined;
+      let saveArrived = false;
       try {
         await context.clearCookies({ name: "__Secure-okou-theme" });
         await context.addCookies([
@@ -299,7 +309,7 @@ async function run() {
                   savePending &&
                   (update.timezone !== undefined || update.locale !== undefined)
                 ) {
-                  markSaveArrived?.();
+                  saveArrived = true;
                   await savePending;
                 }
                 for (const [key, value] of Object.entries(update)) {
@@ -367,6 +377,10 @@ async function run() {
         const timezone = page.locator(
           '[data-slot="timezone-setting"] [role="combobox"]',
         );
+        async function activate(control: Locator) {
+          if (item.hasTouch) await control.tap();
+          else await control.click();
+        }
         async function capture(state: string) {
           const id = `${item.id}-${state}`;
           const image = `${id}.png`;
@@ -421,7 +435,7 @@ async function run() {
         await capture("language-idle");
         await language.hover();
         await capture("language-hover");
-        await language.click();
+        await activate(language);
         await expect(page.getByRole("listbox")).toBeVisible();
         await capture("language-open");
         await page.keyboard.press("Escape");
@@ -433,18 +447,18 @@ async function run() {
         await page.keyboard.press("Escape");
         await expect(language).toBeFocused();
         await capture("language-keyboard-focus");
-        await language.click();
-        saveArrived = new Promise<void>((resolve) => {
-          markSaveArrived = resolve;
-        });
+        await activate(language);
+        saveArrived = false;
         savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
-        await page.getByRole("option", { name: "日本語", exact: true }).click();
+        await activate(
+          page.getByRole("option", { name: "日本語", exact: true }),
+        );
         await expect(language).toBeDisabled();
         await expect(page.getByRole("listbox")).not.toBeVisible();
         await page.mouse.move(0, 0);
-        await saveArrived;
+        await expect.poll(() => saveArrived).toBe(true);
         await expect(page.locator("html")).toHaveAttribute("lang", "ja-JP");
         await expect(language).toHaveText(/日本語/);
         await capture("language-saving");
@@ -454,7 +468,7 @@ async function run() {
         await expect(language).toBeEnabled();
         await expect(language).toHaveText(/日本語/);
         await capture("language-saved");
-        await language.click();
+        await activate(language);
         await page
           .getByRole("option", { name: "English", exact: true })
           .click();
@@ -465,7 +479,7 @@ async function run() {
         await capture("timezone-idle");
         await timezone.hover();
         await capture("timezone-hover");
-        await timezone.click();
+        await activate(timezone);
         await expect(page.getByRole("listbox")).toBeVisible();
         await capture("timezone-open");
         await page.keyboard.press("Escape");
@@ -477,18 +491,16 @@ async function run() {
         await page.keyboard.press("Escape");
         await expect(timezone).toBeFocused();
         await capture("timezone-keyboard-focus");
-        await timezone.click();
-        saveArrived = new Promise<void>((resolve) => {
-          markSaveArrived = resolve;
-        });
+        await activate(timezone);
+        saveArrived = false;
         savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
-        await page.getByRole("option", { name: /Tokyo/ }).click();
+        await activate(page.getByRole("option", { name: /Tokyo/ }));
         await expect(timezone).toBeDisabled();
         await expect(page.getByRole("listbox")).not.toBeVisible();
         await page.mouse.move(0, 0);
-        await saveArrived;
+        await expect.poll(() => saveArrived).toBe(true);
         await capture("timezone-saving");
         releaseSave?.();
         savePending = undefined;
@@ -521,6 +533,11 @@ async function run() {
         await context.close();
       }
     }
+    assert.equal(
+      manifest.captures.length,
+      caseFile.cases.length * 13,
+      "Every case must contain all 13 states",
+    );
     if (baseline)
       assert.equal(manifest.captures.length, baseline.captures.length);
   } finally {
