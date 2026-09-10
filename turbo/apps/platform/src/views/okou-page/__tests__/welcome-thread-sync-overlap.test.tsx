@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { welcomeChatThreadsContract } from "@okouai/api-contracts/contracts/welcome-chat-threads";
 import {
   chatThreadMetadataContract,
@@ -113,7 +113,7 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
   });
   await setupPage({
     context,
-    path: primaryPath,
+    path: "/chats/b0000000-0000-4000-a000-000000033304?settings=debug",
     sharedWorkerTestTransport: "message-port",
     auth: {
       user: { id: `user_${context.resourceId}`, fullName: "Test User" },
@@ -130,15 +130,17 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
       [FeatureSwitchKey.WelcomeThread]: true,
     },
   });
-  await screen.findByText("Primary conversation", {
-    selector: '[data-testid="chat-thread-header-title"]',
+  // The cold route proves the initial list sync finished and opens Debug
+  // directly, without spending this race test on unrelated menu interactions.
+  await screen.findByRole("heading", { name: "Chat thread not found" });
+  await screen.findByRole("dialog", { name: "Settings" });
+  await waitFor(() => {
+    expect(
+      context.mocks.ably.hasChannelSubscriptionOnChannel(
+        `user-org:user_${context.resourceId}:org_${context.resourceId}`,
+      ),
+    ).toBeTruthy();
   });
-  const rail = await screen.findByTestId("labeled-nav-rail");
-  click(within(rail).getByLabelText("Test User"));
-  click(within(await screen.findByRole("menu")).getByText("Settings"));
-  const dialog = await screen.findByRole("dialog", { name: "Settings" });
-  click(fastButton("Debug", dialog));
-  await screen.findByRole("region", { name: "Welcome thread" });
   refreshing = true;
   context.mocks.ably.trigger("threadListChanged");
   await olderRequested.promise;
@@ -150,6 +152,9 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
   });
 
   navigate(sidebarPath);
+  await screen.findByText("Primary conversation", {
+    selector: '[data-testid="chat-thread-header-title"]',
+  });
   await metadataRequested.promise;
   // Abandon one cold reader while the shared welcome synchronization continues.
   navigate(primaryPath);
@@ -168,10 +173,13 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
   releaseNewer.resolve();
   // An incorrectly completed not-found pane does not retry merely because a
   // later list result includes this thread. Its ordinary history must appear.
-  await screen.findByText("Welcome history in the second pane");
+  await screen.findByText("Newly committed welcome", {
+    selector: '[data-testid="chat-thread-header-title"]',
+  });
   expect(screen.getAllByRole("region", { name: "Chat thread" })).toHaveLength(
     2,
   );
+  await screen.findByText("Welcome history in the second pane");
   expect(window.location.pathname).toBe(primaryPath);
   expect(new URL(window.location.href).searchParams.get("sidebar")).toBe(
     welcome.threadId,
