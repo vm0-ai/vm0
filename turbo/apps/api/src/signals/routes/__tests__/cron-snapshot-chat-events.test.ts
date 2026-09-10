@@ -783,6 +783,40 @@ describe("cron snapshot chat events", () => {
     ).toBe(2);
   }, 90_000);
 
+  it("reports the selected batch's archive lag and no lag once it converges", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Archive lag snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `archive-lag-snapshot-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+
+    // The candidate's last message is already in the past, so a clock moved
+    // forward by a known offset must be reflected in the reported lag. This
+    // fails if the counter stops measuring the selected candidates.
+    const lagMs = 60_000;
+    mockNow(new Date(Date.now() + lagMs));
+    const pending = await runSnapshotCron([threadId]);
+    expect(pending).toMatchObject({
+      success: true,
+      selectedCandidates: 1,
+      snapshots: 1,
+    });
+    expect(pending.oldestCandidateAgeMs).toBeGreaterThanOrEqual(lagMs);
+
+    // Nothing is eligible once the thread converges, so the batch has no lag.
+    const converged = await runSnapshotCron([threadId]);
+    expect(converged).toMatchObject({
+      success: true,
+      selectedCandidates: 0,
+      snapshots: 0,
+      oldestCandidateAgeMs: 0,
+    });
+  }, 60_000);
+
   it("propagates request cancellation without moving the exact pointer", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
