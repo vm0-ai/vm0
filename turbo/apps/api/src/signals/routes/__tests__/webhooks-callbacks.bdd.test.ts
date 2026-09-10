@@ -2409,7 +2409,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     },
   );
 
-  it("ingests collector memory in ordinary mixed telemetry and rejects relative paths before any ingestion", async () => {
+  it("ingests collector memory in ordinary mixed telemetry and degrades an unusable snapshot without dropping the batch", async () => {
     const { actor, runId, headers } = await createEventWebhookRun(
       `collector mixed telemetry ${randomUUID()}`,
     );
@@ -2489,9 +2489,65 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         group.cgroup = group.cgroup.slice(1);
       }
     }
-    await api.requestAgentTelemetryUnchecked(malformed, headers, [400]);
-    expect(ingested.size).toBe(0);
-    expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
+    const degraded = await api.requestAgentTelemetry(malformed, headers, [200]);
+
+    // An unusable periodic snapshot drops itself, never the unrelated system
+    // logs, metrics, and sandbox operations batched in the same request.
+    expect(degraded.body).toStrictEqual({ success: true, id: runId });
+    expect(ingested.get("sandbox-telemetry-metrics")).toStrictEqual(
+      metrics.map((metric) => {
+        return {
+          _time: metric.ts,
+          runId,
+          userId: actor.userId,
+          cpu: metric.cpu,
+          mem_used: metric.mem_used,
+          mem_total: metric.mem_total,
+          disk_used: metric.disk_used,
+          disk_total: metric.disk_total,
+        };
+      }),
+    );
+    expect(ingested.get("sandbox-telemetry-system")).toStrictEqual([
+      expect.objectContaining({ runId, log: body.systemLog }),
+    ]);
+    await flushWaitUntilForTest();
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalled();
+  });
+
+  it("keeps dedicated OOM evidence strict so an unusable payload is never acknowledged", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      `collector strict evidence ${randomUUID()}`,
+    );
+    const ingested: unknown[] = [];
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", `xaat-strict-${randomUUID()}`);
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/:dataset/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          ingested.push(events);
+          const count = Array.isArray(events) ? events.length : 0;
+          return HttpResponse.json(successfulAxiomIngestStatus(count));
+        },
+      ),
+    );
+    const relativePaths = collectorEvidence("sample");
+    for (const group of relativePaths.groups) {
+      group.cgroup = group.cgroup.slice(1);
+    }
+
+    await api.requestAgentTelemetryUnchecked(
+      {
+        runId,
+        systemLog: "batched with unusable evidence",
+        oomEvidence: relativePaths,
+      },
+      headers,
+      [400],
+    );
+
+    expect(ingested).toHaveLength(0);
   });
 
   it("projects only present control-path metric fields", async () => {

@@ -33,6 +33,40 @@ const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
 const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(10);
 const RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Why one bounded OOM evidence upload was not acknowledged.
+///
+/// Only fixed stage names and an HTTP status are reported. Evidence payloads
+/// and response bodies stay out of the log.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OomEvidenceUploadFailure {
+    Timeout,
+    Transport,
+    HttpStatus(u16),
+    BodyOversize,
+    InvalidBody,
+    MissingAck,
+}
+
+impl OomEvidenceUploadFailure {
+    fn reason(self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::Transport => "transport",
+            Self::HttpStatus(_) => "http_status",
+            Self::BodyOversize => "body_oversize",
+            Self::InvalidBody => "invalid_body",
+            Self::MissingAck => "missing_ack",
+        }
+    }
+
+    fn http_status(self) -> Option<u16> {
+        match self {
+            Self::HttpStatus(status) => Some(status),
+            _ => None,
+        }
+    }
+}
+
 /// Effective resource path once the guest process has spawned.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -412,7 +446,7 @@ impl JobTelemetry {
             "oomEvidence": evidence,
         });
         let send = async {
-            let mut response = self
+            let mut response = match self
                 .http
                 .request_route(
                     routes::webhooks::agent::telemetry::SEND,
@@ -422,26 +456,48 @@ impl JobTelemetry {
                 .json(&payload)
                 .send("oom-evidence")
                 .await
-                .ok()?;
-            if !response.status().is_success() {
-                return None;
+            {
+                Ok(response) => response,
+                Err(_) => return Err(OomEvidenceUploadFailure::Transport),
+            };
+            let status = response.status();
+            if !status.is_success() {
+                return Err(OomEvidenceUploadFailure::HttpStatus(status.as_u16()));
             }
             let mut bytes = Vec::new();
-            while let Some(chunk) = response.chunk().await.ok()? {
-                if bytes.len() + chunk.len() > 1024 {
-                    return None;
+            loop {
+                match response.chunk().await {
+                    Ok(Some(chunk)) => {
+                        if bytes.len() + chunk.len() > 1024 {
+                            return Err(OomEvidenceUploadFailure::BodyOversize);
+                        }
+                        bytes.extend_from_slice(&chunk);
+                    }
+                    Ok(None) => break,
+                    Err(_) => return Err(OomEvidenceUploadFailure::Transport),
                 }
-                bytes.extend_from_slice(&chunk);
             }
-            let body: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-            (body.get("oomEvidenceVersion")?.as_u64() == Some(1)).then_some(())
+            let Ok(body) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+                return Err(OomEvidenceUploadFailure::InvalidBody);
+            };
+            if body.get("oomEvidenceVersion").and_then(serde_json::Value::as_u64) != Some(1) {
+                return Err(OomEvidenceUploadFailure::MissingAck);
+            }
+            Ok(())
         };
-        if !matches!(
-            tokio::time::timeout(Duration::from_secs(2), send).await,
-            Ok(Some(()))
-        ) {
-            warn!(run_id = %self.run_id, "guest oom evidence upload unacknowledged; host evidence retained");
-        }
+        // Report which delivery stage failed. A bare warning cannot distinguish
+        // a rejected payload from an unconfigured receiver or a slow response.
+        let failure = match tokio::time::timeout(Duration::from_secs(2), send).await {
+            Ok(Ok(())) => return,
+            Ok(Err(failure)) => failure,
+            Err(_) => OomEvidenceUploadFailure::Timeout,
+        };
+        warn!(
+            run_id = %self.run_id,
+            reason = failure.reason(),
+            http_status = failure.http_status(),
+            "guest oom evidence upload unacknowledged; host evidence retained"
+        );
     }
 
     fn record_inner(
