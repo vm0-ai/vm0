@@ -359,7 +359,7 @@ states. The archive was anonymously downloaded and hash-verified.
 The hairline badge batch is a declaration-for-declaration replacement across 23
 consumption sites on ten pages, several of which need real organization,
 billing, and queue data to render. Its
-[frozen archive](https://a.okou.io/cq91krcx32.zip) records the cheaper check that
+[frozen archive](https://a.okou.io/6ov8hugeng.zip) records the cheaper check that
 covers all 23 at once. A script reads the BEFORE class strings from `main` and
 the AFTER class strings from the branch, including the `badgeClassName` base read
 back from its own source, so neither side is hand-written. It compiles the real

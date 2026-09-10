@@ -354,15 +354,15 @@
       "evidence": [
         {
           "kind": "local-stylesheet-and-computed-style-equivalence",
-          "url": "https://a.okou.io/cq91krcx32.zip",
-          "sha256": "3cf69d4308d18a5a7bcc1ecaadaaf49335e6c8a35d98e11c28892d3baef84656",
-          "commit": "9cbd46e546b1de820327f5fa7732981beab3df8b"
+          "url": "https://a.okou.io/6ov8hugeng.zip",
+          "sha256": "784681d8dc49b30472467d23bd1c6761104726e7eb3f95719f01f1add79b3c28",
+          "commit": "63c0f7efb4c43bd62ca8f6565aaa7dcdd39bf09d"
         },
         {
           "kind": "before-after-comparison-image",
           "url": "https://a.okou.io/8rio8pap8b.png",
           "sha256": "e7a3fb5795fa32b8b1978c70b516c8f87fd9da81252356970e105b22906f8d8b",
-          "commit": "9cbd46e546b1de820327f5fa7732981beab3df8b"
+          "commit": "63c0f7efb4c43bd62ca8f6565aaa7dcdd39bf09d"
         }
       ]
     }
