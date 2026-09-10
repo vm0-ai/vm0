@@ -13226,7 +13226,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
 
-  it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
+  it("stops terminal custom OAuth refresh across runs until reconnect", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: () => {
@@ -13274,6 +13274,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "revoked-runtime-authorization-code",
       state,
     });
+    const [account] = await connectors.listCustomConnectorAccounts(
+      actor,
+      custom.id,
+    );
+    if (!account) {
+      throw new Error("Expected the authorized custom OAuth account");
+    }
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const firstRun = await api.createRun(actor, {
@@ -13385,7 +13392,55 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       provider.tokenBodies.map((body) => {
         return body.get("grant_type");
       }),
-    ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    );
+
+    const replacement = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+      initialRefreshToken: "runtime-reconnected-refresh",
+    });
+    const reconnectUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+      agentId,
+      { intent: "reconnect", connectionId: account.id },
+    );
+    const reconnectState = new URL(reconnectUrl).searchParams.get("state");
+    if (!reconnectState) {
+      throw new Error("Expected custom connector OAuth reconnect state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "reconnected-runtime-authorization-code",
+      state: reconnectState,
+    });
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        connectionStatus: "connected",
+        reconnectReason: null,
+      }),
+    );
+    const recovered = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${secondClaim.sandboxToken}` },
+      { ...secondAuthBody, forceRefresh: true },
+      [200],
+    );
+    expect(recovered.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-oauth-refreshed-access-token" },
+    });
+    expect(replacement.tokenBodies.at(-1)?.get("refresh_token")).toBe(
+      "runtime-reconnected-refresh",
+    );
 
     await api.requestCancelRun(actor, firstRun.runId, [200]);
     await api.requestCancelRun(actor, secondRun.runId, [200]);
