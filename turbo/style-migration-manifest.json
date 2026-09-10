@@ -480,6 +480,15 @@
       ],
       "status": "implemented",
       "evidence": []
+    },
+    {
+      "id": "mic-motion",
+      "family": "motion-and-injection",
+      "tokens": ["mic-starting-spinner", "mic-volume-icon-meter"],
+      "consumers": ["apps/platform/src/views/okou-page/chat-composer.tsx"],
+      "cases": ["mic-light", "mic-dark", "mic-light-retina", "mic-dark-retina"],
+      "status": "implemented",
+      "evidence": []
     }
   ],
   "caseFiles": [
@@ -490,6 +499,7 @@
     "../e2e/playwright/style-migration/settings-select-cases.json",
     "../e2e/playwright/style-migration/badge-cases.json",
     "../e2e/playwright/style-migration/chat-emoji-cases.json",
-    "../e2e/playwright/style-migration/running-indicator-cases.json"
+    "../e2e/playwright/style-migration/running-indicator-cases.json",
+    "../e2e/playwright/style-migration/mic-motion-cases.json"
   ]
 }

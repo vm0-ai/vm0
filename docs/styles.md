@@ -145,6 +145,28 @@ The `running-indicator`, `running-indicator-center`, and
 `running-indicator-ripple` recipes have been removed; their keyframes remain,
 since keyframes are not class selectors.
 
+### Literal colours and gradients
+
+Tailwind's colour and gradient utilities interpolate in oklab, so they do not
+reproduce a literal `rgb()` fill or a plain `linear-gradient()`. Migrating the
+mic meter with `bg-white/[0.18]` and `bg-linear-to-t from-[#bdf9ff] to-white`
+changed 618 pixels against the retired rule; the exact forms
+`bg-[rgb(255_255_255_/_0.18)]` and
+`bg-[linear-gradient(to_top,#bdf9ff,#ffffff)]` reproduce it at zero. Reach for
+the ergonomic utilities when a token supplies the colour, and for an exact
+value when the retired rule named one.
+
+The mic starting spinner sets `[transform:rotate(0deg)_translateZ(0)]` for the
+same reason the running indicator does: its keyframes animate `transform`, and
+Tailwind's `rotate-*` utility sets the individual `rotate` property, which would
+compose with the animation rather than be replaced by it.
+
+`--mic-volume-fill` stays a component-set runtime value, read through
+`after:h-[var(--mic-volume-fill,0%)]`.
+
+The `mic-starting-spinner` and `mic-volume-icon-meter` selectors have been
+removed; the `mic-starting-spin` keyframes remain.
+
 ## Exception boundary
 
 Only two exception kinds exist:

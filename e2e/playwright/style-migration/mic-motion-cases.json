@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "batch": "mic-motion",
+  "cases": [
+    {
+      "id": "mic-light",
+      "path": "/agents",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "mic-dark",
+      "path": "/agents",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "mic-light-retina",
+      "path": "/agents",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 2
+    },
+    {
+      "id": "mic-dark-retina",
+      "path": "/agents",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 2
+    }
+  ]
+}
