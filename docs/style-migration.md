@@ -353,3 +353,23 @@ has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false
 No live switch was changed. Earlier manual portal navigation attempts are
 explicitly unaccepted diagnostics, distinct from the four passing frozen portal
 states. The archive was anonymously downloaded and hash-verified.
+
+## Stylesheet equivalence for mechanical badge migrations
+
+The hairline badge batch is a declaration-for-declaration replacement across 23
+consumption sites on ten pages, several of which need real organization,
+billing, and queue data to render. Its
+[frozen archive](https://a.okou.io/cq91krcx32.zip) records the cheaper check that
+covers all 23 at once. A script reads the BEFORE class strings from `main` and
+the AFTER class strings from the branch, including the `badgeVariants` base read
+back from its own source, so neither side is hand-written. It compiles the real
+App stylesheet at both commits with the App's own Tailwind compiler, renders both
+class lists on identical markup inside `.okou-app`, and compares full-page pixels
+and computed styles in Light/Dark at device scale factor 1 and 2. All four states
+reported zero changed pixels, identical image hashes, and identical computed
+styles; a recorded negative control on the fill and divider stroke made the same
+harness fail.
+
+This establishes that the shared variant reproduces the deleted declarations. It
+is not deployed-preview acceptance of the pages themselves, and it does not
+replace the per-page runners when a batch changes layout, interaction, or state.

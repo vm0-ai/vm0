@@ -350,8 +350,21 @@
         "badge-billing-light",
         "badge-billing-dark"
       ],
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "local-stylesheet-and-computed-style-equivalence",
+          "url": "https://a.okou.io/cq91krcx32.zip",
+          "sha256": "3cf69d4308d18a5a7bcc1ecaadaaf49335e6c8a35d98e11c28892d3baef84656",
+          "commit": "9cbd46e546b1de820327f5fa7732981beab3df8b"
+        },
+        {
+          "kind": "before-after-comparison-image",
+          "url": "https://a.okou.io/8rio8pap8b.png",
+          "sha256": "e7a3fb5795fa32b8b1978c70b516c8f87fd9da81252356970e105b22906f8d8b",
+          "commit": "9cbd46e546b1de820327f5fa7732981beab3df8b"
+        }
+      ]
     }
   ],
   "caseFiles": [
