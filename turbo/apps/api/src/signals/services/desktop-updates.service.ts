@@ -463,10 +463,14 @@ async function loadDesktopUpdateManifest(
   );
   if (!fetched.ok) {
     const unavailable = desktopUpdateManifestUnavailable(fetched.error);
+    // The bounded retries themselves take time. Re-read the clock after they
+    // finish so a cache entry cannot cross the stale deadline while the
+    // upstream attempts are in flight and still be served.
+    const staleNowMs = now();
     // A missing or invalid manifest is not covered here on purpose: only an
     // unreadable host may be answered from an older copy, so a broken release
     // still surfaces instead of being papered over by the last good manifest.
-    if (!unavailable || !cacheEntry || cacheEntry.staleUntil <= nowMs) {
+    if (!unavailable || !cacheEntry || cacheEntry.staleUntil <= staleNowMs) {
       throw fetched.error;
     }
 
@@ -479,18 +483,19 @@ async function loadDesktopUpdateManifest(
         : { provider_status: unavailable.providerStatus }),
       failure_class: "transient_read",
       attempts: unavailable.attempts,
-      stale_age_ms: nowMs - cacheEntry.fetchedAt,
+      stale_age_ms: staleNowMs - cacheEntry.fetchedAt,
       line,
     });
     return cacheEntry.manifest;
   }
 
+  const fetchedAt = now();
   desktopUpdateManifestCache.set({
     ...cache,
     [line]: {
-      fetchedAt: nowMs,
-      freshUntil: nowMs + DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS,
-      staleUntil: nowMs + DESKTOP_UPDATE_MANIFEST_STALE_MAX_AGE_MS,
+      fetchedAt,
+      freshUntil: fetchedAt + DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS,
+      staleUntil: fetchedAt + DESKTOP_UPDATE_MANIFEST_STALE_MAX_AGE_MS,
       manifest: fetched.value,
     },
   });
