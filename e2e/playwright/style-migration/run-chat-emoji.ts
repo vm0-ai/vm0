@@ -353,6 +353,12 @@ async function run() {
           await expect(
             page.getByRole("button", { name: "Send", exact: true }),
           ).toBeDisabled();
+          // The empty connector trigger exists before its async icon loads.
+          await expect(
+            page
+              .getByRole("button", { name: "Connectors", exact: true })
+              .locator("svg"),
+          ).toBeVisible();
           if (!(await search.isVisible())) {
             // The composer autofocuses after reload. Move focus to the real
             // chat region so its blinking caret is outside this icon scenario.
