@@ -617,6 +617,30 @@ mod tests {
     }
 
     #[test]
+    fn terminal_failure_emits_a_bounded_causal_tail_only_for_long_errors() {
+        let cause = "HTTP status 403 s3_code=ExpiredRequest";
+        let error = format!("{}\n{cause}", "中".repeat(3000));
+        let failure = executor::ExecutionFailure::new(1, &error, None);
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "message", "job execution failed");
+        assert_field_eq(&event, "error", &error);
+        assert_field_kind(&event, "error_tail", "str");
+        let tail = event.fields.get("error_tail").expect("missing causal tail");
+        assert!(tail.len() <= 4096);
+        assert!(tail.ends_with(cause));
+        assert!(error.ends_with(tail));
+
+        for error in ["short failure".to_owned(), "x".repeat(4096)] {
+            let failure = executor::ExecutionFailure::new(1, &error, None);
+            let event = capture_job_failure_log(&failure);
+            assert_field_eq(&event, "error", &error);
+            assert!(!event.fields.contains_key("error_tail"));
+        }
+    }
+
+    #[test]
     fn finished_and_cancelled_jobs_emit_one_terminal_event() {
         let finished = capture_terminal_job_log(0, true, false, None);
 
