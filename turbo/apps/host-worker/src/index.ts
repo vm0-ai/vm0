@@ -2,6 +2,7 @@ import {
   artifactDeliveryKey,
   artifactDeliveryRecordSchema,
   artifactDeliveryRegistrationKey,
+  isArtifactPublicationFilePath,
   type ArtifactDeliveryRecord,
 } from "@okouai/api-contracts/contracts/artifact-delivery";
 import {
@@ -523,6 +524,15 @@ async function serveArtifactDelivery(
   const record = registered[0];
   if (record?.kind === "publication") {
     if ((record.targetKind === "file") !== fileHost)
+      return privateResponse(notFoundResponse());
+    // The legacy one-year cache rule excludes only canonical share paths.
+    // Decoding or trimming a different path must not expose share bytes there.
+    if (
+      fileHost &&
+      !isArtifactPublicationFilePath(
+        `/${artifactFileAlias(new URL(request.url).pathname, env.PUBLIC_ARTIFACT_HOST)}`,
+      )
+    )
       return privateResponse(notFoundResponse());
     const policy = await readPublicShare(
       env,

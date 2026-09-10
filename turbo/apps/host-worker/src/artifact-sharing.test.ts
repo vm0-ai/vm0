@@ -17,7 +17,7 @@ const origin = `https://a.okou.io/${publicToken}.pdf`;
 const siteOrigin = `https://${publicToken}.okou.app`;
 const policyKey = `artifact-shares/okou/${id}.json`;
 
-function fixture(html = false) {
+function fixture(html = false, extension = "pdf") {
   const files = {
     "/index.html": {
       path: "/index.html",
@@ -82,8 +82,8 @@ function fixture(html = false) {
       : {
           kind: "file",
           id: fileId,
-          key: `private-artifacts/${fileId}/shares/${snapshotId}/report.pdf`,
-          filename: "report.pdf",
+          key: `private-artifacts/${fileId}/shares/${snapshotId}/report.${extension}`,
+          filename: `report.${extension}`,
           contentType: "application/pdf",
         },
   };
@@ -94,7 +94,7 @@ function fixture(html = false) {
       artifactDeliveryKey(
         "okou",
         html ? "html" : "file",
-        html ? publicToken : `${publicToken}.pdf`,
+        html ? publicToken : `${publicToken}.${extension}`,
       ),
       JSON.stringify({
         version: 1,
@@ -500,6 +500,46 @@ test.each([
         )
       ).status,
     ).toBe(404);
+  },
+);
+
+test.each(["", "artifacts/"])(
+  "public file shares reject noncanonical %s paths outside cache exclusions",
+  async (prefix) => {
+    const extension = "presentation";
+    const f = fixture(false, extension);
+    const path = `${publicToken}.${extension}`;
+    const url = `https://a.okou.io/${prefix}${path}`;
+    const canonical = await fetchWorker(new Request(url), f.env);
+    expect(canonical.status).toBe(200);
+    expect(await canonical.text()).toBe("Private PDF bytes");
+    expect(canonical.headers.get("Cache-Control")).toBe("private, no-store");
+    for (const variant of [
+      `${path}/`,
+      `${publicToken}%2E${extension}`,
+      `%61${publicToken.slice(1)}.${extension}`,
+    ]) {
+      const response = await fetchWorker(
+        new Request(`https://a.okou.io/${prefix}${variant}`),
+        f.env,
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(await response.text()).not.toContain("Private PDF");
+    }
+    f.objects.set(
+      policyKey,
+      JSON.stringify({
+        ...f.policy,
+        audience: "private",
+        status: "revoked",
+        publicToken: null,
+      }),
+    );
+    const revoked = await fetchWorker(new Request(url), f.env);
+    expect(revoked.status).toBe(404);
+    expect(revoked.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await revoked.text()).not.toContain("Private PDF");
   },
 );
 
