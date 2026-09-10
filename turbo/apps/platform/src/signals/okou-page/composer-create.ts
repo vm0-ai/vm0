@@ -72,6 +72,28 @@ export function composerCreateModeName(mode: ComposerCreateMode): string {
   }
 }
 
+export function composerCreateModeDescription(
+  mode: ComposerCreateMode,
+): string {
+  switch (mode) {
+    case "presentation": {
+      return i18n.t(($) => {
+        return $.chat.composer.create.presentationDescription;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.chat.composer.create.videoDescription;
+      });
+    }
+    case "image": {
+      return i18n.t(($) => {
+        return $.chat.composer.create.imageDescription;
+      });
+    }
+  }
+}
+
 export function composerCreatePlaceholder(mode: ComposerCreateMode): string {
   switch (mode) {
     case "image": {
@@ -97,12 +119,14 @@ export function createComposerCreateSignals(
   ui: ComposerUiSignalGroups,
   media: { readonly image: boolean; readonly video: boolean },
 ) {
+  const pickerId = `composer-create-picker-${crypto.randomUUID()}`;
   const modes = COMPOSER_CREATE_MODES.filter((mode) => {
     return (
       (mode !== "image" || media.image) && (mode !== "video" || media.video)
     );
   });
   const internalMode$ = state<ComposerCreateCommand | null>(null);
+  const internalPickerOpen$ = state(false);
   const internalPresentationSlideCount$ = state<PresentationSlideCount>("8-12");
   const presentationSlideCount$ = computed((get) => {
     return get(internalPresentationSlideCount$);
@@ -126,11 +150,15 @@ export function createComposerCreateSignals(
   const choosing$ = computed((get) => {
     return get(enabled$) && get(internalMode$) === "choose";
   });
+  const pickerOpen$ = computed((get) => {
+    return get(enabled$) && (get(choosing$) || get(internalPickerOpen$));
+  });
   const setMode$ = command(
     ({ get, set }, mode: ComposerCreateCommand | null) => {
       if (!get(enabled$)) {
         return;
       }
+      set(internalPickerOpen$, false);
       set(internalMode$, mode);
       set(composer.closeSuggestionMenu$);
       set(ui.model.setModelPickerOpen$, false);
@@ -150,6 +178,23 @@ export function createComposerCreateSignals(
       }
     },
   );
+  const setPickerOpen$ = command(({ get, set }, open: boolean) => {
+    if (!get(enabled$)) {
+      return;
+    }
+    if (!open && get(choosing$)) {
+      set(setMode$, null);
+      return;
+    }
+    set(internalPickerOpen$, open);
+    if (open) {
+      set(composer.closeSuggestionMenu$);
+      set(ui.model.setModelPickerOpen$, false);
+      set(ui.videoOptions.setVideoOptionsOpen$, false);
+    } else {
+      set(composer.focus$);
+    }
+  });
   const selectCommand$ = command(
     ({ get, set }, mode: ComposerCreateCommand) => {
       if (!get(enabled$)) {
@@ -171,6 +216,9 @@ export function createComposerCreateSignals(
     modes,
     mode$,
     choosing$,
+    pickerId,
+    pickerOpen$,
+    setPickerOpen$,
     setMode$,
     selectCommand$,
     presentationSlideCount$,

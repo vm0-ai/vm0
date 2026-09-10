@@ -9,6 +9,7 @@ import {
 } from "./composer-actions.ts";
 import {
   ComposerCreateControls,
+  ComposerCreatePicker,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
 } from "./composer-create.tsx";
@@ -9366,6 +9367,7 @@ function ComposerInputSlot({
   actions: ComposerActions;
   minimumHeightClassName: string;
 }) {
+  const createPickerOpen = useGet(signals.create.pickerOpen$);
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
@@ -9483,7 +9485,10 @@ function ComposerInputSlot({
         minimumHeightClassName,
       )}
     >
-      <div className="col-start-1 row-start-1 min-h-0">
+      <div
+        className="col-start-1 row-start-1 min-h-0"
+        hidden={createPickerOpen}
+      >
         <TiptapWorkflowComposer
           signals={signals}
           onDraftChange={notifyDraftChanged}
@@ -9492,6 +9497,7 @@ function ComposerInputSlot({
           onPaste={handlePaste}
         />
       </div>
+      <ComposerCreatePicker signals={signals} />
       {showVoiceTranscriptionSkeleton ? (
         <div
           className="pointer-events-none col-start-1 row-start-1 flex min-h-0 flex-col justify-center gap-2 bg-card px-6"
@@ -10997,6 +11003,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           className={cn("flex flex-col", layoutHeightClassNames.shell)}
         >
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
+          <ComposerCreateControls signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot
             signals={signals}
@@ -11032,7 +11039,6 @@ export function ChatComposer({
         className="relative flex w-full min-w-0 flex-col"
       >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
-        <ComposerCreateControls signals={signals} />
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
