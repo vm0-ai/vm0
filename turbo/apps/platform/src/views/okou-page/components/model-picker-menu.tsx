@@ -306,6 +306,7 @@ function ChatReasoningEffortSettings({
   });
   const defaultEffort = defaultChatReasoningEffort(selection.selectedModel);
   const value = selection.reasoningEffort ?? defaultEffort;
+  const displayValue = value === "extra" ? "xhigh" : value;
   const index = efforts.findIndex((effort) => {
     return effort === value;
   });
@@ -313,7 +314,7 @@ function ChatReasoningEffortSettings({
     <div className="flex flex-col gap-3 border-b border-border/60 px-2 py-4">
       <div className="flex items-baseline justify-between gap-3 text-[13px]">
         <span>{label}</span>
-        <span className="font-medium text-foreground">{value}</span>
+        <span className="font-medium text-foreground">{displayValue}</span>
       </div>
       {index !== -1 ? (
         <Slider
@@ -324,7 +325,7 @@ function ChatReasoningEffortSettings({
           value={index}
           disabled={disabled}
           aria-label={label}
-          aria-valuetext={value ?? undefined}
+          aria-valuetext={displayValue ?? undefined}
           onValueChange={(next) => {
             const effort = efforts[next];
             if (effort !== undefined) {

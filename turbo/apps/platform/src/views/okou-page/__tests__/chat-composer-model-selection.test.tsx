@@ -903,8 +903,10 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
   });
   await user.keyboard("{ArrowLeft}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "extra");
+    expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
   });
+  expect(screen.getByText("xhigh")).toBeInTheDocument();
+  expect(screen.queryByText("extra")).not.toBeInTheDocument();
   expect(screen.queryByText("ultracode")).not.toBeInTheDocument();
   await user.keyboard("{ArrowLeft}");
   await waitFor(() => {
@@ -1086,7 +1088,10 @@ test("Follow effort changes and resets made in another session", async () => {
     name: "Reasoning effort",
   });
   expect(slider).toHaveAttribute("aria-valuetext", "high");
-  for (const reasoningEffort of ["extra", null] as const) {
+  for (const [reasoningEffort, displayValue] of [
+    ["extra", "xhigh"],
+    [null, "high"],
+  ] as const) {
     events.push({
       id: crypto.randomUUID(),
       seqId: events.length + 1,
@@ -1103,10 +1108,7 @@ test("Follow effort changes and resets made in another session", async () => {
     });
     changeChatThreadList();
     await waitFor(() => {
-      expect(slider).toHaveAttribute(
-        "aria-valuetext",
-        reasoningEffort ?? "high",
-      );
+      expect(slider).toHaveAttribute("aria-valuetext", displayValue);
     });
   }
 });
