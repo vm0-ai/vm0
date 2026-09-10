@@ -193,7 +193,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Mailchimp email marketing connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ResendConnector]: {
     maintainer: "yuma@okou.ai",
