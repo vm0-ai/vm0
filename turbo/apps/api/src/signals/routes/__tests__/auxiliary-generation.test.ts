@@ -461,7 +461,7 @@ describe("auxiliary generation outcomes", () => {
       await expect(title.read()).resolves.toStrictEqual(
         outcome === "success" ? ["A usable summary"] : [],
       );
-      expect(auxiliaryResults(context)).toStrictEqual([
+      expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
         expect.objectContaining({
           feature: "chat_title",
           outcome,
@@ -523,7 +523,7 @@ describe("auxiliary generation outcomes", () => {
       });
       await title.create();
       await flushWaitUntilForTest();
-      expect(auxiliaryResults(context)).toStrictEqual([
+      expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
         expect.objectContaining({ feature: "chat_title", ...expected }),
       ]);
       expect(auxiliaryWarnings(context)).toStrictEqual([]);
@@ -566,7 +566,7 @@ describe("auxiliary generation outcomes", () => {
     await flushWaitUntilForTest();
     await expect(title.read()).resolves.toStrictEqual([]);
     // The title scheduler checks configuration before starting auxiliary work.
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
   });
 
@@ -608,7 +608,7 @@ describe("auxiliary generation outcomes", () => {
     await expect(title.read()).resolves.toStrictEqual(["A usable summary"]);
     expect(auxiliaryWarnings(context)).toStrictEqual([]);
     if (mode === "missing") {
-      expect(auxiliaryResults(context)).toStrictEqual([]);
+      expect(auxiliaryResults(context, "chat_title")).toStrictEqual([]);
     }
   });
 
@@ -746,7 +746,7 @@ describe("auxiliary generation outcomes", () => {
     if (response.status !== 201) {
       throw new Error("Expected an accepted chat event");
     }
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([]);
     expect(context.mocks.axiom.flush.mock.calls.length).toBeGreaterThan(
       beforeSendFlushes,
     );
@@ -769,7 +769,7 @@ describe("auxiliary generation outcomes", () => {
     releaseFlush.resolve(undefined);
     await drain;
     expect(drained).toBeTruthy();
-    expect(auxiliaryResults(context)).toStrictEqual([
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
       expect.objectContaining({ feature: "chat_title", outcome: "success" }),
     ]);
     const events = await chat.requestThreadEvents(actor, {}, [200]);
@@ -800,7 +800,7 @@ describe("auxiliary generation outcomes", () => {
     );
     await title.create();
     await flushWaitUntilForTest();
-    expect(auxiliaryResults(context)).toStrictEqual([
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
       expect.objectContaining({ outcome: "success", duration_ms: 0 }),
     ]);
   });
