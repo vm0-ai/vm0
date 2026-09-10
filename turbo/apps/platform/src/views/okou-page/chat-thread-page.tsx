@@ -4307,10 +4307,7 @@ function ThinkingLoader({
       <span
         aria-hidden
         data-thinking-loader="spinner"
-        // The label is mathematically centred in its line box, but its glyphs
-        // sit optically lower. Nudge the frame (not the rotating image) so the
-        // visible spinner and label share the same perceived centre line.
-        className="okou-thinking-spinner-frame relative top-px inline-flex size-4 shrink-0 items-center justify-center"
+        className="okou-thinking-spinner-frame inline-flex size-4 shrink-0 items-center justify-center"
       >
         <img
           src={thinkingSpinnerImg}
