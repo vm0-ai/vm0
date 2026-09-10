@@ -286,8 +286,16 @@
         "chat-emoji-narrow",
         "chat-emoji-narrow-dark"
       ],
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-all-rejected-calibrations",
+          "url": "https://a.okou.io/3qkwcyzuet.zip",
+          "sha256": "b455d3943ee52b0e4188ddbf47c6e21fa29ba43f40f25805959de85549712819",
+          "commit": "1e09b73cb906f1202b566255760655db893048c2"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33064"
     }
   ],
   "caseFiles": [

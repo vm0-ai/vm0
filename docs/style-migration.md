@@ -300,3 +300,20 @@ does not cover those requests. The deployed Worker executes unchanged, and
 its snapshot boundary must be observed in each case. CORS preflight is handled
 at that same fixture boundary. The runner requires the initial loading overlay
 to be hidden and the chat icon to be unobscured before capturing.
+
+The [frozen BEFORE and unchanged replay](https://a.okou.io/3qkwcyzuet.zip)
+passed all 28 states with zero changed pixels and identical computed styles,
+geometry and control observations. Source
+`1e09b73cb906f1202b566255760655db893048c2` deployed as App/API build
+`0d5834c732c37516c2d163613063a763c0fac9f2`. The archive, including every rejected
+calibration and per-file SHA256, was published before editing business CSS.
+The final runner waits for the async connector icon and focuses the existing
+chat region in closed-picker states to avoid the unrelated composer caret.
+
+All three native emoji spans now use
+`font-(family-name:--font-family-emoji)`, reusing the existing App-owned font
+stack without a new alias. The final `.okou-emoji` rule and only its legacy
+baseline entries are removed. DOM, events and size utilities are unchanged.
+Screenshot rename/reload uses a stateful TEST fixture; separate real-page
+selection and reload also passed with an empty TEST thread created using the
+allowed `deepseek-v4-pro` model. No Agent run or paid action was required.
