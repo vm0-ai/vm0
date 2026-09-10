@@ -310,3 +310,14 @@ replacing either business class. All 33 states have zero raw changed pixels
 on unmigrated App/API build `047e880cc958225a79c2ebceb961718a0916d5c9`.
 The archive retains setup failures and the first replay's outer exit anomaly;
 the confirming replay completed normally with the same frozen protocol.
+
+The [AFTER archive](https://a.okou.io/uc3wow1q46.zip) and
+[comparison image](https://a.okou.io/seho80x6gx.png) record all 33 states with
+zero raw changed pixels and identical surface/control observations on App/API
+build `1a665b1d0b25311c4c98471c206212a64be79c0d`, from implementation source
+`a9ae349966e02c2db99aad68378a24b9cac31f8a`. Both artifacts were anonymously
+downloaded and hash-verified. Actual TEST API Save, reload, Discard and original
+tone restoration passed, as did all 18 existing Profile tests and the relevant
+static checks. The branch removes one token, two declarations and two legacy
+consumption sites. The batch remains implemented until the complete current-head
+CI and acceptance gates pass; inspect the PR for live CI status.
