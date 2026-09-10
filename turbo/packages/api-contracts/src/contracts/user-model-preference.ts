@@ -11,25 +11,8 @@ const c = initContract();
 export const userModelPreferenceResponseSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
-  /**
-   * Rollout fallback. Optional so a newly promoted bundle can still parse a
-   * response from an API that predates the field. App promotion follows API
-   * promotion, so the reachable direction is an API rollback.
-   *
-   * Surface: frontend -> backend. Window: the API rollback window.
-   * Remove — make it required — once the pre-field API is outside that window.
-   * Follow-up: #26765.
-   */
-  selectedVideoModel: videoModelIdSchema.nullable().optional(),
-  /**
-   * Rollout fallback. Optional so a newly promoted bundle can still parse a
-   * response from an API that predates image preferences after an API rollback.
-   *
-   * Surface: web/app client -> backend. Window: about 2 days.
-   * Remove — make it required — once the pre-field API is outside the supported
-   * rollback and client-skew window. Follow-up: #27786.
-   */
-  selectedImageModel: imageModelIdSchema.nullable().optional(),
+  selectedVideoModel: videoModelIdSchema.nullable(),
+  selectedImageModel: imageModelIdSchema.nullable(),
   updatedAt: z.string().nullable(),
 });
 
