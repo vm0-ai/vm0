@@ -105,15 +105,15 @@ export function findPermissionInMetadata(
 
 const internalUserPermissionGrantsReload$ = state(0);
 
+const onPermissionUpdated$ = command(({ set }) => {
+  set(internalUserPermissionGrantsReload$, (version) => {
+    return version + 1;
+  });
+  return false;
+});
+
 export const subscribePermissionUpdate$ = command(
   async ({ set }, signal: AbortSignal) => {
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onPermissionUpdated$ = command(({ set }) => {
-      set(internalUserPermissionGrantsReload$, (version) => {
-        return version + 1;
-      });
-      return false;
-    });
     await set(
       setAblyLoop$,
       {
