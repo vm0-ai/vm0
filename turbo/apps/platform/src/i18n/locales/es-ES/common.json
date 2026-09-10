@@ -384,6 +384,18 @@
       "timeout": "Tiempo de espera agotado"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "¿No sabes cómo usar una función? Pregunta a {{assistantName}}.",
+      "cloud": "{{assistantName}} sigue trabajando en la nube mientras estás fuera.",
+      "employee": "Estás contratando a un compañero de IA, no solo comprando una herramienta.",
+      "ideas": "Deja que {{assistantName}} divida tu tarea en pasos y proponga ideas.",
+      "model": "No todas las tareas necesitan el modelo más potente.",
+      "schedule": "Programa tareas recurrentes para reducir el trabajo manual.",
+      "support": "¿Sigues sin resolverlo? Escríbenos a {{supportEmail}}.",
+      "workflow": "Los flujos de trabajo son habilidades reutilizables que puedes compartir con tu equipo."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Cerrar atajos de teclado",

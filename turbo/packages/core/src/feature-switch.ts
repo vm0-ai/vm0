@@ -45,6 +45,11 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.AppLoadingTips]: {
+    maintainer: "ming@okou.ai",
+    description: "Localized rotating tips below the loading avatar",
+    enabled: true,
+  },
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
     description:

@@ -370,6 +370,18 @@
       "timeout": "タイムアウト"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "機能の使い方に迷ったら、{{assistantName}} に聞いてみましょう。",
+      "cloud": "離席中も {{assistantName}} がクラウドで作業を続けます。",
+      "employee": "ツールを買うだけでなく、AI のチームメイトを雇う感覚で。",
+      "ideas": "タスクの分解もアイデア出しも {{assistantName}} に任せましょう。",
+      "model": "すべてのタスクに最高性能のモデルが必要なわけではありません。",
+      "schedule": "繰り返す作業をスケジュールして、手作業を減らしましょう。",
+      "support": "まだ解決しないときは {{supportEmail}} へご連絡ください。",
+      "workflow": "ワークフローは、再利用やチーム共有ができるスキルです。"
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "キーボードショートカットを閉じる",

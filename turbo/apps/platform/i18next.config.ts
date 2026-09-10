@@ -26,6 +26,7 @@ export default defineConfig({
     defaultNS: "common",
     functions: ["i18n.t"],
     preservePatterns: [
+      "appLoading.tips.*",
       "activity.network.details.*",
       "artifacts.templates.workflowCatalog.*",
       "artifacts.templates.workflowCategories.*",

@@ -370,6 +370,18 @@
       "timeout": "Time-out"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "Unsicher, wie du eine Funktion nutzt? Frag {{assistantName}}.",
+      "cloud": "{{assistantName}} arbeitet in der Cloud weiter, während du weg bist.",
+      "employee": "Du stellst einen KI-Kollegen ein, statt nur ein Tool zu kaufen.",
+      "ideas": "Lass {{assistantName}} deine Aufgabe aufteilen und neue Ideen anregen.",
+      "model": "Nicht jede Aufgabe braucht das leistungsstärkste Modell.",
+      "schedule": "Plane wiederkehrende Aufgaben und spare dir manuelle Arbeit.",
+      "support": "Kommst du nicht weiter? Schreib uns an {{supportEmail}}.",
+      "workflow": "Workflows sind wiederverwendbare Skills, die du mit deinem Team teilen kannst."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Tastaturkürzel schließen",

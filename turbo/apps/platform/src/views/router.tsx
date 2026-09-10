@@ -1,13 +1,17 @@
 import type { ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { createPortal } from "react-dom";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { page$, pageLayout$ } from "../signals/react-router.ts";
 import {
   appSkeletonOverlayMounted$,
   appSkeletonVisible$,
   bootstrapSkeletonActive$,
+  bootstrapSkeletonTipsContainer$,
+  mainStylesheetLoaded$,
   unmountAppSkeletonOverlay$,
 } from "../signals/app-skeleton.ts";
 import { AppSkeleton } from "./okou-page/app-skeleton.tsx";
+import { AppLoadingTips } from "./okou-page/app-loading-tips.tsx";
 import { SidebarLayout } from "./okou-page/sidebar-layout.tsx";
 import { MinimalSidebarLayout } from "./okou-page/directed-shared.tsx";
 
@@ -32,10 +36,18 @@ export function AppSkeletonOverlay() {
   const mounted = useGet(appSkeletonOverlayMounted$);
   const skeletonVisible = useGet(appSkeletonVisible$);
   const bootstrapSkeletonActive = useGet(bootstrapSkeletonActive$);
+  const bootstrapTipsContainer = useGet(bootstrapSkeletonTipsContainer$);
+  const stylesheetLoaded = useLastResolved(mainStylesheetLoaded$);
   const unmountAppSkeletonOverlay = useSet(unmountAppSkeletonOverlay$);
   const visible = !bootstrapSkeletonActive && (!page || skeletonVisible);
 
-  if (!mounted || bootstrapSkeletonActive) {
+  if (bootstrapSkeletonActive) {
+    return bootstrapTipsContainer && stylesheetLoaded
+      ? createPortal(<AppLoadingTips />, bootstrapTipsContainer)
+      : null;
+  }
+
+  if (!mounted) {
     return null;
   }
 

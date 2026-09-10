@@ -16,6 +16,11 @@ const APP_BOOTSTRAP_SKELETON_ID = "app-bootstrap-skeleton";
 const APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS = "app-bootstrap-skeleton--hidden";
 
 const internalBootstrapSkeletonActive$ = state(false);
+const internalBootstrapTipsContainer$ = state<HTMLElement | null>(null);
+
+export const bootstrapSkeletonTipsContainer$ = computed((get) => {
+  return get(internalBootstrapTipsContainer$);
+});
 
 export const mainStylesheetLoaded$ = computed(async () => {
   return (await window.__mainStylesheetLoaded) !== "failed";
@@ -27,6 +32,10 @@ export const bootstrapSkeletonActive$ = computed((get) => {
 
 export const initBootstrapSkeleton$ = command(({ set }) => {
   const active = document.getElementById(APP_BOOTSTRAP_SKELETON_ID) !== null;
+  set(
+    internalBootstrapTipsContainer$,
+    document.getElementById("app-bootstrap-loading-tips"),
+  );
   set(internalOverlayMounted$, !active);
   set(internalBootstrapSkeletonActive$, active);
 });
@@ -80,6 +89,7 @@ export const showAppSkeleton$ = command(({ get, set }) => {
 export const hideAppSkeleton$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await hideBootstrapSkeleton(signal);
+    set(internalBootstrapTipsContainer$, null);
     set(internalBootstrapSkeletonActive$, false);
     set(internalVisible$, false);
     set(captureFirstSkeletonHide$);

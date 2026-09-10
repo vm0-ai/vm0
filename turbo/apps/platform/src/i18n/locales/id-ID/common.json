@@ -370,6 +370,18 @@
       "timeout": "Timeout"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "Bingung cara memakai suatu fitur? Tanya {{assistantName}}.",
+      "cloud": "{{assistantName}} terus bekerja di cloud saat Anda pergi.",
+      "employee": "Anda merekrut rekan kerja AI, bukan sekadar membeli alat.",
+      "ideas": "Minta {{assistantName}} menguraikan tugas Anda dan memberi ide baru.",
+      "model": "Tidak semua tugas membutuhkan model paling canggih.",
+      "schedule": "Jadwalkan tugas berulang untuk mengurangi pekerjaan manual.",
+      "support": "Masih kesulitan? Email kami di {{supportEmail}}.",
+      "workflow": "Alur kerja adalah keterampilan yang bisa dipakai ulang dan dibagikan ke tim."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Tutup pintasan keyboard",

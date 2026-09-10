@@ -370,6 +370,18 @@
       "timeout": "Timeout"
     }
   },
+  "appLoading": {
+    "tips": {
+      "ask": "Not sure how to use a feature? Ask {{assistantName}}.",
+      "cloud": "{{assistantName}} keeps working in the cloud while you're away.",
+      "employee": "You're hiring an AI teammate, not just buying a tool.",
+      "ideas": "Let {{assistantName}} break down your task and spark ideas.",
+      "model": "Not every task needs the most powerful model.",
+      "schedule": "Schedule recurring tasks to reduce manual work.",
+      "support": "Still stuck? Email us at {{supportEmail}}.",
+      "workflow": "Workflows are reusable skills you can share with your team."
+    }
+  },
   "appShell": {
     "shortcutHelp": {
       "close": "Close keyboard shortcuts",
