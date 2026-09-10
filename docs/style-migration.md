@@ -273,3 +273,30 @@ invocation with identical source, runner, cases, fixture and limits passed.
 No expected image, mask or threshold changed. This is bounded Chromium
 acceptance; explicit sidebar readiness remains necessary before using the
 runner as an unattended gate.
+
+## Tone preview surfaces
+
+The `tone-preview-surfaces` batch covers the user sample bubble and its enclosing
+preview border in Agent profile settings. It replaces two legacy consumption
+sites with existing gray, foreground and surface-border utilities. The assistant
+bubble retains its separate Markdown and native Desktop selection contract;
+the shared legacy border definition remains while other consumers use it.
+
+`pnpm style:migration:tone-preview` uses `tone-preview-cases.json` and requires
+private storage state, an owned synthetic Agent fixture (`--agent-fixture`) and
+the TEST account's frozen feature-switch response (`--feature-fixture`). Both
+browser requests and embedded App bootstrap responses use those fixtures.
+The 33 states cover four tones, hover, keyboard activation/focus, Discard,
+pending Save, successful Save and reload in desktop Light/Dark and narrow DPR 2.
+Real API persistence is checked separately; no Agent run is needed.
+
+The `tone-surface-rgba8-v1` observation protocol adds exact geometry and computed
+styles for the `tone-preview` and `tone-preview-user-message` semantic slots.
+Only the user bubble's background color is compared as the browser's exact
+8-bit sRGB canvas readback, including its alpha byte. Its raw computed CSS is
+also archived: Tailwind's `color-mix` and legacy `rgba` serialize differently.
+This records equivalence for the pinned 8-bit screenshot environment, not
+floating-point color or cross-browser equivalence. Other styles remain literal
+comparisons and the full-page `channel-rounding-v1` limits remain unchanged.
+Freeze and upload the unchanged BEFORE/A/A pair before replacing business
+classes, then replay the same runner, cases and fixtures on the PR deployment.

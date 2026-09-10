@@ -274,10 +274,24 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32958"
+    },
+    {
+      "id": "tone-preview-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-bubble-cool", "okou-border"],
+      "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
+      "cases": [
+        "tone-preview-light",
+        "tone-preview-dark",
+        "tone-preview-mobile"
+      ],
+      "status": "planned",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
-    "../e2e/playwright/style-migration/tone-cases.json"
+    "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/tone-preview-cases.json"
   ]
 }

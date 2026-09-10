@@ -539,6 +539,7 @@ export function SettingsTab({
                   })}
                 </div>
                 <div
+                  data-slot="tone-preview"
                   className="rounded-lg bg-muted/30 px-3 py-2 w-full okou-border"
                   key={tone}
                 >
@@ -548,7 +549,10 @@ export function SettingsTab({
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
-                      <div className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                      <div
+                        data-slot="tone-preview-user-message"
+                        className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200"
+                      >
                         {toneCopy[tone].user}
                       </div>
                     </div>
