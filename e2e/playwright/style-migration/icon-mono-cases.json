@@ -4,7 +4,7 @@
   "cases": [
     {
       "id": "icon-mono-providers-light",
-      "path": "/?settings=model",
+      "path": "/connectors?settings=model",
       "surface": "providers",
       "theme": "light",
       "viewport": {
@@ -30,7 +30,7 @@
     },
     {
       "id": "icon-mono-providers-dark",
-      "path": "/?settings=model",
+      "path": "/connectors?settings=model",
       "surface": "providers",
       "theme": "dark",
       "viewport": {
@@ -56,7 +56,7 @@
     },
     {
       "id": "icon-mono-providers-narrow",
-      "path": "/?settings=model",
+      "path": "/connectors?settings=model",
       "surface": "providers",
       "theme": "light",
       "viewport": {
@@ -82,7 +82,7 @@
     },
     {
       "id": "icon-mono-providers-narrow-dark",
-      "path": "/?settings=model",
+      "path": "/connectors?settings=model",
       "surface": "providers",
       "theme": "dark",
       "viewport": {

@@ -219,3 +219,31 @@ The corresponding source passed 27 focused page tests, App/UI/E2E types,
 formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
 This is bounded Chromium acceptance; the earlier native and motion exclusions
 remain in force.
+
+## Monochrome icon filter batch
+
+The independent `monochrome-icon-filter` batch covers only `ProviderIcon`,
+`ConnectorIcon`, and their final `okou-icon-mono` declaration. Run
+`pnpm exec tsx playwright/style-migration/run-icon-mono.ts` from `e2e` using
+`--app-url`, `--api-url`, `--expected-build`, `--api-build`, `--source-sha`,
+`--storage-state`, `--executable-path`, `--out`, and optional `--baseline`.
+`icon-mono-cases.json` and `icon-mono-fixtures.json` are frozen alongside the
+runner before business-style changes. API bootstrap scripts and browser requests
+receive the same deterministic responses. Credentials remain outside evidence.
+
+Twenty states cover the real Models settings dialog, its portaled model
+options, personal provider marks, and the Connector page in Light/Dark desktop
+and narrow touch/DPR 2 Chromium. Monochrome, colorful, missing-metadata and failed
+image fixtures are distinct. Missing catalog display metadata is intentional
+fault injection for the existing defensive fallback. Synthetic HTTPS icon
+requests are fulfilled locally; no provider authorization or Agent run occurs.
+Automatic signup attribution is fulfilled without writing to the API.
+
+Healthy images use the unchanged shared `capture.ts`. Its mandatory image decode
+cannot accept an intentionally broken image. Only failed-image states use the
+batch's capture function: it verifies the failed image is complete, hidden and
+undecodable, decodes all other images, waits for fonts and finite animations,
+pauses infinite animations at zero, and requires three identical full-page
+frames. It changes no DOM or styles. Both paths use the unchanged `images.ts`
+rounding limits and retain every raw changed pixel without masks. This is bounded
+Chromium evidence; it does not certify native, WebKit or normal-motion behavior.
