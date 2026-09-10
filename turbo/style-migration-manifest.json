@@ -343,6 +343,18 @@
           "url": "https://a.okou.io/e1c28c8g3y.zip",
           "sha256": "f517cb04ba3e5808a194f2e302a7c3500fa93179f8ee438e11d08f273074d5e7",
           "commit": "c103ec9c5b67ce683290d3250002fa2674ff76ea"
+        },
+        {
+          "kind": "after-with-before-raw-diffs-and-focused-checks",
+          "url": "https://a.okou.io/4jznraws1s.zip",
+          "sha256": "2444ecfa7be6bfb690a86a6e2fa0e5f410576c3083828218b42cacf7071b67d1",
+          "commit": "afc52af743660894548870d79e29f5a8ea97c6ba"
+        },
+        {
+          "kind": "before-after-raw-diff-comparison-image",
+          "url": "https://a.okou.io/a26g028cl9.png",
+          "sha256": "938ae0031ed96a2351621adaa9d5344a60a4138edc85ac062537d1c95895b006",
+          "commit": "afc52af743660894548870d79e29f5a8ea97c6ba"
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33154"

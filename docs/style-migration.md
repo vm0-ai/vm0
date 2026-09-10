@@ -397,5 +397,16 @@ The [frozen BEFORE/A/A archive](https://a.okou.io/e1c28c8g3y.zip) records
 App/API build `a2085986`. It was anonymously hash-verified and
 [posted before business edits](https://github.com/vm0-ai/vm0/pull/33154#issuecomment-5613793582).
 Retired calibrations, including the PR-closure database cleanup failure, remain
-in the archive. The two consumer classes are implemented; final replay and
-real preview verification are recorded separately.
+in the archive. The [AFTER archive](https://a.okou.io/4jznraws1s.zip) records
+all 52 states with zero raw changed pixels and identical control observations
+for implementation source `afc52af7`, App/API build `81670300`. The
+[comparison image](https://a.okou.io/a26g028cl9.png) previews representative states;
+both artifacts were anonymously hash-verified. Actual timezone selection,
+reload persistence and restoration pass. Direct language preference writes,
+subsequent reads and restoration pass; unmodified language UI remains blocked
+by the separately tracked CDN CORS issue.
+
+The batch remains `implemented`: that source's Security and Crates gates pass,
+but Turbo is blocked by Runner SSH preparation for `dev-12.gcp.vm3.ai`. No
+Runner, workflow or timeout change is part of this migration. Latest-head CI
+and preview identity are recorded in the PR before handoff.
