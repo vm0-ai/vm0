@@ -717,6 +717,12 @@ unless account_cleanup.fetch("if").include?("needs.deploy-runner-start.result ==
 end
 checkout = cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
 raise "idle cleanup needs checkout even with retained accounts" if checkout.key?("if")
+prune_ssh_step = cleanup_steps.find { |step| step["name"] == "Setup SSH for idle sandbox cleanup" }
+unless prune_ssh_step &&
+    prune_ssh_step["if"] == "always() && needs.deploy-runner-start.result == 'success'" &&
+    prune_ssh_step.dig("with", "ssh-hosts") == "${{ fromJSON(needs.deploy-runner-start.outputs.runner-receipt).host }}"
+  raise "idle cleanup must preconnect only its deployed host, independently of unrelated host availability"
+end
 prune_step = cleanup_steps.find { |step| step["name"] == "Reclaim exact idle sandboxes from the deployed runner" }
 unless prune_step && prune_step["if"] == "always() && needs.deploy-runner-start.result == 'success'" &&
     prune_step.dig("env", "RUNNER_RECEIPT") == "${{ needs.deploy-runner-start.outputs.runner-receipt }}"
