@@ -1,7 +1,7 @@
 //! VAS artifact upload — SHA-256 hashing, tar.gz creation, S3 presigned upload.
 //!
 //! Flow (caller first walks the mount via [`walk_files_for_checkpoint`], then
-//! invokes [`create_snapshot`] with the pre-walked file list):
+//! invokes [`create_snapshot_with_attestation`] with the pre-walked file list):
 //! 1. POST `/storages/prepare` with file list to get version/upload metadata
 //! 2. If prepare found an existing version, validate the local archive inputs,
 //!    then POST `/storages/commit` to update HEAD
