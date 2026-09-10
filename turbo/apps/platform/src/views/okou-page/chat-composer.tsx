@@ -5193,7 +5193,7 @@ function ImportedPresentationTemplateRenameControl({
       }}
     >
       <div
-        className="grid min-h-10 min-w-0 flex-1 rounded-lg border-[0.7px] border-transparent px-1 py-[5px] text-xl font-semibold leading-7 text-foreground transition-colors after:col-start-1 after:row-start-1 after:invisible after:whitespace-pre-wrap after:break-words after:content-[attr(data-value)_'_'] hover:border-[hsl(var(--gray-400))] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10"
+        className="grid min-h-10 min-w-0 flex-1 rounded-lg border border-transparent px-1 py-[5px] text-xl font-semibold leading-7 text-foreground transition-colors after:col-start-1 after:row-start-1 after:invisible after:whitespace-pre-wrap after:break-words after:content-[attr(data-value)_'_'] hover:border-[hsl(var(--gray-400))] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10"
         data-value={title}
       >
         <textarea
