@@ -79,6 +79,7 @@ impl Execution {
             if !authentication.success() {
                 return Err(FailureReason::AuthenticationFailed);
             }
+            output.connection.authenticated_at = Some(chrono::Utc::now());
             let mut channel = scope
                 .wait(session.channel_open_session())
                 .await?

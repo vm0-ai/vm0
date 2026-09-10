@@ -37,6 +37,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import { SshLoadError } from "./ssh-load-error.tsx";
+import { SshAttention, SshHostWarning } from "./ssh-connection-status.tsx";
 import { localizedSshError } from "../../lib/ssh-error.ts";
 import {
   DetailPageBreadcrumbBar,
@@ -333,6 +334,10 @@ function HostCard({
   return (
     <article className="grid gap-3 rounded-xl border bg-card p-5">
       <h2 className="font-semibold">{connection.displayName}</h2>
+      <SshHostWarning
+        connectionId={connection.id}
+        generation={connection.generation}
+      />
       <p className="break-all text-sm">
         {connection.username}@{connection.host}:{connection.port}
       </p>
@@ -436,6 +441,7 @@ function SshHosts() {
   }
   return (
     <div className="grid gap-5">
+      {hosts.data.length > 0 ? <SshAttention text /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {t(

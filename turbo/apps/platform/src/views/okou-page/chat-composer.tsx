@@ -34,6 +34,7 @@ import {
   type Loadable,
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { SshAttention } from "./ssh-connection-status.tsx";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
 import { introVideoTemplateOptions } from "@okouai/core/intro-video-template";
@@ -7080,6 +7081,11 @@ function ConnectorTriggerIcons({
                 />
               )}
             </span>
+            {item.kind === "ssh" && (
+              <span className="absolute -right-1 -top-1 z-10 flex rounded-full bg-background">
+                <SshAttention />
+              </span>
+            )}
           </span>
         );
       })}
@@ -8440,6 +8446,7 @@ function ConnectorsPopoverButton({
                         key={item.connector.id}
                         icon={<Terminal size={16} />}
                         connectorLabel={item.connector.label}
+                        actions={<SshAttention />}
                         checked={item.connector.authorized}
                         loading={
                           sshSaving.state === "loading" ||

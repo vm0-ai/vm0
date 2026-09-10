@@ -96,6 +96,34 @@ keys or automatically grant access. Browser notifications are separate from
 Runner authority invalidation and do not tighten
 the accepted Run-lifetime cache window.
 
+## Recent connection failures
+
+After an actual SSH attempt, the host card can show the last reported connection
+failure, its observation time, and localized recovery guidance. The directory
+card, Chat service row and visible compact SSH icon show an attention indicator
+when any current host has such a failure. Multiple hosts retain independent
+observations; a healthy sibling cannot clear another host's warning. Grants,
+service order and the compact icon limit are unchanged.
+
+Only credential parsing, destination, network, host identity, authentication and
+pre-authentication handshake/timeout failures are connection failures. A verified
+host key followed by successful SSH authentication clears the previous warning,
+even if the command is rejected, returns nonzero, disconnects or times out later.
+Command outcomes, cancellation, admission and authority failures do not create
+host warnings. No command is retried and no trust or grant is changed.
+
+Saving or editing a host is not a connection test. Any configuration generation
+change hides observations for the previous configuration without claiming success.
+No observation means unknown, not healthy; the UI does not add an untested status
+line. A failed/unavailable diagnostic read is shown separately and leaves host
+management available. Observations refresh through the existing owner notification.
+
+This is best-effort recent evidence, not continuous monitoring. Reports may be
+missed, arrive late or be rejected after a Run ends or authority changes. There
+is no background probe, periodic poll or diagnostic history. Fleet clock skew
+can affect cross-Run ordering; the displayed time describes the observation,
+not a guarantee of current reachability.
+
 ## Agent commands
 
 ```sh

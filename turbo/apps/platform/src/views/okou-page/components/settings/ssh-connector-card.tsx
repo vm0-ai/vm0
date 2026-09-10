@@ -14,6 +14,7 @@ import {
 import { ROUTES } from "../../../../signals/route-paths.ts";
 import { Link } from "../../../router/link.tsx";
 import { ConnectorEntryCard } from "./connector-entry-card.tsx";
+import { SshAttention } from "../../ssh-connection-status.tsx";
 
 export function SshConnectorCard({
   configuredCount,
@@ -73,6 +74,7 @@ export function SshConnectorCard({
               { count: configuredCount },
             )}
           </span>
+          {configuredCount > 0 ? <SshAttention /> : null}
         </span>
       }
       trailingAction={

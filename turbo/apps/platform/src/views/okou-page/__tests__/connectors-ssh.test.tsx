@@ -25,6 +25,45 @@ import {
 const context = testContext();
 const agentId = "c0000000-0000-4000-8000-000000000001";
 
+test("The SSH directory warning counts failed hosts without replacing configured count or Agent access", async () => {
+  mockCatalog();
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 3 });
+  });
+  context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+    return respond(200, {
+      observations: [
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000001",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: "authentication_failed",
+        },
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000002",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: "network_failure",
+        },
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000003",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: null,
+        },
+      ],
+    });
+  });
+  await page("/connectors?keywords=ssh");
+  await screen.findByRole("status", { name: "2 SSH hosts need attention" });
+  expect(screen.getByText("3 hosts configured")).toBeInTheDocument();
+  expect(screen.getByText("Add access")).toBeInTheDocument();
+  expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
+    "href",
+    "/connectors/ssh",
+  );
+});
+
 test.each([0, 2])(
   "SSH with %i hosts appears before custom connectors and respects its category filter",
   async (configuredCount) => {

@@ -30,6 +30,11 @@ import {
 const expectedBindings = [
   {
     rustModulePath: ["runners", "ssh"],
+    rustTypeName: "ObservationRequest",
+    direction: "request",
+  },
+  {
+    rustModulePath: ["runners", "ssh"],
     rustTypeName: "InvalidateNotification",
     direction: "response",
   },

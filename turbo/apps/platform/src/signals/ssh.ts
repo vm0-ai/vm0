@@ -186,6 +186,23 @@ export const closeSshDialog$ = command(({ set }) => {
   set(cancelSshPrivateKeyFile$);
   return set(dialog$, null);
 });
+export const sshObservationsSnapshot$ = computed(async (get) => {
+  get(reload$);
+  const identity = await get(sshIdentity$);
+  if (!identity) {
+    return { identity, observations: null };
+  }
+  const result = await accept(
+    (await get(sshClients$)).connections.observations(),
+    [200, 404],
+    undefined,
+    { showErrorToast: false },
+  );
+  return {
+    identity,
+    observations: result.status === 200 ? result.body.observations : null,
+  };
+});
 export const refreshSsh$ = command(({ set }) => {
   set(cancelSshPrivateKeyFile$);
   set(dialog$, null);

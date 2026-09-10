@@ -25,6 +25,7 @@ struct Capture {
 
 #[derive(Default)]
 pub(super) struct Output {
+    pub(super) connection: super::observation::Attempt,
     stdout: Capture,
     stderr: Capture,
     attempted: bool,

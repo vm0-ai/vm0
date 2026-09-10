@@ -34,6 +34,11 @@ export interface RustRouteBinding {
 
 export const rustRouteBindings = [
   {
+    route: runnerSshContract.observe,
+    rustModulePath: ["runners", "runs", "by_run_id", "ssh", "observations"],
+    rustConstName: "OBSERVE",
+  },
+  {
     route: runnerSshContract.resolve,
     rustModulePath: ["runners", "runs", "by_run_id", "ssh", "resolve"],
     rustConstName: "RESOLVE",

@@ -4,6 +4,12 @@ import { type RustRouteBinding, rustRouteBindings } from "../routes";
 const expectedBindings = [
   {
     method: "POST",
+    path: "/api/runners/runs/:runId/ssh/observations",
+    rustModulePath: ["runners", "runs", "by_run_id", "ssh", "observations"],
+    rustConstName: "OBSERVE",
+  },
+  {
+    method: "POST",
     path: "/api/runners/runs/:runId/ssh/resolve",
     rustModulePath: ["runners", "runs", "by_run_id", "ssh", "resolve"],
     rustConstName: "RESOLVE",
