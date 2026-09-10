@@ -35,6 +35,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Badge,
 } from "@okouai/ui";
 import {
   orgRoleSchema,
@@ -1111,9 +1112,8 @@ function MemberRow({
         />
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
+        <Badge className="text-xs font-medium text-muted-foreground">
           <ShieldCheck
-            size={12}
             className={
               member.role === "admin"
                 ? "text-blue-500"
@@ -1127,7 +1127,7 @@ function MemberRow({
             : t(($) => {
                 return $.settings.workspace.members.member;
               })}
-        </span>
+        </Badge>
       </div>
       <div className="flex justify-end">
         {canManage && (
@@ -1511,12 +1511,12 @@ function PendingInvitationRow({
         </div>
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
-          <Clock size={12} className="text-amber-500" />
+        <Badge className="text-xs font-medium text-muted-foreground">
+          <Clock className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
           })}
-        </span>
+        </Badge>
       </div>
       <div className="flex justify-end">
         {isAdmin && (
@@ -1669,12 +1669,12 @@ function MembershipRequestRow({
         <div className="text-[13px] text-muted-foreground">—</div>
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
-          <UserPlus size={12} className="text-blue-500" />
+        <Badge className="text-xs font-medium text-muted-foreground">
+          <UserPlus className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;
           })}
-        </span>
+        </Badge>
       </div>
       <div className="flex justify-end gap-1">
         <button

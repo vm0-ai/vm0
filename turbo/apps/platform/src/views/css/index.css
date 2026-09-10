@@ -372,9 +372,8 @@ body {
   }
 }
 
-/* Palette colors are kept as the exact source values. Each named theme pairs
-   one anchor with one companion; the same pair drives the picker swatch and
-   the low-concentration workspace ambience below. */
+/* Each named theme pairs one anchor with one companion; the same pair drives
+   the picker swatch and the low-concentration workspace ambience below. */
 [data-color-theme="golden-hour"] {
   --okou-color-theme-anchor: #f7a102;
   --okou-color-theme-companion: #f4e33c;
@@ -411,10 +410,10 @@ body {
 }
 
 [data-color-theme="daydream"] {
-  --okou-color-theme-anchor: #b5d4e5;
-  --okou-color-theme-companion: #e4abc8;
-  --okou-color-theme-hue: 201.3;
-  --okou-color-theme-ring: 205.1 19.8% 57.5%;
+  --okou-color-theme-anchor: #8aaaf0;
+  --okou-color-theme-companion: #9c78d8;
+  --okou-color-theme-hue: 232;
+  --okou-color-theme-ring: 232 38% 55%;
 }
 
 [data-color-theme="deep-lagoon"] {
@@ -502,47 +501,18 @@ body {
   user-select: text;
 }
 
-/* Pill/tag (e.g. status badge, "Super agent") */
-.okou-app .okou-pill {
-  background-color: hsl(var(--gray-0));
-  border: 0.7px solid hsl(var(--gray-400));
-  color: hsl(var(--muted-foreground));
-}
-
-/* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
-   Scoped to [data-theme="dark"] only—not .okou-app—so portaled popovers/dropdowns still match. */
-:where([data-theme="dark"]) .okou-icon-mono {
-  filter: invert(1);
-}
-
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
-/* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
-   glyphs render in color. Without this, dual-presentation codepoints fall back
-   to a CJK text font and appear as flat black outlines. */
-.okou-emoji {
-  font-family: var(--font-family-emoji);
-}
-
 .okou-border {
   border: 0.7px solid hsl(var(--gray-400));
 }
 .okou-border-t {
   border-top: 0.7px solid hsl(var(--gray-400));
 }
-.okou-border-r {
-  border-right: 0.7px solid hsl(var(--gray-300));
-}
 
 /* Avatar / logo thumbnails: a hairline lighter than okou-border, so the edge of
    a picture stays readable without the stroke reading as a frame. */
 .okou-thumb-border {
   border: 0.5px solid hsl(var(--gray-400));
-}
-
-/* Role / status badge: pill with 0.7px border on neutral background */
-.okou-badge {
-  border: 0.7px solid hsl(var(--gray-400));
-  background-color: hsl(var(--gray-0));
 }
 
 /* Left nav */
@@ -684,12 +654,6 @@ body {
   .okou-app .okou-chat-card {
     background-color: hsl(var(--card));
   }
-}
-
-/* Message bubble (e.g. Meet Okou tone samples) */
-.okou-app .okou-bubble-cool {
-  background-color: hsl(var(--gray-100) / 0.95);
-  color: hsl(var(--foreground));
 }
 
 /* Gray-100 clears 1.06:1 against the white canvas, so

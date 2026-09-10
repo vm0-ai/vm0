@@ -76,6 +76,7 @@ import { billingStatusRoutes } from "./routes/billing-status";
 import { billingUsagePackCreditsRoutes } from "./routes/billing-usage-pack-credits";
 import { bankingRoutes } from "./routes/banking";
 import { chatThreadRoutes } from "./routes/chat-threads";
+import { welcomeChatThreadRoutes } from "./routes/welcome-chat-threads";
 import { chatEventsRoutes } from "./routes/chat-events";
 import { chatTranslationRoutes } from "./routes/chat-translation";
 import { sharedThreadRoutes } from "./routes/shared-threads";
@@ -94,7 +95,6 @@ import { emailInboundRoutes } from "./routes/email-inbound";
 import { featureSwitchesRoutes } from "./routes/feature-switches";
 import { financeRoutes } from "./routes/finance";
 import { seoRoutes } from "./routes/seo";
-import { goalsRoutes } from "./routes/goals";
 import { artifactShareRoutes } from "./routes/artifact-shares";
 import { artifactReferenceRoutes } from "./routes/artifact-references";
 import { hostRoutes } from "./routes/host";
@@ -186,6 +186,7 @@ import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
 import { uploadsPrepareRoutes } from "./routes/uploads-prepare";
 import { presentationTemplatesRoutes } from "./routes/presentation-templates";
+import { imageReferencesRoutes } from "./routes/image-references";
 import { usageMembersRoutes } from "./routes/usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
@@ -279,6 +280,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...billingUsagePackCreditsRoutes,
   ...bankingRoutes,
   ...chatThreadRoutes,
+  ...welcomeChatThreadRoutes,
   ...chatEventsRoutes,
   ...chatTranslationRoutes,
   ...sharedThreadRoutes,
@@ -297,7 +299,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...featureSwitchesRoutes,
   ...financeRoutes,
   ...seoRoutes,
-  ...goalsRoutes,
   ...hostRoutes,
   ...artifactShareRoutes,
   ...artifactReferenceRoutes,
@@ -403,6 +404,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
   ...presentationTemplatesRoutes,
+  ...imageReferencesRoutes,
   ...registryResourceDownloadRoutes,
   ...usageMembersRoutes,
   ...usageRecordRoutes,

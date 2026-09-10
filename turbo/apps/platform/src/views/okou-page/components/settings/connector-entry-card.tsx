@@ -1,6 +1,38 @@
 import type { ReactNode } from "react";
 import { cn, surfaceVariants } from "@okouai/ui";
 
+export function ConnectorEntryStatus({
+  label,
+  tone,
+  className,
+}: {
+  readonly label: string;
+  readonly tone: "neutral" | "success" | "warning";
+  readonly className?: string;
+}) {
+  return (
+    <span className={cn("flex min-w-0 items-center gap-2", className)}>
+      <span
+        className={cn(
+          "h-1.5 w-1.5 shrink-0 rounded-full",
+          tone === "neutral" && "bg-muted-foreground/50",
+          tone === "success" && "bg-emerald-500",
+          tone === "warning" && "bg-amber-500",
+        )}
+      />
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          tone === "warning" && "text-amber-600 dark:text-amber-400",
+        )}
+        title={label}
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
 /** Shared directory presentation, independent of account or authorization models. */
 export function ConnectorEntryCard({
   icon,

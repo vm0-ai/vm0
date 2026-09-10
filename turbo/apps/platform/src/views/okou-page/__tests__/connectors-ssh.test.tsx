@@ -1,5 +1,6 @@
 import { agentSshAccessContract } from "@okouai/api-contracts/contracts/ssh-access";
 import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -12,6 +13,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  customConnector,
   getConnectorAction,
   listAgent,
   mockConnectors,
@@ -23,8 +25,135 @@ import {
 const context = testContext();
 const agentId = "c0000000-0000-4000-8000-000000000001";
 
+test.each([false, true])(
+  "A single SSH host shows its name unless it needs attention (failed: %s)",
+  async (failed) => {
+    mockCatalog();
+    const connectionId = "b0000000-0000-4000-8000-000000000001";
+    context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+      return respond(200, { configuredCount: 1 });
+    });
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, {
+        connections: [
+          {
+            id: connectionId,
+            displayName: "Deployment",
+            host: "ssh.example.com",
+            port: 22,
+            username: "deploy",
+            generation: 1,
+            learnedHostKey: null,
+            createdAt: "2026-09-10T08:00:00.000Z",
+            updatedAt: "2026-09-10T08:00:00.000Z",
+          },
+        ],
+      });
+    });
+    context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+      return respond(200, {
+        observations: [
+          {
+            connectionId,
+            generation: 1,
+            observedAt: "2026-09-10T08:00:00.000Z",
+            failureReason: failed ? "authentication_failed" : null,
+          },
+        ],
+      });
+    });
+    await page("/connectors?keywords=ssh");
+    const label = failed ? "1/1 need attention" : "Deployment";
+    await screen.findByText(label);
+    expect(screen.queryByText("1 host configured")).toBeNull();
+    expect(screen.getByText("Add access")).toBeInTheDocument();
+    expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
+      "href",
+      "/connectors/ssh",
+    );
+  },
+);
+
+test("The SSH directory summarizes attention like Connectors and recovers without changing Agent access", async () => {
+  mockCatalog();
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 3 });
+  });
+  let failed = true;
+  context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+    return respond(200, {
+      observations: [
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000001",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: failed ? "authentication_failed" : null,
+        },
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000002",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: failed ? "network_failure" : null,
+        },
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000003",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: null,
+        },
+      ],
+    });
+  });
+  const orgId = "org_ssh_card";
+  await setupPage({
+    context,
+    path: "/connectors?keywords=ssh",
+    featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
+    auth: {
+      user: { id: "test-user-123", fullName: "Test User" },
+      organization: {
+        activeOrg: { id: orgId, name: "SSH test organization" },
+        memberships: [{ id: orgId }],
+      },
+    },
+  });
+  await screen.findByText("2/3 need attention");
+  expect(screen.queryByText("3 hosts configured")).toBeNull();
+  expect(screen.getByText("Add access")).toBeInTheDocument();
+  expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
+    "href",
+    "/connectors/ssh",
+  );
+  failed = false;
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+  await screen.findByText("3 hosts configured");
+  expect(screen.queryByText("2/3 need attention")).toBeNull();
+  expect(screen.getByText("Add access")).toBeInTheDocument();
+});
+
+test("The SSH directory distinguishes unavailable diagnostics from failed hosts", async () => {
+  mockCatalog();
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 2 });
+  });
+  context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+    return respond(500, {
+      error: { code: "INTERNAL_SERVER_ERROR", message: "private error" },
+    });
+  });
+  await page("/connectors?keywords=ssh");
+  await screen.findByText("SSH connection status is unavailable");
+  expect(screen.queryByText(/need attention/u)).toBeNull();
+  expect(screen.queryByText("private error")).toBeNull();
+  expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
+    "href",
+    "/connectors/ssh",
+  );
+  expect(screen.getByText("Add access")).toBeInTheDocument();
+});
+
 test.each([0, 2])(
-  "SSH with %i hosts remains visible in the directory and respects its category filter",
+  "SSH with %i hosts appears before custom connectors and respects its category filter",
   async (configuredCount) => {
     mockCatalog();
     mockPublicConnectorStatus(
@@ -38,9 +167,25 @@ test.each([0, 2])(
           connected: false,
         });
       }),
+      // Discovery always names the catalog's categories, and the filter is
+      // built from that list rather than from the connectors that came back.
+      {
+        categories: [
+          {
+            id: "communication-collaboration",
+            label: "Communication and Collaboration",
+            menuLabel: "Communication",
+            groupId: null,
+          },
+        ],
+        groups: [],
+      },
     );
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
       return respond(200, { configuredCount });
+    });
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [customConnector()] });
     });
     await setupPage({
       context,
@@ -51,7 +196,14 @@ test.each([0, 2])(
       },
     });
     await screen.findByTestId("connector-shelf-communication-collaboration");
-    await screen.findByRole("heading", { name: "Remote access" });
+    const remoteAccess = await screen.findByRole("heading", {
+      name: "Remote access",
+    });
+    const custom = await screen.findByText("Acme Search");
+    expect(
+      remoteAccess.compareDocumentPosition(custom) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
       "href",
       configuredCount === 0 ? "/connectors/ssh?add=1" : "/connectors/ssh",
@@ -65,16 +217,17 @@ test.each([0, 2])(
       throw new Error("Expected the Communication category option");
     }
     click(communication);
-    await screen.findByTestId("connector-category-communication-collaboration");
+    // Inside a category the page renders that category's connectors alone --
+    // the breadcrumb and the filter already name it, so the grouped headings
+    // are gone.
+    await screen.findByTestId("connector-category-grid");
     expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
     click(getConnectorAction("button", "Filter connectors"));
     const categoryMenu = await screen.findByRole("menu");
     click(getConnectorAction("menuitem", "Remote access1", categoryMenu));
     await screen.findByRole("heading", { name: "Remote access" });
     expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
-    expect(
-      screen.queryByTestId("connector-category-communication-collaboration"),
-    ).toBeNull();
+    expect(screen.queryByTestId("connector-category-grid")).toBeNull();
     click(getConnectorAction("button", "Connectors"));
     await screen.findByTestId("connector-shelf-communication-collaboration");
     expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();

@@ -2,7 +2,7 @@ import {
   connectorRuntimeTargetKey,
   type ConnectorRuntimeTarget,
 } from "@okouai/api-contracts/contracts/runners";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { and, eq, isNotNull, type SQL } from "drizzle-orm";
 

@@ -7,7 +7,7 @@ Agent/CLI/UI and activation remain later delivery stages.
 
 ## Authority and secret handoff
 
-Both endpoints accept only the official fleet Runner credential. A local Runner
+Runner SSH endpoints accept only the official fleet Runner credential. A local Runner
 PAT, browser session or guest token cannot resolve credentials or learn trust.
 The request identifies a Run, connection and winning Runner process
 (`runnerId`, `heartbeatGeneration`); it cannot supply owner, Agent, endpoint,
@@ -125,10 +125,52 @@ retain the existing generation semantics; stale observations cannot silently
 repin. TOFU cannot prevent a first-use MITM, and resetting trust intentionally
 reopens that first-use window.
 
+## Diagnostic connection observations
+
+`POST /api/runners/runs/:runId/ssh/observations` accepts the same connection and
+winning Runner identity, plus `expectedGeneration`, UTC `observedAt` and nullable
+`failureReason`. The allowlist covers credential parsing, destination/network,
+host-key and authentication failures, plus pre-authentication protocol/timeouts.
+Waiting for the first-use host-key pin API is an authority phase, not target
+connection evidence; a deadline there preserves the command's `timed_out` result
+without creating a host warning.
+Null means host-key verification and SSH authentication succeeded, not command
+success. No command, output, peer diagnostic, credential or arbitrary error text
+is accepted. The strict guest/CLI outcome and inventory DTOs are unchanged.
+
+The API applies the current Run, owner, Agent visibility/grant, feature and
+winning-claim checks before locking the owned connection. It rechecks authority
+under the same lock used by edits and pinning, then records only the exact current
+generation. TOFU reporters use the post-pin generation. A single child row in
+`ssh_connection_observations` retains the generation, observation time and code;
+deletion cascades with the host. Within a generation, duplicate or older times
+are ignored. Times more than 60 seconds ahead of the API clock are ignored.
+Fleet timestamps provide best-effort diagnostic ordering, not a distributed
+total order or an authorization freshness guarantee.
+
+The outcome is `recorded`, `ignored` or `unavailable`. Owner reads use the separate
+`GET /api/ssh/connections/observations`, returning only current-generation rows
+for the authenticated user/workspace. Existing strict configuration and summary
+responses are unchanged. Accepted failures and recovery from a failure publish
+the owner-only `ssh:changed` notification; consecutive healthy observations do
+not reload the UI. Reports never mutate configuration or invalidate Runner authority.
+
+Runner reporting starts only after terminal delivery has been attempted and the
+guest stream and execution admission have been released. The existing Run-owned
+dispatch task awaits the report with a one-second limit. A separate process-wide
+four-report semaphore uses nonwaiting admission; saturation drops the observation.
+There is no retry, detached worker or unbounded queue. Reporting failure, old API
+404s and shutdown cannot alter or replay the remote command. Shutdown can wait
+up to the bounded report timeout; Run termination or revocation can reject an
+otherwise valid late report. The existing credential cache and missed-Ably window
+are unchanged.
+
 ## Deployment
 
-This is additive, feature-disabled API with no migration. Old Runners and
-clients do not call it. It can deploy before the consuming Runner PR; it does
-not establish fleet convergence or authorize enabling SSH. See
+The observation table and endpoints are additive. Old Runners and clients do not
+use them and retain existing behavior. A new Runner treats an old API's missing
+observation endpoint as a dropped diagnostic; a new App shows diagnostic status
+unavailable without disabling configuration management. Migration precedes API
+promotion. This does not establish fleet convergence or authorize enabling SSH. See
 [deployment compatibility](deployment-compatibility.md) and
 [guest RPC transport](runner-rpc-transport.md) for the remaining boundaries.

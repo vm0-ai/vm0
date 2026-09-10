@@ -175,6 +175,10 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
   set(internalDeleteConfirm$, value);
 });
 
+export const resetDeleteConfirm$ = command(({ set }) => {
+  set(internalDeleteConfirm$, "");
+});
+
 // ---------------------------------------------------------------------------
 // Billing sub-page
 // ---------------------------------------------------------------------------

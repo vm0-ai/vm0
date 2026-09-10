@@ -582,6 +582,62 @@ describe("GET /api/connector-catalog", () => {
     }
   });
 
+  it("answers a named category with the whole category", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context, routes: connectorCatalogRoutes })(
+      connectorCatalogContract,
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    const browse = await accept(
+      client.discovery({ query: {}, headers }),
+      [200],
+    );
+
+    const counts = browse.body.categoryConnectorCounts ?? {};
+    const [category, total] = Object.entries(counts).reduce(
+      (largest, entry) => {
+        return entry[1] > largest[1] ? entry : largest;
+      },
+      ["", 0],
+    );
+    expect(total).toBeGreaterThan(0);
+
+    const scoped = await accept(
+      client.discovery({ query: { category }, headers }),
+      [200],
+    );
+
+    // The count offered next to a category is what the client uses to invite
+    // the reader in, so entering it has to return everything that was counted
+    // -- not the browse slice, which is what made "329" mean twelve.
+    expect(scoped.body.connectors).toHaveLength(total);
+    for (const connector of scoped.body.connectors) {
+      expect(connector.category).toBe(category);
+    }
+
+    // The category list describes the catalog, not the response. A client
+    // offers the other categories from it, so collapsing it to the one being
+    // browsed would leave no way to reach any of them.
+    expect(
+      (scoped.body.categoryMetadata?.categories ?? [])
+        .map((entry) => {
+          return entry.id;
+        })
+        .sort(),
+    ).toStrictEqual(Object.keys(counts).sort());
+
+    // Still ranked, and still without the connectors Okou runs for itself.
+    const ranks = scoped.body.connectors.map((connector) => {
+      return connector.popularityRank ?? Number.MAX_SAFE_INTEGER;
+    });
+    expect(
+      [...ranks].sort((left, right) => {
+        return left - right;
+      }),
+    ).toStrictEqual(ranks);
+  });
+
   it("rejects catalog status calls from Okou run tokens without connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

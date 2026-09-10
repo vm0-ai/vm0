@@ -30,6 +30,7 @@ mod archive;
 mod cleanup;
 mod download;
 mod error;
+mod http_failure;
 mod instructions;
 mod manifest;
 mod path;

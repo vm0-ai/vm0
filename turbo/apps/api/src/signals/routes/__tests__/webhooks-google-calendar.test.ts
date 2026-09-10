@@ -529,6 +529,8 @@ describe("POST /api/webhooks/google-calendar", () => {
     );
     mockNow(startedAt + 2 * 60 * 60 * 1000);
     context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.axiomLogging.error.mockClear();
+    context.mocks.sentry.captureException.mockClear();
 
     for (const messageNumber of ["2", "3"]) {
       const response = await postGoogleCalendarWebhook(
@@ -546,15 +548,15 @@ describe("POST /api/webhooks/google-calendar", () => {
     }
 
     expect(refreshCalls).toBe(1);
-    expect(
-      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
-        return message === "Connector credential refresh failed";
-      }),
-    ).toHaveLength(1);
-    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
-      "Google Calendar event skipped because connector access is unavailable",
-      expect.anything(),
-    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    await expect(
+      connectorsApi.readConnectorBySlug(scenario.actor, "google-calendar"),
+    ).resolves.toMatchObject({
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
     await accept(
       automationsClient().disable({
         headers: authHeaders(),

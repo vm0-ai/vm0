@@ -50,7 +50,7 @@ import {
   type ModelProviderRefreshProviderKey,
 } from "@okouai/connectors/auth-providers/model-provider-auth";
 import { isChatgptRefreshError } from "@okouai/connectors/auth-providers/model-providers/codex-oauth/oauth";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { connectors } from "@okouai/db/schema/connector";
 import {
   modelProviderAccounts,
@@ -86,6 +86,7 @@ import {
   lockModelProviderState,
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { isExpectedOAuthRefreshFailure } from "./connector-oauth-refresh-policy";
 import {
   loadRunCreditAdmissionState,
   resolveOrgCreditAvailability,
@@ -2608,7 +2609,15 @@ async function markAndReturnRefreshFailure(
     args.accessSourceKey === "codex-oauth-token" &&
     failureReason === "reconnect_required" &&
     isTerminalChatgptRefreshErrorCode(errorCode);
-  if (shouldLogWarning && !terminalCodexFailure) {
+  const expectedConnectorFailure =
+    args.sourceType === "connector" &&
+    isExpectedOAuthRefreshFailure({
+      error,
+      connectorSlug: args.accessSourceKey,
+      authMethod: args.connectorAccessBySlug.get(args.accessSourceKey)
+        ?.authMethod,
+    });
+  if (shouldLogWarning && !terminalCodexFailure && !expectedConnectorFailure) {
     const logMessage =
       args.accessSourceKey === "codex-oauth-token"
         ? `${args.accessSourceKey} token refresh failed`

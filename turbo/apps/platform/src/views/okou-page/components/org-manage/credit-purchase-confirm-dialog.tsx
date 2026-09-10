@@ -43,7 +43,7 @@ function CreditPurchaseConfirmDialogContent({
             return $.billing.credits.today;
           })}
         </p>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-border py-3.5">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border py-3.5">
           <p className="text-sm font-medium text-foreground">
             {t(($) => {
               return $.billing.credits.dueNow;
@@ -53,7 +53,7 @@ function CreditPurchaseConfirmDialogContent({
             {formatPurchaseAmount(preview.amountCents, preview.currency)}
           </p>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-[hsl(var(--gray-100))] py-2.5">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[hsl(var(--gray-100))] py-2.5">
           <p className="text-sm font-medium text-foreground">
             {t(($) => {
               return $.billing.credits.creditsAdded;

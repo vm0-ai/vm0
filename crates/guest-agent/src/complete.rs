@@ -1,10 +1,21 @@
 //! Guest-side `/webhooks/agent/complete` caller.
 //!
-//! The runner also posts `/complete` after it observes the VM exit, but by
-//! then the run has incurred `final_telemetry`, VM teardown, stop/destroy,
-//! and host observation delays. The guest calls it with a prepared checkpoint
-//! after successful execution or recovery. The runner's subsequent call is
-//! absorbed by the route's idempotency check.
+//! The guest calls `/complete` with a prepared checkpoint after successful
+//! execution or recovery, persisting the checkpoint and terminal state together
+//! before its final telemetry and shutdown work.
+//!
+//! After the executor returns, the API-backed runner posts a checkpoint-less
+//! fallback concurrently with sandbox park-or-destroy finalization
+//! (`ConcurrentWithFinalization`). A subsequent call for an already-terminal run
+//! is idempotent. The VM may remain alive for reuse, and a parked sandbox retains
+//! capacity. Completion alone does not prove that sandbox ownership or active
+//! status has settled, or that capacity has been released.
+//!
+//! `LocalProvider` instead reports after finalization (`AfterFinalization`) so an
+//! immediate local submission can safely depend on reuse. See the [runner timing
+//! contract] on `JobProvider::completion_report_timing` for the provider distinction.
+//!
+//! [runner timing contract]: https://github.com/vm0-ai/vm0/blob/main/crates/runner/src/provider/mod.rs
 //!
 //! Checkpoint-bearing completion uses the checkpoint retry budget and returns
 //! failures to the caller. Checkpoint-less cancellation fallback remains

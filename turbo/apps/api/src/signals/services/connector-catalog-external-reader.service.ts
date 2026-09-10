@@ -137,6 +137,7 @@ interface ExternalCatalogStatusArgs extends ExternalCatalogReadArgs {
 
 interface ExternalCatalogDiscoveryArgs extends ExternalCatalogStatusArgs {
   readonly keyword: string | undefined;
+  readonly category: string | undefined;
 }
 
 interface ConnectorCatalogReferenceMetadata {
@@ -1085,6 +1086,18 @@ function browseEffectiveConnectors(
   return [...perCategory.values()].flat();
 }
 
+/** Every connector in one category, best-ranked first. */
+function categoryEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+  category: string,
+): EffectiveConnector[] {
+  return withoutInternalConnectors(sortedByPopularity(effective)).filter(
+    (entry) => {
+      return entry.connector.category === category;
+    },
+  );
+}
+
 function searchEffectiveConnectors(
   effective: readonly EffectiveConnector[],
   keyword: string | undefined,
@@ -1121,12 +1134,23 @@ function categoryConnectorCounts(
 
 function discoveryEffectiveConnectors(
   effective: readonly EffectiveConnector[],
-  args: Pick<ExternalCatalogDiscoveryArgs, "connections" | "keyword">,
+  args: Pick<
+    ExternalCatalogDiscoveryArgs,
+    "connections" | "keyword" | "category"
+  >,
 ): EffectiveConnector[] {
   if (args.keyword?.trim()) {
     return searchEffectiveConnectors(effective, args.keyword, {
       excludeInternal: true,
     });
+  }
+  const category = args.category?.trim();
+  if (category) {
+    // A category is asked for by name, so it answers with the whole category
+    // rather than the browse slice. The count the client already shows next to
+    // the category is that same number; returning twelve of it would make the
+    // count a claim the page cannot keep.
+    return categoryEffectiveConnectors(effective, category);
   }
   const connectedSlugs = new Set(
     args.connections.map((connection) => {
@@ -1217,6 +1241,12 @@ export async function discoverExternalPublicConnectorCatalogStatus(
   const read = connectorCatalogStatusRead({
     catalog,
     effective: discoveryEffectiveConnectors(effective, args),
+    // The category list and the category counts describe the same thing, so
+    // they are computed from the same set: the whole catalog minus the
+    // connectors Okou runs for itself, not the slice that came back for a
+    // named category. Offering a category the counts do not know would be a
+    // chip that opens nothing.
+    categorySource: withoutInternalConnectors(effective),
     connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
   });
@@ -1233,6 +1263,13 @@ export async function discoverExternalPublicConnectorCatalogStatus(
 function connectorCatalogStatusRead(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: readonly EffectiveConnector[];
+  /**
+   * The connectors the category list describes, when that is wider than the
+   * ones being returned. Discovery answers a named category with only that
+   * category, and the category list is how a client offers the others, so it
+   * has to keep describing the whole catalog. Defaults to what is returned.
+   */
+  readonly categorySource?: readonly EffectiveConnector[];
   readonly connections: readonly ConnectorCatalogConnection[];
   readonly referenceConnectorSlugs: readonly string[];
 }): ConnectorCatalogStatusRead {
@@ -1255,7 +1292,7 @@ function connectorCatalogStatusRead(args: {
       connectors,
       categoryMetadata: categoryMetadataForConnectors(
         args.catalog,
-        args.effective,
+        args.categorySource ?? args.effective,
       ),
     },
     referenceMetadata: referenceMetadataForCatalog(

@@ -573,6 +573,57 @@ test("Rank exact workflow names before prefixes, substrings, and abbreviations",
   });
 });
 
+test("Rank compact workflow abbreviations before scattered matches", async () => {
+  mockAgent();
+  mockThread();
+  installWorkflows(() => {
+    return [
+      workflow("pr-32809-app-production-watch"),
+      workflow("team-pr-auto"),
+      workflow("pr-auto-bravo"),
+      workflow("pr-auto-alpha"),
+      workflow("pr-auto"),
+    ];
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: true },
+  });
+
+  const user = userEvent.setup();
+  const editor = await findComposerEditor();
+  await user.click(editor);
+  await user.keyboard("/prauto");
+
+  await waitFor(() => {
+    expect(slashWorkflowNames()).toStrictEqual([
+      "/pr-auto",
+      "/pr-auto-bravo",
+      "/pr-auto-alpha",
+      "/team-pr-auto",
+      "/pr-32809-app-production-watch",
+    ]);
+  });
+  const highlighted = Array.from(
+    slashButton("/pr-auto").querySelectorAll(
+      '[data-slot="workflow-query-match"]',
+    ),
+    (element) => {
+      return element.textContent;
+    },
+  );
+  expect(highlighted).toStrictEqual(["pr", "auto"]);
+
+  await user.keyboard("{Enter}");
+
+  await waitFor(() => {
+    expect(editor).toHaveTextContent(/^\/pr-auto\s*$/);
+    expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
+  });
+});
+
 test("Keep numeric workflow identifiers contiguous in abbreviated queries", async () => {
   mockAgent();
   mockThread();

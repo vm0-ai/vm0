@@ -115,6 +115,7 @@ export function listAgent(
   avatarUrl: string | null = null,
 ): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: "test-user-123",
     displayName,
@@ -210,6 +211,27 @@ export function publicStatusItem(args: {
   };
 }
 
+/** What the API returns per category when no category is asked for by name. */
+const DISCOVERY_PER_CATEGORY = 12;
+
+/**
+ * Discovery keeps every connected connector and slices the rest per category,
+ * so a fixture of connected connectors is returned whole.
+ */
+function browseSlice<
+  T extends { readonly category: string; readonly connection: unknown },
+>(connectors: readonly T[]): T[] {
+  const shownPerCategory = new Map<string, number>();
+  return connectors.filter((connector) => {
+    if (connector.connection) {
+      return true;
+    }
+    const shown = shownPerCategory.get(connector.category) ?? 0;
+    shownPerCategory.set(connector.category, shown + 1);
+    return shown < DISCOVERY_PER_CATEGORY;
+  });
+}
+
 export function mockPublicConnectorStatus(
   context: TestContext,
   connectors: readonly PublicConnectorCatalogStatusItem[],
@@ -222,14 +244,26 @@ export function mockPublicConnectorStatus(
       ...(categoryMetadata ? { categoryMetadata } : {}),
     });
   });
-  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
-    return respond(200, {
-      connectors: [...connectors],
-      totalConnectorCount: connectors.length,
-      ...(categoryMetadata ? { categoryMetadata } : {}),
-      ...(categoryConnectorCounts ? { categoryConnectorCounts } : {}),
-    });
-  });
+  context.mocks.api(
+    connectorCatalogContract.discovery,
+    ({ query, respond }) => {
+      // Production answers a named category with the whole category, and a
+      // keyword-free browse with every connected connector plus a slice of
+      // each category. The fixture does the same, or the category view is
+      // tested against a response the API never returns.
+      const scoped = query.category
+        ? connectors.filter((connector) => {
+            return connector.category === query.category;
+          })
+        : browseSlice(connectors);
+      return respond(200, {
+        connectors: [...scoped],
+        totalConnectorCount: connectors.length,
+        ...(categoryMetadata ? { categoryMetadata } : {}),
+        ...(categoryConnectorCounts ? { categoryConnectorCounts } : {}),
+      });
+    },
+  );
 }
 
 export function customConnector(

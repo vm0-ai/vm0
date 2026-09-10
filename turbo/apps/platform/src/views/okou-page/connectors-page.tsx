@@ -846,8 +846,37 @@ function discoveryCategoryCounts(
     : undefined;
 }
 
+/**
+ * The categories the filter offers. They come from the catalog's own category
+ * list rather than from the connectors that came back, because inside a
+ * category the response holds only that category and a filter offering
+ * nothing else is a dead end.
+ */
+function categoryFilterSections(
+  categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined,
+): ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[] {
+  return (categoryMetadata?.categories ?? []).map((category) => {
+    return {
+      category: category.id,
+      label: category.label,
+      menuLabel: category.menuLabel,
+      groupId: category.groupId,
+      connectors: [],
+    };
+  });
+}
+
 interface ConnectorsBrowseModel {
   readonly showShelves: boolean;
+  /**
+   * The chosen category's connectors, or null when no category is open. The
+   * breadcrumb and the filter already name the category, so this view renders
+   * the cards alone rather than repeating the name in a group and a section
+   * heading above them.
+   */
+  readonly categoryConnectors:
+    | readonly PlatformConnectorCatalogStatusItem[]
+    | null;
   readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly chipSections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
@@ -862,7 +891,6 @@ interface ConnectorsBrowseModel {
  */
 function buildConnectorsBrowseModel({
   catalogItems,
-  allConnectors,
   categoryMetadata,
   categoryCounts,
   otherCategoryLabel,
@@ -875,7 +903,6 @@ function buildConnectorsBrowseModel({
   remoteAccessLabel,
 }: {
   readonly catalogItems: readonly PlatformConnectorCatalogStatusItem[];
-  readonly allConnectors: readonly PlatformConnectorCatalogStatusItem[];
   readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly otherCategoryLabel: string;
@@ -913,7 +940,10 @@ function buildConnectorsBrowseModel({
     // The page's card grid is three wide, so six is two whole rows.
     previewSize: 6,
   });
-  const chipSections = sectionsOf(allConnectors);
+  // The filter lists the catalog's categories, not the ones the current
+  // response happens to contain: inside a category the response holds only
+  // that category, and a filter that offers nothing else is a dead end.
+  const chipSections = categoryFilterSections(categoryMetadata);
   if (sshAvailable) {
     chipSections.push({
       category: REMOTE_ACCESS_CATEGORY,
@@ -927,6 +957,10 @@ function buildConnectorsBrowseModel({
     // Shelves need something to shelve: a catalog too small for any category to
     // fill one falls through to the plain list.
     showShelves: ready && !filtered && layout.shelves.length > 0,
+    categoryConnectors:
+      ready && categoryFilter !== null && catalogItems.length > 0
+        ? catalogItems
+        : null,
     layout,
     connected: catalogItems.filter((connector) => {
       return connector.connected;
@@ -949,6 +983,7 @@ function ConnectorsBuiltinPanel({
   browse,
   renderCard,
   fallback,
+  remoteAccessPanel,
   customPanel,
 }: {
   readonly browse: ConnectorsBrowseModel;
@@ -956,6 +991,7 @@ function ConnectorsBuiltinPanel({
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
   readonly fallback: ReactNode;
+  readonly remoteAccessPanel: ReactNode;
   readonly customPanel: ReactNode;
 }) {
   return (
@@ -966,14 +1002,19 @@ function ConnectorsBuiltinPanel({
           layout={browse.layout}
           renderCard={renderCard}
         />
+      ) : browse.categoryConnectors ? (
+        <div
+          data-testid="connector-category-grid"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {browse.categoryConnectors.map(renderCard)}
+        </div>
       ) : (
         fallback
       )}
-      {/* Custom connectors used to be a tab. They are one more thing the
-          directory offers, so they sit at the end of it rather than behind a
-          switch of surfaces. They belong to the directory view only: the
-          panel does not read the page's keyword, so under a search or inside
-          a category it would answer a question nobody asked. */}
+      {remoteAccessPanel}
+      {/* Custom connectors end the directory, after Remote access. The panel
+          does not read the page's filters, so only show it while browsing. */}
       {browse.showShelves && customPanel}
     </>
   );
@@ -1511,7 +1552,6 @@ export function ConnectorsPage() {
   );
   const browse = buildConnectorsBrowseModel({
     catalogItems: filteredConnectors,
-    allConnectors,
     categoryMetadata,
     categoryCounts: discoveryCategoryCounts(catalogStatusLoadable),
     otherCategoryLabel,
@@ -1542,20 +1582,22 @@ export function ConnectorsPage() {
     connectionFilter,
   });
   const builtinPanel = (
-    <>
-      <ConnectorsBuiltinPanel
-        browse={browse}
-        renderCard={renderCard}
-        fallback={builtinList}
-        customPanel={<CustomConnectorsPanel />}
-      />
-      <SshDirectoryLoadError />
-      <SshShelfCategory
-        enabled={browse.showShelves}
-        groups={grouped}
-        renderCard={renderPresentationCard}
-      />
-    </>
+    <ConnectorsBuiltinPanel
+      browse={browse}
+      renderCard={renderCard}
+      fallback={builtinList}
+      remoteAccessPanel={
+        <>
+          <SshDirectoryLoadError />
+          <SshShelfCategory
+            enabled={browse.showShelves}
+            groups={grouped}
+            renderCard={renderPresentationCard}
+          />
+        </>
+      }
+      customPanel={<CustomConnectorsPanel />}
+    />
   );
   return (
     <div

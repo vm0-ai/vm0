@@ -1,12 +1,16 @@
 {
   "name": "@okouai/db",
-  "version": "1.250.4",
+  "version": "1.250.5",
   "private": true,
   "type": "module",
   "exports": {
     ".": {
       "import": "./src/index.ts",
       "types": "./src/index.ts"
+    },
+    "./runtime/*": {
+      "import": "./src/runtime/*.ts",
+      "types": "./src/runtime/*.ts"
     },
     "./schema/*": {
       "import": "./src/schema/*.ts",

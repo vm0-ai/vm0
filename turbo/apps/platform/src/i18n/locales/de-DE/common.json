@@ -465,13 +465,13 @@
       "attach": "Markierungen anhängen",
       "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
       "inkLabel": "Farbe {{color}}",
-      "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
+      "notePlaceholder": "Was soll sich ändern?",
       "open": "Markieren",
       "redo": "Wiederholen",
       "removeMark": "Markierung entfernen",
       "subtitle_one": "{{count}} Markierung",
       "subtitle_other": "{{count}} Markierungen",
-      "textPlaceholder": "Beschriftung eingeben",
+      "textPlaceholder": "Hier eingeben",
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",
@@ -599,8 +599,6 @@
       "category": "Vorlagenkategorie",
       "chooseVoice": "Stimme für {{title}} auswählen",
       "creativeVideo": "Kreatives Video",
-      "explainerUnavailable": "Diese Videovorlage ist nicht mehr verfügbar. Entferne sie, um deine Nachricht zu senden.",
-      "explainerVideo": "Erklärvideo",
       "filters": {
         "age": "Alter",
         "all": "Alle",
@@ -622,6 +620,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} Folie",
       "importedSlides_other": "{{count}} Folien",
+      "introVideo": "Intro-Video",
+      "introVideoUnavailable": "Diese Videovorlage ist nicht mehr verfügbar. Entferne sie, um deine Nachricht zu senden.",
       "multiAccent": "Multi-Akzent",
       "needPro": "Pro erforderlich",
       "nextSlide": "Vorschau der nächsten Folie",
@@ -1885,12 +1885,15 @@
       "create": {
         "addStyle": "Stil hinzufügen",
         "addTemplate": "Vorlage hinzufügen",
+        "chooseScene": "Wähle, was du erstellen möchtest",
         "chooseType": "Typ auswählen",
         "description": "Präsentationen, Videos und Bilder",
         "exit": "Erstellungsmodus verlassen",
         "image": "Bild erstellen",
+        "imageDescription": "Verwandle eine Idee in ein Bild",
         "imagePlaceholder": "Beschreibe das gewünschte Bild…",
         "presentation": "Präsentation erstellen",
+        "presentationDescription": "Folien für deine Geschichte",
         "presentationPlaceholder": "Worum geht es in deiner Präsentation?",
         "question": "Was möchtest du möglich machen?",
         "settingsAdjusted": "Einige Videoeinstellungen wurden an dieses Modell angepasst",
@@ -1899,6 +1902,7 @@
         "slideCountRange": "{{range}} Folien",
         "title": "Erstellen",
         "video": "Video erstellen",
+        "videoDescription": "Bringe deine Ideen in Bewegung",
         "videoPlaceholder": "Beschreibe das gewünschte Video…"
       },
       "createWorkflow": "Workflow erstellen",
@@ -2033,20 +2037,6 @@
       },
       "runCancelled": "Mitten im Gedanken pausiert – machen Sie jederzeit weiter."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "Finde eine Stimme, die zu deinem Inhalt passt.",
-      "avatarVoice": "Stimme des Avatars",
-      "changeAvatar": "Avatar ändern",
-      "chooseStyle": "Stil auswählen",
-      "chooseStyleAndVoice": "Wähle einen Stil und eine Stimme.",
-      "noMatches": "Keine Treffer. Versuche eine andere Suche oder Kategorie.",
-      "ready": "Bereit. Füge deinen Inhalt im Chat hinzu.",
-      "searchAvatars": "Avatare suchen",
-      "searchStyles": "Stile suchen",
-      "settings": "Einstellungen für Erklärvideos",
-      "style": "Stil",
-      "useSelection": "Auswahl verwenden"
-    },
     "feedback": {
       "emailDraftDescription": "ein E-Mail-Entwurf (E-Mail-Entwurfs-ID: {{id}})",
       "partHeading": "Feedback zu diesem Teil Ihrer Antwort:",
@@ -2055,8 +2045,6 @@
       "placeholder": "Was soll sich daran ändern?",
       "quote": "Zitieren",
       "remove": "Feedback entfernen",
-      "selectionEnd": "Auswahlende anpassen",
-      "selectionStart": "Auswahlbeginn anpassen",
       "sentEmailDescription": "eine gesendete E-Mail (Mail-ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", gesendete ID: {{sentId}}",
       "sourcePartHeading": "Feedback zu diesem Teil von {{description}}:",
@@ -2090,6 +2078,20 @@
       },
       "footer": {
         "cancel": "Abbrechen"
+      },
+      "picker": {
+        "autoVoiceDescription": "Finde eine Stimme, die zu deinem Inhalt passt.",
+        "avatarVoice": "Stimme des Avatars",
+        "changeAvatar": "Avatar ändern",
+        "chooseStyle": "Stil auswählen",
+        "chooseStyleAndVoice": "Wähle einen Stil und eine Stimme.",
+        "noMatches": "Keine Treffer. Versuche eine andere Suche oder Kategorie.",
+        "ready": "Bereit. Füge deinen Inhalt im Chat hinzu.",
+        "searchAvatars": "Avatare suchen",
+        "searchStyles": "Stile suchen",
+        "settings": "Einstellungen für Intro-Videos",
+        "style": "Stil",
+        "useSelection": "Auswahl verwenden"
       },
       "style": {
         "auto": "Okou wählen lassen",
@@ -2530,6 +2532,7 @@
       "moreIdeas": "Weitere Ideen",
       "moreTemplates": "Weitere Vorlagen",
       "presentationTemplates": "Präsentationsvorlagen",
+      "removeTask": "{{task}} entfernen",
       "tasks": {
         "image": "Bild",
         "presentation": "Folien",
@@ -2647,34 +2650,6 @@
       "transcribing": "Transkribieren",
       "transcribingProgress": "Transkribieren...",
       "transcriptionFailed": "Die Sprachtranskription ist fehlgeschlagen. Versuchen Sie es erneut."
-    },
-    "welcomeThread": {
-      "content": "# Hallo, ich bin {{assistantName}}\n\nIch bin dein KI-Teammitglied. Sag mir, welches Ergebnis du brauchst, und ich arbeite mit deinen Tools, um das fertige Ergebnis hierher zurückzubringen.\n\n## Das kann ich liefern\n\n### Bilder\n\nIch kann Kampagnenmotive, Produktillustrationen, Social-Media-Grafiken und Werbemittel erstellen.\n\n![Von {{assistantName}} geliefertes Kampagnenmotiv]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Präsentationen\n\nIch kann aus einem groben Briefing eine strukturierte, gestaltete und präsentationsfertige Präsentation machen.\n\n![Von {{assistantName}} gelieferte Präsentation]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} Folien\n\n### Videos\n\nIch kann geschnittene Produktdemos, Launchfilme, Erklärvideos und Social-Media-Clips mit Untertiteln liefern.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · bereit zum Teilen\n\n### Automatisierungsempfehlungen\n\nIch kann wiederkehrende Teamarbeit prüfen und eine priorisierte Liste der Aufgaben erstellen, deren Automatisierung sich lohnt.\n\n| Priorität | Aufgabe | Auslöser | Ergebnis |\n| --- | --- | --- | --- |\n| 1 | Eingehende Leads qualifizieren | Neue Formularantwort | Angereicherter CRM-Datensatz und Antwortentwurf |\n| 2 | Aus Meetings Follow-ups machen | Anruf beendet | Zusammenfassung, CRM-Notiz und E-Mail-Entwurf |\n| 3 | Wöchentlicher Wachstumsbericht | Montagmorgen | Kennzahlenübersicht und Anomaliebericht |\n\n## Warum Teams mehr aus {{assistantName}} herausholen\n\nEin gutes Ergebnis muss nicht im Chat einer einzigen Person bleiben. Speichere den funktionierenden Prozess als gemeinsamen Workflow, damit das nächste Teammitglied mit dem beginnt, was bereits funktioniert.\n\n```mermaid\nflowchart TB\n  A[\"1. Herausfinden, was funktioniert<br/>Ein Teammitglied und {{assistantName}} erledigen die Aufgabe gemeinsam\"]\n  B[\"2. Workflow teilen<br/>Prozess und Kontext werden wiederverwendbar\"]\n  C[\"3. Bewährtes wiederverwenden<br/>Andere beginnen mit dem erprobten Prozess\"]\n  D[\"4. Gemeinsam verbessern<br/>Feedback verbessert zukünftige Ausführungen\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Teile den Workflow, nicht nur die fertige Datei.**\n- Gib jedem Teammitglied denselben Ausgangskontext.\n- Verbessere einen Prozess einmal, damit das ganze Team profitiert.\n\n## So arbeiten Sie mit mir im Team\n\nEine gute Antwort hilft einer Person. Ein gespeicherter Workflow hilft allen, die diese Aufgabe nach Ihnen übernehmen.\n\n[Diagramm des Team-Workflows](<{{teamDiagramUrl}}>)\n\n1. **Erledigen Sie die Aufgabe einmal mit mir.** Beschreiben Sie das gewünschte Ergebnis statt der einzelnen Schritte, und korrigieren Sie mich, während die Arbeit noch läuft. Genau diese Korrektur lohnt sich zu bewahren.\n2. **Speichern Sie das Ergebnis als Workflow.** Wählen Sie unten im Eingabefeld **Workflow erstellen**. Ich frage nach dem gewünschten Ergebnis, dem Auslöser und dem, was mit dem Ergebnis geschehen soll, und schreibe daraus einen Workflow, den Sie erneut ausführen können.\n3. **Stellen Sie die Sichtweite auf Öffentlich.** Öffnen Sie den Workflow und ändern Sie **Sichtweite**. Ein **Privat** gestellter Workflow bleibt bei Ihnen, ein **Öffentlich** gestellter kann von allen im Workspace ausgeführt werden.\n4. **Starten Sie ihn über seinen Namen.** Geben Sie in einem beliebigen Chat `/` und den Namen des Workflows ein. Ergänzen Sie eine Automatisierung, wenn er nach Zeitplan oder Auslöser statt auf Zuruf laufen soll.\n\nBeginnen Sie mit der Aufgabe, die Ihr Team am häufigsten wiederholt, nicht mit der schwierigsten. Ein Workflow, der jede Woche läuft, ist mehr wert als ein raffinierter, der einmal läuft.\n\n## Sprechen Sie mit mir in Slack\n\nEin Großteil dieser Arbeit wird ohnehin in Slack besprochen. Sobald ich dort installiert bin, landet die Antwort im Thread statt in einem weiteren Tab.\n\n[Diagramm des Slack-Gesprächs](<{{slackDiagramUrl}}>)\n\n**Einmal einrichten**\n\n1. Öffnen Sie **Einsatzorte von {{assistantName}}** in der linken Seitenleiste.\n2. Wählen Sie auf der Slack-Karte **Auf Slack installieren** und bestätigen Sie die Berechtigungen. Nur Workspace-Admins können installieren; fragen Sie andernfalls Ihre Administration.\n3. Alle anderen öffnen dieselbe Karte und wählen **Verbinden**, um ihr eigenes Slack-Konto zu verknüpfen.\n\n**Danach nutzen Sie mich wie jedes andere Teammitglied**\n\n| In Slack | Was ich tue |\n| --- | --- |\n| Schreiben Sie mir eine Direktnachricht | Wir arbeiten privat in einem durchgehenden Gespräch |\n| `@{{assistantName}}` in einem Kanal | Ich antworte im Thread zu Ihrer Nachricht, wo das Team mitlesen kann |\n| `@{{assistantName}}` erneut in einem Thread | Ich nehme diesen Thread wieder auf und arbeite darin weiter |\n| `/okou` | Öffnet meine Befehlsliste: verbinden, Agent wechseln, Modell wechseln, trennen |\n\nZwei Dinge sind gut zu wissen. In einem Kanal antworte ich nur, wenn ich erwähnt werde, und halte mich aus Threads heraus, in die ich nicht gebeten wurde. Und Sie können einer Direktnachricht eine Datei anhängen, die ich vor meiner Antwort lese.\n\n[Slack einrichten]({{worksUrl}}), damit die oben gespeicherten Workflows gestartet werden können, ohne den Kanal zu verlassen.\n\n[Lade dein Team ein]({{inviteUrl}}), damit der nächste Workflow sofort von den Menschen wiederverwendet werden kann, die ihn brauchen.\n\nIn der [Dokumentation]({{docsUrl}}) erfährst du mehr über gemeinsame Workflows.",
-      "slackDiagram": {
-        "caption": "Wo eine Antwort in Slack landet: im Thread zu Ihrer Nachricht oder in einer privaten Direktnachricht",
-        "channelEyebrow": "In einem Kanal",
-        "channelNote": "Die Antwort bleibt an Ihrer Nachricht, der Kanal wird nicht geflutet und das Team liest trotzdem mit.",
-        "directEyebrow": "In einer Direktnachricht",
-        "directLabel": "Sie und {{assistantName}}",
-        "directNote": "Ein privates Gespräch, das seinen Kontext über Aufgaben hinweg behält.",
-        "mentionLabel": "Sie erwähnen {{assistantName}}",
-        "replyLabel": "{{assistantName}} antwortet im Thread"
-      },
-      "teamDiagram": {
-        "automationBody": "Startet ihn nach Zeitplan oder Auslöser, ganz ohne Nachfrage.",
-        "automationTitle": "Eine Automatisierung",
-        "caption": "Ein gelungener Chat wird zum Workflow, von dem das ganze Team und Ihr Zeitplan ausgehen",
-        "chatBody": "Sie und {{assistantName}} lösen die Aufgabe einmal richtig.",
-        "chatTitle": "Ein Chat, der funktioniert hat",
-        "savedEyebrow": "Einmal gespeichert",
-        "teamEyebrow": "Für alle",
-        "teammateBody": "Startet ihn über seinen Namen und beginnt bei dem, was schon funktioniert.",
-        "teammateTitle": "Jede Person im Team",
-        "workflowBody": "Der Ablauf samt Kontext, bewahrt und wiederverwendbar.",
-        "workflowTitle": "Ein Workflow",
-        "yoursEyebrow": "Ihres"
-      },
-      "title": "Willkommen bei {{assistantName}}"
     },
     "workflows": {
       "named": "Workflow {{title}}",
@@ -5740,6 +5715,22 @@
     "cancel": "Abbrechen",
     "chooseFile": "Datei auswählen",
     "choosePrivateKeyFile": "Datei mit privatem Schlüssel auswählen",
+    "connectionStatus": {
+      "attention_one": "{{count}} SSH-Host benötigt Aufmerksamkeit",
+      "attention_other": "{{count}} SSH-Hosts benötigen Aufmerksamkeit",
+      "authenticationFailed": "SSH-Authentifizierung fehlgeschlagen. Prüfen Sie Benutzername, privaten Schlüssel und die Berechtigung auf dem Server. Bearbeiten Sie den Host oder ersetzen Sie die Zugangsdaten.",
+      "credentialResourceLimit": "Der private Schlüssel überschreitet die unterstützten Verarbeitungsgrenzen. Exportieren Sie ihn mit unterstützter Verschlüsselung erneut und ersetzen Sie die Zugangsdaten.",
+      "hostKeyMismatch": "Der Hostschlüssel des Servers stimmt nicht mit der gespeicherten Identität überein. Überprüfen Sie den Server unabhängig, bevor Sie den Hostschlüssel zurücksetzen.",
+      "invalidCredential": "Der private Schlüssel oder die Passphrase konnte nicht gelesen werden. Ersetzen Sie die Zugangsdaten durch den vollständigen Schlüssel und die korrekte Passphrase.",
+      "networkFailure": "Die letzte SSH-Verbindung ist fehlgeschlagen. Prüfen Sie Hostname, Port, Serververfügbarkeit und Firewall-Zugriff vom Runner.",
+      "observedAt": "Beobachtet: {{time}}",
+      "protocol": "Der SSH-Handshake ist fehlgeschlagen. Prüfen Sie, ob dieser Port SSH bereitstellt und der Server kompatible Algorithmen unterstützt.",
+      "timedOut": "Die letzte SSH-Verbindung hat vor Abschluss der Authentifizierung das Zeitlimit überschritten. Prüfen Sie Endpunkt, Firewall und Serververfügbarkeit.",
+      "unavailable": "SSH-Verbindungsstatus nicht verfügbar",
+      "unsafeDestination": "Dieser Host wird nicht in eine zulässige öffentliche Adresse aufgelöst. Verwenden Sie einen öffentlichen SSH-Endpunkt.",
+      "unsupportedCredential": "Das Format oder der Algorithmus des privaten Schlüssels wird nicht unterstützt. Ersetzen Sie ihn durch einen unterstützten OpenSSH-, PKCS8- oder RSA-PEM-Schlüssel.",
+      "unsupportedHostKey": "Der Hostschlüssel des Servers wird nicht unterstützt. Konfigurieren Sie auf dem Server einen unterstützten Ed25519-, ECDSA- oder RSA-Hostschlüssel."
+    },
     "credentialsHelp": "Zugangsdaten können nur geschrieben werden und bleiben außerhalb der Sandbox. Fügen Sie den vollständigen Schlüssel ein; Leerzeichen bleiben erhalten. Die Felder werden beim Absenden oder Schließen geleert.",
     "delete": "Host löschen",
     "deleteHelp": "Diesen Host und seine gespeicherten Zugangsdaten löschen? Agents sehen ihn dann nicht mehr im aktuellen Inventar.",
@@ -6508,6 +6499,7 @@
       "install": "Installieren",
       "installDescription": "Wähle einen Agenten und fülle alle erforderlichen Parameter aus. Alle enthaltenen Automatisierungen werden installiert.",
       "installed": "Offizieller Workflow installiert",
+      "installedStatus": "Installiert",
       "installErrorDescription": "Prüfe den Agenten und die Parameterwerte und versuche es erneut.",
       "installErrorTitle": "Offizieller Workflow konnte nicht installiert werden",
       "installTitle": "{{name}} installieren",

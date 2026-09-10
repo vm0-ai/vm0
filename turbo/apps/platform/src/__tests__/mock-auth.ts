@@ -190,7 +190,7 @@ interface MockedUser {
 }
 
 let internalMockedUser: MockedUser | null = null;
-let internalMockedSession: { token: string } | null = null;
+let internalMockedSession: { token: string; id?: string } | null = null;
 let internalMockedOrganization: {
   id: string;
   name: string;
@@ -426,7 +426,7 @@ export function mockUser(
     createOrganizationsLimit?: number | null;
     clientSessions?: MockedClientSession[];
   } | null,
-  session: { token: string } | null,
+  session: { token: string; id?: string } | null,
 ) {
   if (user) {
     internalMockedUser = {
@@ -1231,7 +1231,7 @@ export const mockedClerk = {
       };
     }
     return {
-      id: "test-session-id",
+      id: internalMockedSession.id ?? "test-session-id",
       get lastActiveOrganizationId() {
         return internalMockedOrganization?.id ?? null;
       },

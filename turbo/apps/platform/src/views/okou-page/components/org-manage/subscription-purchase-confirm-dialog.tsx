@@ -34,7 +34,7 @@ function SubscriptionPurchaseSummary({
           return $.billing.credits.today;
         })}
       </p>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-border py-3.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border py-3.5">
         <p className="text-sm font-medium text-foreground">
           {t(($) => {
             return $.billing.concurrency.dueNow;
@@ -44,7 +44,7 @@ function SubscriptionPurchaseSummary({
           {formatPurchaseAmount(preview.immediateAmountCents, preview.currency)}
         </p>
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-[hsl(var(--gray-100))] py-2.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[hsl(var(--gray-100))] py-2.5">
         <p className="text-sm font-medium text-foreground">
           {t(($) => {
             return $.billing.plans.usagePacks.planStep;
@@ -59,7 +59,7 @@ function SubscriptionPurchaseSummary({
           return $.billing.plans.usagePacks.management.everyMonth;
         })}
       </p>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-border py-3.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border py-3.5">
         <p className="text-sm font-medium text-foreground">
           {t(($) => {
             return $.billing.concurrency.monthlyTotal;

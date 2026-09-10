@@ -297,6 +297,57 @@ class TestRegistryBuiltinCatalogValidation:
         assert compiled_firewalls is not None
         assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
 
+    @pytest.mark.parametrize(
+        "literal_label",
+        ["a" * 62, "a" * 63, "é" * 57, "%C3%A9" * 57],
+        ids=["62-characters", "63-characters", "63-byte-idna", "encoded-63-byte-idna"],
+    )
+    def test_hostname_suffix_template_preserves_unrelated_catalog_connector(
+        self, tmp_path, mitm_ctx, literal_label
+    ):
+        base = "https://" + literal_label + "${{ vars.SUFFIX }}"
+        registry_path, cache_path = write_registry_with_cache(
+            tmp_path,
+            {
+                "10.200.0.1": builtin_sandbox(
+                    "run-template", "templated", {"SUFFIX": ".example.com"}
+                ),
+                "10.200.0.2": builtin_sandbox("run-static", "static"),
+            },
+            {
+                "templated": {
+                    "name": "templated",
+                    "apis": [
+                        {
+                            "base": base,
+                            "hostPolicy": {"kind": "providerOwned", "suffixes": ["example.com"]},
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                },
+                "static": cache_firewall("static", "https://api.static.example.com"),
+            },
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            template_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
+            static_context = registry.get_sandbox_context("10.200.0.2", str(registry_path))
+
+        assert template_context is not None
+        template_info, template_firewalls, _ = template_context
+        assert template_firewalls is not None
+        assert template_info["firewalls"][0]["apis"][0]["base"] == (
+            "https://" + literal_label + ".example.com"
+        )
+        assert static_context is not None
+        static_info, static_firewalls, _ = static_context
+        assert static_firewalls is not None
+        assert static_info["firewalls"][0]["apis"][0]["base"] == "https://api.static.example.com"
+
     def test_runner_catalog_cache_resolves_whole_host_template_with_path_parameter(
         self, tmp_path, mitm_ctx
     ):
@@ -352,6 +403,43 @@ class TestRegistryBuiltinCatalogValidation:
             sandbox_info["firewalls"][0]["apis"][0]["base"]
             == "https://acme.uspacy.com/v1/hooks/{hookKey}"
         )
+
+    @pytest.mark.parametrize(
+        ("base", "vars_map", "resolved_base"),
+        [
+            pytest.param(
+                "https://${{ vars.PREFIX }}\u0301.example.com",
+                {"PREFIX": "e"},
+                "https://e\u0301.example.com",
+                id="incomplete-combining-label",
+            ),
+            pytest.param(
+                "https://api\u3002${{ vars.HOST }}.example.com",
+                {"HOST": "tenant"},
+                "https://api\u3002tenant.example.com",
+                id="existing-unicode-label-separator",
+            ),
+        ],
+    )
+    def test_hostname_template_preserves_literal_label_syntax(
+        self, tmp_path, mitm_ctx, base, vars_map, resolved_base
+    ):
+        registry_path, cache_path = write_registry_with_cache(
+            tmp_path,
+            {"10.200.0.1": builtin_sandbox("run-template", "templated", vars_map)},
+            {"templated": {"name": "templated", "apis": [{"base": base, "auth": {}}]}},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        sandbox_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == resolved_base
 
     @pytest.mark.parametrize(
         "raw_json",

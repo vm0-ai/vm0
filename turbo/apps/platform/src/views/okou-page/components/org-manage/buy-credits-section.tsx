@@ -25,7 +25,7 @@ const MAX_CUSTOM_USD = 10_000;
 type Preset = (typeof PRESETS)[number];
 
 const settingsCardBorder = {
-  border: "0.7px solid hsl(var(--gray-400))",
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
 } as const;
 
 const tileBaseClass =

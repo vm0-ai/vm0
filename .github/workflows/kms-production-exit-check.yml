@@ -1,0 +1,77 @@
+name: KMS Production Exit Dependencies
+
+env:
+  npm_config_audit: "false"
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_verified_at:
+        description: "UTC completion time of the accepted full DB verification"
+        required: true
+        type: string
+        default: "2026-09-10T07:38:23.484Z"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kms-production-operation-32264
+  cancel-in-progress: false
+
+jobs:
+  recovery-history:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inspect production recovery metadata without connecting to the database
+        env:
+          MIGRATION_VERIFIED_AT: ${{ inputs.migration_verified_at }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: python3 .github/scripts/kms-production-exit-check.py backups
+      - name: Retain sanitized recovery inventory
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kms-production-exit-backups-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kms-exit-backups.json
+          if-no-files-found: error
+          retention-days: 30
+
+  runner-registries:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Connect to the existing production runner fleet
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          operation-timeout-seconds: "120"
+      - name: Inventory encrypted-secret headers on production runner hosts
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        run: python3 .github/scripts/kms-production-exit-check.py runners
+      - name: Retain sanitized runner inventory
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kms-production-exit-runners-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kms-exit-runners.json
+          if-no-files-found: error
+          retention-days: 30

@@ -488,12 +488,15 @@ fn is_unsafe_url_codepoint(ch: char) -> bool {
     ch < '\u{0020}' || ch == '\u{007f}'
 }
 
-// Use the shortest valid witness for each URL component so materialization does
-// not push an otherwise satisfiable DNS label past its 63-byte limit.
+// Keep component witnesses small; hostname fragments also preserve adjacent
+// literal label boundaries when materialized below.
 const BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER: &str = "https://x.y";
 const BASE_URL_TEMPLATE_HOST_PLACEHOLDER: &str = "x.y";
 const BASE_URL_TEMPLATE_PORT_PLACEHOLDER: &str = "1";
 const BASE_URL_TEMPLATE_PATH_PLACEHOLDER: &str = "x";
+const BASE_URL_TEMPLATE_HOST_LABEL_DELIMITERS: &[char] = &[
+    '.', ':', '/', '?', '#', '@', '[', ']', '\u{3002}', '\u{ff0e}', '\u{ff61}',
+];
 
 // Precompute fixed URL delimiters once; a catalog base can contain many templates.
 struct BaseUrlTemplateComponentBoundaries {
@@ -618,6 +621,7 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
         let template_end = end + "}}".len();
         result.push_str(base_url_template_syntax_placeholder_for_cache(
             base,
+            search_start,
             start,
             template_end,
             &boundaries,
@@ -658,6 +662,7 @@ fn is_ecmascript_whitespace(ch: char) -> bool {
 
 fn base_url_template_syntax_placeholder_for_cache(
     base: &str,
+    literal_start: usize,
     start: usize,
     template_end: usize,
     boundaries: &BaseUrlTemplateComponentBoundaries,
@@ -675,12 +680,43 @@ fn base_url_template_syntax_placeholder_for_cache(
         if base[..start].ends_with(':') && ends_base_or_starts_path {
             return Ok(BASE_URL_TEMPLATE_PORT_PLACEHOLDER);
         }
-        return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
+        let prefix = &base[literal_start..start];
+        let remaining = &base[template_end..];
+        let suffix = remaining
+            .split_once("${{")
+            .map_or(remaining, |(literal, _)| literal);
+        return Ok(base_url_template_hostname_placeholder(prefix, suffix));
     }
     if boundaries.prefix_is_inside_path(start) {
         return Ok(BASE_URL_TEMPLATE_PATH_PLACEHOLDER);
     }
     Err("base URL template variable is used in an unsupported position".to_string())
+}
+
+fn base_url_template_hostname_placeholder(prefix: &str, suffix: &str) -> &'static str {
+    let prefix_label = prefix
+        .rsplit_once(BASE_URL_TEMPLATE_HOST_LABEL_DELIMITERS)
+        .map_or(prefix, |(_, label)| label);
+    let suffix_label = suffix
+        .split_once(BASE_URL_TEMPLATE_HOST_LABEL_DELIMITERS)
+        .map_or(suffix, |(label, _)| label);
+    // A variable may supply a dot, so a complete literal label need not grow.
+    // Incomplete labels still join the witness; final URL validation checks both.
+    match (
+        base_url_template_literal_label_is_valid(prefix_label),
+        base_url_template_literal_label_is_valid(suffix_label),
+    ) {
+        (true, true) => ".x.y.",
+        (true, false) => ".x.y",
+        (false, true) => "x.y.",
+        (false, false) => BASE_URL_TEMPLATE_HOST_PLACEHOLDER,
+    }
+}
+
+fn base_url_template_literal_label_is_valid(label: &str) -> bool {
+    !label.is_empty()
+        && validate_parameterized_firewall_base_authority("https", &format!("x.{label}.y"), "")
+            .is_ok()
 }
 
 fn validate_template_identifier(name: &str, label: &str) -> Result<(), String> {

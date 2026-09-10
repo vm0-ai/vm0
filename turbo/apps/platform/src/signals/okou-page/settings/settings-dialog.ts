@@ -18,6 +18,7 @@ import {
   clearPendingLogo$,
   initProfileName$,
   requestBuyCreditsScroll$,
+  resetDeleteConfirm$,
   setBillingPlansStandalone$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
@@ -188,6 +189,7 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
   set(internalSettingsDialogSignal$, null);
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
+  set(resetDeleteConfirm$);
   set(resetUsagePackPricing$);
   // The billing sub-page belongs to the session, not to the tab: a closed
   // dialog must not reopen on the plans page the next time it is opened.

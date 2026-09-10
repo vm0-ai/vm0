@@ -274,10 +274,203 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32958"
+    },
+    {
+      "id": "tone-preview-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-bubble-cool", "okou-border"],
+      "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
+      "cases": [
+        "tone-preview-light",
+        "tone-preview-dark",
+        "tone-preview-mobile"
+      ],
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-setup-attempts",
+          "url": "https://a.okou.io/0ey5ajo2g7.zip",
+          "sha256": "a644613bdfca1f205962bfc9f77c94de4e124485817bbbe89762ed613079cf0e",
+          "commit": "047e880cc958225a79c2ebceb961718a0916d5c9"
+        },
+        {
+          "kind": "after-raw-diffs-and-live-persistence",
+          "url": "https://a.okou.io/uc3wow1q46.zip",
+          "sha256": "21a6751c30b32927858510a317e57e00f1068a2c16d992a6b77695664b393a25",
+          "commit": "1a665b1d0b25311c4c98471c206212a64be79c0d"
+        },
+        {
+          "kind": "before-after-comparison-image",
+          "url": "https://a.okou.io/seho80x6gx.png",
+          "sha256": "13468571ad46d0c397740e81295ec4112eb0b96c0f96aff127131ac8aae0ab01",
+          "commit": "1a665b1d0b25311c4c98471c206212a64be79c0d"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33133"
+    },
+    {
+      "id": "monochrome-icon-filter",
+      "family": "local-controls",
+      "tokens": ["okou-icon-mono"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/provider-icons.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-icons.tsx"
+      ],
+      "cases": [
+        "icon-mono-providers-light",
+        "icon-mono-connectors-light",
+        "icon-mono-providers-dark",
+        "icon-mono-connectors-dark",
+        "icon-mono-providers-narrow",
+        "icon-mono-connectors-narrow",
+        "icon-mono-providers-narrow-dark",
+        "icon-mono-connectors-narrow-dark"
+      ],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-aa-with-rejected-calibration",
+          "url": "https://a.okou.io/aeguxfgxpx.zip",
+          "sha256": "af8a4226a522d7ad41510bbb4ccb8b05b4dd44b7cafcd9c3794789367d02def8",
+          "commit": "ad820032f6237598b8abed4c46e31979d7007ae2"
+        },
+        {
+          "kind": "after-with-before-raw-diffs-and-focused-checks",
+          "url": "https://a.okou.io/gywva3k9z6.zip",
+          "sha256": "4a50697ce0fc0243ea64be3b0314f0255b76acdc606d07efd45f0631d4e1181d",
+          "commit": "29156a9e945af833fdef2bffe024be4c617d4496"
+        },
+        {
+          "kind": "before-after-raw-diff-comparison-image",
+          "url": "https://a.okou.io/vfjoaz2ylx.png",
+          "sha256": "6b77a43d84c569f85ef9e9cd2a7cbb9277bfd9bb780d9b5018d015125b7a15ad",
+          "commit": "29156a9e945af833fdef2bffe024be4c617d4496"
+        },
+        {
+          "kind": "evidence-only-head-after-replay-with-ci-and-live-preview",
+          "url": "https://a.okou.io/okin45nt2v.zip",
+          "sha256": "96b259d89bfbbdae4eb4c9effd1f7539087988f0f5745d7497333b99078c9e68",
+          "commit": "a7aae2beca69ca7c0075bf79af4b9cccaf4f006b"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33062"
+    },
+    {
+      "id": "settings-select-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-btn-morandi"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/language-settings.tsx",
+        "apps/platform/src/views/okou-page/components/settings/timezone-settings.tsx"
+      ],
+      "cases": [
+        "settings-select-light",
+        "settings-select-light-mobile",
+        "settings-select-dark",
+        "settings-select-dark-mobile"
+      ],
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-aa-with-retained-calibration",
+          "url": "https://a.okou.io/e1c28c8g3y.zip",
+          "sha256": "f517cb04ba3e5808a194f2e302a7c3500fa93179f8ee438e11d08f273074d5e7",
+          "commit": "c103ec9c5b67ce683290d3250002fa2674ff76ea"
+        },
+        {
+          "kind": "after-with-before-raw-diffs-and-focused-checks",
+          "url": "https://a.okou.io/4jznraws1s.zip",
+          "sha256": "2444ecfa7be6bfb690a86a6e2fa0e5f410576c3083828218b42cacf7071b67d1",
+          "commit": "afc52af743660894548870d79e29f5a8ea97c6ba"
+        },
+        {
+          "kind": "before-after-raw-diff-comparison-image",
+          "url": "https://a.okou.io/a26g028cl9.png",
+          "sha256": "938ae0031ed96a2351621adaa9d5344a60a4138edc85ac062537d1c95895b006",
+          "commit": "afc52af743660894548870d79e29f5a8ea97c6ba"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33154"
+    },
+    {
+      "id": "chat-emoji-font",
+      "family": "local-controls",
+      "tokens": ["okou-emoji"],
+      "consumers": ["apps/platform/src/views/okou-page/chat-thread-page.tsx"],
+      "cases": [
+        "chat-emoji-light",
+        "chat-emoji-dark",
+        "chat-emoji-narrow",
+        "chat-emoji-narrow-dark"
+      ],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay-with-all-rejected-calibrations",
+          "url": "https://a.okou.io/3qkwcyzuet.zip",
+          "sha256": "b455d3943ee52b0e4188ddbf47c6e21fa29ba43f40f25805959de85549712819",
+          "commit": "1e09b73cb906f1202b566255760655db893048c2"
+        },
+        {
+          "kind": "refreshed-before-and-unchanged-replay-after-upstream-composer-change",
+          "url": "https://a.okou.io/z6rgfsqp0b.zip",
+          "sha256": "18a6c9fe37af3ab5cdafb67caf2fd1ea3bbe9ef4d0d1fb08d545bf8389b54438",
+          "commit": "4e18c07e3eb936da5778207e5a81508cfce9aaa0"
+        },
+        {
+          "kind": "after-raw-diffs-and-real-api-persistence",
+          "url": "https://a.okou.io/b1j7myrczw.zip",
+          "sha256": "6ab10971d95a34027b10b73cabf2cafcd96b3c29a282762a8b074bf108259e10",
+          "commit": "0c52bbddd94dbefa9451d2bae92af6581a85abe4"
+        },
+        {
+          "kind": "after-named-font-utility-with-all-retained-evidence",
+          "url": "https://a.okou.io/tuxdll7vug.zip",
+          "sha256": "c46f81d1f94309c46a408998663e74ec4f25adc99ba12984890c7269742c2dc2",
+          "commit": "242fcfd3261fb8f0aa994ecfe78671f9fa67f70b"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33064"
+    },
+    {
+      "id": "hairline-badge-surfaces",
+      "family": "local-controls",
+      "tokens": ["okou-badge", "okou-pill", "okou-border-r"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/build-info-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/built-in-model-cooldown-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connection-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-catalog-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/indexeddb-diagnostics-block.tsx",
+        "apps/platform/src/views/okou-page/components/settings/settings-dialog.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-invoices-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-members-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/usage-pack-pricing-page.tsx",
+        "apps/platform/src/views/okou-page/components/log-views/status-badge.tsx",
+        "apps/platform/src/views/queue-page/queue-drawer.tsx"
+      ],
+      "cases": [
+        "badge-debug-light",
+        "badge-debug-dark",
+        "badge-debug-narrow",
+        "badge-debug-narrow-dark",
+        "badge-people-light",
+        "badge-people-dark",
+        "badge-billing-light",
+        "badge-billing-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
-    "../e2e/playwright/style-migration/tone-cases.json"
+    "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/tone-preview-cases.json",
+    "../e2e/playwright/style-migration/icon-mono-cases.json",
+    "../e2e/playwright/style-migration/settings-select-cases.json",
+    "../e2e/playwright/style-migration/badge-cases.json",
+    "../e2e/playwright/style-migration/chat-emoji-cases.json"
   ]
 }

@@ -1,3 +1,5 @@
+import { isArtifactPublicationFilePath } from "@okouai/api-contracts/contracts/artifact-delivery";
+
 const R2_IMAGE_TRANSFORM_HOSTS = new Set([
   "cdn.vm0.io",
   "a.okou.io",
@@ -74,6 +76,9 @@ export function r2ImageTransformUrl(
 
   if (
     !R2_IMAGE_TRANSFORM_HOSTS.has(parsed.hostname) ||
+    // Cloudflare's image cache cannot enforce a share's current permissions.
+    (parsed.hostname === "a.okou.io" &&
+      isArtifactPublicationFilePath(parsed.pathname)) ||
     parsed.pathname.startsWith(R2_IMAGE_TRANSFORM_PREFIX)
   ) {
     return url;

@@ -395,6 +395,47 @@ describe("native Pi execution edges", () => {
     },
   );
 
+  // Bedrock reaches its upstream through the AWS SDK request handler rather
+  // than the adapter fetch, so only the Messages route crosses this boundary.
+  it.each(
+    fixtures.filter(({ config }) => {
+      return config.dialect === "anthropic-messages";
+    }),
+  )(
+    "reports transport evidence instead of an upstream $name error page",
+    async ({ config: input }) => {
+      const config = piModelConfigV4Schema.parse(input);
+      const page =
+        "<html><head><style global>.logo{color:#8e8ea0}</style></head>" +
+        '<body><svg viewBox="0 0 41 41"><path d="M37.5324 16.8707" /></svg></body></html>';
+      server.use(
+        http.post(piNativeInferenceUrl(config), () => {
+          return new HttpResponse(page, {
+            status: 503,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          });
+        }),
+      );
+      const materialized = await materialize(config);
+      const model = resolvePiAgentModel(materialized);
+      if (!model) throw new Error("Missing native model");
+
+      const result = await piAgentStreamForConfig(materialized)(
+        model,
+        { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
+        { apiKey: materialized.apiKey },
+      ).result();
+
+      expect(result.stopReason).toBe("error");
+      const errorMessage = result.errorMessage ?? "";
+      expect(errorMessage).toContain("upstream_non_api_response");
+      expect(errorMessage).toContain("status=503");
+      expect(errorMessage).toContain("content_type=html");
+      expect(errorMessage).not.toContain("<svg");
+      expect(errorMessage).not.toContain("8e8ea0");
+    },
+  );
+
   it.each(fixtures)(
     "cancels $name at the actual request boundary without a retry",
     async ({ config: input }) => {

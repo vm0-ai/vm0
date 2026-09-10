@@ -522,6 +522,19 @@ this does not claim those deployments were disabled. Keep the rollback floor,
 to deploy consumer removal before a later physical schema drop in
 [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
 
+S4 [#33061](https://github.com/vm0-ai/vm0/issues/33061) removes application
+Goal schema consumers while preserving physical state. Its runtime `agent_runs`
+projection is separate from migration discovery; both schemas remain deployable
+with that code. **The S1 floor above is necessary but insufficient for S5.** Before
+S5 removes physical objects, independently verify a currently serving,
+consumer-free S4 release and retain a rollback target proven compatible with the
+contracted schema. Never select an S1/S2/S3-only target after contraction merely
+because it passes the permanent ancestry floor. Keep the active Goal transition
+validator and migration-consistency entry through S5's preservation/replay and
+zero-residual gate. The [S4 record](goal-retirement-archival.md#s4-application-consumer-removal-33061)
+describes retained historical/security references and bounded captured contexts.
+No release or production contraction is authorized by the implementation PR.
+
 ### Usage pack visibility compatibility retirement
 
 `showUsagePack` has an explicit API writer and billing response starting with

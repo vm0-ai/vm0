@@ -1992,9 +1992,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ],
       "nested",
     );
-    expectNoApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
-    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       API_DISPATCH_PHASE_ACTION_TYPES,
@@ -13229,7 +13226,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
 
-  it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
+  it("retries custom OAuth quietly across runs and supports reconnect", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: () => {
@@ -13277,6 +13274,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "revoked-runtime-authorization-code",
       state,
     });
+    const [account] = await connectors.listCustomConnectorAccounts(
+      actor,
+      custom.id,
+    );
+    if (!account) {
+      throw new Error("Expected the authorized custom OAuth account");
+    }
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const firstRun = await api.createRun(actor, {
@@ -13304,6 +13308,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     onTestFinished(() => {
       clearMockNow();
     });
+    context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.axiomLogging.error.mockClear();
+    context.mocks.sentry.captureException.mockClear();
     const reconnectRequired = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
@@ -13389,6 +13396,57 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         return body.get("grant_type");
       }),
     ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    );
+
+    const replacement = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+      initialRefreshToken: "runtime-reconnected-refresh",
+    });
+    const reconnectUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+      agentId,
+      { intent: "reconnect", connectionId: account.id },
+    );
+    const reconnectState = new URL(reconnectUrl).searchParams.get("state");
+    if (!reconnectState) {
+      throw new Error("Expected custom connector OAuth reconnect state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "reconnected-runtime-authorization-code",
+      state: reconnectState,
+    });
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        connectionStatus: "connected",
+        reconnectReason: null,
+      }),
+    );
+    const recovered = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${secondClaim.sandboxToken}` },
+      { ...secondAuthBody, forceRefresh: true },
+      [200],
+    );
+    expect(recovered.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-oauth-refreshed-access-token" },
+    });
+    expect(replacement.tokenBodies.at(-1)?.get("refresh_token")).toBe(
+      "runtime-reconnected-refresh",
+    );
 
     await api.requestCancelRun(actor, firstRun.runId, [200]);
     await api.requestCancelRun(actor, secondRun.runId, [200]);
@@ -19511,28 +19569,29 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     );
 
-    describe.each(["input_too_large", "execution_timeout"] as const)(
-      "globally suppresses %s",
-      (failureReason) => {
-        it.each([
-          { name: "BYOK", modelProvider: "anthropic-api-key" },
-          { name: "built-in", modelProvider: "built-in" },
-          {
-            name: "legacy provider",
-            persistedModelProvider: "legacy-unknown-provider",
-          },
-        ] satisfies readonly (FailureCase & { readonly name: string })[])(
-          "suppresses the generic log for $name",
-          async (provider) => {
-            const { runId } = await completeFailure({
-              ...provider,
-              failureReason,
-            });
-            expect(genericFailureLogCalls(runId)).toHaveLength(0);
-          },
-        );
-      },
-    );
+    describe.each([
+      "input_too_large",
+      "execution_timeout",
+      "safety_policy_refusal",
+    ] as const)("globally suppresses %s", (failureReason) => {
+      it.each([
+        { name: "BYOK", modelProvider: "anthropic-api-key" },
+        { name: "built-in", modelProvider: "built-in" },
+        {
+          name: "legacy provider",
+          persistedModelProvider: "legacy-unknown-provider",
+        },
+      ] satisfies readonly (FailureCase & { readonly name: string })[])(
+        "suppresses the generic log for $name",
+        async (provider) => {
+          const { runId } = await completeFailure({
+            ...provider,
+            failureReason,
+          });
+          expect(genericFailureLogCalls(runId)).toHaveLength(0);
+        },
+      );
+    });
 
     it.each([
       {

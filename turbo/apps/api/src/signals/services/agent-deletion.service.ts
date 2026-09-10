@@ -1,6 +1,8 @@
 import { command, computed, type Computed } from "ccstate";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { agentDeletionError } from "@okouai/core/agent-protection";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -67,6 +69,18 @@ async function lockAgentLifecycleForDeletion(tx: Tx, args: DeleteAgentArgs) {
   );
   if (permissionError) {
     return { kind: "forbidden" as const, response: permissionError };
+  }
+
+  const [org] = await tx
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, args.orgId));
+  const identityError = agentDeletionError(agent.id === org?.defaultAgentId);
+  if (identityError) {
+    return {
+      kind: "forbidden" as const,
+      response: { status: 400 as const, body: { error: identityError } },
+    };
   }
 
   const sessions = await tx

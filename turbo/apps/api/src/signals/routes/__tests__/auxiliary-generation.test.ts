@@ -176,6 +176,74 @@ const cases = Object.freeze([
     outcome: "degraded",
     reason: "rate_limited",
   },
+  // OpenRouter reports an upstream gateway failure inside a 200 body too. The
+  // wrapper status is then a local synthetic 502, so only the provider code
+  // separates a timeout from unavailability.
+  {
+    name: "typed response gateway timeout",
+    response: () => {
+      return HttpResponse.json({ error: { code: 504, message: secret } });
+    },
+    outcome: "degraded",
+    reason: "upstream_timeout",
+  },
+  {
+    name: "typed response bad gateway",
+    response: () => {
+      return HttpResponse.json({ error: { code: 502, message: secret } });
+    },
+    outcome: "degraded",
+    reason: "provider_unavailable",
+  },
+  {
+    name: "wrapped provider unavailability",
+    response: () => {
+      return HttpResponse.json({
+        error: {
+          metadata: {
+            raw: JSON.stringify({
+              error: { status: "UNAVAILABLE", message: secret },
+            }),
+          },
+        },
+      });
+    },
+    outcome: "degraded",
+    reason: "provider_unavailable",
+  },
+  {
+    name: "wrapped provider resource exhaustion",
+    response: () => {
+      return HttpResponse.json({
+        error: {
+          metadata: {
+            raw: JSON.stringify({
+              error: { status: "RESOURCE_EXHAUSTED", message: secret },
+            }),
+          },
+        },
+      });
+    },
+    outcome: "degraded",
+    reason: "rate_limited",
+  },
+  {
+    name: "wrapped invalid parameter overrides a transient provider code",
+    response: () => {
+      return HttpResponse.json({
+        error: {
+          code: 504,
+          metadata: {
+            raw: JSON.stringify({
+              error: { status: "INVALID_ARGUMENT", message: secret },
+            }),
+          },
+        },
+      });
+    },
+    outcome: "error",
+    reason: "invalid_request",
+  },
   {
     name: "wrapped invalid parameter overrides transient HTTP",
     response: () => {
@@ -393,7 +461,7 @@ describe("auxiliary generation outcomes", () => {
       await expect(title.read()).resolves.toStrictEqual(
         outcome === "success" ? ["A usable summary"] : [],
       );
-      expect(auxiliaryResults(context)).toStrictEqual([
+      expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
         expect.objectContaining({
           feature: "chat_title",
           outcome,
@@ -455,7 +523,7 @@ describe("auxiliary generation outcomes", () => {
       });
       await title.create();
       await flushWaitUntilForTest();
-      expect(auxiliaryResults(context)).toStrictEqual([
+      expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
         expect.objectContaining({ feature: "chat_title", ...expected }),
       ]);
       expect(auxiliaryWarnings(context)).toStrictEqual([]);
@@ -498,7 +566,7 @@ describe("auxiliary generation outcomes", () => {
     await flushWaitUntilForTest();
     await expect(title.read()).resolves.toStrictEqual([]);
     // The title scheduler checks configuration before starting auxiliary work.
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
   });
 
@@ -540,7 +608,7 @@ describe("auxiliary generation outcomes", () => {
     await expect(title.read()).resolves.toStrictEqual(["A usable summary"]);
     expect(auxiliaryWarnings(context)).toStrictEqual([]);
     if (mode === "missing") {
-      expect(auxiliaryResults(context)).toStrictEqual([]);
+      expect(auxiliaryResults(context, "chat_title")).toStrictEqual([]);
     }
   });
 
@@ -678,7 +746,7 @@ describe("auxiliary generation outcomes", () => {
     if (response.status !== 201) {
       throw new Error("Expected an accepted chat event");
     }
-    expect(auxiliaryResults(context)).toStrictEqual([]);
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([]);
     expect(context.mocks.axiom.flush.mock.calls.length).toBeGreaterThan(
       beforeSendFlushes,
     );
@@ -701,7 +769,7 @@ describe("auxiliary generation outcomes", () => {
     releaseFlush.resolve(undefined);
     await drain;
     expect(drained).toBeTruthy();
-    expect(auxiliaryResults(context)).toStrictEqual([
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
       expect.objectContaining({ feature: "chat_title", outcome: "success" }),
     ]);
     const events = await chat.requestThreadEvents(actor, {}, [200]);
@@ -732,7 +800,7 @@ describe("auxiliary generation outcomes", () => {
     );
     await title.create();
     await flushWaitUntilForTest();
-    expect(auxiliaryResults(context)).toStrictEqual([
+    expect(auxiliaryResults(context, "chat_title")).toStrictEqual([
       expect.objectContaining({ outcome: "success", duration_ms: 0 }),
     ]);
   });

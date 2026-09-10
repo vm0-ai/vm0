@@ -21,7 +21,7 @@ export const setupBrowserSessionPage$ = command(
       setBrowserSessionPageSignals$,
       descriptor ? createBrowserSessionPageSignals(descriptor.threadId) : null,
     );
-    set(updatePage$, createElement(BrowserSessionPage), "minimal");
+    set(updatePage$, createElement(BrowserSessionPage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

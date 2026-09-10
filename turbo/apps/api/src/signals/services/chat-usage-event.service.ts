@@ -1,3 +1,7 @@
+import {
+  historicalRunGroupId,
+  runEventHistory,
+} from "./run-event-provenance.service";
 import { isDeepStrictEqual } from "node:util";
 import { command } from "ccstate";
 import {
@@ -11,7 +15,7 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import {
   chatEvents,
   type ChatEventUsageKindBreakdown,
@@ -45,7 +49,6 @@ const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
   agentRuns.status,
   agentRuns.chatThreadId,
-  agentRuns.goalId,
   agentRuns.orgId,
   chatThreads.userId,
 ] as const;
@@ -85,7 +88,6 @@ async function loadUsageEventContext(tx: WriteTx, runId: string) {
     .select({
       status: agentRuns.status,
       chatThreadId: agentRuns.chatThreadId,
-      goalId: agentRuns.goalId,
       orgId: agentRuns.orgId,
       userId: chatThreads.userId,
       hasPending: exists(
@@ -177,7 +179,7 @@ export const maybeEmitRunUsageEvent$ = command(
         breakdown: buildUsageBreakdown(breakdownRows),
       };
 
-      const [existingUsageEvent] = await tx
+      const [hotUsageEvent] = await tx
         .select({
           id: chatEvents.id,
           chatThreadId: chatEvents.chatThreadId,
@@ -195,6 +197,28 @@ export const maybeEmitRunUsageEvent$ = command(
         .limit(1);
       signal.throwIfAborted();
 
+      // Keep a necessary canonical read within this locked operation, so first
+      // late usage can also resolve its group without downloading history twice.
+      const history = hotUsageEvent
+        ? undefined
+        : await runEventHistory(tx, context.chatThreadId, runId, signal);
+      const archivedUsageEvent = history
+        ? [...history].reverse().find((event) => {
+            return (
+              event.runId === runId && event.eventType === "usage.recorded"
+            );
+          })
+        : undefined;
+      const existingUsageEvent =
+        hotUsageEvent ??
+        (archivedUsageEvent
+          ? {
+              ...archivedUsageEvent,
+              createdAt: new Date(archivedUsageEvent.createdAt),
+            }
+          : undefined);
+      signal.throwIfAborted();
+
       if (
         existingUsageEvent &&
         isDeepStrictEqual(existingUsageEvent.payload?.usage, payload)
@@ -202,12 +226,17 @@ export const maybeEmitRunUsageEvent$ = command(
         return null;
       }
 
+      const runGroupId = existingUsageEvent
+        ? undefined
+        : await historicalRunGroupId(tx, runId, history, signal);
       const event = {
         chatThreadId: context.chatThreadId,
         eventType: "usage.recorded" as const,
         content: null,
         runId,
-        runGroupId: context.goalId,
+        // A replacement inherits the exact context pointer, including null.
+        // Only a first event needs the retained run provenance lookup.
+        ...(existingUsageEvent ? {} : { runGroupId }),
         usagePayload: payload,
       };
       const inserted = existingUsageEvent

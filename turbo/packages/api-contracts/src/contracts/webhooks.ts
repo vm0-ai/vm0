@@ -876,7 +876,11 @@ export const webhookHeartbeatContract = c.router({
  * Metric data point schema
  */
 const metricDataSchema = z.object({
-  memory: oomEvidenceSchema.optional(),
+  // A periodic memory snapshot rides along with ordinary metrics. Rejecting it
+  // must never discard the system logs, metrics, network logs, and sandbox
+  // operations batched in the same request; the dedicated `oomEvidence` field
+  // below stays strict because it decides the delivery acknowledgement.
+  memory: oomEvidenceSchema.optional().catch(undefined),
   ts: z.string(),
   cpu: z.number(),
   cpu_steal_percent: z.number().optional(),

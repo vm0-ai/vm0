@@ -188,7 +188,7 @@ test("A new sign-up reflects the current account requirements", async () => {
     borderColor: "rgb(10 20 30)",
     borderRadius: "6px",
     borderStyle: "solid",
-    borderWidth: "1px",
+    borderWidth: "0.5px",
     flexShrink: "0",
     height: "calc(4px * 4)",
     width: "calc(4px * 4)",

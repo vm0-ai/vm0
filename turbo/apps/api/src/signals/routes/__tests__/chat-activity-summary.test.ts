@@ -397,6 +397,57 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it("retains activity for tool output PostgreSQL cannot store verbatim", async () => {
+    const f = await fixture();
+    const inputs = provider();
+    const diagnostics = captureDiagnostics();
+    // A runtime can emit a NUL byte or a lone surrogate through a tool
+    // argument, and a long tool name can end mid surrogate pair. PostgreSQL
+    // rejects every one of those while parsing the jsonb value, which would
+    // otherwise drop the whole batch rather than the offending characters.
+    const astral = String.fromCodePoint(0x1_f6_00);
+    await deliver(f, [
+      {
+        type: "assistant",
+        sequenceNumber: 0,
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: `call-0${astral}`,
+              name: `${"n".repeat(99)}${astral}${"tail".repeat(20)}`,
+              input: {
+                command: `read${String.fromCharCode(0)}binary${String.fromCharCode(0xd8_3d)}`,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
+      status: "fresh",
+      messages: [
+        {
+          id: "Preparing the launch checklist",
+          text: "Preparing the launch checklist",
+        },
+      ],
+    });
+    expect(inputs).toHaveLength(1);
+    await expect(diagnostics()).resolves.toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity snapshot capture",
+        fields: {
+          context: "api:run-activity",
+          runId: f.run.runId,
+          outcome: "written",
+          eventCount: 1,
+        },
+      }),
+    );
+  });
+
   it("rejects queued and superseded run identities before cached or model output", async () => {
     const f = await fixture();
     const inputs = provider();
@@ -956,7 +1007,124 @@ describe("thread activity summary", () => {
     expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
-  it("keeps normal publication working when snapshot writes fail and excludes expired evidence", async () => {
+  it("records a missed deadline as an accepted degradation, not a failure", async () => {
+    const f = await fixture();
+    const entered = createDeferredPromise<void>(context.signal);
+    const stalled = createDeferredPromise<string>(context.signal);
+    const inputs = provider(async (_input, index) => {
+      if (index === 1) {
+        return "Preparing the launch checklist";
+      }
+      entered.resolve(undefined);
+      return await stalled.promise;
+    });
+    const first = await summarize(f.actor, f.run);
+    const diagnostics = captureDiagnostics();
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const deadline = new AbortController();
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      return milliseconds === 10_000 ? deadline.signal : undefined;
+    });
+    const pending = summarize(f.actor, f.run);
+    await entered.promise;
+    deadline.abort(
+      new DOMException("Summary deadline reached", "TimeoutError"),
+    );
+    stalled.resolve("This phrase arrives after its own deadline");
+    const missed = await pending;
+    // The caller keeps its last real phrase and a bounded, self-recovering wait.
+    expect(missed.messages).toStrictEqual(first.messages);
+    expect(missed.status).toBe("cooldown");
+    expect(missed.summaryRevision).toBe(first.summaryRevision);
+    expect(missed.retryAfterMs).toBeGreaterThan(50_000);
+    expect(missed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(inputs).toHaveLength(2);
+    const logs = await diagnostics();
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "timeout",
+          durationMs: expect.any(Number),
+          cooldownMs: 60_000,
+        },
+      }),
+    );
+    // An expected deadline must not reach an operator through any record.
+    expect(
+      logs.filter((event) => {
+        return event.level === "warn" || event.level === "error";
+      }),
+    ).toStrictEqual([]);
+  });
+
+  it("charges no cooldown when the instance stops before the provider answers", async () => {
+    const f = await fixture();
+    const entered = createDeferredPromise<void>(context.signal);
+    const release = createDeferredPromise<string>(context.signal);
+    const inputs = provider(async (_input, index) => {
+      if (index === 1) {
+        entered.resolve(undefined);
+        return await release.promise;
+      }
+      return "Checking the current launch materials";
+    });
+    const diagnostics = captureDiagnostics();
+    const shutdown = new AbortController();
+    createRouteMocks(context).clerk.session(
+      f.actor.userId,
+      f.actor.orgId,
+      f.actor.orgRole,
+    );
+    const abandoned = settleIncludingAbort(
+      setupApp({
+        context,
+        routes: chatThreadActivitySummaryRoutes,
+        signal: shutdown.signal,
+      })(chatThreadActivitySummaryContract).summarize({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: f.run.threadId },
+        body: { runId: f.run.runId },
+      }),
+    );
+    await entered.promise;
+    shutdown.abort(new DOMException("API instance stopping", "AbortError"));
+    release.resolve("This phrase never reaches an absent caller");
+    await abandoned;
+    const logs = await diagnostics();
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "info",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome: "cancelled",
+          durationMs: expect.any(Number),
+          cooldownMs: 0,
+        },
+      }),
+    );
+    expect(
+      logs.filter((event) => {
+        return event.level === "warn" || event.level === "error";
+      }),
+    ).toStrictEqual([]);
+    // Only the attempt interval was ever charged, so the next viewer generates
+    // again instead of waiting out a failure cooldown it never caused.
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const recovered = await summarize(f.actor, f.run);
+    expect(recovered.messages[0]?.text).toBe(
+      "Checking the current launch materials",
+    );
+    expect(inputs).toHaveLength(2);
+  });
+
+  it("keeps normal publication working when a contended snapshot write is skipped and excludes expired evidence", async () => {
     const f = await fixture();
     const inputs = provider();
     await summarize(f.actor, f.run);
@@ -985,15 +1153,20 @@ describe("thread activity summary", () => {
       status: "unavailable",
       messages: [],
     });
-    await expect(diagnostics()).resolves.toStrictEqual([
+    const records = await diagnostics();
+    // A concurrent writer for the same run is expected delivery behavior, so the
+    // capture stays below warn while the adjacent real failure keeps its level.
+    expect(records).toStrictEqual([
       expect.objectContaining({
-        level: "warn",
+        level: "info",
         message: "Activity snapshot capture",
         fields: {
           context: "api:run-activity",
           runId: f.run.runId,
-          outcome: "write_failed",
+          outcome: "contended",
           eventCount: 1,
+          stage: "lock",
+          errorCode: "55P03",
         },
       }),
       expect.objectContaining({
@@ -1006,6 +1179,13 @@ describe("thread activity summary", () => {
         },
       }),
     ]);
+    // The classification adds a SQLSTATE class code and nothing else: no driver
+    // message, no statement text and no bound evidence.
+    expect(JSON.stringify(records)).not.toContain("lock_timeout");
+    expect(JSON.stringify(records)).not.toContain("run_activity_snapshots");
+    expect(JSON.stringify(records)).not.toContain(
+      "Normal message survives the optional failure",
+    );
     held.release();
     await held.done;
     const page = await chat.listThreadEvents(f.actor, f.run.threadId);

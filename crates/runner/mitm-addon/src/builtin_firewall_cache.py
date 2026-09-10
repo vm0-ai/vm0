@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,12 +24,13 @@ from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 _SHA256_HEX_LENGTH = 64
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
-# Use the shortest valid witness for each URL component so materialization does
-# not push an otherwise satisfiable DNS label past its 63-byte limit.
+# Keep component witnesses small; hostname fragments also preserve adjacent
+# literal label boundaries when materialized below.
 _BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER = "https://x.y"
 _BASE_URL_TEMPLATE_HOST_PLACEHOLDER = "x.y"
 _BASE_URL_TEMPLATE_PORT_PLACEHOLDER = "1"
 _BASE_URL_TEMPLATE_PATH_PLACEHOLDER = "x"
+_BASE_URL_TEMPLATE_HOST_LABEL_DELIMITERS = re.compile(r"[.:/?#@\[\]\u3002\uff0e\uff61]")
 _BASE_URL_TEMPLATE_PLACEHOLDERS: dict[
     builtin_base_url_template.BaseUrlTemplateComponentKind, str
 ] = {
@@ -465,13 +467,38 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
 
     result: list[str] = []
     last_index = 0
-    for variable in variables:
+    for index, variable in enumerate(variables):
         reference = variable.reference
         result.append(raw_base[last_index : reference.start])
         placeholder = _BASE_URL_TEMPLATE_PLACEHOLDERS[variable.kind]
         if variable.authority_fragment_shape == "ip-literal":
             placeholder = _BASE_URL_TEMPLATE_PORT_PLACEHOLDER
+        elif variable.authority_fragment_shape == "hostname":
+            literal_end = (
+                variables[index + 1].reference.start
+                if index + 1 < len(variables)
+                else len(raw_base)
+            )
+            placeholder = _base_url_template_hostname_placeholder(
+                raw_base[last_index : reference.start], raw_base[reference.end : literal_end]
+            )
         result.append(placeholder)
         last_index = reference.end
     result.append(raw_base[last_index:])
     return "".join(result)
+
+
+def _base_url_template_hostname_placeholder(prefix: str, suffix: str) -> str:
+    prefix_label = _BASE_URL_TEMPLATE_HOST_LABEL_DELIMITERS.split(prefix)[-1]
+    suffix_label = _BASE_URL_TEMPLATE_HOST_LABEL_DELIMITERS.split(suffix, maxsplit=1)[0]
+    # A variable may supply a dot, so a complete literal label need not grow.
+    # Incomplete labels still join the witness; final URL validation checks both.
+    leading_dot = "." if _base_url_template_literal_label_is_valid(prefix_label) else ""
+    trailing_dot = "." if _base_url_template_literal_label_is_valid(suffix_label) else ""
+    return f"{leading_dot}{_BASE_URL_TEMPLATE_HOST_PLACEHOLDER}{trailing_dot}"
+
+
+def _base_url_template_literal_label_is_valid(label: str) -> bool:
+    return (
+        bool(label) and matching.static_firewall_base_config_key(f"https://x.{label}.y") is not None
+    )

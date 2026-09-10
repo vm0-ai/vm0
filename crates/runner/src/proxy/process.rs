@@ -990,6 +990,7 @@ fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
 mod tests {
     use super::*;
     use crate::paths::HomePaths;
+    use crate::process::{ProcessStatRead, read_process_stat_checked};
     use std::os::unix::fs::PermissionsExt;
     use tokio::io::AsyncWriteExt;
     use tracing::Level;
@@ -1433,22 +1434,76 @@ exit 42
         );
     }
 
-    async fn wait_for_reaped_pid(pid: nix::unistd::Pid) -> bool {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        loop {
-            match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-                Ok(nix::sys::wait::WaitStatus::StillAlive) => {}
-                Ok(_) => return true,
-                Err(nix::errno::Errno::ECHILD) => {
-                    return nix::sys::signal::kill(pid, None).is_err();
+    async fn wait_for_reaped_pid(pid: u32, starttime: u64) -> bool {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                // Observing must not reap the child on behalf of its owner.
+                match read_process_stat_checked(pid).await {
+                    ProcessStatRead::Found(stat) if stat.starttime == starttime => {}
+                    ProcessStatRead::Found(_) | ProcessStatRead::Missing => return,
+                    observation => panic!("cannot observe pid {pid} being reaped: {observation:?}"),
                 }
-                Err(_) => {}
+                tokio::time::sleep(Duration::from_millis(50)).await;
             }
-            if tokio::time::Instant::now() >= deadline {
-                return false;
+        })
+        .await
+        .is_ok()
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn wait_for_reaped_pid_leaves_zombie_for_owner() {
+        struct UnreapedChild(std::process::Child);
+
+        impl Drop for UnreapedChild {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
+
+        // A standard-library child has no async reaper that could mask a bad observer.
+        let mut child = UnreapedChild(
+            std::process::Command::new("sh")
+                .args(["-c", "exit 23"])
+                .spawn()
+                .unwrap(),
+        );
+        let pid = child.0.id();
+        let ProcessStatRead::Found(initial_stat) = read_process_stat_checked(pid).await else {
+            panic!("child process stat is unavailable for pid {pid}");
+        };
+        let starttime = initial_stat.starttime;
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match read_process_stat_checked(pid).await {
+                    ProcessStatRead::Found(stat) if stat.starttime == starttime => {
+                        if stat.state == 'Z' {
+                            return;
+                        }
+                    }
+                    observation => panic!("cannot observe zombie pid {pid}: {observation:?}"),
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("child should exit without being reaped");
+
+        assert!(
+            !wait_for_reaped_pid(pid, starttime).await,
+            "a matching zombie must not be reported as reaped"
+        );
+        let status = child
+            .0
+            .try_wait()
+            .expect("observation must leave the exit status available to the owner")
+            .expect("the zombie child has already exited");
+        assert_eq!(status.code(), Some(23));
+        assert!(
+            wait_for_reaped_pid(pid, starttime).await,
+            "observation should succeed after the owner reaps the child"
+        );
     }
 
     async fn wait_for_pid_absent(pid: u32) -> bool {
@@ -2052,14 +2107,17 @@ exit 42
         )
         .await
         .unwrap();
-        let pid = nix::unistd::Pid::from_raw(child.id().unwrap() as i32);
+        let pid = child.id().unwrap();
+        let ProcessStatRead::Found(stat) = read_process_stat_checked(pid).await else {
+            panic!("mitmdump process stat is unavailable for pid {pid}");
+        };
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let launch_path = PathBuf::from(environment.lines().next().unwrap());
         stopping.store(true, Ordering::Release);
         drop(child);
 
         assert!(
-            wait_for_reaped_pid(pid).await,
+            wait_for_reaped_pid(pid, stat.starttime).await,
             "dropping mitmdump Child should kill and reap the process"
         );
         assert!(

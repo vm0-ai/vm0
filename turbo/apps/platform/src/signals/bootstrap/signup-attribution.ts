@@ -1,4 +1,8 @@
 import {
+  legacyGoogleAdsAttribution,
+  compatibleGoogleAdsAttribution,
+} from "@okouai/core/google-ads-attribution";
+import {
   GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
   GOOGLE_ADS_LEGACY_ACCOUNT_ID,
 } from "@okouai/core/google-ads-account";
@@ -11,6 +15,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import { now } from "../../lib/time.ts";
+import { recordImpactAttribution$ } from "./impact-attribution.ts";
 import { apiClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
@@ -74,15 +79,20 @@ export const recordSignupAttribution$ = command(
     }
 
     const storedAttribution = set(readStoredAdAttributionMetadata$);
+    const impactAttribution = set(recordImpactAttribution$);
     const recentlyCreatedUser = isRecentlyCreatedUser(user);
     const attribution: AdAttributionMetadata | undefined =
       storedAttribution ??
-      (recentlyCreatedUser ? { source_type: "unknown" } : undefined);
+      (recentlyCreatedUser
+        ? { source_type: "unknown" }
+        : impactAttribution
+          ? {}
+          : undefined);
     if (!attribution) {
       return;
     }
 
-    const attributionFingerprint = `${user.id}:${JSON.stringify(attribution)}`;
+    const attributionFingerprint = `${user.id}:${JSON.stringify(attribution)}:${JSON.stringify(impactAttribution)}`;
     let recorded =
       get(signupAttributionRecordedStorage.get$) === attributionFingerprint;
 
@@ -92,7 +102,10 @@ export const recordSignupAttribution$ = command(
       const client = createClient(acquisitionAttributionContract);
       const result = await accept(
         client.recordSignup({
-          body: { attribution },
+          body: {
+            attribution: legacyGoogleAdsAttribution(attribution),
+            ...(impactAttribution ? { impactAttribution } : {}),
+          },
           fetchOptions: { signal },
         }),
         [200],
@@ -106,12 +119,10 @@ export const recordSignupAttribution$ = command(
           landing_host: window.location.host,
           landing_path: window.location.pathname,
           source_type: attribution.source_type ?? "unknown",
-          ...(attribution.vm0_campaign_id
-            ? { vm0_campaign_id: attribution.vm0_campaign_id }
-            : {}),
-          ...(attribution.vm0_ad_group_id
-            ? { vm0_ad_group_id: attribution.vm0_ad_group_id }
-            : {}),
+          ...compatibleGoogleAdsAttribution({
+            okou_campaign_id: attribution.okou_campaign_id,
+            okou_ad_group_id: attribution.okou_ad_group_id,
+          }),
         });
       }
     }

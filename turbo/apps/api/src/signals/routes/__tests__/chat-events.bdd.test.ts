@@ -4,7 +4,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
-  readGoalThreadFixture,
   seedGoalForRunFixture,
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
@@ -24,7 +23,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { cronExtractPiMemoryStage1Contract } from "@okouai/api-contracts/contracts/cron";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
@@ -177,13 +175,12 @@ import {
   createUsagePricingFixture,
   type UsagePricingFixture,
 } from "../../../test-fixtures/usage-pricing";
-import { signSandboxJwtForTests, verifyOkouToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { cronExtractPiMemoryStage1RoutesForTest } from "../cron-extract-pi-memory-stage1";
-import { goalsRoutes } from "../goals";
 import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { modelProvidersRoutes } from "../model-providers";
@@ -225,6 +222,10 @@ import {
   readCustomConnectorCredentialStorageParent,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
+import {
+  auxiliaryResults,
+  auxiliaryWarnings,
+} from "./helpers/auxiliary-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   commitMemoryVersion,
@@ -3083,25 +3084,6 @@ function threadPiAutomationsClient(
   })(workflowAutomationsContract);
 }
 
-function threadPiGoalHeaders(actor: ApiTestUser, runId: string) {
-  const seconds = Math.floor(now() / 1000);
-  return {
-    authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "okou",
-      userId: actor.userId,
-      orgId: requireOrgId(actor),
-      runId,
-      capabilities: [
-        "goal:read",
-        "goal:agent-result:write",
-        "goal:user-control:write",
-      ],
-      iat: seconds,
-      exp: seconds + 600,
-    })}`,
-  };
-}
-
 async function postThreadPiAutomationEvent(args: {
   readonly webhookUrl: string;
   readonly webhookSecret: string;
@@ -3432,47 +3414,6 @@ describe("thread-bound Pi Automation and Goal execution", () => {
       clearMockNow();
     },
     90_000,
-  );
-
-  it.each(["bootstrap", "continuation"] as const)(
-    "rejects retired Goal %s before Pi subscription execution",
-    async (entry) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const origin =
-        entry === "bootstrap"
-          ? await api.createRun(actor, {
-              agentId,
-              prompt: "old client bootstrap",
-              modelProvider: "anthropic-api-key",
-            })
-          : await sendChatRun(actor, {
-              agentId,
-              prompt: "old client continuation",
-              model: "claude-sonnet-5",
-            });
-      const originClaim = await claimChatRun(runnerGroup, origin.runId);
-      await configureSubscriptionPiModel(
-        actor,
-        { accountId: "goal-owner-account" },
-        "gpt-5.6-luna",
-      );
-      const goal = await accept(
-        setupApp({ context, routes: goalsRoutes })(goalsContract).create({
-          headers: threadPiGoalHeaders(actor, origin.runId),
-          body: { objective: "retired Goal" },
-        }),
-        [409],
-      );
-      expect(goal.body.error.message).toContain("retired");
-      await expect(
-        readGoalThreadFixture({
-          orgId: requireOrgId(actor),
-          userId: actor.userId,
-          agentId,
-        }),
-      ).resolves.toBeNull();
-      await completeChatRunOk(origin.runId, originClaim.sandboxHeaders);
-    },
   );
 });
 
@@ -9913,6 +9854,7 @@ describe("CHAT-02: model-first provider policies", () => {
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
           telemetry: [
             ...context.mocks.axiomLogging.debug.mock.calls,
+            ...context.mocks.axiomLogging.info.mock.calls,
             ...context.mocks.axiomLogging.warn.mock.calls,
           ],
         }),
@@ -10037,6 +9979,7 @@ describe("CHAT-02: model-first provider policies", () => {
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
           logs: [
             ...context.mocks.axiomLogging.debug.mock.calls,
+            ...context.mocks.axiomLogging.info.mock.calls,
             ...context.mocks.axiomLogging.warn.mock.calls,
           ],
         }),
@@ -12833,7 +12776,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",
     });
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: run.runId,
@@ -12841,12 +12784,21 @@ describe("CHAT-02: model-first provider policies", () => {
         reason: "api_attempt_timed_out",
       }),
     );
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: run.runId,
         handoffOwner: "sandbox",
         outcome: "sandbox_retry_started",
+      }),
+    );
+    // Reaching sandbox_retry_started through the deadline path requires the
+    // attempt-timeout record, so pin its level here too.
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "api_attempt_timed_out",
       }),
     );
     expect(warningCallsForRun(run.runId)).toStrictEqual([]);
@@ -14101,6 +14053,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ).toStrictEqual([]);
       const telemetry = JSON.stringify([
         ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.info.mock.calls,
         ...context.mocks.axiomLogging.warn.mock.calls,
       ]);
       expect(telemetry).not.toContain(partialText);
@@ -14626,7 +14579,9 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       expect(warningCallsForRun(run.runId)).toStrictEqual([]);
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      // Info is the lowest level the Axiom transport ingests, so this is the
+      // only production evidence that the run recovered instead of dying.
+      expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
         "Pi API first-turn outcome",
         expect.objectContaining({
           runId: run.runId,
@@ -14635,6 +14590,10 @@ describe("CHAT-02: model-first provider policies", () => {
           modelFailureCategory: scenario.category,
           modelFailureHttpStatus: scenario.status,
         }),
+      );
+      expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+        "Pi API first-turn outcome",
+        expect.objectContaining({ outcome: "sandbox_retry_started" }),
       );
       for (const log of Object.values(context.mocks.axiomLogging)) {
         expect(JSON.stringify(log.mock.calls)).not.toContain(privateMarker);
@@ -14793,7 +14752,7 @@ describe("CHAT-02: model-first provider policies", () => {
         );
       }),
     ).toStrictEqual([]);
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: run.runId,
@@ -15437,7 +15396,7 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: originalPrompt,
           piLaunchConfig: { apiFirstTurn: { sandboxEventSequenceStart: 1 } },
         });
-        const outcomes = context.mocks.axiomLogging.debug.mock.calls.filter(
+        const outcomes = context.mocks.axiomLogging.info.mock.calls.filter(
           (call) => {
             return (
               call[0] === "Pi API first-turn outcome" &&
@@ -16115,7 +16074,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
     });
     await waitForRunStatus(actor, second.runId, "queued");
-    context.mocks.axiomLogging.debug.mockClear();
+    context.mocks.axiomLogging.info.mockClear();
     await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
 
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
@@ -16169,7 +16128,7 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     });
     expect(transferredH0).not.toContain("serviceTier");
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: second.runId,
@@ -17934,6 +17893,7 @@ describe("CHAT-02: model-first provider policies", () => {
           h2,
           telemetry: [
             ...context.mocks.axiomLogging.debug.mock.calls,
+            ...context.mocks.axiomLogging.info.mock.calls,
             ...context.mocks.axiomLogging.warn.mock.calls,
           ],
         }),
@@ -18046,6 +18006,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const piLogCalls = JSON.stringify([
         ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.info.mock.calls,
         ...context.mocks.axiomLogging.warn.mock.calls,
       ]);
       expect(piLogCalls).not.toContain(initialSecret);
@@ -18227,6 +18188,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const telemetry = JSON.stringify([
         ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.info.mock.calls,
         ...context.mocks.axiomLogging.warn.mock.calls,
       ]);
       expect(telemetry).not.toContain(secret);
@@ -21849,6 +21811,9 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
+  // Provider text is untrusted and must never reach a log or a metric.
+  const privateProviderDetail = "private_prompt_history_authorization_canary";
+
   it.each([
     { enabled: false, existingThread: false },
     { enabled: true, existingThread: false },
@@ -21952,6 +21917,134 @@ describe("CHAT-02: initial thinking indicator", () => {
       }
       const afterDemand = await chat.listThreadEvents(actor, run.threadId);
       expect(afterDemand.events).toStrictEqual(beforeDemand.events);
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
+  const providerDetail = "private-provider-detail";
+
+  it.each([
+    {
+      name: "an upstream gateway timeout delivered inside a 200 envelope",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          error: { code: 504, message: providerDetail },
+        });
+      },
+      outcome: "degraded",
+      reason: "upstream_timeout",
+      warned: false,
+    },
+    {
+      name: "a provider rate limit",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 429 });
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      warned: false,
+    },
+    {
+      name: "an upstream bad gateway",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 502 });
+      },
+      outcome: "degraded",
+      reason: "provider_unavailable",
+      warned: false,
+    },
+    // Negative control: an unsupported request is our defect, not the
+    // provider's availability, and stays reportable.
+    {
+      name: "a rejected request",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 400 });
+      },
+      outcome: "error",
+      reason: "invalid_request",
+      warned: true,
+    },
+    {
+      name: "broken credentials",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 401 });
+      },
+      outcome: "error",
+      reason: "auth",
+      warned: true,
+    },
+    // The shared boundary counts a token ceiling as expected degradation, but
+    // the optional marker remains absent because shortened copy is unusable.
+    {
+      name: "an exhausted token budget",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "length",
+              native_finish_reason: "MAX_TOKENS",
+              message: { content: providerDetail },
+            },
+          ],
+        });
+      },
+      outcome: "degraded",
+      reason: "output_truncated",
+      warned: false,
+    },
+  ])(
+    "omits opening copy and reports a defect only for $name",
+    async ({ thinkingResponse, outcome, reason, warned }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            const system = payload.messages[0]?.content ?? "";
+            return system.includes("Write user-visible progress copy")
+              ? thinkingResponse()
+              : HttpResponse.json({
+                  choices: [
+                    {
+                      finish_reason: "stop",
+                      message: { content: "Launch Checklist" },
+                    },
+                  ],
+                });
+          },
+        ),
+      );
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare the launch checklist",
+      });
+      await flushWaitUntilForTest();
+
+      // The optional generation is isolated: no marker, and the run proceeds.
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        events.events.filter((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toStrictEqual([]);
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+
+      const warnings = auxiliaryWarnings(context);
+      expect(warnings).toHaveLength(warned ? 1 : 0);
+      expect(JSON.stringify(warnings)).not.toContain(providerDetail);
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome,
+          reason,
+          run_id: run.runId,
+        }),
+      ]);
+      expect(
+        JSON.stringify(auxiliaryResults(context, "chat_initial_thinking")),
+      ).not.toContain(providerDetail);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22248,6 +22341,136 @@ describe("CHAT-02: initial thinking indicator", () => {
 
   it.each([
     {
+      name: "an HTTP rate limit",
+      response: () => {
+        return HttpResponse.json(
+          { error: { code: 429 } },
+          { status: 429, headers: { "retry-after": "12" } },
+        );
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      retryAfterMs: 12_000,
+    },
+    {
+      // OpenRouter reports an exhausted upstream window as a synthetic gateway
+      // failure. It is the same admission problem, not a separate outage.
+      name: "a rate limit wrapped in a synthetic 502",
+      response: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "error",
+              error: { code: 429, message: privateProviderDetail },
+            },
+          ],
+        });
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "an unreachable provider",
+      response: () => {
+        return new HttpResponse(privateProviderDetail, { status: 503 });
+      },
+      outcome: "degraded",
+      reason: "provider_unavailable",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "rejected credentials",
+      response: () => {
+        return new HttpResponse(privateProviderDetail, { status: 401 });
+      },
+      outcome: "error",
+      reason: "auth",
+      retryAfterMs: undefined,
+    },
+    {
+      // Non-empty for the provider, yet nothing survives sanitization.
+      name: "output that sanitizes to nothing",
+      response: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
+        });
+      },
+      outcome: "error",
+      reason: "unusable_output",
+      retryAfterMs: undefined,
+    },
+  ])(
+    "classifies $name for optional progress copy",
+    async ({ response, outcome, reason, retryAfterMs }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const body = openRouterBodySchema.parse(await request.json());
+            return body.messages[0]?.content.includes(
+              "Write user-visible progress copy",
+            )
+              ? response()
+              : HttpResponse.json({
+                  choices: [
+                    { finish_reason: "stop", message: { content: "Update" } },
+                  ],
+                });
+          },
+        ),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare an update",
+      });
+      await flushWaitUntilForTest();
+
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome,
+          reason,
+          run_id: run.runId,
+          // Recorded only when the provider actually asked for a delay.
+          ...(retryAfterMs === undefined
+            ? {}
+            : { retry_after_ms: retryAfterMs }),
+        }),
+      ]);
+      expect(
+        auxiliaryResults(context, "chat_initial_thinking")[0],
+      ).toStrictEqual(
+        retryAfterMs === undefined
+          ? expect.not.objectContaining({ retry_after_ms: expect.anything() })
+          : expect.anything(),
+      );
+      // Only a defect the caller can act on still reaches the log.
+      expect(auxiliaryWarnings(context)).toHaveLength(
+        outcome === "error" ? 1 : 0,
+      );
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
+        privateProviderDetail,
+      );
+      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(
+        privateProviderDetail,
+      );
+
+      // The optional copy is absent either way; the run itself is untouched.
+      const page = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        page.events.some((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toBeFalsy();
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
+  it.each([
+    {
       name: "empty",
       responseBody: {
         choices: [{ finish_reason: "stop", message: { content: "  " } }],
@@ -22314,18 +22537,28 @@ describe("CHAT-02: initial thinking indicator", () => {
           return event.runEventId === "thinking:initial";
         }),
       ).toBeFalsy();
-      const errors = context.mocks.axiomLogging.warn.mock.calls.filter(
-        ([message]) => {
-          return message === "Initial thinking generation failed";
-        },
-      );
-      expect(errors).toHaveLength(1);
-      const logged = z
-        .object({ err: z.instanceof(Error) })
-        .parse(errors[0]?.[1]);
-      expect(logged.err.message).not.toContain(
+      // Output the feature cannot interpret stays a reported defect; only the
+      // provider-side conditions the caller cannot act on became silent.
+      expect(auxiliaryWarnings(context)).toStrictEqual([
+        [
+          "Auxiliary generation failed",
+          expect.objectContaining({
+            feature: "chat_initial_thinking",
+            reason: "invalid_output",
+            runId: run.runId,
+          }),
+        ],
+      ]);
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
         "private_prompt_history_authorization_canary",
       );
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome: "error",
+          reason: "invalid_output",
+          run_id: run.runId,
+        }),
+      ]);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22415,26 +22648,26 @@ describe("CHAT-02: initial thinking indicator", () => {
         prompt: "Prepare an update",
       });
       await flushWaitUntilForTest();
-      const errors = context.mocks.axiomLogging.warn.mock.calls.filter(
-        ([message]) => {
-          return message === "Initial thinking generation failed";
-        },
-      );
-      expect(errors).toHaveLength(1);
-      const logged = z
-        .object({ err: z.instanceof(Error) })
-        .parse(errors[0]?.[1]);
-      expect(logged.err).toMatchObject({
-        name: "OpenRouterRequestError",
-        message: "OpenRouter request failed: 400",
-        status: 400,
-        errorType: undefined,
-        ...expected,
-      });
-      expect(JSON.stringify(logged.err)).not.toContain(
+      // A rejected request is the caller's own defect, so it keeps warning with
+      // the enumerated diagnostics and without the provider's message or stack.
+      expect(auxiliaryWarnings(context)).toStrictEqual([
+        [
+          "Auxiliary generation failed",
+          expect.objectContaining({
+            feature: "chat_initial_thinking",
+            reason: "invalid_request",
+            errorKind: "openrouter_request",
+            status: 400,
+            errorType: undefined,
+            runId: run.runId,
+            ...expected,
+          }),
+        ],
+      ]);
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
         "private_prompt_history_authorization_canary",
       );
-      expect(logged.err).not.toHaveProperty("cause");
+      expect(auxiliaryWarnings(context)[0]?.[1]).not.toHaveProperty("err");
       const page = await chat.listThreadEvents(actor, run.threadId);
       expect(
         page.events.some((event) => {
@@ -22781,7 +23014,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  const explainerTemplate: GenerationTemplateRequest = {
+  const introVideoTemplate: GenerationTemplateRequest = {
     type: "video",
     selection: {
       stylePresetId: "explainer-video",
@@ -22801,7 +23034,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     },
   };
 
-  it("gates explainer template sends with the rollout override while preserving ordinary video", async () => {
+  it("gates intro video template sends with the rollout override while preserving ordinary video", async () => {
     const { actor, agentId } = await entitledChatActor();
     const scopedActor = { ...actor, orgId: requireOrgId(actor) };
     await updateFeatureSwitchesForUser(context, scopedActor, {
@@ -22813,8 +23046,8 @@ describe("CHAT-02: generation templates and attachments", () => {
       selection: { stylePresetId: ordinary.id },
     };
     for (const templates of [
-      [explainerTemplate],
-      [ordinaryTemplate, explainerTemplate],
+      [introVideoTemplate],
+      [ordinaryTemplate, introVideoTemplate],
     ]) {
       const rejected = await chat.requestSendEvent(
         actor,
@@ -22838,9 +23071,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         [400],
       );
       expectApiError(rejected.body);
-      expect(rejected.body.error.message).toBe(
-        "Explainer video is not available",
-      );
+      expect(rejected.body.error.message).toBe("Intro video is not available");
     }
     const events = await chat.requestThreadEvents(actor, {}, [200]);
     if (events.status !== 200) {
@@ -22875,24 +23106,25 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toBe(
-      "Explainer video settings are missing",
+      "Intro video settings are missing",
     );
     const explained = await sendChatRun(actor, {
       agentId,
       prompt: "Explain the product",
-      template: explainerTemplate,
+      template: introVideoTemplate,
     });
     const prompt = (await api.readRun(actor, explained.runId))
       .appendSystemPrompt;
     expect(prompt).toContain("Use the $intro-video skill");
-    expect(prompt).toContain("Minimalism");
-    expect(prompt).toContain("No avatar. Do not add a presenter.");
-    expect(prompt).toContain("No voiceover. Do not add narration.");
+    expect(prompt).toContain("- HeyGen style: Minimalism (minimalism)");
+    expect(prompt).toContain("- HeyGen style preview aspect ratio: 16:9");
+    expect(prompt).toContain("- Avatar: No avatar");
+    expect(prompt).toContain("- Voice: No voiceover");
     await cancelChatRun(actor, explained.runId);
   }, 90_000);
 
   it.each(["queued dispatch", "active input"] as const)(
-    "rechecks explainer access before %s",
+    "rechecks intro video access before %s",
     async (delivery) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const scopedActor = { ...actor, orgId: requireOrgId(actor) };
@@ -22914,7 +23146,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           prompt: "Explain the product",
           userMessage: userMessageWithTemplate(
             "Explain the product",
-            explainerTemplate,
+            introVideoTemplate,
           ),
         },
         [201],

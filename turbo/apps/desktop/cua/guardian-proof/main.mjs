@@ -29,10 +29,16 @@ void app.whenReady().then(async () => {
   );
   fs.renameSync(`${socketPath}.main.tmp`, `${socketPath}.main`);
   let beats = 0;
+  let lastHeartbeatAt = performance.now();
+  let maxHeartbeatGapMs = 0;
+  const heartbeatIntervalMs = mode === "slow-heartbeat" ? 25 : 10;
   const heartbeat = setInterval(() => {
+    const now = performance.now();
+    maxHeartbeatGapMs = Math.max(maxHeartbeatGapMs, now - lastHeartbeatAt);
+    lastHeartbeatAt = now;
     ++beats;
     owner.pulse();
-  }, 10);
+  }, heartbeatIntervalMs);
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   if (mode !== "spawn-stop") {
     const until = performance.now() + 6_000;
@@ -45,10 +51,16 @@ void app.whenReady().then(async () => {
   // Ownership and the single total deadline precede any native cleanup.
   const deadline = started + 5_000;
   const beginningBeats = beats;
+  lastHeartbeatAt = started;
+  maxHeartbeatGapMs = 0;
   const samples = [];
   let signalResult = null;
   let crashSample = null;
   let fenceRetained = false;
+  if (mode === "main-blocks") {
+    // Deliberately block the real main thread to verify stall detection.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
+  }
   if (mode === "main-dies") process.kill(process.pid, "SIGKILL");
   if (mode === "main-dies-during-force") {
     owner.force(guardian);
@@ -92,7 +104,10 @@ void app.whenReady().then(async () => {
     }
     await pause(10);
   }
-  const elapsedMs = performance.now() - started;
+  const finished = performance.now();
+  const elapsedMs = finished - started;
+  // Include the final partial interval, even if no heartbeat ran at all.
+  maxHeartbeatGapMs = Math.max(maxHeartbeatGapMs, finished - lastHeartbeatAt);
   if (!confirmed) {
     try {
       owner.launch([]);
@@ -109,6 +124,8 @@ void app.whenReady().then(async () => {
         cleanup: confirmed ? "confirmed" : "cleanup_unproven",
         elapsedMs,
         beats: beats - beginningBeats,
+        heartbeatIntervalMs,
+        maxHeartbeatGapMs,
         signalResult,
         signals,
         crashSample,

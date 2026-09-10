@@ -16,7 +16,6 @@ import {
 } from "../datadog/oauth";
 import { refreshNetSuiteAccessToken } from "../netsuite/api-token";
 import { fetchPayPalAccessToken } from "../paypal/api-token";
-import { fetchRampAccessToken } from "../ramp/api-token";
 import { refreshWorkdayAccessToken } from "../workday/api-token";
 import { server } from "../../__tests__/test-server";
 import { authCodeGrantFixture } from "./auth-code-grant-fixture";
@@ -282,34 +281,6 @@ describe("connector backlog auth providers", () => {
         signal,
       ),
     ).resolves.toEqual({ accessToken: "paypal-token", expiresIn: 3600 });
-  });
-
-  it("gets a Ramp client-credentials token with requested scopes", async () => {
-    let scope: string | null = null;
-    server.use(
-      http.post(
-        "https://api.ramp.com/developer/v1/token",
-        async ({ request }) => {
-          scope = new URLSearchParams(await request.text()).get("scope");
-          return HttpResponse.json({
-            access_token: "ramp-token",
-            expires_in: 864000,
-          });
-        },
-      ),
-    );
-
-    await expect(
-      fetchRampAccessToken(
-        {
-          clientId: "client-id",
-          clientSecret: "client-secret",
-          scope: "transactions:read users:read",
-        },
-        signal,
-      ),
-    ).resolves.toEqual({ accessToken: "ramp-token", expiresIn: 864000 });
-    expect(scope).toBe("transactions:read users:read");
   });
 
   it("refreshes a Workday token against the tenant host", async () => {

@@ -189,6 +189,7 @@ describe("GET /api/agents/:id", () => {
 
     expect(response).toStrictEqual({
       agentId: agent.agentId,
+      isDefaultAgent: false,
       ownerId: actor.userId,
       displayName: "Test Agent",
       description: "Test description",

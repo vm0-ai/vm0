@@ -10,6 +10,13 @@ import {
 
 const DRIZZLE_MODULE_PREFIX = "drizzle-orm";
 const SCHEMA_MODULE_PREFIX = "@okouai/db/schema/";
+
+function isSchemaModule(source: string | undefined): boolean {
+  return (
+    source?.startsWith(SCHEMA_MODULE_PREFIX) === true ||
+    source === "@okouai/db/runtime/agent-run"
+  );
+}
 const DATABASE_NAMES = new Set([
   "database",
   "db",
@@ -532,7 +539,8 @@ export function isSchemaTableExpression(
   if (resolved.type === AST_NODE_TYPES.Identifier) {
     const imported = importReference(sourceCode, resolved);
     if (
-      imported?.source.startsWith(SCHEMA_MODULE_PREFIX) === true &&
+      imported !== null &&
+      isSchemaModule(imported.source) &&
       !imported.isTypeOnly
     ) {
       return true;
@@ -558,8 +566,7 @@ export function isSchemaTableExpression(
   const imported = importReference(sourceCode, object);
   return (
     imported?.importedName === "*" &&
-    (imported.source === "@okouai/db" ||
-      imported.source.startsWith(SCHEMA_MODULE_PREFIX))
+    (imported.source === "@okouai/db" || isSchemaModule(imported.source))
   );
 }
 

@@ -693,7 +693,9 @@ test.each([
   click(await activeVoiceDraftStopButton());
   await transcriptionFailed.promise;
 
-  await expect(screen.findByText(failure.message)).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(screen.getByText(failure.message)).toBeVisible();
+  });
   await expect(findButton("Retry")).resolves.toBeEnabled();
   expect(queryButton("Voice input")).toBeNull();
   expect(transcriptionAttempts).toBe(1);

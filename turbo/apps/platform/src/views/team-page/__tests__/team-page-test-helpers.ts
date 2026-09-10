@@ -34,6 +34,7 @@ export function agentFixture(
   overrides: Partial<AgentResponse> = {},
 ): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: "test-user-123",
     description: `${displayName} description`,

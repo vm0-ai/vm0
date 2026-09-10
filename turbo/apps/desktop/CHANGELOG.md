@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.29](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.28...desktop-v0.48.29) (2026-09-10)
+
+
+### Bug Fixes
+
+* **desktop:** recover computer use after background auth refresh ([#33107](https://github.com/vm0-ai/vm0/issues/33107)) ([f570332](https://github.com/vm0-ai/vm0/commit/f570332481b4164fe42dbe18c53dbe2e218e7661))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.425.0
+
 ## [0.48.28](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.27...desktop-v0.48.28) (2026-09-09)
 
 

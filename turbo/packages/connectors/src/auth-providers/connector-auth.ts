@@ -57,6 +57,7 @@ import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
 import { boxProvider } from "./connectors/box/provider";
 import { calComProvider } from "./connectors/cal-com/provider";
+import { calendlyProvider } from "./connectors/calendly/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
 import { copperProvider } from "./connectors/copper/provider";
@@ -980,6 +981,11 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   deviceAuthRefreshProviderEntry("base44", "oauth", base44Provider),
   authCodeRefreshProviderEntry("box", "oauth", boxProvider),
   authCodeRefreshProviderEntry("cal-com", "oauth", calComProvider),
+  authCodeRefreshTokenRevokeProviderEntry(
+    "calendly",
+    "oauth",
+    calendlyProvider,
+  ),
   authCodeRefreshProviderEntry("canva", "oauth", canvaProvider),
   authCodeRefreshProviderEntry("close", "oauth", closeProvider),
   authCodeProviderEntry("copper", "oauth", copperProvider),
@@ -1069,7 +1075,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   refreshProviderEntry("procountor", "api-token", procountorProvider),
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
-  refreshProviderEntry("ramp", "api-token", rampProvider),
+  authCodeRefreshTokenRevokeProviderEntry("ramp", "oauth", rampProvider),
   refreshProviderEntry("reckon", "oauth-refresh-token", reckonProvider),
   authCodeRefreshProviderEntry("reddit", "oauth", redditProvider),
   authCodeRefreshProviderEntry("sentry", "oauth", sentryProvider),
