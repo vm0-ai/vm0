@@ -190,6 +190,59 @@ interface ProviderUnavailableRootFields {
   readonly route: string;
 }
 
+type DesktopUpdateManifestOutcome =
+  | "retry_recovered"
+  | "served_stale"
+  | "unavailable";
+
+interface DesktopUpdateManifestRootFields {
+  readonly type: "desktop_update_manifest_upstream";
+  readonly outcome: DesktopUpdateManifestOutcome;
+  readonly provider: "github_release_asset";
+  readonly provider_status?: number;
+  readonly failure_class: "transient_read" | "transient_read_exhausted";
+  readonly attempts: number;
+  readonly stale_age_ms?: number;
+  readonly line: string;
+  readonly method?: string;
+  readonly route?: string;
+}
+
+function isDesktopUpdateManifestOutcome(
+  value: unknown,
+): value is DesktopUpdateManifestOutcome {
+  return (
+    value === "retry_recovered" ||
+    value === "served_stale" ||
+    value === "unavailable"
+  );
+}
+
+function isDesktopUpdateManifestFailureClass(
+  value: unknown,
+): value is DesktopUpdateManifestRootFields["failure_class"] {
+  return value === "transient_read" || value === "transient_read_exhausted";
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 1;
+}
+
+function isOptionalNonNegativeInteger(value: unknown): value is number {
+  return value === undefined || (Number.isInteger(value) && Number(value) >= 0);
+}
+
+function isOptionalUpstreamStatus(value: unknown): value is number {
+  return (
+    value === undefined ||
+    (Number.isInteger(value) && Number(value) >= 400 && Number(value) <= 599)
+  );
+}
+
+function isOptionalString(value: unknown): value is string {
+  return value === undefined || typeof value === "string";
+}
+
 function usageUnderbillingRootFields(
   fields: Record<string, unknown>,
 ): UsageUnderbillingRootFields | null {
@@ -277,17 +330,64 @@ function providerUnavailableRootFields(
   };
 }
 
+function desktopUpdateManifestRootFields(
+  fields: Record<string, unknown>,
+): DesktopUpdateManifestRootFields | null {
+  const type = fields.type;
+  const outcome = fields.outcome;
+  const provider = fields.provider;
+  const providerStatus = fields.provider_status;
+  const failureClass = fields.failure_class;
+  const attempts = fields.attempts;
+  const staleAgeMs = fields.stale_age_ms;
+  const line = fields.line;
+  const method = fields.method;
+  const route = fields.route;
+
+  if (
+    type !== "desktop_update_manifest_upstream" ||
+    !isDesktopUpdateManifestOutcome(outcome) ||
+    provider !== "github_release_asset" ||
+    !isOptionalUpstreamStatus(providerStatus) ||
+    !isDesktopUpdateManifestFailureClass(failureClass) ||
+    !isPositiveInteger(attempts) ||
+    !isOptionalNonNegativeInteger(staleAgeMs) ||
+    typeof line !== "string" ||
+    !isOptionalString(method) ||
+    !isOptionalString(route)
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    outcome,
+    provider,
+    ...(providerStatus === undefined
+      ? {}
+      : { provider_status: providerStatus }),
+    failure_class: failureClass,
+    attempts,
+    ...(staleAgeMs === undefined ? {} : { stale_age_ms: staleAgeMs }),
+    line,
+    ...(method === undefined ? {} : { method }),
+    ...(route === undefined ? {} : { route }),
+  };
+}
+
 function rootEventFields(
   fields: Record<string, unknown>,
 ):
   | UsageUnderbillingRootFields
   | UnhandledRequestErrorRootFields
   | ProviderUnavailableRootFields
+  | DesktopUpdateManifestRootFields
   | null {
   return (
     usageUnderbillingRootFields(fields) ??
     unhandledRequestErrorRootFields(fields) ??
-    providerUnavailableRootFields(fields)
+    providerUnavailableRootFields(fields) ??
+    desktopUpdateManifestRootFields(fields)
   );
 }
 
