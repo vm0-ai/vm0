@@ -59,7 +59,12 @@ function updatedThreadFields(
     return { pinnedAt: null, pinOrder: null };
   }
   if (event.kind === "model_selection_updated") {
-    return { selectedModel: event.selectedModel };
+    return {
+      selectedModel: event.selectedModel,
+      ...(event.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: event.reasoningEffort }),
+    };
   }
   if (event.kind === "service_tier_updated") {
     return { serviceTier: event.serviceTier };
@@ -95,6 +100,9 @@ function applyEvent(
       pinnedAt: null,
       renamedAt: null,
       selectedModel: event.selectedModel,
+      ...(event.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: event.reasoningEffort }),
       serviceTier: event.serviceTier,
       computerUseHostId: event.computerUseHostId,
       cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,

@@ -41,8 +41,12 @@ const init$ = command(async ({ get, set }, signal: AbortSignal) => {
       bucket,
       artifact.key,
       body.contentType,
-      PUT_URL_TTL_SECONDS,
-      { usePublicEndpoint: true, metadata: artifact.metadata },
+      {
+        expiresIn: PUT_URL_TTL_SECONDS,
+        usePublicEndpoint: true,
+        metadata: artifact.metadata,
+      },
+      signal,
     ),
   );
   signal.throwIfAborted();

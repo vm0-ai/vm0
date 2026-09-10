@@ -1,3 +1,4 @@
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import {
   command,
   computed,
@@ -33,6 +34,8 @@ export type CatalogArtifact = ArtifactSummary & {
    * then reports its state again on the image's next load cycle.
    */
   readonly thumbnailLoad: ImageLoadSignals;
+  readonly thumbnailUrl$: Computed<Promise<string | null>>;
+  readonly videoUrl$: Computed<Promise<string | null>>;
 };
 
 export interface ArtifactCatalogPage {
@@ -46,7 +49,20 @@ function withThumbnailLoad(page: {
 }): ArtifactCatalogPage {
   return {
     artifacts: page.artifacts.map((artifact) => {
-      return { ...artifact, thumbnailLoad: createImageLoadSignals() };
+      return {
+        ...artifact,
+        thumbnailLoad: createImageLoadSignals(),
+        thumbnailUrl$: computed(async (get) => {
+          return artifact.thumbnail
+            ? await get(createAttachmentResourceUrl$(artifact.thumbnail.url))
+            : null;
+        }),
+        videoUrl$: computed(async (get) => {
+          return artifact.videoSourceUrl
+            ? await get(createAttachmentResourceUrl$(artifact.videoSourceUrl))
+            : null;
+        }),
+      };
     }),
     nextCursor: page.nextCursor,
   };

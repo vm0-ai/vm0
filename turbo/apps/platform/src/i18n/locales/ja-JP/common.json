@@ -1965,7 +1965,6 @@
       "directory": {
         "allCategories": "すべて",
         "askAdmin": "管理者に有効化を依頼してください",
-        "browse": "コネクターを見る",
         "configure": "設定",
         "connected": "接続済み",
         "createCustom": "カスタムを作成",
@@ -1977,8 +1976,6 @@
         "detailPermissions": "権限",
         "emptyCustomBody": "HTTP API や MCP サーバーから作成すると、Okou は他のコネクターと同じように使えます。",
         "emptyCustomTitle": "カスタムコネクターはまだありません",
-        "emptyYoursBody": "アプリを接続すると、Okou が代わりに読み取り、操作できます。",
-        "emptyYoursTitle": "まだ何も接続していません",
         "matchCount_other": "{{count}} 件の一致",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "対応が必要",
@@ -1987,11 +1984,9 @@
         "openDetailAria": "{{connector}} の詳細を開く",
         "otherCategory": "その他",
         "permissionCount_other": "{{count}} 件の権限",
-        "searchYours": "接続済みのコネクターを検索",
         "showAll_other": "すべて表示 ({{count}})",
         "tabCustom": "カスタム",
-        "tabDiscover": "見つける",
-        "tabYours": "接続済み"
+        "tabDiscover": "見つける"
       },
       "fallsBackTo": "{{account}} にフォールバック",
       "find": "コネクタを検索...",
@@ -2251,6 +2246,7 @@
       "thinking": {
         "assembling": "部品を組み立て中...",
         "brewing": "返答を作成中...",
+        "default": "考え中...",
         "mapping": "それをマッピングする...",
         "onIt": "その上で...",
         "piecingTogether": "物事をつなぎ合わせる...",
@@ -2620,7 +2616,7 @@
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "cleanupFailed": "テキストは追加されましたが、保存済みの録音を削除できませんでした。",
-      "confirmRecording": "OK",
+      "confirmRecording": "完了",
       "discarding": "音声の下書きを削除中...",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
@@ -2633,13 +2629,44 @@
       "removeDraft": "音声の下書きを削除",
       "restoreFailed": "音声の下書きを読み込めませんでした。再試行してください。",
       "retry": "再試行",
+      "retryingSavedAudio": "保存した音声を再試行中",
       "retryReady": "録音は保持されています。文字起こしを再試行してください。",
+      "returningToComposer": "入力欄に戻ります",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
       "storageFailed": "音声を保存できませんでした。再試行で復元できるのは、この端末に保存済みの音声のみです。",
+      "textTakingShape": "テキストを作成中",
       "transcribing": "文字起こし",
       "transcribingProgress": "転記中...",
       "transcriptionFailed": "音声の転写に失敗しました。もう一度やり直してください。"
+    },
+    "welcomeThread": {
+      "content": "# {{assistantName}}です\n\n私はあなたのAIチームメイトです。必要な成果を教えてください。各種ツールを使って作業し、完成した成果物をこのチャットに届けます。\n\n## お届けできるもの\n\n### 画像\n\nキャンペーンビジュアル、製品イラスト、ソーシャル用グラフィック、広告クリエイティブを作成できます。\n\n![{{assistantName}}が届けたキャンペーンビジュアル]({{imageUrl}})\n\n`campaign-visual.png`\n\n### プレゼンテーション\n\n大まかなブリーフから、構成とデザインを整えた、そのまま発表できる資料を作成できます。\n\n![{{assistantName}}が届けたプレゼンテーション]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}}枚\n\n### 動画\n\n編集済みの製品デモ、ローンチ動画、解説動画、字幕付きソーシャル動画をお届けできます。\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · 共有可能\n\n### 自動化の提案\n\nチームの反復作業を確認し、自動化する価値が高いタスクを優先順にまとめます。\n\n| 優先度 | タスク | トリガー | 成果物 |\n| --- | --- | --- | --- |\n| 1 | インバウンドリードの選別 | 新しいフォーム回答 | 情報を補完したCRMレコードと返信下書き |\n| 2 | 会議からフォローアップを作成 | 通話完了 | 要約、CRMメモ、メール下書き |\n| 3 | 週次グロースレビュー | 月曜の朝 | 指標ブリーフと異常レポート |\n\n## チームで{{assistantName}}を使うメリット\n\n良い成果を一人のチャット内に閉じ込める必要はありません。うまくいった手順を共有ワークフローとして保存すれば、次のメンバーは実証済みの方法から始められます。\n\n```mermaid\nflowchart TB\n  A[\"1. うまくいく方法を見つける<br/>メンバーと{{assistantName}}が一緒にタスクを完了\"]\n  B[\"2. ワークフローを共有<br/>手順とコンテキストを再利用可能にする\"]\n  C[\"3. うまくいった方法を再利用<br/>他のメンバーも実証済みの手順から開始\"]\n  D[\"4. 一緒に改善<br/>フィードバックで次回の実行を向上\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **完成ファイルだけでなく、ワークフローを共有しましょう。**\n- 全員が同じ初期コンテキストから始められます。\n- 一度の改善をチーム全体の成果につなげられます。\n\n## チームで使いこなす方法\n\n良い回答は一人を助けます。保存したワークフローは、その仕事を後から担当する全員を助けます。\n\n[チームのワークフロー図](<{{teamDiagramUrl}}>)\n\n1. **まずは一緒に一度やってみてください。** 手順ではなく、ほしい成果を伝えてください。作業の途中で遠慮なく修正を入れてください。その修正こそ、残す価値のある部分です。\n2. **ワークフローとして保存してください。** 下の入力欄で**ワークフローの作成**を選んでください。ほしい成果、何をきっかけに動かすか、成果をどう扱うかをお聞きし、繰り返し実行できるワークフローにまとめます。\n3. **公開範囲を「公開」に変えてください。** ワークフローを開いて**公開範囲**を設定します。**非公開**のままなら自分専用ですが、**公開**にするとワークスペースの全員が実行できます。\n4. **名前で呼び出してください。** どのチャットでも `/` に続けてワークフロー名を入力すれば始まります。依頼を待たずにスケジュールやトリガーで動かしたい場合は、オートメーションを追加してください。\n\n最も難しい仕事ではなく、チームが最も頻繁に繰り返している仕事から始めてください。毎週動くワークフローは、一度きりの巧妙なワークフローより価値があります。\n\n## Slack で話しかける\n\nこうした仕事の多くは、すでに Slack で相談されています。私を Slack に導入すれば、答えは別のタブではなくスレッドの中に届きます。\n\n[Slack での会話の図](<{{slackDiagramUrl}}>)\n\n**最初に一度だけ設定します**\n\n1. 左のサイドバーで**{{assistantName}}の連携先**を開きます。\n2. Slack のカードで**Slack にインストールします**を選び、権限を承認します。インストールできるのはワークスペースの管理者だけなので、管理者でない場合は依頼してください。\n3. ほかのメンバーは同じカードを開き、**接続する**を選んで各自の Slack アカウントを連携します。\n\n**あとは、ほかのメンバーと同じように使ってください**\n\n| Slack での操作 | 私の動き |\n| --- | --- |\n| ダイレクトメッセージを送る | 途切れない一つの会話として、二人だけで進めます |\n| チャンネルで `@{{assistantName}}` | あなたのメッセージにスレッドで返答し、チームも追えます |\n| スレッド内でもう一度 `@{{assistantName}}` | そのスレッドを引き継ぎ、続きから作業します |\n| `/okou` | コマンド一覧を開きます（接続、エージェント切り替え、モデル切り替え、接続解除） |\n\n覚えておくとよい点が二つあります。チャンネルではメンションされたときだけ返答するので、呼ばれていないスレッドには入りません。またダイレクトメッセージにはファイルを添付でき、返答する前に読んでおきます。\n\n[Slack を設定する]({{worksUrl}})と、上で保存したワークフローをチャンネルから離れずに始められます。\n\n[チームメンバーを招待]({{inviteUrl}})して、次に作るワークフローを必要な人がすぐ再利用できるようにしましょう。\n\n共有ワークフローについては[ドキュメント]({{docsUrl}})をご覧ください。",
+      "slackDiagram": {
+        "caption": "Slack で答えが届く場所。あなたのメッセージのスレッド内か、非公開のダイレクトメッセージ",
+        "channelEyebrow": "チャンネルでは",
+        "channelNote": "答えはあなたのメッセージに紐づくので、チャンネルが埋もれず、チームも追えます。",
+        "directEyebrow": "ダイレクトメッセージでは",
+        "directLabel": "あなたと{{assistantName}}",
+        "directNote": "タスクをまたいで文脈が残る、二人だけの会話です。",
+        "mentionLabel": "{{assistantName}}をメンションする",
+        "replyLabel": "{{assistantName}}がスレッドで返答する"
+      },
+      "teamDiagram": {
+        "automationBody": "誰も頼まなくても、スケジュールやトリガーで動きます。",
+        "automationTitle": "オートメーション",
+        "caption": "うまくいった会話が、チーム全員とスケジュールの出発点になるワークフローに変わる",
+        "chatBody": "あなたと{{assistantName}}がタスクを一度きちんと仕上げます。",
+        "chatTitle": "うまくいった会話",
+        "savedEyebrow": "一度保存する",
+        "teamEyebrow": "みんなのもの",
+        "teammateBody": "名前で呼び出し、うまくいった状態から始められます。",
+        "teammateTitle": "チームの誰でも",
+        "workflowBody": "手順と前提が残り、何度でも使えます。",
+        "workflowTitle": "ワークフロー",
+        "yoursEyebrow": "あなたのもの"
+      },
+      "title": "{{assistantName}}へようこそ"
     },
     "workflows": {
       "named": "ワークフロー {{title}}",
@@ -2830,6 +2857,7 @@
         "notConnected": "接続するコネクタが残っていない",
         "search": "「{{search}}」に一致するコネクタはありません"
       },
+      "filterCategory": "カテゴリ",
       "filters": {
         "agents": "エージェント",
         "all": "すべて",
@@ -2838,11 +2866,21 @@
         "notConnected": "接続されていません",
         "status": "ステータス"
       },
+      "filterWith": "フィルタ: {{category}}",
       "iconUnavailable": "コネクタアイコンが使用不可",
       "newConnector": "新しいコネクタ",
       "noConnectorsAlt": "コネクターなし",
       "otherCategory": "その他",
+      "remoteAccess": "リモートアクセス",
       "search": "コネクターを検索",
+      "shelf": {
+        "moreCategories": "その他のカテゴリ",
+        "popular": "人気",
+        "seeMore_one": "{{names}} ほか {{count}} 件を見る",
+        "seeMore_other": "{{names}} ほか {{count}} 件を見る",
+        "top": "人気のコネクタ",
+        "yours": "あなたのコネクタ"
+      },
       "tabs": {
         "builtin": "内蔵",
         "custom": "カスタム"
@@ -5667,6 +5705,11 @@
       "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
+    },
+    "workerFailure": {
+      "action": "リフレッシュ",
+      "description": "接続が中断されました。続行するにはページを再読み込みしてください。",
+      "title": "続行するには再読み込みしてください"
     }
   },
   "sharedThread": {
@@ -5678,6 +5721,55 @@
     "signIn": "ログイン",
     "signUp": "新規登録",
     "tryItYourself": "自分で試す"
+  },
+  "ssh": {
+    "accessDescription": "SSHホストを使用できるエージェントを選択してください。",
+    "accessHelp": "この Agent が、現在および今後設定するすべての SSH ホストでコマンドを実行できるようにします。コネクタの権限とは別の設定です。",
+    "add": "ホストを追加",
+    "cancel": "キャンセル",
+    "chooseFile": "ファイルを選択",
+    "choosePrivateKeyFile": "秘密鍵ファイルを選択",
+    "credentialsHelp": "認証情報は書き込み専用で、サンドボックスの外部に保持されます。鍵全体を貼り付けてください。空白はそのまま保持されます。送信時またはフォームを閉じたときに入力欄を消去します。",
+    "delete": "ホストを削除",
+    "deleteHelp": "このホストと保存された認証情報を削除しますか？Agent の最新の一覧に表示されなくなります。",
+    "description": "エージェントがリモートコマンドを実行できる SSH ホストを設定します。",
+    "displayName": "表示名",
+    "edit": "ホストを編集",
+    "editHelp": "これらの項目を編集しても認証情報は変更されません。エンドポイントを変更すると、記憶したホスト鍵が消去されます。",
+    "empty": "SSH ホストが設定されていません。ホストを追加すると、SSH アクセスを持つ Agent が利用できます。",
+    "errors": {
+      "agentUnavailable": "このエージェントは利用できなくなりました。別のエージェントを選択してください。",
+      "configurationChanged": "編集中にこのホストが変更されました。一覧は更新済みです。ホストを開き直し、現在の設定を確認してから保存してください。",
+      "duplicateEndpoint": "このアドレスとポートのSSHホストは既に存在します。既存のホストを編集するか、別のアドレスまたはポートを使用してください。",
+      "failed": "SSHの変更を保存できませんでした。再試行してください。",
+      "hostUnavailable": "このSSHホストは利用できなくなりました。ホスト一覧に戻り、既存のホストを選択してください。",
+      "invalidHost": "URLスキーム、パス、空白を含めずにホスト名またはIPアドレスを入力してください。",
+      "invalidInput": "一部のSSH設定が無効です。入力内容を確認して再試行してください。"
+    },
+    "fileReadError": "このファイルを読み込めませんでした。再度選択するか、秘密鍵を貼り付けてください。",
+    "fileReading": "秘密鍵ファイルを読み込み中…",
+    "fileSizeError": "空でない、64 KiB 以下の秘密鍵ファイルを選択してください。",
+    "fingerprint": "記憶したホスト鍵",
+    "host": "公開ホスト名または IP アドレス",
+    "label": "SSH",
+    "loadFailed": "SSH設定を読み込めませんでした。再試行してください。",
+    "loading": "SSH ホストを読み込み中…",
+    "loadingAccess": "エージェントのアクセスを読み込み中…",
+    "manage": "SSH ホストを管理",
+    "notLearned": "ホスト鍵はまだ記憶されていません",
+    "passphrase": "パスフレーズ（任意）",
+    "port": "ポート",
+    "privateKey": "秘密鍵",
+    "reset": "ホスト鍵をリセット",
+    "resetHelp": "新しいサーバーの識別情報を別の方法で確認してからリセットしてください。次の接続では新しいホスト鍵を信頼し、記憶します。",
+    "retry": "再試行",
+    "rotate": "認証情報を置き換え",
+    "save": "保存",
+    "summary_one": "{{count}} 台のホストを設定済み",
+    "summary_other": "{{count}} 台のホストを設定済み",
+    "title": "SSH ホスト",
+    "unavailable": "このアカウントでは SSH アクセスを利用できません。",
+    "username": "SSH ユーザー名"
   },
   "usage": {
     "displayNames": {

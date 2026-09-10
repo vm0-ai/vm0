@@ -9,7 +9,7 @@ import {
   type UpdateUserModelPreferenceRequest,
 } from "@okouai/api-contracts/contracts/user-model-preference";
 import { screen, waitFor, within } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   click,
@@ -131,12 +131,15 @@ function expectSelected(element: HTMLElement): void {
   expect(selectionAttribute).toBe("true");
 }
 
-test("Theme preferences work on the development host when storage writes are blocked", async () => {
+test("Theme preferences initialize from the shared cookie", async () => {
   const updates = mockPreferences({ theme: null });
-  context.mocks.browser.cookie("__Secure-okou-theme=v1.dark");
-  context.mocks.browser.localStorageWrites({
-    blockedKeys: ["theme", "colorTheme"],
+  const cookieWrites: string[] = [];
+  vi.spyOn(document, "cookie", "set").mockImplementation((value) => {
+    cookieWrites.push(value);
   });
+  const localStorageReads = vi.spyOn(localStorage, "getItem");
+  const localStorageWrites = vi.spyOn(localStorage, "setItem");
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.dark");
 
   await setupPage({ context, path: "/settings", host: "app.vm7.ai" });
 
@@ -149,8 +152,17 @@ test("Theme preferences work on the development host when storage writes are blo
   await waitFor(() => {
     expectSelected(getFastRole("button", "Light"));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(updates).toContainEqual({ theme: "light" });
   });
+  expect(updates).not.toContainEqual(
+    expect.objectContaining({ theme: "light" }),
+  );
+  expect(cookieWrites).toContain(
+    "__Secure-okou-theme=v1.light; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
+  );
+  for (const key of ["theme", "colorTheme", "okou_theme", "okou_colorTheme"]) {
+    expect(localStorageReads).not.toHaveBeenCalledWith(key);
+    expect(localStorageWrites).not.toHaveBeenCalledWith(key, expect.anything());
+  }
 
   await expect(
     screen.findByText("Your agents will use this time zone during runs"),
@@ -158,11 +170,78 @@ test("Theme preferences work on the development host when storage writes are blo
   expect(getFastRole("button", "Light")).toBeVisible();
 });
 
-test("Account-backed appearance preferences are restored and saved", async () => {
+test("A shared theme cookie supersedes and removes an older host-only duplicate", async () => {
+  mockPreferences({ theme: "dark" });
+  let cookie = "__Secure-okou-theme=v1.dark; __Secure-okou-theme=v1.light";
+  const cookieWrites: string[] = [];
+  vi.spyOn(document, "cookie", "get").mockImplementation(() => {
+    return cookie;
+  });
+  vi.spyOn(document, "cookie", "set").mockImplementation((value) => {
+    cookieWrites.push(value);
+    if (
+      value === "__Secure-okou-theme=; Path=/; Max-Age=0; SameSite=Lax; Secure"
+    ) {
+      cookie = "__Secure-okou-theme=v1.light";
+    }
+  });
+
+  await setupPage({ context, path: "/settings", host: "app.vm0.ai" });
+
+  await expect(
+    screen.findByText("Your preferred color scheme"),
+  ).resolves.toBeVisible();
+  expectSelected(getFastRole("button", "Light"));
+  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(cookieWrites).toContain(
+    "__Secure-okou-theme=; Path=/; Max-Age=0; SameSite=Lax; Secure",
+  );
+  expect(cookieWrites).toContain(
+    "__Secure-okou-theme=v1.light; Domain=.vm0.ai; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
+  );
+});
+
+test("Theme preferences refresh from the cookie when the page becomes active", async () => {
+  mockPreferences({ theme: "dark" });
+  let cookie = "__Secure-okou-theme=v1.dark";
+  vi.spyOn(document, "cookie", "get").mockImplementation(() => {
+    return cookie;
+  });
+  vi.spyOn(document, "cookie", "set").mockImplementation(() => {});
+  const visibility = context.mocks.browser.visibilityState("visible");
+
+  await setupPage({ context, path: "/settings", host: "app.okou.ai" });
+  await expect(
+    screen.findByText("Your preferred color scheme"),
+  ).resolves.toBeVisible();
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+  cookie = "__Secure-okou-theme=v1.light";
+  window.dispatchEvent(new Event("focus"));
+  await waitFor(() => {
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expectSelected(getFastRole("button", "Light"));
+  });
+
+  visibility.changeTo("hidden");
+  cookie = "__Secure-okou-theme=v1.dark";
+  visibility.changeTo("visible");
+  await waitFor(() => {
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expectSelected(getFastRole("button", "Dark"));
+  });
+});
+
+test("Cookie theme and account-backed color theme are restored and saved", async () => {
   const updates = mockPreferences({
     theme: "dark",
     colorTheme: "golden-hour",
   });
+  const cookieWrites: string[] = [];
+  vi.spyOn(document, "cookie", "set").mockImplementation((value) => {
+    cookieWrites.push(value);
+  });
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.light");
 
   await setupPage({
     context,
@@ -175,15 +254,28 @@ test("Account-backed appearance preferences are restored and saved", async () =>
     screen.findByText("Your preferred color scheme"),
   ).resolves.toBeVisible();
   const colorTheme = await screen.findByRole("group", { name: "Color theme" });
-  expectSelected(getFastRole("button", "Dark"));
+  expectSelected(getFastRole("button", "Light"));
   expectSelected(getFastRole("button", "Golden hour", colorTheme));
 
-  click(getFastRole("button", "Light"));
+  click(getFastRole("button", "Dark"));
 
   await waitFor(() => {
-    expect(updates).toContainEqual({ theme: "light" });
-    expectSelected(getFastRole("button", "Light"));
+    expectSelected(getFastRole("button", "Dark"));
   });
+  expect(updates).not.toContainEqual(
+    expect.objectContaining({ theme: "dark" }),
+  );
+
+  const selectedAppearance = ["Light", "Dark", "System"].find((name) => {
+    return getFastRole("button", name).getAttribute("aria-pressed") === "true";
+  });
+  if (!selectedAppearance) {
+    throw new Error("Expected a selected appearance option");
+  }
+  const resolvedTheme = document.documentElement.dataset.theme;
+  click(getFastRole("button", selectedAppearance));
+  expectSelected(getFastRole("button", selectedAppearance));
+  expect(document.documentElement).toHaveAttribute("data-theme", resolvedTheme);
 
   click(getFastRole("button", "Limelight", colorTheme));
 
@@ -191,11 +283,15 @@ test("Account-backed appearance preferences are restored and saved", async () =>
     expect(updates).toContainEqual({ colorTheme: "limelight" });
     expectSelected(getFastRole("button", "Limelight", colorTheme));
   });
-  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   expect(document.documentElement).toHaveAttribute(
     "data-color-theme",
     "limelight",
   );
+  expect(cookieWrites).toContain(
+    "__Secure-okou-theme=v1.dark; Domain=.okou.ai; Path=/; Max-Age=31536000; SameSite=Lax; Secure",
+  );
+  expect(cookieWrites.join("\n")).not.toMatch(/golden-hour|limelight/u);
 });
 
 test("A user can select a gradient color theme when available", async () => {
@@ -376,7 +472,16 @@ test("A user can save message-send and time-zone preferences", async () => {
 
   await waitFor(() => {
     expect(updates).toContainEqual({ sendMode: "cmd-enter" });
+    expect(getFastRole("button", "⌘ Enter")).toBeEnabled();
+    expectSelected(getFastRole("button", "⌘ Enter"));
   });
+
+  click(getFastRole("button", "⌘ Enter"));
+  expectSelected(getFastRole("button", "⌘ Enter"));
+  expect(getFastRole("button", "Enter")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 
   const timezone = getFastRole("combobox", /UTC/u);
   click(timezone);

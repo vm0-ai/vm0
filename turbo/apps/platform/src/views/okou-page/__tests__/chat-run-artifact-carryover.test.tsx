@@ -184,7 +184,8 @@ test("Expose an artifact referenced only by history from the main result actions
     ).toBeNull();
   });
   click(await findWorkHistoryToggle("collapsed"));
-  expect(screen.getByText("Generated supporting evidence.")).toBeVisible();
+  const history = screen.getByText("Generated supporting evidence.");
+  expect(history).toBeVisible();
   await expect(
     findNamedLink("Open pdf preview for supporting-report.pdf"),
   ).resolves.toBeVisible();
@@ -430,8 +431,11 @@ test("Keep completed result actions before recommended followups", async () => {
     throw new Error("Expected the completed result action bar");
   }
   const keepGoing = await screen.findByRole("group", { name: "Keep going" });
+  const followupButton = within(keepGoing).getByTitle("Summarize the report");
 
   expect(actions).toBeVisible();
+  expect(followupButton).toBeVisible();
+  expect(screen.getByText(/Keep going ·/u)).toBeVisible();
   expect(mainMessage).toContainElement(actions);
   expect(mainMessage).not.toContainElement(keepGoing);
   expect(assistantGroupFor(main)).toContainElement(keepGoing);

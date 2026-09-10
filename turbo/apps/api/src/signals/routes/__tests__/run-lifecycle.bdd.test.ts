@@ -5558,7 +5558,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       true,
       run.runId,
       [400],
-      {},
+      { capabilities: { piModelConfigGenerations: [1, 2, 3] } },
     );
     expectApiError(rejected.body);
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
@@ -5596,6 +5596,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           heartbeatGeneration: 1,
         },
         runnerHostname: "x".repeat(256),
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
       },
     );
     expectApiError(invalidHostname.body);
@@ -5852,6 +5853,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runnerId: randomUUID(),
           heartbeatGeneration: 1,
         },
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
         telemetry: {
           pollReason: "future-runner-reason",
           jobDiscoveredToClaimRequestMs: -1,
@@ -10714,17 +10716,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         piModelConfig,
       );
       await api.heartbeatRunner(runnerGroup);
-      for (const capabilities of [
-        undefined,
-        { piModelConfigGenerations: [1, 2, 3] },
-      ]) {
-        await api.requestClaimRunnerJob(true, run.runId, [404], {
-          capabilities,
-        });
-        await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-          status: "pending",
-        });
-      }
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "pending",
+      });
       const claim = await api.claimRunnerJob(run.runId, {
         capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
       });
@@ -10802,18 +10799,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       );
       await api.heartbeatRunner(runnerGroup);
 
-      const incompatibleCapabilities =
-        generation === 3
-          ? [undefined, { piModelConfigGenerations: [1, 2] }]
-          : generation === 2
-            ? [undefined]
-            : [];
-      for (const capabilities of incompatibleCapabilities) {
+      if (generation === 3) {
         const legacyClaim = await api.requestClaimRunnerJob(
           true,
           run.runId,
           [404],
-          { capabilities },
+          { capabilities: { piModelConfigGenerations: [1, 2] } },
         );
         expectApiError(legacyClaim.body);
         expect(legacyClaim.body.error.message).toBe("Job not found in queue");
@@ -16161,6 +16152,46 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       await api.requestCancelRun(actor, run.runId, [200]);
     }
   });
+
+  it.each([true, false])(
+    "gates SSH guidance and Run scopes only on enabled=%s for an ordinary organization",
+    async (enabled) => {
+      const api = createRunsApi(context);
+      const connectors = createConnectorBddApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.SshAccess]: enabled,
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "inspect my SSH hosts",
+        modelProvider: "anthropic-api-key",
+      });
+      const prompt =
+        (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+      if (enabled) {
+        expect(prompt).toContain("okou ssh host list --json");
+        expect(prompt).toContain("failure_reason and effects, not error text");
+      } else {
+        expect(prompt).not.toContain("okou ssh");
+      }
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      const token = claim.platformEnvironment.OKOU_TOKEN;
+      if (!token) {
+        throw new Error("Expected a minted Run token");
+      }
+      const capabilities = verifyOkouToken(token)?.capabilities;
+      if (enabled) {
+        expect(capabilities).toContain("ssh:read");
+        expect(capabilities).toContain("ssh:write");
+      } else {
+        expect(capabilities).not.toContain("ssh:read");
+        expect(capabilities).not.toContain("ssh:write");
+      }
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
 
   it("advertises connector account switching", async () => {
     const api = createRunsApi(context);

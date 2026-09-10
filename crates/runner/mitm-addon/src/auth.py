@@ -15,6 +15,7 @@ from enum import Enum
 
 from mitmproxy import http
 
+import aws_sigv4_hash_executor
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_local_responses
@@ -826,7 +827,7 @@ async def _precompute_aws_sigv4_body_hash(
         return None
 
     hash_future = asyncio.get_running_loop().run_in_executor(
-        None,
+        aws_sigv4_hash_executor.get_executor(),
         hash_request_body,
         flow.request.raw_content,
     )

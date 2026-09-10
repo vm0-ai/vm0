@@ -1,5 +1,5 @@
-import { command, computed, state, type Computed } from "ccstate";
-import { timeout } from "signal-timers";
+import { computed, type Computed } from "ccstate";
+import { publicAttachmentUrl } from "../views/okou-page/attachment-url.ts";
 import {
   artifactReferencesContract,
   parseArtifactReference,
@@ -11,27 +11,6 @@ import { accept } from "../lib/accept.ts";
 import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
 import { apiClient$ } from "./api-client.ts";
-
-const resourceRevision$ = state(0);
-
-const refreshAttachmentUrls$ = command(({ set }) => {
-  set(resourceRevision$, (revision) => {
-    return revision + 1;
-  });
-});
-
-export const setupAttachmentUrlRefresh$ = command(
-  ({ set }, signal: AbortSignal) => {
-    timeout(
-      () => {
-        set(refreshAttachmentUrls$);
-        set(setupAttachmentUrlRefresh$, signal);
-      },
-      10 * 60 * 1000,
-      { signal },
-    );
-  },
-);
 
 const AUTHENTICATED_FILE_PATH = "/api/web/download-file";
 
@@ -46,7 +25,7 @@ export function isAuthenticatedAttachmentUrl(url: string): boolean {
   );
 }
 
-export interface AttachmentUrls {
+interface AttachmentUrls {
   /**
    * URL this browser can load right now. Presigned for a private attachment,
    * so it expires and grants access only to that object.
@@ -60,19 +39,38 @@ export interface AttachmentUrls {
   readonly shareUrl: string | null;
 }
 
+export function createAttachmentResourceUrl$(url: string) {
+  const urls$ = createAttachmentUrls$(url);
+  return computed(async (get) => {
+    return (await get(urls$)).resourceUrl;
+  });
+}
+
+export function createAttachmentPreviewSignals(url: string) {
+  const urls$ = createAttachmentUrls$(url);
+  return {
+    resourceUrl$: computed(async (get) => {
+      return (await get(urls$)).resourceUrl;
+    }),
+    shareUrl$: computed(async (get) => {
+      return (await get(urls$)).shareUrl;
+    }),
+  };
+}
+
 /**
  * Persisted chat attachments live behind an authenticated API route, and a bare
  * `src` attribute cannot carry an Authorization header. Exchange the canonical
  * API URL for the URLs the browser can actually use; the API still runs the
  * ownership check before answering.
  */
-function createAttachmentResourceUrl$(
-  url: string,
+export function createAttachmentUrls$(
+  inputUrl: string,
 ): Computed<Promise<AttachmentUrls>> {
+  const url = publicAttachmentUrl(inputUrl);
   return computed(async (get) => {
     const reference = parseArtifactReference(url, location.origin);
     if (reference) {
-      get(resourceRevision$);
       const signal = get(pageSignal$);
       const response = await accept(
         get(apiClient$)(artifactReferencesContract).resolve({
@@ -84,11 +82,13 @@ function createAttachmentResourceUrl$(
       );
       const resourceUrl = new URL(response.body.url);
       resourceUrl.hash = reference.fragment;
-      return { resourceUrl: resourceUrl.href, shareUrl: null };
+      return {
+        resourceUrl: resourceUrl.href,
+        shareUrl: null,
+      };
     }
     const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
     if (deploymentId) {
-      get(resourceRevision$);
       const signal = get(pageSignal$);
       const response = await accept(
         get(apiClient$)(hostContract).privatePreview({
@@ -100,7 +100,10 @@ function createAttachmentResourceUrl$(
       );
       const resourceUrl = new URL(response.body.url);
       resourceUrl.hash = new URL(url).hash;
-      return { resourceUrl: resourceUrl.href, shareUrl: null };
+      return {
+        resourceUrl: resourceUrl.href,
+        shareUrl: null,
+      };
     }
     if (!isAuthenticatedAttachmentUrl(url)) {
       // Already a public address, so it both renders and shares as-is.
@@ -122,46 +125,9 @@ function createAttachmentResourceUrl$(
       [200],
       signal,
     );
-    if (response.body.publicUrl === null) {
-      // Only confirmed private resources follow the page's refresh clock.
-      // Their recorded policy survives disabling creation; public attachments
-      // keep their existing resolution lifetime.
-      get(resourceRevision$);
-    }
     return {
       resourceUrl: response.body.url,
       shareUrl: response.body.publicUrl,
     };
   });
 }
-
-export type AttachmentResourceUrlResolver = (
-  url: string,
-) => Computed<Promise<AttachmentUrls>>;
-
-/**
- * Create the URL join owned by one thread or page. The returned map is private:
- * consumers only receive the resolved item's computed, never the keyed store.
- */
-export function createAttachmentResourceUrlResolver(): AttachmentResourceUrlResolver {
-  const resourceUrlByUrl = new Map<string, Computed<Promise<AttachmentUrls>>>();
-  return (url: string): Computed<Promise<AttachmentUrls>> => {
-    const existing = resourceUrlByUrl.get(url);
-    if (existing) {
-      return existing;
-    }
-    const resourceUrl$ = createAttachmentResourceUrl$(url);
-    resourceUrlByUrl.set(url, resourceUrl$);
-    return resourceUrl$;
-  };
-}
-
-/**
- * Preview components that do not already receive thread-owned signals share a
- * resolver for the current page. Replacing the page signal replaces the whole
- * resolver, so URLs from a previous page are no longer retained.
- */
-export const pageAttachmentResourceUrlResolver$ = computed((get) => {
-  get(pageSignal$);
-  return createAttachmentResourceUrlResolver();
-});

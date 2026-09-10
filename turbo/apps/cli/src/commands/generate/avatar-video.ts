@@ -9,6 +9,7 @@ import {
 } from "../../lib/api/domains/web";
 import { getBillingStatus } from "../../lib/api/domains/billing";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { createArtifactPresentation } from "../shared/artifact-return";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
@@ -356,8 +357,9 @@ function printAvatarVideoResult(
   result: Awaited<ReturnType<typeof generateWebAvatarVideo>>,
   json: boolean,
 ): void {
+  const presentation = createArtifactPresentation(result.filename, result.url);
   if (json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify({ ...result, ...presentation.json }));
     return;
   }
   console.log(chalk.green(`✓ Avatar video generated: ${result.url}`));
@@ -367,6 +369,7 @@ function printAvatarVideoResult(
   console.log(chalk.dim(`  Avatar: ${result.avatarId}`));
   console.log(chalk.dim(`  Voice: ${result.voiceId}`));
   console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
+  console.log(`\n${presentation.text}`);
 }
 
 async function generateAvatarVideo(

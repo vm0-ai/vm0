@@ -1,3 +1,4 @@
+import { reasoningEffortSchema } from "./model-reasoning-effort";
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
@@ -316,6 +317,8 @@ const indicatorsSchema = z.object({
 });
 
 const chatThreadEventIdSchema = z.string().uuid();
+export { type ReasoningEffort } from "./model-reasoning-effort";
+
 const codexServiceTierSchema = z.enum(["fast"]);
 export const chatThreadServiceTierSchema = z.enum(["priority"]);
 
@@ -331,6 +334,7 @@ const chatThreadSnapshotProjectionSchema = z.object({
   pinOrder: z.string().nullable().optional(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -367,6 +371,7 @@ const chatThreadEventSchema = z.object({
   // On sort_touched, this changes pin rank instead of activity recency.
   pinOrder: z.string().nullable().optional(),
   selectedModel: z.string().nullable().default(null),
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -1024,6 +1029,7 @@ const chatThreadMetadataSchema = z.object({
   agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
   pinnedAt: z.string().nullable(),
   computerUseHostId: z.string().uuid().nullable(),
@@ -1087,6 +1093,8 @@ const chatThreadModelSelectionUpdateBodySchema = z.object({
    * Selected model id, or null to clear the thread's selected model.
    */
   model: selectedModelRequestSchema.nullable(),
+  /** Omit to keep the selection; null restores the model default. */
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   codexServiceTier: codexServiceTierSchema.nullable().optional(),
   eventId: chatThreadEventIdSchema.optional(),
   serviceTierEventId: chatThreadEventIdSchema.optional(),
@@ -1110,6 +1118,8 @@ const chatRunVideoOptionsRequestSchema = z
   .partial();
 
 const chatRunOptionsRequestSchema = z.object({
+  /** Update the thread effort; null explicitly restores the model default. */
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   codexServiceTier: codexServiceTierSchema.optional(),
   video: chatRunVideoOptionsRequestSchema.optional(),
 });

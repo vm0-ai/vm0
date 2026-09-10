@@ -4,7 +4,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-13",
   "routes": [
-    { "pattern": "f.okou.io/*", "zone_name": "okou.io" },
     {
       "pattern": "*.sites.vm0.io/*",
       "zone_name": "vm0.io",

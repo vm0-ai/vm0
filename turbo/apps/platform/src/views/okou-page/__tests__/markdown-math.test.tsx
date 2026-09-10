@@ -58,7 +58,6 @@ test("Agent formulas render from explicit delimiters without treating currency a
     context,
     path: chat.path,
     host: "app.okou.ai",
-    cachedFeatureSwitches: { [FeatureSwitchKey.AgentMessageMath]: false },
     featureSwitches: { [FeatureSwitchKey.AgentMessageMath]: true },
   });
 
@@ -94,7 +93,7 @@ test("Agent formulas render from explicit delimiters without treating currency a
   );
 });
 
-test("Shared Agent formulas use the fetched rollout after stale cache hydration", async () => {
+test("Shared Agent formulas use the fetched rollout", async () => {
   const sharedThreadId = "30000000-0000-4000-8000-000000000703";
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
     return respond(200, {
@@ -116,7 +115,6 @@ test("Shared Agent formulas use the fetched rollout after stale cache hydration"
     context,
     path: `/share/threads/${sharedThreadId}`,
     host: "app.okou.ai",
-    cachedFeatureSwitches: { [FeatureSwitchKey.AgentMessageMath]: false },
     featureSwitches: { [FeatureSwitchKey.AgentMessageMath]: true },
   });
 

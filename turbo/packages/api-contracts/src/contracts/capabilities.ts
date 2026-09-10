@@ -44,6 +44,8 @@ export const CAPABILITIES = [
   "file:write",
   "host:read",
   "host:write",
+  "ssh:read",
+  "ssh:write",
   "presentation-template:write",
 ] as const;
 
@@ -191,6 +193,11 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "file:write": { group: "Files", label: "Upload files" },
   "host:read": { group: "Hosting", label: "View hosted sites" },
   "host:write": { group: "Hosting", label: "Publish hosted sites" },
+  "ssh:read": { group: "SSH", label: "List authorized SSH hosts" },
+  "ssh:write": {
+    group: "SSH",
+    label: "Execute commands on authorized SSH hosts",
+  },
   "presentation-template:write": {
     group: "Presentation Templates",
     label: "Publish a presentation template",

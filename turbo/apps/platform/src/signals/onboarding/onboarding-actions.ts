@@ -6,7 +6,6 @@ import {
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
 import { accept } from "../../lib/accept.ts";
-import { clearLastUsedAgentId$ } from "../agent.ts";
 import { apiClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
@@ -61,7 +60,6 @@ export const completeOnboarding$ = command(
     if (role) {
       set(capturePaidOnboardingRoleConfirmed$, role);
     }
-    set(clearLastUsedAgentId$);
     set(reloadOnboardingStatus$);
     set(resetOnboardingDraft$);
   },

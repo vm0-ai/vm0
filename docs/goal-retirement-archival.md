@@ -1,5 +1,11 @@
 # Goal retirement archival (S2)
 
+**Completed 2026-09-09:** S2 passed
+[independent controller production acceptance](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5604844349).
+The [completed recovery record](goal-archive-search-recovery.md) retains the
+final apply, full verification and retired execution-source evidence. The
+migration/replay and physical-schema gates below remain required through S5.
+
 Issue [#32797](https://github.com/vm0-ai/vm0/issues/32797) implements S2 of
 [#32653](https://github.com/vm0-ai/vm0/issues/32653). The normal production S1
 boundary is accepted: creation/reactivation and continuation are retired. The
@@ -166,15 +172,25 @@ reads only receipt-addressed canonical history inside the authorized repair proc
 and replaces only those derived search documents. Its default is read-only; its
 reports contain counts and opaque cursors, never objective text. This operational
 processing exception does not expand MaskDB's seven-field policy or authorize an
-objective census/export. The separate release owner must run and verify recovery
-after the repaired API serves and outgoing projectors finish, before controller S2
-acceptance and before S5 removes the repair inventory.
+objective census/export.
 
-For the intact 4,162-Goal production cohort, use the temporary
-[protected execution entry and full certificate](goal-archive-search-recovery.md)
-added by #32875. Its main-only manual workflow enforces the complete original
-ID set around recovery. The controller owns S2 production acceptance and assigns
-removal of that temporary workflow/wrapper in S3/S4, before S5 deletes receipts.
+For the intact 4,162-Goal production cohort, the sole recovery owner completed
+[apply 34356992223 / job 102484085578](https://github.com/vm0-ai/vm0/actions/runs/34356992223/job/102484085578),
+source `aba3bd9692db398472b6033432d802f94d0579cc`, successfully at
+**2026-09-09 15:38:53 UTC** after repaired readers and projector convergence.
+It repaired **four thread outcomes**; fresh final verification reported
+**4,162 unchanged, every other outcome zero**, with all three complete
+Goal/thread/receipt cohorts and the original ID hash intact. The historical
+cancelled apply's attributable commit count remains **UNKNOWN**.
+
+The [dated completed recovery record](goal-archive-search-recovery.md) links the
+full operator/controller certificates and immutable accepted source
+`30c84e22f32fb43bfc12af672fa1aec9a8969c47`. S3 #33023 removes the temporary
+GitHub workflow, wrapper and dedicated tests after that acceptance. Their
+dispatch instructions are retired; no further recovery execution is expected.
+The controller already deleted the separate Okou S2 watcher and verified absence.
+The numbered 014 operation, its exports, 1093/1094 and S5 transition validator
+remain; physical schema removal still waits for the later S4/S5 gates above.
 
 Public shares are intentionally immutable copies. A previously stripped copy is
 not automatically changed or republished. Its owner can explicitly create a new

@@ -22,9 +22,8 @@ import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
-import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
-import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
+import { onRejection, resetSignal, settle } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import {
@@ -168,7 +167,6 @@ import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
 } from "./artifact-card-signals.ts";
-import { createAttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
 import {
   createAgentReferenceSignalsRegistry,
   type AgentReferenceSignalsRegistry,
@@ -212,7 +210,10 @@ import {
   type BrowserLifecycleOptimisticEvents,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
-import { createThreadActivitySummarySignals } from "./thread-activity-summary.ts";
+import {
+  createThreadActivitySummarySignals,
+  type ThinkingSummaries,
+} from "./thread-activity-summary.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
   messageDocumentToPrompt,
@@ -2141,10 +2142,8 @@ function createPagedEventResources(
     threadId,
     browserLifecycleOptimisticEvents,
   );
-  const resolveAttachmentResourceUrl = createAttachmentResourceUrlResolver();
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     previewImageUrlsByUrl$,
-    resolveAttachmentResourceUrl,
   );
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
@@ -2681,6 +2680,7 @@ interface RunTrackingDeps {
   syncHydratedEventTrees$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
+  subscribeThinkingSummaries$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
   cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
   reloadConnectorAccounts$: Command<void, []>;
@@ -3035,6 +3035,7 @@ function createRunTracking({
   syncHydratedEventTrees$,
   reloadArtifacts$,
   subscribeBrowserSessions$,
+  subscribeThinkingSummaries$,
   automationSignals,
   cancellationRecovery,
   reloadConnectorAccounts$,
@@ -3082,6 +3083,7 @@ function createRunTracking({
     await Promise.all([
       set(syncHydratedEventTrees$, signal),
       set(subscribeBrowserSessions$, signal),
+      set(subscribeThinkingSummaries$, signal),
       set(
         subscribeChatThreadRealtime$,
         {
@@ -3617,341 +3619,12 @@ function createCancelRunWithQueuedRecall({
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: thinking phrases
+// Sub-factory: thinking indicator
 // ---------------------------------------------------------------------------
 
-const THINKING_TYPEWRITER_INTERVAL_MS = IN_VITEST ? 10 : 100;
-const THINKING_TYPEWRITER_LINE_HOLD_MS = 1400;
-const THINKING_TYPEWRITER_LINE_HOLD_TICKS = IN_VITEST
-  ? 1
-  : Math.ceil(
-      THINKING_TYPEWRITER_LINE_HOLD_MS / THINKING_TYPEWRITER_INTERVAL_MS,
-    );
-/** Keep in sync with the opacity transition on the thinking label. */
-const THINKING_TYPEWRITER_FADE_MS = 200;
-const THINKING_TYPEWRITER_FADE_TICKS = IN_VITEST
-  ? 1
-  : Math.ceil(THINKING_TYPEWRITER_FADE_MS / THINKING_TYPEWRITER_INTERVAL_MS);
-const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
-/** Fallback glyph advance used only when text measurement is unavailable. */
-const THINKING_TYPEWRITER_FALLBACK_GLYPH_PX = 14;
-const THINKING_TYPEWRITER_ELLIPSIS = "…";
-
-interface ThinkingTypewriterLine {
-  readonly startIndex: number;
-  readonly endIndex: number;
-}
-
-interface ThinkingTypewriterFrame {
-  readonly eventId: string | undefined;
-  readonly text: string;
-  readonly width: number;
-  readonly lineIndex: number;
-  readonly charIndex: number;
-  readonly pauseTicksRemaining: number;
-  readonly fadeTicksRemaining: number;
-  readonly fadingOut: boolean;
-  readonly lineOverflowed: boolean;
-  readonly displayedText: string;
-  readonly complete: boolean;
-}
-
-function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
-  return {
-    eventId: undefined,
-    text: "",
-    width: 0,
-    lineIndex: 0,
-    charIndex: 0,
-    pauseTicksRemaining: 0,
-    fadeTicksRemaining: 0,
-    fadingOut: false,
-    lineOverflowed: false,
-    displayedText: "",
-    complete: false,
-  };
-}
-
-function thinkingTextGraphemes(text: string): string[] {
-  return Array.from(text);
-}
-
-function thinkingTypewriterStep(width: number): number {
-  if (width >= 520) {
-    return 3;
-  }
-  if (width >= 320) {
-    return 2;
-  }
-  return 1;
-}
-
-function createThinkingTextMeasurer(
-  el: HTMLElement,
-): (value: string) => number | undefined {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  const style = window.getComputedStyle(el);
-  const font =
-    style.font ||
-    [
-      style.fontStyle,
-      style.fontVariant,
-      style.fontWeight,
-      style.fontSize,
-      style.fontFamily,
-    ]
-      .filter(Boolean)
-      .join(" ");
-  const letterSpacing =
-    style.letterSpacing === "normal"
-      ? 0
-      : Number.parseFloat(style.letterSpacing);
-
-  if (!context || !font) {
-    return () => {
-      return undefined;
-    };
-  }
-
-  context.font = font;
-  return (value: string) => {
-    const measured = context.measureText(value).width;
-    if (!Number.isFinite(measured) || measured <= 0) {
-      return undefined;
-    }
-    const spacing =
-      Number.isFinite(letterSpacing) && letterSpacing > 0
-        ? (thinkingTextGraphemes(value).length - 1) * letterSpacing
-        : 0;
-    return measured + spacing;
-  };
-}
-
-function thinkingLabelWidth(el: HTMLElement): number {
-  const elementWidth = Math.max(
-    el.getBoundingClientRect().width,
-    el.clientWidth,
-  );
-  if (elementWidth > 0) {
-    return elementWidth;
-  }
-
-  const parent = el.parentElement;
-  return Math.max(
-    parent?.getBoundingClientRect().width ?? 0,
-    parent?.clientWidth ?? 0,
-  );
-}
-
-function thinkingTypewriterLines(
-  graphemes: readonly string[],
-): ThinkingTypewriterLine[] {
-  if (graphemes.length === 0) {
-    return [];
-  }
-
-  const lines: ThinkingTypewriterLine[] = [];
-  let startIndex = 0;
-
-  for (let index = 0; index <= graphemes.length; index++) {
-    const grapheme = graphemes[index]!;
-    const isHardBreak =
-      index === graphemes.length || grapheme === "\n" || grapheme === "\r";
-    if (!isHardBreak) {
-      continue;
-    }
-
-    const text = graphemes.slice(startIndex, index).join("");
-    if (text.trim().length > 0) {
-      lines.push({
-        startIndex,
-        endIndex: index,
-      });
-    }
-    startIndex = index + 1;
-  }
-
-  return lines;
-}
-
-function fitThinkingTypewriterLine(args: {
-  readonly text: string;
-  readonly maxWidth: number;
-  readonly measureText: (value: string) => number | undefined;
-}): { readonly displayedText: string; readonly lineOverflowed: boolean } {
-  const textWidth = (value: string): number => {
-    return (
-      args.measureText(value) ??
-      thinkingTextGraphemes(value).length *
-        THINKING_TYPEWRITER_FALLBACK_GLYPH_PX
-    );
-  };
-  if (textWidth(args.text) <= args.maxWidth) {
-    return { displayedText: args.text, lineOverflowed: false };
-  }
-
-  const graphemes = thinkingTextGraphemes(args.text);
-  for (let endIndex = graphemes.length - 1; endIndex >= 0; endIndex--) {
-    const displayedText = `${graphemes.slice(0, endIndex).join("")}${THINKING_TYPEWRITER_ELLIPSIS}`;
-    if (textWidth(displayedText) <= args.maxWidth) {
-      return { displayedText, lineOverflowed: true };
-    }
-  }
-  return {
-    displayedText: THINKING_TYPEWRITER_ELLIPSIS,
-    lineOverflowed: true,
-  };
-}
-
-function revealThinkingTypewriterLine(args: {
-  readonly currentFrame: ThinkingTypewriterFrame;
-  readonly graphemes: readonly string[];
-  readonly line: ThinkingTypewriterLine;
-  readonly lineIndex: number;
-  readonly maxWidth: number;
-  readonly measureText: (value: string) => number | undefined;
-  readonly nextLineExists: boolean;
-  readonly step: number;
-}): ThinkingTypewriterFrame {
-  const charIndex = Math.min(
-    args.line.endIndex,
-    args.currentFrame.charIndex + args.step,
-  );
-  const revealedText = args.graphemes
-    .slice(args.line.startIndex, charIndex)
-    .join("");
-  const { displayedText, lineOverflowed } = fitThinkingTypewriterLine({
-    text: revealedText,
-    maxWidth: args.maxWidth,
-    measureText: args.measureText,
-  });
-  const lineFinished = charIndex >= args.line.endIndex || lineOverflowed;
-
-  return {
-    ...args.currentFrame,
-    lineIndex: args.lineIndex,
-    charIndex,
-    pauseTicksRemaining:
-      lineFinished && args.nextLineExists
-        ? THINKING_TYPEWRITER_LINE_HOLD_TICKS
-        : 0,
-    fadeTicksRemaining: 0,
-    fadingOut: false,
-    lineOverflowed,
-    displayedText,
-    complete: lineFinished && !args.nextLineExists,
-  };
-}
-
-function nextThinkingTypewriterFrame(args: {
-  readonly eventId: string;
-  readonly text: string;
-  readonly currentFrame: ThinkingTypewriterFrame;
-  readonly width: number;
-  readonly measureText: (value: string) => number | undefined;
-}): ThinkingTypewriterFrame {
-  const width = Math.max(0, Math.floor(args.width));
-  const graphemes = thinkingTextGraphemes(args.text);
-  if (graphemes.length === 0) {
-    return emptyThinkingTypewriterFrame();
-  }
-  const lines = thinkingTypewriterLines(graphemes);
-  if (lines.length === 0) {
-    return emptyThinkingTypewriterFrame();
-  }
-  const maxWidth =
-    width > 0
-      ? Math.max(1, width - THINKING_TYPEWRITER_WIDTH_GUARD_PX)
-      : Number.POSITIVE_INFINITY;
-
-  const currentFrame =
-    args.currentFrame.eventId === args.eventId &&
-    args.currentFrame.text === args.text &&
-    args.currentFrame.width === width
-      ? args.currentFrame
-      : {
-          ...emptyThinkingTypewriterFrame(),
-          eventId: args.eventId,
-          text: args.text,
-          width,
-        };
-  const lineIndex = Math.min(currentFrame.lineIndex, lines.length - 1);
-  const currentLine = lines[lineIndex]!;
-  const nextLine = lines[lineIndex + 1];
-
-  // Fading out the finished line before the next one types in.
-  if (currentFrame.fadeTicksRemaining > 0) {
-    const fadeTicksRemaining = currentFrame.fadeTicksRemaining - 1;
-    if (fadeTicksRemaining > 0 || !nextLine) {
-      return {
-        ...currentFrame,
-        lineIndex,
-        fadeTicksRemaining,
-        fadingOut: fadeTicksRemaining > 0,
-        displayedText: currentFrame.displayedText,
-        complete: false,
-      };
-    }
-
-    return revealThinkingTypewriterLine({
-      currentFrame: {
-        ...currentFrame,
-        charIndex: nextLine.startIndex,
-      },
-      graphemes,
-      line: nextLine,
-      lineIndex: lineIndex + 1,
-      maxWidth,
-      measureText: args.measureText,
-      nextLineExists: lines[lineIndex + 2] !== undefined,
-      step: thinkingTypewriterStep(width),
-    });
-  }
-
-  // Holding on a finished line so it can be read before it is replaced.
-  if (currentFrame.pauseTicksRemaining > 0) {
-    const pauseTicksRemaining = currentFrame.pauseTicksRemaining - 1;
-    const startFade = pauseTicksRemaining === 0 && nextLine !== undefined;
-    return {
-      ...currentFrame,
-      lineIndex,
-      pauseTicksRemaining,
-      fadeTicksRemaining: startFade ? THINKING_TYPEWRITER_FADE_TICKS : 0,
-      fadingOut: startFade,
-      displayedText: currentFrame.displayedText,
-      complete: false,
-    };
-  }
-
-  if (
-    currentFrame.charIndex >= currentLine.endIndex ||
-    currentFrame.lineOverflowed
-  ) {
-    return {
-      ...currentFrame,
-      lineIndex,
-      pauseTicksRemaining: nextLine ? THINKING_TYPEWRITER_LINE_HOLD_TICKS : 0,
-      displayedText: currentFrame.displayedText,
-      complete: !nextLine,
-    };
-  }
-
-  return revealThinkingTypewriterLine({
-    currentFrame,
-    graphemes,
-    line: currentLine,
-    lineIndex,
-    maxWidth,
-    measureText: args.measureText,
-    nextLineExists: nextLine !== undefined,
-    step: thinkingTypewriterStep(width),
-  });
-}
-
 function createThinkingIndicatorSignals(
-  thinkingText$: Computed<Promise<string | null>>,
-  thinkingEventId$: Computed<Promise<string | null>>,
+  activity: ReturnType<typeof createThreadActivitySummarySignals>,
+  messages: Pick<MessageListSignals, "thinkingText$" | "thinkingEventId$">,
 ) {
   const blockColors = shuffleBlockColors();
   const blockColors$ = computed(() => {
@@ -3960,66 +3633,49 @@ function createThinkingIndicatorSignals(
   const thinkingPhraseIndex = Math.floor(Math.random() * THINKING_PHRASE_COUNT);
   const thinkingPhrase$ = computed((get) => {
     get(locale$);
-    return thinkingPhrase(thinkingPhraseIndex);
+    return get(activity.enabled$)
+      ? i18n.t(($) => {
+          return $.chat.run.thinking.default;
+        })
+      : thinkingPhrase(thinkingPhraseIndex);
   });
-  const thinkingTypewriterFrame$ = state<ThinkingTypewriterFrame>(
-    emptyThinkingTypewriterFrame(),
+  const thinkingSummaries$ = computed(
+    async (get): Promise<ThinkingSummaries | null> => {
+      if (get(activity.enabled$)) {
+        return await get(activity.thinkingSummaries$);
+      }
+      const text = await get(messages.thinkingText$);
+      const eventId = await get(messages.thinkingEventId$);
+      if (!text || !eventId) {
+        return null;
+      }
+      return {
+        runId: eventId,
+        summaryRevision: eventId,
+        summarySequence: null,
+        summaryMessageCursor: null,
+        summarizedAt: null,
+        messages: [
+          ...new Set(
+            text
+              .split(/\r?\n/u)
+              .map((line) => {
+                return line.trim();
+              })
+              .filter(Boolean),
+          ),
+        ].map((line) => {
+          return { id: line, text: line };
+        }),
+      };
+    },
   );
-  const displayedThinkingText$ = computed((get): Promise<string> => {
-    return Promise.resolve(get(thinkingTypewriterFrame$).displayedText);
+  const thinkingRunId$ = computed(async (get) => {
+    return get(activity.enabled$)
+      ? get(activity.thinkingRunId$)
+      : await get(messages.thinkingEventId$);
   });
-  const thinkingTextFadingOut$ = computed((get): Promise<boolean> => {
-    return Promise.resolve(get(thinkingTypewriterFrame$).fadingOut);
-  });
-  const resetThinkingTypewriterLoopSignal$ = resetSignal();
-
-  const setThinkingIndicatorTextRef$ = onRef(
-    command(async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
-      const loopSignal = set(resetThinkingTypewriterLoopSignal$, signal);
-      const measureText = createThinkingTextMeasurer(el);
-      set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
-
-      await setLoop(
-        async (sig) => {
-          const [thinkingText, thinkingEventId] = await Promise.all([
-            get(thinkingText$),
-            get(thinkingEventId$),
-          ]);
-          sig.throwIfAborted();
-
-          const text = thinkingText?.trim() ?? "";
-          if (!thinkingEventId || text.length === 0) {
-            set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
-            return true;
-          }
-
-          const width = thinkingLabelWidth(el);
-          if (width <= 0 && !IN_VITEST) {
-            return false;
-          }
-          const nextFrame = nextThinkingTypewriterFrame({
-            eventId: thinkingEventId,
-            text,
-            currentFrame: get(thinkingTypewriterFrame$),
-            width,
-            measureText,
-          });
-          set(thinkingTypewriterFrame$, nextFrame);
-          return nextFrame.complete;
-        },
-        THINKING_TYPEWRITER_INTERVAL_MS,
-        loopSignal,
-      );
-    }),
-  );
-
-  return {
-    blockColors$,
-    thinkingPhrase$,
-    displayedThinkingText$,
-    thinkingTextFadingOut$,
-    setThinkingIndicatorTextRef$,
-  };
+  return { blockColors$, thinkingPhrase$, thinkingSummaries$, thinkingRunId$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -4041,8 +3697,6 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
     thinkingIndicatorMode$: events.thinkingIndicatorMode$,
-    thinkingEventId$: events.thinkingEventId$,
-    thinkingText$: events.thinkingText$,
     recommendedFollowupSource$: events.recommendedFollowupSource$,
     donePhrase$: events.donePhrase$,
     loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
@@ -4323,7 +3977,7 @@ function createChatPanelSignalsWithDraft(
     chatEvents.chatEvents$,
     threadMeta$,
   );
-  const container = createChatThreadContainerSignals(activity.attach$, signal);
+  const container = createChatThreadContainerSignals(signal);
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
   const composer = createThreadComposerSignalsWithContext(
@@ -4372,21 +4026,12 @@ function createChatPanelSignalsWithDraft(
     syncHydratedEventTrees$: messagePipeline.syncHydratedEventTrees$,
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
+    subscribeThinkingSummaries$: activity.subscribe$,
     automationSignals: threadOwned,
     cancellationRecovery,
     reloadConnectorAccounts$: composer.connector.accounts.reload$,
     reloadConnectorAccountPreference$:
       composer.connector.accounts.reloadPreference$,
-  });
-  const thinkingText$ = computed(async (get) => {
-    return get(activity.enabled$)
-      ? get(activity.thinkingText$)
-      : await get(messages.thinkingText$);
-  });
-  const thinkingEventId$ = computed(async (get) => {
-    return get(activity.enabled$)
-      ? get(activity.thinkingId$)
-      : await get(messages.thinkingEventId$);
   });
   return {
     threadId,
@@ -4419,10 +4064,8 @@ function createChatPanelSignalsWithDraft(
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),
-    thinkingText$,
-    thinkingEventId$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    ...createThinkingIndicatorSignals(thinkingText$, thinkingEventId$),
+    ...createThinkingIndicatorSignals(activity, messages),
     artifacts$: messages.artifacts$,
     reloadArtifacts$: messages.reloadArtifacts$,
   };

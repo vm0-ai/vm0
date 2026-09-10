@@ -75,6 +75,10 @@ import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { BankingActionCard } from "./banking-action-card.tsx";
 import { ConnectorAccountActionCard } from "./connector-account-action-card.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
+import {
+  WelcomeSlackDiagram,
+  WelcomeTeamDiagram,
+} from "./welcome-thread-diagrams.tsx";
 
 type ChatImagePreviewLinkProps = {
   alt: string;
@@ -196,6 +200,7 @@ export function ChatImagePreviewLink({
 }
 
 type ChatVideoPreviewButtonProps = {
+  resourceUrl$: ArtifactSignals["resourceUrl$"];
   ariaLabel: string;
   buttonClassName: string;
   filename: string;
@@ -204,7 +209,6 @@ type ChatVideoPreviewButtonProps = {
   posterLoad: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
-  url: string;
   videoClassName: string;
 };
 
@@ -215,6 +219,7 @@ function videoPosterFrameUrl(url: string): string {
 }
 
 export function ChatVideoPreviewButton({
+  resourceUrl$,
   ariaLabel,
   buttonClassName,
   filename,
@@ -223,11 +228,11 @@ export function ChatVideoPreviewButton({
   posterLoad,
   previewImagePending,
   previewImageUrl,
-  url,
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
-  const videoUrl = publicAttachmentUrl(url);
-  const posterVideoUrl = videoPosterFrameUrl(videoUrl);
+  const videoUrl = useLastResolved(resourceUrl$) ?? null;
+  const posterVideoUrl =
+    videoUrl === null ? undefined : videoPosterFrameUrl(videoUrl);
   const videoFallback = (
     <video
       src={posterVideoUrl}
@@ -311,6 +316,13 @@ export function MarkdownCardView({
     case "unavailable-action": {
       return <UnavailableActionCard />;
     }
+    case "welcome-diagram": {
+      return card.diagram === "team" ? (
+        <WelcomeTeamDiagram />
+      ) : (
+        <WelcomeSlackDiagram />
+      );
+    }
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={card.signals} />;
     }
@@ -376,6 +388,7 @@ function ArtifactCardView({
   if (signals.kind === "video") {
     return withChatScrollLayout(
       <ChatVideoPreviewButton
+        resourceUrl$={signals.resourceUrl$}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -396,13 +409,13 @@ function ArtifactCardView({
         posterLoad={signals.previewImageLoad}
         previewImagePending={previewImagePending}
         previewImageUrl={previewImageUrl}
-        url={signals.url}
         videoClassName="h-full w-full object-contain"
       />,
     );
   }
   return withChatScrollLayout(
     <AttachmentPreview
+      resourceUrl$={signals.resourceUrl$}
       attachment={{
         filename: signals.kind === "html" && label ? label : signals.filename,
         url: signals.url,

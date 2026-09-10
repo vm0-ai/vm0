@@ -239,6 +239,13 @@ describe("okou generate video command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(`Video generated: ${VIDEO_RESULT.url}`);
     expect(stdout).toContain(`File: ${VIDEO_RESULT.filename}`);
+    expect(stdout).toContain(
+      `[${VIDEO_RESULT.filename}](<${VIDEO_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `\n\n![${VIDEO_RESULT.filename}](<${VIDEO_RESULT.url}>)\n\n`,
+    );
+    expect(stdout).toContain("creates two user-facing references");
     expect(stdout).toContain("Duration: 6s");
     expect(stdout).toContain("Resolution: 1080p");
     expect(stdout).toContain("Aspect ratio: 9:16");
@@ -262,7 +269,15 @@ describe("okou generate video command", () => {
       "--json",
     ]);
 
-    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(VIDEO_RESULT)]]);
+    expect(mockConsoleLog.mock.calls).toHaveLength(1);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual({
+      ...VIDEO_RESULT,
+      inlineMarkdownLink: `[${VIDEO_RESULT.filename}](<${VIDEO_RESULT.url}>)`,
+      previewMarkdownBlock: `![${VIDEO_RESULT.filename}](<${VIDEO_RESULT.url}>)`,
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
+    });
   });
 
   it.each([

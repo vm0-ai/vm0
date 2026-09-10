@@ -1,5 +1,4 @@
-import { rootSignal$ } from "../root-signal.ts";
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import {
   artifactCatalogContract,
   type ArtifactCatalogKind,
@@ -8,7 +7,7 @@ import {
 
 import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { downloadAttachment$ } from "../attachment-download.ts";
-import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
+import { isTextPreviewKind } from "../text-preview.ts";
 import {
   classifyChatAttachment,
   type BodyPreviewKind,
@@ -205,18 +204,6 @@ export function artifactDetailPreview(detail: ArtifactDetail): {
   };
 }
 
-const selectedArtifactText$ = computed(async (get): Promise<string> => {
-  const detail = await get(pageCatalog.selectedArtifactDetail$);
-  if (!detail) {
-    throw new Error("Selected artifact is unavailable");
-  }
-  const preview = artifactDetailPreview(detail);
-  if (!isTextPreviewKind(preview.kind)) {
-    throw new Error("Selected artifact is not a text preview");
-  }
-  return fetchPreviewText(preview.url, get(rootSignal$));
-});
-
 /**
  * Open a card. The kind entity is fetched here rather than with the list, so
  * browsing the grid never pays for detail queries.
@@ -269,7 +256,6 @@ export const openArtifact$ = command(
       set(openDocumentLightbox$, {
         ...base,
         kind: preview.kind,
-        text$: selectedArtifactText$,
       });
       return;
     }

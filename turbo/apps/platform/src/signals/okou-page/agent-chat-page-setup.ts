@@ -9,12 +9,7 @@ import {
   updateSearchParams$,
   detachedNavigateTo$,
 } from "../route.ts";
-import {
-  currentAgentId$,
-  defaultAgentId$,
-  agents$,
-  rememberLastUsedAgentId$,
-} from "../agent.ts";
+import { currentAgentId$, defaultAgentId$, agents$ } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { setTalkDraft$, talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -34,7 +29,10 @@ import {
   desktopRecordingHandoffFeatureEnabled,
   hasDesktopRecordingHandoff,
 } from "./desktop-recording-handoff.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  initialFeatureSwitchHydration$,
+} from "../external/feature-switch.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -74,7 +72,6 @@ export const setupAgentChatPage$ = command(
       return;
     }
 
-    set(rememberLastUsedAgentId$, agentId);
     set(
       updateDocumentTitle$,
       agent.displayName ??
@@ -86,6 +83,8 @@ export const setupAgentChatPage$ = command(
 
     await set(checkUnifiedSettingsParam$, signal);
 
+    await get(initialFeatureSwitchHydration$);
+    signal.throwIfAborted();
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");

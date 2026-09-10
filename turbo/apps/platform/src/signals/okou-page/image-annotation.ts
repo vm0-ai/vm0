@@ -1,3 +1,4 @@
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import { command, computed, state } from "ccstate";
 import { onRef } from "../utils.ts";
 import type {
@@ -50,6 +51,21 @@ export const STROKE_HALO_INNER = "rgba(255, 255, 255, 0.90)";
  * UI, and a halo only separates a few pixels of each glyph.
  */
 export const NOTE_GROUND = "rgba(255, 255, 255, 0.94)";
+
+/** Radius of the disc a box's ordinal is printed in. */
+export const PIN_RADIUS_PX = 11;
+
+/**
+ * How far the pin's centre sits inside the box's own top-left corner.
+ *
+ * The pin used to be centred *on* that corner, which is precisely where the
+ * selection grip lands — so selecting a box hid its number under the white dot
+ * and the note that says "1" had nothing left to point at. Tucking the pin
+ * inside clears the grip by a whole radius, and unlike a pin parked outside the
+ * box it survives a mark drawn against the top or left edge of the image, which
+ * is what matters in the flattened copy the model actually reads.
+ */
+export const PIN_INSET_PX = PIN_RADIUS_PX + 3;
 
 /**
  * `highlight`, `crop` and `redact` were dropped, and `select` with them: a
@@ -547,6 +563,11 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
     set(tool$, tool);
     set(selection$, null);
   });
+  const annotationResourceUrl$ = computed(async (get) => {
+    const target = get(annotationSessionTarget$);
+    return target ? await get(createAttachmentResourceUrl$(target.url)) : null;
+  });
+
   const openAnnotationEditor$ = command(({ set }, target: AnnotationTarget) => {
     const opened = target.annotations ?? emptyAnnotation();
     set(session$, {
@@ -572,6 +593,7 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
     internal: { session$, ink$, selection$ },
     signals: {
       annotationSessionTarget$,
+      annotationResourceUrl$,
       annotationSessionActive$,
       annotationDraft$,
       annotationTool$,

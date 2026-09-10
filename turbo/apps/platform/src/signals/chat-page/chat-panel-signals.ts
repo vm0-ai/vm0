@@ -1,3 +1,4 @@
+import type { ThinkingSummaries } from "./thread-activity-summary.ts";
 import type { Root } from "hast";
 import type { Command, Computed } from "ccstate";
 import type {
@@ -211,8 +212,8 @@ export interface ChatPanelSignals {
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly hasEvents$: Computed<Promise<boolean>>;
   readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
-  readonly thinkingEventId$: Computed<Promise<string | null>>;
-  readonly thinkingText$: Computed<Promise<string | null>>;
+  readonly thinkingSummaries$: Computed<Promise<ThinkingSummaries | null>>;
+  readonly thinkingRunId$: Computed<Promise<string | null>>;
   readonly recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
@@ -230,12 +231,6 @@ export interface ChatPanelSignals {
   readonly blockColors$: Computed<[string, string, string]>;
   readonly thinkingPhrase$: Computed<string>;
   readonly donePhrase$: Computed<Promise<string>>;
-  readonly displayedThinkingText$: Computed<Promise<string>>;
-  readonly thinkingTextFadingOut$: Computed<Promise<boolean>>;
-  readonly setThinkingIndicatorTextRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   // -- Artifacts ------------------------------------------------------------
   readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   readonly reloadArtifacts$: Command<void, []>;

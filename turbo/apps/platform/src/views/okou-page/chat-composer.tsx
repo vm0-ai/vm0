@@ -21,7 +21,6 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
 } from "react";
-import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -83,6 +82,7 @@ import {
   Route,
   Search,
   SlidersHorizontal,
+  Terminal,
   Square,
   SwatchBook,
   Trash2,
@@ -236,6 +236,15 @@ import {
 } from "../../signals/connector-connection-progress.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  sshAgentAccessSnapshot$,
+  sshIdentity$,
+  updateAgentSshAccess$,
+  invalidateSsh$,
+  sshSummary$,
+} from "../../signals/ssh.ts";
+import { SshLoadError } from "./ssh-load-error.tsx";
+import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
 import {
@@ -251,6 +260,7 @@ import {
 } from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
+  modelPickerFlyoutEnabled$,
   modelPickerMenuEnabled$,
   customConnectorMcpEnabled$,
   voiceInputV2Enabled$,
@@ -347,7 +357,6 @@ interface ChatComposerProps {
 
 interface ComposerComputerUseHost {
   id: string;
-  product: DesktopProduct;
   hostName: string;
   displayName: string;
   status: "online" | "offline";
@@ -427,8 +436,7 @@ type ComposerCustomConnectorItem = CustomConnectorResponse & {
 // strip's bottom edge so it reads as one tucked-behind queue layer.
 // ---------------------------------------------------------------------------
 
-// The three-bar "queue" mark, sized to sit inline beside the goal's target so a
-// queued row and the goal row differ only by their leading icon.
+// The three-bar "queue" mark leads each queued message row.
 function ComposerQueueGlyph() {
   return (
     <span
@@ -6999,12 +7007,15 @@ function ConnectorTriggerIcons({
   customConnectors,
   hasComputerUse,
   hasCloudBrowser,
+  hasSsh,
 }: {
   connectors: ComposerConnectorItem[];
   customConnectors: ComposerCustomConnectorItem[];
   hasComputerUse: boolean;
   hasCloudBrowser: boolean;
+  hasSsh: boolean;
 }) {
+  const { t } = useTranslation();
   const enabledConnectors = connectors.filter((connector) => {
     return connector.authorized;
   });
@@ -7017,19 +7028,24 @@ function ConnectorTriggerIcons({
     ...enabledConnectors.map((connector) => {
       return { kind: "builtin" as const, connector };
     }),
+    ...(hasSsh ? [{ kind: "ssh" as const }] : []),
     ...enabledCustomConnectors.map((connector) => {
       return { kind: "custom" as const, connector };
     }),
   ].slice(0, connectorIconLimit);
   const hasComputerAccess = hasComputerUse || hasCloudBrowser;
-  if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
+  if (enabled.length === 0 && !hasComputerAccess) {
     return <Plug size={18} />;
   }
   return (
     <span className="flex items-center sm:-space-x-1.5">
       {enabled.map((item, index) => {
         const key =
-          item.kind === "builtin" ? item.connector.slug : item.connector.id;
+          item.kind === "ssh"
+            ? "ssh"
+            : item.kind === "builtin"
+              ? item.connector.slug
+              : item.connector.id;
         return (
           <span
             key={key}
@@ -7038,8 +7054,21 @@ function ConnectorTriggerIcons({
               (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7">
-              {item.kind === "builtin" ? (
+            <span
+              className={cn(
+                "flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7",
+                item.kind === "ssh" && "text-brand-text",
+              )}
+            >
+              {item.kind === "ssh" ? (
+                <Terminal
+                  size={16}
+                  role="img"
+                  aria-label={t(($) => {
+                    return $.ssh.label;
+                  })}
+                />
+              ) : item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
               ) : (
                 <CustomConnectorIcon
@@ -7190,7 +7219,13 @@ function AddConnectorsDialog({
   const filteredCustom = unconnectedCustom.filter((item) => {
     return matchesCustomConnectorSearch(search, item);
   });
-  const visibleConnectorCount = filtered.length + filteredCustom.length;
+  const sshSummary = useLoadable(sshSummary$);
+  const showSsh =
+    sshSummary.state === "hasData" &&
+    sshSummary.data?.configuredCount === 0 &&
+    "ssh".includes(search.trim().toLowerCase());
+  const visibleConnectorCount =
+    filtered.length + filteredCustom.length + Number(showSsh);
 
   return (
     <Dialog
@@ -7244,6 +7279,11 @@ function AddConnectorsDialog({
         </div>
         <div className="overflow-y-auto -mx-6 px-6">
           <div className="grid grid-cols-2 gap-3">
+            {showSsh && sshSummary.state === "hasData" && sshSummary.data && (
+              <SshConnectorCard
+                configuredCount={sshSummary.data.configuredCount}
+              />
+            )}
             {filtered.map((item) => {
               return (
                 <ConnectorCard
@@ -7504,6 +7544,14 @@ function ComposerConnectorPermissionDialog({
 
 type ComposerPopoverConnectorItem =
   | {
+      readonly kind: "ssh";
+      readonly connector: {
+        readonly id: "ssh";
+        readonly label: string;
+        readonly authorized: boolean;
+      };
+    }
+  | {
       readonly kind: "builtin";
       readonly connector: ComposerConnectorItem;
     }
@@ -7519,7 +7567,7 @@ function composerPopoverConnectorId(
 }
 
 function composerPopoverConnectorTarget(
-  item: ComposerPopoverConnectorItem,
+  item: Exclude<ComposerPopoverConnectorItem, { kind: "ssh" }>,
 ): ConnectorAccountTarget {
   return item.kind === "builtin"
     ? { kind: "builtin", connectorSlug: item.connector.slug }
@@ -7530,6 +7578,11 @@ function matchesComposerPopoverConnectorSearch(
   search: string,
   item: ComposerPopoverConnectorItem,
 ): boolean {
+  if (item.kind === "ssh") {
+    return item.connector.label
+      .toLowerCase()
+      .includes(search.trim().toLowerCase());
+  }
   return item.kind === "builtin"
     ? matchesConnectorSearch(search, item.connector)
     : matchesCustomConnectorSearch(search, item.connector);
@@ -8086,6 +8139,11 @@ function deriveComposerConnectorPopoverState(args: {
 }) {
   const sorted = args.sortOrder
     ? [...args.connectorItems].sort((a, b) => {
+        const order = { builtin: 0, ssh: 1, custom: 2 };
+        const kindOrder = order[a.kind] - order[b.kind];
+        if (kindOrder !== 0) {
+          return kindOrder;
+        }
         const ai = args.sortOrder?.indexOf(composerPopoverConnectorId(a)) ?? -1;
         const bi = args.sortOrder?.indexOf(composerPopoverConnectorId(b)) ?? -1;
         if (ai === -1 && bi === -1) {
@@ -8121,7 +8179,7 @@ function ComposerConnectorAccountAction({
 }: {
   readonly signals: ComposerSignals;
   readonly actions: ComposerConnectorActions;
-  readonly item: ComposerPopoverConnectorItem;
+  readonly item: Exclude<ComposerPopoverConnectorItem, { kind: "ssh" }>;
 }) {
   const preference = useLastResolved(
     signals.connector.accounts.preferenceState$,
@@ -8161,6 +8219,22 @@ function ComposerConnectorAccountAction({
       defaultConnection={summary.defaultConnection}
     />
   );
+}
+
+function useComposerSshAccess(agentId: string | null) {
+  const identity = useLoadable(sshIdentity$);
+  const rows = useLoadable(sshAgentAccessSnapshot$);
+  const retained = useLastLoadable(sshAgentAccessSnapshot$);
+  const access =
+    identity.state === "hasData" &&
+    identity.data !== null &&
+    retained.state === "hasData" &&
+    retained.data.identity === identity.data
+      ? retained.data.rows?.find((row) => {
+          return row.agent.agentId === agentId;
+        })
+      : undefined;
+  return { rows, access };
 }
 
 function ConnectorsPopoverButton({
@@ -8209,10 +8283,29 @@ function ConnectorsPopoverButton({
     signals.computer.setComputerUseDownloadDialogOpen$,
   );
   const permissionConnectorSlug = connectorUi.permissionConnectorSlug;
+  const { rows: sshRows, access: sshAccess } = useComposerSshAccess(agentId);
+  const [sshSaving, updateSshAccess] = useLoadableSet(updateAgentSshAccess$);
+  const pageSignal = useGet(pageSignal$);
+  const reloadSsh = useSet(invalidateSsh$);
+  const waitingForConnectors = connectorsLoading && !sshAccess;
   const connectorItems: ComposerPopoverConnectorItem[] = [
     ...agentConnectors.map((connector) => {
       return { kind: "builtin" as const, connector };
     }),
+    ...(sshAccess
+      ? [
+          {
+            kind: "ssh" as const,
+            connector: {
+              id: "ssh" as const,
+              label: t(($) => {
+                return $.ssh.label;
+              }),
+              authorized: sshAccess.enabled,
+            },
+          },
+        ]
+      : []),
     ...agentCustomConnectors.map((connector) => {
       return { kind: "custom" as const, connector };
     }),
@@ -8233,6 +8326,7 @@ function ConnectorsPopoverButton({
       const freshSort = connectorItems.map(composerPopoverConnectorId);
       updateConnectorUi({ popoverSortOrder: freshSort });
       openAccountsPopover();
+      reloadSsh();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
       closeAccountMenu();
@@ -8268,12 +8362,13 @@ function ConnectorsPopoverButton({
                   return $.chat.connectors.title;
                 })}
               >
-                {!connectorsLoading && (
+                {!waitingForConnectors && (
                   <ConnectorTriggerIcons
                     connectors={agentConnectors}
                     customConnectors={agentCustomConnectors}
                     hasComputerUse={Boolean(computerUse?.selectedHostId)}
                     hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
+                    hasSsh={sshAccess?.enabled ?? false}
                   />
                 )}
               </button>
@@ -8316,7 +8411,7 @@ function ConnectorsPopoverButton({
                 />
               </div>
             )}
-            {connectorsLoading ? (
+            {waitingForConnectors ? (
               <div className="flex flex-col animate-pulse">
                 {Array.from({ length: 3 }, (_, i) => {
                   return (
@@ -8337,6 +8432,44 @@ function ConnectorsPopoverButton({
                 className="flex max-h-64 min-h-0 flex-1 flex-col overflow-y-auto"
               >
                 {visibleConnectors.map((item) => {
+                  if (item.kind === "ssh") {
+                    return (
+                      <ComposerConnectorAccessRow
+                        key={item.connector.id}
+                        icon={<Terminal size={16} />}
+                        connectorLabel={item.connector.label}
+                        checked={item.connector.authorized}
+                        loading={
+                          sshSaving.state === "loading" ||
+                          sshRows.state === "loading"
+                        }
+                        onCheckedChange={onDomEventFn(async (checked) => {
+                          if (agentId) {
+                            await updateSshAccess(agentId, checked, pageSignal);
+                          }
+                        })}
+                        ariaLabel={
+                          item.connector.authorized
+                            ? t(
+                                ($) => {
+                                  return $.chat.connectors.remove;
+                                },
+                                {
+                                  connectorName: item.connector.label,
+                                },
+                              )
+                            : t(
+                                ($) => {
+                                  return $.chat.connectors.add;
+                                },
+                                {
+                                  connectorName: item.connector.label,
+                                },
+                              )
+                        }
+                      />
+                    );
+                  }
                   if (item.kind === "custom") {
                     const connector = item.connector;
                     return (
@@ -8462,6 +8595,11 @@ function ConnectorsPopoverButton({
                 })}
               </div>
             )}
+          </div>
+        )}
+        {sshRows.state === "hasError" && (
+          <div className="px-3 py-2">
+            <SshLoadError />
           </div>
         )}
         <div className="flex shrink-0 flex-col p-1">
@@ -8796,6 +8934,9 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
   return `${minutes}:${seconds}`;
 }
 
+const VOICE_DRAFT_TRAY_CLASS =
+  "min-h-12 rounded-xl bg-neutral-50 py-2 dark:bg-neutral-900";
+
 function VoiceDraftFooter({
   signals,
   actions,
@@ -8820,7 +8961,13 @@ function VoiceDraftFooter({
 
   if (status === "failed") {
     return (
-      <div className="flex min-h-8 w-full items-center gap-3">
+      <div
+        className={cn(
+          "flex w-full items-center gap-3 px-1",
+          VOICE_DRAFT_TRAY_CLASS,
+        )}
+        data-composer-voice-tray
+      >
         <span
           role="status"
           className="min-w-0 flex-1 text-sm text-muted-foreground"
@@ -8868,20 +9015,45 @@ function VoiceDraftFooter({
   }
 
   if (status !== "recording") {
+    const statusText =
+      status === "discarding"
+        ? t(($) => {
+            return $.chat.voice.discarding;
+          })
+        : t(($) => {
+            return $.chat.voice.transcribing;
+          });
+    const outcomeText =
+      status === "discarding"
+        ? t(($) => {
+            return $.chat.voice.returningToComposer;
+          })
+        : actions.voiceAction === "retry"
+          ? t(($) => {
+              return $.chat.voice.retryingSavedAudio;
+            })
+          : t(($) => {
+              return $.chat.voice.textTakingShape;
+            });
     return (
       <div
-        className="flex min-h-8 w-full items-center justify-center gap-2.5 text-sm text-muted-foreground"
+        className={cn(
+          "grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 text-sm",
+          "px-1",
+          VOICE_DRAFT_TRAY_CLASS,
+        )}
         role="status"
+        data-composer-voice-tray
       >
-        <Loader2 size={16} className="animate-spin text-[#2E9E9F]" />
-        <span>
-          {status === "discarding"
-            ? t(($) => {
-                return $.chat.voice.discarding;
-              })
-            : t(($) => {
-                return $.chat.voice.transcribingProgress;
-              })}
+        <span className="flex min-w-0 items-center gap-2.5 font-medium text-foreground">
+          <Loader2
+            size={16}
+            className="shrink-0 animate-spin text-[#2E9E9F] motion-reduce:animate-none"
+          />
+          <span className="truncate">{statusText}</span>
+        </span>
+        <span className="min-w-0 max-w-full justify-self-end truncate text-right text-xs text-muted-foreground">
+          {outcomeText}
         </span>
       </div>
     );
@@ -8891,7 +9063,13 @@ function VoiceDraftFooter({
     return $.chat.voice.stopRecording;
   });
   return (
-    <div className="flex min-h-8 w-full items-center gap-3">
+    <div
+      className={cn(
+        "flex w-full items-center gap-2 px-3",
+        VOICE_DRAFT_TRAY_CLASS,
+      )}
+      data-composer-voice-tray
+    >
       <span
         className="size-2 shrink-0 rounded-full bg-destructive"
         aria-hidden="true"
@@ -9145,12 +9323,48 @@ function useComposerFileUpload(
   };
 }
 
+interface ComposerLayoutHeightClassNames {
+  readonly input: string;
+  readonly shell: string;
+}
+
+// The idle footer is 52px tall and an active voice footer is 72px tall. Keep
+// the shell stable and let its flexible input region absorb that 20px change.
+// A template chip reserves the same additional 38px in both footer modes.
+function composerLayoutHeightClassNames(
+  singleLineOnMobile: boolean,
+  hasTemplateAttachment: boolean,
+): ComposerLayoutHeightClassNames {
+  if (hasTemplateAttachment) {
+    return singleLineOnMobile
+      ? {
+          input: "min-h-[86px] md:min-h-[114px]",
+          shell: "min-h-[158px] md:min-h-[186px]",
+        }
+      : {
+          input: "min-h-[114px]",
+          shell: "min-h-[186px]",
+        };
+  }
+  return singleLineOnMobile
+    ? {
+        input: "min-h-12 md:min-h-[76px]",
+        shell: "min-h-[120px] md:min-h-[148px]",
+      }
+    : {
+        input: "min-h-[76px]",
+        shell: "min-h-[148px]",
+      };
+}
+
 function ComposerInputSlot({
   signals,
   actions,
+  minimumHeightClassName,
 }: {
   signals: ComposerSignals;
   actions: ComposerActions;
+  minimumHeightClassName: string;
 }) {
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
@@ -9166,6 +9380,12 @@ function ComposerInputSlot({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
+  const hasInput = useGet(signals.editor.hasInput$);
+  const showVoiceTranscriptionSkeleton =
+    voiceInputV2Enabled &&
+    !hasInput &&
+    (actions.voiceAction === "finish" || actions.voiceAction === "retry");
 
   const handlePaste = (event: ComposerPasteEvent) => {
     if (
@@ -9257,13 +9477,31 @@ function ComposerInputSlot({
   };
 
   return (
-    <TiptapWorkflowComposer
-      signals={signals}
-      onDraftChange={notifyDraftChanged}
-      sending={sending}
-      onKeyDown={handleKeyDown}
-      onPaste={handlePaste}
-    />
+    <div
+      className={cn(
+        "grid flex-1 grid-cols-1 grid-rows-1",
+        minimumHeightClassName,
+      )}
+    >
+      <div className="col-start-1 row-start-1 min-h-0">
+        <TiptapWorkflowComposer
+          signals={signals}
+          onDraftChange={notifyDraftChanged}
+          sending={sending}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+        />
+      </div>
+      {showVoiceTranscriptionSkeleton ? (
+        <div
+          className="pointer-events-none col-start-1 row-start-1 flex min-h-0 flex-col justify-center gap-2 bg-card px-6"
+          aria-hidden="true"
+        >
+          <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />
+          <span className="h-2 w-[44%] animate-pulse rounded-full bg-muted/50 [animation-delay:-350ms] motion-reduce:animate-none" />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -9473,6 +9711,9 @@ function ComposerRunModelPickerControl({
 }) {
   const { t } = useTranslation();
   const modelMenuEnabled = useGet(modelPickerMenuEnabled$);
+  // The flyout needs the room a phone does not have; narrow viewports keep the
+  // menu's pages until the sheet layout lands.
+  const modelFlyoutEnabled = useGet(modelPickerFlyoutEnabled$) && desktopLayout;
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
@@ -9485,7 +9726,12 @@ function ComposerRunModelPickerControl({
           return $.chat.composer.selectModel;
         })}
         triggerClassName={composerModelPickerTriggerClassName()}
-        menuSignals={modelMenuEnabled ? signals.model.menu : undefined}
+        menuSignals={
+          modelMenuEnabled || modelFlyoutEnabled
+            ? signals.model.menu
+            : undefined
+        }
+        flyoutLayout={modelFlyoutEnabled}
         compactTrigger
         mobileIconTrigger
         open={modelPickerOpen}
@@ -10556,6 +10802,9 @@ function ComposerConnectorsSlot({
           <ConnectorDirectoryDialog
             state={connectorUi}
             onUpdateState={updateConnectorUi}
+            categoryCounts={connectorData?.categoryConnectorCounts}
+            categoryMetadata={connectorData?.categoryMetadata}
+            loading={connectorData === undefined}
             connected={agentConnectors}
             unconnected={unconnectedConnectors}
             connectedCustom={agentCustomConnectors}
@@ -10629,22 +10878,34 @@ function ComposerFooter({
           : capture
             ? "recording"
             : voiceDraft?.status;
+  const activeVoiceDraftStatus: Exclude<
+    ComposerVoiceInputStatus,
+    "idle"
+  > | null =
+    voiceInputV2Enabled &&
+    status !== undefined &&
+    status !== "idle" &&
+    (status !== "recording" || capture !== null)
+      ? status
+      : null;
   return withChatScrollLayout(
     <div
       className={cn(
-        "flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2",
+        "flex shrink-0 items-center justify-between gap-1 sm:gap-2",
+        activeVoiceDraftStatus === "recording"
+          ? "px-2 pb-3 pt-3"
+          : activeVoiceDraftStatus
+            ? "px-3 pb-3 pt-3"
+            : "px-4 pb-4 pt-1",
         narrowVideoGap,
         createMode === "video" && "@max-[344px]/composer:px-3",
       )}
     >
-      {voiceInputV2Enabled &&
-      status &&
-      status !== "idle" &&
-      (status !== "recording" || capture) ? (
+      {activeVoiceDraftStatus ? (
         <VoiceDraftFooter
           signals={signals}
           actions={actions}
-          status={status}
+          status={activeVoiceDraftStatus}
           recordingAvailable={Boolean(voiceDraft?.recording)}
           voiceMessage={voiceDraft?.message}
         />
@@ -10688,10 +10949,15 @@ function ComposerFooter({
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
   const actions = useComposerActions(signals);
   const connectorActions = useComposerConnectorActions(signals.connector);
+  const hasTemplateAttachment = useGet(signals.template.hasTemplateAttachment$);
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
   const notifyDraftChanged = useComposerDraftChange(signals);
+  const layoutHeightClassNames = composerLayoutHeightClassNames(
+    signals.editor.singleLineOnMobile,
+    hasTemplateAttachment,
+  );
 
   return (
     <Card
@@ -10699,7 +10965,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       className={cn(
         // Paint focus on the existing border. A separately promoted border
         // with a negative inset can snap differently from the card and SVGs.
-        "@container/composer relative z-10 overflow-visible rounded-3xl border-gray-400 bg-card shadow-[var(--okou-card-shadow)] transition-[border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] focus-within:border-surface-focus motion-reduce:transition-none",
+        "@container/composer relative z-10 overflow-visible rounded-3xl border-gray-300 bg-card shadow-[var(--okou-card-shadow)] transition-[border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] focus-within:border-surface-focus motion-reduce:transition-none",
         "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:opacity-0 after:shadow-[var(--okou-composer-focus-veil)] after:transition-opacity after:duration-[220ms] after:ease-[cubic-bezier(0.4,0,0.2,1)] after:content-[''] focus-within:after:opacity-100 motion-reduce:after:transition-none",
         "[@media(display-mode:standalone)]:[[data-chat-composer]_&]:scroll-mb-4",
         dragOver && "outline outline-2 outline-blue-400/60",
@@ -10725,14 +10991,21 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
         }
       }}
     >
-      <CardContent className="p-0">
-        <div ref={actions.bind} className="flex flex-col">
+      <CardContent className="overflow-hidden rounded-[inherit] p-0">
+        <div
+          ref={actions.bind}
+          className={cn("flex flex-col", layoutHeightClassNames.shell)}
+        >
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
-          <ComposerInputSlot signals={signals} actions={actions} />
-          {/* Edge inset is 16px on all four sides so it matches the editor's
-              `px-4 pt-4` above and stays concentric with the 24px shell: a
-              control 16px in from a 24px corner needs exactly an 8px radius. */}
+          <ComposerInputSlot
+            signals={signals}
+            actions={actions}
+            minimumHeightClassName={layoutHeightClassNames.input}
+          />
+          {/* Recording retains the established 8px/12px outer tray spacing,
+              with 12px/8px inner padding for the taller voice controls. Other
+              voice states retain their 12px tray inset. */}
           <ComposerFooter
             signals={signals}
             actions={actions}

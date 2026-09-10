@@ -16,18 +16,9 @@ import { activeRoute$ } from "./active-route.ts";
 import { onboardingStatus$ } from "./okou-page/onboarding.ts";
 import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
-import { localStorageSignals } from "./external/local-storage.ts";
 import { retryTransientLoad } from "./utils.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { assistantName$ } from "./branding.ts";
-
-const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
-
-const {
-  get$: lastUsedAgentIdRaw$,
-  set$: setLastUsedAgentIdRaw$,
-  clear$: clearLastUsedAgentIdRaw$,
-} = localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(onboardingStatus$);
@@ -93,24 +84,6 @@ export const currentAgent$ = computed((get) => {
   return get(agentById(agentId));
 });
 
-const lastUsedAgentId$ = computed((get) => {
-  const value = get(lastUsedAgentIdRaw$);
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const parsed = agentsByIdContract.get.pathParams.safeParse({ id: value });
-  return parsed.success ? parsed.data.id : null;
-});
-
-export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
-  set(setLastUsedAgentIdRaw$, agentId);
-});
-
-export const clearLastUsedAgentId$ = command(({ set }) => {
-  set(clearLastUsedAgentIdRaw$);
-});
-
 const internalReloadAgents$ = state(0);
 
 /** All visible agents in the user's active organization. */
@@ -119,17 +92,6 @@ export const agents$ = computed(async (get) => {
   const apiClient = get(apiClient$)(agentsMainContract);
   const result = await accept(apiClient.list(), [200]);
   return result.body;
-});
-
-export const homeAgentId$ = computed(async (get) => {
-  const lastUsedAgentId = get(lastUsedAgentId$);
-  if (lastUsedAgentId) {
-    return lastUsedAgentId;
-  }
-
-  // Onboarding status already identifies the default agent, so the home route
-  // can hand off directly.
-  return await get(defaultAgentId$);
 });
 
 export const sortedAgents$ = computed(async (get) => {

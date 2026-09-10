@@ -168,7 +168,7 @@ test.each(
     expect(queryButton("Stop recording")).toBeNull();
     click(await findEnabledButton("Retry"));
     await retryRequest.promise;
-    await screen.findByText("Transcribing...");
+    await screen.findByText("Transcribing");
     retryResponse.resolve();
     await findEnabledButton("Retry");
     // The sealed segment checkpoint may be added, while the recording stays intact.

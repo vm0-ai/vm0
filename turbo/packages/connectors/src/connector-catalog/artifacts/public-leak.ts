@@ -111,13 +111,30 @@ function connectorCatalogSensitiveValues(
   return values;
 }
 
+interface SensitiveValues {
+  readonly exact: ReadonlySet<string>;
+  readonly derived: readonly string[];
+}
+
+function prepareSensitiveValues(exact: ReadonlySet<string>): SensitiveValues {
+  const derived: string[] = [];
+  for (const value of exact) {
+    if (value.includes("_")) {
+      const normalized = normalizeSensitiveString(value);
+      if (normalized.length >= 8) {
+        derived.push(normalized);
+      }
+    }
+  }
+  return { exact, derived };
+}
+
 function assertNoSensitiveString(args: {
   readonly value: string;
   readonly path: string;
-  readonly sensitiveValues: ReadonlySet<string>;
+  readonly sensitiveValues: SensitiveValues;
 }): void {
-  const normalizedValue = normalizeSensitiveString(args.value);
-  for (const sensitiveValue of args.sensitiveValues) {
+  for (const sensitiveValue of args.sensitiveValues.exact) {
     if (sensitiveValue.length === 0) {
       continue;
     }
@@ -126,23 +143,25 @@ function assertNoSensitiveString(args: {
         `Public connector catalog projection leaked private value at ${args.path}`,
       );
     }
-    const normalizedSensitiveValue = normalizeSensitiveString(sensitiveValue);
-    if (
-      shouldCheckDerivedSensitiveValue(args.path) &&
-      sensitiveValue.includes("_") &&
-      normalizedSensitiveValue.length >= 8 &&
-      normalizedValue.includes(normalizedSensitiveValue)
-    ) {
-      throw new Error(
-        `Public connector catalog projection leaked private value at ${args.path}`,
-      );
+  }
+  if (
+    args.sensitiveValues.derived.length > 0 &&
+    shouldCheckDerivedSensitiveValue(args.path)
+  ) {
+    const normalizedValue = normalizeSensitiveString(args.value);
+    for (const sensitiveValue of args.sensitiveValues.derived) {
+      if (normalizedValue.includes(sensitiveValue)) {
+        throw new Error(
+          `Public connector catalog projection leaked private value at ${args.path}`,
+        );
+      }
     }
   }
 }
 
 function assertPublicValueHasNoPrivateFields(
   value: unknown,
-  sensitiveValues: ReadonlySet<string>,
+  sensitiveValues: SensitiveValues,
   path = "$",
 ): void {
   if (typeof value === "string") {
@@ -268,7 +287,7 @@ export function validateConnectorCatalogPublicProjection(
       catalogVersion: artifact.catalogVersion,
       categoryMetadata: artifact.categoryMetadata,
     },
-    new Set(),
+    { exact: new Set(), derived: [] },
   );
   for (const connector of artifact.connectors) {
     // A connector slug is public identity even when a private storage name
@@ -277,7 +296,7 @@ export function validateConnectorCatalogPublicProjection(
     sensitiveValues.delete(connector.slug);
     assertPublicValueHasNoPrivateFields(
       publicConnector(connector),
-      sensitiveValues,
+      prepareSensitiveValues(sensitiveValues),
       `$.connectors[${connector.slug}]`,
     );
   }

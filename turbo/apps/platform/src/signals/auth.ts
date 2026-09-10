@@ -19,6 +19,7 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { BRAND_NAME, type BrandName } from "./branding.ts";
+import { rootSignal$ } from "./root-signal.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
@@ -121,12 +122,12 @@ function parseUrl(value: string): URL | null {
   return new URL(trimmed);
 }
 
-function resolveAppUrl(): string {
+export function resolveAppUrl(): string {
   return resolveAppOrigin();
 }
 
 export function resolveAppAuthUrl(
-  path: `/sign-${string}`,
+  path: `/sign-${string}` | `/v1/sign-${string}`,
   options: { redirectUrl?: string } = {},
 ): string {
   const appOrigin = resolveAuthOrigin();
@@ -300,21 +301,42 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
-/** Loaded Clerk instance for consumers that need authentication state. */
-export const clerk$ = computed(async () => {
+const clerkRuntime$ = computed(async (get) => {
   const { clerkPublishableKey } = resolvePlatformRuntimeConfig();
-  const runtime = await startClerkBrowserRuntime({
-    loadOptions: {
-      afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-      signInUrl: resolveAppAuthUrl("/sign-in"),
-      signUpUrl: resolveAppAuthUrl("/sign-up"),
+  return await startClerkBrowserRuntime(
+    {
+      loadOptions: {
+        afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+        signInUrl: resolveAppAuthUrl("/sign-in"),
+        signUpUrl: resolveAppAuthUrl("/sign-up"),
+      },
+      publishableKey: clerkPublishableKey,
     },
-    publishableKey: clerkPublishableKey,
-  });
+    get(rootSignal$),
+  );
+});
+
+/** Loaded Clerk instance for consumers that need authentication state. */
+export const clerk$ = computed(async (get) => {
+  const runtime = await get(clerkRuntime$);
   await runtime.loaded;
 
   return runtime.clerk;
 });
+
+/**
+ * Hosted Clerk UI stays route-scoped: only v1 comparison pages request it,
+ * while stable auth and application routes keep the core-only download.
+ */
+export const ensureClerkUiLoaded$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const runtime = await get(clerkRuntime$);
+    signal.throwIfAborted();
+    const ui = await runtime.ensureUiLoaded();
+    signal.throwIfAborted();
+    return ui;
+  },
+);
 
 /**
  * Command to setup Clerk authentication listeners.

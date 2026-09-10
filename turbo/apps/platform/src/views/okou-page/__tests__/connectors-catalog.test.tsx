@@ -1,4 +1,5 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
@@ -8,12 +9,18 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   pushState,
   search as locationSearch,
 } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setMockConnectorFeatureSwitches } from "../../../mocks/handlers/api-connectors.ts";
 import {
   getConnectorAction,
   getConnectorCard,
@@ -182,13 +189,15 @@ test("Update connector visibility when availability changes", async () => {
   await setupPage({
     context,
     path: "/connectors?keywords=mailchimp",
-    cachedFeatureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
   });
 
   await expect(
     screen.findByText(/No connectors matching/u),
   ).resolves.toBeInTheDocument();
 
+  setMockConnectorFeatureSwitches({
+    [FeatureSwitchKey.MailchimpConnector]: true,
+  });
   switchesReady.resolve();
 
   await waitFor(() => {
@@ -436,4 +445,83 @@ test("Present a connector with no accounts", async () => {
   expect(connect).toBeDisabled();
   expect(screen.queryByRole("dialog")).toBeNull();
   oauthStarted.resolve();
+});
+
+function shelfCatalog() {
+  const mail = [
+    "Gmail",
+    "Outlook Mail",
+    "Slack",
+    "Microsoft Teams Bot",
+    "Discord",
+    "Telegram",
+    "Lark",
+    "Zendesk",
+  ].map((label, index) => {
+    return publicStatusItem({
+      connectorSlug: `mail-${index}` as ConnectorSlug,
+      label,
+      category: "communication-collaboration",
+      popularityRank: index,
+      connected: false,
+    });
+  });
+  return [
+    ...mail,
+    publicStatusItem({
+      connectorSlug: "voice-0" as ConnectorSlug,
+      label: "ElevenLabs",
+      category: "ai-voice-audio",
+      popularityRank: 40,
+      connected: false,
+    }),
+  ];
+}
+
+test("Browse the catalog as shelves, then enter a category and come back", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(context, shelfCatalog(), undefined, {
+    "communication-collaboration": 327,
+    "ai-voice-audio": 50,
+  });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  // Six per shelf, closed by the products it stands for rather than a count.
+  await waitFor(() => {
+    expect(screen.getByText("See Zendesk and 321 more")).toBeVisible();
+  });
+  expect(
+    screen.getByTestId("connector-shelf-communication-collaboration"),
+  ).toBeInTheDocument();
+
+  // Status has no control: the page already opens on what is connected. The
+  // agent list is gone from the filter too -- that question is answered on the
+  // connector's own card.
+  expect(screen.queryByRole("radio", { name: "Not connected" })).toBeNull();
+  expect(screen.queryByLabelText("Filter connectors")).toBeInTheDocument();
+
+  // A category is a place: entering it filters the page and leaves a way back.
+  await click(screen.getByText("See Zendesk and 321 more"));
+  await waitFor(() => {
+    expect(locationSearch()).toContain("category=communication-collaboration");
+  });
+  expect(
+    screen.queryByTestId("connector-shelf-communication-collaboration"),
+  ).toBeNull();
+  expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+
+  const back = queryAllByRoleFast("button").find((element) => {
+    return element.textContent === "Connectors";
+  });
+  await click(back!);
+  await waitFor(() => {
+    expect(locationSearch()).not.toContain("category=");
+  });
+  expect(
+    screen.getByTestId("connector-shelf-communication-collaboration"),
+  ).toBeInTheDocument();
 });

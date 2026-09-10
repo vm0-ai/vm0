@@ -98,6 +98,12 @@ function menuItemNamed(name: string) {
   return item;
 }
 
+function menuItemNames() {
+  return queryAllByRoleFast("menuitem").map((item) => {
+    return item.textContent?.trim();
+  });
+}
+
 test.each([true, false])(
   "Keep the existing header when the switch is off (desktop: %s)",
   async (desktop) => {
@@ -169,18 +175,20 @@ test("Keep rapid pin changes responsive across resize and save without a success
   });
   await waitFor(() => {
     expect(buttonNamed("More actions")).toBeInTheDocument();
-    expect(buttonNamed("Unpin chat")).toBeEnabled();
+    expect(screen.queryByLabelText("Unpin chat")).not.toBeInTheDocument();
   });
 
-  click(buttonNamed("Unpin chat"));
+  click(buttonNamed("More actions"));
   await waitFor(() => {
-    expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
+    expect(menuItemNamed("Unpin chat")).toBeEnabled();
   });
-  expect(buttonNamed("Pin chat")).toBeEnabled();
-  expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
-    "data-pinned",
-    "false",
-  );
+  click(menuItemNamed("Unpin chat"));
+  await waitFor(() => {
+    expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
+      "data-pinned",
+      "false",
+    );
+  });
 
   pinResponse.resolve();
   await waitFor(() => {
@@ -188,7 +196,6 @@ test("Keep rapid pin changes responsive across resize and save without a success
       "Pin changes saved",
     );
   });
-  expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
     "data-pinned",
     "false",
@@ -198,11 +205,11 @@ test("Keep rapid pin changes responsive across resize and save without a success
   expect(screen.queryByText("Undo")).not.toBeInTheDocument();
 });
 
-test("Keep Pin, Share, and More in order and rename from the mobile menu", async () => {
+test("Keep Share and More in the header and match the sidebar menu order", async () => {
   context.mocks.browser.matchMedia(false);
   await setupHeaderPage();
-  const pin = buttonNamed("Pin chat");
-  const group = pin.parentElement;
+  const more = buttonNamed("More actions");
+  const group = more.parentElement;
   if (!group) {
     throw new Error("Header action group is missing");
   }
@@ -210,13 +217,18 @@ test("Keep Pin, Share, and More in order and rename from the mobile menu", async
     queryAllByRoleFast("button", group).map((button) => {
       return button.getAttribute("aria-label");
     }),
-  ).toStrictEqual(["Pin chat", "Share messages", "More actions"]);
+  ).toStrictEqual(["Share messages", "More actions"]);
   expect(buttonNamed("Open menu")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Pin chat")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Open artifacts")).not.toBeInTheDocument();
 
-  click(buttonNamed("More actions"));
+  click(more);
   await screen.findByRole("menu");
-  expect(menuItemNamed("Artifacts")).toBeInTheDocument();
+  expect(menuItemNames()).toStrictEqual([
+    "Pin chat",
+    "Rename chat",
+    "Artifacts",
+  ]);
   click(menuItemNamed("Rename chat"));
   const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
   expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
@@ -266,7 +278,12 @@ test("Open linked automations from the mobile menu", async () => {
   expect(screen.queryByLabelText("Open mobile automations")).toBeNull();
   click(buttonNamed("More actions"));
   await waitFor(() => {
-    expect(menuItemNamed("Automations")).toBeInTheDocument();
+    expect(menuItemNames()).toStrictEqual([
+      "Pin chat",
+      "Rename chat",
+      "Automations",
+      "Artifacts",
+    ]);
   });
   click(menuItemNamed("Automations"));
   const panel = await screen.findByRole("complementary", {
@@ -287,7 +304,7 @@ test("Retain message selection and restore mobile actions after sharing", async 
   await screen.findAllByText("1 selected");
   click(buttonNamed("Cancel"));
   await waitFor(() => {
-    expect(buttonNamed("Pin chat")).toBeInTheDocument();
+    expect(buttonNamed("Share messages")).toBeInTheDocument();
     expect(buttonNamed("More actions")).toBeInTheDocument();
   });
   click(buttonNamed("Change icon"));
@@ -320,20 +337,34 @@ test("Continue saving the next pin change after an earlier request fails", async
     return respond(500, { error: { message: "Unpin request failed" } });
   });
   await setupHeaderPage();
-  click(buttonNamed("Pin chat"));
+  click(buttonNamed("More actions"));
+  await screen.findByRole("menu");
+  click(menuItemNamed("Pin chat"));
   await waitFor(() => {
-    expect(buttonNamed("Unpin chat")).toBeEnabled();
+    expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
+      "data-pinned",
+      "true",
+    );
   });
-  click(buttonNamed("Unpin chat"));
+  click(buttonNamed("More actions"));
   await waitFor(() => {
-    expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
+    expect(menuItemNamed("Unpin chat")).toBeEnabled();
+  });
+  click(menuItemNamed("Unpin chat"));
+  await waitFor(() => {
+    expect(screen.getByTestId("chat-thread-menu-trigger")).toHaveAttribute(
+      "data-pinned",
+      "false",
+    );
   });
 
   pinResponse.resolve();
   await screen.findByText("Unpin request failed");
   expect(screen.getByText("Pin request failed")).toBeInTheDocument();
-  expect(buttonNamed("Pin chat")).toBeEnabled();
-  expect(buttonNamed("Pin chat")).toHaveAttribute("aria-pressed", "false");
+  click(buttonNamed("More actions"));
+  await waitFor(() => {
+    expect(menuItemNamed("Pin chat")).toBeEnabled();
+  });
   expect(screen.queryByText("Chat pinned")).not.toBeInTheDocument();
   expect(screen.queryByText("Chat unpinned")).not.toBeInTheDocument();
 });

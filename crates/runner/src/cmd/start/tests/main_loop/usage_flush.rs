@@ -144,7 +144,7 @@ async fn job_completion_requests_proxy_usage_flush_without_waiting() {
 /// running-job drain. The runner must not pass that drain until the test
 /// releases the response, regardless of scheduling before shutdown.
 #[tokio::test]
-async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
+async fn deferred_network_log_upload_drains_after_stopping_signal() {
     use crate::test_fixtures::raw_http::{json_response, read_http_request};
     use futures_util::FutureExt;
     use tokio::io::AsyncWriteExt;
@@ -261,11 +261,11 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
     assert_eq!(logs[0]["host"], "example.com");
     assert_eq!(logs[1]["host"], "pending.example");
 
-    // Drain shutdown — must block on each `spawn_job` closure's deferred
-    // `tokio::join!(flush, upload)` via the outer `jobs` JoinSet. Match the
-    // shutdown helper's signals while retaining control of the response.
-    env.drain();
-    env.cancel.cancel();
+    // The job has reported completion; teardown must still join its deferred
+    // upload. Enter Stopping through the real signal handler. Combining natural
+    // drain with discovery cancellation races: a Draining reactor disables
+    // discovery and cannot reach teardown until this held upload is released.
+    env.trigger_stopping().await;
     tokio::select! {
         // Consume ready runner work before checking the retained entry event.
         biased;

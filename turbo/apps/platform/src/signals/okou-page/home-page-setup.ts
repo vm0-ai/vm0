@@ -1,8 +1,11 @@
 import { command } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { homeAgentId$ } from "../agent.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import { defaultAgentId$ } from "../agent.ts";
+import {
+  featureSwitch$,
+  initialFeatureSwitchHydration$,
+} from "../external/feature-switch.ts";
 import { setupAgentsPage$ } from "../agents-page/agents-page-setup.ts";
 import { parseTemplatePickerEntryCategory } from "./template-picker-entry.ts";
 import {
@@ -12,15 +15,17 @@ import {
 
 export const setupHomePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    // Redirect bare / to /agents/:id/chat. Keep prompt deep links intact so
-    // paid-onboarding handoffs can prefill the chat composer on arrival.
+    // Redirect bare / to the default agent's chat. Keep prompt deep links intact
+    // so paid-onboarding handoffs can prefill the chat composer on arrival.
     // ?queue= is also forwarded so the queue drawer opens on arrival.
-    const homeAgentId = await get(homeAgentId$);
+    const defaultAgentId = await get(defaultAgentId$);
     signal.throwIfAborted();
-    if (!homeAgentId) {
+    if (!defaultAgentId) {
       await set(setupAgentsPage$, signal);
       return;
     }
+    await get(initialFeatureSwitchHydration$);
+    signal.throwIfAborted();
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
@@ -55,7 +60,7 @@ export const setupHomePage$ = command(
       }
     }
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
-      pathParams: { agentId: homeAgentId },
+      pathParams: { agentId: defaultAgentId },
       searchParams: forwardParams.size > 0 ? forwardParams : undefined,
       replace: true,
     });

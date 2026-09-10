@@ -22,7 +22,10 @@ import {
   type SharedDatabaseClientMessage,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
-import { registerConnection$ } from "./worker-context.ts";
+import {
+  recordConnectionHeartbeat$,
+  registerConnection$,
+} from "./worker-context.ts";
 import {
   getComputedStoreMessage$,
   queryStoreMessage$,
@@ -176,7 +179,7 @@ export class SharedDatabaseMessagePortServer {
     }
   }
 
-  private registerTab(lockName: string): void {
+  private registerTab(): void {
     if (this.registeredSignal) {
       throw new Error("Shared database tab is already registered");
     }
@@ -191,17 +194,6 @@ export class SharedDatabaseMessagePortServer {
     signal.addEventListener("abort", this.handleRegisteredConnectionAbort, {
       once: true,
     });
-    detach(
-      navigator.locks.request(lockName, { signal }, () => {
-        this.disconnect("tab-lock-released");
-      }),
-      Reason.Daemon,
-      "shared database tab connection",
-    );
-    const daemon = this.store.set(startSharedDatabaseWorkerDaemons$);
-    if (daemon) {
-      detach(daemon, Reason.Daemon, "shared database Worker daemons");
-    }
   }
 
   private readonly requestToken: SharedDatabaseTokenProvider = (
@@ -330,7 +322,7 @@ export class SharedDatabaseMessagePortServer {
         return;
       }
       if (message.type === "register-tab") {
-        this.registerTab(message.lockName);
+        this.registerTab();
         return;
       }
       const registeredSignal = this.registeredSignal;
@@ -341,6 +333,16 @@ export class SharedDatabaseMessagePortServer {
               "Shared database tab registration is required before query",
             );
           });
+        }
+        return;
+      }
+      if (message.type === "heartbeat") {
+        this.store.set(recordConnectionHeartbeat$, this.connectionId);
+        // Token routing only considers tabs that have sent a heartbeat, so the
+        // first heartbeat must be visible before realtime setup requests one.
+        const daemon = this.store.set(startSharedDatabaseWorkerDaemons$);
+        if (daemon) {
+          detach(daemon, Reason.Daemon, "shared database Worker daemons");
         }
         return;
       }

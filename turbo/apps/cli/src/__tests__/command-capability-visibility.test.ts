@@ -46,7 +46,6 @@ function buildCommands(): Command[] {
     new Command("finance"),
     new Command("seo"),
     new Command("banking"),
-    new Command("goal"),
   ];
 }
 
@@ -233,7 +232,6 @@ describe("registerCommands", () => {
       "finance",
       "seo",
       "banking",
-      "goal",
     ]);
   });
 
@@ -697,35 +695,6 @@ describe("registerCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("banking");
-  });
-
-  it("should show goal when goal capabilities are present", () => {
-    const token = buildOkouToken({
-      scope: "okou",
-      capabilities: [
-        "goal:read",
-        "goal:agent-result:write",
-        "goal:user-control:write",
-      ],
-    });
-    vi.stubEnv("OKOU_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("goal");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
-  it("should hide goal when goal capabilities are missing", () => {
-    const token = buildOkouToken({
-      scope: "okou",
-      capabilities: ["file:write"],
-    });
-    vi.stubEnv("OKOU_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("goal");
   });
 
   it("should show credit when billing:write capability is present", () => {

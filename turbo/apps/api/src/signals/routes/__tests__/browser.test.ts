@@ -68,6 +68,36 @@ function commandInput(command: unknown): Record<string, unknown> {
   return command.input as Record<string, unknown>;
 }
 
+function browserScreenshotResults() {
+  const schema = z.strictObject({
+    _time: z.iso.datetime(),
+    type: z.literal("managed_browser_screenshot"),
+    source: z.literal("api"),
+    outcome: z.enum(["success", "failure"]),
+    duration_ms: z.number().finite().nonnegative(),
+    failure_stage: z.enum(["prepare", "capture", "upload", "save"]).optional(),
+    failure_kind: z.string().optional(),
+  });
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap(
+    ([dataset, events]) => {
+      if (dataset !== "vm0-web-logs-dev" || !Array.isArray(events)) {
+        return [];
+      }
+      return events.flatMap((event: unknown) => {
+        if (
+          typeof event !== "object" ||
+          event === null ||
+          !("type" in event) ||
+          event.type !== "managed_browser_screenshot"
+        ) {
+          return [];
+        }
+        return [schema.parse(event)];
+      });
+    },
+  );
+}
+
 aroundEach(async (runTest) => {
   await withMockNowForTest(STARTED_AT_MS, runTest);
 });
@@ -2077,93 +2107,146 @@ describe("okou browser route", () => {
     await flushWaitUntilForTest();
   }, 120_000);
 
-  it("keeps the browser usable without retrying a failed screenshot capture", async () => {
-    const { routeMocks, runs, chat, actor, agent } =
-      await setupBrowserScenario();
-    const current = await createClaimedChatRun(
-      chat,
-      runs,
-      actor,
-      agent.agentId,
-      "Open a browser without a screenshot",
-    );
-    const providerId = randomUUID();
-    acceptBrowserUseCdpSessions([providerId]);
-    server.use(
-      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
-        const body = z
-          .strictObject({ name: z.string() })
-          .parse(await request.json());
-        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
-          status: 201,
+  it.each(["no_page_target", "target_disappeared", "other", "timeout"])(
+    "records a %s screenshot failure once without warnings and keeps the browser usable",
+    async (failureKind) => {
+      context.mocks.axiom.useRealTelemetry.mockReturnValue(true);
+      const { routeMocks, runs, chat, actor, agent } =
+        await setupBrowserScenario();
+      const current = await createClaimedChatRun(
+        chat,
+        runs,
+        actor,
+        agent.agentId,
+        "Open a browser without a screenshot",
+      );
+      const providerId = randomUUID();
+      acceptBrowserUseCdpSessions([providerId]);
+      server.use(
+        http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+          const body = z
+            .strictObject({ name: z.string() })
+            .parse(await request.json());
+          return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+            status: 201,
+          });
+        }),
+        http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+          return HttpResponse.json(providerBrowser(providerId), {
+            status: 201,
+          });
+        }),
+        http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+          return HttpResponse.json(providerBrowser(String(params.id)));
+        }),
+      );
+      await accept(
+        client().use({ headers: current.claim.browserHeaders, body: {} }),
+        [200],
+      );
+      await flushWaitUntilForTest();
+      context.mocks.browserUseCdp.command.mockImplementation((command) => {
+        if (
+          command.method === "Target.getTargets" &&
+          failureKind === "no_page_target"
+        ) {
+          return { targetInfos: [] };
+        }
+        if (command.method === "Target.attachToTarget") {
+          if (failureKind === "target_disappeared") {
+            return new Error("No target with given id found");
+          }
+          return { sessionId: "foreground-session" };
+        }
+        if (command.method === "Runtime.evaluate") {
+          return { result: { type: "boolean", value: true } };
+        }
+        if (command.method === "Page.getLayoutMetrics") {
+          return {
+            cssVisualViewport: {
+              pageX: 0,
+              pageY: 0,
+              clientWidth: 1280,
+              clientHeight: 720,
+            },
+          };
+        }
+        if (command.method === "Page.captureScreenshot") {
+          return failureKind === "other"
+            ? new Error("Screenshot capture unavailable")
+            : { data: Buffer.from("screenshot").toString("base64") };
+        }
+        return undefined;
+      });
+      if (failureKind === "timeout") {
+        // Node storage transports can wrap the deadline in an AbortError.
+        const timeout = new Error("The operation was aborted", {
+          cause: new DOMException(
+            "Screenshot deadline exceeded",
+            "TimeoutError",
+          ),
         });
-      }),
-      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
-        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
-      }),
-      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
-        return HttpResponse.json(providerBrowser(String(params.id)));
-      }),
-    );
-    context.mocks.browserUseCdp.command.mockImplementation((command) => {
-      if (command.method === "Target.attachToTarget") {
-        return { sessionId: "foreground-session" };
+        timeout.name = "AbortError";
+        context.mocks.s3.send.mockImplementation((command: unknown) => {
+          return commandInput(command).ContentType === "image/webp"
+            ? Promise.reject(timeout)
+            : Promise.resolve({});
+        });
       }
-      if (command.method === "Runtime.evaluate") {
-        return { result: { type: "boolean", value: true } };
-      }
-      if (command.method === "Page.getLayoutMetrics") {
-        return {
-          cssVisualViewport: {
-            pageX: 0,
-            pageY: 0,
-            clientWidth: 1280,
-            clientHeight: 720,
-          },
-        };
-      }
-      if (command.method === "Page.captureScreenshot") {
-        return new Error("Screenshot capture unavailable");
-      }
-      return undefined;
-    });
 
-    await accept(
-      client().use({ headers: current.claim.browserHeaders, body: {} }),
-      [200],
-    );
-    const reconciled = await reconcileBrowsers(current.threadId);
-    expect(reconciled.body).toMatchObject({ healthy: 1, errors: 0 });
-    await flushWaitUntilForTest();
+      const reconciled = await reconcileBrowsers(current.threadId);
+      expect(reconciled.body).toMatchObject({ healthy: 1, errors: 0 });
+      await flushWaitUntilForTest();
 
-    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const lease = await accept(
-      client().leaseByThread({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: current.threadId },
-        body: {},
-      }),
-      [200],
-    );
-    expect(lease.body.browser).toMatchObject({
-      status: "active",
-      screenshotUrl: null,
-    });
-    await flushWaitUntilForTest();
-    expect(
-      context.mocks.browserUseCdp.command.mock.calls.filter(([command]) => {
-        return command.method === "Page.captureScreenshot";
-      }),
-    ).toHaveLength(1);
-    expect(
-      context.mocks.s3.send.mock.calls.filter(([command]) => {
-        const input = commandInput(command);
-        return input.ContentType === "image/webp" || "Delete" in input;
-      }),
-    ).toHaveLength(0);
-  }, 120_000);
+      routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+      const lease = await accept(
+        client().leaseByThread({
+          headers: { authorization: "Bearer clerk-session" },
+          params: { threadId: current.threadId },
+          body: {},
+        }),
+        [200],
+      );
+      expect(lease.body.browser).toMatchObject({
+        status: "active",
+        screenshotUrl: null,
+      });
+      await flushWaitUntilForTest();
+      expect(
+        context.mocks.browserUseCdp.command.mock.calls.filter(([command]) => {
+          return command.method === "Page.captureScreenshot";
+        }),
+      ).toHaveLength(
+        failureKind === "other" || failureKind === "timeout" ? 1 : 0,
+      );
+      expect(
+        context.mocks.s3.send.mock.calls.filter(([command]) => {
+          const input = commandInput(command);
+          return input.ContentType === "image/webp" || "Delete" in input;
+        }),
+      ).toHaveLength(failureKind === "timeout" ? 1 : 0);
+      expect(browserScreenshotResults()).toStrictEqual([
+        {
+          _time: isoAt(0),
+          type: "managed_browser_screenshot",
+          source: "api",
+          outcome: "failure",
+          duration_ms: 0,
+          failure_stage: failureKind === "timeout" ? "upload" : "capture",
+          failure_kind: failureKind,
+        },
+      ]);
+      expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
+      expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
+      expect(context.mocks.sentry.captureException.mock.calls).toStrictEqual(
+        [],
+      );
+    },
+    120_000,
+  );
 
   it("captures the foreground tab and keeps previous screenshot objects when updating or deleting a thread", async () => {
+    context.mocks.axiom.useRealTelemetry.mockReturnValue(true);
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const current = await createClaimedChatRun(
@@ -2217,6 +2300,7 @@ describe("okou browser route", () => {
       return Promise.resolve({});
     });
     let captureCount = 0;
+    let failNextCapture = false;
     context.mocks.browserUseCdp.command.mockImplementation((command) => {
       if (command.method === "Target.getTargets") {
         return {
@@ -2261,6 +2345,9 @@ describe("okou browser route", () => {
         };
       }
       if (command.method === "Page.captureScreenshot") {
+        if (failNextCapture) {
+          return new Error("Screenshot capture unavailable");
+        }
         captureCount += 1;
         return {
           data: Buffer.from(`screenshot-${String(captureCount)}`).toString(
@@ -2288,6 +2375,7 @@ describe("okou browser route", () => {
     expect(firstLease.body.browser.screenshotUrl).toBeNull();
     await flushWaitUntilForTest();
     expect(captureCount).toBe(0);
+    expect(browserScreenshotResults()).toStrictEqual([]);
 
     const afterViewerLease = await accept(
       client().get({
@@ -2344,8 +2432,16 @@ describe("okou browser route", () => {
     expect(secondReconcile.body).toMatchObject({
       errors: 0,
     });
+    let flushedScreenshotResults = browserScreenshotResults();
+    context.mocks.axiom.flush.mockImplementation(() => {
+      flushedScreenshotResults = browserScreenshotResults();
+      return Promise.resolve();
+    });
     releaseSecondScreenshotUpload.resolve(undefined);
     await flushWaitUntilForTest();
+    // The response already completed while upload was blocked. Its flush
+    // cannot deliver the screenshot result; the background task must flush it.
+    expect(flushedScreenshotResults).toHaveLength(2);
 
     const afterSecondCapture = await accept(
       client().get({
@@ -2445,6 +2541,41 @@ describe("okou browser route", () => {
     }
     const finalScreenshotKey = `artifacts/${new URL(finalScreenshotUrl).pathname.slice(1)}`;
     expect(captureCount).toBe(3);
+    expect(browserScreenshotResults()).toStrictEqual(
+      Array.from({ length: 3 }, () => {
+        return {
+          _time: isoAt(0),
+          type: "managed_browser_screenshot",
+          source: "api",
+          outcome: "success",
+          duration_ms: 0,
+        };
+      }),
+    );
+    failNextCapture = true;
+    const failedCapture = await reconcileBrowsers(current.threadId);
+    expect(failedCapture.body).toMatchObject({ healthy: 1, errors: 0 });
+    await flushWaitUntilForTest();
+    const retainedPreview = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+      }),
+      [200],
+    );
+    expect(retainedPreview.body.browser).toMatchObject({
+      status: "active",
+      screenshotUrl: finalScreenshotUrl,
+    });
+    expect(browserScreenshotResults()).toHaveLength(4);
+    expect(browserScreenshotResults().at(-1)).toMatchObject({
+      outcome: "failure",
+      failure_stage: "capture",
+      failure_kind: "other",
+    });
+    expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
+    expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
+    expect(context.mocks.sentry.captureException.mock.calls).toStrictEqual([]);
     expect(
       context.mocks.s3.send.mock.calls.filter(([command]) => {
         const input = commandInput(command);

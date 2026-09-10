@@ -7,7 +7,7 @@ import {
   createTextPreviewComputed,
   isTextPreviewKind,
 } from "../text-preview.ts";
-import type { AttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -44,53 +44,49 @@ export type ArtifactCardSignalsRegistry = CardSignalsRegistry<
   ArtifactSignals
 >;
 
-function needsTextPreview(kind: ArtifactKind): boolean {
-  return isTextPreviewKind(kind);
+export function createArtifactPreviewImageUrls$(
+  entries: readonly (readonly [string, string])[],
+): Computed<Promise<ReadonlyMap<string, string>>> {
+  const previewImageUrlsByUrl = new Map(entries);
+  return computed(() => {
+    return Promise.resolve(previewImageUrlsByUrl);
+  });
 }
 
 function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-  resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactSignals {
-  const attachmentUrls$ = resolveResourceUrl(descriptor.url);
-  const resourceUrl$ = computed(async (get) => {
-    return (await get(attachmentUrls$)).resourceUrl;
-  });
+  const resourceUrl$ = createAttachmentResourceUrl$(descriptor.url);
   const previewImageLoad = createImageLoadSignals();
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
       return undefined;
     }
     const previewImageUrlsByUrl = await get(previewImageUrlsByUrl$);
-    return previewImageUrlsByUrl.get(descriptor.url);
+    const url = previewImageUrlsByUrl.get(descriptor.url);
+    return url ? await get(createAttachmentResourceUrl$(url)) : undefined;
   });
-  if (!needsTextPreview(descriptor.kind)) {
-    return { ...descriptor, previewImageLoad, previewImageUrl$, resourceUrl$ };
-  }
   return {
     ...descriptor,
     previewImageLoad,
     previewImageUrl$,
     resourceUrl$,
-    text$: createTextPreviewComputed(descriptor.url, resourceUrl$),
+    ...(isTextPreviewKind(descriptor.kind)
+      ? { text$: createTextPreviewComputed(descriptor.url, resourceUrl$) }
+      : {}),
   };
 }
 
 export function createArtifactCardSignalsRegistry(
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-  resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactCardSignalsRegistry {
   return createCardSignalsRegistry(
     (descriptor: ArtifactDescriptor) => {
       return descriptor.url;
     },
     (descriptor) => {
-      return createArtifactSignals(
-        descriptor,
-        previewImageUrlsByUrl$,
-        resolveResourceUrl,
-      );
+      return createArtifactSignals(descriptor, previewImageUrlsByUrl$);
     },
   );
 }

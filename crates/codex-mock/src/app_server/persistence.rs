@@ -38,6 +38,7 @@ pub(super) fn persist_input_events(
                 "thread_request_model_provider": context.thread_request_model_provider,
                 "turn_request_has_runtime_workspace_roots": context.turn_params.get("runtimeWorkspaceRoots").is_some(),
                 "turn_request_cwd": context.turn_params.get("cwd"),
+                "turn_request_effort": context.turn_params.get("effort"),
                 "turn_request_approval_policy": context.turn_params.get("approvalPolicy"),
                 "turn_request_approvals_reviewer": context.turn_params.get("approvalsReviewer"),
                 "turn_request_sandbox_policy": context.turn_params.get("sandboxPolicy"),

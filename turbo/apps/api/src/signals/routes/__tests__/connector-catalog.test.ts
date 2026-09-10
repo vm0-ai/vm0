@@ -527,6 +527,61 @@ describe("GET /api/connector-catalog", () => {
     expect(descriptionSearch.body.connectors).toStrictEqual([]);
   });
 
+  it("orders discovery by rank and gives every category its own slice", async () => {
+    // The endpoint's promise, stated here rather than imported: at most this
+    // many connectors per category, and never a connector Okou runs itself.
+    const DISCOVERY_PER_CATEGORY = 12;
+    const INTERNAL_SLUGS = ["maskdb", "db9", "drive9", "slock", "runtime"];
+
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context, routes: connectorCatalogRoutes })(
+      connectorCatalogContract,
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    const discovery = await accept(
+      client.discovery({ query: {}, headers }),
+      [200],
+    );
+
+    // Discovery used to answer with one global top-100, so a category holding
+    // a quarter of the catalog crowded the others off the first screen.
+    const counts = discovery.body.categoryConnectorCounts ?? {};
+    const returnedPerCategory = new Map<string, number>();
+    for (const connector of discovery.body.connectors) {
+      returnedPerCategory.set(
+        connector.category,
+        (returnedPerCategory.get(connector.category) ?? 0) + 1,
+      );
+    }
+    for (const [category, returned] of returnedPerCategory) {
+      expect(returned).toBeLessThanOrEqual(DISCOVERY_PER_CATEGORY);
+      expect(counts[category] ?? 0).toBeGreaterThanOrEqual(returned);
+    }
+
+    // Inside a category a ranked connector always precedes an unranked one,
+    // and ranks never go backwards.
+    const seenRankByCategory = new Map<string, number>();
+    for (const connector of discovery.body.connectors) {
+      const rank = connector.popularityRank ?? Number.MAX_SAFE_INTEGER;
+      const previous = seenRankByCategory.get(connector.category);
+      if (previous !== undefined) {
+        expect(rank).toBeGreaterThanOrEqual(previous);
+      }
+      seenRankByCategory.set(connector.category, rank);
+    }
+
+    // Connectors Okou runs for itself never compete for a customer's first
+    // screen, in browse or in search.
+    for (const slug of INTERNAL_SLUGS) {
+      expect(
+        discovery.body.connectors.some((connector) => {
+          return connector.slug === slug;
+        }),
+      ).toBeFalsy();
+    }
+  });
+
   it("rejects catalog status calls from Okou run tokens without connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

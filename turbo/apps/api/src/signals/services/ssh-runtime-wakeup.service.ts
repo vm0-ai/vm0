@@ -7,6 +7,8 @@ import type { ReadonlyDb } from "../external/db";
 import { publishSshInvalidationToRunnerGroup } from "../external/realtime";
 import { settle } from "../utils";
 
+import { publishSshClientInvalidation } from "./ssh-client-invalidation.service";
+
 const L = logger("SshRuntimeWakeup");
 
 interface SshInvalidationScope {
@@ -21,6 +23,7 @@ export async function publishSshRuntimeInvalidation(
   db: ReadonlyDb,
   scope: SshInvalidationScope,
 ): Promise<void> {
+  await publishSshClientInvalidation(scope);
   const discovery = await settle(
     db
       .select({ runId: agentRuns.id, runnerGroup: agentRuns.runnerGroup })

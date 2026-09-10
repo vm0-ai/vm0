@@ -358,6 +358,8 @@ function ThreadArtifactDetail({
     <ArtifactSidebar
       artifactRef={{
         url: preview.url,
+        resourceUrl$: sidebar.selectedArtifactResourceUrl$,
+        shareUrl$: sidebar.selectedArtifactShareUrl$,
         kind: preview.kind,
         filename: preview.filename,
       }}

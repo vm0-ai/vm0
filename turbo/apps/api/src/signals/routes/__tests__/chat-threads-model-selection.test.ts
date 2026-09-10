@@ -1,3 +1,5 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -40,15 +42,20 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   const { providerId } = await api.ensureOrgModelProvider(actor);
-  await api.updateOrgModelPolicies(actor, [
-    {
-      model: "claude-sonnet-5",
-      isDefault: true,
-      defaultProviderType: "anthropic-api-key",
-      credentialScope: "org",
-      modelProviderId: providerId,
-    },
-  ]);
+  await api.updateOrgModelPolicies(
+    actor,
+    (["claude-sonnet-5", "claude-sonnet-4-6", "claude-opus-4-8"] as const).map(
+      (model) => {
+        return {
+          model,
+          isDefault: model === "claude-sonnet-5",
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        };
+      },
+    ),
+  );
   const agent = await bdd.createAgent(actor, {
     displayName: "Chat thread model selection agent",
     visibility: "private",
@@ -109,6 +116,157 @@ function metadataClient() {
 }
 
 describe("POST /api/chat-threads/:id/model-selection", () => {
+  it("rejects effort while disabled and unsupported levels while enabled", async () => {
+    const fixture = await seedChatThread("Effort validation");
+    const disabled = await chat.requestUpdateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-sonnet-5",
+      [400],
+      { reasoningEffort: "high" },
+    );
+    expect(disabled.body).toMatchObject({
+      error: { message: "Reasoning effort selection is not enabled" },
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    for (const [model, reasoningEffort] of [
+      ["claude-sonnet-4-6", "extra"],
+      ["claude-sonnet-5", "xhigh"],
+    ] as const) {
+      const unsupported = await chat.requestUpdateThreadModelSelection(
+        fixture.actor,
+        fixture.threadId,
+        model,
+        [400],
+        { reasoningEffort },
+      );
+      expect(unsupported.body).toMatchObject({
+        error: {
+          message: "Reasoning effort is not supported by the selected model",
+        },
+      });
+    }
+    for (const reasoningEffort of ["extra", "ultracode"] as const) {
+      await chat.updateThreadModelSelection(
+        fixture.actor,
+        fixture.threadId,
+        "claude-sonnet-5",
+        { reasoningEffort },
+      );
+      await expect(
+        chat.readThreadMetadata(fixture.actor, fixture.threadId),
+      ).resolves.toMatchObject({ reasoningEffort });
+    }
+    await chat.updateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-sonnet-5",
+      { reasoningEffort: null },
+    );
+    const metadata = await chat.readThreadMetadata(
+      fixture.actor,
+      fixture.threadId,
+    );
+    expect(metadata).toMatchObject({ selectedModel: "claude-sonnet-5" });
+    expect(metadata.reasoningEffort ?? null).toBeNull();
+  });
+
+  it("persists effort, preserves omitted values, and emits an explicit default reset", async () => {
+    const fixture = await seedChatThread("Effort persistence");
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    await chat.updateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-sonnet-5",
+      { reasoningEffort: "high" },
+    );
+    await chat.updateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-opus-4-8",
+    );
+    await expect(
+      chat.readThreadMetadata(fixture.actor, fixture.threadId),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-opus-4-8",
+      reasoningEffort: "high",
+    });
+    // Disabled rollout rejects explicit settings without erasing preferences.
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ChatReasoningEffort]: false,
+    });
+    const disabledReset = await chat.requestUpdateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-opus-4-8",
+      [400],
+      { reasoningEffort: null },
+    );
+    expect(disabledReset.body).toMatchObject({
+      error: { message: "Reasoning effort selection is not enabled" },
+    });
+    await expect(
+      chat.readThreadMetadata(fixture.actor, fixture.threadId),
+    ).resolves.toMatchObject({ reasoningEffort: "high" });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    await chat.updateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-opus-4-8",
+      { reasoningEffort: null },
+    );
+    expect(
+      (await chat.readThreadMetadata(fixture.actor, fixture.threadId))
+        .reasoningEffort ?? null,
+    ).toBeNull();
+    const events = await chat.requestThreadEvents(fixture.actor, {}, [200]);
+    if (events.status !== 200) {
+      throw new Error("Expected thread events");
+    }
+    expect(events.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        reasoningEffort: "high",
+      }),
+    );
+    expect(events.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        reasoningEffort: null,
+      }),
+    );
+  });
+
+  it("resets incompatible effort on a model switch", async () => {
+    const fixture = await seedChatThread("Effort model switch");
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    await chat.updateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-sonnet-5",
+      { reasoningEffort: "extra" },
+    );
+    await chat.updateThreadModelSelection(
+      fixture.actor,
+      fixture.threadId,
+      "claude-sonnet-4-6",
+    );
+    const metadata = await chat.readThreadMetadata(
+      fixture.actor,
+      fixture.threadId,
+    );
+    expect(metadata.selectedModel).toBe("claude-sonnet-4-6");
+    expect(metadata.reasoningEffort ?? null).toBeNull();
+  });
+
   it("preserves the thread selection when an old client requests a retired model", async () => {
     const fixture = await seedChatThread("Model retirement");
     const token = okouToken({

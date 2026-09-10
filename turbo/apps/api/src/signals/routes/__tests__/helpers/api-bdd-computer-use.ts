@@ -1,9 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CLIENT_PRODUCT_HEADER,
-  type DesktopProduct,
-} from "@okouai/api-contracts/contracts/client-headers";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
@@ -59,7 +55,6 @@ interface ComputerUseHostStartOptions {
     readonly accessibility: boolean;
     readonly screenRecording: boolean;
   };
-  readonly clientProduct?: DesktopProduct;
   readonly installationId?: string;
   readonly hostName?: string;
   readonly supportedCapabilities?: readonly string[];
@@ -231,10 +226,6 @@ const DEFAULT_WRITE_COMMAND_BODY = {
 
 function hostHeaders(hostToken: string): RequiredAuthHeaders {
   return { authorization: `Bearer ${hostToken}` };
-}
-
-function clientProductHeaders(clientProduct: DesktopProduct | undefined) {
-  return clientProduct ? { [CLIENT_PRODUCT_HEADER]: clientProduct } : {};
 }
 
 function hostTokenHeaders(hostToken: string | null): AuthHeaders {
@@ -477,10 +468,7 @@ export function createComputerUseBddApi(context: TestContext) {
     ): Promise<{ readonly hostId: string; readonly hostToken: string }> {
       const response = await accept(
         hostsClient().start({
-          headers: {
-            ...authenticate(actor),
-            ...clientProductHeaders(options.clientProduct),
-          },
+          headers: authenticate(actor),
           body: hostRuntimeBody(options),
         }),
         [200],
@@ -527,10 +515,7 @@ export function createComputerUseBddApi(context: TestContext) {
     ): Promise<{ readonly ok: true; readonly hostId: string }> {
       const response = await accept(
         heartbeatClient().heartbeat({
-          headers: {
-            ...hostHeaders(hostToken),
-            ...clientProductHeaders(options.clientProduct),
-          },
+          headers: hostHeaders(hostToken),
           body: hostRuntimeBody(options),
         }),
         [200],

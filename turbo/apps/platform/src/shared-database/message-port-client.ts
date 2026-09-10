@@ -30,12 +30,33 @@ import {
   createDeferredPromise,
   detach,
   onDomEventFn,
-  onRejection,
   Reason,
+  setLoop,
   settle,
 } from "../signals/utils.ts";
 
 const L = logger("SharedWorkerBridge");
+const TAB_HEARTBEAT_INTERVAL_MS = 30_000;
+
+export type SharedDatabaseHeartbeatLoop = (
+  heartbeat: () => void,
+  signal: AbortSignal,
+) => Promise<void>;
+
+const runSharedDatabaseHeartbeatLoop: SharedDatabaseHeartbeatLoop = async (
+  heartbeat,
+  signal,
+): Promise<void> => {
+  await setLoop(
+    () => {
+      heartbeat();
+      return false;
+    },
+    TAB_HEARTBEAT_INTERVAL_MS,
+    signal,
+    { retryTransientErrors: false },
+  );
+};
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
@@ -55,7 +76,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   >();
   private readonly handleMessage: (event: MessageEvent<unknown>) => void;
   private readonly handleBridgeAbort: () => void;
-  private releaseConnectionLock: (() => void) | null = null;
   private registration: Promise<void> | null = null;
   private registered = false;
   private closed = false;
@@ -66,6 +86,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     private readonly events: SharedDatabaseBridgeEvents,
     private readonly bridgeSignal: AbortSignal,
     private readonly getToken: SharedDatabaseTokenProvider,
+    private readonly heartbeatLoop: SharedDatabaseHeartbeatLoop = runSharedDatabaseHeartbeatLoop,
   ) {
     bridgeSignal.throwIfAborted();
     this.handleBridgeAbort = () => {
@@ -151,43 +172,15 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       throw this.closeReason;
     }
     if (!this.registration) {
-      const ready = createDeferredPromise<void>(signal);
-      const lockName = `okou:shared-database:${crypto.randomUUID()}`;
-      this.registration = ready.promise;
-      // A destroyed document releases its Web Locks without running page JS.
-      // Register only after acquiring the lock so the Worker can wait for its release.
+      this.registration = Promise.resolve();
+      this.registered = true;
+      this.emit({ type: "register-tab" });
       detach(
-        onRejection(
-          navigator.locks.request(
-            lockName,
-            { signal: this.bridgeSignal },
-            async () => {
-              if (this.closed) {
-                throw this.closeReason;
-              }
-              const lockReleased = createDeferredPromise<void>(
-                this.bridgeSignal,
-              );
-              this.releaseConnectionLock = () => {
-                lockReleased.resolve();
-              };
-              this.registered = true;
-              this.emit({ type: "register-tab", lockName });
-              if (!ready.settled()) {
-                ready.resolve();
-              }
-              await lockReleased.promise;
-            },
-          ),
-          (error) => {
-            if (!ready.settled()) {
-              ready.reject(error);
-            }
-            this.close(error, false);
-          },
-        ),
+        this.heartbeatLoop(() => {
+          this.emit({ type: "heartbeat" });
+        }, this.bridgeSignal),
         Reason.Daemon,
-        "shared database connection lock",
+        "shared database tab heartbeat",
       );
     }
     return this.registration;
@@ -350,7 +343,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       type: "disconnect",
     } satisfies SharedDatabaseClientMessage);
     this.closed = true;
-    this.releaseConnectionLock?.();
     this.closeReason = reason;
     this.bridgeSignal.removeEventListener("abort", this.handleBridgeAbort);
     this.port.removeEventListener("message", this.handleMessage);

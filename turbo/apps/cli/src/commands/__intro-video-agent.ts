@@ -12,6 +12,7 @@ import {
   getWebIntroVideoAgent,
 } from "../lib/api/domains/web";
 import { withErrorHandler } from "../lib/command/with-error-handler";
+import { createArtifactPresentation } from "./shared/artifact-return";
 
 interface IntroVideoAgentCommandOptions {
   readonly prompt?: string;
@@ -44,8 +45,22 @@ function resumeCommand(generationId: string): string {
 }
 
 function printResult(result: IntroVideoAgentResponse, json?: boolean): void {
+  const presentation =
+    result.status === "completed" && result.url
+      ? createArtifactPresentation(result.filename ?? "Intro video", result.url)
+      : undefined;
+  const continuation =
+    result.status === "queued" || result.status === "running"
+      ? {
+          resumeCommand: resumeCommand(result.generationId),
+          continuationContext:
+            "This job is still running. Check its status using resumeCommand; do not submit another video. Artifact presentation fields become available after completion.",
+        }
+      : undefined;
   if (json) {
-    console.log(JSON.stringify(result));
+    console.log(
+      JSON.stringify({ ...result, ...presentation?.json, ...continuation }),
+    );
     return;
   }
   console.log(`Intro Video Agent: ${result.status}`);
@@ -71,6 +86,9 @@ function printResult(result: IntroVideoAgentResponse, json?: boolean): void {
     console.log(
       chalk.dim("  Continue checking this job; do not submit another video."),
     );
+  }
+  if (presentation) {
+    console.log(`\n${presentation.text}`);
   }
 }
 

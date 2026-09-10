@@ -357,10 +357,11 @@ describe("managed artifact privacy", () => {
         expect(preview.body).toStrictEqual({
           url: signedReference,
           publicUrl: null,
+          expiresAt: expect.any(String),
         });
         expect(
           context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[2],
-        ).toMatchObject({ expiresIn: 900 });
+        ).toMatchObject({ expiresIn: 172_800 });
         const downloaded = await accept(
           fixture
             .api(webFilesContract)
@@ -411,6 +412,15 @@ describe("managed artifact privacy", () => {
           [401],
         );
       } else {
+        const writes = [...objects.keys()];
+        const contentWrite = writes.findIndex((key) => {
+          return key.startsWith(`${publicBucket}/artifacts/`);
+        });
+        const registrationWrite = writes.findIndex((key) => {
+          return key.startsWith("test-hosted-sites/artifact-delivery/files/");
+        });
+        expect(registrationWrite).toBeGreaterThanOrEqual(0);
+        expect(contentWrite).toBeGreaterThan(registrationWrite);
         expect(result.url).toMatch(/^https:\/\/a\.okou\.io\//u);
         expect(result.sourceUrl).toBe(sourceUrl);
         expect(result.embedUrl).toContain("cdn-cgi/image/");

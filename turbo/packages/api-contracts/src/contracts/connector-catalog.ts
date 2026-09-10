@@ -65,6 +65,11 @@ const publicConnectorCatalogItemSchema = z.object({
   description: z.string(),
   icon: publicConnectorCatalogIconSchema,
   category: z.string(),
+  /**
+   * Discovery ordering, lower first. Absent for connectors outside the ranked
+   * head, which sort after every ranked one.
+   */
+  popularityRank: z.number().int().nonnegative().optional(),
   generation: z.array(z.string()),
   tags: z.array(z.string()),
   authMethods: z.array(publicConnectorCatalogAuthMethodSummarySchema),
@@ -148,6 +153,14 @@ const publicConnectorCatalogStatusResponseSchema = z.object({
 const publicConnectorCatalogDiscoveryResponseSchema =
   publicConnectorCatalogStatusResponseSchema.extend({
     totalConnectorCount: z.number().int().nonnegative(),
+    /**
+     * How many connectors each category holds in total. Discovery returns a
+     * slice per category, so the client needs this to offer "show all" without
+     * a second request.
+     */
+    categoryConnectorCounts: z
+      .record(z.string(), z.number().int().nonnegative())
+      .optional(),
   });
 
 const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);

@@ -6,10 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/host";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { publishStaticSite } from "../../lib/host/publish-static-site";
-import {
-  createArtifactMarkdownOutput,
-  formatArtifactPresentationContext,
-} from "../shared/artifact-return";
+import { createArtifactPresentation } from "../shared/artifact-return";
 import { cloneHostedSiteCommand } from "./clone";
 import { versionsHostedSiteCommand } from "./versions";
 
@@ -90,12 +87,12 @@ Notes:
             },
       });
 
-      const markdown = createArtifactMarkdownOutput(
+      const presentation = createArtifactPresentation(
         options.site,
         result.aliasUrl ?? result.url,
       );
       if (options.json) {
-        console.log(JSON.stringify({ ...result, ...markdown }));
+        console.log(JSON.stringify({ ...result, ...presentation.json }));
         return;
       }
 
@@ -122,6 +119,6 @@ Notes:
         console.log(`  URL: ${result.url}`);
       }
       console.log("");
-      console.log(formatArtifactPresentationContext(markdown));
+      console.log(presentation.text);
     }),
   );

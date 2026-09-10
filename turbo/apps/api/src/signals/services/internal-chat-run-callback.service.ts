@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
 
@@ -687,6 +688,7 @@ interface CreateQueuedChatRunInput {
   readonly cliAgentType: string | null;
   readonly piExecution: boolean;
   readonly codexServiceTier: "fast" | undefined;
+  readonly reasoningEffort?: ReasoningEffort | null;
   readonly computerUseHostGrant: {
     readonly hostId: string;
     readonly displayName: string;
@@ -900,6 +902,7 @@ function buildQueuedCreateAgentRunArgs(
       input.modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: input.modelPin.selectedModel ?? undefined,
     codexServiceTier: input.codexServiceTier,
+    reasoningEffort: input.reasoningEffort,
     callbacks: [
       {
         internalKind: "chat" as const,
@@ -2575,6 +2578,7 @@ interface QueuedMessageModelRoute {
   readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
   readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }
 
 function routeQueuedMessagePiExecution(args: {
@@ -2667,6 +2671,7 @@ async function resolveQueuedMessageModelRoute(args: {
       builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
       cliAgentType: modelContext.providerAdmission.cliAgentType,
       codexServiceTier: modelContext.runCodexServiceTier,
+      reasoningEffort: modelContext.reasoningEffort,
     },
   };
 }
@@ -3274,6 +3279,7 @@ async function buildCreateQueuedChatRunInput(
     cliAgentType: routedModel.cliAgentType,
     piExecution,
     codexServiceTier: routedModel.codexServiceTier,
+    reasoningEffort: routedModel.reasoningEffort,
     computerUseHostGrant,
     triggerSource,
     realAgentInPreview: isFeatureEnabled(

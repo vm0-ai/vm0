@@ -14,6 +14,7 @@ import {
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
+  type PublicConnectorCatalogCategoryMetadata,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
@@ -70,6 +71,10 @@ interface ComposerThreadFixture {
 interface ConnectorFixtureOptions {
   readonly catalog?: readonly PublicConnectorCatalogStatusItem[];
   readonly featuredConnectorSlugs?: readonly ConnectorSlug[];
+  /** Category totals discovery reports, so a shelf can close on a real count. */
+  readonly categoryConnectorCounts?: Readonly<Record<string, number>>;
+  /** The catalog's own category names, as discovery returns them. */
+  readonly categoryMetadata?: PublicConnectorCatalogCategoryMetadata;
   readonly customConnectors?: readonly CustomConnectorResponse[];
   readonly builtinAuthorizations?: Readonly<
     Record<string, readonly ConnectorSlug[]>
@@ -322,6 +327,12 @@ export function installComposerConnectorFixture(
       return respond(200, {
         connectors,
         totalConnectorCount: catalog.length,
+        ...(options.categoryConnectorCounts === undefined
+          ? {}
+          : { categoryConnectorCounts: options.categoryConnectorCounts }),
+        ...(options.categoryMetadata === undefined
+          ? {}
+          : { categoryMetadata: options.categoryMetadata }),
       });
     },
   );
@@ -645,6 +656,8 @@ export function builtinConnector(args: {
   readonly authMethods?: readonly PublicConnectorCatalogAuthMethodDetail[];
   readonly hasPermissions?: boolean;
   readonly tags?: readonly string[];
+  readonly category?: string;
+  readonly popularityRank?: number;
 }): PublicConnectorCatalogStatusItem {
   const authMethods = [...(args.authMethods ?? [oauthAuthMethod()])];
   const connected = args.connected ?? true;
@@ -665,7 +678,10 @@ export function builtinConnector(args: {
       url: `https://icons.example.test/${args.slug}.svg`,
       invertInDarkMode: false,
     },
-    category: "productivity",
+    category: args.category ?? "productivity",
+    ...(args.popularityRank === undefined
+      ? {}
+      : { popularityRank: args.popularityRank }),
     generation: [],
     tags: [...(args.tags ?? [])],
     authMethods,

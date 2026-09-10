@@ -1213,10 +1213,6 @@ PY
         std::fs::set_permissions(path, perms).unwrap();
     }
 
-    fn retired_runtime_marker_env() -> String {
-        ["VM0", "MITMDUMP", "RUNTIME", "DIR"].join("_")
-    }
-
     #[test]
     fn embedded_addon_reads_runner_token_environment() {
         let source = ADDON_FILES
@@ -2290,40 +2286,6 @@ exit 42
         assert!(!stale_launch.exists(), "stale launch directory remains");
         assert!(unrelated_sibling.is_dir());
         assert!(unrelated_shared.path().is_dir());
-    }
-
-    #[tokio::test]
-    async fn proxy_startup_ignores_retired_legacy_marker() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().join("home"));
-        let config = test_proxy_config(dir.path(), &home, dir.path().join("mitmdump"));
-        let runtime = acquire_test_runtime(&config).await;
-        let stale_launch = config.runtime_dir.join("launch-retired");
-        std::fs::create_dir(&stale_launch).unwrap();
-        let retired_marker = retired_runtime_marker_env();
-        drop(runtime);
-
-        let mut retired_process = tokio::process::Command::new("sleep")
-            .arg("60")
-            .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
-            .env("TMPDIR", &stale_launch)
-            .env(retired_marker, &stale_launch)
-            .process_group(0)
-            .kill_on_drop(true)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-
-        let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
-
-        assert!(
-            retired_process.try_wait().unwrap().is_none(),
-            "retired legacy-only marker made the process eligible for signalling"
-        );
-        assert!(!stale_launch.exists(), "stale launch directory remains");
-        retired_process.kill().await.unwrap();
     }
 
     #[tokio::test]

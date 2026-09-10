@@ -25,9 +25,9 @@ export const agentSshAccess = pgTable(
         columns: [table.orgId, table.userId, table.agentId],
       }),
       foreignKey({
-        name: "agent_ssh_access_agent_owner_fk",
-        columns: [table.agentId, table.orgId, table.userId],
-        foreignColumns: [agents.id, agents.orgId, agents.owner],
+        name: "agent_ssh_access_agent_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
       }).onDelete("cascade"),
       index("idx_agent_ssh_access_agent").on(table.agentId),
     ];

@@ -6,8 +6,7 @@ import { accept } from "../../lib/accept.ts";
 import type { ApiClientFactory } from "../api-client.ts";
 
 /**
- * List workflow automations bound to a chat thread. Goal automations are managed by
- * the goal API and are not part of this workflow sidebar surface.
+ * List workflow automations bound to a chat thread for the workflow sidebar.
  */
 export async function listThreadWorkflowAutomations(
   client: ApiClientFactory,

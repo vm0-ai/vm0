@@ -19,6 +19,7 @@ pub(super) fn build_claude_command_for_runtime(
         runtime.mock_claude_path.as_ref(),
         ClaudeArgsConfig {
             model: runtime.anthropic_model.as_ref(),
+            effort: runtime.reasoning_effort,
             resume_id: runtime.resume_session_id.as_ref(),
             append_system_prompt_file: (!runtime.append_system_prompt.is_empty())
                 .then_some(runtime.claude_append_system_prompt_file.as_ref()),
@@ -49,6 +50,7 @@ fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: 
 /// Build the argument list from explicit parameters (testable).
 struct ClaudeArgsConfig<'a> {
     model: &'a str,
+    effort: Option<&'a str>,
     resume_id: &'a str,
     append_system_prompt_file: Option<&'a str>,
     disallowed_tools: &'a str,
@@ -92,7 +94,10 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
         args.push(config.settings.to_string());
     }
 
-    if let Some(effort) = default_claude_effort_for_model(config.model) {
+    if let Some(effort) = config
+        .effort
+        .or_else(|| default_claude_effort_for_model(config.model))
+    {
         args.push("--effort".to_string());
         args.push(effort.to_string());
     }
@@ -168,6 +173,7 @@ mod tests {
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
             model: "",
+            effort: None,
             resume_id,
             append_system_prompt_file: (!append_system_prompt.is_empty())
                 .then_some(TEST_APPEND_SYSTEM_PROMPT_FILE),
@@ -190,6 +196,7 @@ mod tests {
             },
             ClaudeArgsConfig {
                 model: "",
+                effort: None,
                 resume_id: "",
                 append_system_prompt_file: None,
                 disallowed_tools: "",
@@ -205,6 +212,7 @@ mod tests {
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
             model,
+            effort: None,
             resume_id: "",
             append_system_prompt_file: None,
             disallowed_tools: "",
@@ -273,6 +281,7 @@ mod tests {
 
         let args = build_claude_args(ClaudeArgsConfig {
             model: "",
+            effort: None,
             resume_id: "sess-secret-123",
             append_system_prompt_file: None,
             disallowed_tools: "",

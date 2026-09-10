@@ -14,6 +14,7 @@ import { i18n } from "../i18n/index.ts";
 import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
+import { subscribeSshChanged$ } from "./ssh.ts";
 import {
   bridgeConnected$,
   installedSharedDatabaseBridge$,
@@ -32,6 +33,7 @@ const runAppRealtimeDaemons$ = command(
       set(subscribePresentationTemplatesChanged$, signal),
       set(setupUserPreferenceRealtime$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
+      set(subscribeSshChanged$, signal),
     ]);
   },
 );

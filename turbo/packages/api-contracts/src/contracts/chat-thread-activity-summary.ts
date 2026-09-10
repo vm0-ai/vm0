@@ -2,9 +2,15 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
+export const thinkingMessageSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+});
+export type ThinkingMessage = z.infer<typeof thinkingMessageSchema>;
+
 export const activitySummaryResponseSchema = z.object({
   runId: z.string().uuid(),
-  phrase: z.string().nullable(),
+  messages: z.array(thinkingMessageSchema).max(4),
   status: z.enum([
     "fresh",
     "stale",

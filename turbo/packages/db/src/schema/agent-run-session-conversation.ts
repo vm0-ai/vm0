@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import {
   pgTable,
   uuid,
@@ -125,6 +126,9 @@ export const agentRuns = pgTable(
     modelRuntimeProvider: varchar("model_runtime_provider", { length: 100 }),
     modelRuntimeModel: varchar("model_runtime_model", { length: 255 }),
     builtInModelKeyId: uuid("built_in_model_key_id"),
+    reasoningEffort: varchar("reasoning_effort", {
+      length: 20,
+    }).$type<ReasoningEffort>(),
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),

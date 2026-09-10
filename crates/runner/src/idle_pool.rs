@@ -109,10 +109,19 @@ impl IdlePool {
         }
     }
 
-    /// Park a sandbox in the pool. Returns the previously parked destroy job
-    /// for this reuse key if one existed (caller must destroy it).
+    /// Park a sandbox in the shared exact/blank inventory. Exact entries are
+    /// identified by reuse key; blanks by sandbox ID.
     ///
-    /// Returns `Rejected(candidate)` if parking is closed/soft-draining or at capacity.
+    /// When parking is open, an existing identity can be replaced even at
+    /// `max_idle`, which limits the combined inventory (0 means unlimited).
+    /// At capacity, a new exact entry can evict the oldest blank, but a new
+    /// blank cannot evict an entry to gain admission.
+    ///
+    /// Returns `ParkResult::Replaced` with a destroy job for either the previous
+    /// entry with the same identity or the capacity-evicted blank. The caller
+    /// must execute this job. Returns `ParkResult::Parked` when no entry is
+    /// displaced, or `ParkResult::Rejected` with the candidate if parking is
+    /// closed/soft-draining or capacity cannot be made available by these rules.
     pub fn park(&mut self, candidate: ParkedIdleCandidate) -> ParkResult {
         self.park_at(candidate, Instant::now())
     }
@@ -536,11 +545,15 @@ impl IdlePool {
 /// Result of a `park` operation.
 #[must_use]
 pub enum ParkResult {
-    /// Successfully parked; no previous entry for this reuse key.
+    /// Successfully parked without displacing an exact or blank entry.
     Parked,
-    /// Successfully parked; the returned job destroys the replaced idle sandbox.
+    /// Successfully parked, replacing the same identity or evicting the oldest
+    /// blank to admit a new exact entry at capacity. The caller must execute
+    /// the returned job to destroy the displaced sandbox.
     Replaced(IdleDestroyJob),
-    /// Parking is closed/soft-draining or at capacity; the entry could not be parked.
+    /// Not parked because parking is closed/soft-draining, or the shared capacity
+    /// limit cannot be satisfied by same-identity replacement or exact-over-blank
+    /// eviction. The rejected candidate is returned to the caller.
     Rejected(RejectedParkedIdleCandidate),
 }
 

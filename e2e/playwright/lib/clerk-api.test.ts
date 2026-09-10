@@ -122,6 +122,29 @@ test("creates and parses generation-scoped test identities", () => {
   );
 });
 
+test("creates a password-backed test identity without skipping its password policy", async () => {
+  await withClerkServer(
+    (request, response) => {
+      if (request.method === "POST" && request.url === "/v1/users") {
+        sendJson(response, 200, { id: "user_password_fixture" });
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      const id = await createUser(
+        "password-fixture@example.com",
+        "Fixture-Password!2026",
+      );
+      assert.equal(id, "user_password_fixture");
+      const request = requests.find((item) => item.url === "/v1/users");
+      assert.ok(isRecord(request?.body));
+      assert.equal(request.body.password, "Fixture-Password!2026");
+      assert.equal(request.body.skip_password_requirement, undefined);
+    },
+  );
+});
+
 test("creates organizations with exact ownership metadata and retries membership update", async () => {
   await withClerkServer(
     (request, response, requests) => {

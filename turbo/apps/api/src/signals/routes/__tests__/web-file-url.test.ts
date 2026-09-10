@@ -7,7 +7,7 @@ import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { webFileUrlRoutes } from "../web-file-url";
 import { expectApiError } from "./helpers/api-bdd";
@@ -182,6 +182,7 @@ describe("GET /api/web/file-url", () => {
   });
 
   it("signs the resolved object key for the owning user", async () => {
+    mockNow(new Date("2026-09-09T12:00:00.123Z"));
     const fileId = randomUUID();
     const { token, userId } = await mintFileReadToken();
     const key = artifactKey(userId, fileId, "photo.png");
@@ -197,10 +198,13 @@ describe("GET /api/web/file-url", () => {
     );
 
     expect(response.body.url).toBe(PRESIGNED_URL);
+    expect(response.body.expiresAt).toBe("2026-09-09T14:00:00.000Z");
     expect(signedObjectInputs()).toStrictEqual([
       expect.objectContaining({ Bucket: BUCKET, Key: key }),
     ]);
-    expect(signedOptions()).toStrictEqual([{ expiresIn: 7200 }]);
+    expect(signedOptions()).toStrictEqual([
+      { expiresIn: 7200, signingDate: new Date("2026-09-09T12:00:00.000Z") },
+    ]);
   });
 
   it("reports the public artifacts url for the same object", async () => {

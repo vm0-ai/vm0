@@ -6,10 +6,7 @@ import { withConnectorConnectionProgress } from "../../connector-connection-prog
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import type { ConnectorDeviceAuthStartOptions } from "@okouai/connectors/connector-config";
-import {
-  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
-  isConnectorAppOauthCallbackEnabled,
-} from "@okouai/connectors/app-oauth-callback";
+import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
@@ -55,7 +52,6 @@ import {
   withCleanup,
 } from "../../utils.ts";
 import { setAblyPayloadLoop$ } from "../../realtime.ts";
-import { localStorageSignals } from "../../external/local-storage.ts";
 import { agents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
@@ -75,9 +71,6 @@ import {
 } from "./connector-accounts.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../../bootstrap/google-ads-conversion-milestones.ts";
 
-const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
-  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
-);
 type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
@@ -446,6 +439,7 @@ export function matchesConnectorDirectorySearch(
 
 const CONNECTORS_SEARCH_PARAM = "keywords";
 const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
+const CONNECTORS_CATEGORY_PARAM = "category";
 const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
 
 // A single, mutually-exclusive connector filter: all connectors, a connection
@@ -479,6 +473,27 @@ export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
+/**
+ * The category being browsed, or null for the shelf view. Category is the only
+ * dimension that organises four thousand connectors, so it lives in the URL
+ * next to the search keyword rather than in component state.
+ */
+export const connectorsCategoryFilter$ = computed((get): string | null => {
+  return get(searchParams$).get(CONNECTORS_CATEGORY_PARAM) ?? null;
+});
+
+export const setConnectorsCategoryFilter$ = command(
+  ({ get, set }, value: string | null) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (value) {
+      params.set(CONNECTORS_CATEGORY_PARAM, value);
+    } else {
+      params.delete(CONNECTORS_CATEGORY_PARAM);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
+
 export const connectorCatalogDiscovery$ =
   relatedConnectorCatalog(connectorsSearch$);
 
@@ -500,6 +515,7 @@ export const relatedCatalogItems$ = computed(async (get) => {
 export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const effectiveFilter = get(connectorsConnectionFilter$);
+  const category = get(connectorsCategoryFilter$);
 
   const agentEnabledSlugs =
     effectiveFilter.kind === "agent"
@@ -513,6 +529,9 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const relatedCatalogItems = await get(relatedCatalogItems$);
   return relatedCatalogItems.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
+      return false;
+    }
+    if (category !== null && connector.category !== category) {
       return false;
     }
     if (effectiveFilter.kind === "connected") {
@@ -2170,7 +2189,7 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
 
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
-    { get, set },
+    { get },
     args: {
       readonly connectorSlug: ConnectorSlug;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
@@ -2189,16 +2208,6 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     readonly options: PostConnectOptions;
   }> => {
     const standalone = isStandaloneMode();
-    if (isConnectorAppOauthCallbackEnabled(args.connectorSlug)) {
-      set(
-        setConnectorAppOauthCallbackMetadata$,
-        JSON.stringify({
-          connectorSlug: args.connectorSlug,
-          icon: args.connectorIcon,
-        }),
-      );
-    }
-
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
     // URL in the external browser instead of blocking it as a popup.
     const popupFeatures = standalone ? undefined : "width=600,height=700";

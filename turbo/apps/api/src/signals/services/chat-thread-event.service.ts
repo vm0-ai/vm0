@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { and, asc, eq, exists, gt, gte, notExists, sql } from "drizzle-orm";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import type {
@@ -65,6 +66,7 @@ export async function appendChatThreadEvent(
     readonly title?: string | null;
     readonly pinOrder?: string | null;
     readonly selectedModel?: string | null;
+    readonly reasoningEffort?: ReasoningEffort | null;
     readonly serviceTier?: ChatThreadServiceTier | null;
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
@@ -102,6 +104,10 @@ export async function appendChatThreadEvent(
       title: args.title ?? null,
       pinOrder: args.pinOrder ?? null,
       selectedModel: args.selectedModel ?? null,
+      reasoningEffort:
+        args.kind === "model_selection_updated" && args.reasoningEffort === null
+          ? "default"
+          : (args.reasoningEffort ?? null),
       serviceTier: args.serviceTier ?? null,
       computerUseHostId: args.computerUseHostId ?? null,
       cloudBrowserEnabled: args.cloudBrowserEnabled ?? false,
@@ -169,6 +175,7 @@ type ChatThreadEventRow = {
   readonly title: string | null;
   readonly pinOrder: string | null;
   readonly selectedModel: string | null;
+  readonly reasoningEffort: ReasoningEffort | "default" | null;
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
@@ -186,6 +193,7 @@ const chatThreadEventSelection = Object.freeze({
   title: chatThreadEvents.title,
   pinOrder: chatThreadEvents.pinOrder,
   selectedModel: chatThreadEvents.selectedModel,
+  reasoningEffort: chatThreadEvents.reasoningEffort,
   serviceTier: chatThreadEvents.serviceTier,
   computerUseHostId: chatThreadEvents.computerUseHostId,
   cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
@@ -203,6 +211,7 @@ const pageChatThreadEventSelection = Object.freeze({
   title: pageChatThreadEvent.title,
   pinOrder: pageChatThreadEvent.pinOrder,
   selectedModel: pageChatThreadEvent.selectedModel,
+  reasoningEffort: pageChatThreadEvent.reasoningEffort,
   serviceTier: pageChatThreadEvent.serviceTier,
   computerUseHostId: pageChatThreadEvent.computerUseHostId,
   cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
@@ -235,6 +244,12 @@ function toApiChatThreadEvent(
     title: row.title,
     pinOrder: row.pinOrder,
     selectedModel: row.selectedModel,
+    ...(row.reasoningEffort === null
+      ? {}
+      : {
+          reasoningEffort:
+            row.reasoningEffort === "default" ? null : row.reasoningEffort,
+        }),
     serviceTier: row.serviceTier,
     computerUseHostId: row.computerUseHostId,
     cloudBrowserEnabled: row.cloudBrowserEnabled,

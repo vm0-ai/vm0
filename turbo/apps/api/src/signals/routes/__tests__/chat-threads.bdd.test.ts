@@ -1,3 +1,4 @@
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import AdmZip from "adm-zip";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
@@ -648,10 +649,6 @@ async function completeThreadGoal(
   );
 }
 
-// Neutral throughout since #30807 retired the branded forms of every
-// chat-thread row; the earlier per-row notes below record which removal took
-// each of the others. A branded request would 404 before reaching the parameter
-// check these cases exist to exercise.
 const malformedChatThreadIdRequests = [
   { method: "GET", path: "/api/chat-threads/:id", paramName: "id" },
   { method: "PATCH", path: "/api/chat-threads/:id", paramName: "id" },
@@ -666,31 +663,22 @@ const malformedChatThreadIdRequests = [
     path: "/api/chat-threads/:id/mark-unread",
     paramName: "id",
   },
-  // Neutral rather than branded, for the same reason as `rename` below: #28916
-  // retired this row's branded forms.
   {
     method: "POST",
     path: "/api/chat-threads/:id/model-selection",
     paramName: "id",
   },
-  // Neutral rather than branded: #28917 retired this row's branded forms, so a
-  // branded request here would 404 before the parameter check it exists to
-  // exercise.
   {
     method: "POST",
     path: "/api/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
   { method: "POST", path: "/api/chat-threads/:id/pin", paramName: "id" },
-  // Neutral for the same reason as `computer-use-host` above.
   {
     method: "POST",
     path: "/api/chat-threads/:id/unpin",
     paramName: "id",
   },
-  // Neutral rather than branded: #28711 retired this row's branded forms, so a
-  // branded request here would 404 before the parameter check it exists to
-  // exercise.
   {
     method: "POST",
     path: "/api/chat-threads/:id/rename",
@@ -709,6 +697,38 @@ const malformedChatThreadIdRequests = [
 ] as const;
 
 describe("CHAT-01 thread detail, create, and delete cascades", () => {
+  it("preserves reasoning effort through snapshot compaction and reset replay", async () => {
+    const { actor, thread } =
+      await createSnapshotCursorScenario("Effort snapshot");
+    await createBillingMediaApi(context).updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      reasoningEffort: "high",
+    });
+    await compactChatThreadSnapshots(actor);
+    const snapshot = await chat.getThreadSnapshot(actor);
+    expect(snapshot.chatThreads).toContainEqual(
+      expect.objectContaining({ id: thread.id, reasoningEffort: "high" }),
+    );
+    if (snapshot.latestSeqId === null) {
+      throw new Error("Expected snapshot cursor");
+    }
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      reasoningEffort: null,
+    });
+    const events = await threadEventPage(actor, snapshot.latestSeqId);
+    expect(
+      replayChatThreadEvents(snapshot.chatThreads, events.events),
+    ).toContainEqual(
+      expect.objectContaining({ id: thread.id, reasoningEffort: null }),
+    );
+    await compactChatThreadSnapshots(actor);
+    expect((await chat.getThreadSnapshot(actor)).chatThreads).toContainEqual(
+      expect.objectContaining({ id: thread.id, reasoningEffort: null }),
+    );
+  });
+
   it("rejects malformed thread ids before auth and unauthenticated clerk bearers", async () => {
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 

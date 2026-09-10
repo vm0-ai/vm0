@@ -36,6 +36,8 @@ surface; the index does not replace their detailed rules.
   contracts, current versus run evidence, account identity, and next actions.
 - [Platform lint boundaries](./platform-lint.md): current transport and lifecycle
   exceptions, polling policy, and retired configuration history.
+- [Clerk customization](./clerk-customize.md): hosted Auth V1 styling ownership,
+  public appearance boundaries, lint enforcement, and upgrade verification.
 - [React commit analysis](./react-commit.md): measuring and attributing React
   work without confusing executions, scheduler events, or DOM mutations with
   commits.
