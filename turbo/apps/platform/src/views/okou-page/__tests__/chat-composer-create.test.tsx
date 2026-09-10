@@ -640,3 +640,69 @@ test("Canceling and switching Create preserve slash text and template references
     }),
   );
 });
+
+function inlineTemplateCover(index = 0): HTMLImageElement | null {
+  const chip = composerInlineTemplates()[index];
+  if (!chip) {
+    throw new Error(`Expected an inline template at ${index}`);
+  }
+  return chip.querySelector("img");
+}
+
+test("An inline template chip shows the chosen cover and follows a replacement", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposer();
+  const user = userEvent.setup({ delay: null });
+  const [first, , replacement] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!first || !replacement) {
+    throw new Error("Expected two presentation templates");
+  }
+  await chooseCommand(
+    editor,
+    "Our launch /create presentation",
+    "Create presentation",
+  );
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${first.title}`));
+  await waitFor(() => {
+    expect(inlineTemplateCover()?.getAttribute("src")).toContain(first.slug);
+  });
+
+  // The picker rewrites the node in place, so the cover has to follow the new
+  // selection rather than only the first one.
+  const chip = composerInlineTemplates()[0];
+  if (!chip) {
+    throw new Error("Expected the inline template");
+  }
+  click(button(`Preview template ${first.title}`, chip));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${replacement.title}`));
+  await waitFor(() => {
+    expect(inlineTemplateCover()?.getAttribute("src")).toContain(
+      replacement.slug,
+    );
+  });
+  await user.click(editor);
+  expect(composerInlineTemplates()).toHaveLength(1);
+});
+
+test("A template with no cover keeps the template glyph on its chip", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  const editor = await setupComposer();
+  const [template] = VIDEO_TEMPLATE_ITEMS;
+  if (!template) {
+    throw new Error("Expected a video template");
+  }
+  await chooseCommand(editor, "Our launch /create video", "Create video");
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select video template ${template.title}`));
+  await waitFor(() => {
+    expect(composerInlineTemplates()).toHaveLength(1);
+  });
+  expect(inlineTemplateCover()).toBeNull();
+  expect(composerInlineTemplates()[0]?.querySelector("svg")).toBeInTheDocument();
+});

@@ -1023,26 +1023,44 @@ function createInlineTemplateNodeView(
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
+  // The template was chosen from a grid of covers, so the chip leads with the
+  // same cover rather than a generic glyph. 18px inside the 28px chip keeps the
+  // same optical inset the 20px cover has inside the 32px sent-message chip.
+  const glyph = document.createElement("span");
+  glyph.className =
+    "flex size-[18px] shrink-0 items-center justify-center overflow-hidden " +
+    "rounded-[3px]";
+  const cover = document.createElement("img");
+  cover.alt = "";
+  cover.className = "h-full w-full object-cover";
   // Mirrors Lucide's SwatchBook, which the composer template picker button and
-  // sent-message template chips also use.
+  // sent-message template chips also use. It stands in for the templates whose
+  // catalog entry carries no cover image.
   const icon = createComposerIcon(13, 1.7, [
     "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z",
     "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7",
     "M 7 17h.01",
     "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8",
   ]);
-  icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");
   title.className =
     "min-w-0 select-none truncate text-[13px] font-medium text-orange-600 " +
     "dark:text-orange-300";
-  openButton.append(icon, title);
+  openButton.append(glyph, title);
   dom.append(openButton);
 
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
+    // The node is rewritten in place when the picker changes the selection, so
+    // the cover has to follow the new attributes rather than only the first.
+    if (attachment.previewImageUrl === undefined) {
+      glyph.replaceChildren(icon);
+    } else {
+      cover.src = attachment.previewImageUrl;
+      glyph.replaceChildren(cover);
+    }
     openButton.setAttribute(
       "aria-label",
       templateAttachmentPreviewLabel(attachment),
