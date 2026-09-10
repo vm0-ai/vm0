@@ -355,12 +355,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatTouchSelection]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Use custom text selection handles and passage actions on touch devices.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",
     description:

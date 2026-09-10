@@ -303,7 +303,6 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import {
   ChatAssistantMessageBody,
-  CHAT_TOUCH_SELECTION_CLASS,
   ChatUserMessageBubble,
   CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
   CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
@@ -879,7 +878,7 @@ function ChatThreadEmojiMenuButton({
                 {emoji ? (
                   <span
                     aria-hidden="true"
-                    className="okou-emoji text-base leading-none"
+                    className="font-family-emoji text-base leading-none"
                   >
                     {emoji}
                   </span>
@@ -1282,7 +1281,10 @@ function ChatThreadEmojiPreview() {
     <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-2">
       {preview ? (
         <>
-          <span aria-hidden="true" className="okou-emoji text-lg leading-none">
+          <span
+            aria-hidden="true"
+            className="font-family-emoji text-lg leading-none"
+          >
             {preview.emoji}
           </span>
           <span className="truncate text-xs font-medium text-muted-foreground">
@@ -1517,7 +1519,7 @@ function ChatThreadEmojiGrid({
               onSelect(item.emoji);
             }}
           >
-            <span aria-hidden="true" className="okou-emoji">
+            <span aria-hidden="true" className="font-family-emoji">
               {item.emoji}
             </span>
             {shortcutDigit !== null && (
@@ -2830,10 +2832,7 @@ function ChatThread({
       aria-label={t(($) => {
         return $.chat.thread.ariaLabel;
       })}
-      className={cn(
-        "flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none",
-        CHAT_TOUCH_SELECTION_CLASS,
-      )}
+      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
       ref={setContainerRef}
       tabIndex={-1}
