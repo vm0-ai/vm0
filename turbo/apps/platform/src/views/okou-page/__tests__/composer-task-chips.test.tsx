@@ -570,7 +570,7 @@ test("Workflow result cards rotate three at a time without changing the draft", 
   expect(capture.sentMessages).toHaveLength(0);
 });
 
-test("The workflow catalog filters all nine cards and opens their result previews", async () => {
+test("The workflow catalog filters all nine cards", async () => {
   mockTemplateChat();
   await selectWorkflow();
   click(button("Browse workflows"));
@@ -588,22 +588,30 @@ test("The workflow catalog filters all nine cards and opens their result preview
     expect(button(category, dialog)).toHaveAttribute("aria-pressed", "true");
     expect(workflowCards(dialog)).toHaveLength(count);
   }
-  for (const title of [
-    "Start your day with a clear plan",
-    "Walk into meetings prepared",
-    "Keep important emails moving",
-    "Wrap up your week clearly",
-    "Turn meetings into next steps",
-    "Keep your invoices organized",
-    "Know when competitors change",
-    "See how your business is doing",
-    "Catch the reply you’re waiting for",
-  ]) {
-    click(button(title, dialog));
-    expect(within(dialog).getByRole("img", { name: /^Sample:/ })).toBeVisible();
-    expect(within(dialog).getByRole("heading", { name: title })).toBeVisible();
-    click(button("Browse workflows", dialog));
-  }
+});
+
+test.each([
+  "Start your day with a clear plan",
+  "Walk into meetings prepared",
+  "Keep important emails moving",
+  "Wrap up your week clearly",
+  "Turn meetings into next steps",
+  "Keep your invoices organized",
+  "Know when competitors change",
+  "See how your business is doing",
+  "Catch the reply you’re waiting for",
+])("%s opens its result preview", async (title) => {
+  mockTemplateChat();
+  await selectWorkflow();
+  click(button("Browse workflows"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Find a workflow for your day",
+  });
+  click(button(title, dialog));
+  expect(within(dialog).getByRole("img", { name: /^Sample:/ })).toBeVisible();
+  expect(within(dialog).getByRole("heading", { name: title })).toBeVisible();
+  click(button("Browse workflows", dialog));
+  expect(workflowCards(dialog)).toHaveLength(9);
 });
 
 test("Choosing a built-in workflow preserves the draft and preferences until the user sends", async () => {
