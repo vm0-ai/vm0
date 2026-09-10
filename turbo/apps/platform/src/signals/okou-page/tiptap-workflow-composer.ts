@@ -1024,8 +1024,9 @@ function createInlineTemplateNodeView(
   openButton.type = "button";
   openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
   // The template was chosen from a grid of covers, so the chip leads with the
-  // same cover rather than a generic glyph. 18px inside the 28px chip keeps the
-  // same optical inset the 20px cover has inside the 32px sent-message chip.
+  // same cover rather than a generic glyph. 18px inside this 28px chip keeps
+  // the cover at the proportion the block template-attachment chip above uses:
+  // a 20px cover inside its 32px chip.
   const glyph = document.createElement("span");
   glyph.className =
     "flex size-[18px] shrink-0 items-center justify-center overflow-hidden " +
