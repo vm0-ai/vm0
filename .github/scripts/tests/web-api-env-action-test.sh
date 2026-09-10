@@ -470,7 +470,7 @@ api_backend_url_absent_output="$(
 api_backend_url_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${api_backend_url_absent_dir}/github-output")"
 assert_contains "$api_backend_url_absent_output" "Rendered"
 assert_api_backend_url_absent "$api_backend_url_absent_env_file"
-assert_env_value "$api_backend_url_absent_env_file" PUBLIC_ARTIFACT_SHARES_BASE_URL "https://f.okou.io"
+assert_env_value "$api_backend_url_absent_env_file" PUBLIC_ARTIFACT_SHARES_BASE_URL "https://a.okou.io"
 assert_env_value "$api_backend_url_absent_env_file" FEISHU_CALLBACK_BASE_URL ""
 assert_env_value "$api_backend_url_absent_env_file" FINICITY_WEBHOOK_BASE_URL ""
 

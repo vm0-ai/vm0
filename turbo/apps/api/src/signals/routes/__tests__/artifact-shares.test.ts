@@ -552,7 +552,7 @@ test("audience changes revoke old public tokens; rollback preserves grants and p
     [200],
   );
   expect(publicShare.body.url).toMatch(
-    /^https:\/\/f\.okou\.io\/[a-f0-9]{24}\.pdf$/u,
+    /^https:\/\/a\.okou\.io\/[a-f0-9]{24}\.pdf$/u,
   );
   const first = publicShare.body;
   const organization = await accept(
