@@ -722,6 +722,21 @@ const STRUCTURED_RUN_ERROR_BEHAVIOR: Record<
   usage_limit: "passthrough",
 };
 
+function formatReconnectRunError(
+  recovery: ClaudeCodeCredentialRecovery | undefined,
+): string {
+  if (recovery?.modelProviderType === "codex-oauth-token") {
+    return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
+  }
+  if (recovery?.modelProviderType === "claude-code-oauth-token") {
+    return (
+      formatClaudeCodeCredentialRecoveryMessage(recovery) ??
+      CHAT_RUN_TRANSIENT_ERROR_MESSAGE
+    );
+  }
+  return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+}
+
 function formatStructuredRunError(params: {
   readonly failureReason: RunFailureReasonToken;
   readonly errorMessage: string;
@@ -756,23 +771,7 @@ function formatStructuredRunError(params: {
       return recoveryMessage ?? CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
     }
     case "reconnect": {
-      if (
-        params.claudeCodeCredentialRecovery?.modelProviderType ===
-        "codex-oauth-token"
-      ) {
-        return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
-      }
-      if (
-        params.claudeCodeCredentialRecovery?.modelProviderType ===
-        "claude-code-oauth-token"
-      ) {
-        return (
-          formatClaudeCodeCredentialRecoveryMessage(
-            params.claudeCodeCredentialRecovery,
-          ) ?? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
-        );
-      }
-      return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+      return formatReconnectRunError(params.claudeCodeCredentialRecovery);
     }
     case "terms": {
       return withOptionalActionUrl(

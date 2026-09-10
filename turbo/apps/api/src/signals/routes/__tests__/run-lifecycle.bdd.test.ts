@@ -19515,28 +19515,25 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       "input_too_large",
       "execution_timeout",
       "safety_policy_refusal",
-    ] as const)(
-      "globally suppresses %s",
-      (failureReason) => {
-        it.each([
-          { name: "BYOK", modelProvider: "anthropic-api-key" },
-          { name: "built-in", modelProvider: "built-in" },
-          {
-            name: "legacy provider",
-            persistedModelProvider: "legacy-unknown-provider",
-          },
-        ] satisfies readonly (FailureCase & { readonly name: string })[])(
-          "suppresses the generic log for $name",
-          async (provider) => {
-            const { runId } = await completeFailure({
-              ...provider,
-              failureReason,
-            });
-            expect(genericFailureLogCalls(runId)).toHaveLength(0);
-          },
-        );
-      },
-    );
+    ] as const)("globally suppresses %s", (failureReason) => {
+      it.each([
+        { name: "BYOK", modelProvider: "anthropic-api-key" },
+        { name: "built-in", modelProvider: "built-in" },
+        {
+          name: "legacy provider",
+          persistedModelProvider: "legacy-unknown-provider",
+        },
+      ] satisfies readonly (FailureCase & { readonly name: string })[])(
+        "suppresses the generic log for $name",
+        async (provider) => {
+          const { runId } = await completeFailure({
+            ...provider,
+            failureReason,
+          });
+          expect(genericFailureLogCalls(runId)).toHaveLength(0);
+        },
+      );
+    });
 
     it.each([
       {
