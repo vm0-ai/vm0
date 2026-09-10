@@ -7,12 +7,12 @@ import json
 import threading
 import uuid
 from collections.abc import Callable, Iterator, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import usage
 from tests.threaded_http_test_server import ThreadedHttpTestServer
+from usage.executor import WebhookExecutor
 
 _DeliveryOutcomeCallback = Callable[[usage.webhook.WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
@@ -91,10 +91,10 @@ def install_recording_usage_timer(
 
 
 @contextlib.contextmanager
-def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
+def fresh_usage_executor_context() -> Iterator[WebhookExecutor]:
     """Install a temporary usage executor and restore the original on exit."""
     original = usage.webhook.usage_executor
-    executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
+    executor = WebhookExecutor(max_workers=4, thread_name_prefix="usage-test")
     usage.webhook.usage_executor = executor
     try:
         yield executor
