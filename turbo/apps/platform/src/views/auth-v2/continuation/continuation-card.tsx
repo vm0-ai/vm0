@@ -1,4 +1,5 @@
 import { Button, cn, Input } from "@okouai/ui";
+import type { Computed } from "ccstate";
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
@@ -103,6 +104,7 @@ function OrganizationCreationForm({
   pending,
   creating,
   createOrganization,
+  operationSignal$,
 }: {
   readonly copy: AuthV2ContinuationCopy;
   readonly pending: boolean;
@@ -111,8 +113,9 @@ function OrganizationCreationForm({
     name: string,
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly operationSignal$: Computed<AbortSignal>;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   return (
     <form
       className="space-y-4"
@@ -121,7 +124,7 @@ function OrganizationCreationForm({
         const name = new FormData(event.currentTarget).get("organizationName");
         if (typeof name === "string") {
           detach(
-            createOrganization(name, pageSignal),
+            createOrganization(name, operationSignal),
             Reason.DomCallback,
             "create authentication organization",
           );
@@ -150,17 +153,19 @@ function OrganizationCreationForm({
 
 function OrganizationContent({
   copy,
+  operationSignal$,
   signals,
   state,
 }: {
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
   readonly state: Extract<
     AuthV2ContinuationState,
     { task: "choose-organization" }
   >;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   const [selectionLoadable, selectOrganization] = useLoadableSet(
     signals.selectOrganization$,
   );
@@ -187,7 +192,7 @@ function OrganizationContent({
               disabled={selectionPending}
               onClick={() => {
                 detach(
-                  recover(pageSignal),
+                  recover(operationSignal),
                   Reason.DomCallback,
                   "reload organization choices",
                 );
@@ -219,7 +224,7 @@ function OrganizationContent({
               }
               onSelect={() => {
                 detach(
-                  selectOrganization(organization.id, pageSignal),
+                  selectOrganization(organization.id, operationSignal),
                   Reason.DomCallback,
                   "select auth v2 organization",
                 );
@@ -245,7 +250,7 @@ function OrganizationContent({
               primary={copy.joinOrganization(invitation.name)}
               onSelect={() => {
                 detach(
-                  acceptInvitation(invitation.id, pageSignal),
+                  acceptInvitation(invitation.id, operationSignal),
                   Reason.DomCallback,
                   "accept authentication organization invitation",
                 );
@@ -260,6 +265,7 @@ function OrganizationContent({
           pending={selectionPending}
           creating={createLoadable.state === "loading"}
           createOrganization={createOrganization}
+          operationSignal$={operationSignal$}
         />
       ) : null}
     </div>
@@ -269,13 +275,15 @@ function OrganizationContent({
 function OrganizationFooter({
   accountIdentifier,
   copy,
+  operationSignal$,
   signals,
 }: {
   readonly accountIdentifier: string;
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   const signingOut = restartLoadable.state === "loading";
   return (
@@ -293,7 +301,7 @@ function OrganizationFooter({
         disabled={signingOut}
         onClick={() => {
           detach(
-            restart(pageSignal),
+            restart(operationSignal),
             Reason.DomCallback,
             "sign out of auth v2 organization continuation",
           );
@@ -313,12 +321,14 @@ function OrganizationFooter({
 
 function RecoveryContent({
   copy,
+  operationSignal$,
   signals,
 }: {
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   const restarting = restartLoadable.state === "loading";
   return (
@@ -329,7 +339,7 @@ function RecoveryContent({
       disabled={restarting}
       onClick={() => {
         detach(
-          restart(pageSignal),
+          restart(operationSignal),
           Reason.DomCallback,
           "restart auth v2 after continuation failure",
         );
@@ -347,11 +357,13 @@ function RecoveryContent({
 
 export function AuthV2ContinuationCard({
   authBrand,
+  operationSignal$ = pageSignal$,
   signals,
   state,
   surface = "page",
 }: {
   readonly authBrand: AuthBrandContext;
+  readonly operationSignal$?: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
   readonly state: AuthV2ContinuationState;
   readonly surface?: "dialog" | "page";
@@ -370,11 +382,25 @@ export function AuthV2ContinuationCard({
         : `continuation:${state.status}`;
   const content =
     state.status === "incomplete" && state.task !== "choose-organization" ? (
-      <AuthV2SecurityTaskContent copy={copy} signals={signals} state={state} />
+      <AuthV2SecurityTaskContent
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
     ) : state.status === "incomplete" ? (
-      <OrganizationContent copy={copy} signals={signals} state={state} />
+      <OrganizationContent
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
     ) : state.status === "failure" || state.status === "unknown" ? (
-      <RecoveryContent copy={copy} signals={signals} />
+      <RecoveryContent
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+      />
     ) : (
       <LoadingContent label={heading.description} />
     );
@@ -386,6 +412,7 @@ export function AuthV2ContinuationCard({
           <OrganizationFooter
             accountIdentifier={state.accountIdentifier}
             copy={copy}
+            operationSignal$={operationSignal$}
             signals={signals}
           />
         ) : null

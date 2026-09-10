@@ -1,4 +1,5 @@
 import { Button, Checkbox, cn, Input } from "@okouai/ui";
+import type { Computed } from "ccstate";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { ChevronRight, Loader2, Mail } from "lucide-react";
@@ -11,7 +12,6 @@ import type {
   AuthV2SignInSignals,
   AuthV2SignInState,
 } from "../../../signals/auth-v2/sign-in-flow.ts";
-import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import {
@@ -51,6 +51,10 @@ type IncompleteSignInState = Extract<
 interface SignInStepProps {
   readonly copy: AuthV2SignInCopy;
   readonly signals: AuthV2SignInSignals;
+}
+
+interface SignInOperationStepProps extends SignInStepProps {
+  readonly operationSignal$: Computed<AbortSignal>;
 }
 
 const AUTH_V2_SIGN_IN_ERROR_ID = "auth-v2-sign-in-error";
@@ -287,13 +291,14 @@ function identifierFieldPresentation(
 
 function IdentifierStep({
   copy,
+  operationSignal$,
   signals,
   state,
-}: SignInStepProps & { readonly state: IncompleteSignInState }) {
-  const pageSignal = useGet(pageSignal$);
+}: SignInOperationStepProps & { readonly state: IncompleteSignInState }) {
   const identifier = useGet(signals.identifier$);
   const error = useGet(signals.error$);
   const pendingFactorId = useGet(signals.pendingFactorId$);
+  const operationSignal = useGet(operationSignal$);
   const setIdentifier = useSet(signals.setIdentifier$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
   const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
@@ -309,11 +314,11 @@ function IdentifierStep({
     selectLoadable.state === "loading" ? pendingFactorId : null;
   const field = identifierFieldPresentation(state.identifierMode, copy);
   const handleSubmit = authV2SubmitHandler(() => {
-    return submit(pageSignal);
+    return submit(operationSignal);
   }, "submit auth v2 sign in");
   const handleSelectFactor = (factorId: string): void => {
     detach(
-      selectFactor(factorId, pageSignal),
+      selectFactor(factorId, operationSignal),
       Reason.DomCallback,
       "select auth v2 sign in factor",
     );
@@ -394,17 +399,18 @@ function IdentifierStep({
 
 function ChooseSessionStep({
   copy,
+  operationSignal$,
   signals,
   state,
-}: SignInStepProps & { readonly state: IncompleteSignInState }) {
-  const pageSignal = useGet(pageSignal$);
+}: SignInOperationStepProps & { readonly state: IncompleteSignInState }) {
+  const operationSignal = useGet(operationSignal$);
   const useAnotherAccount = useSet(signals.useAnotherAccount$);
   const [selectionLoadable, selectSession] = useLoadableSet(
     signals.selectSession$,
   );
   const selectAccount = (sessionId: string): void => {
     detach(
-      selectSession(sessionId, pageSignal),
+      selectSession(sessionId, operationSignal),
       Reason.DomCallback,
       "select existing auth v2 session",
     );
@@ -467,10 +473,11 @@ function ChooseSessionStep({
 
 function ChooseFactorStep({
   copy,
+  operationSignal$,
   signals,
   state,
-}: SignInStepProps & { readonly state: IncompleteSignInState }) {
-  const pageSignal = useGet(pageSignal$);
+}: SignInOperationStepProps & { readonly state: IncompleteSignInState }) {
+  const operationSignal = useGet(operationSignal$);
   const pendingFactorId = useGet(signals.pendingFactorId$);
   const back = useSet(signals.backFromMethods$);
   const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
@@ -489,7 +496,7 @@ function ChooseFactorStep({
   });
   const handleSelectFactor = (factorId: string): void => {
     detach(
-      selectFactor(factorId, pageSignal),
+      selectFactor(factorId, operationSignal),
       Reason.DomCallback,
       "select auth v2 sign in factor",
     );
@@ -564,12 +571,13 @@ function ChooseFactorStep({
 
 function PasswordStep({
   copy,
+  operationSignal$,
   signals,
   state,
-}: SignInStepProps & { readonly state: IncompleteSignInState }) {
-  const pageSignal = useGet(pageSignal$);
+}: SignInOperationStepProps & { readonly state: IncompleteSignInState }) {
   const password = useGet(signals.password$);
   const error = useGet(signals.error$);
+  const operationSignal = useGet(operationSignal$);
   const setPassword = useSet(signals.setPassword$);
   const backToMethods = useSet(signals.backToMethods$);
   const showPasswordRecovery = useSet(signals.showPasswordRecovery$);
@@ -578,7 +586,7 @@ function PasswordStep({
     return factor.kind === "password-reset";
   });
   const handleSubmit = authV2SubmitHandler(() => {
-    return submit(pageSignal);
+    return submit(operationSignal);
   }, "submit auth v2 sign in");
   const submitting = submitLoadable.state === "loading";
   return (
@@ -645,10 +653,11 @@ function passwordRecoveryFactors(state: IncompleteSignInState) {
 
 function PasswordRecoveryStep({
   copy,
+  operationSignal$,
   signals,
   state,
-}: SignInStepProps & { readonly state: IncompleteSignInState }) {
-  const pageSignal = useGet(pageSignal$);
+}: SignInOperationStepProps & { readonly state: IncompleteSignInState }) {
+  const operationSignal = useGet(operationSignal$);
   const pendingFactorId = useGet(signals.pendingFactorId$);
   const back = useSet(signals.backFromPasswordRecovery$);
   const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
@@ -657,7 +666,7 @@ function PasswordRecoveryStep({
   const selecting = selectLoadable.state === "loading";
   const selectingFactorId = selecting ? pendingFactorId : null;
   const handleSelectFactor = (factorId: string): void => {
-    selectRecoveryFactor(selectFactor, factorId, pageSignal);
+    selectRecoveryFactor(selectFactor, factorId, operationSignal);
   };
   return (
     <div className="flex flex-col gap-6">
@@ -885,14 +894,15 @@ function CodeResendButton({
 
 function CodeStep({
   copy,
+  operationSignal$,
   signals,
   state,
-}: SignInStepProps & {
+}: SignInOperationStepProps & {
   readonly state: IncompleteSignInState;
 }) {
-  const pageSignal = useGet(pageSignal$);
   const code = useGet(signals.code$);
   const error = useGet(signals.error$);
+  const operationSignal = useGet(operationSignal$);
   const setCode = useSet(signals.setCode$);
   const backToIdentifier = useSet(signals.backToIdentifier$);
   const backToMethods = useSet(signals.backToMethods$);
@@ -915,11 +925,11 @@ function CodeStep({
       ? secondFactor.safeIdentifier
       : null;
   const handleSubmit = authV2SubmitHandler(() => {
-    return submit(pageSignal);
+    return submit(operationSignal);
   }, "submit auth v2 sign in");
   const handleResend = (): void => {
     detach(
-      resendCode(pageSignal),
+      resendCode(operationSignal),
       Reason.DomCallback,
       "resend auth v2 sign in code",
     );
@@ -1021,12 +1031,16 @@ function CodeStepBottomAction({
   );
 }
 
-function NewPasswordStep({ copy, signals }: SignInStepProps) {
-  const pageSignal = useGet(pageSignal$);
+function NewPasswordStep({
+  copy,
+  operationSignal$,
+  signals,
+}: SignInOperationStepProps) {
   const newPassword = useGet(signals.newPassword$);
   const confirmPassword = useGet(signals.confirmPassword$);
   const signOutOfOtherSessions = useGet(signals.signOutOfOtherSessions$);
   const error = useGet(signals.error$);
+  const operationSignal = useGet(operationSignal$);
   const setNewPassword = useSet(signals.setNewPassword$);
   const setConfirmPassword = useSet(signals.setConfirmPassword$);
   const setSignOutOfOtherSessions = useSet(signals.setSignOutOfOtherSessions$);
@@ -1041,7 +1055,7 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
       ? error
       : null;
   const handleSubmit = authV2SubmitHandler(() => {
-    return submit(pageSignal);
+    return submit(operationSignal);
   }, "submit auth v2 sign in");
   const submitting = submitLoadable.state === "loading";
   return (
@@ -1140,10 +1154,11 @@ function UnknownStep({ copy, signals }: SignInStepProps) {
 
 export function SignInCardContent({
   copy,
+  operationSignal$,
   signUpHref,
   signals,
   state,
-}: SignInStepProps & {
+}: SignInOperationStepProps & {
   readonly signUpHref: string;
   readonly state: AuthV2SignInState;
 }) {
@@ -1162,33 +1177,95 @@ export function SignInCardContent({
     return <UnknownStep copy={copy} signals={signals} />;
   }
   if (state.step === "choose-session") {
-    return <ChooseSessionStep copy={copy} signals={signals} state={state} />;
+    return (
+      <ChooseSessionStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "identifier") {
-    return <IdentifierStep copy={copy} signals={signals} state={state} />;
+    return (
+      <IdentifierStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "choose-factor") {
-    return <ChooseFactorStep copy={copy} signals={signals} state={state} />;
+    return (
+      <ChooseFactorStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "password") {
-    return <PasswordStep copy={copy} signals={signals} state={state} />;
+    return (
+      <PasswordStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "password-recovery") {
-    return <PasswordRecoveryStep copy={copy} signals={signals} state={state} />;
+    return (
+      <PasswordRecoveryStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "help") {
     return <HelpStep copy={copy} signals={signals} />;
   }
   if (state.step === "email-code") {
-    return <CodeStep copy={copy} signals={signals} state={state} />;
+    return (
+      <CodeStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "second-factor") {
-    return <CodeStep copy={copy} signals={signals} state={state} />;
+    return (
+      <CodeStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
   if (state.step === "password-reset-code") {
-    return <CodeStep copy={copy} signals={signals} state={state} />;
+    return (
+      <CodeStep
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    );
   }
-  return <NewPasswordStep copy={copy} signals={signals} />;
+  return (
+    <NewPasswordStep
+      copy={copy}
+      operationSignal$={operationSignal$}
+      signals={signals}
+    />
+  );
 }
 
 export function SignInSwitch({

@@ -1,4 +1,5 @@
 import { Button, Input } from "@okouai/ui";
+import type { Computed } from "ccstate";
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 
@@ -7,7 +8,6 @@ import type {
   AuthV2SecurityTaskAction,
   AuthV2SecurityTaskState,
 } from "../../../signals/auth-v2/continuation-security.ts";
-import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
 import { AuthV2SubmitButton } from "../auth-v2-submit-button.tsx";
@@ -263,20 +263,22 @@ function MfaSetupStep(props: SecurityStepProps & { readonly state: MfaState }) {
 
 export function AuthV2SecurityTaskContent({
   copy,
+  operationSignal$,
   signals,
   state,
 }: {
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
   readonly state: AuthV2SecurityTaskState;
 }) {
   const signInCopy = useAuthV2SignInCopy();
-  const pageSignal = useGet(pageSignal$);
+  const signal = useGet(operationSignal$);
   const [loadable, submit] = useLoadableSet(signals.submitSecurityTask$);
   const busy = loadable.state === "loading";
   const run = (action: AuthV2SecurityTaskAction) => {
     detach(
-      submit(action, pageSignal),
+      submit(action, signal),
       Reason.DomCallback,
       "complete authentication security task",
     );

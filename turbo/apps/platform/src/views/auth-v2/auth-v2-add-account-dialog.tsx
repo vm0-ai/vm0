@@ -51,6 +51,7 @@ function AuthV2AddAccountDialogContent({
         {continuationState.status !== "inactive" ? (
           <AuthV2ContinuationCard
             authBrand={model.platformContext.authBrand}
+            operationSignal$={model.operationSignal$}
             signals={model.continuationSignals}
             state={continuationState}
             surface="dialog"
@@ -59,6 +60,7 @@ function AuthV2AddAccountDialogContent({
           <AuthV2SignInCard
             authBrand={model.platformContext.authBrand}
             navigation={model.platformContext.navigation}
+            operationSignal$={model.operationSignal$}
             signals={model.signInSignals}
             surface="dialog"
           />
