@@ -18,7 +18,7 @@ function foreignKeyReference(
 }
 
 describe("agentRuns circular foreign keys", () => {
-  it("resolves both agent_runs and chat_threads references from the root schema", async () => {
+  it("resolves physical circular foreign keys and the runtime projection from the root schema", async () => {
     const referenceRegistry = await import("../schema/agent-run-reference");
     expect(() => {
       return referenceRegistry.resolveAgentRunId();
@@ -37,7 +37,22 @@ describe("agentRuns circular foreign keys", () => {
     const { threadGoals } = await import("../schema/thread-goal");
     const { workflowAutomations } = await import("../schema/workflow");
 
-    expect(schema.agentRuns).toBe(agentRuns);
+    const { agentRuns: runtimeAgentRuns } =
+      await import("../runtime/agent-run");
+    expect(schema.agentRuns).toBe(runtimeAgentRuns);
+    const runtimeSession = foreignKeyReference(runtimeAgentRuns, "session_id");
+    expect(runtimeSession.foreignKey.onDelete).toBe("cascade");
+    expect(runtimeSession.reference.foreignTable).toBe(schema.agentSessions);
+    expect(runtimeSession.reference.foreignColumns).toEqual([
+      schema.agentSessions.id,
+    ]);
+    const runtimeThread = foreignKeyReference(
+      runtimeAgentRuns,
+      "chat_thread_id",
+    );
+    expect(runtimeThread.foreignKey.onDelete).toBe("set null");
+    expect(runtimeThread.reference.foreignTable).toBe(chatThreads);
+    expect(runtimeThread.reference.foreignColumns).toEqual([chatThreads.id]);
     expect(schema.chatThreads).toBe(chatThreads);
 
     const chatThread = foreignKeyReference(agentRuns, "chat_thread_id");

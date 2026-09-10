@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -23,12 +23,7 @@ import {
   type WorkflowQueueDrainResult,
 } from "./workflow-queue-drain.service";
 import { expiredCancellationRecoveryThreads } from "./chat-active-run.service";
-import { drainGoalQueueForThread$ } from "./goal-queue-drain.service";
-import {
-  GoalSchedulerTimingCollector,
-  type ApiDispatchTimingCollector,
-  type GoalSchedulerTimingOrigin,
-} from "./api-dispatch-timing.service";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
@@ -51,9 +46,6 @@ interface DrainChatThreadQueueInput {
   readonly apiStartTime?: number;
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
-  readonly goalContinuationAdmitted?: boolean;
-  readonly goalSchedulerOrigin?: GoalSchedulerTimingOrigin;
-  readonly goalSchedulerTiming?: GoalSchedulerTimingCollector;
   readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
   readonly automationEventLaunch?: {
@@ -114,8 +106,7 @@ export async function notifyRunningChatRunOfPendingInput(
 
 /**
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
- * resume, and the stale sweep all converge here. The standard path attempts
- * retirement revocation before user messages and workflow automations. The
+ * resume, and the stale sweep all converge here. User messages precede workflow automations. The
  * final claims serialize on the same thread row and fold
  * pending events by class priority, then original `created_at` and id.
  *
@@ -130,37 +121,13 @@ export const drainChatThreadQueueForThread$ = command(
   ): Promise<WorkflowQueueDrainResult | null> => {
     const schedulerEnteredAt = now();
     const apiStartTime = input.apiStartTime ?? schedulerEnteredAt;
-    const goalSchedulerTiming =
-      input.goalSchedulerTiming ??
-      new GoalSchedulerTimingCollector(
-        apiStartTime,
-        input.goalSchedulerOrigin ?? "direct",
-      );
-    const timingHasPreEntry = input.goalSchedulerTiming !== undefined;
     const db = set(writeDb$);
 
-    await set(drainGoalQueueForThread$, input.chatThreadId, signal);
-    if (!timingHasPreEntry) {
-      goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
-        schedulerEnteredAt,
-      );
-    }
-    // Run-based drains close their database lookup at this common entry, so
-    // that phase also includes the command handoff. Direct drains emit the
-    // same action with zero duration to keep one fixed per-run action set.
-    goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
-      schedulerEnteredAt,
-    );
     const notifiedRunningRun = await notifyRunningChatRunOfPendingInput(
       db,
       input.chatThreadId,
     );
     signal.throwIfAborted();
-    goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
-    );
     if (notifiedRunningRun) {
       return null;
     }
@@ -176,9 +143,6 @@ export const drainChatThreadQueueForThread$ = command(
       signal,
     );
     signal.throwIfAborted();
-    goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
-    );
     const workflowResult = await set(
       drainWorkflowQueueForThread$,
       {
@@ -193,9 +157,6 @@ export const drainChatThreadQueueForThread$ = command(
       signal,
     );
     signal.throwIfAborted();
-    goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
-    );
     return workflowResult;
   },
 );
@@ -208,19 +169,9 @@ export const drainChatThreadQueueForRun$ = command(
       readonly runId: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly apiStartTime: number;
-      readonly goalSchedulerOrigin?: GoalSchedulerTimingOrigin;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const lookupStartedAt = now();
-    const goalSchedulerTiming = new GoalSchedulerTimingCollector(
-      input.apiStartTime,
-      input.goalSchedulerOrigin ?? "run_recovery",
-    );
-    goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
-      lookupStartedAt,
-    );
     const db = set(writeDb$);
     const [run] = await db
       .select({ chatThreadId: agentRuns.chatThreadId })
@@ -239,7 +190,6 @@ export const drainChatThreadQueueForRun$ = command(
         chatThreadId: run.chatThreadId,
         apiStartTime: input.apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-        goalSchedulerTiming,
       },
       signal,
     );
@@ -318,7 +268,6 @@ export const drainStaleChatThreadQueues$ = command(
           {
             chatThreadId: candidate.chatThreadId,
             dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-            goalSchedulerOrigin: "stale_sweep",
             queueItemCreatedBefore:
               candidate.reason === "queue-item-stale"
                 ? candidate.queueItemCreatedBefore

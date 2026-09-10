@@ -9,7 +9,7 @@ import {
   type RunnerStartupPath,
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";

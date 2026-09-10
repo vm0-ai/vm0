@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { webhookUsageEventContract } from "@okouai/api-contracts/contracts/webhooks";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";

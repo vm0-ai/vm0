@@ -502,7 +502,7 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
-  it("revokes retired Goal input before resolving an unavailable model", async () => {
+  it("ignores retired Goal input without resolving an unavailable model", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     await chatCallbacks.updateOrgModelPolicies(scenario.actor, [
@@ -543,7 +543,7 @@ describe("workflow queue", () => {
       events.filter((event) => {
         return event.revokesEventId === goal.eventId;
       }),
-    ).toMatchObject([{ eventType: "control.revoke" }]);
+    ).toStrictEqual([]);
     await expect(
       readGoalQueueStateFixture(automation.threadId),
     ).resolves.toMatchObject({ runIds: [] });
@@ -630,7 +630,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, user.body.runId, [200]);
   });
 
-  it("falls back to a pending automation ahead of an admitted goal", async () => {
+  it("runs a pending automation while ignoring a stale Goal input", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({
@@ -650,7 +650,6 @@ describe("workflow queue", () => {
     await drainChatThreadQueueFixture({
       threadId: automation.threadId,
       signal: context.signal,
-      goalContinuationAdmitted: true,
     });
 
     const [workflowRunId] = await workflowRunIds(automation.threadId);
@@ -706,10 +705,10 @@ describe("workflow queue", () => {
       events.filter((event) => {
         return event.revokesEventId === goal.eventId;
       }),
-    ).toMatchObject([{ eventType: "control.revoke" }]);
+    ).toStrictEqual([]);
   });
 
-  it("leaves fresh automation queued while revoking a stale Goal input", async () => {
+  it("leaves fresh automation queued while ignoring stale Goal input", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({
@@ -801,7 +800,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, workflowRunId, [200]);
   });
 
-  it("revokes an invalid goal event once the automation ahead of it completes", async () => {
+  it("preserves stale Goal history when the automation ahead of it completes", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({
@@ -824,12 +823,11 @@ describe("workflow queue", () => {
 
     await completeRunThroughSandbox(scenario, workflowRunId);
     const events = await wf.readThreadEvents(automation.threadId);
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: goal.eventId,
+    expect(
+      events.filter((event) => {
+        return event.revokesEventId === goal.eventId;
       }),
-    );
+    ).toStrictEqual([]);
     const goalQueue = await readGoalQueueStateFixture(automation.threadId);
     expect(goalQueue.runIds).toHaveLength(0);
   });
@@ -1174,7 +1172,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
-  it("settles a queued legacy Goal and continues with the next ordinary automation", async () => {
+  it("rejects captured Goal promotion without rewriting it as an ordinary run", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
@@ -1204,22 +1202,12 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
     await flushWaitUntilForTest();
     const retired = await runsApi.readRun(scenario.actor, goalRunId);
-    expect(retired.status).toBe("cancelled");
-    expect(retired.error).toContain("Goals have been retired");
-    const remaining = await workflowRunIds(automation.threadId);
-    expect(remaining).toHaveLength(3);
-    const follower = remaining[2];
-    if (!follower) {
-      throw new Error("Expected the normal automation follower");
-    }
-    expect((await runsApi.readRun(scenario.actor, follower)).status).toBe(
-      "pending",
-    );
-    await runsApi.heartbeatRunner(scenario.runnerGroup);
-    expect(
-      (await runsApi.requestClaimRunnerJob(true, follower, [200])).status,
-    ).toBe(200);
-    await runsApi.requestCancelRun(scenario.actor, follower, [200]);
+    expect(retired.status).toBe("queued");
+    expect(retired.error).toBeUndefined();
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+    // Explicit ordinary cancellation can unblock the thread; the queue worker
+    // itself has no remaining retirement settlement authority.
+    await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
   });
 
   it("keeps a concurrency-queued workflow run when the completion request is aborted", async () => {
@@ -1281,7 +1269,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
-  it("revokes Goal work without allocating an org concurrency slot", async () => {
+  it("ignores Goal work without allocating an org concurrency slot", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");

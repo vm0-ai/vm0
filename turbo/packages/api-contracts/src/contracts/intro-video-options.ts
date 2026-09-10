@@ -5,7 +5,7 @@ import {
   introVideoVoiceSchema,
 } from "./intro-video-presenter";
 
-export const explainerVideoOptionsSchema = z.object({
+export const introVideoOptionsSchema = z.object({
   style: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("auto") }),
     z.object({ kind: z.literal("catalog"), style: introVideoStyleSchema }),
@@ -21,4 +21,4 @@ export const explainerVideoOptionsSchema = z.object({
   ]),
 });
 
-export type ExplainerVideoOptions = z.infer<typeof explainerVideoOptionsSchema>;
+export type IntroVideoOptions = z.infer<typeof introVideoOptionsSchema>;

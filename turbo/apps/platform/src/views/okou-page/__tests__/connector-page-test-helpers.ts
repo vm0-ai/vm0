@@ -210,6 +210,9 @@ export function publicStatusItem(args: {
   };
 }
 
+/** What the API returns per category when no category is asked for by name. */
+const DISCOVERY_PER_CATEGORY = 12;
+
 export function mockPublicConnectorStatus(
   context: TestContext,
   connectors: readonly PublicConnectorCatalogStatusItem[],
@@ -222,14 +225,30 @@ export function mockPublicConnectorStatus(
       ...(categoryMetadata ? { categoryMetadata } : {}),
     });
   });
-  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
-    return respond(200, {
-      connectors: [...connectors],
-      totalConnectorCount: connectors.length,
-      ...(categoryMetadata ? { categoryMetadata } : {}),
-      ...(categoryConnectorCounts ? { categoryConnectorCounts } : {}),
-    });
-  });
+  context.mocks.api(
+    connectorCatalogContract.discovery,
+    ({ query, respond }) => {
+      // Production slices discovery per category and answers a named category
+      // with the whole category. The fixture does the same, or the category view
+      // is tested against a response the API never returns.
+      const perCategory = new Map<string, number>();
+      const scoped = query.category
+        ? connectors.filter((connector) => {
+            return connector.category === query.category;
+          })
+        : connectors.filter((connector) => {
+            const shown = perCategory.get(connector.category) ?? 0;
+            perCategory.set(connector.category, shown + 1);
+            return shown < DISCOVERY_PER_CATEGORY;
+          });
+      return respond(200, {
+        connectors: [...scoped],
+        totalConnectorCount: connectors.length,
+        ...(categoryMetadata ? { categoryMetadata } : {}),
+        ...(categoryConnectorCounts ? { categoryConnectorCounts } : {}),
+      });
+    },
+  );
 }
 
 export function customConnector(

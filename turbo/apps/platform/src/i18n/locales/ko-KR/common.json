@@ -598,8 +598,6 @@
       "category": "템플릿 카테고리",
       "chooseVoice": "{{title}}의 음성 선택",
       "creativeVideo": "창작 영상",
-      "explainerUnavailable": "이 동영상 템플릿은 더 이상 사용할 수 없습니다. 메시지를 보내려면 삭제하세요.",
-      "explainerVideo": "설명 영상",
       "filters": {
         "age": "연령",
         "all": "전체",
@@ -621,6 +619,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}}장",
       "importedSlides_other": "{{count}}장",
+      "introVideo": "인트로 영상",
+      "introVideoUnavailable": "이 동영상 템플릿은 더 이상 사용할 수 없습니다. 메시지를 보내려면 삭제하세요.",
       "multiAccent": "다중 악센트",
       "needPro": "Pro 필요",
       "nextSlide": "다음 슬라이드 미리보기",
@@ -2026,20 +2026,6 @@
       },
       "runCancelled": "중간에 일시 중지됨 — 언제든 다시 시작하세요."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
-      "avatarVoice": "아바타 음성",
-      "changeAvatar": "아바타 변경",
-      "chooseStyle": "스타일 선택",
-      "chooseStyleAndVoice": "스타일과 음성을 선택하세요.",
-      "noMatches": "결과가 없습니다. 다른 검색어나 카테고리를 사용해 보세요.",
-      "ready": "준비되었습니다. 채팅에 콘텐츠를 추가하세요.",
-      "searchAvatars": "아바타 검색",
-      "searchStyles": "스타일 검색",
-      "settings": "설명 영상 설정",
-      "style": "스타일",
-      "useSelection": "선택 항목 사용"
-    },
     "feedback": {
       "emailDraftDescription": "이메일 초안 (메일 초안 ID: {{id}})",
       "partHeading": "답변 이 부분에 대한 피드백:",
@@ -2083,6 +2069,20 @@
       },
       "footer": {
         "cancel": "취소"
+      },
+      "picker": {
+        "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
+        "avatarVoice": "아바타 음성",
+        "changeAvatar": "아바타 변경",
+        "chooseStyle": "스타일 선택",
+        "chooseStyleAndVoice": "스타일과 음성을 선택하세요.",
+        "noMatches": "결과가 없습니다. 다른 검색어나 카테고리를 사용해 보세요.",
+        "ready": "준비되었습니다. 채팅에 콘텐츠를 추가하세요.",
+        "searchAvatars": "아바타 검색",
+        "searchStyles": "스타일 검색",
+        "settings": "인트로 영상 설정",
+        "style": "스타일",
+        "useSelection": "선택 항목 사용"
       },
       "style": {
         "auto": "Okou에게 맡기기",

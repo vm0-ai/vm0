@@ -32,3 +32,15 @@ export function setUser(
 }
 
 export function setTags(): void {}
+
+// The page options register this integration. The mock does not run Sentry's
+// event pipeline, so it stays inert and the recorded options remain assertable.
+export function thirdPartyErrorFilterIntegration(
+  _options: Parameters<
+    typeof import("@sentry/browser").thirdPartyErrorFilterIntegration
+  >[0],
+): ReturnType<
+  typeof import("@sentry/browser").thirdPartyErrorFilterIntegration
+> {
+  return { name: "ThirdPartyErrorsFilter" };
+}

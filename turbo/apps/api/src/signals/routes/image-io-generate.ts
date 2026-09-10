@@ -10,7 +10,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

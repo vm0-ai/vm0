@@ -144,76 +144,48 @@ fn repair_owner(directory: &Path, uid: u32, gid: u32) -> io::Result<()> {
     Ok(())
 }
 
-struct Mount {
-    id: u64,
-    device: (u32, u32),
-    target: Vec<u8>,
-}
-
-fn parse_mountinfo(input: &[u8]) -> io::Result<Vec<Mount>> {
-    let mut mounts = Vec::new();
-    for line in input
-        .split(|byte| *byte == b'\n')
-        .filter(|line| !line.is_empty())
-    {
-        let fields: Vec<_> = line.split(|byte| *byte == b' ').collect();
-        let Some(separator) = fields.iter().position(|field| *field == b"-") else {
-            return Err(invalid("invalid workspace mountinfo record"));
-        };
-        if separator < 6 || fields.len() != separator + 4 {
-            return Err(invalid("invalid workspace mountinfo fields"));
-        }
-        let [id, _, device, _, target, ..] = fields.as_slice() else {
-            return Err(invalid("invalid workspace mountinfo fields"));
-        };
-        let id = parse_number(id)?;
-        let mut device = device.split(|byte| *byte == b':');
-        let major = parse_number(device.next().unwrap_or_default())?;
-        let minor = parse_number(device.next().unwrap_or_default())?;
-        if device.next().is_some() {
-            return Err(invalid("invalid workspace mountinfo device"));
-        }
-        mounts.push(Mount {
-            id,
-            device: (major, minor),
-            target: decode_mount_path(target)?,
-        });
-    }
+fn parse_mountinfo(input: &[u8]) -> io::Result<Vec<linux_mountinfo::Mount>> {
+    let mounts = linux_mountinfo::parse(input).collect::<io::Result<Vec<_>>>()?;
     if mounts.is_empty() {
         return Err(invalid("workspace mountinfo is empty"));
     }
     Ok(mounts)
 }
 
-fn parse_number<T: std::str::FromStr>(input: &[u8]) -> io::Result<T> {
-    std::str::from_utf8(input)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .ok_or_else(|| invalid("invalid workspace mountinfo number"))
-}
-
-fn decode_mount_path(input: &[u8]) -> io::Result<Vec<u8>> {
-    let mut path = Vec::with_capacity(input.len());
-    let mut index = 0;
-    while let Some(&byte) = input.get(index) {
-        if byte != b'\\' {
-            path.push(byte);
-            index += 1;
-            continue;
-        }
-        let decoded = match input.get(index..index + 4) {
-            Some(b"\\040") => b' ',
-            Some(b"\\011") => b'\t',
-            Some(b"\\012") => b'\n',
-            Some(b"\\134") => b'\\',
-            _ => return Err(invalid("invalid workspace mountinfo path escape")),
-        };
-        path.push(decoded);
-        index += 4;
-    }
-    Ok(path)
-}
-
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_mountinfo_preserves_mount_identity_and_target_bytes() {
+        let mounts = parse_mountinfo(
+            b"42 25 253:17 /root/\xff /home/user/work\\040space\xfe rw shared:7 - ext4 /dev/vdb rw",
+        )
+        .unwrap();
+
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].id, 42);
+        assert_eq!(mounts[0].device, (253, 17));
+        assert_eq!(mounts[0].target, b"/home/user/work space\xfe");
+    }
+
+    #[test]
+    fn workspace_mountinfo_rejects_empty_tables_and_any_malformed_record() {
+        for input in [
+            b"".as_slice(),
+            b"\n\n",
+            b"malformed\n42 25 0:32 / /home/user/workspace rw - ext4 /dev/vdb rw",
+            b"42 25 0:32 / /home/user/workspace rw - ext4 /dev/vdb rw\nmalformed",
+            br"42 25 0:32 / /home/user/work\041space rw - ext4 /dev/vdb rw",
+        ] {
+            assert_eq!(
+                parse_mountinfo(input).unwrap_err().kind(),
+                io::ErrorKind::InvalidData,
+            );
+        }
+    }
 }

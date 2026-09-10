@@ -617,8 +617,6 @@
       "category": "Catégorie de modèle",
       "chooseVoice": "Choisir une voix pour {{title}}",
       "creativeVideo": "Vidéo créative",
-      "explainerUnavailable": "Ce modèle vidéo n’est plus disponible. Retirez-le pour envoyer votre message.",
-      "explainerVideo": "Vidéo explicative",
       "filters": {
         "age": "Âge",
         "all": "Tous",
@@ -641,6 +639,8 @@
       "importedSlides_one": "{{count}} diapositive",
       "importedSlides_many": "{{count}} diapositives",
       "importedSlides_other": "{{count}} diapositives",
+      "introVideo": "Vidéo d’intro",
+      "introVideoUnavailable": "Ce modèle vidéo n’est plus disponible. Retirez-le pour envoyer votre message.",
       "multiAccent": "Multi-accents",
       "needPro": "Pro requis",
       "nextSlide": "Aperçu de la diapositive suivante",
@@ -2067,20 +2067,6 @@
       },
       "runCancelled": "En pause au milieu d'une pensée — reprenez-la quand vous voulez."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "Trouvez une voix adaptée à votre contenu.",
-      "avatarVoice": "Voix de l’avatar",
-      "changeAvatar": "Changer d’avatar",
-      "chooseStyle": "Choisir un style",
-      "chooseStyleAndVoice": "Choisissez un style et une voix.",
-      "noMatches": "Aucun résultat. Essayez une autre recherche ou catégorie.",
-      "ready": "Prêt à utiliser. Ajoutez votre contenu dans le chat.",
-      "searchAvatars": "Rechercher des avatars",
-      "searchStyles": "Rechercher des styles",
-      "settings": "Paramètres de la vidéo explicative",
-      "style": "Style",
-      "useSelection": "Utiliser la sélection"
-    },
     "feedback": {
       "emailDraftDescription": "un brouillon d'email (ID du brouillon : {{id}})",
       "partHeading": "Retour sur cette partie de votre réponse :",
@@ -2126,6 +2112,20 @@
       },
       "footer": {
         "cancel": "Annuler"
+      },
+      "picker": {
+        "autoVoiceDescription": "Trouvez une voix adaptée à votre contenu.",
+        "avatarVoice": "Voix de l’avatar",
+        "changeAvatar": "Changer d’avatar",
+        "chooseStyle": "Choisir un style",
+        "chooseStyleAndVoice": "Choisissez un style et une voix.",
+        "noMatches": "Aucun résultat. Essayez une autre recherche ou catégorie.",
+        "ready": "Prêt à utiliser. Ajoutez votre contenu dans le chat.",
+        "searchAvatars": "Rechercher des avatars",
+        "searchStyles": "Rechercher des styles",
+        "settings": "Paramètres de la vidéo d’intro",
+        "style": "Style",
+        "useSelection": "Utiliser la sélection"
       },
       "style": {
         "auto": "Laisser Okou choisir",

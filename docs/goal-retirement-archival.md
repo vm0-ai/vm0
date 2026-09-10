@@ -197,3 +197,93 @@ not automatically changed or republished. Its owner can explicitly create a new
 share. This repair establishes that limitation with synthetic fixtures; no affected
 production public share inventory has been observed or claimed. Existing raw data
 remains lossless. Merge alone establishes neither controller acceptance nor release.
+
+## S4 application consumer removal (#33061)
+
+S4 removes the live Goal routes/contracts, permission issuance, queue association,
+continuation, settlement, marker and schema-maintenance services. Ordinary queue
+locks, active-input handling, autonomy budgets, first-assistant acknowledgement,
+terminal callbacks and completion automations retain their existing owners.
+Unsupported captured inputs are rejected before preparation and at final claim;
+queued Goal-origin runs are excluded from promotion and rechecked under the run
+lock. They are not converted to manual runs or given synthetic terminal events.
+Explicit ordinary cancellation remains available. Signed legacy tokens retain
+unrelated known permissions; banking's unattended classification and reuse-key
+rejection stay conservative.
+
+### Physical definitions and application SQL
+
+`@okouai/db/runtime/agent-run` is the application `agent_runs` mapping. Its shared
+column factory in `src/columns/agent-run.ts` omits `goal_id`, including implicit
+INSERT defaults, SELECT and RETURNING. Application imports and the runtime DB
+registry use this mapping. It is outside Drizzle's unchanged `src/schema/*` glob
+and is not re-exported by files under that glob.
+
+`src/schema/agent-run-session-conversation.ts` adds the retained physical
+`goal_id` column and retains the original FK, indexes and checks. The common
+factory prevents divergent non-Goal columns. Physical `thread_goals`, paired
+receipts, 014, 1093/1094, snapshots and `test-goal-retirement-migration.ts` remain
+unchanged. Migration consistency still generates and compares the complete
+physical schema. S4 adds no production migration.
+
+The isolated `goal-schema-contraction.test.ts` database replays real migrations,
+then removes only its own obsolete Goal objects. Real failed-launch INSERT and
+successful launch CTE, run reads/metadata, claimed terminal callback and late
+usage execute there. OpenTelemetry captures the actual application statements;
+the test verifies both insertion forms and the absence of obsolete SQL names.
+This fixture is evidence of consumer independence, not an S5 migration.
+
+### Historical provenance and accounting
+
+New run/message admission rejects Goal input, while historical trigger sources,
+message parts and saved drafts remain decodable. Generic callback grouping uses
+canonical run-linked events in the owning thread. When hot rows cannot answer,
+the existing checksum/schema/order-validated snapshot reader supplies retained
+provenance. A stable snapshot-head check closes the READ COMMITTED race with
+snapshot publication and hot retention without changing the usage advisory lock.
+A retained non-Goal prompt alone does not erase a group in archived output.
+
+Usage corrections inherit the exact prior context pointer, including null,
+revocation identity, strictly later event timestamp and original settled time.
+The first late usage uses available hot/snapshot provenance; absent provenance
+emits legitimate ungrouped accounting rather than guessing a group or consulting
+a Goal row. Pending exclusions, raw/hourly aggregation, allowance arithmetic and
+per-run idempotency remain unchanged. No historical completion is replayed.
+
+Retained Goal references are intentionally limited to:
+
+| Purpose                  | Retained surfaces                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Historical compatibility | canonical context/group projections, hot/snapshot decoding, strict literal 1094 archives, draft/log annotations, search/export and immutable shares |
+| Conservative security    | legacy banking unattended classification, reuse-key rejection and unsupported captured-input guards                                                 |
+| Physical S5 state        | migration-facing tables/columns/receipts, immutable migration files and the active transition validator/consistency entry                           |
+| Historical test evidence | deliberate old-row fixtures and behavior tests; these do not expose Goal product writers                                                            |
+| Separate S6 resources    | official published resources, user storage and durable instructions, outside this PR                                                                |
+
+### Mounts and bounded captured contexts
+
+S1 removed automatic hidden Goal mounting. S4 removes the residual seed constant
+and dev-seed entry. Fresh and supported reused/new-session API preparation use the
+current mount list. Runner's existing omitted-mount plan removes previously
+fingerprinted paths while retaining unrelated nested skills. Pi resource
+preparation constructs a durable list from current mount archives; its actual
+resource loader honors that snapshot even if an omitted skill remains on disk.
+Neither path blacklists an arbitrary user-owned skill named `goal`.
+
+Already queued `execution_context` values are captured payloads, not rebuilt by
+new defaults. The controller's [00:45 UTC metadata checkpoint](https://github.com/vm0-ai/vm0/issues/33061)
+found zero Goal-origin and independently zero Goal-linked nonterminal runs across
+the complete 4,162-Goal cohort. That is the bounded known Goal-work disposition
+used for removing S1 settlement, together with the earlier full S2 certificate.
+Synthetic old queued inputs, queued/pending Goal-origin runs and Pi first-turn
+captures remain fail closed in S4. This does not certify every historical ordinary
+payload or external deployment, and no payload, production DB/R2 object, user
+instruction or durable workflow is rewritten. A specifically identified stale
+ordinary payload must be assessed within its own bounded context; token TTL or
+an old owner launch package is not a global drain certificate.
+
+Controller code acceptance and normal-production verification follow merge in
+separate ownership. S5 must prove a serving consumer-free S4 rollback target and
+repeat preservation/zero-residual gates before any physical contraction. The
+permanent S1 ancestry floor alone is insufficient. S6 publication/storage cleanup
+remains separate; Codex `features.goals=false` stays intact.

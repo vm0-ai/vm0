@@ -350,16 +350,30 @@ describe("auth tokens", () => {
     });
   });
 
-  it("grants all goal capabilities", () => {
-    const defaultToken = generateOkouToken("user_okou", "run_okou", "org_okou");
-
-    expect(verifyOkouToken(defaultToken)?.capabilities).toContain("goal:read");
-    expect(verifyOkouToken(defaultToken)?.capabilities).toContain(
+  it("ignores retired capabilities in a signed mixed legacy token", () => {
+    const retired = [
+      "goal:read",
       "goal:agent-result:write",
-    );
-    expect(verifyOkouToken(defaultToken)?.capabilities).toContain(
       "goal:user-control:write",
-    );
+    ];
+    const token = signSandboxJwtForTests({
+      scope: "okou",
+      userId: "user_okou",
+      runId: "run_okou",
+      orgId: "org_okou",
+      capabilities: [...retired, "chat-thread:read", "file:write"],
+      iat: currentSecond(),
+      exp: currentSecond() + 60,
+    });
+    expect(verifyOkouToken(token)?.capabilities).toStrictEqual([
+      "chat-thread:read",
+      "file:write",
+    ]);
+    const fresh = generateOkouToken("user_okou", "run_okou", "org_okou");
+    const payload = decodeOkouTokenPayloadForTest(fresh);
+    for (const capability of retired) {
+      expect(payload.capabilities).not.toContain(capability);
+    }
   });
 
   it("gates computer-use capability on an explicit host grant", () => {

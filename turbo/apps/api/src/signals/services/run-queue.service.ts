@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   and,
@@ -45,11 +45,6 @@ import {
 import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { checkOrgCreditsForRunAdmissionInTransaction } from "./run-admission.service";
 import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
-
-import {
-  retirePendingGoalRunInTransaction,
-  type GoalRunRetirement,
-} from "./goal-retirement.service";
 
 const L = logger("RunQueue");
 
@@ -131,18 +126,11 @@ interface FailedQueuedCandidateTransactionResult {
 }
 
 type PromotionResult =
-  | {
-      readonly status: "retired";
-      readonly run: NonNullable<
-        Awaited<ReturnType<typeof retirePendingGoalRunInTransaction>>
-      >;
-    }
   | PromotedQueuedCandidateTransactionResult
   | FailedQueuedCandidateTransactionResult
   | PromoteQueuedCandidateNonPromotedResult;
 
 type PromoteQueuedCandidateResult =
-  | Extract<PromotionResult, { readonly status: "retired" }>
   | {
       readonly status: "promoted";
       readonly pendingActivation: PreparedPendingRunActivation;
@@ -153,7 +141,6 @@ type PromoteQueuedCandidateResult =
   | PromoteQueuedCandidateNonPromotedResult;
 
 type PromoteQueuedCandidateSideEffectResult =
-  | Extract<PromotionResult, { readonly status: "retired" }>
   | {
       readonly status: "drained";
       readonly pendingActivation: PendingRunActivation;
@@ -174,7 +161,6 @@ interface QueuedRunPromotionFailure {
 }
 
 type QueuedRunPromotionResult =
-  | GoalRunRetirement
   | {
       readonly kind: "activation";
       readonly activation: PendingRunActivation;
@@ -301,7 +287,12 @@ async function loadDrainCandidates(
     })
     .from(agentRunQueue)
     .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
-    .where(eq(agentRunQueue.orgId, orgId))
+    .where(
+      and(
+        eq(agentRunQueue.orgId, orgId),
+        sql`${agentRuns.triggerSource} IS DISTINCT FROM 'goal'`,
+      ),
+    )
     .orderBy(agentRunQueue.createdAt);
 }
 
@@ -481,13 +472,10 @@ async function promoteQueuedCandidateInTransaction(
     return complete({ status: "full" });
   }
 
-  const retired = await retirePendingGoalRunInTransaction(tx, args.row.runId);
-  if (retired) {
-    return complete({ status: "retired", run: retired });
-  }
   const [lockedRun] = await tx
     .select({
       status: agentRuns.status,
+      triggerSource: agentRuns.triggerSource,
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       modelProvider: agentRuns.modelProvider,
@@ -501,6 +489,9 @@ async function promoteQueuedCandidateInTransaction(
       .delete(agentRunQueue)
       .where(eq(agentRunQueue.runId, args.row.runId));
     return complete({ status: "removed-stale" });
+  }
+  if (lockedRun.triggerSource === "goal") {
+    return complete({ status: "lost" });
   }
   if (args.row.runStatus !== "queued") {
     return complete({ status: "lost" });
@@ -585,9 +576,6 @@ async function promoteQueuedCandidateWithSideEffects(
   },
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
-  if (result.status === "retired") {
-    return result;
-  }
   if (result.status === "removed-stale") {
     return { status: "skipped" };
   }
@@ -675,9 +663,6 @@ export const promoteNextQueuedRun$ = command(
       }
       if (result.status === "skipped") {
         continue;
-      }
-      if (result.status === "retired") {
-        return { kind: "goal-retired", run: result.run };
       }
       if (result.status === "failed") {
         return result.terminalTransition;
