@@ -10,6 +10,7 @@ import {
   click,
   setupPage,
   fill,
+  holdElementAnimations,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -325,6 +326,7 @@ test.each(["Cancel", "Close", "Escape", "backdrop"] as const)(
     const dialog = await openDeleteDialog();
     await fill(within(dialog).getByPlaceholderText("confirm"), "confirm");
     expect(buttonWithText(dialog, "Delete workspace")).toBeEnabled();
+    const finishCloseTransition = holdElementAnimations(dialog);
 
     if (dismissal === "Cancel") {
       click(buttonWithText(dialog, "Cancel"));
@@ -339,6 +341,10 @@ test.each(["Cancel", "Close", "Escape", "backdrop"] as const)(
       }
       await user.click(viewport);
     }
+    expect(dialog).toBeVisible();
+    expect(within(dialog).getByPlaceholderText("confirm")).toHaveValue("");
+    expect(buttonWithText(dialog, "Delete workspace")).toBeDisabled();
+    finishCloseTransition();
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", { name: "Delete workspace?" }),
@@ -351,7 +357,7 @@ test.each(["Cancel", "Close", "Escape", "backdrop"] as const)(
   },
 );
 
-test("Require fresh workspace confirmation after closing Settings", async () => {
+test("Require fresh workspace confirmation after closing Settings or navigating back", async () => {
   context.mocks.data.org({ id: "org_1", name: "Acme", role: "admin" });
   await openGeneralTab();
 
@@ -369,6 +375,22 @@ test("Require fresh workspace confirmation after closing Settings", async () => 
   const reopened = await openDeleteDialog();
   expect(within(reopened).getByPlaceholderText("confirm")).toHaveValue("");
   expect(buttonWithText(reopened, "Delete workspace")).toBeDisabled();
+
+  await fill(within(reopened).getByPlaceholderText("confirm"), "confirm");
+  expect(buttonWithText(reopened, "Delete workspace")).toBeEnabled();
+  act(() => {
+    window.history.back();
+  });
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  await reopenSettings();
+  const afterNavigation = await openDeleteDialog();
+  expect(within(afterNavigation).getByPlaceholderText("confirm")).toHaveValue(
+    "",
+  );
+  expect(buttonWithText(afterNavigation, "Delete workspace")).toBeDisabled();
 });
 
 test("Navigate to a fresh page when the workspace changes after cancelling deletion", async () => {

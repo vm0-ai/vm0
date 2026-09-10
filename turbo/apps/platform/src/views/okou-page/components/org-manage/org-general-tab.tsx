@@ -443,7 +443,7 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
               </div>
               <Dialog
                 onOpenChange={(open) => {
-                  if (open) {
+                  if (!open) {
                     resetDeleteConfirm();
                   }
                 }}
