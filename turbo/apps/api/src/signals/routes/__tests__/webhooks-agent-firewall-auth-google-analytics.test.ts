@@ -122,12 +122,12 @@ async function setupAnalyticsFirewall() {
   return { actor, account, code, connect, connectors, request };
 }
 
-describe("Google Analytics terminal refresh", () => {
+describe("Google Analytics quiet refresh recovery", () => {
   it.each([
     { subtype: undefined, reason: "authorization_expired_or_revoked" },
     { subtype: "invalid_rapt", reason: "provider_session_expired" },
   ])(
-    "stops $reason until the exact account reconnects",
+    "retries $reason quietly and recovers the exact account",
     async ({ subtype, reason }) => {
       const analytics = await setupAnalyticsFirewall();
       const siblingCode = randomUUID();
@@ -171,7 +171,20 @@ describe("Google Analytics terminal refresh", () => {
       await started.promise;
       const concurrent = analytics.request(analytics.account.id, true);
       release.resolve(undefined);
-      const responses = await Promise.all([first, concurrent]);
+      const [firstFailure, concurrentFailure] = await Promise.all([
+        first,
+        concurrent,
+      ]);
+      // Existing request coalescing can reuse the first failure without its reason.
+      expect(concurrentFailure.status).toBe(502);
+      expect(concurrentFailure.body).toMatchObject({
+        error: {
+          code: "TOKEN_REFRESH_FAILED",
+          connectors: ["google-analytics"],
+        },
+      });
+      const callsBeforeRetries = refreshCalls;
+      const responses = [firstFailure];
       await analytics.connectors.setDefaultBuiltinConnectorAccount(
         analytics.actor,
         "google-analytics",
@@ -189,7 +202,7 @@ describe("Google Analytics terminal refresh", () => {
           },
         });
       }
-      expect(refreshCalls).toBe(1);
+      expect(refreshCalls).toBe(callsBeforeRetries + 2);
       const accounts = await analytics.connectors.listBuiltinConnectorAccounts(
         analytics.actor,
         "google-analytics",
@@ -213,10 +226,44 @@ describe("Google Analytics terminal refresh", () => {
       expect(siblingAuth.body).toMatchObject({
         headers: { Authorization: `Bearer analytics-access-${siblingCode}` },
       });
-      expect(refreshCalls).toBe(1);
+      expect(refreshCalls).toBe(callsBeforeRetries + 2);
       expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
       expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+
+      // A later request can recover with the same refresh token, without OAuth.
+      server.use(
+        http.post(GOOGLE_TOKEN_URL, async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          expect(body.get("refresh_token")).toBe(
+            `analytics-refresh-${analytics.code}`,
+          );
+          return HttpResponse.json({
+            access_token: "analytics-recovered-without-reconnect",
+            expires_in: 3600,
+            token_type: "Bearer",
+          });
+        }),
+      );
+      const retried = await analytics.request(analytics.account.id, false);
+      expect(retried.status).toBe(200);
+      expect(retried.body).toMatchObject({
+        headers: {
+          Authorization: "Bearer analytics-recovered-without-reconnect",
+        },
+      });
+      await expect(
+        analytics.connectors.listBuiltinConnectorAccounts(
+          analytics.actor,
+          "google-analytics",
+        ),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          id: analytics.account.id,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        }),
+      );
 
       // A real OAuth callback must clear the persisted reconnect state.
       server.use(
@@ -342,7 +389,10 @@ describe("Google Analytics terminal refresh", () => {
       expect(accounts).toContainEqual(
         expect.objectContaining({
           id: analytics.account.id,
-          reconnectReason: null,
+          reconnectReason:
+            error === "invalid_grant" && !subtype
+              ? "authorization_expired_or_revoked"
+              : null,
         }),
       );
       server.use(

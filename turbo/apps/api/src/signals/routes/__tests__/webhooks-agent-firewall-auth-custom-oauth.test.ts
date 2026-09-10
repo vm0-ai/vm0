@@ -170,13 +170,13 @@ async function setupCustomOAuthFirewall(
 }
 
 describe.each(["configured", "automatic"] as const)(
-  "Custom %s OAuth terminal refresh",
+  "Custom %s OAuth quiet refresh recovery",
   (mode) => {
     it.each([
       { subtype: undefined, reason: "authorization_expired_or_revoked" },
-      { subtype: "invalid_rapt", reason: "provider_session_expired" },
+      { subtype: "invalid_rapt", reason: "authorization_expired_or_revoked" },
     ])(
-      "stops $reason until the exact account reconnects",
+      "retries invalid_grant ($subtype) quietly and recovers the exact account",
       async ({ subtype, reason }) => {
         const started = createDeferredPromise<void>(context.signal);
         const release = createDeferredPromise<void>(context.signal);
@@ -240,7 +240,7 @@ describe.each(["configured", "automatic"] as const)(
             },
           });
         }
-        expect(refreshCalls).toBe(1);
+        expect(refreshCalls).toBe(4);
         await expect(
           custom.connectors.listCustomConnectorAccounts(
             custom.actor,
@@ -262,7 +262,7 @@ describe.each(["configured", "automatic"] as const)(
         );
         const siblingAuth = await custom.request(sibling.id, false);
         expect(siblingAuth.status).toBe(200);
-        expect(refreshCalls).toBe(1);
+        expect(refreshCalls).toBe(4);
         expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
         expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
         expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
@@ -278,6 +278,34 @@ describe.each(["configured", "automatic"] as const)(
                 initialExpiresIn: 3600,
                 initialRefreshToken: "replacement-custom-refresh",
               });
+        const retried = await custom.request(custom.account.id, false);
+        expect(retried.status).toBe(200);
+        expect(retried.body).toMatchObject({
+          headers: {
+            Authorization:
+              mode === "automatic"
+                ? "Bearer automatic-refreshed-access-token"
+                : "Bearer custom-oauth-refreshed-access-token",
+          },
+        });
+        expect(replacement.tokenBodies.at(-1)?.get("refresh_token")).toBe(
+          mode === "automatic"
+            ? "automatic-refresh-token"
+            : "custom-oauth-refresh-token",
+        );
+        await expect(
+          custom.connectors.listCustomConnectorAccounts(
+            custom.actor,
+            custom.connector.id,
+          ),
+        ).resolves.toContainEqual(
+          expect.objectContaining({
+            id: custom.account.id,
+            connectionStatus: "connected",
+            reconnectReason: null,
+          }),
+        );
+
         const reconnected = await custom.connect({
           intent: "reconnect",
           connectionId: custom.account.id,
@@ -305,80 +333,53 @@ describe.each(["configured", "automatic"] as const)(
 
     it.each([
       {
-        name: "unknown subtype",
-        status: 400,
-        error: "invalid_grant",
-        subtype: "unknown_policy",
-      },
-      {
-        name: "unrecognized OAuth error",
-        status: 400,
-        error:
-          mode === "automatic" ? "unsupported_grant_type" : "invalid_client",
-        subtype: undefined,
-      },
-      {
         name: "provider outage",
         status: 503,
         error: "server_error",
-        subtype: undefined,
       },
       {
         name: "rate limit",
         status: 429,
         error: "temporarily_unavailable",
-        subtype: undefined,
       },
-      {
-        name: "unexpected invalid_grant status",
-        status: 503,
-        error: "invalid_grant",
-        subtype: undefined,
-      },
-    ])(
-      "keeps $name observable and recoverable",
-      async ({ status, error, subtype }) => {
-        const custom = await setupCustomOAuthFirewall(mode, (attempt) => {
-          return attempt <= 2
-            ? HttpResponse.json(
-                { error, ...(subtype ? { error_subtype: subtype } : {}) },
-                { status },
-              )
-            : HttpResponse.json({
-                access_token: "custom-recovered",
-                token_type: "Bearer",
-                expires_in: 3600,
-              });
+    ])("keeps $name observable and recoverable", async ({ status, error }) => {
+      const custom = await setupCustomOAuthFirewall(mode, (attempt) => {
+        return attempt <= 2
+          ? HttpResponse.json({ error }, { status })
+          : HttpResponse.json({
+              access_token: "custom-recovered",
+              token_type: "Bearer",
+              expires_in: 3600,
+            });
+      });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const failed = await custom.request(custom.account.id, true);
+        expect(failed.status).toBe(502);
+        expect(failed.body).toMatchObject({
+          error: {
+            code: "TOKEN_REFRESH_FAILED",
+            failureReason: "upstream_provider",
+          },
         });
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const failed = await custom.request(custom.account.id, true);
-          expect(failed.status).toBe(502);
-          expect(failed.body).toMatchObject({
-            error: {
-              code: "TOKEN_REFRESH_FAILED",
-              failureReason: "upstream_provider",
-            },
-          });
-        }
-        expect(custom.provider.tokenBodies).toHaveLength(3);
-        await expect(
-          custom.connectors.listCustomConnectorAccounts(
-            custom.actor,
-            custom.connector.id,
-          ),
-        ).resolves.toContainEqual(
-          expect.objectContaining({
-            id: custom.account.id,
-            connectionStatus: "connected",
-            reconnectReason: null,
-          }),
-        );
-        const recovered = await custom.request(custom.account.id, true);
-        expect(recovered.status).toBe(200);
-        expect(recovered.body).toMatchObject({
-          headers: { Authorization: "Bearer custom-recovered" },
-        });
-      },
-    );
+      }
+      expect(custom.provider.tokenBodies).toHaveLength(3);
+      await expect(
+        custom.connectors.listCustomConnectorAccounts(
+          custom.actor,
+          custom.connector.id,
+        ),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          id: custom.account.id,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        }),
+      );
+      const recovered = await custom.request(custom.account.id, true);
+      expect(recovered.status).toBe(200);
+      expect(recovered.body).toMatchObject({
+        headers: { Authorization: "Bearer custom-recovered" },
+      });
+    });
   },
 );

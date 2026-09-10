@@ -1,6 +1,7 @@
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import type { ConnectorReconnectReason } from "@okouai/api-contracts/contracts/connector-schemas";
 import { refreshConnectorAuthProviderAccessTokenWithMethod } from "@okouai/connectors/auth-providers";
+import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
 import { resolveConnectorAuthClient } from "@okouai/connectors/connector-auth-method";
 import { connectors } from "@okouai/db/schema/connector";
 import { secrets } from "@okouai/db/schema/secret";
@@ -15,7 +16,7 @@ import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
-import { terminalOAuthRefreshReconnectReason } from "./connector-oauth-refresh-policy";
+import { isExpectedOAuthRefreshFailure } from "./connector-oauth-refresh-policy";
 import type {
   ConnectorRuntimeMethod,
   ConnectorRuntimeSnapshot,
@@ -101,6 +102,10 @@ type ConnectorRefreshTokenAccess = Extract<
   ConnectorRuntimeMethod["method"]["access"],
   { readonly kind: "refresh-token" }
 >;
+
+interface TerminalOAuthRefreshFailure {
+  readonly reconnectReason: ConnectorReconnectReason | null;
+}
 
 function parseOauthScopes(value: string | null): readonly string[] | null {
   return value === null ? null : oauthScopesSchema.parse(JSON.parse(value));
@@ -497,13 +502,32 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(
   return updated;
 }
 
+function terminalOAuthRefreshFailure(
+  error: unknown,
+): TerminalOAuthRefreshFailure | null {
+  if (
+    !isOAuthProviderHttpError(error) ||
+    error.oauthError !== "invalid_grant"
+  ) {
+    return null;
+  }
+  if (error.oauthErrorSubtype === "invalid_rapt") {
+    return { reconnectReason: "provider_session_expired" };
+  }
+  return {
+    reconnectReason: error.oauthErrorSubtype
+      ? null
+      : "authorization_expired_or_revoked",
+  };
+}
+
 async function terminalConnectorCredentialRefreshFailure(
   args: ConnectorCredentialRefreshArgs,
   error: unknown,
   signal: AbortSignal,
 ): Promise<ConnectorCredentialRefreshResult | null> {
-  const reconnectReason = terminalOAuthRefreshReconnectReason(error);
-  if (reconnectReason === null) {
+  const terminalFailure = terminalOAuthRefreshFailure(error);
+  if (terminalFailure === null) {
     return null;
   }
   if (!args.persist) {
@@ -515,7 +539,7 @@ async function terminalConnectorCredentialRefreshFailure(
         connection: args.connection,
         db: args.persist.db,
         orgId: args.orgId,
-        reconnectReason,
+        reconnectReason: terminalFailure.reconnectReason,
         userId: args.userId,
       },
       signal,
@@ -637,6 +661,19 @@ export async function refreshConnectorCredentialAccess(
   );
   signal.throwIfAborted();
   if (!refreshed.ok) {
+    if (
+      !isExpectedOAuthRefreshFailure({
+        error: refreshed.error,
+        connectorSlug: args.connection.connectorSlug,
+        authMethod: args.connection.runtimeMethod.authMethodId,
+      })
+    ) {
+      log.warn("Connector credential refresh failed", {
+        connectorSlug: args.connection.connectorSlug,
+        authMethodId: args.connection.runtimeMethod.authMethodId,
+        error: refreshed.error,
+      });
+    }
     const terminalFailure = await terminalConnectorCredentialRefreshFailure(
       args,
       refreshed.error,
@@ -645,11 +682,6 @@ export async function refreshConnectorCredentialAccess(
     if (terminalFailure !== null) {
       return terminalFailure;
     }
-    log.warn("Connector credential refresh failed", {
-      connectorSlug: args.connection.connectorSlug,
-      authMethodId: args.connection.runtimeMethod.authMethodId,
-      error: refreshed.error,
-    });
     return await connectorCredentialRefreshFailure(
       args,
       "provider-failed",

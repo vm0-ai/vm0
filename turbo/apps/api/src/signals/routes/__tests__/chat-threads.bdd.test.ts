@@ -4490,7 +4490,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       reconnectReason: "provider_session_expired",
     });
 
-    // Unknown subtypes remain observable and retryable without a terminal marker.
+    // Unknown subtypes stay terminal without inventing a reconnect reason.
     const unknownSubtypeRefresh = mockGoogleDriveConnectorOAuth({
       refreshOutcome: {
         type: "invalid-grant",
@@ -4509,11 +4509,12 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       state: stateFromAuthorizationUrl(secondReconnectStart.authorizationUrl),
     });
     context.mocks.axiomLogging.warn.mockClear();
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-      expectDriveStatuses(artifacts, { status: "unknown", accountReady: true });
-    }
-    expect(unknownSubtypeRefresh.refreshBodies).toHaveLength(2);
+    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "reconnect", connectionId: connected.id },
+    });
+    expect(unknownSubtypeRefresh.refreshBodies).toHaveLength(1);
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
       "Connector credential refresh failed",
       expect.objectContaining({ connectorSlug: "google-drive" }),
@@ -4521,28 +4522,9 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
     ).resolves.toMatchObject({
-      connectionStatus: "connected",
+      connectionStatus: "reconnect-required",
       reconnectReason: null,
     });
-
-    const recoveredRefresh = mockGoogleDriveConnectorOAuth({
-      refreshOutcome: {
-        type: "ok",
-        accessToken: "drive-recovered-from-unknown",
-      },
-    });
-    mockGoogleDriveFilesList((request) => {
-      return request.headers.get("authorization") ===
-        "Bearer drive-recovered-from-unknown"
-        ? { status: 200, files: [] }
-        : { status: 401 };
-    });
-    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, {
-      status: "not_synced",
-      accountReady: true,
-    });
-    expect(recoveredRefresh.refreshBodies).toHaveLength(1);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);

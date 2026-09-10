@@ -1,32 +1,22 @@
-import type { ConnectorReconnectReason } from "@okouai/api-contracts/contracts/connector-schemas";
 import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
 
-export function terminalOAuthRefreshReconnectReason(
-  error: unknown,
-): ConnectorReconnectReason | null {
-  if (
-    !isOAuthProviderHttpError(error) ||
-    error.status !== 400 ||
-    error.oauthError !== "invalid_grant" ||
-    // Native adapters can normalize unrelated client errors to invalid_grant.
-    error.providerErrorCode !== undefined
-  ) {
-    return null;
-  }
-  if (error.oauthErrorSubtype === "invalid_rapt") {
-    return "provider_session_expired";
-  }
-  return error.oauthErrorSubtype ? null : "authorization_expired_or_revoked";
-}
-
-export function isTerminalOAuthRefreshState(state: {
-  readonly needsReconnect: boolean;
-  readonly reconnectReason: string | null;
+// This policy controls failure telemetry, not refresh retries or account state.
+export function isExpectedOAuthRefreshFailure(args: {
+  readonly error: unknown;
+  readonly connectorSlug: string;
+  readonly authMethod: string | undefined;
 }): boolean {
-  // Reconnect replaces credentials and clears these existing account reasons.
+  // AWS Sign-In normalizes native client errors even without a provider code.
+  if (args.connectorSlug === "aws" && args.authMethod === "cli") {
+    return false;
+  }
+  const { error } = args;
   return (
-    state.needsReconnect &&
-    (state.reconnectReason === "authorization_expired_or_revoked" ||
-      state.reconnectReason === "provider_session_expired")
+    isOAuthProviderHttpError(error) &&
+    error.status === 400 &&
+    error.oauthError === "invalid_grant" &&
+    // Native adapters can normalize unrelated client errors to invalid_grant.
+    error.providerErrorCode === undefined &&
+    (!error.oauthErrorSubtype || error.oauthErrorSubtype === "invalid_rapt")
   );
 }

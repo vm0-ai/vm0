@@ -86,10 +86,7 @@ import {
   lockModelProviderState,
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import {
-  isTerminalOAuthRefreshState,
-  terminalOAuthRefreshReconnectReason,
-} from "./connector-oauth-refresh-policy";
+import { isExpectedOAuthRefreshFailure } from "./connector-oauth-refresh-policy";
 import {
   loadRunCreditAdmissionState,
   resolveOrgCreditAvailability,
@@ -859,43 +856,37 @@ function refreshErrorCodeFromError(
 }
 
 function classifyRefreshFailure(
-  args: RefreshAccessTokenArgs,
   error: unknown,
   signal: AbortSignal,
 ): {
   readonly errorCode: string | null;
   readonly failureReason: FirewallAuthFailureReason | undefined;
-  readonly connectorReconnectReason: ConnectorReconnectReason | null;
-  readonly expectedTerminalFailure: boolean;
 } {
   const refreshTimedOut = isRefreshTimeoutError(error, signal);
-  const errorCode = refreshErrorCodeFromError(error, refreshTimedOut);
-  const failureReason = refreshFailureReasonFromError(error, refreshTimedOut);
-  const awsSigninRefresh =
-    args.sourceType === "connector" &&
-    args.accessSourceKey === "aws" &&
-    args.connectorAccessBySlug.get(args.accessSourceKey)?.authMethod === "cli";
-  let connectorReconnectReason =
-    args.sourceType === "connector" && failureReason === "reconnect_required"
-      ? terminalOAuthRefreshReconnectReason(error)
-      : null;
-  // AWS Sign-In normalizes client errors; only its explicit expiry path is terminal.
-  if (awsSigninRefresh && failureReason === "reconnect_required") {
-    connectorReconnectReason = "authorization_expired_or_revoked";
-  }
-  const terminalCodexFailure =
-    args.sourceType === "model-provider" &&
-    args.accessSourceKey === "codex-oauth-token" &&
-    failureReason === "reconnect_required" &&
-    isTerminalChatgptRefreshErrorCode(errorCode);
   return {
-    errorCode,
-    failureReason,
-    connectorReconnectReason,
-    expectedTerminalFailure:
-      (connectorReconnectReason !== null && !awsSigninRefresh) ||
-      terminalCodexFailure,
+    errorCode: refreshErrorCodeFromError(error, refreshTimedOut),
+    failureReason: refreshFailureReasonFromError(error, refreshTimedOut),
   };
+}
+
+function connectorReconnectReasonFromRefreshFailure(
+  error: unknown,
+  failureReason: FirewallAuthFailureReason | undefined,
+): ConnectorReconnectReason | null {
+  if (
+    failureReason !== "reconnect_required" ||
+    !isOAuthProviderHttpError(error) ||
+    error.oauthError !== "invalid_grant"
+  ) {
+    return null;
+  }
+  if (error.oauthErrorSubtype === "invalid_rapt") {
+    return "provider_session_expired";
+  }
+  if (!error.oauthErrorSubtype) {
+    return "authorization_expired_or_revoked";
+  }
+  return null;
 }
 
 function oauthRefreshFailureLogFields(error: unknown): {
@@ -983,20 +974,19 @@ function isTerminalCodexRefreshState(
   );
 }
 
-function isTerminalConnectorRefreshState(
+function isExpiredAwsSigninRefreshState(
   prepared: PreparedRefreshTokenContext,
   state: RefreshState,
 ): boolean {
-  if (prepared.sourceType !== "connector") {
-    return false;
-  }
-  if (prepared.connectorSlug === "aws" && state.authMethod === "cli") {
-    // Native AWS client errors retain their recovery policy until explicit expiry.
-    return (
-      state.needsReconnect && state.reconnectReason === "credential_expired"
-    );
-  }
-  return isTerminalOAuthRefreshState(state);
+  // Reconnect clears this reason with the credentials under the same lock.
+  // Other needsReconnect states retain their existing refresh/recovery policy.
+  return (
+    prepared.sourceType === "connector" &&
+    prepared.connectorSlug === "aws" &&
+    state.authMethod === "cli" &&
+    state.needsReconnect &&
+    state.reconnectReason === "credential_expired"
+  );
 }
 
 async function getConnectorSecretValues(args: {
@@ -2613,13 +2603,21 @@ async function markAndReturnRefreshFailure(
     return refreshFailedResult("reconnect_required");
   }
   const message = error instanceof Error ? error.message : "Unknown error";
-  const {
-    errorCode,
-    failureReason,
-    connectorReconnectReason,
-    expectedTerminalFailure,
-  } = classifyRefreshFailure(args, error, signal);
-  if (shouldLogWarning && !expectedTerminalFailure) {
+  const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
+  const terminalCodexFailure =
+    args.sourceType === "model-provider" &&
+    args.accessSourceKey === "codex-oauth-token" &&
+    failureReason === "reconnect_required" &&
+    isTerminalChatgptRefreshErrorCode(errorCode);
+  const expectedConnectorFailure =
+    args.sourceType === "connector" &&
+    isExpectedOAuthRefreshFailure({
+      error,
+      connectorSlug: args.accessSourceKey,
+      authMethod: args.connectorAccessBySlug.get(args.accessSourceKey)
+        ?.authMethod,
+    });
+  if (shouldLogWarning && !terminalCodexFailure && !expectedConnectorFailure) {
     const logMessage =
       args.accessSourceKey === "codex-oauth-token"
         ? `${args.accessSourceKey} token refresh failed`
@@ -2641,7 +2639,7 @@ async function markAndReturnRefreshFailure(
     context,
     errorCode,
     failureReason,
-    connectorReconnectReason,
+    connectorReconnectReasonFromRefreshFailure(error, failureReason),
   );
   return refreshFailedResult(failureReason);
 }
@@ -2886,7 +2884,7 @@ async function refreshLockedAccessToken(args: {
 
   if (
     isTerminalCodexRefreshState(args.prepared, lockedState) ||
-    isTerminalConnectorRefreshState(args.prepared, lockedState)
+    isExpiredAwsSigninRefreshState(args.prepared, lockedState)
   ) {
     return refreshFailedResult("reconnect_required");
   }

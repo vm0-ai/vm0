@@ -13226,7 +13226,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
 
-  it("stops terminal custom OAuth refresh across runs until reconnect", async () => {
+  it("retries custom OAuth quietly across runs and supports reconnect", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: () => {
@@ -13308,6 +13308,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     onTestFinished(() => {
       clearMockNow();
     });
+    context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.axiomLogging.error.mockClear();
+    context.mocks.sentry.captureException.mockClear();
     const reconnectRequired = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
@@ -13392,7 +13395,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       provider.tokenBodies.map((body) => {
         return body.get("grant_type");
       }),
-    ).toStrictEqual(["authorization_code", "refresh_token"]);
+    ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
     await expect(
       connectors.listCustomConnectorAccounts(actor, custom.id),
     ).resolves.toContainEqual(

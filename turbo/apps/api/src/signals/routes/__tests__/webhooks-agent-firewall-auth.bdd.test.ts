@@ -1116,7 +1116,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
               error: { failureReason: "reconnect_required" },
             });
           }
-          expect(provider.tokenBodies).toHaveLength(2);
+          expect(provider.tokenBodies).toHaveLength(4);
         },
         invalid_client: async () => {
           const retiredAccounts = await connectors.listCustomConnectorAccounts(
@@ -1379,7 +1379,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     { subtype: undefined, reason: "authorization_expired_or_revoked" },
     { subtype: "invalid_rapt", reason: "provider_session_expired" },
   ])(
-    "stops standard OAuth $reason until reconnect",
+    "retries standard OAuth $reason quietly and recovers",
     async ({ subtype, reason }) => {
       const fw = createFirewallApi(context);
       const connectorsApi = createConnectorBddApi(context);
@@ -1448,7 +1448,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
           },
         });
       }
-      expect(failedRefreshCalls).toBe(1);
+      expect(failedRefreshCalls).toBe(3);
       expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
       expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
@@ -1459,6 +1459,26 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
           id: account.id,
           connectionStatus: "reconnect-required",
           reconnectReason: reason,
+        }),
+      );
+
+      fw.mockTestOauthTokenRefresh(() => {
+        return fw.oauthTokenResponse({
+          accessToken: "recovered-without-reconnect",
+          expiresIn: 3600,
+        });
+      });
+      const retried = await fw.requestFirewallAuth(headers, body, [200]);
+      expect(retried.body).toMatchObject({
+        headers: { Authorization: "Bearer recovered-without-reconnect" },
+      });
+      await expect(
+        connectorsApi.listBuiltinConnectorAccounts(actor, "test-oauth"),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          id: account.id,
+          connectionStatus: "connected",
+          reconnectReason: null,
         }),
       );
 
