@@ -949,6 +949,7 @@ function ConnectorsBuiltinPanel({
   browse,
   renderCard,
   fallback,
+  remoteAccessPanel,
   customPanel,
 }: {
   readonly browse: ConnectorsBrowseModel;
@@ -956,6 +957,7 @@ function ConnectorsBuiltinPanel({
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
   readonly fallback: ReactNode;
+  readonly remoteAccessPanel: ReactNode;
   readonly customPanel: ReactNode;
 }) {
   return (
@@ -969,11 +971,9 @@ function ConnectorsBuiltinPanel({
       ) : (
         fallback
       )}
-      {/* Custom connectors used to be a tab. They are one more thing the
-          directory offers, so they sit at the end of it rather than behind a
-          switch of surfaces. They belong to the directory view only: the
-          panel does not read the page's keyword, so under a search or inside
-          a category it would answer a question nobody asked. */}
+      {remoteAccessPanel}
+      {/* Custom connectors end the directory, after Remote access. The panel
+          does not read the page's filters, so only show it while browsing. */}
       {browse.showShelves && customPanel}
     </>
   );
@@ -1542,20 +1542,22 @@ export function ConnectorsPage() {
     connectionFilter,
   });
   const builtinPanel = (
-    <>
-      <ConnectorsBuiltinPanel
-        browse={browse}
-        renderCard={renderCard}
-        fallback={builtinList}
-        customPanel={<CustomConnectorsPanel />}
-      />
-      <SshDirectoryLoadError />
-      <SshShelfCategory
-        enabled={browse.showShelves}
-        groups={grouped}
-        renderCard={renderPresentationCard}
-      />
-    </>
+    <ConnectorsBuiltinPanel
+      browse={browse}
+      renderCard={renderCard}
+      fallback={builtinList}
+      remoteAccessPanel={
+        <>
+          <SshDirectoryLoadError />
+          <SshShelfCategory
+            enabled={browse.showShelves}
+            groups={grouped}
+            renderCard={renderPresentationCard}
+          />
+        </>
+      }
+      customPanel={<CustomConnectorsPanel />}
+    />
   );
   return (
     <div
