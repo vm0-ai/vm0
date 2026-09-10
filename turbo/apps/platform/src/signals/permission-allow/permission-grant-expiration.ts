@@ -3,6 +3,7 @@ import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contrac
 
 import { now } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
+import type { PlatformUserPermissionGrant } from "../connector-domain.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
@@ -46,24 +47,35 @@ export function userPermissionGrantExpiresAt(
   }
 }
 
-export function permissionGrantExpiryText(
-  expiresAt: string | null,
+export function permissionGrantRemainingMs(
+  grant: Pick<PlatformUserPermissionGrant, "expiresAt" | "updatedAt"> | null,
   nowMs = now(),
+): number | null {
+  if (!grant?.expiresAt) {
+    return null;
+  }
+  const expiresAtMs = Date.parse(grant.expiresAt);
+  const updatedAtMs = Date.parse(grant.updatedAt);
+  if (!Number.isFinite(expiresAtMs) || !Number.isFinite(updatedAtMs)) {
+    return null;
+  }
+  // A slower browser clock must not make the displayed lifetime exceed the
+  // duration recorded by the server when it applied the grant.
+  return expiresAtMs - Math.max(nowMs, updatedAtMs);
+}
+
+export function permissionGrantExpiryText(
+  remainingMs: number | null,
 ): string | null {
-  if (!expiresAt) {
+  if (remainingMs === null || !Number.isFinite(remainingMs)) {
     return null;
   }
-  const expiresAtMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresAtMs)) {
-    return null;
-  }
-  const remainingMs = expiresAtMs - nowMs;
   if (remainingMs <= 0) {
     return i18n.t(($) => {
       return $.authorization.permission.expiration.expired;
     });
   }
-  if (remainingMs >= DAY_MS) {
+  if (remainingMs > DAY_MS) {
     return i18n.t(
       ($) => {
         return $.authorization.permission.expiration.inDays;

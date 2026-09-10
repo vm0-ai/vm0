@@ -289,7 +289,7 @@ test("A user grants a time-limited connector permission and resumes the chat", a
   await expect(
     screen.findByText("Permissions updated"),
   ).resolves.toBeInTheDocument();
-  expect(screen.getByText("Expires in 1 day")).toBeInTheDocument();
+  expect(screen.getByText("Expires in 24 hours")).toBeInTheDocument();
   await waitFor(() => {
     expect(resumedChat).not.toBeNull();
   });
@@ -312,6 +312,29 @@ test("A user grants a time-limited connector permission and resumes the chat", a
       prompt: "Continue the analytics review",
     }),
   );
+});
+
+test("An existing 24-hour grant shows its duration when the browser clock is behind", async () => {
+  mockNow(NOW_MS - 1, context.signal);
+  const grantedAt = new Date(NOW_MS).toISOString();
+  await setupPermissionPage({
+    userName: "Dana",
+    agentName: "Research Bot",
+    grants: [
+      {
+        ...permissionGrant({
+          expiresAt: new Date(NOW_MS + 24 * 60 * 60 * 1000).toISOString(),
+        }),
+        createdAt: grantedAt,
+        updatedAt: grantedAt,
+      },
+    ],
+  });
+
+  await expect(
+    screen.findByText("Already allowed"),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByText("Expires in 24 hours")).toBeInTheDocument();
 });
 
 test("A user can allow a connector's uncatalogued endpoints without exposing an internal token", async () => {

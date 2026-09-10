@@ -31,6 +31,7 @@ import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
   permissionGrantExpiryText,
+  permissionGrantRemainingMs,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
@@ -157,12 +158,12 @@ function LoadingCard() {
 function ResultCard({
   action,
   alreadyApplied = false,
-  expiresAt,
+  grant,
   showExpiry,
 }: {
   action: "allow" | "deny";
   alreadyApplied?: boolean;
-  expiresAt?: string | null;
+  grant: PlatformUserPermissionGrant | null;
   showExpiry: boolean;
 }) {
   const { t } = useTranslation();
@@ -198,7 +199,7 @@ function ResultCard({
           return $.authorization.permission.result.deniedDescription;
         });
   const expiryText = showExpiry
-    ? permissionGrantExpiryText(expiresAt ?? null)
+    ? permissionGrantExpiryText(permissionGrantRemainingMs(grant))
     : null;
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
@@ -307,7 +308,7 @@ function resolveExistingPermissionGrantResult({
   focusedPermission: Permission;
   grants: readonly PlatformUserPermissionGrant[];
   metadata: PlatformConnectorPermissionMetadata;
-}): { expiresAt?: string | null } | null {
+}): { grant: PlatformUserPermissionGrant | null } | null {
   const effectivePolicy = resolveUserPermissionGrantPolicy(
     grants,
     metadata,
@@ -325,9 +326,9 @@ function resolveExistingPermissionGrantResult({
     return null;
   }
   return {
-    expiresAt:
+    grant:
       explicitGrant && isActiveUserPermissionGrant(explicitGrant)
-        ? explicitGrant.expiresAt
+        ? explicitGrant
         : null,
   };
 }
@@ -601,7 +602,7 @@ function PermissionAllowDoctorPage({
     return (
       <ResultCard
         action={action}
-        expiresAt={savedGrant.expiresAt}
+        grant={savedGrant}
         showExpiry={action === "allow"}
       />
     );
@@ -619,7 +620,7 @@ function PermissionAllowDoctorPage({
       <ResultCard
         action={action}
         alreadyApplied
-        expiresAt={existingGrantResult.expiresAt}
+        grant={existingGrantResult.grant}
         showExpiry={action === "allow"}
       />
     );

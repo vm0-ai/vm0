@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
+import { now } from "../../../../lib/time.ts";
 import { useTranslation } from "react-i18next";
 import type { Computed } from "ccstate";
 import { useGet, useLoadable, useSet } from "ccstate-react";
@@ -467,7 +468,9 @@ const ALLOW_DURATION_MENU_OPTIONS: readonly UserPermissionGrantExpiresIn[] = [
 ];
 
 function compactGrantExpirationText(expiresAt: string | null): string | null {
-  const text = permissionGrantExpiryText(expiresAt);
+  const text = permissionGrantExpiryText(
+    expiresAt === null ? null : Date.parse(expiresAt) - now(),
+  );
   if (
     text ===
     i18n.t(($) => {
