@@ -1,7 +1,10 @@
 import { Slider } from "@okouai/ui/components/ui/slider";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../../signals/external/feature-switch.ts";
-import { availableChatReasoningEfforts } from "../../../signals/okou-page/model-reasoning-effort.ts";
+import {
+  availableChatReasoningEfforts,
+  defaultChatReasoningEffort,
+} from "../../../signals/okou-page/model-reasoning-effort.ts";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
@@ -298,74 +301,62 @@ function ChatReasoningEffortSettings({
   ) {
     return null;
   }
-  const defaultLabel = t(($) => {
-    return $.settings.models.picker.effortDefault;
-  });
   const label = t(($) => {
     return $.settings.models.picker.effort;
   });
-  const value = selection.reasoningEffort ?? null;
-  const index =
-    value === null
-      ? 0
-      : efforts.findIndex((effort) => {
-          return effort === value;
-        }) + 1;
+  const defaultEffort = defaultChatReasoningEffort(selection.selectedModel);
+  const value = selection.reasoningEffort ?? defaultEffort;
+  const index = efforts.findIndex((effort) => {
+    return effort === value;
+  });
   return (
     <div className="flex flex-col gap-3 border-b border-border/60 px-2 py-4">
       <div className="flex items-baseline justify-between gap-3 text-[13px]">
         <span>{label}</span>
-        <span className="font-medium text-foreground">
-          {value ?? defaultLabel}
-        </span>
+        <span className="font-medium text-foreground">{value}</span>
       </div>
-      {efforts.length > 0 && (
+      {index !== -1 ? (
+        <Slider
+          ticks
+          min={0}
+          max={efforts.length - 1}
+          step={1}
+          value={index}
+          disabled={disabled}
+          aria-label={label}
+          aria-valuetext={value ?? undefined}
+          onValueChange={(next) => {
+            const effort = efforts[next];
+            if (effort !== undefined) {
+              onChange({
+                ...selection,
+                reasoningEffort: effort,
+              });
+            }
+          }}
+        />
+      ) : (
         <>
-          <Slider
-            ticks
-            min={0}
-            max={efforts.length}
-            step={1}
-            value={index}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            {t(($) => {
+              return $.settings.models.picker.effortUnavailable;
+            })}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 h-7 self-start px-2 text-xs text-muted-foreground hover:text-foreground"
             disabled={disabled}
-            aria-label={label}
-            aria-valuetext={value ?? defaultLabel}
-            onValueChange={(next) => {
-              const reasoningEffort = next === 0 ? null : efforts[next - 1];
-              if (reasoningEffort !== undefined) {
-                onChange({ ...selection, reasoningEffort });
-              }
+            onClick={() => {
+              onChange({ ...selection, reasoningEffort: null });
             }}
-          />
-          <div
-            className="flex justify-between text-[11px] text-muted-foreground"
-            aria-hidden="true"
           >
-            <span>{defaultLabel}</span>
-            <span>{efforts.at(-1)}</span>
-          </div>
+            {t(($) => {
+              return $.settings.models.picker.effortReset;
+            })}
+          </Button>
         </>
       )}
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        {t(($) => {
-          return efforts.length > 0
-            ? $.settings.models.picker.effortImpact
-            : $.settings.models.picker.effortUnavailable;
-        })}
-      </p>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="-ml-2 h-7 self-start px-2 text-xs text-muted-foreground hover:text-foreground"
-        disabled={disabled || value === null}
-        onClick={() => {
-          onChange({ ...selection, reasoningEffort: null });
-        }}
-      >
-        {t(($) => {
-          return $.settings.models.picker.effortReset;
-        })}
-      </Button>
     </div>
   );
 }

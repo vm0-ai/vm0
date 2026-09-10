@@ -5230,8 +5230,6 @@
         "categoryVideo": "Video",
         "chatModels": "Chatmodelle",
         "effort": "Denkaufwand",
-        "effortDefault": "Modellstandard",
-        "effortImpact": "Mehr Denkaufwand kann länger dauern und mehr Credits verbrauchen. Gilt für die nächste Aufgabe.",
         "effortReset": "Modellstandard wiederherstellen",
         "effortUnavailable": "Der Denkaufwand ist für diese Modellverbindung nicht verfügbar. Stelle den Standard wieder her, um fortzufahren.",
         "fast": "Schnell",

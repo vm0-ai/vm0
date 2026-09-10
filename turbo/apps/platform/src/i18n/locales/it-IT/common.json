@@ -5287,8 +5287,6 @@
         "categoryVideo": "Video",
         "chatModels": "Modelli chat",
         "effort": "Sforzo di ragionamento",
-        "effortDefault": "Predefinito del modello",
-        "effortImpact": "Uno sforzo maggiore può richiedere più tempo e crediti. Si applica alla prossima attività.",
         "effortReset": "Ripristina il valore predefinito",
         "effortUnavailable": "Lo sforzo non è disponibile per questa connessione al modello. Ripristina il valore predefinito per continuare.",
         "fast": "Veloce",

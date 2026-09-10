@@ -5218,8 +5218,6 @@
         "categoryVideo": "Video",
         "chatModels": "Model chat",
         "effort": "Upaya penalaran",
-        "effortDefault": "Default model",
-        "effortImpact": "Upaya lebih tinggi dapat memerlukan lebih banyak waktu dan kredit. Berlaku untuk tugas berikutnya.",
         "effortReset": "Pulihkan default model",
         "effortUnavailable": "Upaya tidak tersedia untuk koneksi model ini. Pulihkan default untuk melanjutkan.",
         "fast": "Cepat",

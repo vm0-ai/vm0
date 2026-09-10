@@ -5287,8 +5287,6 @@
         "categoryVideo": "Vidéo",
         "chatModels": "Modèles de chat",
         "effort": "Effort de raisonnement",
-        "effortDefault": "Valeur par défaut du modèle",
-        "effortImpact": "Un effort accru peut prendre plus de temps et utiliser plus de crédits. S’applique à la prochaine tâche.",
         "effortReset": "Rétablir la valeur par défaut",
         "effortUnavailable": "L’effort n’est pas disponible pour cette connexion au modèle. Rétablissez la valeur par défaut pour continuer.",
         "fast": "Rapide",

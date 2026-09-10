@@ -785,29 +785,36 @@ test("Choose effort for a new chat and keep Fast independent", async () => {
   const slider = await screen.findByRole("slider", {
     name: "Reasoning effort",
   });
-  expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+  expect(slider).toHaveAttribute("aria-valuetext", "max");
   slider.focus();
-  await user.keyboard("{End}");
+  await user.keyboard("{Home}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "max");
+    expect(slider).toHaveAttribute("aria-valuetext", "low");
   });
+  for (const effort of ["medium", "high", "xhigh", "max", "ultra"]) {
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() => {
+      expect(slider).toHaveAttribute("aria-valuetext", effort);
+    });
+  }
   click(screen.getByRole("switch", { name: "Fast" }));
   await expect(findButton("GPT 5.6 Sol Fast")).resolves.toBeVisible();
-  expect(slider).toHaveAttribute("aria-valuetext", "max");
+  expect(slider).toHaveAttribute("aria-valuetext", "ultra");
   await user.click(composer);
   await fillComposer(composer, "Use this effort for the new task");
   click(await findButton("Send"));
   await waitFor(() => {
     expect(updates).toContainEqual(
       expect.objectContaining({
-        reasoningEffort: "max",
+        reasoningEffort: "ultra",
         codexServiceTier: "fast",
       }),
     );
   });
 });
 
-test("Restore effort on an existing thread without changing Fast", async () => {
+test("Select the default effort on an existing thread without changing Fast", async () => {
+  const user = userEvent.setup({ delay: null });
   const updates: {
     reasoningEffort?: string | null;
     codexServiceTier?: string | null;
@@ -843,20 +850,20 @@ test("Restore effort on an existing thread without changing Fast", async () => {
     name: "Reasoning effort",
   });
   expect(slider).toHaveAttribute("aria-valuetext", "high");
-  click(
-    buttonNamed(
-      "Restore model default",
-      screen.getByRole("region", { name: "Chat settings" }),
-    ),
-  );
+  slider.focus();
+  await user.keyboard("{ArrowRight}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+    expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
+  });
+  await user.keyboard("{ArrowRight}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "max");
   });
   expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
   await waitFor(() => {
     expect(updates).toContainEqual(
       expect.objectContaining({
-        reasoningEffort: null,
+        reasoningEffort: "max",
         codexServiceTier: "fast",
       }),
     );
@@ -888,6 +895,7 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
     ),
   );
   let slider = await screen.findByRole("slider", { name: "Reasoning effort" });
+  expect(slider).toHaveAttribute("aria-valuetext", "high");
   slider.focus();
   await user.keyboard("{End}");
   await waitFor(() => {
@@ -931,7 +939,7 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
   slider.focus();
   await user.keyboard("{End}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "max");
+    expect(slider).toHaveAttribute("aria-valuetext", "ultra");
   });
   click(
     buttonNamed(
@@ -958,7 +966,7 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
     ),
   );
   slider = await screen.findByRole("slider", { name: "Reasoning effort" });
-  expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+  expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
   slider.focus();
   await user.keyboard("{End}");
   await waitFor(() => {
@@ -1097,7 +1105,7 @@ test("Follow effort changes and resets made in another session", async () => {
     await waitFor(() => {
       expect(slider).toHaveAttribute(
         "aria-valuetext",
-        reasoningEffort ?? "Model default",
+        reasoningEffort ?? "high",
       );
     });
   }
@@ -1127,8 +1135,13 @@ test("Adjust effort and Fast from the desktop flyout with keyboard controls", as
   const slider = await screen.findByRole("slider", {
     name: "Reasoning effort",
   });
+  expect(slider).toHaveAttribute("aria-valuetext", "max");
   slider.focus();
   await user.keyboard("{End}");
+  await waitFor(() => {
+    expect(slider).toHaveAttribute("aria-valuetext", "ultra");
+  });
+  await user.keyboard("{ArrowLeft}");
   await waitFor(() => {
     expect(slider).toHaveAttribute("aria-valuetext", "max");
   });
@@ -1140,9 +1153,10 @@ test("Adjust effort and Fast from the desktop flyout with keyboard controls", as
   await expect(findButton("GPT 5.6 Sol Fast")).resolves.toBeVisible();
   expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
   const settings = screen.getByRole("region", { name: "Chat settings" });
-  click(buttonNamed("Restore model default", settings));
+  slider.focus();
+  await user.keyboard("{ArrowRight}");
   await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "Model default");
+    expect(slider).toHaveAttribute("aria-valuetext", "max");
   });
   expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
   click(buttonNamed("Back to models", settings));

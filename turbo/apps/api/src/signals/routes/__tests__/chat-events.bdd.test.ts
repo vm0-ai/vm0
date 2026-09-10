@@ -4211,7 +4211,7 @@ describe("CHAT effort: thread configuration", () => {
     await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
   }, 90_000);
 
-  it("preserves Fast when resetting effort and sending an effort-only override", async () => {
+  it("preserves Fast when resetting effort and sending an Ultra override", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
@@ -4265,17 +4265,17 @@ describe("CHAT effort: thread configuration", () => {
       agentId,
       threadId: thread.id,
       prompt: "Change effort and retain Fast",
-      runOptions: { reasoningEffort: "low" },
+      runOptions: { reasoningEffort: "ultra" },
     });
     const explicitClaim = await claimChatRun(runnerGroup, explicit.runId);
     expect(explicitClaim.claim.platformEnvironment).toMatchObject({
       OKOU_CODEX_SERVICE_TIER: "fast",
-      OKOU_REASONING_EFFORT: "low",
+      OKOU_REASONING_EFFORT: "ultra",
     });
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({
-      reasoningEffort: "low",
+      reasoningEffort: "ultra",
       serviceTier: "priority",
     });
     await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
