@@ -743,7 +743,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                   <TooltipContent
                     side="bottom"
                     align="start"
-                    className="w-64 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3 text-left font-normal"
+                    className="w-64 rounded-lg border border-[hsl(var(--gray-400))] p-3 text-left font-normal"
                     style={{
                       backgroundColor: "hsl(var(--popover))",
                       color: "hsl(var(--popover-foreground))",

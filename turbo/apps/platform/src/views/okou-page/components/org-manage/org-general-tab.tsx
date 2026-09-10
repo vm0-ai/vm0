@@ -44,7 +44,7 @@ import {
 import { readImageDimensions } from "./read-image-dimensions.ts";
 
 const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
 } as const;
 
 const MIN_LOGO_DIMENSION = 100;

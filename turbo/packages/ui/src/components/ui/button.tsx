@@ -27,7 +27,7 @@ const buttonVariants = cva(
         interrupt:
           "bg-interrupt text-interrupt-foreground hover:bg-interrupt-hover active:bg-interrupt-pressed",
         outline:
-          "border-[0.7px] border-[hsl(var(--gray-400))] bg-background hover:bg-state-hover active:bg-state-pressed text-foreground",
+          "border border-[hsl(var(--gray-400))] bg-background hover:bg-state-hover active:bg-state-pressed text-foreground",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary-hover active:bg-secondary-pressed",
         ghost: "text-brand-text hover:bg-state-hover active:bg-state-pressed",

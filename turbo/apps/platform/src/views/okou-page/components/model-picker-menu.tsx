@@ -446,7 +446,7 @@ function MediaModelList({
  * and `shadow-lg` reproduces exactly.
  */
 const FLYOUT_PANEL_CLASS =
-  "rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
+  "rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
 
 /**
  * Flyout layout: model types on the left, that type's models in a panel beside

@@ -517,7 +517,7 @@ function OfficialWorkflowDefinitionPage() {
                   return (
                     <div
                       key={blueprint.key}
-                      className="rounded-2xl border-[0.7px] border-border bg-gray-50 p-4"
+                      className="rounded-2xl border border-border bg-gray-50 p-4"
                     >
                       <p className="text-sm font-medium text-foreground">
                         {blueprint.key}
