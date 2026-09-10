@@ -1,6 +1,11 @@
 import { isDesktopAuthFlow } from "./desktop-auth-flow.ts";
 import * as Sentry from "@sentry/browser";
-import type { BrowserOptions, Contexts, User } from "@sentry/browser";
+import type {
+  BrowserOptions,
+  Contexts,
+  ErrorEvent,
+  User,
+} from "@sentry/browser";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 
 import { setLogErrorHandler } from "../signals/log.ts";
@@ -51,6 +56,54 @@ const EXPECTED_ERROR_MESSAGES: ReadonlySet<string> = new Set([
   "this.mediaController.media.addEventListener is not a function. (In 'this.mediaController.media.addEventListener(eventType,this,true)', 'this.mediaController.media.addEventListener' is undefined)",
 ]);
 
+// WebKit runs its own <video> controls script inside the page and lets its
+// exceptions escape to window.onerror. HTMLVideoElement.webkitEnterFullscreen()
+// throws a message-less InvalidStateError while a fullscreen transition is
+// already in flight, and the controls call it unguarded, so rapid taps on an
+// inline video report an error no application code can observe or prevent.
+const USER_AGENT_MEDIA_CONTROLS_MESSAGES: ReadonlySet<string> = new Set([
+  "InvalidStateError: The object is in an invalid state.",
+  "The object is in an invalid state.",
+  "ReferenceError: Can't find variable: EmptyRanges",
+  "Can't find variable: EmptyRanges",
+]);
+
+// Application code always ships as a JavaScript asset. The user-agent script
+// carries no such frame: its only frame is the document URL of the page.
+const APPLICATION_SCRIPT_FILENAME = /\.m?js($|[?#])/u;
+
+const GLOBAL_ONERROR_MECHANISM = "auto.browser.global_handlers.onerror";
+
+function hasApplicationStackFrame(event: ErrorEvent): boolean {
+  return (event.exception?.values ?? []).some((value) => {
+    return (value.stacktrace?.frames ?? []).some((frame) => {
+      return (
+        frame.filename !== undefined &&
+        APPLICATION_SCRIPT_FILENAME.test(frame.filename)
+      );
+    });
+  });
+}
+
+// Narrow to the exact user-agent condition: an unhandled global capture that
+// matches a known media-controls message and attributes no application frame.
+// The same message raised from our own code keeps its asset frame and reports.
+function isUserAgentMediaControlsCapture(event: ErrorEvent): boolean {
+  const values = event.exception?.values;
+  if (values === undefined || hasApplicationStackFrame(event)) {
+    return false;
+  }
+  return values.some((value) => {
+    const mechanism = value.mechanism;
+    return (
+      mechanism?.handled === false &&
+      mechanism.type.startsWith(GLOBAL_ONERROR_MECHANISM) &&
+      value.value !== undefined &&
+      USER_AGENT_MEDIA_CONTROLS_MESSAGES.has(value.value)
+    );
+  });
+}
+
 function isExpectedErrorDescription(
   name: string | undefined,
   message: string | undefined,
@@ -100,6 +153,10 @@ export function createPlatformSentryOptions(
 
     environment: runtimeConfig.environment,
 
+    // Without a release every capture reports `<not logged>`, so a filter or
+    // fix cannot be verified against the build that produced the events.
+    release: __OKOU_APP_VERSION__,
+
     initialScope: {
       tags: {
         app: "platform",
@@ -137,6 +194,11 @@ export function createPlatformSentryOptions(
         statusCode >= 400 &&
         statusCode < 500
       ) {
+        return null;
+      }
+
+      // Only the page runtime renders <video>; the worker keeps every capture.
+      if (runtime === "page" && isUserAgentMediaControlsCapture(event)) {
         return null;
       }
 
