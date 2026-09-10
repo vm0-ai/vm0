@@ -22,14 +22,13 @@ import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
 } from "@okouai/api-contracts/contracts/host";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
 } from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
@@ -260,20 +259,6 @@ function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
   );
 }
 
-function noActiveGoalsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
-  return notExists(
-    db
-      .select({ id: threadGoals.id })
-      .from(threadGoals)
-      .where(
-        and(
-          eq(threadGoals.chatThreadId, chatThreads.id),
-          eq(threadGoals.status, "active"),
-        ),
-      ),
-  );
-}
-
 function ownedChatThreadDetail(
   threadId: string,
   userId: string,
@@ -349,7 +334,6 @@ export function chatThreadUnreads(args: {
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(db),
-          noActiveGoalsForCurrentThreadCondition(db),
         ),
       );
     return rows.map((row) => {
@@ -417,7 +401,6 @@ export function chatIndicators(args: {
               isNull(chatThreads.lastReadAt),
               gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
             ),
-            noActiveGoalsForCurrentThreadCondition(db),
           ),
         )
         .orderBy(desc(lastRunFinish.createdAt), desc(chatThreads.id))

@@ -1,5 +1,5 @@
 import type { RunnerPreference } from "@okouai/api-contracts/contracts/runners";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runnerState } from "@okouai/db/schema/runner-state";
 import {

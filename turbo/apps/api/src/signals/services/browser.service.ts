@@ -9,7 +9,7 @@ import {
   type BrowserSession,
   type BrowserSuspensionReason,
 } from "@okouai/api-contracts/contracts/browser";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import {
   browserSessionInstances,
   browserSessionResizeStates,

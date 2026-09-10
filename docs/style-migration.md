@@ -273,3 +273,131 @@ invocation with identical source, runner, cases, fixture and limits passed.
 No expected image, mask or threshold changed. This is bounded Chromium
 acceptance; explicit sidebar readiness remains necessary before using the
 runner as an unattended gate.
+
+## Tone preview surfaces
+
+The `tone-preview-surfaces` batch covers the user sample bubble and its enclosing
+preview border in Agent profile settings. It replaces two legacy consumption
+sites with existing gray, foreground and surface-border utilities. The assistant
+bubble retains its separate Markdown and native Desktop selection contract;
+the shared legacy border definition remains while other consumers use it.
+
+`pnpm style:migration:tone-preview` uses `tone-preview-cases.json` and requires
+private storage state, an owned synthetic Agent fixture (`--agent-fixture`) and
+the TEST account's frozen feature-switch response (`--feature-fixture`). The
+`--sidebar-fixture` freezes its admin organization and free-tier billing status;
+desktop captures wait for the resulting Get Pro card after navigation and reload.
+Both browser requests and embedded App bootstrap responses use those fixtures.
+The 33 states cover four tones, hover, keyboard activation/focus, Discard,
+pending Save, successful Save and reload in desktop Light/Dark and narrow DPR 2.
+Real API persistence is checked separately; no Agent run is needed.
+
+The `tone-surface-rgba8-v1` observation protocol adds exact geometry and computed
+styles for the `tone-preview` and `tone-preview-user-message` semantic slots.
+Only the user bubble's background color is compared as the browser's exact
+8-bit sRGB canvas readback, including its alpha byte. Serialized alpha must also
+match exactly. Its raw computed CSS is
+also archived: Tailwind's `color-mix` and legacy `rgba` serialize differently.
+This records equivalence for the pinned 8-bit screenshot environment, not
+floating-point color or cross-browser equivalence. Other styles remain literal
+comparisons and the full-page `channel-rounding-v1` limits remain unchanged.
+Freeze and upload the unchanged BEFORE/A/A pair before replacing business
+classes, then replay the same runner, cases and fixtures on the PR deployment.
+
+[PR #33133](https://github.com/vm0-ai/vm0/pull/33133) froze its
+[BEFORE and unchanged-code replay](https://a.okou.io/0ey5ajo2g7.zip) before
+replacing either business class. All 33 states have zero raw changed pixels
+on unmigrated App/API build `047e880cc958225a79c2ebceb961718a0916d5c9`.
+The archive retains setup failures and the first replay's outer exit anomaly;
+the confirming replay completed normally with the same frozen protocol.
+
+The [AFTER archive](https://a.okou.io/uc3wow1q46.zip) and
+[comparison image](https://a.okou.io/seho80x6gx.png) record all 33 states with
+zero raw changed pixels and identical surface/control observations on App/API
+build `1a665b1d0b25311c4c98471c206212a64be79c0d`, from implementation source
+`a9ae349966e02c2db99aad68378a24b9cac31f8a`. Both artifacts were anonymously
+downloaded and hash-verified. Actual TEST API Save, reload, Discard and original
+tone restoration passed, as did all 18 existing Profile tests and the relevant
+static checks. The branch removes one token, two declarations and two legacy
+consumption sites. The batch remains implemented until the complete current-head
+CI and acceptance gates pass; inspect the PR for live CI status.
+
+## Monochrome icon filter batch
+
+The independent `monochrome-icon-filter` batch covers only `ProviderIcon`,
+`ConnectorIcon`, and their final `okou-icon-mono` declaration. Run
+`pnpm exec tsx playwright/style-migration/run-icon-mono.ts` from `e2e` using
+`--app-url`, `--api-url`, `--expected-build`, `--api-build`, `--source-sha`,
+`--storage-state`, `--executable-path`, `--out`, and optional `--baseline`.
+`icon-mono-cases.json` and `icon-mono-fixtures.json` are frozen alongside the
+runner before business-style changes. API bootstrap scripts and browser requests
+receive the same deterministic responses. Credentials remain outside evidence.
+
+Twenty states cover the real Models settings dialog, its portaled model
+options, personal provider marks, and the Connector page in Light/Dark desktop
+and narrow touch/DPR 2 Chromium. Monochrome, colorful, missing-metadata and failed
+image fixtures are distinct. Missing catalog display metadata is intentional
+fault injection for the existing defensive fallback. Synthetic HTTPS icon
+requests are fulfilled locally; no provider authorization or Agent run occurs.
+Automatic signup attribution is fulfilled without writing to the API.
+
+Healthy images use the unchanged shared `capture.ts`. Its mandatory image decode
+cannot accept an intentionally broken image. Only failed-image states use the
+batch's capture function: it verifies the failed image is complete, hidden and
+undecodable, decodes all other images, waits for fonts and finite animations,
+pauses infinite animations at zero, and requires three identical full-page
+frames. It changes no DOM or styles. Both paths use the unchanged `images.ts`
+rounding limits and retain every raw changed pixel without masks. This is bounded
+Chromium evidence; it does not certify native, WebKit or normal-motion behavior.
+
+Icon-mono calibration found narrow Dark DPR 2 raster differences confined to the
+unrelated dotted price underlines (96/96/16 pixels, maximum channel delta 4).
+Those captures remain rejected under the original limits. Before each capture,
+the independent runner now requests a complete repaint by changing the viewport
+width by one pixel and restoring the exact case dimensions, without changing
+DOM or CSS. A fresh before/A/A pair passed all 20 states with zero changed
+pixels. The interruption of the earlier A/A returned SIGTERM with an unconfirmed
+cause; per-capture append-only records now preserve measurements before final
+manifest creation. This calibration does not claim unattended reproducibility.
+
+The [frozen BEFORE and unchanged A/A archive](https://a.okou.io/aeguxfgxpx.zip)
+was uploaded and anonymously hash-verified before business edits. It pins source
+`52557ce17da42acce602164a838381039d4407f6` and App/API build
+`ad820032f6237598b8abed4c46e31979d7007ae2`, after integrating main
+`29dfab14531307e67d16322d5fa3972df9c42a99`. All 20 states pass with zero
+changed pixels and identical icon observations. Both original business files,
+the CSS entry point and legacy baseline were byte-identical to that main.
+
+Both consumers now use the existing `dark:invert` utility. The dark variant also
+supports a theme attribute on the element itself, but neither image accepts
+that attribute or caller filter classes; the current consumers and portaled
+options use the same dark ancestor as the removed selector. Provider
+classification, connector inversion flags, scale, fallback DOM and error events
+remain unchanged. Only this token, one CSS declaration and two production uses
+are pruned. No token or shared component changes are needed.
+
+The [AFTER archive](https://a.okou.io/gywva3k9z6.zip) and
+[comparison image](https://a.okou.io/vfjoaz2ylx.png) record all 20 states
+passing with zero changed pixels and identical icon observations on App/API
+build `29156a9e945af833fdef2bffe024be4c617d4496`, source
+`318f791155657f6efb477a25f8023fd394f87fb1`. Both downloads were anonymously
+hash-verified. The complete style check, affected App types/ESLint/Knip,
+E2E types, formatting and four selected existing page tests passed. The legacy
+inventory is now 93 tokens, 533 declarations, 307 production uses and two
+injections. The implementation pipeline retains a separate `/sign-in`
+navigation timeout during CLI TEST credential provisioning, before test
+execution. The batch remains `implemented` while final-head CI is assessed;
+these screenshots establish bounded Chromium acceptance.
+
+The [evidence-only head replay](https://a.okou.io/okin45nt2v.zip) pins source
+`6d4d25d653e49be29d900cd6e73b208d5c1fbc1b` and App/API build
+`a7aae2beca69ca7c0075bf79af4b9cccaf4f006b`, including main
+`724dc63d33064e66f8a41e0bef6ad54e345ef94a`. All 20 states again pass with
+zero changed pixels and equal observations; that source's complete Turbo CI
+passes. Actual Models and Connector pages loaded with the independent TEST
+account. The archive records actual feature switches separately: the fixture
+sets `modelPickerMenu=true` to exercise portaled icons; the live TEST response
+has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false`.
+No live switch was changed. Earlier manual portal navigation attempts are
+explicitly unaccepted diagnostics, distinct from the four passing frozen portal
+states. The archive was anonymously downloaded and hash-verified.

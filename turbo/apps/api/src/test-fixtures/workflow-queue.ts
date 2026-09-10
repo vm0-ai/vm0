@@ -1,4 +1,4 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, eq, isNotNull } from "drizzle-orm";
 

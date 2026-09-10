@@ -16,7 +16,7 @@ import {
   type WorkspaceReuseResult,
 } from "@okouai/api-contracts/contracts/runner-primitives";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { userCache } from "@okouai/db/schema/user-cache";

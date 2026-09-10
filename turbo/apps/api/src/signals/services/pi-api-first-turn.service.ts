@@ -1,7 +1,3 @@
-import {
-  retirePendingGoalRun,
-  type GoalRunRetirement,
-} from "./goal-retirement.service";
 import { createHash } from "node:crypto";
 
 import {
@@ -19,7 +15,7 @@ import {
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { modelProviderTypeSchema } from "@okouai/api-contracts/contracts/model-providers";
 import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import {
   materializePiAgentModelConfig,
@@ -459,6 +455,7 @@ function validateResumeSession(args: {
 }
 
 interface ApiFirstTurnLifecycleState {
+  readonly triggerSource: string | null;
   readonly activeDeliveryId: string | null;
   readonly chatThreadId: string | null;
   readonly orgId: string;
@@ -474,6 +471,7 @@ async function readApiFirstTurnLifecycleState(
     tx
       .select({
         status: agentRuns.status,
+        triggerSource: agentRuns.triggerSource,
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
         chatThreadId: agentRuns.chatThreadId,
@@ -836,6 +834,7 @@ function validateApiFirstTurnLifecycle(
   }
   if (
     !state ||
+    state.triggerSource === "goal" ||
     (state.status !== "pending" && state.status !== "running") ||
     state.userId !== args.activation.userId ||
     state.orgId !== args.activation.orgId ||
@@ -2521,25 +2520,21 @@ const runPiApiFirstTurnCore$ = command(
   },
 );
 
-/** Captured pending contexts must pass retirement before API-owned execution. */
+/** Validate captured source authority before any API-owned resource or model work. */
 export const runPiApiFirstTurn$ = command(
   async (
     { set },
     activation: PiApiFirstTurnActivation,
     signal: AbortSignal,
-  ): Promise<
-    DispatchCompleteSideEffectsInput | GoalRunRetirement | undefined
-  > => {
-    const retired = await retirePendingGoalRun(set(writeDb$), activation.runId);
-    if (signal.aborted) {
-      L.debug("Pi activation aborted after Goal retirement check", {
-        runId: activation.runId,
-      });
-    }
-    if (retired) {
-      return { kind: "goal-retired", run: retired };
-    }
+  ): Promise<DispatchCompleteSideEffectsInput | undefined> => {
+    const [run] = await set(writeDb$)
+      .select({ triggerSource: agentRuns.triggerSource })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, activation.runId));
     signal.throwIfAborted();
+    if (!run || run.triggerSource === "goal") {
+      return undefined;
+    }
     return await set(runPiApiFirstTurnCore$, activation, signal);
   },
 );

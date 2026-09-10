@@ -5,7 +5,7 @@ import {
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";

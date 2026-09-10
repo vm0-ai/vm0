@@ -44,6 +44,9 @@ export const runCreateBodySchema = unifiedRunRequestSchema
     permissionPolicies: true,
   })
   .extend({
+    // This endpoint owns the source; never strip an obsolete execution request
+    // into an ordinary launch. Callers must omit source authority entirely.
+    triggerSource: z.never().optional(),
     modelProvider: modelProviderWriteTypeSchema.optional(),
   });
 

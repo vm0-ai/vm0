@@ -11,7 +11,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-slack-state";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgCache } from "@okouai/db/schema/org-cache";

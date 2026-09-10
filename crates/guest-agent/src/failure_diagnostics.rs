@@ -24,6 +24,8 @@ use serde_json::Value;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
 const MAX_LOGGED_CLI_STDERR_LINE_BYTES: usize = 4096;
+/// Lowercased marker the Pi model boundary writes before an observed status.
+const PI_PROVIDER_HTTP_MARKER: &str = "provider http ";
 const CODEX_SAFETY_POLICY_REFUSAL_MESSAGE: &str = concat!(
     "This content was flagged for possible cybersecurity risk. ",
     "If this seems wrong, try rephrasing your request. ",
@@ -306,7 +308,7 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::TermsAcceptanceRequired);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_oauth_token_revoked_error(&normalized)
+        && is_claude_oauth_reconnect_required_error(&normalized)
     {
         return Some(FailureReason::ReconnectRequired);
     }
@@ -379,7 +381,54 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::UsageLimit);
     }
+    // Quota and subscription wording above stays authoritative for the statuses
+    // it also covers, so the observed provider status is read last.
+    if matches!(framework, AgentFramework::Pi)
+        && let Some(reason) = pi_provider_http_failure_reason(source, &normalized)
+    {
+        return Some(reason);
+    }
     None
+}
+
+/// Classify the provider status the Pi runtime records for an opaque body.
+///
+/// The Pi model boundary restates a non-JSON provider error as
+/// `provider HTTP <status>: <phrase>`, so an Envoy or edge reply that used to
+/// arrive as bare prose now carries its stage. Only the server-unavailability
+/// family is classified here; every other status keeps whatever message-shaped
+/// classification already applies, or stays unknown.
+fn pi_provider_http_failure_reason(
+    source: FailureDetailSource,
+    normalized: &str,
+) -> Option<FailureReason> {
+    if source != FailureDetailSource::PiResult {
+        return None;
+    }
+    normalized
+        .match_indices(PI_PROVIDER_HTTP_MARKER)
+        .find_map(|(index, _)| {
+            if normalized[..index]
+                .chars()
+                .next_back()
+                .is_some_and(is_error_type_char)
+            {
+                return None;
+            }
+            let detail = &normalized[index + PI_PROVIDER_HTTP_MARKER.len()..];
+            let status_len = detail
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(detail.len());
+            let (status, remaining) = detail.split_at(status_len);
+            if remaining.chars().next().is_some_and(is_error_type_char) {
+                return None;
+            }
+            match status {
+                "500" | "502" | "503" | "504" => Some(FailureReason::ProviderServerError),
+                "529" => Some(FailureReason::ProviderOverloaded),
+                _ => None,
+            }
+        })
 }
 
 fn is_codex_safety_policy_refusal(source: FailureDetailSource, failure_message: &str) -> bool {
@@ -416,11 +465,20 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
         && normalized.contains("api error: 401 invalid authentication credentials")
 }
 
-fn is_claude_oauth_token_revoked_error(normalized: &str) -> bool {
+fn is_claude_oauth_reconnect_required_error(normalized: &str) -> bool {
+    const INVALID_TOKEN: &str = "oauth access token is invalid";
+
     normalized.contains("failed to authenticate")
         && has_claude_api_status(normalized, "401")
         && normalized.contains("oauth access token")
-        && normalized.contains("revoked")
+        && (normalized.contains("revoked")
+            || normalized.match_indices(INVALID_TOKEN).any(|(index, _)| {
+                !normalized[..index]
+                    .chars()
+                    .next_back()
+                    .is_some_and(is_error_type_char)
+                    && strip_word_prefix(&normalized[index..], INVALID_TOKEN).is_some()
+            }))
 }
 
 fn is_claude_terms_acceptance_required_error(normalized: &str) -> bool {

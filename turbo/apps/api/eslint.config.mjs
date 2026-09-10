@@ -355,6 +355,20 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/cron-snapshot-chat-events.service.ts"],
+    rules: {
+      // An expected per-head deadline is bounded backpressure, not a warning,
+      // but a genuinely stuck head still needs its stage and duration. Axiom's
+      // default transport drops debug events, so retain this record at info.
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: ["Timed out Chat Event Snapshot candidate"],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     ignores: [
       "src/**/__tests__/**",

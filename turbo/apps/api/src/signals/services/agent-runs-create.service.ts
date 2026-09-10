@@ -1,5 +1,5 @@
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
-import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
+import { isUnsupportedRunAdmission } from "./run-admission-input";
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import {
   AGENT_EXECUTION_TIMEOUT_SECONDS,
@@ -86,7 +86,7 @@ type AgentRunCreateBody = z.infer<typeof runCreateBodySchema>;
 // Emitted as the agent_run_origin observability dimension. The values name what
 // started the run, so the fallback is "direct" (neither automation nor goal
 // continuation) rather than a restatement that this is an agent run.
-type AgentRunOrigin = "direct" | "workflow_automation" | "goal_continuation";
+type AgentRunOrigin = "direct" | "workflow_automation";
 export type AgentRunPreCreateSource =
   | "chat_callback_auto_send"
   | "workflow_slash_command";
@@ -146,7 +146,6 @@ type RunCallback = HttpRunCallback | InternalRunCallback;
 interface AgentRunMetadata {
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
-  readonly goalId?: string;
   readonly autonomyBudget?: number;
   readonly codexServiceTier?: CodexServiceTier;
   readonly reasoningEffort?: ReasoningEffort | null;
@@ -756,9 +755,6 @@ function agentRunOrigin(args: {
 }): AgentRunOrigin {
   if (args.command.agentRunMetadata?.workflowAutomationId) {
     return "workflow_automation";
-  }
-  if (args.command.agentRunMetadata?.goalId) {
-    return "goal_continuation";
   }
   return "direct";
 }
@@ -1386,10 +1382,9 @@ export const createQueueFirstAgentRun$ = command(
     signal: AbortSignal,
   ) => {
     if (
-      args.triggerSource === "goal" ||
-      args.queueFirstAssociation.kind === "goal_input"
+      isUnsupportedRunAdmission(args.triggerSource, args.queueFirstAssociation)
     ) {
-      return conflict(GOAL_RETIRED_MESSAGE);
+      return conflict("Unsupported run input");
     }
     const result = await set(createAgentRunInternal$, args, signal);
     if (isQueueFirstRunClaimLost(result)) {

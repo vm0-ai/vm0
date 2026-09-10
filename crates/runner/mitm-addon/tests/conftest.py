@@ -535,9 +535,9 @@ def fresh_usage_executor():
     Tests that call ``shutdown(wait=True)`` to flush pending webhook
     reports need a fresh executor afterwards so later tests still see a
     live pool.  This fixture owns the lifecycle: a new
-    :class:`ThreadPoolExecutor` is installed before the test and the
+    :class:`usage.executor.WebhookExecutor` is installed before the test and the
     original is restored after a shutdown-triggered final flush.
-    ``ThreadPoolExecutor.shutdown`` is idempotent, so we always call it
+    ``WebhookExecutor.shutdown`` is idempotent, so we always call it
     on the way out regardless of whether the test already did.
     """
     with fresh_usage_executor_context() as executor:
