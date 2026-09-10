@@ -1,6 +1,6 @@
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";

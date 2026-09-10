@@ -26,6 +26,13 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
   valid: [
     {
       code: `${preamble}
+        import { agentRuns } from "@okouai${"/db/runtime/agent-run"}";
+        import { sql } from "drizzle-orm";
+        db.select({ createdAt: sql\`max(\${agentRuns.createdAt})\`.mapWith(agentRuns.createdAt) }).from(agentRuns);
+      `,
+    },
+    {
+      code: `${preamble}
         import { count, sql } from "drizzle-orm";
         db.select({
           id: users.id,

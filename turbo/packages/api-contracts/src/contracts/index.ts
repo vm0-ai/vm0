@@ -1844,20 +1844,6 @@ export {
   type PublishPresentationTemplateBody,
 } from "./presentation-templates";
 export {
-  goalsContract,
-  goalCreateRequestSchema,
-  goalEditRequestSchema,
-  goalEventSchema,
-  goalResponseSchema,
-  goalStatusSchema,
-  type GoalCreateRequest,
-  type GoalEditRequest,
-  type GoalEvent,
-  type GoalResponse,
-  type GoalStatus,
-  type GoalsContract,
-} from "./goals";
-export {
   hostContract,
   hostedSiteFileSchema,
   hostedSitePrepareRequestSchema,

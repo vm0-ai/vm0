@@ -7,7 +7,7 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
 } from "@okouai/api-contracts/contracts/runners";
 import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
 import { conversations } from "@okouai/db/schema/conversation";

@@ -11,6 +11,25 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.882.5](https://github.com/vm0-ai/vm0/compare/app-v0.882.4...app-v0.882.5) (2026-09-10)
+
+
+### Bug Fixes
+
+* **platform:** stabilize voice composer layout ([#33058](https://github.com/vm0-ai/vm0/issues/33058)) ([724dc63](https://github.com/vm0-ai/vm0/commit/724dc63d33064e66f8a41e0bef6ad54e345ef94a))
+
+
+### Refactoring
+
+* **ui:** share button foundation with toggle controls ([#32958](https://github.com/vm0-ai/vm0/issues/32958)) ([29dfab1](https://github.com/vm0-ai/vm0/commit/29dfab14531307e67d16322d5fa3972df9c42a99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/ui bumped to 1.8.1
+
 ## [0.882.4](https://github.com/vm0-ai/vm0/compare/app-v0.882.3...app-v0.882.4) (2026-09-10)
 
 

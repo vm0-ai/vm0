@@ -289,7 +289,15 @@ export const connectorCatalogContract = c.router({
     method: "GET",
     path: "/api/connector-catalog/discovery",
     headers: authHeadersSchema,
-    query: z.object({ keyword: z.string().optional() }),
+    query: z.object({
+      keyword: z.string().optional(),
+      /**
+       * Browse one category in full instead of the per-category slice. The
+       * category totals this endpoint reports are what the client offers as a
+       * way in, so entering one has to return everything it counted.
+       */
+      category: z.string().optional(),
+    }),
     responses: {
       200: publicConnectorCatalogDiscoveryResponseSchema,
       401: apiErrorSchema,

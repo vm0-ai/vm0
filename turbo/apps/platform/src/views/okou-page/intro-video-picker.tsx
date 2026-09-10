@@ -14,9 +14,9 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
-  ExplainerVideoPickerSignals,
-  ExplainerVideoTab,
-} from "../../signals/okou-page/explainer-video-picker.ts";
+  IntroVideoPickerSignals,
+  IntroVideoPickerTab,
+} from "../../signals/okou-page/intro-video-picker.ts";
 import { introVideoStyleGallerySignals } from "../../signals/okou-page/intro-video-style-gallery.ts";
 import { introVideoAvatarPickerSignals } from "../../signals/okou-page/intro-video-catalog-picker.ts";
 import { groupIntroVideoAvatars } from "../../signals/okou-page/intro-video-avatar-groups.ts";
@@ -37,10 +37,10 @@ import {
   avatarSelectionLabel,
   styleSelectionLabel,
   voiceSelectionLabel,
-} from "./explainer-video-selection-labels.ts";
+} from "./intro-video-selection-labels.ts";
 
 interface PickerProps {
-  readonly signals: ExplainerVideoPickerSignals;
+  readonly signals: IntroVideoPickerSignals;
 }
 
 function PickerOption({
@@ -102,7 +102,7 @@ function PickerMessage({
         {t(($) => {
           return error
             ? $.chat.introVideo.catalog.error
-            : $.chat.explainerVideo.noMatches;
+            : $.chat.introVideo.picker.noMatches;
         })}
       </p>
       {onRetry && (
@@ -163,12 +163,12 @@ function ConfigurationTabs({ signals }: PickerProps) {
     {
       id: "style",
       label: t(($) => {
-        return $.chat.explainerVideo.style;
+        return $.chat.introVideo.picker.style;
       }),
       value: style
         ? styleSelectionLabel(t, style)
         : t(($) => {
-            return $.chat.explainerVideo.chooseStyle;
+            return $.chat.introVideo.picker.chooseStyle;
           }),
       Icon: LayoutTemplate,
       selected: style !== null,
@@ -200,7 +200,7 @@ function ConfigurationTabs({ signals }: PickerProps) {
     <div
       role="tablist"
       aria-label={t(($) => {
-        return $.chat.explainerVideo.settings;
+        return $.chat.introVideo.picker.settings;
       })}
       className="grid shrink-0 grid-cols-3 gap-1 border-b border-border px-4 py-2 sm:px-6 sm:pr-14"
     >
@@ -213,7 +213,7 @@ function ConfigurationTabs({ signals }: PickerProps) {
             variant="quiet"
             aria-label={label}
             aria-selected={tab === id}
-            aria-controls="explainer-video-panel"
+            aria-controls="intro-video-panel"
             tabIndex={tab === id ? 0 : -1}
             onClick={() => {
               setTab(id);
@@ -351,7 +351,7 @@ function StylePicker({ signals }: PickerProps) {
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="text-xs font-medium">
             {t(($) => {
-              return $.chat.explainerVideo.chooseStyle;
+              return $.chat.introVideo.picker.chooseStyle;
             })}
           </h3>
           {catalog.state === "hasData" && (
@@ -363,7 +363,7 @@ function StylePicker({ signals }: PickerProps) {
         <PickerSearch
           signals={signals}
           label={t(($) => {
-            return $.chat.explainerVideo.searchStyles;
+            return $.chat.introVideo.picker.searchStyles;
           })}
         />
       </div>
@@ -458,7 +458,7 @@ function AvatarPicker({ signals }: PickerProps) {
         <PickerSearch
           signals={signals}
           label={t(($) => {
-            return $.chat.explainerVideo.searchAvatars;
+            return $.chat.introVideo.picker.searchAvatars;
           })}
         />
       </div>
@@ -549,7 +549,7 @@ function VoicePicker({ signals }: PickerProps) {
               }}
             >
               {t(($) => {
-                return $.chat.explainerVideo.changeAvatar;
+                return $.chat.introVideo.picker.changeAvatar;
               })}
             </Button>
           </div>
@@ -559,11 +559,11 @@ function VoicePicker({ signals }: PickerProps) {
             title={t(($) => {
               return avatar.kind === "none"
                 ? $.chat.introVideo.voice.auto
-                : $.chat.explainerVideo.avatarVoice;
+                : $.chat.introVideo.picker.avatarVoice;
             })}
             description={t(($) => {
               return avatar.kind === "none"
-                ? $.chat.explainerVideo.autoVoiceDescription
+                ? $.chat.introVideo.picker.autoVoiceDescription
                 : $.chat.introVideo.voice.defaultDescription;
             })}
             icon={<Volume2 size={17} />}
@@ -599,7 +599,7 @@ function VoicePicker({ signals }: PickerProps) {
   );
 }
 
-export function ExplainerVideoPicker({
+export function IntroVideoPicker({
   signals,
   onSelect,
   onCancel,
@@ -612,7 +612,7 @@ export function ExplainerVideoPicker({
   const template = useGet(signals.template$);
   const style = useGet(signals.style$);
   const voice = useGet(signals.voice$);
-  const panels: Record<ExplainerVideoTab, ReactNode> = {
+  const panels: Record<IntroVideoPickerTab, ReactNode> = {
     style: <StylePicker signals={signals} />,
     avatar: <AvatarPicker signals={signals} />,
     voice: <VoicePicker signals={signals} />,
@@ -621,11 +621,11 @@ export function ExplainerVideoPicker({
     <div className="flex min-h-0 flex-1 flex-col">
       <ConfigurationTabs signals={signals} />
       <div
-        id="explainer-video-panel"
+        id="intro-video-panel"
         role="tabpanel"
         aria-label={t(($) => {
           return tab === "style"
-            ? $.chat.explainerVideo.style
+            ? $.chat.introVideo.picker.style
             : tab === "avatar"
               ? $.chat.introVideo.avatar.label
               : $.chat.introVideo.voice.label;
@@ -638,12 +638,12 @@ export function ExplainerVideoPicker({
         <p className="text-xs text-muted-foreground">
           {t(($) => {
             return !style && !voice
-              ? $.chat.explainerVideo.chooseStyleAndVoice
+              ? $.chat.introVideo.picker.chooseStyleAndVoice
               : !style
-                ? $.chat.explainerVideo.chooseStyle
+                ? $.chat.introVideo.picker.chooseStyle
                 : !voice
                   ? $.chat.introVideo.voice.heading
-                  : $.chat.explainerVideo.ready;
+                  : $.chat.introVideo.picker.ready;
           })}
         </p>
         <div className="flex shrink-0 gap-2">
@@ -667,7 +667,7 @@ export function ExplainerVideoPicker({
             }}
           >
             {t(($) => {
-              return $.chat.explainerVideo.useSelection;
+              return $.chat.introVideo.picker.useSelection;
             })}
             <ArrowRight size={15} />
           </Button>

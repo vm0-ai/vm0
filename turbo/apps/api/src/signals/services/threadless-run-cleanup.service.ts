@@ -1,7 +1,7 @@
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";

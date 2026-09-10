@@ -50,7 +50,7 @@ import {
   type ModelProviderRefreshProviderKey,
 } from "@okouai/connectors/auth-providers/model-provider-auth";
 import { isChatgptRefreshError } from "@okouai/connectors/auth-providers/model-providers/codex-oauth/oauth";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { connectors } from "@okouai/db/schema/connector";
 import {
   modelProviderAccounts,

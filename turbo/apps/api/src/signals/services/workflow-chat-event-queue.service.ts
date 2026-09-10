@@ -1,6 +1,6 @@
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agents } from "@okouai/db/schema/agent";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import { chatEvents } from "@okouai/db/schema/chat-event";

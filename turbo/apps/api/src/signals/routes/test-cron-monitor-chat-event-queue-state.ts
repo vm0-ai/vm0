@@ -5,11 +5,11 @@ import {
   type TestCronMonitorChatEventQueueStateActionBody,
 } from "@okouai/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
+
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -80,10 +80,6 @@ const STALE_CONTEXT_FIXTURES = [
     contextType: "automation",
     eventType: "input.automation",
   },
-  {
-    contextType: "goal",
-    eventType: "input.goal",
-  },
 ] as const;
 
 function actionOk(extra: Record<string, unknown> = {}) {
@@ -135,49 +131,6 @@ async function seedActiveRun(
   if (!run) {
     throw new Error("Failed to seed orphan monitor run");
   }
-}
-
-async function seedGoalFixture(
-  tx: DbTransaction,
-  args: {
-    readonly agentId: string;
-    readonly fixtureKind: "orphaned-goal" | "paused-goal";
-    readonly orgId: string;
-    readonly threadId: string;
-    readonly userId: string;
-  },
-) {
-  const [goal] = await tx
-    .insert(threadGoals)
-    .values({
-      orgId: args.orgId,
-      ownerUserId: args.userId,
-      agentId: args.agentId,
-      chatThreadId: args.threadId,
-      status: args.fixtureKind === "paused-goal" ? "paused" : "active",
-      objective: "orphan monitor goal objective",
-      objectiveBrief: "orphan monitor goal",
-    })
-    .returning({ id: threadGoals.id });
-  if (!goal) {
-    throw new Error("Failed to seed orphan monitor goal");
-  }
-  const goalInputEvent = await insertChatEvent(tx, {
-    chatThreadId: args.threadId,
-    contextType: "goal",
-    eventType: "input.goal",
-    runGroupId: goal.id,
-    userMessage: createUserMessageDocument({
-      text: null,
-      nonContentPart: { type: "goal", goalBrief: "orphan monitor goal" },
-    }),
-    runId: null,
-    createdAt: new Date(0),
-  });
-  if (args.fixtureKind === "orphaned-goal") {
-    await tx.delete(threadGoals).where(eq(threadGoals.id, goal.id));
-  }
-  return goalInputEvent;
 }
 
 async function seedQueuedIntegrationEvent(tx: DbTransaction, threadId: string) {
@@ -278,17 +231,6 @@ async function seedFixture(
         triggerBrief: null,
       });
       return [automation];
-    }
-    if (fixtureKind === "orphaned-goal" || fixtureKind === "paused-goal") {
-      return [
-        await seedGoalFixture(tx, {
-          agentId: agent.id,
-          fixtureKind,
-          orgId,
-          threadId: thread.id,
-          userId,
-        }),
-      ];
     }
     if (fixtureKind === "queued-integration") {
       return [await seedQueuedIntegrationEvent(tx, thread.id)];

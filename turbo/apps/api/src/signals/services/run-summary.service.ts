@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 
 import { logger } from "../../lib/log";
 import { stripMarkdown } from "../../lib/strip-markdown";

@@ -1,9 +1,17 @@
+import {
+  setHistoricalGoalStatusFixture,
+  historicalGoalStatusFixture,
+  readGoalQueueStateFixture,
+  seedGoalForRunFixture,
+  setLegacyGoalRunOriginFixture,
+} from "../../../test-fixtures/goal-queue";
+
 import { HttpResponse } from "msw";
 import {
   auxiliaryResults,
   auxiliaryWarnings,
 } from "./helpers/auxiliary-generation";
-import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+
 import {
   resolveChatEventRecommendedFollowups,
   type ChatEvent,
@@ -11,7 +19,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
@@ -32,21 +39,15 @@ import {
   holdChatEventInsertTransactionFixture,
   holdRunOutputMaterializationRowFixture,
   insertQueuedSlackMissingContextFixture,
-  invalidateChatCallbackPayloadFixture,
   removeAcknowledgedCancellationLifecycleFixture,
   removeChatCallbackPublicBrandFixture,
 } from "../../../test-fixtures/chat-events";
-import {
-  readGoalQueueStateFixture,
-  seedGoalForRunFixture,
-  setLegacyGoalRunOriginFixture,
-} from "../../../test-fixtures/goal-queue";
+
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { goalsRoutes } from "../goals";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -75,18 +76,9 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const misc = createMiscRoutesApi(context);
 
-function goalsClient() {
-  return setupApp({ context, routes: goalsRoutes })(goalsContract);
-}
-
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_agent_chat_callback_";
-const GOAL_CAPABILITIES = [
-  "goal:read",
-  "goal:agent-result:write",
-  "goal:user-control:write",
-] as const satisfies readonly Capability[];
 const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "org_id",
   "orgId",
@@ -328,27 +320,6 @@ async function queueChatEvent(
     throw new Error("Expected the chat send to queue while a run is active");
   }
   return messageId;
-}
-
-function goalHeaders(
-  actor: ApiTestUser,
-  runId: string,
-): { readonly authorization: string } {
-  if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor for goal auth");
-  }
-  const seconds = Math.floor(now() / 1000);
-  return {
-    authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "okou",
-      userId: actor.userId,
-      orgId: actor.orgId,
-      runId,
-      capabilities: [...GOAL_CAPABILITIES],
-      iat: seconds,
-      exp: seconds + 600,
-    })}`,
-  };
 }
 
 async function enableGoalWorkflows(actor: ApiTestUser): Promise<void> {
@@ -2217,13 +2188,7 @@ describe("CHAT-02: completed chat callback", () => {
     });
     const goalBrief = "Keep improving the paused goal context";
     await createGoalForRun(actor, first.runId, goalBrief);
-    const paused = await accept(
-      goalsClient().pause({
-        headers: goalHeaders(actor, first.runId),
-      }),
-      [200],
-    );
-    expect(paused.body.status).toBe("paused");
+    await setHistoricalGoalStatusFixture(first.runId, "paused");
 
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "finished after pausing the goal"),
@@ -2255,24 +2220,6 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, second.runId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
-
-  it("does not continue a Goal through the fallback terminal callback", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish with a historical Goal",
-    });
-    await createGoalForRun(actor, first.runId, "historical Goal objective");
-    await invalidateChatCallbackPayloadFixture(first.runId);
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await flushWaitUntilForTest();
-    await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([]);
-    await expect(goalQueueEventIds(first.threadId)).resolves.toStrictEqual([]);
-  }, 60_000);
 
   it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -5505,13 +5452,7 @@ describe("CHAT-02: push notification gating", () => {
 
     await expect
       .poll(async () => {
-        const goal = await accept(
-          goalsClient().get({
-            headers: goalHeaders(actor, run.runId),
-          }),
-          [200],
-        );
-        return goal.body.status;
+        return await historicalGoalStatusFixture(run.runId);
       })
       .toBe("active");
     await flushWaitUntilForTest();
