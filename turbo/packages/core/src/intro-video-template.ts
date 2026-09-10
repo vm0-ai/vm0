@@ -1,13 +1,17 @@
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ExplainerVideoOptions } from "@okouai/api-contracts/contracts/explainer-video";
+import type { IntroVideoOptions } from "@okouai/api-contracts/contracts/intro-video-options";
 
-export const EXPLAINER_VIDEO_TEMPLATE_ID = "explainer-video";
+/**
+ * Persisted in chat messages and drafts as the template's `stylePresetId`. The
+ * product is named Intro Video; the stored id kept its original value.
+ */
+export const INTRO_VIDEO_TEMPLATE_ID = "explainer-video";
 
-export function explainerVideoTemplateOptions(
+export function introVideoTemplateOptions(
   template: GenerationTemplateRequest | null | undefined,
-): ExplainerVideoOptions | undefined {
+): IntroVideoOptions | undefined {
   return template?.type === "video" &&
-    template.selection.stylePresetId === EXPLAINER_VIDEO_TEMPLATE_ID
+    template.selection.stylePresetId === INTRO_VIDEO_TEMPLATE_ID
     ? template.selection.explainerOptions
     : undefined;
 }
@@ -24,8 +28,8 @@ function metadataLine(label: string, value: string | undefined): string[] {
  * contract, not presentation. Look metadata (type, preview size, orientation)
  * lets the skill classify the presenter before anything is paid for.
  */
-export function explainerVideoInstructionLines(
-  options: ExplainerVideoOptions,
+export function introVideoInstructionLines(
+  options: IntroVideoOptions,
 ): readonly string[] {
   const { style, avatar, voice } = options;
   const selectedStyle = style.kind === "catalog" ? style.style : undefined;

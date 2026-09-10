@@ -2,16 +2,16 @@ export type TemplatePickerEntryCategory =
   | "slides"
   | "illustration"
   | "video"
-  | "explainer"
+  | "intro-video"
   | "website";
 
 export function parseTemplatePickerEntryCategory(
   value: string | null,
-  explainerEnabled: boolean,
+  introVideoEnabled: boolean,
 ): TemplatePickerEntryCategory | null {
   switch (value) {
-    case "explainer": {
-      return explainerEnabled ? value : null;
+    case "intro-video": {
+      return introVideoEnabled ? value : null;
     }
     case "slides":
     case "illustration":

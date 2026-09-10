@@ -28,11 +28,11 @@ import {
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
-import type { ExplainerVideoOptions } from "@okouai/api-contracts/contracts/explainer-video";
+import type { IntroVideoOptions } from "@okouai/api-contracts/contracts/intro-video-options";
 import {
-  EXPLAINER_VIDEO_TEMPLATE_ID,
-  explainerVideoInstructionLines,
-} from "@okouai/core/explainer-video-template";
+  INTRO_VIDEO_TEMPLATE_ID,
+  introVideoInstructionLines,
+} from "@okouai/core/intro-video-template";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -48,7 +48,7 @@ interface VideoGenerationTemplateInput {
   readonly selection: {
     readonly stylePresetId: string;
     readonly avatarOptions?: AvatarTemplateOptions;
-    readonly explainerOptions?: ExplainerVideoOptions;
+    readonly explainerOptions?: IntroVideoOptions;
     /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
     readonly titleSnapshot?: string;
     /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
@@ -375,24 +375,22 @@ function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
   introVideoEnabled: boolean,
 ): GenerationTemplatePromptResult {
-  if (
-    generationTemplate.selection.stylePresetId === EXPLAINER_VIDEO_TEMPLATE_ID
-  ) {
+  if (generationTemplate.selection.stylePresetId === INTRO_VIDEO_TEMPLATE_ID) {
     if (!introVideoEnabled) {
-      return { status: "invalid", message: "Explainer video is not available" };
+      return { status: "invalid", message: "Intro video is not available" };
     }
     const options = generationTemplate.selection.explainerOptions;
     if (!options) {
       return {
         status: "invalid",
-        message: "Explainer video settings are missing",
+        message: "Intro video settings are missing",
       };
     }
     return {
       status: "resolved",
       prompt: [
         ...templateFraming("an intro video"),
-        ...explainerVideoInstructionLines(options),
+        ...introVideoInstructionLines(options),
       ].join("\n"),
     };
   }

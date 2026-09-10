@@ -1,5 +1,5 @@
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
-import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
+import { INTRO_VIDEO_TEMPLATE_ID } from "@okouai/core/intro-video-template";
 import { computed } from "ccstate";
 import {
   isFeatureEnabled,
@@ -40,7 +40,7 @@ export function loadIntroVideoTemplateAccess(
     !templates.some((template) => {
       return (
         template.type === "video" &&
-        template.selection.stylePresetId === EXPLAINER_VIDEO_TEMPLATE_ID
+        template.selection.stylePresetId === INTRO_VIDEO_TEMPLATE_ID
       );
     })
   ) {
