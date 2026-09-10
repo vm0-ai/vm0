@@ -119,18 +119,12 @@ export interface ComposerConnectorSignals {
   readonly accounts: ComposerConnectorAccountSignals;
 }
 
-const relatedConnectorCatalogKeyword$ = computed(() => {
-  return "";
-});
-
-const composerRelatedCatalog$ = relatedConnectorCatalog(
-  relatedConnectorCatalogKeyword$,
-);
-
-/** A category-scoped read asks for no keyword, so it browses that category. */
+/** Browse reads ask for no keyword; the category, when set, scopes them. */
 const emptyCatalogKeyword$ = computed(() => {
   return "";
 });
+
+const composerRelatedCatalog$ = relatedConnectorCatalog(emptyCatalogKeyword$);
 
 const composerRelatedCatalogItems$ = computed(async (get) => {
   return (await get(composerRelatedCatalog$)).connectors;
