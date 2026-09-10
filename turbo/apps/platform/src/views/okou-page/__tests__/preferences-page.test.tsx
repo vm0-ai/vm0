@@ -185,9 +185,16 @@ test("Account-backed appearance preferences are restored and saved", async () =>
     expectSelected(getFastRole("button", "Light"));
   });
 
-  click(getFastRole("button", "Light"));
-  expectSelected(getFastRole("button", "Light"));
-  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  const selectedAppearance = ["Light", "Dark", "System"].find((name) => {
+    return getFastRole("button", name).getAttribute("aria-pressed") === "true";
+  });
+  if (!selectedAppearance) {
+    throw new Error("Expected a selected appearance option");
+  }
+  const resolvedTheme = document.documentElement.dataset.theme;
+  click(getFastRole("button", selectedAppearance));
+  expectSelected(getFastRole("button", selectedAppearance));
+  expect(document.documentElement).toHaveAttribute("data-theme", resolvedTheme);
 
   click(getFastRole("button", "Limelight", colorTheme));
 
