@@ -340,3 +340,16 @@ injections. The implementation pipeline retains a separate `/sign-in`
 navigation timeout during CLI TEST credential provisioning, before test
 execution. The batch remains `implemented` while final-head CI is assessed;
 these screenshots establish bounded Chromium acceptance.
+
+The [evidence-only head replay](https://a.okou.io/okin45nt2v.zip) pins source
+`6d4d25d653e49be29d900cd6e73b208d5c1fbc1b` and App/API build
+`a7aae2beca69ca7c0075bf79af4b9cccaf4f006b`, including main
+`724dc63d33064e66f8a41e0bef6ad54e345ef94a`. All 20 states again pass with
+zero changed pixels and equal observations; that source's complete Turbo CI
+passes. Actual Models and Connector pages loaded with the independent TEST
+account. The archive records actual feature switches separately: the fixture
+sets `modelPickerMenu=true` to exercise portaled icons; the live TEST response
+has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false`.
+No live switch was changed. Earlier manual portal navigation attempts are
+explicitly unaccepted diagnostics, distinct from the four passing frozen portal
+states. The archive was anonymously downloaded and hash-verified.

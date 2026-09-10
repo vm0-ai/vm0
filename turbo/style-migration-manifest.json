@@ -293,7 +293,7 @@
         "icon-mono-providers-narrow-dark",
         "icon-mono-connectors-narrow-dark"
       ],
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
         {
           "kind": "before-and-unchanged-aa-with-rejected-calibration",
@@ -312,6 +312,12 @@
           "url": "https://a.okou.io/vfjoaz2ylx.png",
           "sha256": "6b77a43d84c569f85ef9e9cd2a7cbb9277bfd9bb780d9b5018d015125b7a15ad",
           "commit": "29156a9e945af833fdef2bffe024be4c617d4496"
+        },
+        {
+          "kind": "evidence-only-head-after-replay-with-ci-and-live-preview",
+          "url": "https://a.okou.io/okin45nt2v.zip",
+          "sha256": "96b259d89bfbbdae4eb4c9effd1f7539087988f0f5745d7497333b99078c9e68",
+          "commit": "a7aae2beca69ca7c0075bf79af4b9cccaf4f006b"
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33062"
