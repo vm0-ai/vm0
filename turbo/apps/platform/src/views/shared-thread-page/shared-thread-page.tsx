@@ -38,8 +38,9 @@ import {
 import { AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 
 /**
- * A shared message with the tree its body parsed into. The page setup command
- * parses assistant bodies and embeds their diagram signals before rendering.
+ * A shared message with an optional prepared plain tree. Rich bodies leave the
+ * tree undefined and are derived by the thread's rich-content signals when the
+ * view consumes them.
  */
 export type SharedDisplayMessage = SharedMessage & { readonly tree?: Root };
 
