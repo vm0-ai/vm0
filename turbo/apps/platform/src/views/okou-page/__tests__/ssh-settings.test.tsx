@@ -46,6 +46,47 @@ const base: SshConnectionResponse = Object.freeze({
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
 
+test("SSH recovers after first opening Connectors during a workspace refresh", async () => {
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 1 });
+  });
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, { connections: [base] });
+  });
+  await page("/agents");
+  await screen.findByRole("heading", { name: "Agents" });
+
+  const clerk = context.mocks.clerk();
+  act(() => {
+    clerk.organization({ ...auth.organization, activeOrg: null });
+    clerk.stateChanged();
+  });
+  click(
+    getAction(
+      "link",
+      "Connectors",
+      screen.getByRole("navigation", { name: "Sidebar" }),
+    ),
+  );
+  await fill(await screen.findByPlaceholderText("Find connectors"), "ssh");
+  await screen.findByText(/No connectors matching/u);
+
+  act(() => {
+    clerk.organization(auth.organization);
+    clerk.stateChanged();
+  });
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+
+  click(
+    await waitFor(() => {
+      return getAction("link", "Manage SSH hosts");
+    }),
+  );
+  await expect(
+    screen.findByText("deploy@ssh.example.com:22"),
+  ).resolves.toBeVisible();
+});
+
 test.each(["token", "profile", "session"])(
   "A same-owner Clerk %s refresh preserves an SSH form that can still be saved",
   async (refresh) => {

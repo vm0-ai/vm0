@@ -13,6 +13,7 @@ import {
   SSH_PRIVATE_KEY_MAX_LENGTH,
 } from "@okouai/api-contracts/contracts/ssh-connections";
 import { clerk$, currentOrgInfo$, user$ } from "./auth.ts";
+import { runtimeAuthenticatedIdentity$ } from "./auth-context.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { apiClient$ } from "./api-client.ts";
@@ -105,9 +106,11 @@ export const sshIdentity$ = computed(async (get) => {
   }
   // User changes invalidate SSH state; global org switching reloads the page.
   // Background token/profile updates must not reset credential forms.
-  const [user, clerk] = await Promise.all([get(user$), get(clerk$)]);
-  const org = clerk.organization;
-  return org && user ? `${org.id}:${user.id}` : null;
+  const [user, identity] = await Promise.all([
+    get(user$),
+    get(runtimeAuthenticatedIdentity$),
+  ]);
+  return user ? `${identity.orgId}:${user.id}` : null;
 });
 const reload$ = state(0);
 const sshClients$ = computed(async (get) => {
