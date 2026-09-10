@@ -709,8 +709,13 @@ describe("sandbox Pi agent loop", () => {
   });
 
   it.each(
+    // Only the output-validation and mounted-apply fixtures are reproducible
+    // by this scenario. Session-lifecycle fixtures are covered by the engine
+    // tests and the shared serializer boundary.
     terminalFixtures.filter((fixture) => {
-      return fixture.diagnostic;
+      return (
+        fixture.diagnostic && fixture.errorClass === "agent_output_invalid"
+      );
     }),
   )(
     "carries $name through the real mounted runtime and CLI terminal serializer",

@@ -35,6 +35,8 @@ import {
 import {
   Phase2OutputInvalidError,
   phase2DiagnosticForError,
+  phase2StageDiagnostic,
+  type PiMemoryPhase2Diagnostic,
 } from "./phase2-memory-diagnostics";
 import { renderPiMemoryPhase2Prompt } from "./phase2-memory-prompt";
 import {
@@ -71,9 +73,23 @@ interface Phase2RuntimeState {
 }
 
 interface Phase2ProviderResult {
-  readonly responseId: string;
+  /** Provider evidence only: no Phase 2 outcome depends on its presence. */
+  readonly responseId: string | null;
   readonly usage: PiMemoryPhase2ProviderUsage;
 }
+
+/**
+ * Stop reasons that leave the maintenance turn truncated or undecided. These
+ * still fail; only the recorded reason becomes attributable. Keyed by string so
+ * the table stays valid against the pinned runtime's own stop-reason union.
+ */
+const INCOMPLETE_STOP_REASONS: Readonly<
+  Record<string, PiMemoryPhase2Diagnostic["reason"]>
+> = {
+  length: "final_stop_length",
+  toolUse: "final_stop_tool_use",
+  pending: "final_stop_pending",
+};
 
 type Phase2ModelTerminal = Readonly<{
   source: "model";
@@ -189,8 +205,13 @@ function engineError(
   errorClass: PiMemoryPhase2FailureClass,
   input: SnapshotPhase2Input | null,
   state: Phase2RuntimeState,
+  diagnostic?: PiMemoryPhase2Diagnostic,
 ): PiMemoryPhase2EngineError {
-  return new PiMemoryPhase2EngineError(errorClass, failureCounts(input, state));
+  return new PiMemoryPhase2EngineError(
+    errorClass,
+    failureCounts(input, state),
+    diagnostic,
+  );
 }
 
 function durationMs(startedAt: number): number {
@@ -414,7 +435,14 @@ function terminalFailure(
   switch (terminal.source) {
     case "model": {
       return terminal.status === "failed"
-        ? { error: engineError("model_failed", input, state) }
+        ? {
+            error: engineError(
+              "model_failed",
+              input,
+              state,
+              phase2StageDiagnostic("model_turn", "model_turn_failed"),
+            ),
+          }
         : undefined;
     }
     case "heartbeat": {
@@ -422,20 +450,28 @@ function terminalFailure(
         return { error: terminal.error };
       }
       return {
-        error: engineError(
-          terminal.status === "aborted" ? "aborted" : "session_failed",
-          input,
-          state,
-        ),
+        error:
+          terminal.status === "aborted"
+            ? engineError("aborted", input, state)
+            : engineError(
+                "session_failed",
+                input,
+                state,
+                phase2StageDiagnostic("model_turn", "heartbeat_stopped"),
+              ),
       };
     }
     case "caller": {
       return {
-        error: engineError(
-          terminal.status === "aborted" ? "aborted" : "session_failed",
-          input,
-          state,
-        ),
+        error:
+          terminal.status === "aborted"
+            ? engineError("aborted", input, state)
+            : engineError(
+                "session_failed",
+                input,
+                state,
+                phase2StageDiagnostic("model_turn", "caller_disposed"),
+              ),
       };
     }
   }
@@ -456,20 +492,27 @@ function settlementFailure(
     return { error: engineError("aborted", input, state) };
   }
   if (settlement.model.status === "failed") {
-    return { error: engineError("model_failed", input, state) };
+    return {
+      error: engineError(
+        "model_failed",
+        input,
+        state,
+        phase2StageDiagnostic("model_turn", "model_turn_failed"),
+      ),
+    };
   }
   return undefined;
 }
 
-async function abortMaintenanceSession(
-  session: AgentSession,
-  input: SnapshotPhase2Input,
-  state: Phase2RuntimeState,
-): Promise<void> {
+/**
+ * Best-effort teardown for an already-decided failure. A failing abort must not
+ * replace the decided cause with a generic session failure.
+ */
+async function abortMaintenanceSession(session: AgentSession): Promise<void> {
   try {
     await session.abort();
   } catch {
-    throw engineError("session_failed", input, state);
+    // The decided failure stays authoritative; teardown adds no new cause.
   }
 }
 
@@ -503,11 +546,7 @@ async function runMaintenancePrompt(args: {
   }
 
   if (failure && arbiter) {
-    try {
-      await abortMaintenanceSession(args.session, args.input, args.state);
-    } catch (error) {
-      failure = { error };
-    }
+    await abortMaintenanceSession(args.session);
   }
   args.session.dispose();
   const settlement = arbiter ? await arbiter.settle() : undefined;
@@ -522,7 +561,12 @@ async function runMaintenancePrompt(args: {
   }
   args.input.signal.throwIfAborted();
   if (!provider) {
-    throw engineError("session_failed", args.input, args.state);
+    throw engineError(
+      "session_failed",
+      args.input,
+      args.state,
+      phase2StageDiagnostic("final_response", "provider_result_missing"),
+    );
   }
   return provider;
 }
@@ -540,19 +584,40 @@ function providerResult(
 ): Phase2ProviderResult {
   const messages = finalAssistantMessages(session);
   const final = messages.at(-1);
-  if (final?.stopReason === "error") {
-    throw engineError("model_failed", input, state);
+  if (!final) {
+    throw engineError(
+      "session_failed",
+      input,
+      state,
+      phase2StageDiagnostic("final_response", "final_message_missing"),
+    );
   }
-  const hasCompletionText = final?.content.some((content) => {
-    return content.type === "text" && content.text.trim().length > 0;
-  });
-  if (
-    !final ||
-    final.stopReason !== "stop" ||
-    !hasCompletionText ||
-    !final.responseId
-  ) {
-    throw engineError("session_failed", input, state);
+  if (final.stopReason === "error") {
+    throw engineError(
+      "model_failed",
+      input,
+      state,
+      phase2StageDiagnostic("final_response", "final_stop_error"),
+    );
+  }
+  if (final.stopReason === "aborted") {
+    throw engineError(
+      "aborted",
+      input,
+      state,
+      phase2StageDiagnostic("final_response", "final_stop_aborted"),
+    );
+  }
+  if (final.stopReason !== "stop") {
+    throw engineError(
+      "session_failed",
+      input,
+      state,
+      phase2StageDiagnostic(
+        "final_response",
+        INCOMPLETE_STOP_REASONS[final.stopReason] ?? "unknown",
+      ),
+    );
   }
   const usage = messages.reduce<PiMemoryPhase2ProviderUsage>(
     (total, message) => {
@@ -566,7 +631,7 @@ function providerResult(
     },
     ZERO_USAGE,
   );
-  return { responseId: final.responseId, usage: Object.freeze(usage) };
+  return { responseId: final.responseId ?? null, usage: Object.freeze(usage) };
 }
 
 async function createMaintenanceSession(args: {
@@ -693,7 +758,12 @@ function normalizeFailure(
   if (signal?.aborted) {
     return engineError("aborted", input, state);
   }
-  return engineError("session_failed", input, state);
+  return engineError(
+    "session_failed",
+    input,
+    state,
+    phase2StageDiagnostic("unknown", "unexpected_error", error),
+  );
 }
 
 async function executeConsolidation(
@@ -711,7 +781,21 @@ async function executeConsolidation(
   } catch {
     throw engineError("prompt_invariant", input, state);
   }
-  const workspace = await createPiMemoryPhase2Workspace(root, input);
+  let workspace: Phase2PrivateWorkspace;
+  try {
+    workspace = await createPiMemoryPhase2Workspace(root, input);
+  } catch (error) {
+    signal.throwIfAborted();
+    if (error instanceof Phase2InputInvalidError) {
+      throw error;
+    }
+    throw engineError(
+      "session_failed",
+      input,
+      state,
+      phase2StageDiagnostic("workspace_stage", "workspace_stage_failed", error),
+    );
+  }
   state.fileCount = workspace.agentBaseline.size;
   state.totalBytes = [...workspace.agentBaseline.values()].reduce(
     (sum, content) => {
@@ -754,7 +838,12 @@ async function executeConsolidation(
     if (error instanceof Phase2InputInvalidError) {
       throw error;
     }
-    throw engineError("session_failed", input, state);
+    throw engineError(
+      "session_failed",
+      input,
+      state,
+      phase2StageDiagnostic("session_create", "session_create_failed", error),
+    );
   }
   const provider = await runMaintenancePrompt({
     session,
@@ -884,7 +973,12 @@ export async function runPiMemoryPhase2ConsolidationForTest(
     throw failure;
   }
   if (!result) {
-    const missing = engineError("session_failed", input, state);
+    const missing = engineError(
+      "session_failed",
+      input,
+      state,
+      phase2StageDiagnostic("commit", "result_missing"),
+    );
     emitFailure(input, state, startedAt, missing);
     throw missing;
   }
