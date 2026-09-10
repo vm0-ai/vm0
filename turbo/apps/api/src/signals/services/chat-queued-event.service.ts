@@ -2,14 +2,13 @@ import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events"
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import {
   chatEvents,
   type ChatEventUserMessage,
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import {
   and,
@@ -165,17 +164,6 @@ export type QueueFirstRunAssociation =
       readonly eventId: string;
       readonly prompt: string;
       readonly automationId: string;
-    }
-  | {
-      readonly kind: "goal_input";
-      readonly threadId: string;
-      readonly eventId: string;
-      readonly prompt: string;
-      readonly goalId: string;
-      readonly goalObjectiveBrief: string;
-      readonly goalStateRevision: string;
-      readonly orgId: string;
-      readonly userId: string;
     };
 
 export type QueueFirstRunClaimResult =
@@ -195,29 +183,9 @@ export type QueueFirstRunSessionSnapshotState =
   | "session_changed"
   | "unvalidated";
 
-/** Keep the exact goal source row stable through the later chat queue claim. */
-export async function lockGoalQueueFirstRunSource(
-  db: DbTransaction,
-  args: Extract<QueueFirstRunAssociation, { readonly kind: "goal_input" }>,
-): Promise<void> {
-  await db
-    .select({ id: threadGoals.id })
-    .from(threadGoals)
-    .where(
-      and(
-        eq(threadGoals.id, args.goalId),
-        eq(threadGoals.chatThreadId, args.threadId),
-        eq(threadGoals.orgId, args.orgId),
-        eq(threadGoals.ownerUserId, args.userId),
-      ),
-    )
-    .for("update")
-    .limit(1);
-}
-
 /**
  * Establish the shared thread lock for every event-backed queue claim,
- * rejection, and revocation. Goal claims stabilize their source row first.
+ * rejection, and revocation.
  */
 export async function lockUserMessageQueueThread(
   db: Db,

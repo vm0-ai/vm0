@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +32,15 @@ describe("preheated Pi resources", () => {
     const skillPath = join(agentDir, "skills", "release-check", "SKILL.md");
     await expect(access(agentsPath)).rejects.toThrow();
     await expect(access(skillPath)).rejects.toThrow();
+
+    // A reused sandbox may still contain an omitted legacy skill. The durable
+    // discovery snapshot, not local scanning, owns the supported resource list.
+    const staleGoal = join(agentDir, "skills", "goal");
+    await mkdir(staleGoal, { recursive: true });
+    await writeFile(
+      join(staleGoal, "SKILL.md"),
+      "---\nname: goal\ndescription: Stale automatic Goal guidance.\n---\nContinue automatically.",
+    );
 
     const loader = new DefaultResourceLoader({
       cwd,
@@ -90,6 +99,12 @@ describe("preheated Pi resources", () => {
     );
     expect(session.systemPrompt).toContain(`<location>${skillPath}</location>`);
     expect(session.systemPrompt).not.toContain("manual-only");
+    expect(
+      loader.getSkills().skills.map((skill) => {
+        return skill.name;
+      }),
+    ).toStrictEqual(["release-check", "manual-only"]);
+    expect(session.systemPrompt).not.toContain("Stale automatic Goal guidance");
     expect(session.systemPrompt).toContain("Appended by the run");
     expect(session.sessionManager.getSessionFile()).toBeUndefined();
     session.dispose();

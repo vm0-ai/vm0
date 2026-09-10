@@ -1,5 +1,5 @@
 import { FeatureSwitchKey, isFeatureEnabled } from "@okouai/core";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { runActivitySnapshots } from "@okouai/db/schema/run-activity-snapshot";
 import { command } from "ccstate";

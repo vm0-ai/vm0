@@ -1,3 +1,8 @@
+import {
+  setHistoricalGoalStatusFixture,
+  seedGoalForRunFixture,
+} from "../../../test-fixtures/goal-queue";
+
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import AdmZip from "adm-zip";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -10,7 +15,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { cronProjectChatEventSearchContract } from "@okouai/api-contracts/contracts/cron";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
@@ -48,7 +52,7 @@ import {
   setChatThreadSnapshotBoundaryFixture,
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
-import { seedGoalForRunFixture } from "../../../test-fixtures/goal-queue";
+
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
 import {
   seedOrgMetadata,
@@ -59,7 +63,6 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { chatThreadRoutes } from "../chat-threads";
 import { testChatThreadSnapshotCompactionRoutes } from "../test-chat-thread-snapshot-compaction";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
-import { goalsRoutes } from "../goals";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import {
   createBddApi,
@@ -96,7 +99,6 @@ import {
 const TEST_APP_ROUTES = Object.freeze([
   ...cronProjectChatEventSearchRoutes,
   ...chatThreadRoutes,
-  ...goalsRoutes,
 ]);
 
 /**
@@ -586,18 +588,9 @@ async function completeChatRunInThread(
   return run;
 }
 
-const GOAL_CAPABILITIES = [
-  "goal:read",
-  "goal:agent-result:write",
-  "goal:user-control:write",
-] as const satisfies readonly Capability[];
 const CHAT_THREAD_READ_CAPABILITIES = [
   "chat-thread:read",
 ] as const satisfies readonly Capability[];
-
-function goalsClient() {
-  return setupApp({ context, routes: goalsRoutes })(goalsContract);
-}
 
 function okouCapabilityHeaders(
   actor: ApiTestUser,
@@ -621,14 +614,7 @@ function okouCapabilityHeaders(
   };
 }
 
-/** Okou run bearer with goal capabilities, as issued to sandboxes. */
-function goalHeaders(
-  actor: ApiTestUser,
-  runId: string,
-): { readonly authorization: string } {
-  return okouCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
-}
-
+/** Construct historical state without exposing a live Goal API. */
 async function createThreadGoal(
   _actor: ApiTestUser,
   runId: string,
@@ -641,12 +627,7 @@ async function completeThreadGoal(
   actor: ApiTestUser,
   runId: string,
 ): Promise<void> {
-  await accept(
-    goalsClient().complete({
-      headers: goalHeaders(actor, runId),
-    }),
-    [200],
-  );
+  await setHistoricalGoalStatusFixture(runId, "complete");
 }
 
 const malformedChatThreadIdRequests = [
@@ -803,7 +784,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const missingCapability = await accept(
       apiClient.snapshot({
-        headers: goalHeaders(actor, randomUUID()),
+        headers: okouCapabilityHeaders(actor, randomUUID(), ["file:write"]),
       }),
       [403],
     );
@@ -2517,7 +2498,7 @@ describe("CHAT-01 chat thread read state", () => {
       [],
     );
 
-    // An active goal suppresses the unread flag; a complete goal does not.
+    // Historical Goal status does not control current unread indicators.
     const activeGoalRun = await completeChatRunInThread(owner, runnerGroup, {
       agentId: agentA,
       prompt: "unread aggregate with active goal",
@@ -2529,10 +2510,13 @@ describe("CHAT-01 chat thread read state", () => {
     await createThreadGoal(owner, activeGoalRun.runId, "bdd unread goal");
     await createThreadGoal(owner, completeGoalRun.runId, "bdd unread goal");
     await completeThreadGoal(owner, completeGoalRun.runId);
-    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
-    await expect(chat.listUnreadChatThreadIds(owner)).resolves.toStrictEqual([
-      completeGoalRun.threadId,
-    ]);
+    expect(new Set(await chat.listUnreadAgents(owner))).toStrictEqual(
+      new Set([agentA, agentB]),
+    );
+    expect(new Set(await chat.listUnreadChatThreadIds(owner))).toStrictEqual(
+      new Set([activeGoalRun.threadId, completeGoalRun.threadId]),
+    );
+    await chat.markThreadRead(owner, activeGoalRun.threadId);
     await chat.markThreadRead(owner, completeGoalRun.threadId);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
     await expect(chat.listUnreadChatThreadIds(owner)).resolves.toStrictEqual(
@@ -2733,7 +2717,7 @@ describe("CHAT-01 chat thread read state", () => {
     });
   }, 240_000);
 
-  it("excludes unread chat threads that have active runs or goals", async () => {
+  it("excludes active runs while preserving unread state in historical Goal threads", async () => {
     const {
       actor: owner,
       agentId,
@@ -2769,13 +2753,20 @@ describe("CHAT-01 chat thread read state", () => {
           return unread.threadId;
         }),
       ),
-    ).toStrictEqual(new Set([completedRun.threadId, completeGoalRun.threadId]));
+    ).toStrictEqual(
+      new Set([
+        completedRun.threadId,
+        activeGoalRun.threadId,
+        completeGoalRun.threadId,
+      ]),
+    );
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
       agents: { [agentId]: "unread" },
       threads: {
         [runningRun.threadId]: "active",
         [completedRun.threadId]: "unread",
         [completeGoalRun.threadId]: "unread",
+        [activeGoalRun.threadId]: "unread",
       },
     });
 
@@ -2801,6 +2792,7 @@ describe("CHAT-01 chat thread read state", () => {
         runningRun.threadId,
         completedRun.threadId,
         completeGoalRun.threadId,
+        activeGoalRun.threadId,
       ]),
     );
     await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
@@ -2809,6 +2801,7 @@ describe("CHAT-01 chat thread read state", () => {
         [runningRun.threadId]: "unread",
         [completedRun.threadId]: "unread",
         [completeGoalRun.threadId]: "unread",
+        [activeGoalRun.threadId]: "unread",
       },
     });
   }, 120_000);

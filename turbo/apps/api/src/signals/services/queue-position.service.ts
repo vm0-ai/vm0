@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { and, eq, lte } from "drizzle-orm";
 

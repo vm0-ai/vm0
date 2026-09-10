@@ -1,5 +1,5 @@
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";

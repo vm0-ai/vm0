@@ -4,7 +4,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import {
   readGoalQueueStateFixture,
-  readGoalThreadFixture,
   seedGoalForRunFixture,
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
@@ -24,7 +23,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { cronExtractPiMemoryStage1Contract } from "@okouai/api-contracts/contracts/cron";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
@@ -177,13 +175,12 @@ import {
   createUsagePricingFixture,
   type UsagePricingFixture,
 } from "../../../test-fixtures/usage-pricing";
-import { signSandboxJwtForTests, verifyOkouToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { cronExtractPiMemoryStage1RoutesForTest } from "../cron-extract-pi-memory-stage1";
-import { goalsRoutes } from "../goals";
 import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { modelProvidersRoutes } from "../model-providers";
@@ -3083,25 +3080,6 @@ function threadPiAutomationsClient(
   })(workflowAutomationsContract);
 }
 
-function threadPiGoalHeaders(actor: ApiTestUser, runId: string) {
-  const seconds = Math.floor(now() / 1000);
-  return {
-    authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "okou",
-      userId: actor.userId,
-      orgId: requireOrgId(actor),
-      runId,
-      capabilities: [
-        "goal:read",
-        "goal:agent-result:write",
-        "goal:user-control:write",
-      ],
-      iat: seconds,
-      exp: seconds + 600,
-    })}`,
-  };
-}
-
 async function postThreadPiAutomationEvent(args: {
   readonly webhookUrl: string;
   readonly webhookSecret: string;
@@ -3432,47 +3410,6 @@ describe("thread-bound Pi Automation and Goal execution", () => {
       clearMockNow();
     },
     90_000,
-  );
-
-  it.each(["bootstrap", "continuation"] as const)(
-    "rejects retired Goal %s before Pi subscription execution",
-    async (entry) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const origin =
-        entry === "bootstrap"
-          ? await api.createRun(actor, {
-              agentId,
-              prompt: "old client bootstrap",
-              modelProvider: "anthropic-api-key",
-            })
-          : await sendChatRun(actor, {
-              agentId,
-              prompt: "old client continuation",
-              model: "claude-sonnet-5",
-            });
-      const originClaim = await claimChatRun(runnerGroup, origin.runId);
-      await configureSubscriptionPiModel(
-        actor,
-        { accountId: "goal-owner-account" },
-        "gpt-5.6-luna",
-      );
-      const goal = await accept(
-        setupApp({ context, routes: goalsRoutes })(goalsContract).create({
-          headers: threadPiGoalHeaders(actor, origin.runId),
-          body: { objective: "retired Goal" },
-        }),
-        [409],
-      );
-      expect(goal.body.error.message).toContain("retired");
-      await expect(
-        readGoalThreadFixture({
-          orgId: requireOrgId(actor),
-          userId: actor.userId,
-          agentId,
-        }),
-      ).resolves.toBeNull();
-      await completeChatRunOk(origin.runId, originClaim.sandboxHeaders);
-    },
   );
 });
 

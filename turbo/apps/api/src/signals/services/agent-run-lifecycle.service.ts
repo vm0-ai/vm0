@@ -1,4 +1,3 @@
-import { dispatchGoalRetirementEffects$ } from "./goal-retirement-effects.service";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -38,9 +37,7 @@ export const drainOrgQueue$ = command(
           runId:
             promotion?.kind === "terminal"
               ? promotion.runId
-              : promotion?.kind === "goal-retired"
-                ? promotion.run.id
-                : promotion?.activation.runnerNotification.runId,
+              : promotion?.activation.runnerNotification.runId,
           orgId: args.orgId,
         });
       }
@@ -49,21 +46,6 @@ export const drainOrgQueue$ = command(
           signal.throwIfAborted();
         }
         return 0;
-      }
-      if (promotion.kind === "goal-retired") {
-        finishCommittedDrain = true;
-        await set(
-          dispatchGoalRetirementEffects$,
-          promotion.run,
-          committedSignal,
-        );
-        if (signal.aborted) {
-          L.debug("Request aborted after Goal retirement side effects", {
-            runId: promotion.run.id,
-            orgId: args.orgId,
-          });
-        }
-        continue;
       }
       if (promotion.kind === "terminal") {
         finishCommittedDrain = true;

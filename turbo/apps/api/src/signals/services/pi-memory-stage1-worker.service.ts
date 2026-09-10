@@ -7,7 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import { getModelProviderPiEndpoint } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { conversations } from "@okouai/db/schema/conversation";

@@ -1,3 +1,4 @@
+import { historicalRunGroupId } from "./run-event-provenance.service";
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
@@ -24,7 +25,7 @@ import {
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import {
@@ -127,7 +128,6 @@ import type { ChatRunFinishedEvent } from "./chat-run-finished-event";
 import {
   insertAssistantEvents,
   insertAssistantEvents$,
-  goalIdForRun,
   touchChatThreadLastMessageAt,
   type InsertAssistantEventsInput,
   visibleChatEventCondition,
@@ -635,12 +635,7 @@ interface ChatCallbackDependencies {
     chatThreadId: string,
     signal: AbortSignal,
     timing: ChatCallbackPreCreateTimingCollector | undefined,
-    goalContinuationAdmitted: boolean,
   ) => Promise<void>;
-  readonly handleTerminalGoal?: (
-    runId: string,
-    signal: AbortSignal,
-  ) => Promise<boolean>;
 }
 
 interface ChatThreadForRunRow {
@@ -1462,7 +1457,7 @@ async function insertAssistantErrorEvent(args: {
   readonly publicBrand: PublicBrand;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
-  const goalId = await goalIdForRun(args.db, args.runId);
+  const goalId = await historicalRunGroupId(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     const event = await insertChatEvent(
       tx,
@@ -1834,7 +1829,7 @@ async function insertRunLifecycleMarker(
   | ({ readonly inserted: true } & RunLifecycleDeliveryCallbacks)
 > {
   const markerCreatedAt = nowDate();
-  const goalId = await goalIdForRun(args.db, args.runId);
+  const goalId = await historicalRunGroupId(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertRunLifecycleMarkerTransaction({
       tx,
@@ -1874,7 +1869,7 @@ async function insertRecommendedFollowupsEvent(args: {
   readonly orgId: string;
   readonly followups: readonly ChatRecommendedFollowup[];
 }): Promise<boolean> {
-  const goalId = await goalIdForRun(args.db, args.runId);
+  const goalId = await historicalRunGroupId(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
@@ -4437,7 +4432,6 @@ async function maybeDrainThreadQueueForTerminalCallback(
   args: {
     readonly enabled: boolean;
     readonly chatThreadId: string;
-    readonly goalContinuationAdmitted: boolean;
     readonly dependencies: ChatCallbackDependencies;
     readonly timing: ChatCallbackPreCreateTimingCollector;
   },
@@ -4448,12 +4442,7 @@ async function maybeDrainThreadQueueForTerminalCallback(
   }
 
   const result = await settle(
-    args.dependencies.drainThreadQueue(
-      args.chatThreadId,
-      signal,
-      args.timing,
-      args.goalContinuationAdmitted,
-    ),
+    args.dependencies.drainThreadQueue(args.chatThreadId, signal, args.timing),
     signal,
   );
   return result.ok ? { ok: true } : { ok: false, error: result.error };
@@ -4519,7 +4508,6 @@ async function handleTerminalChatCallbackPreparationFailure(
     readonly runId: string;
     readonly error: unknown;
     readonly chatThreadId: string;
-    readonly goalContinuationAdmitted: boolean;
     readonly slackDelivery: SlackDeliveryTarget | undefined;
     readonly feishuDelivery: FeishuDeliveryTarget | undefined;
     readonly dependencies: ChatCallbackDependencies;
@@ -4531,7 +4519,6 @@ async function handleTerminalChatCallbackPreparationFailure(
     {
       enabled: true,
       chatThreadId: args.chatThreadId,
-      goalContinuationAdmitted: args.goalContinuationAdmitted,
       dependencies: args.dependencies,
       timing: args.timing,
     },
@@ -4680,7 +4667,6 @@ interface TerminalChatCallbackArgs {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
-  readonly goalContinuationAdmitted: boolean;
   readonly dependencies: ChatCallbackDependencies;
 }
 
@@ -4763,7 +4749,6 @@ async function drainAndClearTerminalChatThread(
     {
       enabled: args.work.shouldDrainThreadQueue,
       chatThreadId: args.chatThreadId,
-      goalContinuationAdmitted: args.callback.goalContinuationAdmitted,
       dependencies: args.callback.dependencies,
       timing: args.timing,
     },
@@ -4854,7 +4839,6 @@ async function processTerminalChatCallback(
         runId,
         error: prepared.error,
         chatThreadId: chatThread.chatThreadId,
-        goalContinuationAdmitted: args.goalContinuationAdmitted,
         slackDelivery: args.payload.slackDelivery,
         feishuDelivery: args.payload.feishuDelivery,
         dependencies: args.dependencies,
@@ -4990,7 +4974,6 @@ function buildQueuedChatDispatchFailedCallbacks(
           payload,
         },
         payload,
-        goalContinuationAdmitted: false,
         dependencies: withoutQueuedRunDependency(args.dependencies),
       },
       signal,
@@ -5084,17 +5067,16 @@ const createQueuedRunForChatCallback$ = command(
   },
 );
 
-async function handleChatInternalCallback(
+function handleChatInternalCallback(
   args: {
     readonly db: Db;
     readonly callback: InternalRunCallbackEnvelope;
     readonly dependencies: ChatCallbackDependencies;
   },
   signal: AbortSignal,
-): Promise<
+):
   | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+  | { readonly success: false; readonly error: string } {
   const payload = chatCallbackPayloadSchema.safeParse(args.callback.payload);
   if (!payload.success) {
     return {
@@ -5133,11 +5115,6 @@ async function handleChatInternalCallback(
     return { success: true };
   }
 
-  const goalContinuationAdmitted =
-    (await args.dependencies.handleTerminalGoal?.(
-      args.callback.runId,
-      signal,
-    )) ?? false;
   signal.throwIfAborted();
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
@@ -5155,7 +5132,6 @@ async function handleChatInternalCallback(
           db: args.db,
           callback: args.callback,
           payload: payload.data,
-          goalContinuationAdmitted,
           dependencies: args.dependencies,
         },
         backgroundSignal,
@@ -5368,7 +5344,6 @@ const buildChatCallbackDependencies$ = command(
     input: {
       readonly db: Db;
       readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
-      readonly handleTerminalGoal?: ChatCallbackDependencies["handleTerminalGoal"];
     },
   ): ChatCallbackDependencies => {
     const { db } = input;
@@ -5423,7 +5398,6 @@ const buildChatCallbackDependencies$ = command(
       ...agentPhoneChatDeliveryDependencies(db),
       ...githubChatDeliveryDependencies(db),
       drainThreadQueue: input.drainThreadQueue,
-      handleTerminalGoal: input.handleTerminalGoal,
     };
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
@@ -5528,7 +5502,6 @@ export const handleChatInternalCallback$ = command(
     input: {
       readonly callback: InternalRunCallbackEnvelope;
       readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
-      readonly handleTerminalGoal?: ChatCallbackDependencies["handleTerminalGoal"];
     },
     signal: AbortSignal,
   ): Promise<
@@ -5539,7 +5512,6 @@ export const handleChatInternalCallback$ = command(
     const dependencies = set(buildChatCallbackDependencies$, {
       db,
       drainThreadQueue: input.drainThreadQueue,
-      handleTerminalGoal: input.handleTerminalGoal,
     });
     return await handleChatInternalCallback(
       {

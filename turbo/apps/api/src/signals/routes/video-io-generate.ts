@@ -11,7 +11,7 @@ import {
   isVideoModelId,
   type VideoModelId,
 } from "@okouai/api-contracts/contracts/video-models";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";

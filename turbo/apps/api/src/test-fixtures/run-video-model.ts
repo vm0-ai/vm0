@@ -6,7 +6,7 @@
  * historical-input and snapshot cases therefore need direct DB access.
  */
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";

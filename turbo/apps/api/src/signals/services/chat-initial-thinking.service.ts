@@ -1,4 +1,5 @@
-import { agentRuns } from "@okouai/db/schema/agent-run";
+import { historicalRunGroupId } from "./run-event-provenance.service";
+import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { FeatureSwitchKey, isFeatureEnabled } from "@okouai/core";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -21,10 +22,7 @@ import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
-import {
-  goalIdForRun,
-  visibleChatEventCondition,
-} from "./chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
@@ -286,7 +284,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const goalId = await goalIdForRun(args.db, args.runId);
+  const goalId = await historicalRunGroupId(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
