@@ -1624,14 +1624,10 @@ details > summary {
 }
 
 .owf-diagram-okou-icon img {
-  position: absolute;
-  top: -9.73px;
-  left: -6.4px;
   display: block;
-  width: 76.8px;
-  height: 76.8px;
-  max-width: none;
-  object-fit: fill;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .owf-diagram-node-source {

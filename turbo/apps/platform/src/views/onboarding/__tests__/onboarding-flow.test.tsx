@@ -481,6 +481,15 @@ test("Built-in workflows can start without connector setup", async () => {
   expect(preview.querySelector(".owf-diagram-node-source")).toBeNull();
   expect(preview.querySelector(".owf-diagram-dot-source")).toBeNull();
   expect(preview.querySelector('path[d="M170 81H277"]')).toBeNull();
+  expect(preview.querySelectorAll(".owf-diagram-okou-icon img")).toHaveLength(
+    1,
+  );
+  expect(
+    preview.querySelector<HTMLImageElement>(".owf-diagram-okou-icon img"),
+  ).toHaveAttribute(
+    "src",
+    "https://static.okou.io/platform/views/onboarding/assets/okou-avatar-2df72642115f.webp",
+  );
 });
 
 test("Every onboarding role has a curated workflow set", async () => {

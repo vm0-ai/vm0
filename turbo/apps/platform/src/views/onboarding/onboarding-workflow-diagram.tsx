@@ -7,14 +7,8 @@ import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors
 import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 
-const AVATAR_HEAD_IMG = platformStaticAssetUrl(
-  "views/onboarding/assets/zero-avatar-head-840043d16b50.svg",
-);
-const AVATAR_HAIR_IMG = platformStaticAssetUrl(
-  "views/onboarding/assets/zero-avatar-hair-c1d917488df8.svg",
-);
-const AVATAR_FACE_IMG = platformStaticAssetUrl(
-  "views/onboarding/assets/zero-avatar-face-19a2ae88c11d.svg",
+const OKOU_AVATAR_IMG = platformStaticAssetUrl(
+  "views/onboarding/assets/okou-avatar-2df72642115f.webp",
 );
 
 export function WorkflowConnectorIcon({
@@ -369,9 +363,7 @@ export function WorkflowPreviewDiagram({
           iconClassName="owf-diagram-avatar"
         >
           <span className="owf-diagram-okou-icon" aria-hidden="true">
-            <img src={AVATAR_HEAD_IMG} alt="" aria-hidden />
-            <img src={AVATAR_HAIR_IMG} alt="" aria-hidden />
-            <img src={AVATAR_FACE_IMG} alt="" aria-hidden />
+            <img src={OKOU_AVATAR_IMG} alt="" aria-hidden />
           </span>
         </WorkflowDiagramNode>
         {diagram.destinationConnectorSlug ? (
