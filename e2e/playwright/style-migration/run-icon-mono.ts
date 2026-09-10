@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -254,6 +254,11 @@ async function run() {
     failures: [],
     apiPaths: [],
   };
+  await writeFile(
+    path.join(out, "run-start.json"),
+    JSON.stringify(manifest, null, 2) + "\n",
+    { flag: "wx" },
+  );
   try {
     if (baseline)
       assert.equal(baseline.browser, manifest.browser, "Browser changed");
@@ -411,6 +416,21 @@ async function run() {
             );
           }
           await page.mouse.move(0, 0);
+          // Invalidate cached narrow-DPR text-decoration raster after dialogs settle.
+          // Restore the exact case viewport before measuring; no DOM or CSS changes.
+          await page.setViewportSize({
+            ...item.viewport,
+            width: item.viewport.width + 1,
+          });
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => resolve()),
+                ),
+              ),
+          );
+          await page.setViewportSize(item.viewport);
           await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
           const bytes = expectedBrokenIcon
               ? await captureBrokenIcon(page)
@@ -455,6 +475,10 @@ async function run() {
               );
           }
           manifest.captures.push(record);
+          await appendFile(
+            path.join(out, "captures.jsonl"),
+            JSON.stringify(record) + "\n",
+          );
           console.log(`${id}: ${record.status} ${record.changedPixels ?? ""}`);
         }
         if (item.surface === "providers") {

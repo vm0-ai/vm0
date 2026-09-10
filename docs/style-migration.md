@@ -247,3 +247,13 @@ pauses infinite animations at zero, and requires three identical full-page
 frames. It changes no DOM or styles. Both paths use the unchanged `images.ts`
 rounding limits and retain every raw changed pixel without masks. This is bounded
 Chromium evidence; it does not certify native, WebKit or normal-motion behavior.
+
+Icon-mono calibration found narrow Dark DPR 2 raster differences confined to the
+unrelated dotted price underlines (96/96/16 pixels, maximum channel delta 4).
+Those captures remain rejected under the original limits. Before each capture,
+the independent runner now requests a complete repaint by changing the viewport
+width by one pixel and restoring the exact case dimensions, without changing
+DOM or CSS. A fresh before/A/A pair passed all 20 states with zero changed
+pixels. The interruption of the earlier A/A returned SIGTERM with an unconfirmed
+cause; per-capture append-only records now preserve measurements before final
+manifest creation. This calibration does not claim unattended reproducibility.
