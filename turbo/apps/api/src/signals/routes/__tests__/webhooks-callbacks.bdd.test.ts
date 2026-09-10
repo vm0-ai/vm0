@@ -2496,10 +2496,12 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ingested.clear();
     context.mocks.axiom.sdkIngest.mockClear();
     const malformed = structuredClone(body);
-    for (const metric of malformed.metrics) {
-      for (const group of metric.memory.groups) {
-        group.cgroup = group.cgroup.slice(1);
-      }
+    const malformedMemory = malformed.metrics[0]?.memory;
+    if (!malformedMemory) {
+      throw new Error("Expected first periodic memory snapshot");
+    }
+    for (const group of malformedMemory.groups) {
+      group.cgroup = group.cgroup.slice(1);
     }
     const degraded = await api.requestAgentTelemetry(malformed, headers, [200]);
 
@@ -2507,7 +2509,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     // logs, metrics, and sandbox operations batched in the same request.
     expect(degraded.body).toStrictEqual({ success: true, id: runId });
     expect(ingested.get("sandbox-telemetry-metrics")).toStrictEqual(
-      metrics.map((metric) => {
+      metrics.map((metric, index) => {
         return {
           _time: metric.ts,
           runId,
@@ -2517,6 +2519,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
           mem_total: metric.mem_total,
           disk_used: metric.disk_used,
           disk_total: metric.disk_total,
+          ...(index === 0 ? {} : { memory: metric.memory }),
         };
       }),
     );
