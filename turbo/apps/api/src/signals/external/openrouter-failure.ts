@@ -39,6 +39,24 @@ export function openRouterFailureReason(
     : "unknown";
 }
 
+/**
+ * The provider was reachable-but-unusable for reasons no caller can act on:
+ * limits, timeouts, transport and upstream unavailability. Optional generations
+ * use this to count an expected omission instead of reporting a defect. It
+ * deliberately excludes budget and output-contract outcomes, which describe our
+ * own request rather than the provider's availability.
+ */
+export function isTransientProviderFailure(
+  reason: OpenRouterFailureReason,
+): boolean {
+  return (
+    reason === "rate_limited" ||
+    reason === "upstream_timeout" ||
+    reason === "network" ||
+    reason === "provider_unavailable"
+  );
+}
+
 export function recordOpenRouterFailure(
   error: unknown,
   reason: OpenRouterFailureReason,
@@ -114,14 +132,32 @@ export function recordOpenRouterRequestFailure(
     reason = "invalid_request";
   } else if (
     code === "rate_limit_exceeded" ||
+    code === "RESOURCE_EXHAUSTED" ||
     code === 429 ||
     errorType === "rate_limit_exceeded" ||
     httpStatus === 429
   ) {
     reason = "rate_limited";
-  } else if (httpStatus === 408 || httpStatus === 504) {
+  } else if (
+    httpStatus === 408 ||
+    httpStatus === 504 ||
+    code === 408 ||
+    code === 504
+  ) {
+    // OpenRouter also delivers an upstream gateway failure inside a 200 body,
+    // as an error envelope with no choices. The wrapper status is then a local
+    // synthetic 502 and only the provider code carries the real outcome, so
+    // this and the branch below match that code the way the rate-limit branch
+    // already does. Both stay last, leaving an enumerated invalid-request or
+    // auth code overriding a transient status exactly as before.
     reason = "upstream_timeout";
-  } else if (httpStatus === 502 || httpStatus === 503) {
+  } else if (
+    httpStatus === 502 ||
+    httpStatus === 503 ||
+    code === 502 ||
+    code === 503 ||
+    code === "UNAVAILABLE"
+  ) {
     reason = "provider_unavailable";
   }
   recordOpenRouterFailure(error, reason);
