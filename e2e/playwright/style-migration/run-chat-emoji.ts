@@ -354,6 +354,14 @@ async function run() {
             page.getByRole("button", { name: "Send", exact: true }),
           ).toBeDisabled();
           if (!(await search.isVisible())) {
+            // The composer autofocuses after reload. Move focus to the real
+            // chat region so its blinking caret is outside this icon scenario.
+            const chatRegion = page.getByRole("region", {
+              name: "Chat thread",
+              exact: true,
+            });
+            await chatRegion.focus();
+            await expect(chatRegion).toBeFocused();
             assert(
               await changeIcon.evaluate((element) => {
                 const box = element.getBoundingClientRect();
@@ -520,13 +528,13 @@ async function run() {
         "Not every frozen case was replayed",
       );
   } finally {
-    await browser.close();
-    await server.close();
     await writeFile(
       path.join(out, "manifest.json"),
       `${JSON.stringify(manifest, null, 2)}\n`,
       { flag: "wx" },
     );
+    await browser.close();
+    await server.close();
   }
   assert.equal(manifest.failures.length, 0, manifest.failures.join("\n"));
 }
