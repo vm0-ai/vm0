@@ -10,21 +10,18 @@ preparation order or demonstrate a startup-latency improvement.
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `api_dispatch_prepare_context_select_connector_catalog`            | Runtime catalog selection, including empty and preloaded results                  |
 | `api_dispatch_prepare_context_resolve_thread_connector_selections` | Thread connector account selection and validation, including the no-thread return |
-| `api_dispatch_pre_create_agent_resolve_paused_thread_goal`         | Paused-goal lookup after successful session resolution                            |
 
 Catalog selection, thread selection and the existing
 `api_dispatch_prepare_context_resolve_model_provider` operation still start in
 one all-settled wave. Connector-context loading still starts after all three
-results pass their existing checks. Session resolution still precedes paused-goal
-lookup, which remains inside each session-preparation retry.
+results pass their existing checks.
 
-The first two measurements include no-op paths; their presence does not imply a
-database query or a nonempty connector scope. The goal measurement is absent
-when the call is not reached, including runs without a thread.
+Both measurements include no-op paths; their presence does not imply a database
+query or a nonempty connector scope.
 
 The existing collector records at most two additional observations per reached
-runtime wave and one per reached paused-goal lookup. They use its existing
-batched flush, with no new queries, network requests or identifying dimensions.
+runtime wave. They use its existing batched flush, with no new queries, network
+requests or identifying dimensions.
 There is a small timer and record-allocation cost; this instrumentation is not
 itself a performance optimization.
 
@@ -80,26 +77,19 @@ prerequisite wrapper, especially for preloaded catalogs or catalog work performe
 inside thread account selection. Provider-dependent framework, secret,
 permission and usage materialization remain outside this overlap.
 
-### Session resolution and paused-goal lookup
+### Retired paused-Goal candidate
 
-Use the same run's
-`api_dispatch_pre_create_agent_resolve_thread_session` duration and the new
-paused-goal duration:
-
-```text
-ideal_overlap = min(session_duration, paused_goal_duration)
-```
-
-Keep this candidate separate from connector loading. Session prompt construction
-depends on the resolved session action and is not an independent read represented
-by this ceiling. A query returning no paused goal still has a measured duration;
-it does not authorize dropping the query or changing goal behavior.
+The paused-Goal lookup and its measurement were removed during Goal retirement.
+Following [S5 acceptance on 2026-09-10](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5623079780),
+this candidate no longer requires samples or an overlap decision. Do not treat
+its absent operation as a missing connector measurement. The connector-context
+candidate and its evidence requirements remain applicable.
 
 ## Decision gate
 
 Report complete sample counts, exclusions and candidate-specific distributions.
 Do not sum independent timing percentiles, represent these ceilings as observed
-savings, or infer that every run benefits from both candidates.
+savings, or infer that every run benefits from the connector candidate.
 
 Before retaining any scheduling change, compare it with the unchanged schedule
 under representative concurrent API-entry runs. Report preparation latency,
@@ -108,5 +98,5 @@ noise. Preserve authorization, error/abort priority, fresh session retries,
 materialized output and durable launch behavior. If a candidate lacks a justified
 benefit, record its no-change decision instead of adding concurrency complexity.
 
-The attribution PR alone does not close #32558: its deployment and the two
-independent evidence-backed decisions remain required.
+The attribution PR alone does not close #32558: deployment and the
+evidence-backed connector-context decision remain required.

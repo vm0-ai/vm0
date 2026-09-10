@@ -516,7 +516,8 @@ The first independently verified compatible release is
 S1/S2/S3-only targets and original S4 without the repair fail before API or
 Runner artifact resolution or output publication. The S1 retirement floor and
 all unrelated reader, main ancestry, release-tag and artifact checks remain.
-This stronger resolver runs from current main before physical contraction ships.
+This stronger resolver was effective from current main before physical
+contraction shipped.
 
 Apply these API floors only to the release/API target: the first compatible release
 retained an older Runner tag. All independent Runner ancestry, reader, host
@@ -528,23 +529,33 @@ The accepted S1 gate verifies the currently serving normal production version
 rejects Goal creation/reactivation and cannot continue Goal work. Historical
 Vercel/fixed-deployment inventory is outside that gate under the
 [user decision](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5595137042);
-this does not claim those deployments were disabled. Keep the rollback floor,
-[archival and settlement checks](goal-retirement-archival.md), and the requirement
-to deploy consumer removal before a later physical schema drop in
+this does not claim those deployments were disabled. Keep the rollback floors and
+permanent [history/accounting contracts](goal-retirement-archival.md) in
 [EPIC #32653](https://github.com/vm0-ai/vm0/issues/32653).
 
-S4 [#33061](https://github.com/vm0-ai/vm0/issues/33061) removes application
-Goal schema consumers while preserving physical state. Its runtime `agent_runs`
-projection is separate from migration discovery; both schemas remain deployable
-with that code. **The S1 floor above is necessary but insufficient for S5.** Before
-S5 removes physical objects, independently verify a currently serving,
-consumer-free S4 release and retain a rollback target proven compatible with the
-contracted schema. Never select an S1/S2/S3-only target after contraction merely
-because it passes the permanent ancestry floor. Keep the active Goal transition
-validator and migration-consistency entry through S5's preservation/replay and
-zero-residual gate. The [S4 record](goal-retirement-archival.md#s4-application-consumer-removal-33061)
-describes retained historical/security references and bounded captured contexts.
-No release or production contraction is authorized by the implementation PR.
+S4 [#33061](https://github.com/vm0-ai/vm0/issues/33061) removed application Goal
+schema consumers while preserving physical state; its ordinary-write repair was
+also required before contraction. **The S1 floor alone remains insufficient.**
+Never select an S1/S2/S3-only target or unrepaired S4 after contraction.
+
+**S5 was independently production accepted on 2026-09-10.** The
+[acceptance record](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5623079780)
+distinguishes #33253's failed production DDL (`40P01`) from Ethan's successful
+#33307 at `9c777819776d2bed0cfdb110653e46dcaffc0e8b` (API 1.582.0 / App 0.884.1).
+Actual production 1106 DDL, helper cleanup/timeout resets and the awaited journal
+INSERT preceded `Migrations complete` at **17:21:49.5878347 UTC**. The controller
+byte-verified that path and fresh physical metadata with unchanged masking policy;
+MaskDB exposes no journal or constraint/procedure catalogs, so no direct SELECT
+of those rows is claimed. This closes the physical-schema transition under
+[the migration retirement gates](../turbo/packages/db/MIGRATIONS.md#retired-goal-transition-validators-2026-09-10).
+
+S6a removes the expired Goal validators and pre-contract fixture variants, while
+retaining permanent current-schema SQL, literal history, accounting, race and
+security coverage. The [S4 record](goal-retirement-archival.md#s4-application-consumer-removal-33061)
+still documents historical/security references and bounded captured contexts.
+Numbered 014 remains a completed historical operation, not a current execution
+path. Both rollback floors remain unchanged; this cleanup authorizes no release,
+rollback, production operation or official resource/workflow disposition.
 
 ### Usage pack visibility compatibility retirement
 

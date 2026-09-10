@@ -1,12 +1,3 @@
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -39,20 +30,6 @@ import {
 export async function withContractedGoalSchema(
   work: (statements: () => readonly string[]) => Promise<void>,
 ): Promise<void> {
-  await withGoalSchemaDatabase(work, false);
-}
-
-/** Genuine 1094/014 transition cases retain a private pre-contraction database. */
-export async function withPrecontractGoalSchema(
-  work: () => Promise<void>,
-): Promise<void> {
-  await withGoalSchemaDatabase(work, true);
-}
-
-async function withGoalSchemaDatabase(
-  work: (statements: () => readonly string[]) => Promise<void>,
-  beforeContraction: boolean,
-): Promise<void> {
   const originalUrl = env("DATABASE_URL");
   const url = new URL(originalUrl);
   if (!["localhost", "127.0.0.1", "postgres"].includes(url.hostname)) {
@@ -67,58 +44,10 @@ async function withGoalSchemaDatabase(
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
-  const migrationFixture = await mkdtemp(
-    join(tmpdir(), "goal-history-migrations-"),
-  );
   const packageDir = fileURLToPath(
     new URL("../../../../packages/db", import.meta.url),
   );
   const run = async () => {
-    let migrationCwd = packageDir;
-    if (beforeContraction) {
-      const source = join(packageDir, "src/migrations");
-      const target = join(migrationFixture, "src/migrations");
-      const journal = z
-        .object({
-          entries: z.array(
-            z.object({
-              idx: z.number(),
-              tag: z.string(),
-              when: z.number(),
-              version: z.string(),
-              breakpoints: z.boolean(),
-            }),
-          ),
-          version: z.string(),
-          dialect: z.string(),
-        })
-        .parse(
-          JSON.parse(
-            await readFile(join(source, "meta/_journal.json"), "utf8"),
-          ),
-        );
-      const boundary = journal.entries.find((entry) => {
-        return entry.tag.endsWith("_prepare_goal_metadata_contraction");
-      });
-      if (!boundary) {
-        throw new Error("Missing active Goal contraction transition");
-      }
-      const entries = journal.entries.filter((entry) => {
-        return entry.idx < boundary.idx;
-      });
-      await mkdir(join(target, "meta"), { recursive: true });
-      for (const entry of entries) {
-        await copyFile(
-          join(source, `${entry.tag}.sql`),
-          join(target, `${entry.tag}.sql`),
-        );
-      }
-      await writeFile(
-        join(target, "meta/_journal.json"),
-        JSON.stringify({ ...journal, entries }),
-      );
-      migrationCwd = migrationFixture;
-    }
     await promisify(execFile)(
       "node",
       [
@@ -126,7 +55,7 @@ async function withGoalSchemaDatabase(
         join(packageDir, "scripts/migrate.ts"),
       ],
       {
-        cwd: migrationCwd,
+        cwd: packageDir,
         env: {
           PATH: optionalEnv("PATH"),
           HOME: optionalEnv("HOME"),
@@ -157,7 +86,6 @@ async function withGoalSchemaDatabase(
   await provider.shutdown();
   await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);
   await admin.end();
-  await rm(migrationFixture, { recursive: true, force: true });
   if (result.status === "rejected") {
     throw result.reason;
   }
