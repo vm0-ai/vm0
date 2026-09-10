@@ -16,6 +16,7 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   "bill\0api-token": FeatureSwitchKey.BillConnector,
   "cal-com\0api-token": FeatureSwitchKey.CalComConnector,
   "cal-com\0oauth": FeatureSwitchKey.CalComConnector,
+  "calendly\0oauth": FeatureSwitchKey.CalendlyOAuthConnector,
   "canva\0oauth": FeatureSwitchKey.CanvaConnector,
   "close\0oauth": FeatureSwitchKey.CloseConnector,
   "copper\0oauth": FeatureSwitchKey.CopperConnector,
