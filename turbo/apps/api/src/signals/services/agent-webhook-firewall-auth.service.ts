@@ -855,16 +855,46 @@ function refreshErrorCodeFromError(
 }
 
 function classifyRefreshFailure(
+  args: RefreshAccessTokenArgs,
   error: unknown,
   signal: AbortSignal,
 ): {
   readonly errorCode: string | null;
   readonly failureReason: FirewallAuthFailureReason | undefined;
+  readonly connectorReconnectReason: ConnectorReconnectReason | null;
+  readonly expectedTerminalFailure: boolean;
 } {
   const refreshTimedOut = isRefreshTimeoutError(error, signal);
+  const errorCode = refreshErrorCodeFromError(error, refreshTimedOut);
+  const failureReason = refreshFailureReasonFromError(error, refreshTimedOut);
+  const connectorReconnectReason = connectorReconnectReasonFromRefreshFailure(
+    error,
+    failureReason,
+  );
+  const googleAnalyticsOAuth =
+    args.sourceType === "connector" &&
+    args.accessSourceKey === "google-analytics" &&
+    args.connectorAccessBySlug.get(args.accessSourceKey)?.authMethod ===
+      "oauth";
+  const terminalGoogleAnalyticsFailure =
+    googleAnalyticsOAuth &&
+    isOAuthProviderHttpError(error) &&
+    error.status === 400 &&
+    connectorReconnectReason !== null;
+  const terminalCodexFailure =
+    args.sourceType === "model-provider" &&
+    args.accessSourceKey === "codex-oauth-token" &&
+    failureReason === "reconnect_required" &&
+    isTerminalChatgptRefreshErrorCode(errorCode);
   return {
-    errorCode: refreshErrorCodeFromError(error, refreshTimedOut),
-    failureReason: refreshFailureReasonFromError(error, refreshTimedOut),
+    errorCode,
+    failureReason,
+    connectorReconnectReason:
+      googleAnalyticsOAuth && !terminalGoogleAnalyticsFailure
+        ? null
+        : connectorReconnectReason,
+    expectedTerminalFailure:
+      terminalGoogleAnalyticsFailure || terminalCodexFailure,
   };
 }
 
@@ -985,6 +1015,21 @@ function isExpiredAwsSigninRefreshState(
     state.authMethod === "cli" &&
     state.needsReconnect &&
     state.reconnectReason === "credential_expired"
+  );
+}
+
+function isTerminalGoogleAnalyticsRefreshState(
+  prepared: PreparedRefreshTokenContext,
+  state: RefreshState,
+): boolean {
+  // Reconnect replaces the credentials and clears these reasons under the same lock.
+  return (
+    prepared.sourceType === "connector" &&
+    prepared.connectorSlug === "google-analytics" &&
+    state.authMethod === "oauth" &&
+    state.needsReconnect &&
+    (state.reconnectReason === "authorization_expired_or_revoked" ||
+      state.reconnectReason === "provider_session_expired")
   );
 }
 
@@ -2602,13 +2647,13 @@ async function markAndReturnRefreshFailure(
     return refreshFailedResult("reconnect_required");
   }
   const message = error instanceof Error ? error.message : "Unknown error";
-  const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
-  const terminalCodexFailure =
-    args.sourceType === "model-provider" &&
-    args.accessSourceKey === "codex-oauth-token" &&
-    failureReason === "reconnect_required" &&
-    isTerminalChatgptRefreshErrorCode(errorCode);
-  if (shouldLogWarning && !terminalCodexFailure) {
+  const {
+    errorCode,
+    failureReason,
+    connectorReconnectReason,
+    expectedTerminalFailure,
+  } = classifyRefreshFailure(args, error, signal);
+  if (shouldLogWarning && !expectedTerminalFailure) {
     const logMessage =
       args.accessSourceKey === "codex-oauth-token"
         ? `${args.accessSourceKey} token refresh failed`
@@ -2630,7 +2675,7 @@ async function markAndReturnRefreshFailure(
     context,
     errorCode,
     failureReason,
-    connectorReconnectReasonFromRefreshFailure(error, failureReason),
+    connectorReconnectReason,
   );
   return refreshFailedResult(failureReason);
 }
@@ -2875,7 +2920,8 @@ async function refreshLockedAccessToken(args: {
 
   if (
     isTerminalCodexRefreshState(args.prepared, lockedState) ||
-    isExpiredAwsSigninRefreshState(args.prepared, lockedState)
+    isExpiredAwsSigninRefreshState(args.prepared, lockedState) ||
+    isTerminalGoogleAnalyticsRefreshState(args.prepared, lockedState)
   ) {
     return refreshFailedResult("reconnect_required");
   }
