@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.11.0...codex-mock-v0.11.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify upstream content policy rejections ([#33180](https://github.com/vm0-ai/vm0/issues/33180)) ([f61db10](https://github.com/vm0-ai/vm0/commit/f61db105d0965c93bffb84f061d1027db8d79e36))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.32...codex-mock-v0.11.0) (2026-09-09)
 
 
