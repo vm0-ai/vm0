@@ -1750,3 +1750,115 @@ fn pi_memory_phase2_terminal_diagnostics_survive_guest_error_persistence() {
         assert!(!log.contains("PRIVATE_"));
     }
 }
+
+const PI_MEMORY_RECALL_DIAGNOSTIC_LINE: &str = concat!(
+    r#"{"type":"pi_memory_recall_outcome","runId":"run-1","mode":"sandbox","#,
+    r#""status":"miss","parity":"frozen-no-content","reason":"frozen-no-content","#,
+    r#""injectedTokenCount":0}"#
+);
+
+#[test]
+fn cli_failure_message_reports_the_termination_line_without_memory_diagnostics() {
+    let _system_log_state_guard = crate::lock_system_log_test_state();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+    let stderr_lines = vec![
+        PI_MEMORY_RECALL_DIAGNOSTIC_LINE.to_string(),
+        "Killed".to_string(),
+    ];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(msg.message, "Killed");
+    assert!(!msg.message.contains("pi_memory_recall_outcome"));
+
+    let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+    assert!(
+        system_log.contains("pi_memory_recall_outcome"),
+        "the structured diagnostic must stay in the guest log"
+    );
+}
+
+#[test]
+fn cli_failure_message_keeps_a_real_error_alongside_memory_diagnostics() {
+    let stderr_lines = vec![
+        PI_MEMORY_RECALL_DIAGNOSTIC_LINE.to_string(),
+        "TypeError: cannot read properties of undefined".to_string(),
+    ];
+    let msg = cli_failure_message(1, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(
+        msg.message,
+        "TypeError: cannot read properties of undefined"
+    );
+}
+
+#[test]
+fn cli_failure_message_falls_back_when_only_memory_diagnostics_remain() {
+    let _system_log_state_guard = crate::lock_system_log_test_state();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+    let stderr_lines = vec![
+        PI_MEMORY_RECALL_DIAGNOSTIC_LINE.to_string(),
+        r#"{"type":"pi_memory_tool_source_use","runId":"run-1","sessionId":"s-1"}"#.to_string(),
+    ];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::FallbackExitCode);
+    assert_eq!(msg.message, "Agent exited with code 137");
+
+    let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+    assert!(system_log.contains("pi_memory_tool_source_use"));
+}
+
+#[test]
+fn cli_failure_message_preserves_agent_output_that_is_not_a_known_diagnostic() {
+    for line in [
+        r#"{"type":"user_output","message":"build failed"}"#,
+        r#"{"error":"boom"}"#,
+        r#"{"type":42}"#,
+        "{not json}",
+        r#"["pi_memory_recall_outcome"]"#,
+        r#"prefix {"type":"pi_memory_recall_outcome"}"#,
+    ] {
+        let stderr_lines = vec![line.to_string()];
+        let msg = cli_failure_message(1, &stderr_lines, None);
+
+        assert_eq!(
+            msg.source,
+            FailureDetailSource::Stderr,
+            "line must stay user visible: {line}"
+        );
+        assert_eq!(msg.message, line);
+    }
+}
+
+#[test]
+fn cli_failure_message_keeps_an_incomplete_diagnostic_envelope_visible() {
+    // A cut-off envelope is no longer parseable. It must stay visible rather
+    // than silently removing the only failure detail the user would see.
+    let incomplete = r#"{"type":"pi_memory_recall_outcome","runId":"run-1""#;
+    let stderr_lines = vec![incomplete.to_string()];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(msg.message, incomplete);
+}
+
+#[test]
+fn cli_failure_message_drops_a_long_diagnostic_envelope_before_display_truncation() {
+    let long_diagnostic = format!(
+        r#"{{"type":"pi_memory_recall_outcome","runId":"{}"}}"#,
+        "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES)
+    );
+    let stderr_lines = vec![long_diagnostic, "Killed".to_string()];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(msg.message, "Killed");
+}
