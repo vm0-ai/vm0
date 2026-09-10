@@ -75,7 +75,9 @@ export function PermissionPolicyToggle({
         type="button"
         disabled={disabled}
         aria-pressed={policy === "deny"}
-        style={{ borderLeft: "var(--border-width-surface) solid hsl(var(--gray-400))" }}
+        style={{
+          borderLeft: "var(--border-width-surface) solid hsl(var(--gray-400))",
+        }}
         onClick={onDeny}
         className={permissionPolicyButtonClass({
           active: policy === "deny",
