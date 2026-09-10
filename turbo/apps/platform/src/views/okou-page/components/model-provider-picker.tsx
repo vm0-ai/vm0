@@ -163,6 +163,8 @@ interface ModelProviderPickerProps {
   menuSignals?: ModelPickerMenuSignals;
   /** Replaces the menu's pages with the detached type/model flyout. */
   flyoutLayout?: boolean;
+  /** Lets the flyout dismiss itself once a model has been committed. */
+  onSelected?: () => void;
   /** Model omitted from this caller's list of available choices. */
   excludedModel?: SupportedRunModel;
 }
@@ -1350,6 +1352,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
   showInheritOption,
   menuSignals,
   flyoutLayout,
+  onSelected,
   onMenuChange,
 }: {
   value: ModelProviderSelection | null;
@@ -1361,6 +1364,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
   showInheritOption: boolean;
   menuSignals: ModelPickerMenuSignals | undefined;
   flyoutLayout: boolean;
+  onSelected: (() => void) | undefined;
   onMenuChange: (selection: ModelProviderSelection) => void;
 }) {
   const { t } = useTranslation();
@@ -1419,6 +1423,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
         placeholder={placeholder}
         mediaModelPanel={mediaModelPanel}
         onChange={onMenuChange}
+        onSelected={onSelected}
         options={state.policies.map((policy) => {
           return {
             model: policy.model,
@@ -1512,6 +1517,7 @@ function EnabledExplicitModelFirstModelPicker(
       showInheritOption={props.showInheritOption ?? false}
       menuSignals={props.menuSignals}
       flyoutLayout={props.flyoutLayout ?? false}
+      onSelected={props.onSelected}
       onMenuChange={handleSelectionChange}
     />
   );
@@ -1556,9 +1562,9 @@ function EnabledExplicitModelFirstModelPicker(
           aria-label={props.placeholder}
           className={cn(
             props.flyoutLayout
-              ? // Each flyout panel carries its own card, so the popover itself
-                // must not paint one -- otherwise they read as a single box.
-                "w-auto border-0 bg-transparent p-0 shadow-none"
+              ? // The popover is the type rail's own card, so it keeps the
+                // component's hairline and shadow and only resizes.
+                "w-[188px] max-w-[calc(100vw-16px)] p-1"
               : "w-[304px] max-w-[calc(100vw-16px)] max-h-[var(--available-height)] overflow-y-auto overscroll-contain p-1",
           )}
         >
@@ -1599,6 +1605,7 @@ export function ModelProviderPicker({
   mediaModelPanel,
   menuSignals,
   flyoutLayout = false,
+  onSelected,
   excludedModel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
@@ -1638,6 +1645,7 @@ export function ModelProviderPicker({
       excludedModel={excludedModel}
       menuSignals={menuSignals}
       flyoutLayout={flyoutLayout}
+      {...(onSelected ? { onSelected } : {})}
       {...(mediaModelPanel ? { mediaModelPanel } : {})}
     />
   );

@@ -929,6 +929,120 @@ fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_pi_provider_http_unavailability() {
+    for (message, expected_reason) in [
+        (
+            "provider HTTP 503: no healthy upstream",
+            FailureReason::ProviderServerError,
+        ),
+        (
+            "provider HTTP 502: Service Unavailable",
+            FailureReason::ProviderServerError,
+        ),
+        ("provider HTTP 500", FailureReason::ProviderServerError),
+        (
+            "provider HTTP 504: upstream request timeout",
+            FailureReason::ProviderServerError,
+        ),
+        (
+            "provider HTTP 529: overloaded",
+            FailureReason::ProviderOverloaded,
+        ),
+        // The public Responses route prefixes the SDK status before the marker.
+        (
+            "503 provider HTTP 503: no healthy upstream",
+            FailureReason::ProviderServerError,
+        ),
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            message,
+        );
+
+        assert_eq!(reason, Some(expected_reason), "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_untrusted_pi_provider_http_contexts() {
+    const MESSAGE: &str = "provider HTTP 503: no healthy upstream";
+
+    for (framework, source) in [
+        (AgentFramework::Pi, FailureDetailSource::Stderr),
+        (AgentFramework::ClaudeCode, FailureDetailSource::PiResult),
+        (AgentFramework::Codex, FailureDetailSource::PiResult),
+    ] {
+        let reason = super::classify_cli_failure_reason(framework, source, MESSAGE);
+
+        assert_eq!(reason, None, "framework: {framework:?} source: {source:?}");
+    }
+
+    for message in [
+        // A status this boundary deliberately leaves to message-shaped rules.
+        "provider HTTP 401: unauthorized",
+        "provider HTTP 402: payment required",
+        "provider HTTP 429: slow down",
+        // Malformed or embedded markers must not be read as a status.
+        "provider HTTP 5031: no healthy upstream",
+        "provider HTTP 503_beta: no healthy upstream",
+        "provider HTTP : no healthy upstream",
+        "the tool printed provider HTTP",
+        "xprovider HTTP 503: no healthy upstream",
+        "no healthy upstream",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_keeps_quota_wording_authoritative_over_pi_provider_http() {
+    let reason = super::classify_cli_failure_reason(
+        AgentFramework::Pi,
+        FailureDetailSource::PiResult,
+        "provider HTTP 503: You have hit your ChatGPT usage limit.",
+    );
+
+    assert_eq!(reason, Some(FailureReason::UsageLimit));
+}
+
+#[test]
+fn pi_provider_http_failure_reaches_the_structured_diagnostic() {
+    let msg = cli_failure_message(
+        1,
+        &["background stderr noise".to_string()],
+        Some(&cli_diagnostic(
+            "provider HTTP 503: no healthy upstream",
+            FailureDetailSource::PiResult,
+        )),
+    );
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Pi,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(msg.source);
+    let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+    assert_eq!(msg.source, FailureDetailSource::PiResult);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::ProviderServerError)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::PiResult)
+    );
+}
+
+#[test]
 fn cli_failure_reason_classifies_claude_output_token_limit() {
     for message in [
         "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
@@ -1372,6 +1486,72 @@ fn cli_failure_reason_does_not_broadly_classify_safety_policy_text() {
             AgentFramework::ClaudeCode,
             FailureDetailSource::CodexJsonl,
             CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+        ),
+        None
+    );
+}
+
+#[test]
+fn cli_failure_reason_classifies_codex_content_policy_rejection_envelope() {
+    for message in [
+        r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+        r#"unexpected status 400 Bad Request: {"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}, url: https://api.example.com/responses"#,
+        r#"{"error":{"message":"  Content Exists Risk  ","type":"invalid_request_error","code":"invalid_request_error"}}"#,
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            message,
+        );
+
+        assert_eq!(
+            reason,
+            Some(FailureReason::SafetyPolicyRefusal),
+            "message: {message}"
+        );
+    }
+}
+
+#[test]
+fn cli_failure_reason_keeps_other_invalid_request_errors_unclassified() {
+    for message in [
+        // Real request-shape defects share the `invalid_request_error` type and
+        // must keep their actionable unclassified failure.
+        r#"{"error":{"message":"Invalid Format","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+        r#"{"error":{"message":"Input token length too long","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+        // Same phrase, different envelope shape or missing fields.
+        r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error"}}"#,
+        r#"{"error":{"message":"Content Exists Risk","type":"content_filter","code":"content_filter"}}"#,
+        r#"{"detail":"Content Exists Risk"}"#,
+        "the provider reported Content Exists Risk for this request",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_scopes_content_policy_rejection_to_codex_jsonl() {
+    const ENVELOPE: &str = r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#;
+
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            ENVELOPE,
+        ),
+        None
+    );
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::CodexJsonl,
+            ENVELOPE,
         ),
         None
     );

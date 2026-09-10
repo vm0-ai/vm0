@@ -2,7 +2,7 @@ import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { resolveVideoRunOptions } from "../../signals/okou-page/video-run-options.ts";
 import { Button } from "@okouai/ui";
@@ -27,6 +27,7 @@ import type {
   ComposerVideoModelSignals,
 } from "../../signals/okou-page/composer-signals.ts";
 import {
+  composerCreateModeDescription,
   composerCreateModeLabel,
   composerCreateModeName,
   type ComposerCreateMode,
@@ -50,6 +51,25 @@ const CREATE_MODE_ICON_CLASS = {
 } satisfies Record<ComposerCreateMode, string>;
 
 function handleCreateTypeNavigation(event: KeyboardEvent<HTMLDivElement>) {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+  const options = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+  );
+  if (event.key.length === 1 && /\S/.test(event.key)) {
+    const match = options.find((option) => {
+      return option
+        .getAttribute("aria-label")
+        ?.toLocaleLowerCase()
+        .startsWith(event.key.toLocaleLowerCase());
+    });
+    if (match) {
+      event.preventDefault();
+      match.focus();
+    }
+    return;
+  }
   if (
     ![
       "ArrowLeft",
@@ -62,11 +82,8 @@ function handleCreateTypeNavigation(event: KeyboardEvent<HTMLDivElement>) {
   ) {
     return;
   }
-  const buttons = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
-  );
-  const index = buttons.findIndex((button) => {
-    return button === event.target;
+  const index = options.findIndex((option) => {
+    return option === event.target;
   });
   if (index === -1) {
     return;
@@ -76,12 +93,12 @@ function handleCreateTypeNavigation(event: KeyboardEvent<HTMLDivElement>) {
     event.key === "Home"
       ? 0
       : event.key === "End"
-        ? buttons.length - 1
+        ? options.length - 1
         : (index +
             (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1) +
-            buttons.length) %
-          buttons.length;
-  buttons[next]?.focus();
+            options.length) %
+          options.length;
+  options[next]?.focus();
 }
 
 export function ComposerCreateControls({
@@ -92,156 +109,169 @@ export function ComposerCreateControls({
   const { t } = useTranslation();
   const choosing = useGet(signals.create.choosing$);
   const mode = useGet(signals.create.mode$);
+  const pickerOpen = useGet(signals.create.pickerOpen$);
+  const setPickerOpen = useSet(signals.create.setPickerOpen$);
   const setMode = useSet(signals.create.setMode$);
   if (!choosing && !mode) {
     return withChatScrollLayout(null);
   }
+  const Icon = COMPOSER_CREATE_ICONS[mode ?? "choose"];
   return withChatScrollLayout(
     <div
-      className="@container/create-controls"
+      className="@container/create-controls flex shrink-0 items-center gap-1 px-4 pt-4 pb-1"
+      data-testid="composer-create-mode"
       onKeyDown={(event) => {
-        if (event.key === "Escape" && choosing) {
+        if (event.key === "Escape" && pickerOpen) {
           event.preventDefault();
-          setMode(null);
+          setPickerOpen(false);
         }
       }}
-    >
-      <div className="flex min-h-11 min-w-0 items-center gap-1 px-2 pb-3 @max-[350px]/create-controls:px-3">
-        {choosing ? (
-          <>
-            <div
-              className="flex min-w-0 items-center gap-2 @max-[380px]/create-controls:gap-0.5"
-              role="group"
-              aria-label={t(($) => {
-                return $.chat.composer.create.chooseType;
-              })}
-              onKeyDown={handleCreateTypeNavigation}
-            >
-              {signals.create.modes.map((type, index) => {
-                const Icon = COMPOSER_CREATE_ICONS[type];
-                return (
-                  <Button
-                    key={type}
-                    type="button"
-                    variant="quiet"
-                    size="sm"
-                    className={cn(
-                      "gap-2 px-2 font-normal @max-[350px]/create-controls:gap-1 @max-[350px]/create-controls:px-1 @max-[350px]/create-controls:text-xs @max-[350px]/create-controls:[&_svg]:size-3.5",
-                      CREATE_CONTROL_FOCUS,
-                    )}
-                    autoFocus={index === 0}
-                    onClick={() => {
-                      setMode(type);
-                    }}
-                  >
-                    <Icon
-                      className={CREATE_MODE_ICON_CLASS[type]}
-                      aria-hidden
-                    />
-                    {composerCreateModeName(type)}
-                  </Button>
-                );
-              })}
-            </div>
-            <span
-              className="mx-1 h-3.5 w-px shrink-0 bg-gray-300 @max-[380px]/create-controls:hidden"
-              aria-hidden
-            />
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              className={cn("shrink-0 text-gray-600", CREATE_CONTROL_FOCUS)}
-              aria-label={t(($) => {
-                return $.chat.composer.create.exit;
-              })}
-              onClick={() => {
-                setMode(null);
-              }}
-            >
-              <X size={16} aria-hidden />
-            </Button>
-          </>
-        ) : mode ? (
-          <ComposerCreateChip signals={signals} mode={mode} />
-        ) : null}
-      </div>
-    </div>,
-  );
-}
-
-function ComposerCreateChip({
-  signals,
-  mode,
-}: {
-  readonly signals: ComposerSignals;
-  readonly mode: ComposerCreateMode;
-}) {
-  const { t } = useTranslation();
-  const setMode = useSet(signals.create.setMode$);
-  const Icon = COMPOSER_CREATE_ICONS[mode];
-  return (
-    <div
-      className="group/create-mode flex h-8 max-w-full items-center rounded-lg bg-gray-50 @max-[350px]/create-controls:-ml-1"
-      data-testid="composer-create-mode"
     >
       <Button
         type="button"
         variant="quiet"
+        size="sm"
+        role="combobox"
+        aria-label={t(($) => {
+          return $.chat.composer.create.chooseType;
+        })}
+        aria-haspopup="listbox"
+        aria-expanded={pickerOpen}
+        aria-controls={pickerOpen ? signals.create.pickerId : undefined}
+        className={cn(
+          "min-w-0 gap-2 bg-gray-50 px-2.5 font-normal text-foreground",
+          CREATE_CONTROL_FOCUS,
+        )}
+        onClick={() => {
+          setPickerOpen(!pickerOpen);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (pickerOpen) {
+              const picker = document.getElementById(signals.create.pickerId);
+              const option =
+                picker?.querySelector<HTMLElement>('[aria-selected="true"]') ??
+                picker?.querySelector<HTMLElement>('[role="option"]');
+              option?.focus();
+              return;
+            }
+            setPickerOpen(true);
+          }
+        }}
+      >
+        <Icon
+          className={mode ? CREATE_MODE_ICON_CLASS[mode] : undefined}
+          aria-hidden
+        />
+        <span className="truncate">
+          {mode
+            ? composerCreateModeLabel(mode)
+            : t(($) => {
+                return $.chat.composer.create.title;
+              })}
+        </span>
+        <ChevronDown
+          className={cn("shrink-0 opacity-50", pickerOpen && "rotate-180")}
+          aria-hidden
+        />
+      </Button>
+      <Button
+        type="button"
+        variant="quiet"
         size="icon-sm"
-        className={cn("group relative shrink-0", CREATE_CONTROL_FOCUS)}
+        className={cn("shrink-0", CREATE_CONTROL_FOCUS)}
         aria-label={t(($) => {
           return $.chat.composer.create.exit;
         })}
+        showTooltip
         onClick={() => {
           setMode(null);
         }}
       >
-        <Icon
-          className={cn(
-            "transition-opacity group-hover/create-mode:opacity-0 group-focus-visible:opacity-0 [@media(hover:none)]:opacity-0",
-            CREATE_MODE_ICON_CLASS[mode],
-          )}
-          aria-hidden
-        />
-        <X
-          className="absolute opacity-0 transition-opacity group-hover/create-mode:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-          aria-hidden
-        />
+        <X aria-hidden />
       </Button>
-      <Select value={mode} onValueChange={setMode} modal={false}>
-        <SelectTrigger
-          className="h-8 w-auto min-w-0 gap-2 border-0 bg-transparent py-0 pl-0 pr-2.5 font-normal hover:bg-state-hover focus-visible:bg-state-hover"
-          aria-label={t(($) => {
-            return $.chat.composer.create.chooseType;
+      {choosing && (
+        <span className="ml-1 min-w-0 truncate text-sm text-muted-foreground @max-[350px]/create-controls:hidden">
+          {t(($) => {
+            return $.chat.composer.create.chooseScene;
           })}
-        >
-          <SelectValue>{composerCreateModeLabel(mode)}</SelectValue>
-        </SelectTrigger>
-        <SelectContent
-          align="start"
-          alignOffset={-32}
-          finalFocus={() => {
-            return signals.editor.editor.view.dom;
-          }}
-        >
-          {signals.create.modes.map((type) => {
-            const TypeIcon = COMPOSER_CREATE_ICONS[type];
-            return (
-              <SelectItem key={type} value={type}>
-                <span className="flex items-center gap-2">
-                  <TypeIcon
-                    className={cn("size-4", CREATE_MODE_ICON_CLASS[type])}
-                    aria-hidden
-                  />
+        </span>
+      )}
+    </div>,
+  );
+}
+
+export function ComposerCreatePicker({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const mode = useGet(signals.create.mode$);
+  const pickerOpen = useGet(signals.create.pickerOpen$);
+  const setMode = useSet(signals.create.setMode$);
+  const setPickerOpen = useSet(signals.create.setPickerOpen$);
+  if (!pickerOpen) {
+    return withChatScrollLayout(null);
+  }
+  return withChatScrollLayout(
+    <div className="col-start-1 row-start-1 min-w-0 px-4 pt-2 pb-4">
+      <div
+        id={signals.create.pickerId}
+        role="listbox"
+        aria-label={t(($) => {
+          return $.chat.composer.create.chooseType;
+        })}
+        className="flex w-72 max-w-full flex-col gap-1 rounded-xl border-[0.7px] border-control-border bg-card p-1"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setPickerOpen(false);
+            return;
+          }
+          handleCreateTypeNavigation(event);
+        }}
+      >
+        {signals.create.modes.map((type, index) => {
+          const Icon = COMPOSER_CREATE_ICONS[type];
+          const selected = type === mode;
+          const initialFocus = mode ? selected : index === 0;
+          return (
+            <Button
+              key={type}
+              type="button"
+              variant="quiet"
+              role="option"
+              aria-label={composerCreateModeName(type)}
+              aria-selected={selected}
+              autoFocus={initialFocus}
+              tabIndex={initialFocus ? 0 : -1}
+              className={cn(
+                "relative h-auto w-full justify-start gap-2.5 py-2.5 pl-2 pr-8 text-left font-normal text-foreground",
+                CREATE_CONTROL_FOCUS,
+                "hover:bg-gray-50 focus-visible:bg-gray-50",
+                selected && "bg-gray-50",
+              )}
+              onClick={() => {
+                setMode(type);
+              }}
+            >
+              <Icon className={CREATE_MODE_ICON_CLASS[type]} aria-hidden />
+              <span className="min-w-0">
+                <span className="block text-sm">
                   {composerCreateModeName(type)}
                 </span>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-    </div>
+                <span className="block whitespace-normal text-xs text-muted-foreground">
+                  {composerCreateModeDescription(type)}
+                </span>
+              </span>
+              {selected && <Check className="absolute right-2" aria-hidden />}
+            </Button>
+          );
+        })}
+      </div>
+    </div>,
   );
 }
 

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { normalizeGoogleAdsAttributionParams } from "../lib/google-ads-attribution.ts";
+import { normalizeGoogleAdsAttributionParams } from "@okouai/core/google-ads-attribution";
 import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import {
   derivePlatformServiceOrigin,
@@ -47,8 +47,8 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
-  "vm0_campaign_id",
-  "vm0_ad_group_id",
+  "okou_campaign_id",
+  "okou_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -62,8 +62,8 @@ const AD_TRAFFIC_MARKERS = [
   "wbraid",
   "utm_source",
   "utm_campaign",
-  "vm0_campaign_id",
-  "vm0_ad_group_id",
+  "okou_campaign_id",
+  "okou_ad_group_id",
 ] as const;
 
 const HTTP_URL_PREFIX_REGEX = /^https?:\/\//i;

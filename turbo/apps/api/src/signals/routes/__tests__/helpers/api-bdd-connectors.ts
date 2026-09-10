@@ -307,7 +307,9 @@ interface AutomaticMcpOAuthProviderOptions {
     | "invalid_grant"
     | "temporarily_unavailable"
   )[];
+  readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
   readonly initialExpiresIn?: number;
+  readonly initialRefreshToken?: string;
   readonly resource?: string;
   readonly authorizationEndpoint?: string;
   readonly metadataIssuer?: string;
@@ -539,6 +541,9 @@ export function mockAutomaticMcpOAuthProvider(
       const refresh = body.get("grant_type") === "refresh_token";
       if (refresh) {
         refreshAttempts += 1;
+        if (options.refreshResponse) {
+          return await options.refreshResponse(refreshAttempts);
+        }
       } else {
         authorizationCodeAttempts += 1;
       }
@@ -557,7 +562,12 @@ export function mockAutomaticMcpOAuthProvider(
         access_token: refresh
           ? "automatic-refreshed-access-token"
           : "automatic-initial-access-token",
-        ...(!refresh ? { refresh_token: "automatic-refresh-token" } : {}),
+        ...(!refresh
+          ? {
+              refresh_token:
+                options.initialRefreshToken ?? "automatic-refresh-token",
+            }
+          : {}),
         token_type: "Bearer",
         expires_in: refresh ? 3600 : (options.initialExpiresIn ?? 0),
         scope:

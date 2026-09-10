@@ -9,6 +9,7 @@ use crate::error::AgentError;
 use crate::failure_patterns::{
     has_exact_codex_oauth_connector, is_codex_chatgpt_account_unsupported_model_message,
     is_codex_context_window_exceeded_message, is_codex_model_capacity_message,
+    is_content_policy_rejection_message,
 };
 use crate::http::{HttpAttemptObserver, HttpClient};
 use crate::masker::SecretMasker;
@@ -340,6 +341,12 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     }
     if let Some(failure_reason) = codex_error_info_failure_reason(error) {
         return Some(failure_reason);
+    }
+    if codex_error_message(Some(error))
+        .as_deref()
+        .is_some_and(is_content_policy_rejection_message)
+    {
+        return Some(FailureReason::SafetyPolicyRefusal);
     }
     if codex_error_message(Some(error))
         .as_deref()

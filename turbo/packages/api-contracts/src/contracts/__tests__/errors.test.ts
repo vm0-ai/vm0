@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHAT_RUN_CONTENT_POLICY_REJECTED_MESSAGE,
   CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
@@ -54,6 +55,32 @@ describe("formatRunErrorForExternalSurface", () => {
         failureReason: "execution_timeout",
       }),
     ).toBe(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE);
+  });
+
+  it("replaces a content-policy refusal with non-retry guidance", () => {
+    const formatted = formatRunErrorForExternalSurface({
+      code: "UNKNOWN",
+      message:
+        '{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}',
+      failureReason: "safety_policy_refusal",
+      framework: "codex",
+    });
+
+    expect(formatted).toBe(CHAT_RUN_CONTENT_POLICY_REJECTED_MESSAGE);
+    // The rejection is deterministic, so the copy must not invite a retry and
+    // must not echo the raw provider envelope back to the user.
+    expect(formatted).not.toContain("try again later");
+    expect(formatted).not.toContain("Content Exists Risk");
+  });
+
+  it("keeps an unclassified provider envelope on the generic message", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          '{"error":{"message":"Invalid Format","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}',
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
   });
 
   it("keeps the canonical execution timeout message stable", () => {

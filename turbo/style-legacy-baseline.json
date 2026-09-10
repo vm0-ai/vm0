@@ -26,7 +26,6 @@
     "okou-border-r",
     "okou-border-t",
     "okou-btn-morandi",
-    "okou-bubble-cool",
     "okou-chat-bubble-assistant",
     "okou-chat-bubble-user",
     "okou-chat-card",
@@ -1047,20 +1046,6 @@
         "selector": ".okou-app .okou-chat-card",
         "property": "background-color",
         "value": "hsl(var(--card))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-bubble-cool",
-        "property": "background-color",
-        "value": "hsl(var(--gray-100)/0.95)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app .okou-bubble-cool",
-        "property": "color",
-        "value": "hsl(var(--foreground))",
         "important": false
       },
       {
@@ -4078,8 +4063,6 @@
       "okou-app": 1
     },
     "apps/platform/src/views/okou-page/settings-tab.tsx": {
-      "okou-border": 1,
-      "okou-bubble-cool": 1,
       "okou-chat-bubble-assistant": 1
     },
     "apps/platform/src/views/okou-page/sidebar-account.tsx": {

@@ -1125,7 +1125,7 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailEnv();
     configureGmailWatchMock();
     const { actor, workflowId } = await setupFixture();
-    await connectGmail(actor, gmailEmail);
+    const connectorId = await connectGmail(actor, gmailEmail);
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1149,6 +1149,8 @@ describe("POST /api/webhooks/gmail", () => {
     const googleIdToken = signedGoogleIdToken();
     mockNow(startedAt + 2 * 60 * 60 * 1000);
     context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.axiomLogging.error.mockClear();
+    context.mocks.sentry.captureException.mockClear();
 
     for (const messageId of [
       "pubsub-gmail-access-unavailable-first",
@@ -1172,14 +1174,17 @@ describe("POST /api/webhooks/gmail", () => {
     }
 
     expect(refreshCalls).toBe(1);
-    expect(
-      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
-        return message === "Connector credential refresh failed";
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    await expect(
+      connectorsApi.listBuiltinConnectorAccounts(actor, "gmail"),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: connectorId,
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
       }),
-    ).toHaveLength(1);
-    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
-      "Gmail event skipped because connector access is unavailable",
-      expect.anything(),
     );
     await accept(
       automationsClient().disable({

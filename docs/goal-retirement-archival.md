@@ -243,6 +243,28 @@ provenance. A stable snapshot-head check closes the READ COMMITTED race with
 snapshot publication and hot retention without changing the usage advisory lock.
 A retained non-Goal prompt alone does not erase a group in archived output.
 
+Repair #33152 gives the initial queue claim the fresh server-generated run UUID
+as its canonical event ID. `prepareLaunchRunIdentity` allocates that UUID;
+`claimQueueFirstRunAssociation` appends the run-attributed replacement before the
+same transaction inserts the run in failed, queued and pending/CTE launches.
+Client event IDs identify the preceding runless input. Active-input delivery
+creates separate replacement IDs; it does not reuse the run UUID. Thus an exact
+hot `input.prompt` with matching event/run/thread identity and a revoke edge
+establishes the run's initial physical position. Only when that position exceeds
+a stable snapshot `lastSeqId` can provenance and first usage omit that archive.
+`terminalSeqId`, wall clocks, trigger labels and arbitrary hot events do not
+establish this bound. The pointer is rechecked across exclusion as well as reads.
+
+This is an event identity convention, not a new payload/schema or Goal store.
+Old writers/readers remain compatible with the same event and revoke grammar.
+Older runs, copied identities, missing claims and already-covered claims keep
+the canonical history path and its explicit errors. A necessary history read
+is shared only within one usage operation under its existing per-run lock;
+there is no cross-operation cache or historical event rewrite.
+An omitted archive read is not reused as resolved empty history: first usage
+retains the hot-before-history ordering if publication and retention move a
+previously hot context after the prior-usage lookup.
+
 Usage corrections inherit the exact prior context pointer, including null,
 revocation identity, strictly later event timestamp and original settled time.
 The first late usage uses available hot/snapshot provenance; absent provenance

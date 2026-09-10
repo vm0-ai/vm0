@@ -510,7 +510,13 @@ const googleAdsPaidConversion$ = command(
     const attribution = snapshots.find((metadata) => {
       return (
         metadata &&
-        ["gclid", "gbraid", "wbraid", "vm0_campaign_id"].some((key) => {
+        [
+          "gclid",
+          "gbraid",
+          "wbraid",
+          "okou_campaign_id",
+          "vm0_campaign_id",
+        ].some((key) => {
           return metadata[key];
         })
       );
@@ -529,8 +535,8 @@ const googleAdsPaidConversion$ = command(
         .limit(1);
       signal.throwIfAborted();
       googleAdsAccountId = googleAdsAccountForAttribution({
-        vm0_campaign_id: org?.campaignId ?? undefined,
-        vm0_ad_group_id: org?.adGroupId ?? undefined,
+        okou_campaign_id: org?.campaignId ?? undefined,
+        okou_ad_group_id: org?.adGroupId ?? undefined,
       });
     }
     // Legacy paid conversions are UPLOAD_CLICKS and remain on the offline path.

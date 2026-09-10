@@ -645,11 +645,14 @@ export async function claimQueueFirstRunAssociation(
         "api_dispatch_persist_queue_first_replacement",
         "nested",
         async () => {
-          return await replaceLoadedChatEvent(
-            db,
-            snapshot.target,
-            snapshot.replacement,
-          );
+          return await replaceLoadedChatEvent(db, snapshot.target, {
+            ...snapshot.replacement,
+            // This fresh server run UUID identifies its initial input claim.
+            // The claim precedes the run INSERT in the same launch transaction;
+            // active-input delivery never assigns this identity. Provenance
+            // readers use its physical sequence as the run's lower bound.
+            id: args.runId,
+          });
         },
         claimDimensions,
       );

@@ -117,6 +117,45 @@ async function readGoogleAdsMilestones(
 }
 
 describe("POST /api/attribution/signup", () => {
+  it("accepts Okou IDs while keeping first-touch storage readable by older APIs", async () => {
+    mockNow(new Date(RECORDED_AT_ISO));
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: userId, privateMetadata: {} }],
+    });
+    const response = await accept(
+      client().recordSignup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          attribution: {
+            gclid: "original-click",
+            okou_campaign_id: "24220469665",
+            okou_ad_group_id: "123456",
+          },
+        },
+      }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      recorded: true,
+      googleAdsAccountId: "7935750692",
+    });
+    expect(context.mocks.clerk.users.updateUserMetadata).toHaveBeenCalledWith(
+      userId,
+      {
+        privateMetadata: {
+          signup_attribution: {
+            gclid: "original-click",
+            vm0_campaign_id: "24220469665",
+            vm0_ad_group_id: "123456",
+            recorded_at: RECORDED_AT_ISO,
+          },
+        },
+      },
+    );
+  });
+
   it("requires a Clerk session", async () => {
     const response = await client().recordSignup({
       body: {
@@ -590,6 +629,41 @@ describe("POST /api/attribution/google-ads-account", () => {
       expected: "7935750692",
     },
     {
+      saved: { okou_campaign_id: "24154967178" },
+      supplied: "24220469665",
+      expected: "1001302527",
+    },
+    {
+      saved: {
+        okou_campaign_id: "24220469665",
+        vm0_campaign_id: "24220469665",
+      },
+      supplied: "24154967178",
+      expected: "7935750692",
+    },
+    {
+      saved: {
+        okou_campaign_id: "24220469665",
+        vm0_campaign_id: "24154967178",
+      },
+      supplied: "24220469665",
+      expected: null,
+    },
+    {
+      saved: {
+        okou_campaign_id: "24220469665",
+        vm0_ad_group_id: "1",
+        okou_ad_group_id: "2",
+      },
+      supplied: "24220469665",
+      expected: null,
+    },
+    {
+      saved: { vm0_campaign_id: " 24220469665 " },
+      supplied: "24220469665",
+      expected: null,
+    },
+    {
       saved: { gclid: "original-click" },
       supplied: "24220469665",
       expected: null,
@@ -635,19 +709,22 @@ describe("POST /api/attribution/google-ads-account", () => {
       }
     },
   );
-  it("resolves the captured campaign only before a first touch has been saved", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-    context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [{ id: userId, privateMetadata: {} }],
-    });
-    const response = await accept(
-      client().resolveGoogleAdsAccount({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { attribution: { vm0_campaign_id: "24220469665" } },
-      }),
-      [200],
-    );
-    expect(response.body).toStrictEqual({ googleAdsAccountId: "7935750692" });
-  });
+  it.each(["vm0_campaign_id", "okou_campaign_id"] as const)(
+    "resolves %s only before a first touch has been saved",
+    async (key) => {
+      const userId = `user_${randomUUID()}`;
+      mocks.clerk.session(userId, null);
+      context.mocks.clerk.users.getUserList.mockResolvedValue({
+        data: [{ id: userId, privateMetadata: {} }],
+      });
+      const response = await accept(
+        client().resolveGoogleAdsAccount({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { attribution: { [key]: "24220469665" } },
+        }),
+        [200],
+      );
+      expect(response.body).toStrictEqual({ googleAdsAccountId: "7935750692" });
+    },
+  );
 });
