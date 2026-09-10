@@ -602,7 +602,7 @@ function AddModelButton({
       type="button"
       variant="outline"
       size="sm"
-      className="okou-btn-morandi h-9 gap-2 rounded-lg border"
+      className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 gap-2 rounded-lg"
       disabled={disabled}
       onClick={onClick}
     >

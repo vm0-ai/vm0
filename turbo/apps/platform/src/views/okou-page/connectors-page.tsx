@@ -395,7 +395,7 @@ function ConnectorFilterDropdown({
           aria-label={t(($) => {
             return $.connectors.catalog.filters.aria;
           })}
-          className="okou-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
+          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay hidden h-9 shrink-0 gap-1.5 rounded-lg sm:inline-flex"
         >
           <Filter size={14} className="" />
           {activeAgent && (
@@ -746,7 +746,7 @@ function ConnectorsToolbarActions({
         <Button
           variant="outline"
           size="sm"
-          className="okou-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 gap-2 shrink-0 rounded-lg"
           onClick={onCreateCustom}
         >
           <Plus size={14} />

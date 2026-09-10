@@ -177,6 +177,32 @@ The `running-indicator`, `running-indicator-center`, and
 `running-indicator-ripple` recipes have been removed; their keyframes remain,
 since keyframes are not class selectors.
 
+### Neutral control surface
+
+Standalone neutral controls compose `border border-control-border
+bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay`. That is
+the treatment the merged settings-select batch established, extended with the
+bare `border` and `text-foreground` the retired `okou-btn-morandi` selector
+also owned.
+
+The retired rule hard-coded a `0.7px` border while the rest of the product had
+already moved to `--default-border-width`. The replacement takes the shared
+hairline instead of naming a width. Blink and Gecko round both values up to one
+device pixel, so the change is invisible there and layout is unchanged; WebKit
+may draw the true hairline on a high-density display, which is the product
+behaviour the shared token already describes.
+
+`text-foreground` is currently redundant at every consumer, because each one
+already inherits that foreground. It is kept because the retired rule set it,
+so a control moved onto a differently coloured surface keeps the treatment it
+has today.
+
+Three consumers also carried `hover:bg-state-hover`. The unlayered rule's own
+fill always won, so that class never applied; it is removed rather than newly
+enabled, which the hover measurement confirms.
+
+The `okou-btn-morandi` selector has been removed.
+
 ## Exception boundary
 
 Only two exception kinds exist:

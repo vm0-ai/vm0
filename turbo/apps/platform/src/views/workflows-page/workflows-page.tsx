@@ -944,7 +944,7 @@ function SortDropdown({
           type="button"
           variant="outline"
           size="sm"
-          className="okou-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-1.5 rounded-lg"
         >
           <ArrowUpDown size={15} className="" />
           {current?.label ??
@@ -991,7 +991,7 @@ function AgentFilterDropdown({
           type="button"
           variant="outline"
           size="sm"
-          className="okou-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-1.5 rounded-lg"
         >
           {selected ? (
             <AgentAvatarImg
@@ -1207,7 +1207,7 @@ export function WorkflowsPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="okou-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+                className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-2 rounded-lg"
               >
                 <Link pathname={ROUTES.officialWorkflows}>
                   <BadgeCheck size={14} />
@@ -1221,7 +1221,7 @@ export function WorkflowsPage() {
               type="button"
               variant="outline"
               size="sm"
-              className="okou-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+              className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-2 rounded-lg"
               onClick={() => {
                 openCreateWorkflowDialog();
               }}

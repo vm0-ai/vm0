@@ -257,7 +257,7 @@ function OAuthAccountGroup({
           type="button"
           variant="outline"
           size="sm"
-          className="okou-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-1.5 rounded-lg"
           disabled={actionPending || accounts.length >= 10}
           onClick={onAdd}
         >
@@ -1367,7 +1367,7 @@ function OAuthCredentialRow({
             type="button"
             variant="outline"
             size="sm"
-            className="okou-btn-morandi h-9 shrink-0 rounded-lg border"
+            className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 rounded-lg"
             aria-label={t(
               ($) => {
                 return $.settings.models.personal.actionForProvider;

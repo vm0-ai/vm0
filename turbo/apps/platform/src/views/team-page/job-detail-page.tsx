@@ -224,7 +224,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </div>
             <Link
               pathname="/agents"
-              className="okou-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+              className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
             >
               {t(($) => {
                 return $.detail.notFound.back;
@@ -247,7 +247,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
-                className="okou-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+                className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
               >
                 {t(($) => {
                   return $.actions.retry;
@@ -960,7 +960,7 @@ function AgentHeader({
         <Button
           variant="outline"
           size="sm"
-          className="okou-btn-morandi max-w-[220px] shrink-0 gap-1.5"
+          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay max-w-[220px] shrink-0 gap-1.5"
           onClick={() => {
             nav("/agents/:agentId/chat", {
               pathParams: { agentId: agentId },

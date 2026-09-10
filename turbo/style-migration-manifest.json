@@ -560,6 +560,37 @@
       ],
       "status": "implemented",
       "evidence": []
+    },
+    {
+      "id": "neutral-control-surface",
+      "family": "local-controls",
+      "tokens": ["okou-btn-morandi"],
+      "consumers": [
+        "apps/platform/src/views/agents-page/agents-page-tabs.tsx",
+        "apps/platform/src/views/export-page/export-page.tsx",
+        "apps/platform/src/views/okou-page/activity-detail-page.tsx",
+        "apps/platform/src/views/okou-page/chat-thread-page.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/model-provider-connections-section.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-model-policies-section.tsx",
+        "apps/platform/src/views/okou-page/components/preferences/personal-providers-tab.tsx",
+        "apps/platform/src/views/okou-page/components/preferences/personal-usage-record.tsx",
+        "apps/platform/src/views/okou-page/components/settings/voice-input-model-settings.tsx",
+        "apps/platform/src/views/okou-page/connectors-page.tsx",
+        "apps/platform/src/views/team-page/job-detail-page.tsx",
+        "apps/platform/src/views/workflows-page/official-workflows-page.tsx",
+        "apps/platform/src/views/workflows-page/workflow-detail-page.tsx",
+        "apps/platform/src/views/workflows-page/workflows-page.tsx"
+      ],
+      "cases": [
+        "control-surface-workflows-light",
+        "control-surface-workflows-dark",
+        "control-surface-connectors-light",
+        "control-surface-connectors-dark",
+        "control-surface-agents-narrow",
+        "control-surface-agents-narrow-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
     }
   ],
   "caseFiles": [
@@ -572,6 +603,7 @@
     "../e2e/playwright/style-migration/chat-emoji-cases.json",
     "../e2e/playwright/style-migration/running-indicator-cases.json",
     "../e2e/playwright/style-migration/swatch-cases.json",
-    "../e2e/playwright/style-migration/shared-recipe-cases.json"
+    "../e2e/playwright/style-migration/shared-recipe-cases.json",
+    "../e2e/playwright/style-migration/control-surface-cases.json"
   ]
 }

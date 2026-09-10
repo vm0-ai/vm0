@@ -301,7 +301,7 @@ function ExportActions({
           <Button
             type="button"
             variant="outline"
-            className="okou-btn-morandi h-9 w-full gap-2 rounded-lg border"
+            className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 w-full gap-2 rounded-lg"
             disabled={triggering}
             onClick={onTrigger}
           >

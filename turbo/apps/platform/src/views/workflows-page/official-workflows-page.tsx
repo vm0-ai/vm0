@@ -113,7 +113,7 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
         type="button"
         variant="outline"
         size="sm"
-        className="okou-btn-morandi mt-4"
+        className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay mt-4"
         onClick={onRetry}
       >
         {i18n.t(($) => {
@@ -469,7 +469,7 @@ function OfficialWorkflowDefinitionPage() {
             {definition.lifecycle === "active" ? (
               <Button
                 type="button"
-                className="okou-btn-morandi h-9 shrink-0 gap-2 rounded-lg"
+                className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-2 rounded-lg"
                 onClick={() => {
                   setForm(
                     createOfficialWorkflowConfigurationForm({
