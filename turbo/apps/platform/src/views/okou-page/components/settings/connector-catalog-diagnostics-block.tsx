@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, Plug } from "lucide-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@okouai/ui";
 
 import {
   formatLocalizedNumber,
@@ -242,34 +243,34 @@ function CatalogDiagnosticsSummary({
           })}
         </span>
         <span className="flex min-w-0 flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          <Badge className="max-w-full break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .syncState;
             })}
             : {formatEnumValue(diagnostics.state)}
-          </span>
-          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          </Badge>
+          <Badge className="max-w-full break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .activeVersion;
             })}
             : {activeVersion}
-          </span>
-          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          </Badge>
+          <Badge className="max-w-full break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .lastAttempt;
             })}
             : {lastAttempt}
-          </span>
-          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          </Badge>
+          <Badge className="max-w-full break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .evaluation;
             })}
             : {evaluation}
-          </span>
+          </Badge>
         </span>
       </span>
       <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground group-open:hidden" />

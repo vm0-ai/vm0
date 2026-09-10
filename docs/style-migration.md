@@ -364,6 +364,7 @@ passed. Real TEST API selection, removal and persistence across reloads also
 passed with zero chat event rows. The archive retains all prior failed evidence,
 the unchanged harness and per-file SHA256; its anonymous HTTPS download and
 archive hash were verified. The PR remains Draft.
+
 ## Tone preview surfaces
 
 The `tone-preview-surfaces` batch covers the user sample bubble and its enclosing
@@ -548,3 +549,32 @@ The batch remains `implemented`: that source's Security and Crates gates pass,
 but Turbo is blocked by Runner SSH preparation for `dev-12.gcp.vm3.ai`. No
 Runner, workflow or timeout change is part of this migration. Latest-head CI
 and preview identity are recorded in the PR before handoff.
+
+## Deliberate geometry change in the badge batch
+
+The hairline badge batch removes `okou-badge`, `okou-pill`, and `okou-border-r`
+and replaces their 22 consumers with the shared `Badge` component. Unlike the
+earlier batches it is **not** pixel-neutral, so it is recorded as a geometry
+decision rather than an equivalence claim.
+
+The 22 consumers spelled eight class combinations that differed on radius,
+padding, display, gap, line height, typography, and foreground. Two of them were
+the same icon-plus-label badge at two radii and two paddings. Collapsing them to
+one shape required choosing canonical values, which is a visual change and is
+reviewed as one.
+
+Line height belongs to the badge because an arbitrary font-size utility carries
+no paired line height: Tailwind emits `font-size` alone for `text-[11px]`. Ten
+of the 22 badges declared only such a size, so an ancestor's `line-height`
+decided their box. Measured with `getBoundingClientRect` on one badge under four
+ancestors that differ only in `line-height`, the box was 22.00px, 26.00px,
+34.00px, and 22.50px tall before the change and 21.13px in all four after it.
+
+Per-consumer box deltas are recorded on the pull request. `align-middle` is part
+of the shared shape because flex and grid items ignore it, so it costs the
+flex-item consumers nothing while keeping the one genuinely inline badge aligned
+with the text beside it.
+
+A batch that changes geometry on purpose cannot be accepted by an unchanged-code
+replay. It needs the per-page runners, or an explicit reviewed delta list, or
+both.
