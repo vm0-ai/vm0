@@ -205,6 +205,42 @@ describe("Pi upstream error body guard", () => {
     await expect(response.text()).resolves.toBe("no healthy upstream");
   });
 
+  it("bounds an all-whitespace opaque error probe before returning it", async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const prefix = " ".repeat(2_048);
+    const upstream = new Response(
+      new ReadableStream<Uint8Array>({
+        start(next) {
+          controller = next;
+          next.enqueue(new TextEncoder().encode(prefix));
+        },
+      }),
+      { status: 503, headers: { "content-type": "text/plain" } },
+    );
+    const guarded = guardPiUpstreamErrorBody(() => {
+      return Promise.resolve(upstream);
+    });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const response = await Promise.race([
+      guarded("https://provider.example/v1/responses"),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error("opaque error probe did not stay bounded"));
+        }, 1_000);
+      }),
+    ]);
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    controller.enqueue(new TextEncoder().encode("later provider detail"));
+    controller.close();
+
+    expect(response.status).toBe(503);
+    await expect(response.text()).resolves.toBe(
+      `${prefix}later provider detail`,
+    );
+  });
+
   it("drops transfer framing the consumed body invalidated", async () => {
     const guarded = guardPiUpstreamErrorBody(
       respondWith(ERROR_PAGE, {

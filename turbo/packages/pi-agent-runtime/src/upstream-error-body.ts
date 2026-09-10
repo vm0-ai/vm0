@@ -100,6 +100,62 @@ function replayableHeaders(headers: Headers): Headers {
 }
 
 /**
+ * Replay the bounded prefix already inspected at the provider boundary, then
+ * continue from the original reader on demand.
+ *
+ * Reading a `tee()` inspection branch while leaving its sibling unconsumed
+ * queues every later chunk in that sibling. Keeping one reader avoids that
+ * hidden full-document buffer: only the probe prefix is retained before the
+ * caller starts consuming the returned response.
+ */
+function replayInspectedBody(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  inspected: readonly Uint8Array[],
+): ReadableStream<Uint8Array> {
+  let inspectedIndex = 0;
+  let readerReleased = false;
+  const releaseReader = () => {
+    if (!readerReleased) {
+      readerReleased = true;
+      reader.releaseLock();
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (inspectedIndex < inspected.length) {
+        controller.enqueue(inspected[inspectedIndex]);
+        inspectedIndex += 1;
+        return;
+      }
+
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          controller.close();
+          releaseReader();
+          return;
+        }
+        controller.enqueue(next.value);
+      } catch (error) {
+        controller.error(error);
+        releaseReader();
+      }
+    },
+    async cancel(reason) {
+      if (readerReleased) {
+        return;
+      }
+      try {
+        await reader.cancel(reason);
+      } finally {
+        releaseReader();
+      }
+    },
+  });
+}
+
+/**
  * Replace a markup error body with a bounded, API-shaped description.
  *
  * Provider adapters compose their terminal `errorMessage` from a failed
@@ -118,15 +174,17 @@ export function guardPiUpstreamErrorBody(
       return response;
     }
 
-    // A non-markup provider error must keep streaming exactly as supplied. For
-    // markup, retain only a bounded probe while consuming the other branch to
-    // count and hash the discarded document. This avoids buffering an
-    // arbitrarily large gateway page merely to make its safe description.
-    const [inspectionBody, passthroughBody] = response.body.tee();
-    const reader = inspectionBody.getReader();
+    // A non-markup provider error must keep streaming exactly as supplied. Use
+    // one reader rather than `tee()`: an unconsumed tee sibling would queue the
+    // complete markup document while this branch hashes it. The returned
+    // non-markup stream replays only this bounded inspected prefix, then reads
+    // the original body on demand.
+    const reader = response.body.getReader();
+    const inspected: Uint8Array[] = [];
     const hasher = createHash("sha256");
     const decoder = new TextDecoder();
     let bytes = 0;
+    let inspectedBytes = 0;
     let probe = "";
     let markup: boolean | undefined;
 
@@ -134,49 +192,50 @@ export function guardPiUpstreamErrorBody(
       while (markup === undefined) {
         const next = await reader.read();
         if (next.done) {
-          probe = `${probe}${decoder.decode()}`.trimStart();
+          probe = `${probe}${decoder.decode()}`
+            .trimStart()
+            .slice(0, MARKUP_PROBE_CHARS);
           markup = isMarkupDocumentBody(probe);
           break;
         }
 
+        inspected.push(next.value);
         bytes += next.value.byteLength;
         hasher.update(next.value);
-        for (
-          let offset = 0;
-          offset < next.value.byteLength && markup === undefined;
-          offset += MARKUP_PROBE_BYTES
+        const remainingProbeBytes = MARKUP_PROBE_BYTES - inspectedBytes;
+        const segment = next.value.subarray(
+          0,
+          Math.max(0, remainingProbeBytes),
+        );
+        inspectedBytes += segment.byteLength;
+        probe = `${probe}${decoder.decode(segment, { stream: true })}`
+          .trimStart()
+          .slice(0, MARKUP_PROBE_CHARS);
+        if (probe.length > 0 && !probe.startsWith("<")) {
+          markup = false;
+        } else if (isMarkupDocumentBody(probe)) {
+          markup = true;
+        } else if (
+          inspectedBytes === MARKUP_PROBE_BYTES ||
+          probe.length === MARKUP_PROBE_CHARS
         ) {
-          const segment = next.value.subarray(
-            offset,
-            Math.min(offset + MARKUP_PROBE_BYTES, next.value.byteLength),
-          );
-          probe = `${probe}${decoder.decode(segment, { stream: true })}`
-            .trimStart()
-            .slice(0, MARKUP_PROBE_CHARS);
-          if (probe.length > 0 && !probe.startsWith("<")) {
-            markup = false;
-          } else if (
-            isMarkupDocumentBody(probe) ||
-            probe.length === MARKUP_PROBE_CHARS
-          ) {
-            markup = isMarkupDocumentBody(probe);
-          }
+          // The bounded probe did not identify a document. Preserve this
+          // opaque error rather than waiting for an arbitrarily long stream.
+          markup = false;
         }
       }
 
       if (!markup) {
-        // The untouched tee branch preserves the original body and framing.
-        void reader.cancel().catch(() => {});
-        return new Response(passthroughBody, {
+        return new Response(replayInspectedBody(reader, inspected), {
           headers: response.headers,
           status: response.status,
           statusText: response.statusText,
         });
       }
 
-      // The passthrough branch is intentionally discarded before the full
-      // markup stream is drained for metadata only.
-      void passthroughBody.cancel().catch(() => {});
+      // Do not retain the raw probe once it is known to be markup. Continue
+      // through the same reader to count and hash the discarded document.
+      inspected.length = 0;
       for (;;) {
         const next = await reader.read();
         if (next.done) {
@@ -186,7 +245,11 @@ export function guardPiUpstreamErrorBody(
         hasher.update(next.value);
       }
     } finally {
-      reader.releaseLock();
+      // The replay stream owns this reader after a non-markup return. Every
+      // other path has finished with it here, including probe/read failures.
+      if (markup !== false) {
+        reader.releaseLock();
+      }
     }
 
     const headers = replayableHeaders(response.headers);
