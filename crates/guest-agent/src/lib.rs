@@ -239,6 +239,7 @@ pub mod session_history_identity;
 pub mod session_metadata;
 pub mod telemetry;
 pub mod timing;
+mod upstream_error_text;
 mod urls;
 pub mod workload_containment;
 
