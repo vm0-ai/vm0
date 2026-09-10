@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -60,7 +61,7 @@ class AuditSetupTests(unittest.TestCase):
     def client(self, service, **_kwargs):
         return self.clients[service]
 
-    def main(self, account=audit.ACCOUNT, denied=False):
+    def main(self, account=audit.ACCOUNT, denied=False, oidc_status="200"):
         sts = self.stubs["sts"]
         sts.add_response(
             "assume_role_with_web_identity",
@@ -96,9 +97,12 @@ class AuditSetupTests(unittest.TestCase):
             patch.object(boto3, "client", self.client),
             patch.object(boto3, "Session", return_value=Session()),
             patch.object(
-                audit.urllib.request,
-                "urlopen",
-                return_value=io.BytesIO(json.dumps({"value": SECRET}).encode()),
+                audit.subprocess,
+                "run",
+                return_value=SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({"value": SECRET}) + "\n" + oidc_status,
+                ),
             ),
             contextlib.redirect_stdout(captured),
         ):
@@ -128,6 +132,19 @@ class AuditSetupTests(unittest.TestCase):
         result, report = self.main()
         self.assertEqual(result, 1)
         self.assertEqual(report["failure"], "main_required")
+        self.assertEqual(report["created"], [])
+
+    def test_oidc_redirect_is_rejected_before_aws_access(self):
+        result, report = self.main(oidc_status="302")
+        self.assertEqual(result, 1)
+        self.assertEqual(report["failure"], "oidc_response_rejected")
+        self.assertEqual(report["created"], [])
+
+    def test_oidc_token_is_not_sent_to_another_origin(self):
+        self.env["ACTIONS_ID_TOKEN_REQUEST_URL"] = "https://example.test/token"
+        result, report = self.main()
+        self.assertEqual(result, 1)
+        self.assertEqual(report["failure"], "unexpected_oidc_url")
         self.assertEqual(report["created"], [])
 
     def test_new_trail_matches_multi_region_audit_contract(self):
@@ -221,7 +238,7 @@ class AuditSetupTests(unittest.TestCase):
             {"deliveryChannelName": "default"},
         )
         trail_key = f"AWSLogs/{audit.ACCOUNT}/CloudTrail/{audit.REGION}/{now:%Y/%m/%d}/new.json.gz"
-        config_key = f"AWSLogs/{audit.ACCOUNT}/Config/{audit.REGION}/{now:%Y/%m/%d}/ConfigSnapshot/{SNAPSHOT_ID}.json.gz"
+        config_key = f"AWSLogs/{audit.ACCOUNT}/Config/{audit.REGION}/{now:%Y/%m/%d}/ConfigSnapshot/{audit.ACCOUNT}_Config_{audit.REGION}_ConfigSnapshot_{now:%Y%m%dT%H%M%SZ}_{SNAPSHOT_ID}.json.gz"
         buckets = (
             [audit.TRAIL_BUCKET, audit.CONFIG_BUCKET]
             if include_config_bucket
@@ -240,10 +257,11 @@ class AuditSetupTests(unittest.TestCase):
             ]
         }
         snapshot = {
+            "fileVersion": "1.0",
             "configSnapshotId": SNAPSHOT_ID,
             "configurationItems": [
                 {
-                    "accountId": snapshot_account,
+                    "awsAccountId": snapshot_account,
                     "resourceType": "AWS::S3::Bucket",
                     "resourceId": bucket,
                     "configurationItemStatus": "OK",

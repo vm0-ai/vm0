@@ -7,10 +7,10 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import time
 import urllib.parse
-import urllib.request
 
 import boto3
 from botocore import UNSIGNED
@@ -87,22 +87,46 @@ def workflow_identity():
     require(
         request_url.scheme == "https"
         and request_url.hostname is not None
-        and request_url.hostname.endswith(".actions.githubusercontent.com"),
+        and request_url.hostname.endswith(".actions.githubusercontent.com")
+        and request_url.port in {None, 443}
+        and request_url.username is None
+        and request_url.password is None
+        and not request_url.fragment,
         "unexpected_oidc_url",
     )
     query = urllib.parse.parse_qsl(request_url.query)
     query = [(key, value) for key, value in query if key != "audience"]
     query.append(("audience", "sts.amazonaws.com"))
-    request = urllib.request.Request(
-        urllib.parse.urlunsplit(
-            request_url._replace(query=urllib.parse.urlencode(query))
-        ),
-        headers={
-            "Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
-        },
+    # Curl does not follow redirects here. Only the validated GitHub HTTPS origin
+    # can receive the job's request token; response bodies and errors stay private.
+    response = subprocess.run(
+        [
+            "curl",
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=https",
+            "--max-time",
+            "30",
+            "--max-filesize",
+            "1048576",
+            "--header",
+            "Authorization: Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
+            "--write-out",
+            "\n%{http_code}",
+            urllib.parse.urlunsplit(
+                request_url._replace(query=urllib.parse.urlencode(query))
+            ),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=35,
+        check=False,
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        token = json.load(response)["value"]
+    require(response.returncode == 0, "oidc_request_failed")
+    body, status = response.stdout.rsplit("\n", 1)
+    require(status == "200" and len(body) <= 1048576, "oidc_response_rejected")
+    token = json.loads(body)["value"]
     session_name = "github-audit-" + os.environ["GITHUB_RUN_ID"]
     response = boto3.client(
         "sts", region_name=REGION, config=Config(signature_version=UNSIGNED)
@@ -521,15 +545,19 @@ def verify_delivery(session, report, deadline):
         if "configDelivery" not in report:
             prefix = f"AWSLogs/{ACCOUNT}/Config/{REGION}/"
             for key in recent_objects(s3, CONFIG_BUCKET, prefix, started):
-                if snapshot_id not in key:
+                if "/ConfigSnapshot/" not in key or not key.endswith(
+                    "_" + snapshot_id + ".json.gz"
+                ):
                     continue
                 snapshot = object_json(s3, CONFIG_BUCKET, key)
                 require(
-                    snapshot["configSnapshotId"] == snapshot_id, "wrong_config_snapshot"
+                    snapshot["fileVersion"] == "1.0"
+                    and snapshot["configSnapshotId"] == snapshot_id,
+                    "wrong_config_snapshot",
                 )
                 items = snapshot["configurationItems"]
                 require(
-                    all(item["accountId"] == ACCOUNT for item in items),
+                    all(item["awsAccountId"] == ACCOUNT for item in items),
                     "wrong_config_item_account",
                 )
                 buckets = {

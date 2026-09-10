@@ -53,6 +53,8 @@ After the PR is merged, dispatch **AWS Audit Target Setup** on `main`. The job
 requires the existing protected `production` environment approval, assumes the
 existing Actions role using a one-hour OIDC session, and verifies its exact
 account and role before configuring resources. SDK credentials stay in memory.
+The OIDC request accepts only the GitHub Actions HTTPS origin and rejects
+redirects before requesting AWS credentials.
 
 Existing resources must match their expected identity and configuration. A
 conflicting bucket, role, channel, or trail stops the job; it does not overwrite
@@ -74,6 +76,10 @@ with resource names, request/snapshot IDs, object keys, counts, and verification
 results. It contains no object bodies, configuration payloads, or credentials.
 A timeout or provider error fails the job and retains the incomplete report.
 Created resources remain available for diagnosis; there is no automatic deletion.
+Snapshot verification uses the S3 export schema (`fileVersion`, `configSnapshotId`,
+and item `awsAccountId`) documented in the
+[AWS Config/Athena example](https://aws.amazon.com/blogs/mt/how-to-query-your-aws-resource-configuration-states-using-aws-config-and-amazon-athena/),
+with the snapshot ID matched against the actual object filename.
 
 Source CloudTrail, Config, KMS, historical buckets, database backfill, application
 deployments, and backup settings are outside this workflow's write scope.

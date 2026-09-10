@@ -1,5 +1,8 @@
 name: AWS Audit Target Setup
 
+env:
+  npm_config_audit: "false"
+
 on:
   workflow_dispatch:
 
