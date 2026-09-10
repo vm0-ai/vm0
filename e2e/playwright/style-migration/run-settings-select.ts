@@ -459,13 +459,11 @@ async function run() {
             const equal =
               JSON.stringify(reference.observation) ===
               JSON.stringify(observation);
-            Object.assign(record, {
-              changedPixels: result.changedPixels,
-              contentChangedPixels: result.contentChangedPixels,
-              roundingPixels: result.roundingPixels,
-              status:
-                result.contentChangedPixels === 0 && equal ? "PASS" : "FAIL",
-            });
+            record.changedPixels = result.changedPixels;
+            record.contentChangedPixels = result.contentChangedPixels;
+            record.roundingPixels = result.roundingPixels;
+            record.status =
+              result.contentChangedPixels === 0 && equal ? "PASS" : "FAIL";
             await writeFile(path.join(out, `${id}-before.png`), before, {
               flag: "wx",
             });
