@@ -3,10 +3,8 @@ import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contrac
 
 import { now } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
-import type { PlatformUserPermissionGrant } from "../connector-domain.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
-const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 export const DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN: UserPermissionGrantExpiresIn =
@@ -47,43 +45,34 @@ export function userPermissionGrantExpiresAt(
   }
 }
 
-export function permissionGrantRemainingMs(
-  grant: Pick<PlatformUserPermissionGrant, "expiresAt" | "updatedAt"> | null,
-  nowMs = now(),
-): number | null {
-  if (!grant?.expiresAt) {
-    return null;
-  }
-  const expiresAtMs = Date.parse(grant.expiresAt);
-  const updatedAtMs = Date.parse(grant.updatedAt);
-  if (!Number.isFinite(expiresAtMs) || !Number.isFinite(updatedAtMs)) {
-    return null;
-  }
-  // A slower browser clock must not make the displayed lifetime exceed the
-  // duration recorded by the server when it applied the grant.
-  return expiresAtMs - Math.max(nowMs, updatedAtMs);
-}
-
 export function permissionGrantExpiryText(
-  remainingMs: number | null,
+  expiresAt: string | null,
+  nowMs = now(),
 ): string | null {
-  if (remainingMs === null || !Number.isFinite(remainingMs)) {
+  if (!expiresAt) {
     return null;
   }
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    return null;
+  }
+  const remainingMs = expiresAtMs - nowMs;
   if (remainingMs <= 0) {
     return i18n.t(($) => {
       return $.authorization.permission.expiration.expired;
     });
   }
-  if (remainingMs > DAY_MS) {
+  // Round before choosing a unit so tiny clock differences keep the same label.
+  const hourCount = Math.round(remainingMs / HOUR_MS);
+  if (hourCount > 24) {
     return i18n.t(
       ($) => {
         return $.authorization.permission.expiration.inDays;
       },
-      { count: Math.ceil(remainingMs / DAY_MS) },
+      { count: Math.round(remainingMs / DAY_MS) },
     );
   }
-  if (remainingMs < HOUR_MS - MINUTE_MS) {
+  if (hourCount < 1) {
     return i18n.t(($) => {
       return $.authorization.permission.expiration.lessThanHour;
     });
@@ -92,7 +81,7 @@ export function permissionGrantExpiryText(
     ($) => {
       return $.authorization.permission.expiration.inHours;
     },
-    { count: Math.ceil(remainingMs / HOUR_MS) },
+    { count: hourCount },
   );
 }
 

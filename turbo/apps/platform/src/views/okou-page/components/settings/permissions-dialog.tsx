@@ -66,10 +66,7 @@ import {
   type PermissionDraftContext,
   type PermissionDraftIntent,
 } from "../../../../signals/okou-page/settings/permission-draft-intent.ts";
-import {
-  permissionGrantExpiryText,
-  permissionGrantRemainingMs,
-} from "../../../../signals/permission-allow/permission-grant-expiration.ts";
+import { permissionGrantExpiryText } from "../../../../signals/permission-allow/permission-grant-expiration.ts";
 import {
   applyPermissionDrawer$,
   permissionDrawerUiState$,
@@ -447,15 +444,15 @@ function UnknownEndpointsToggle({
 }
 
 function permissionDurationLabel({
-  grant,
+  expiresAt,
   selected,
 }: {
-  grant: PlatformUserPermissionGrant | null;
+  expiresAt: string | null;
   selected: UserPermissionGrantExpiresIn | undefined;
 }): string {
   return (
     allowDurationStatusLabel(selected) ??
-    compactGrantExpirationText(grant) ??
+    compactGrantExpirationText(expiresAt) ??
     i18n.t(($) => {
       return $.connectors.permissions.always;
     })
@@ -469,10 +466,8 @@ const ALLOW_DURATION_MENU_OPTIONS: readonly UserPermissionGrantExpiresIn[] = [
   "always",
 ];
 
-function compactGrantExpirationText(
-  grant: PlatformUserPermissionGrant | null,
-): string | null {
-  const text = permissionGrantExpiryText(permissionGrantRemainingMs(grant));
+function compactGrantExpirationText(expiresAt: string | null): string | null {
+  const text = permissionGrantExpiryText(expiresAt);
   if (
     text ===
     i18n.t(($) => {
@@ -648,6 +643,7 @@ function PermissionGrantPolicyControl({
   selected,
   allowAlwaysActive,
   allowDurationMixed = false,
+  expirationStatusExpiresAt,
   readOnly,
   saving,
   showCurrentExpirationStatus = true,
@@ -662,6 +658,7 @@ function PermissionGrantPolicyControl({
   selected: UserPermissionGrantExpiresIn | undefined;
   allowAlwaysActive: boolean;
   allowDurationMixed?: boolean;
+  expirationStatusExpiresAt?: string | null;
   readOnly?: boolean;
   saving: boolean;
   showCurrentExpirationStatus?: boolean;
@@ -673,11 +670,13 @@ function PermissionGrantPolicyControl({
   const allowGrant = grant?.action === "allow" ? grant : undefined;
   const showExpirationStatus =
     showCurrentExpirationStatus && policy === "allow";
+  const expirationStatusValue =
+    expirationStatusExpiresAt ?? allowGrant?.expiresAt ?? null;
   const showSplitPolicy = !readOnly;
   const durationLabel = allowDurationMixed
     ? "Mixed"
     : permissionDurationLabel({
-        grant: allowGrant ?? null,
+        expiresAt: expirationStatusValue,
         selected,
       });
 
@@ -819,12 +818,15 @@ function PermissionGroupHeader({
           <PermissionGrantPolicyControl
             permission={category}
             policy={configuration.policy}
-            grant={
-              expiration?.kind === "persisted" ? expiration.grant : undefined
-            }
+            grant={undefined}
             selected={selected}
             allowAlwaysActive={expiration?.kind === "always"}
             allowDurationMixed={expiration?.kind === "mixed"}
+            expirationStatusExpiresAt={
+              expiration?.kind === "persisted"
+                ? expiration.expiresAt
+                : undefined
+            }
             showCurrentExpirationStatus={false}
             saving={saving}
             onAllowClick={onGroupAllow}

@@ -1,6 +1,7 @@
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
+import { now } from "../../lib/time.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
@@ -25,7 +26,6 @@ import {
 import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
-  permissionGrantRemainingMs,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
@@ -981,7 +981,7 @@ function permissionActionUserGrant(
   });
 }
 
-function permissionActionDisplayedGrant({
+function permissionActionGrantExpiresAt({
   savedGrant,
   savedGrantActive,
   existingGrant,
@@ -993,17 +993,17 @@ function permissionActionDisplayedGrant({
   existingGrant: PermissionActionUserGrant | undefined;
   existingGrantActive: boolean;
   status: PermissionActionCardStatus;
-}): PermissionActionUserGrant | null {
+}): string | null {
   if (savedGrantActive) {
-    return savedGrant;
+    return savedGrant?.expiresAt ?? null;
   }
   if (existingGrantActive) {
-    return existingGrant ?? null;
+    return existingGrant?.expiresAt ?? null;
   }
   if (status.kind !== "ready") {
     return null;
   }
-  return savedGrant ?? existingGrant ?? null;
+  return savedGrant?.expiresAt ?? existingGrant?.expiresAt ?? null;
 }
 
 function createPermissionActionCardStatus(params: {
@@ -1188,7 +1188,7 @@ function PermissionActionCardContent({
   expirationAvailable,
   expiresIn,
   onExpiresInChange,
-  grant,
+  expiresAt,
   onClick,
 }: {
   signals: PermissionSignals;
@@ -1200,33 +1200,36 @@ function PermissionActionCardContent({
   expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
-  grant: PermissionActionUserGrant | null;
+  expiresAt: string | null;
   onClick: () => void;
 }) {
   const { t } = useTranslation();
-  const remainingMs = permissionGrantRemainingMs(grant);
+  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+  const remainingMs = expiresAtMs - now();
+  const hourCount = Math.round(remainingMs / (60 * 60 * 1000));
+  const dayCount = Math.round(remainingMs / (24 * 60 * 60 * 1000));
   const expiryText =
-    !expirationAvailable || remainingMs === null
+    !expirationAvailable || !Number.isFinite(expiresAtMs)
       ? null
       : remainingMs <= 0
         ? t(($) => {
             return $.chat.permissions.expired;
           })
-        : remainingMs > 24 * 60 * 60 * 1000
+        : hourCount > 24
           ? t(
               ($) => {
                 return $.chat.permissions.expiresInDays;
               },
-              { count: Math.ceil(remainingMs / (24 * 60 * 60 * 1000)) },
+              { count: dayCount },
             )
-          : remainingMs <= 60 * 60 * 1000
+          : hourCount <= 1
             ? null
             : t(
                 ($) => {
                   return $.chat.permissions.expiresInHours;
                 },
                 {
-                  count: Math.ceil(remainingMs / (60 * 60 * 1000)),
+                  count: hourCount,
                 },
               );
   const showDurationSelect =
@@ -1349,7 +1352,7 @@ function PermissionActionCardForTarget({
     permissionMetadataLoadable.state === "hasData"
       ? permissionMetadataLoadable.data
       : null;
-  const displayedGrant = permissionActionDisplayedGrant({
+  const grantExpiresAt = permissionActionGrantExpiresAt({
     savedGrant,
     savedGrantActive,
     existingGrant,
@@ -1373,7 +1376,7 @@ function PermissionActionCardForTarget({
       onExpiresInChange={(value) => {
         setExpiresInForScope(durationScope, value);
       }}
-      grant={displayedGrant}
+      expiresAt={grantExpiresAt}
       onClick={createPermissionActionHandler(
         {
           block: signals,
