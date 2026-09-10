@@ -600,7 +600,13 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     create,
-    taskChips: createComposerTaskChipsSignals(create),
+    taskChips: createComposerTaskChipsSignals(create, {
+      insertTemplate$: workflowComposer.insertTemplate$,
+      insertPrompt$: workflowComposer.selectOrAppendText$,
+      openTemplatePicker$: workflowComposer.openTemplatePicker$,
+      focusEditor$: workflowComposer.focus$,
+      saveDraft$: options.draft.save$,
+    }),
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,

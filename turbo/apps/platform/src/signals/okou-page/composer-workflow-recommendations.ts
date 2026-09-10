@@ -1,6 +1,23 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
+import type { WorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
+
+export interface WorkflowRecommendationActions {
+  readonly insertTemplate$: WorkflowComposerSignals["insertTemplate$"];
+  readonly insertPrompt$: WorkflowComposerSignals["selectOrAppendText$"];
+  readonly openTemplatePicker$: WorkflowComposerSignals["openTemplatePicker$"];
+  readonly focusEditor$: WorkflowComposerSignals["focus$"];
+  readonly saveDraft$: Command<Promise<void>, [AbortSignal]>;
+}
+
+interface WorkflowRecommendationDraft {
+  readonly template: {
+    readonly id: WorkflowTemplateItem["id"];
+    readonly title: string;
+  } | null;
+  readonly prompt: string;
+}
 
 export const WORKFLOW_RECOMMENDATIONS = [
   {
@@ -55,6 +72,7 @@ export type WorkflowRecommendationId = WorkflowRecommendation["id"];
 
 export function createWorkflowRecommendationSignals(
   visible$: Computed<boolean>,
+  actions: WorkflowRecommendationActions,
 ) {
   const internalView$ = state<WorkflowRecommendationId | null>(null);
   const internalContext$ = state("");
@@ -76,14 +94,47 @@ export function createWorkflowRecommendationSignals(
     set(internalView$, null);
     set(internalContext$, "");
   });
-  const closeForUse$ = command(({ set }) => {
-    set(internalFocusAfterClose$, true);
+  const browse$ = command(({ get, set }) => {
+    if (!get(visible$)) {
+      return;
+    }
     set(close$);
+    set(actions.openTemplatePicker$, { kind: "insert", category: "workflow" });
   });
-  const completeClose$ = command(({ get, set }) => {
-    const shouldFocus = get(internalFocusAfterClose$);
-    set(internalFocusAfterClose$, false);
-    return shouldFocus;
+  const use$ = command(
+    async (
+      { get, set },
+      draft: WorkflowRecommendationDraft,
+      signal: AbortSignal,
+    ) => {
+      if (get(view$) === null) {
+        return;
+      }
+      if (draft.template) {
+        set(
+          actions.insertTemplate$,
+          {
+            type: "workflow",
+            selection: { workflowTemplateId: draft.template.id },
+          },
+          {
+            type: "workflow",
+            title: draft.template.title,
+            category: "workflow",
+          },
+        );
+      }
+      set(actions.insertPrompt$, draft.prompt);
+      set(internalFocusAfterClose$, true);
+      set(close$);
+      await set(actions.saveDraft$, signal);
+    },
+  );
+  const completeClose$ = command(({ get, set }, isOpen: boolean) => {
+    if (!isOpen && get(internalFocusAfterClose$)) {
+      set(internalFocusAfterClose$, false);
+      set(actions.focusEditor$);
+    }
   });
   const setContext$ = command(({ set }, value: string) => {
     set(internalContext$, value);
@@ -93,7 +144,8 @@ export function createWorkflowRecommendationSignals(
     context$,
     open$,
     close$,
-    closeForUse$,
+    browse$,
+    use$,
     completeClose$,
     setContext$,
   };

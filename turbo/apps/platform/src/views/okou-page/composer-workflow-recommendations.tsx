@@ -119,51 +119,31 @@ function useWorkflowActions(signals: ComposerSignals) {
   );
   const view = useGet(signals.taskChips.workflows.view$);
   const context = useGet(signals.taskChips.workflows.context$);
-  const closeForUse = useSet(signals.taskChips.workflows.closeForUse$);
-  const completeClose = useSet(signals.taskChips.workflows.completeClose$);
-  const insertTemplate = useSet(signals.template.insertTemplate$);
-  const insertPrompt = useSet(signals.editor.selectOrAppendText$);
-  const focusEditor = useSet(signals.editor.focus$);
-  const saveDraft = useSet(signals.draft.save$);
+  const prepareWorkflow = useSet(signals.taskChips.workflows.use$);
   const pageSignal = useGet(pageSignal$);
-  return {
-    useWorkflow() {
-      const item = WORKFLOW_RECOMMENDATIONS.find((candidate) => {
-        return candidate.id === view;
-      });
-      if (!item) {
-        return;
-      }
-      if (item.templateId) {
-        const template = findWorkflowTemplateItem(item.templateId)!;
-        insertTemplate(
-          { type: "workflow", selection: { workflowTemplateId: template.id } },
-          {
-            type: "workflow",
-            title: localizedWorkflowTemplate(template).title,
-            category: "workflow",
+  return () => {
+    const item = WORKFLOW_RECOMMENDATIONS.find((candidate) => {
+      return candidate.id === view;
+    });
+    if (!item) {
+      return;
+    }
+    const template = item.templateId
+      ? localizedWorkflowTemplate(findWorkflowTemplateItem(item.templateId)!)
+      : null;
+    const preference = context.trim();
+    const prompt = preference
+      ? `${copy[item.id].prompt}\n\n${t(
+          ($) => {
+            return $.chat.taskChips.workflows.contextPrefix;
           },
-        );
-      }
-      const preference = context.trim();
-      insertPrompt(
-        preference
-          ? `${copy[item.id].prompt}\n\n${t(
-              ($) => {
-                return $.chat.taskChips.workflows.contextPrefix;
-              },
-              { context: preference },
-            )}`
-          : copy[item.id].prompt,
-      );
-      closeForUse();
-      detach(saveDraft(pageSignal), Reason.DomCallback);
-    },
-    onCloseComplete(isOpen: boolean) {
-      if (!isOpen && completeClose()) {
-        focusEditor();
-      }
-    },
+          { context: preference },
+        )}`
+      : copy[item.id].prompt;
+    detach(
+      prepareWorkflow({ template, prompt }, pageSignal),
+      Reason.DomCallback,
+    );
   };
 }
 
@@ -182,8 +162,7 @@ function WorkflowDetailNavigation({
     { returnObjects: true },
   );
   const open = useSet(signals.taskChips.workflows.open$);
-  const close = useSet(signals.taskChips.workflows.close$);
-  const openTemplates = useSet(signals.template.openTemplatePicker$);
+  const browse = useSet(signals.taskChips.workflows.browse$);
   const move = (offset: number) => {
     const index = WORKFLOW_RECOMMENDATIONS.findIndex((candidate) => {
       return candidate.id === item.id;
@@ -200,10 +179,7 @@ function WorkflowDetailNavigation({
       <Button
         variant="quiet"
         size="xs"
-        onClick={() => {
-          close();
-          openTemplates({ kind: "insert", category: "workflow" });
-        }}
+        onClick={browse}
         className="gap-1.5 font-normal"
       >
         <ArrowLeft className="size-3.5" aria-hidden />
@@ -384,7 +360,8 @@ function WorkflowDialog({ signals }: { readonly signals: ComposerSignals }) {
   );
   const view = useGet(signals.taskChips.workflows.view$);
   const close = useSet(signals.taskChips.workflows.close$);
-  const { useWorkflow, onCloseComplete } = useWorkflowActions(signals);
+  const useWorkflow = useWorkflowActions(signals);
+  const onCloseComplete = useSet(signals.taskChips.workflows.completeClose$);
   const item = WORKFLOW_RECOMMENDATIONS.find((candidate) => {
     return candidate.id === view;
   });
@@ -430,7 +407,7 @@ export function ComposerWorkflowRecommendations({
   const page = useGet(signals.taskChips.ideaPages$).workflow;
   const nextIdeas = useSet(signals.taskChips.nextIdeas$);
   const open = useSet(signals.taskChips.workflows.open$);
-  const openTemplates = useSet(signals.template.openTemplatePicker$);
+  const browse = useSet(signals.taskChips.workflows.browse$);
   const pageItems = WORKFLOW_RECOMMENDATIONS.slice(
     page * CARDS_PER_PAGE,
     (page + 1) * CARDS_PER_PAGE,
@@ -449,9 +426,7 @@ export function ComposerWorkflowRecommendations({
           variant="quiet"
           size="xs"
           className="gap-1.5 font-normal"
-          onClick={() => {
-            openTemplates({ kind: "insert", category: "workflow" });
-          }}
+          onClick={browse}
         >
           {copy.browse}
           <ArrowRight className="size-3" aria-hidden />

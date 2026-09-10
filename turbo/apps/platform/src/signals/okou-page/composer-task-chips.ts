@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { createWorkflowRecommendationSignals } from "./composer-workflow-recommendations.ts";
+import {
+  createWorkflowRecommendationSignals,
+  type WorkflowRecommendationActions,
+} from "./composer-workflow-recommendations.ts";
 import type {
   ComposerCreateMode,
   ComposerCreateSignals,
@@ -10,7 +13,10 @@ import type {
 export type ComposerTask = ComposerCreateMode | "workflow" | "website";
 export type ComposerIdeaTask = Exclude<ComposerTask, "presentation">;
 
-export function createComposerTaskChipsSignals(create: ComposerCreateSignals) {
+export function createComposerTaskChipsSignals(
+  create: ComposerCreateSignals,
+  workflowActions: WorkflowRecommendationActions,
+) {
   const enabled$ = computed((get) => {
     return get(featureSwitch$)[FeatureSwitchKey.ComposerTaskChips];
   });
@@ -24,7 +30,10 @@ export function createComposerTaskChipsSignals(create: ComposerCreateSignals) {
   const workflowVisible$ = computed((get) => {
     return get(task$) === "workflow";
   });
-  const workflows = createWorkflowRecommendationSignals(workflowVisible$);
+  const workflows = createWorkflowRecommendationSignals(
+    workflowVisible$,
+    workflowActions,
+  );
   const selectTask$ = command(({ get, set }, task: ComposerTask | null) => {
     if (!get(enabled$)) {
       return;
