@@ -344,12 +344,18 @@ export async function setLoop(
     retryTransientErrors?: boolean;
     shouldRetryError?: (error: unknown) => boolean;
     logTransientErrors?: boolean;
+    /** Keep an intentionally owner-lived loop paced in tests until its signal aborts. */
+    testIntervalMs?: number;
   } = {},
 ): Promise<void> {
   let fibIndex = 0;
   let loopCount = 0;
   while (!signal.aborted) {
-    if (IN_VITEST && loopCount++ > MAX_LOOP_COUNT_IN_TEST) {
+    if (
+      IN_VITEST &&
+      options.testIntervalMs === undefined &&
+      loopCount++ > MAX_LOOP_COUNT_IN_TEST
+    ) {
       throw new Error(
         `setLoop: infinite loop detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} iterations in test`,
       );
@@ -365,7 +371,9 @@ export async function setLoop(
       fibIndex = 0;
       // Keep yielding to the macrotask queue in tests so React can flush renders
       // between iterations, without waiting for the production interval.
-      await delay(IN_VITEST ? 0 : interval, { signal });
+      await delay(IN_VITEST ? (options.testIntervalMs ?? 0) : interval, {
+        signal,
+      });
     } catch (error) {
       throwIfAbort(error);
       if (

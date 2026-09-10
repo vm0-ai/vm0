@@ -1,6 +1,7 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { Monitor, GitCommit, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@okouai/ui";
 
 import { getBuildCommitSha } from "../../../../lib/build-info.ts";
 import { appVersion$ } from "../../../../signals/app-version.ts";
@@ -37,9 +38,12 @@ function BuildInfoTarget({
             {title}
           </div>
         </div>
-        <code className="okou-badge min-w-0 rounded-md px-2 py-0.5 text-right text-xs font-medium text-foreground break-all">
+        <Badge
+          render={<code />}
+          className="min-w-0 text-right text-xs font-medium text-foreground break-all"
+        >
           {version}
-        </code>
+        </Badge>
       </div>
       <div className="flex min-w-0 flex-col gap-1">
         <div className="text-xs text-muted-foreground">
