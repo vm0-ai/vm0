@@ -44,6 +44,23 @@ record already embedded in a malformed line or serialize independently
 interleaved short-write sequences. The existing Runner uploader continues to
 skip malformed physical lines and upload independently parseable records.
 
+## Managed credential method boundary
+
+Firewall permissions authorize the request's actual HTTP method. Requests with
+`X-HTTP-Method-Override` are rejected before managed credentials are resolved or
+injected: providers such as Mailchimp can otherwise reinterpret an allowed POST
+as a denied DELETE. Header names are case-insensitive; empty and repeated values
+are rejected too. Callers must use the actual method and its corresponding
+permission. Requests without managed credential injection retain their existing
+behavior.
+
+The shared auth plan applies this check to both the request-header streaming
+probe and the buffered request hook, including header, query, AWS SigV4, and
+auth-base credentials. `test_firewall_method_override.py` covers the Mailchimp
+audience deletion bypass through these hooks. Old runners keep their previous
+behavior until deployed; permission catalogs that rely on this boundary must
+wait for the runner rollout.
+
 ## WebSocket Framing Contract
 
 [`websocket_framing.py`](../crates/runner/mitm-addon/src/websocket_framing.py)
