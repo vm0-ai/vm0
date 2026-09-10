@@ -1,9 +1,9 @@
 import type { TFunction } from "i18next";
-import type { ExplainerVideoOptions } from "@okouai/api-contracts/contracts/explainer-video";
+import type { IntroVideoOptions } from "@okouai/api-contracts/contracts/intro-video-options";
 
 export function styleSelectionLabel(
   t: TFunction<"common">,
-  selection: ExplainerVideoOptions["style"],
+  selection: IntroVideoOptions["style"],
 ): string {
   switch (selection.kind) {
     case "auto": {
@@ -19,7 +19,7 @@ export function styleSelectionLabel(
 
 export function avatarSelectionLabel(
   t: TFunction<"common">,
-  selection: ExplainerVideoOptions["avatar"],
+  selection: IntroVideoOptions["avatar"],
 ): string {
   switch (selection.kind) {
     case "none": {
@@ -35,14 +35,14 @@ export function avatarSelectionLabel(
 
 export function voiceSelectionLabel(
   t: TFunction<"common">,
-  selection: ExplainerVideoOptions["voice"],
-  avatar: ExplainerVideoOptions["avatar"],
+  selection: IntroVideoOptions["voice"],
+  avatar: IntroVideoOptions["avatar"],
 ): string {
   switch (selection.kind) {
     case "default": {
       return avatar.kind === "catalog"
         ? t(($) => {
-            return $.chat.explainerVideo.avatarVoice;
+            return $.chat.introVideo.picker.avatarVoice;
           })
         : t(($) => {
             return $.chat.introVideo.voice.auto;

@@ -21893,6 +21893,116 @@ describe("CHAT-02: initial thinking indicator", () => {
     },
   );
 
+  const providerDetail = "private-provider-detail";
+
+  it.each([
+    {
+      name: "an upstream gateway timeout delivered inside a 200 envelope",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          error: { code: 504, message: providerDetail },
+        });
+      },
+      warned: false,
+    },
+    {
+      name: "a provider rate limit",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 429 });
+      },
+      warned: false,
+    },
+    {
+      name: "an upstream bad gateway",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 502 });
+      },
+      warned: false,
+    },
+    // Negative control: an unsupported request is our defect, not the
+    // provider's availability, and stays reportable.
+    {
+      name: "a rejected request",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 400 });
+      },
+      warned: true,
+    },
+    {
+      name: "broken credentials",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 401 });
+      },
+      warned: true,
+    },
+    // An exhausted token budget describes our own request rather than the
+    // provider's availability, so it stays outside the suppressed set.
+    {
+      name: "an exhausted token budget",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "length",
+              native_finish_reason: "MAX_TOKENS",
+              message: { content: providerDetail },
+            },
+          ],
+        });
+      },
+      warned: true,
+    },
+  ])(
+    "omits opening copy and reports a defect only for $name",
+    async ({ thinkingResponse, warned }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            const system = payload.messages[0]?.content ?? "";
+            return system.includes("Write user-visible progress copy")
+              ? thinkingResponse()
+              : HttpResponse.json({
+                  choices: [
+                    {
+                      finish_reason: "stop",
+                      message: { content: "Launch Checklist" },
+                    },
+                  ],
+                });
+          },
+        ),
+      );
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare the launch checklist",
+      });
+      await flushWaitUntilForTest();
+
+      // The optional generation is isolated: no marker, and the run proceeds.
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        events.events.filter((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toStrictEqual([]);
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+
+      const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
+        ([message]) => {
+          return message === "Initial thinking generation failed";
+        },
+      );
+      expect(warnings).toHaveLength(warned ? 1 : 0);
+      expect(JSON.stringify(warnings)).not.toContain(providerDetail);
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
   it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -22718,7 +22828,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  const explainerTemplate: GenerationTemplateRequest = {
+  const introVideoTemplate: GenerationTemplateRequest = {
     type: "video",
     selection: {
       stylePresetId: "explainer-video",
@@ -22738,7 +22848,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     },
   };
 
-  it("gates explainer template sends with the rollout override while preserving ordinary video", async () => {
+  it("gates intro video template sends with the rollout override while preserving ordinary video", async () => {
     const { actor, agentId } = await entitledChatActor();
     const scopedActor = { ...actor, orgId: requireOrgId(actor) };
     await updateFeatureSwitchesForUser(context, scopedActor, {
@@ -22750,8 +22860,8 @@ describe("CHAT-02: generation templates and attachments", () => {
       selection: { stylePresetId: ordinary.id },
     };
     for (const templates of [
-      [explainerTemplate],
-      [ordinaryTemplate, explainerTemplate],
+      [introVideoTemplate],
+      [ordinaryTemplate, introVideoTemplate],
     ]) {
       const rejected = await chat.requestSendEvent(
         actor,
@@ -22775,9 +22885,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         [400],
       );
       expectApiError(rejected.body);
-      expect(rejected.body.error.message).toBe(
-        "Explainer video is not available",
-      );
+      expect(rejected.body.error.message).toBe("Intro video is not available");
     }
     const events = await chat.requestThreadEvents(actor, {}, [200]);
     if (events.status !== 200) {
@@ -22812,24 +22920,25 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toBe(
-      "Explainer video settings are missing",
+      "Intro video settings are missing",
     );
     const explained = await sendChatRun(actor, {
       agentId,
       prompt: "Explain the product",
-      template: explainerTemplate,
+      template: introVideoTemplate,
     });
     const prompt = (await api.readRun(actor, explained.runId))
       .appendSystemPrompt;
     expect(prompt).toContain("Use the $intro-video skill");
-    expect(prompt).toContain("Minimalism");
-    expect(prompt).toContain("No avatar. Do not add a presenter.");
-    expect(prompt).toContain("No voiceover. Do not add narration.");
+    expect(prompt).toContain("- HeyGen style: Minimalism (minimalism)");
+    expect(prompt).toContain("- HeyGen style preview aspect ratio: 16:9");
+    expect(prompt).toContain("- Avatar: No avatar");
+    expect(prompt).toContain("- Voice: No voiceover");
     await cancelChatRun(actor, explained.runId);
   }, 90_000);
 
   it.each(["queued dispatch", "active input"] as const)(
-    "rechecks explainer access before %s",
+    "rechecks intro video access before %s",
     async (delivery) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const scopedActor = { ...actor, orgId: requireOrgId(actor) };
@@ -22851,7 +22960,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           prompt: "Explain the product",
           userMessage: userMessageWithTemplate(
             "Explain the product",
-            explainerTemplate,
+            introVideoTemplate,
           ),
         },
         [201],

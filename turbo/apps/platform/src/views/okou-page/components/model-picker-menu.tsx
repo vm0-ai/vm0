@@ -163,6 +163,8 @@ interface ModelPickerMenuContentProps {
   options: readonly ModelPickerMenuOption[];
   mediaModelPanel: MediaModelPanelState | undefined;
   onChange: (selection: ModelProviderSelection) => void;
+  /** Only the flyout uses it: the menu's pages stay open after a selection. */
+  onSelected?: (() => void) | undefined;
 }
 
 function ModelPickerOverview({
@@ -438,12 +440,13 @@ function MediaModelList({
 }
 
 /**
- * Both flyout panels wear the shared popover surface rather than a hand-rolled
- * card: same gray-400 hairline, same radius, and no drop shadow, which
- * the design system does not use for popovers.
+ * The type rail is the popover surface itself. The flyout panel floats outside
+ * that box, so it restates the same surface -- hairline, radius and the
+ * popover's own drop shadow, which PopoverContent applies as an inline style
+ * and `shadow-lg` reproduces exactly.
  */
 const FLYOUT_PANEL_CLASS =
-  "rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-1 text-foreground outline-none";
+  "rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
 
 /**
  * Flyout layout: model types on the left, that type's models in a panel beside
@@ -469,16 +472,18 @@ function ModelPickerFlyoutTypeRow({
   onActivate: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       role="tab"
       aria-selected={active}
       aria-posinset={index + 1}
       aria-setsize={total}
       tabIndex={active ? 0 : -1}
       className={cn(
-        "flex h-11 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors",
-        "hover:bg-state-hover focus-visible:ring-inset",
+        // shrink-0 keeps the row at its own height: a flex column with a
+        // max-height compresses its children before it will scroll.
+        "h-11 w-full shrink-0 justify-start gap-2 px-2 text-left font-normal",
         active && "bg-state-hover",
       )}
       onMouseEnter={onActivate}
@@ -501,7 +506,7 @@ function ModelPickerFlyoutTypeRow({
         aria-hidden="true"
         className="shrink-0 text-muted-foreground"
       />
-    </button>
+    </Button>
   );
 }
 
@@ -521,8 +526,9 @@ function ModelPickerFlyoutOption({
   onSelect: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       role="option"
       aria-selected={selected}
       aria-posinset={index + 1}
@@ -532,10 +538,12 @@ function ModelPickerFlyoutOption({
       aria-disabled={disabled || undefined}
       tabIndex={-1}
       className={cn(
-        "relative flex h-9 w-full items-center gap-2 rounded-lg py-0 pl-2 pr-8 text-left",
-        "text-[13px] font-normal text-foreground transition-colors",
-        "focus-visible:ring-inset",
-        disabled ? "opacity-55" : "hover:bg-state-hover",
+        // shrink-0: without it a long list compresses every row instead of
+        // scrolling, so the same row is 36px in a short list and 26px in a
+        // long one.
+        "relative h-9 w-full shrink-0 justify-start gap-2 pl-2 pr-8 text-left",
+        "text-[13px] font-normal text-foreground",
+        disabled && "opacity-55 hover:bg-transparent active:bg-transparent",
       )}
       onClick={() => {
         if (!disabled) {
@@ -547,7 +555,7 @@ function ModelPickerFlyoutOption({
       {selected && (
         <Check size={15} aria-hidden="true" className="absolute right-2" />
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -556,11 +564,13 @@ function ModelPickerFlyoutOptions({
   options,
   value,
   onChange,
+  onSelected,
 }: {
   activeMedia: MediaModelPanelState["categories"][number] | undefined;
   options: readonly ModelPickerMenuOption[];
   value: ModelProviderSelection | null;
   onChange: (selection: ModelProviderSelection) => void;
+  onSelected: (() => void) | undefined;
 }) {
   if (activeMedia) {
     return activeMedia.options.map((option, index) => {
@@ -581,7 +591,10 @@ function ModelPickerFlyoutOptions({
           disabled={false}
           index={index}
           total={activeMedia.options.length}
-          onSelect={option.onSelect}
+          onSelect={() => {
+            option.onSelect();
+            onSelected?.();
+          }}
         />
       );
     });
@@ -601,6 +614,9 @@ function ModelPickerFlyoutOptions({
               ? value
               : { selectedModel: option.model },
           );
+          // Picking a model is the whole task: leave rather than making the
+          // user dismiss a panel that has nothing left to offer.
+          onSelected?.();
         }}
       />
     );
@@ -614,6 +630,7 @@ export function ModelPickerFlyoutContent({
   options,
   mediaModelPanel,
   onChange,
+  onSelected,
 }: ModelPickerMenuContentProps) {
   const { t } = useTranslation();
   const category = useGet(signals.flyoutCategory$);
@@ -664,7 +681,7 @@ export function ModelPickerFlyoutContent({
   return (
     <div
       ref={rootRef}
-      className="relative w-[188px]"
+      className="relative"
       onKeyDown={(event) => {
         moveFlyoutFocus(event, types.length);
       }}
@@ -676,7 +693,7 @@ export function ModelPickerFlyoutContent({
           aria-label={t(($) => {
             return $.settings.models.picker.models;
           })}
-          className={cn("flex flex-col gap-0.5", FLYOUT_PANEL_CLASS)}
+          className="flex flex-col gap-0.5"
         >
           {types.map((type, index) => {
             return (
@@ -701,16 +718,16 @@ export function ModelPickerFlyoutContent({
         role="listbox"
         aria-label={panelLabel}
         className={cn(
-          "flex max-h-[284px] w-[252px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
-          FLYOUT_PANEL_CLASS,
+          "flex max-h-[284px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
           types.length > 1
             ? cn(
-                "absolute bottom-0",
+                "absolute bottom-0 w-[252px]",
+                FLYOUT_PANEL_CLASS,
                 side === "right"
                   ? "left-[calc(100%+6px)]"
                   : "right-[calc(100%+6px)]",
               )
-            : "w-[252px]",
+            : "w-full",
         )}
       >
         <ModelPickerFlyoutOptions
@@ -718,6 +735,7 @@ export function ModelPickerFlyoutContent({
           options={options}
           value={value}
           onChange={onChange}
+          onSelected={onSelected}
         />
         {options.length === 0 && !activeMedia && (
           <p className="px-2 py-2 text-sm text-muted-foreground">

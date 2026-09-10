@@ -65,6 +65,7 @@ export async function discoverPublicConnectorCatalogStatus(
   args: ConnectorCatalogReadArgs & {
     readonly connections: readonly ConnectorCatalogConnection[];
     readonly keyword: string | undefined;
+    readonly category: string | undefined;
   },
 ): Promise<PublicConnectorCatalogDiscoveryResponse> {
   const read = await discoverExternalPublicConnectorCatalogStatus({
