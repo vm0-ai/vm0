@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.648.3](https://github.com/vm0-ai/vm0/compare/core-v8.648.2...core-v8.648.3) (2026-09-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.2
+
 ## [8.648.2](https://github.com/vm0-ai/vm0/compare/core-v8.648.1...core-v8.648.2) (2026-09-09)
 
 

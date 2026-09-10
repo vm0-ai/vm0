@@ -11,6 +11,23 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.882.3](https://github.com/vm0-ai/vm0/compare/app-v0.882.2...app-v0.882.3) (2026-09-09)
+
+
+### Refactoring
+
+* **platform:** govern browser storage ([#33047](https://github.com/vm0-ai/vm0/issues/33047)) ([1ee4c10](https://github.com/vm0-ai/vm0/commit/1ee4c1063d0343fd22f424a95d3d93bf27713946))
+* remove retired goal cli and completed recovery entry ([#33054](https://github.com/vm0-ai/vm0/issues/33054)) ([095f1b2](https://github.com/vm0-ai/vm0/commit/095f1b2733e1e01ccaac881d5636db4d262c8369))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.2
+    * @okouai/connectors bumped to 3.8.9
+    * @okouai/core bumped to 8.648.3
+
 ## [0.882.2](https://github.com/vm0-ai/vm0/compare/app-v0.882.1...app-v0.882.2) (2026-09-09)
 
 

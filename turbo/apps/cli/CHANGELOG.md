@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.323.4](https://github.com/vm0-ai/vm0/compare/cli-v9.323.3...cli-v9.323.4) (2026-09-09)
+
+
+### Refactoring
+
+* remove retired goal cli and completed recovery entry ([#33054](https://github.com/vm0-ai/vm0/issues/33054)) ([095f1b2](https://github.com/vm0-ai/vm0/commit/095f1b2733e1e01ccaac881d5636db4d262c8369))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.424.2
+    * @okouai/connectors bumped to 3.8.9
+    * @okouai/core bumped to 8.648.3
+    * @okouai/pi-agent-runtime bumped to 1.24.11
+
 ## [9.323.3](https://github.com/vm0-ai/vm0/compare/cli-v9.323.2...cli-v9.323.3) (2026-09-09)
 
 
