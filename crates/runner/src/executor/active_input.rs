@@ -18,8 +18,11 @@ use crate::active_input::{
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, ActiveInputBatch, ActiveInputSource,
     ApiActiveInputRecovery, local_active_input_delivery_id,
 };
-use crate::error::RunnerError;
 use crate::ids::RunId;
+
+mod read_failures;
+
+use read_failures::ReadFailures;
 
 const ACTIVE_INPUT_READ_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
@@ -104,7 +107,7 @@ async fn run_forwarder(
 ) {
     let mut next_local_sequence = FIRST_ACTIVE_INPUT_SEQUENCE;
     let mut suppressed_api_delivery_id: Option<String> = None;
-    let mut warned_source_read_failure = false;
+    let mut read_failures = ReadFailures::default();
     let mut warned_payload_too_large = false;
     loop {
         let batch = tokio::select! {
@@ -113,6 +116,9 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             batch = source.read(next_local_sequence) => batch,
         };
+        if let Ok(batch) = &batch {
+            read_failures.recover(run_id, batch);
+        }
         let retry_after_read_error = match batch {
             Ok(ActiveInputBatch::Local(entries)) => {
                 for entry in entries {
@@ -200,35 +206,10 @@ async fn run_forwarder(
                 },
             },
             Err(error) => {
-                if !warned_source_read_failure {
-                    match &error {
-                        RunnerError::ApiTransport(api_error) => warn!(
-                            run_id = %run_id,
-                            error = %error,
-                            endpoint = api_error.request.endpoint_label,
-                            method = %api_error.request.method,
-                            host = %api_error.request.host,
-                            path = %api_error.request.path,
-                            client_request_id = %api_error.request.client_request_id,
-                            client_session_id = %api_error.request.client_session_id,
-                            client_version = %api_error.request.client_version,
-                            failure_kind = api_error.failure_kind.as_str(),
-                            failure_cause = api_error.failure_cause.as_str(),
-                            error_summary = %api_error.summary,
-                            "active-input source read failed; retrying"
-                        ),
-                        _ => {
-                            warn!(run_id = %run_id, error = %error, "active-input source read failed; retrying")
-                        }
-                    }
-                    warned_source_read_failure = true;
-                }
+                read_failures.record(run_id, &error);
                 true
             }
         };
-        if !retry_after_read_error {
-            warned_source_read_failure = false;
-        }
 
         tokio::select! {
             biased;

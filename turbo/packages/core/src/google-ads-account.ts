@@ -1,3 +1,5 @@
+import { normalizeGoogleAdsAttribution } from "./google-ads-attribution";
+
 // Campaign ownership verified against Google Ads on 2026-09-09. Keep in sync
 // with vm0-marketing/vite-ssr/app/lib/googleAdsAccounts.ts. Provider IDs are
 // attribution identifiers, so do not rename them with the product brand.
@@ -32,8 +34,9 @@ const CAMPAIGN_ACCOUNTS: Readonly<Record<string, string>> = {
 export function googleAdsAccountForAttribution(
   metadata: Readonly<Record<string, string | undefined>> | undefined,
 ): string | null {
-  const campaignId = metadata?.vm0_campaign_id;
-  const adGroupId = metadata?.vm0_ad_group_id;
+  const attribution = normalizeGoogleAdsAttribution(metadata ?? {});
+  const campaignId = attribution.okou_campaign_id;
+  const adGroupId = attribution.okou_ad_group_id;
   if (
     !campaignId ||
     !/^\d+$/.test(campaignId) ||

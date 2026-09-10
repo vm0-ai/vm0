@@ -211,6 +211,9 @@ function shouldSuppressKnownFailureLog(
   failureReason: KnownRunFailureReason,
 ): boolean {
   switch (failureReason) {
+    // A content-safety rejection is decided by the submitted input, so it needs
+    // no operator action even when the built-in provider owns the credential.
+    case "safety_policy_refusal":
     case "input_too_large":
     case "execution_timeout": {
       return true;
@@ -226,7 +229,6 @@ function shouldSuppressKnownFailureLog(
     case "provider_stream_timeout":
     case "provider_server_error":
     case "response_connection_lost":
-    case "safety_policy_refusal":
     case "reconnect_required":
     case "usage_limit": {
       const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);

@@ -1,3 +1,4 @@
+import { compatibleGoogleAdsAttribution } from "@okouai/core/google-ads-attribution";
 import { command } from "ccstate";
 import { sql, eq } from "drizzle-orm";
 import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
@@ -47,7 +48,9 @@ export const getOrCreateStripeCustomer$ = command(
 
       const stripe = getStripeClient();
       const metadata: Record<string, string> = { orgId: args.orgId };
-      for (const [key, value] of Object.entries(args.metadata ?? {})) {
+      for (const [key, value] of Object.entries(
+        compatibleGoogleAdsAttribution(args.metadata ?? {}),
+      )) {
         if (value) {
           metadata[key] = value;
         }

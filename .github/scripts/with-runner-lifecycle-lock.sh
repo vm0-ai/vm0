@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=.github/scripts/cloudflare-ssh-diagnostics.sh
+source "$(dirname "${BASH_SOURCE[0]}")/cloudflare-ssh-diagnostics.sh"
+
 usage() {
   cat <<'USAGE'
 Usage: with-runner-lifecycle-lock.sh <command> [args...]
@@ -102,6 +105,20 @@ declare -a lock_pids=()
 declare -a heartbeat_pids=()
 command_pid=""
 locks_released=false
+phase=acquire
+
+report_holder_result() {
+  local host=$1 holder_phase=$2 holder_status=$3 error_file=$4
+  local remote_release=unconfirmed
+  if grep -Fxq VM0_RUNNER_LIFECYCLE_LOCK_RELEASED "$error_file"; then
+    remote_release=confirmed
+  fi
+  printf 'Runner lifecycle lock: namespace=%s host=%s phase=%s local_exit=%s remote_release=%s\n' \
+    "$JOB_REF" "$host" "$holder_phase" "$holder_status" "$remote_release" >&2
+  # Sanitize before truncating so a cut cannot expose the suffix of a secret.
+  cloudflare_ssh_sanitize_diagnostics "$error_file" | tail -c 8192 | sed 's/^/  /' >&2
+  [ "$holder_status" -eq 0 ] && [ "$remote_release" = confirmed ]
+}
 
 close_fd() {
   local fd=$1
@@ -133,19 +150,19 @@ release_locks() {
   fi
   locks_released=true
 
-  local index status=0
+  local index holder_status status=0
   # Heartbeat writers hold the release descriptors, so the remote holders only
   # see end-of-input once every writer is gone.
   stop_heartbeats
   for ((index = ${#lock_fds[@]} - 1; index >= 0; index--)); do
+    printf 'Requesting runner lifecycle lock release: namespace=%s host=%s phase=%s\n' \
+      "$JOB_REF" "${lock_hosts[$index]}" "$phase" >&2
     close_fd "${lock_fds[$index]}"
   done
   for index in "${!lock_pids[@]}"; do
-    if ! wait "${lock_pids[$index]}"; then
-      echo "runner lifecycle lock holder exited unexpectedly on ${lock_hosts[$index]}" >&2
-      if [ -s "${state_dir}/${index}.err" ]; then
-        sed 's/^/  /' "${state_dir}/${index}.err" >&2
-      fi
+    holder_status=0
+    wait "${lock_pids[$index]}" || holder_status=$?
+    if ! report_holder_result "${lock_hosts[$index]}" "$phase" "$holder_status" "${state_dir}/${index}.err"; then
       status=1
     fi
   done
@@ -181,7 +198,32 @@ for host in "${hosts[@]}"; do
 
   lock_path="/var/lock/vm0-runner-lifecycle-${JOB_REF}.lock"
   remote="${METAL_USER}@${host}"
-  remote_command="exec sudo flock --exclusive --timeout ${lock_timeout} ${lock_path} bash -c 'printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED; while IFS= read -r -t ${lease_timeout} _; do :; done'"
+  remote_command="sudo flock --exclusive --timeout ${lock_timeout} ${lock_path} bash -c '
+    printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED
+    while :; do
+      read_status=0
+      IFS= read -r -t ${lease_timeout} _ || read_status=\$?
+      case \$read_status in
+        0) ;;
+        1) printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_INPUT_EOF >&2; exit 0 ;;
+        *)
+          if [ \"\$read_status\" -gt 128 ]; then
+            printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_LEASE_EXPIRED >&2
+          else
+            printf \"VM0_RUNNER_LIFECYCLE_LOCK_READ_ERROR status=%s\\n\" \"\$read_status\" >&2
+          fi
+          exit \"\$read_status\"
+          ;;
+      esac
+    done
+  '
+  holder_status=\$?
+  if [ \"\$holder_status\" -eq 0 ]; then
+    printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_RELEASED >&2
+  else
+    printf \"VM0_RUNNER_LIFECYCLE_LOCK_REMOTE_EXIT status=%s\\n\" \"\$holder_status\" >&2
+  fi
+  exit \"\$holder_status\""
   # The validated host, timeout, and lock path select the remote lock. The
   # command itself is static and receives no untrusted shell fragments.
   # shellcheck disable=SC2029
@@ -216,11 +258,10 @@ for host in "${hosts[@]}"; do
     close_fd "$ready_fd"
     close_fd "$release_fd"
     kill "$ssh_pid" 2>/dev/null || true
-    wait "$ssh_pid" 2>/dev/null || true
-    echo "failed to acquire runner lifecycle lock on ${host}" >&2
-    if [ -s "$error_file" ]; then
-      sed 's/^/  /' "$error_file" >&2
-    fi
+    holder_status=0
+    wait "$ssh_pid" 2>/dev/null || holder_status=$?
+    echo "failed to acquire runner lifecycle lock on ${host}: waiter_exit=${completed_status}" >&2
+    report_holder_result "$host" acquire "$holder_status" "$error_file" || true
     exit 1
   fi
 
@@ -229,11 +270,10 @@ for host in "${hosts[@]}"; do
   if [ "$marker" != "VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED" ] || ! kill -0 "$ssh_pid" 2>/dev/null; then
     close_fd "$release_fd"
     kill "$ssh_pid" 2>/dev/null || true
-    wait "$ssh_pid" 2>/dev/null || true
+    holder_status=0
+    wait "$ssh_pid" 2>/dev/null || holder_status=$?
     echo "runner lifecycle lock on ${host} returned an invalid acquisition marker" >&2
-    if [ -s "$error_file" ]; then
-      sed 's/^/  /' "$error_file" >&2
-    fi
+    report_holder_result "$host" acquire "$holder_status" "$error_file" || true
     exit 1
   fi
 
@@ -260,6 +300,7 @@ for host in "${hosts[@]}"; do
   echo "Acquired runner lifecycle lock for ${JOB_REF} on ${host}"
 done
 
+phase=running
 (
   for inherited_fd in "${lock_fds[@]}"; do
     close_fd "$inherited_fd"
@@ -277,6 +318,7 @@ set -e
 if [ "$completed_pid" = "$command_pid" ]; then
   command_pid=""
   command_status=$completed_status
+  phase=release
 else
   lost_index=""
   lost_host="an unidentified host"
@@ -287,8 +329,8 @@ else
     fi
   done
   echo "runner lifecycle lock on ${lost_host} was lost while the protected command was running" >&2
-  if [ -n "$lost_index" ] && [ -s "${state_dir}/${lost_index}.err" ]; then
-    sed 's/^/  /' "${state_dir}/${lost_index}.err" >&2
+  if [ -n "$lost_index" ]; then
+    report_holder_result "$lost_host" running "$completed_status" "${state_dir}/${lost_index}.err" || true
   fi
   terminate_command
   command_status=1

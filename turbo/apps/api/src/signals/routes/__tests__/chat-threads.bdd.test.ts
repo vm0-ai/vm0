@@ -4508,12 +4508,17 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       code: "drive-reconnected-again",
       state: stateFromAuthorizationUrl(secondReconnectStart.authorizationUrl),
     });
+    context.mocks.axiomLogging.warn.mockClear();
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
     expectDriveStatuses(artifacts, {
       status: "disconnected",
       recovery: { action: "reconnect", connectionId: connected.id },
     });
     expect(unknownSubtypeRefresh.refreshBodies).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Connector credential refresh failed",
+      expect.objectContaining({ connectorSlug: "google-drive" }),
+    );
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
     ).resolves.toMatchObject({

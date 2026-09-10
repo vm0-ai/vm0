@@ -13,6 +13,8 @@ import {
   type ComputerUseLifecycleTimers,
 } from "./computer-use-lifecycle-deadline";
 import type { DesktopAuthState } from "./desktop-bridge";
+import type { DesktopAuthRefreshEvent } from "./desktop-auth-session";
+import { latestWinsSingleFlight } from "./desktop-async-control";
 import { resolveComputerUseStartupGate } from "./computer-use-startup-gate";
 import {
   OFFLINE_COMPUTER_USE_HOST_STATE,
@@ -44,7 +46,7 @@ interface PermissionRecovery {
 
 /** The `ComputerUseHostRuntime` surface the controller drives. */
 interface ComputerUseRuntimeLike {
-  start(): Promise<void>;
+  start(options?: { readonly userInitiated?: boolean }): Promise<void>;
   stop(): Promise<void>;
   drainAndStop(): Promise<void>;
   pauseAndDrainCommands(): Promise<() => void>;
@@ -62,7 +64,9 @@ interface ComputerUseRuntimeControllerOptions {
    * exists. The production implementation wires all Electron/session
    * dependencies into a `ComputerUseHostRuntime`.
    */
-  readonly createRuntime: () => ComputerUseRuntimeLike;
+  readonly createRuntime: (options: {
+    readonly refreshRegistrationAuth: boolean;
+  }) => ComputerUseRuntimeLike;
   readonly refreshPermissions: () => Promise<ComputerUsePermissionState>;
   readonly getAuthState: () => Promise<DesktopAuthState>;
   readonly getAuthAuthority?: () => object | null;
@@ -86,7 +90,7 @@ interface ComputerUseRuntimeControllerOptions {
  * stop-and-detach paths and the ad-hoc quit flags into one owner.
  */
 export class ComputerUseRuntimeController {
-  private readonly createRuntime: () => ComputerUseRuntimeLike;
+  private readonly createRuntime: ComputerUseRuntimeControllerOptions["createRuntime"];
   private readonly refreshPermissions: () => Promise<ComputerUsePermissionState>;
   private readonly getAuthState: () => Promise<DesktopAuthState>;
   private readonly setHostRuntimeOnline: (online: boolean) => void;
@@ -119,6 +123,14 @@ export class ComputerUseRuntimeController {
   private readonly preparePlugins: () => Promise<void>;
   private pluginStartupIntent: number | null = null;
   private permissionRefresh: PermissionRefresh | null = null;
+  private backgroundAuthRefresh: {
+    readonly signal: AbortSignal;
+    authority: object | null;
+    refreshed: boolean;
+  } | null = null;
+  private readonly reconcileAuthRecovery = latestWinsSingleFlight(() =>
+    this.recoverAfterAuthRefresh(),
+  );
 
   constructor(private readonly options: ComputerUseRuntimeControllerOptions) {
     this.getPluginCapabilities = options.getPluginCapabilities ?? (() => []);
@@ -152,6 +164,79 @@ export class ComputerUseRuntimeController {
 
   pluginsMayRun(): boolean {
     return this.isRuntimeOnline() || this.pluginStartupIntent === this.intent;
+  }
+
+  /** Auth refresh owns fresh authority; the controller owns the user's online intent. */
+  handleBackgroundAuthRefresh(event: DesktopAuthRefreshEvent): void {
+    if (this.quitStopStarted || event.signal.aborted) return;
+    if (event.phase === "started") {
+      this.backgroundAuthRefresh = {
+        signal: event.signal,
+        authority: null,
+        refreshed: false,
+      };
+      return;
+    }
+    const refresh = this.backgroundAuthRefresh;
+    if (refresh?.signal !== event.signal) return;
+    if (event.phase === "failed" || event.identity === "changed") {
+      // A changed identity must not inherit online intent through a later CUA grant.
+      this.runningRequested = false;
+      this.backgroundAuthRefresh = null;
+      return;
+    }
+    refresh.authority = this.options.getAuthAuthority?.() ?? null;
+    refresh.refreshed = event.identity === "same";
+    this.reconcileAuthRecovery();
+  }
+
+  private async recoverAfterAuthRefresh(): Promise<void> {
+    const refresh = this.backgroundAuthRefresh;
+    if (!refresh?.authority) return;
+    const current = () =>
+      this.backgroundAuthRefresh === refresh &&
+      !refresh.signal.aborted &&
+      refresh.authority === this.options.getAuthAuthority?.();
+    // Completion is synchronous. Let auth/change subscribers enqueue their
+    // cleanup before observing its owner; auth never awaits this recovery.
+    await Promise.resolve();
+    let intent = this.intent;
+    try {
+      await withComputerUseDeadline(
+        this.stopping,
+        this.transitionTimeoutMs,
+        this.lifecycleTimers,
+      );
+      await withComputerUseDeadline(
+        this.transitionTail,
+        this.transitionTimeoutMs,
+        this.lifecycleTimers,
+      );
+      if (
+        !current() ||
+        !this.runningRequested ||
+        this.manualStopRequested ||
+        this.quitStopStarted ||
+        this.runtime?.getState().status === "error"
+      )
+        return;
+      intent = this.intent;
+      await this.start({ signal: refresh.signal });
+      if (current() && intent === this.intent && this.isRuntimeOnline())
+        this.backgroundAuthRefresh = null;
+    } catch {
+      if (
+        !current() ||
+        intent !== this.intent ||
+        this.manualStopRequested ||
+        this.quitStopStarted
+      )
+        return;
+      this.backgroundAuthRefresh = null;
+      this.nativeError =
+        "Authentication recovered, but Computer Use could not restart. Retry after cleanup.";
+      this.onChange();
+    }
   }
 
   /** Read-only refreshes share one episode under this lifecycle's current intent.
@@ -393,7 +478,12 @@ export class ComputerUseRuntimeController {
       !this.nativeError &&
       !this.driver?.getState().error
     ) {
-      if (this.runtime) await this.transitionDriver(this.requestedDriver);
+      if (
+        this.backgroundAuthRefresh &&
+        !this.backgroundAuthRefresh.signal.aborted
+      )
+        this.reconcileAuthRecovery();
+      else if (this.runtime) await this.transitionDriver(this.requestedDriver);
       else await this.start();
     }
     this.onChange();
@@ -410,6 +500,8 @@ export class ComputerUseRuntimeController {
       readonly signal?: AbortSignal;
     } = {},
   ): Promise<void> {
+    if (this.backgroundAuthRefresh?.signal.aborted)
+      this.backgroundAuthRefresh = null;
     if (
       this.quitStopStarted ||
       ((this.nativeError !== null || this.driver?.getState().error) &&
@@ -420,6 +512,10 @@ export class ComputerUseRuntimeController {
     options.signal?.throwIfAborted();
     this.runningRequested = true;
     if (options.userInitiated) {
+      // A new explicit Start gets its own auth budget. A pending refresh still
+      // owns the completion that will finish Start after credentials arrive.
+      if (this.backgroundAuthRefresh?.authority)
+        this.backgroundAuthRefresh = null;
       if (this.driver?.getState().error) {
         this.stopping = Promise.all([
           this.stopping,
@@ -439,7 +535,12 @@ export class ComputerUseRuntimeController {
     };
     options.signal?.addEventListener("abort", abort, { once: true });
     const selection = this.selectionRevision;
-    const start = this.startRuntime(intent, selection, this.transitionTail);
+    const start = this.startRuntime(
+      intent,
+      selection,
+      this.transitionTail,
+      options.userInitiated,
+    );
     this.starting = start;
     this.phaseStartedAt = performance.now();
     try {
@@ -464,6 +565,7 @@ export class ComputerUseRuntimeController {
     intent: number,
     selection: number,
     transitions: Promise<void>,
+    userInitiated = false,
   ): Promise<void> {
     await withComputerUseDeadline(
       this.stopping,
@@ -524,8 +626,10 @@ export class ComputerUseRuntimeController {
       !this.nativeBlockReason()
     )
       this.driver?.activate();
-    const runtime = (this.runtime ??= this.createRuntime());
-    await runtime.start();
+    const runtime = (this.runtime ??= this.createRuntime({
+      refreshRegistrationAuth: !this.backgroundAuthRefresh?.refreshed,
+    }));
+    await runtime.start({ userInitiated });
     if (intent !== this.intent || selection !== this.selectionRevision) return;
     this.setHostRuntimeOnline(runtime.getState().status === "online");
   }
@@ -854,6 +958,7 @@ export class ComputerUseRuntimeController {
     reason: ComputerUseNativeShutdownReason = "app_quit",
   ): Promise<void> {
     if (this.quitPromise) return this.quitPromise;
+    this.backgroundAuthRefresh = null;
     this.quitStopStarted = true;
     this.supersede();
     const runtime = this.runtime;

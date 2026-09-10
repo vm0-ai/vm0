@@ -1910,6 +1910,62 @@ mod tests {
     }
 
     #[test]
+    fn failed_turn_completed_classifies_upstream_content_policy_rejection() {
+        const ENVELOPE: &str = r#"{"error":{"message":"Content Exists Risk","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#;
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {"message": ENVELOPE},
+                    "startedAt": 10,
+                    "completedAt": 20,
+                    "durationMs": 1000
+                }
+            }),
+        );
+
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: ENVELOPE.to_string(),
+                failure_reason: Some(FailureReason::SafetyPolicyRefusal),
+            })
+        );
+    }
+
+    #[test]
+    fn failed_turn_completed_keeps_request_format_errors_unclassified() {
+        const ENVELOPE: &str = r#"{"error":{"message":"Invalid Format","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#;
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {"message": ENVELOPE},
+                    "startedAt": 10,
+                    "completedAt": 20,
+                    "durationMs": 1000
+                }
+            }),
+        );
+
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: ENVELOPE.to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
     fn failed_turn_completed_classifies_misalignment_policy_violation() {
         let event = mapped_event(
             "turn/completed",

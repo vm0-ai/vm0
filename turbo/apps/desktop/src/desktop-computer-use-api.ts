@@ -55,7 +55,9 @@ export function createDesktopComputerUseHostRuntime(
       };
     },
     // Share the App session's bearer, refresh and sign-out lifetime.
-    sessionFetch: (input, init) =>
-      auth.getAuthSession().fetchWithSessionAuth(new URL(input), init),
+    sessionFetch: (input, init, requestOptions) =>
+      auth
+        .getAuthSession()
+        .fetchWithSessionAuth(new URL(input), init, requestOptions),
   });
 }

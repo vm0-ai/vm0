@@ -1,6 +1,6 @@
-use std::ffi::OsString;
+use std::ffi::OsStr;
 use std::io;
-use std::os::unix::ffi::OsStringExt;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 use sandbox::SandboxError;
@@ -125,10 +125,9 @@ fn snapshot_drive_bind_target_is_mount_point(path: &Path) -> Result<bool, Sandbo
         absolute_path_without_following_final_symlink(path).map_err(|e| SandboxError::Start {
             message: format!("resolve snapshot drive bind target path: {e}"),
         })?;
-    let mountinfo =
-        std::fs::read_to_string("/proc/self/mountinfo").map_err(|e| SandboxError::Start {
-            message: format!("read /proc/self/mountinfo: {e}"),
-        })?;
+    let mountinfo = std::fs::read("/proc/self/mountinfo").map_err(|e| SandboxError::Start {
+        message: format!("read /proc/self/mountinfo: {e}"),
+    })?;
     Ok(mountinfo_contains_mount_point(&mountinfo, &path))
 }
 
@@ -140,57 +139,10 @@ fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<std:
     }
 }
 
-fn mountinfo_contains_mount_point(mountinfo: &str, path: &Path) -> bool {
-    mountinfo.lines().any(|line| {
-        let Some(encoded_mount_point) = line.split_whitespace().nth(4) else {
-            return false;
-        };
-        decode_mountinfo_path(encoded_mount_point) == path
-    })
-}
-
-fn decode_mountinfo_path(encoded: &str) -> std::path::PathBuf {
-    let bytes = encoded.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let Some(&byte) = bytes.get(i) else {
-            break;
-        };
-        if byte == b'\\' {
-            let escape = (bytes.get(i + 1), bytes.get(i + 2), bytes.get(i + 3));
-            let (Some(&first), Some(&second), Some(&third)) = escape else {
-                decoded.push(byte);
-                i += 1;
-                continue;
-            };
-            if !is_octal_digit(first) || !is_octal_digit(second) || !is_octal_digit(third) {
-                decoded.push(byte);
-                i += 1;
-                continue;
-            }
-
-            let value =
-                ((first - b'0') as u16) * 64 + ((second - b'0') as u16) * 8 + (third - b'0') as u16;
-            if value <= u8::MAX as u16 {
-                decoded.push(value as u8);
-                i += 4;
-            } else {
-                decoded.push(byte);
-                i += 1;
-            }
-        } else {
-            decoded.push(byte);
-            i += 1;
-        }
-    }
-
-    std::path::PathBuf::from(OsString::from_vec(decoded))
-}
-
-fn is_octal_digit(byte: u8) -> bool {
-    (b'0'..=b'7').contains(&byte)
+fn mountinfo_contains_mount_point(mountinfo: &[u8], path: &Path) -> bool {
+    linux_mountinfo::parse(mountinfo)
+        .filter_map(Result::ok)
+        .any(|mount| Path::new(OsStr::from_bytes(&mount.target)) == path)
 }
 
 async fn unmount_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxError> {
@@ -228,7 +180,7 @@ mod tests {
 
     #[test]
     fn mountinfo_contains_exact_snapshot_drive_bind_target() {
-        let mountinfo = "\
+        let mountinfo = b"\
 36 25 0:32 / /tmp/snapshot-work/cow-device-bind rw,relatime - ext4 /dev/nbd0 rw
 37 25 0:33 / /tmp/snapshot-work rw,relatime - ext4 /dev/root rw
 ";
@@ -246,11 +198,50 @@ mod tests {
     #[test]
     fn mountinfo_decodes_escaped_mount_point_path() {
         let mountinfo =
-            r"36 25 0:32 / /tmp/vm0\040snapshot/cow-device-bind rw,relatime - ext4 /dev/nbd0 rw";
+            br"36 25 0:32 / /tmp/vm0\040snapshot/cow-device-bind rw,relatime - ext4 /dev/nbd0 rw";
 
         assert!(mountinfo_contains_mount_point(
             mountinfo,
             std::path::Path::new("/tmp/vm0 snapshot/cow-device-bind"),
+        ));
+    }
+
+    #[test]
+    fn mountinfo_recognizes_complete_paths_with_unicode_whitespace() {
+        for whitespace in ['\u{a0}', '\u{85}', '\u{2003}', '\u{2028}'] {
+            for target in ["/tmp/ascii".to_owned(), format!("/tmp/a{whitespace}b")] {
+                let mountinfo =
+                    format!("36 25 0:32 /root{whitespace}dir {target} rw - ext4 /dev/nbd0 rw");
+
+                assert!(mountinfo_contains_mount_point(
+                    mountinfo.as_bytes(),
+                    Path::new(&target),
+                ));
+                assert!(!mountinfo_contains_mount_point(
+                    mountinfo.as_bytes(),
+                    Path::new("/tmp/a"),
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn mountinfo_preserves_byte_paths_and_skips_malformed_records() {
+        let mountinfo = b"malformed\n\
+36 25 0:32 /root/\xff /tmp/a\xfe rw - ext4 /dev/nbd0 rw\n\
+37 25 0:33 / /tmp/ascii rw - ext4 /dev/nbd1 rw";
+
+        assert!(mountinfo_contains_mount_point(
+            mountinfo,
+            Path::new(OsStr::from_bytes(b"/tmp/a\xfe")),
+        ));
+        assert!(mountinfo_contains_mount_point(
+            mountinfo,
+            Path::new("/tmp/ascii"),
+        ));
+        assert!(!mountinfo_contains_mount_point(
+            mountinfo,
+            Path::new("/tmp/a"),
         ));
     }
 

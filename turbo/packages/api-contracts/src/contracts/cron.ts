@@ -113,6 +113,7 @@ const cronSnapshotChatEventsResponseSchema = z.object({
   skippedIncompleteHeads: z.number().int().nonnegative(),
   skippedFailedHeads: z.number().int().nonnegative(),
   skippedTimedOutHeads: z.number().int().nonnegative(),
+  oldestCandidateAgeMs: z.number().int().nonnegative(),
   scanCursorAdvanced: z.boolean(),
   scanWrapped: z.boolean(),
   duplicateEventIdConflictThreads: z.number().int().nonnegative(),
