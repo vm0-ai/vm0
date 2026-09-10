@@ -208,6 +208,7 @@ function createThinkingSummarySubscription(
     let demandRunId: string | null = null;
     let demandController = createChildAbortController(signal);
     let changed = createDeferredPromise<void>(signal);
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const updateDemand$ = command(({ get, set }) => {
       signal.throwIfAborted();
       const runId = get(runId$);
@@ -220,6 +221,7 @@ function createThinkingSummarySubscription(
       }
       set(requests.resetForRun$, runId);
     });
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const afterEventsChange$ = command(({ set }) => {
       set(updateDemand$);
       return Promise.resolve();
@@ -233,6 +235,7 @@ function createThinkingSummarySubscription(
     set(updateDemand$);
 
     // Bootstrap can replace cached switch state after this thread starts.
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const hydrateDemand$ = command(
       async ({ get, set }, signal: AbortSignal) => {
         await get(initialFeatureSwitchHydration$);

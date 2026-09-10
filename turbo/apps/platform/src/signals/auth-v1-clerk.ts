@@ -78,6 +78,7 @@ export function createAuthV1ClerkSignals() {
   const attach$ = command(
     ({ set }, element: HTMLSpanElement, clerk: Pick<Clerk, "on" | "off">) => {
       const ref$ = onRef(
+        // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
         command(
           ({ get, set }, _element: HTMLSpanElement, signal: AbortSignal) => {
             const routeSignal = AbortSignal.any([signal, get(pageSignal$)]);

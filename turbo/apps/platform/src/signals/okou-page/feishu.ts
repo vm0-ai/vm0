@@ -377,6 +377,7 @@ export const startFeishuSettingsRealtime$ = command(
     signal.throwIfAborted();
     set(internalInstallations$, current);
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onFeishuChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
       const previous = get(internalInstallations$);
       set(reloadFeishuInstallations$);
