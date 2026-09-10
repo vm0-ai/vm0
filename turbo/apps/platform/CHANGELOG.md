@@ -11,6 +11,13 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.882.4](https://github.com/vm0-ai/vm0/compare/app-v0.882.3...app-v0.882.4) (2026-09-10)
+
+
+### Refactoring
+
+* **auth:** remove obsolete Clerk domain plumbing ([#33053](https://github.com/vm0-ai/vm0/issues/33053)) ([baa6e4c](https://github.com/vm0-ai/vm0/commit/baa6e4c1f12b712e6e50dcf13e24e84cc77c8ecd))
+
 ## [0.882.3](https://github.com/vm0-ai/vm0/compare/app-v0.882.2...app-v0.882.3) (2026-09-09)
 
 
