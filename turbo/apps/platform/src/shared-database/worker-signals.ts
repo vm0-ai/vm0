@@ -28,7 +28,11 @@ import {
   setAblyPayloadLoop$,
   setupRealtime$,
 } from "../signals/realtime.ts";
-import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
+import {
+  rootSignal$,
+  rootVersion$,
+  setRootSignal$,
+} from "../signals/root-signal.ts";
 import { logger } from "../signals/log.ts";
 import { settle } from "../signals/utils.ts";
 import { throttleCommand } from "../signals/command-scheduling.ts";
@@ -125,9 +129,8 @@ const executeCatchUpChatEvent$ = command(
   },
 );
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const catchUpChatEventThrottle$ = computed((get) => {
-  get(rootSignal$).throwIfAborted();
+  get(rootVersion$);
   return throttleCommand(
     executeCatchUpChatEvent$,
     CHAT_EVENT_CATCH_UP_THROTTLE_MS,
@@ -144,10 +147,9 @@ interface WorkerChatThreadIndicatorsCache {
   result: Promise<ChatThreadIndicators> | null;
 }
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const workerChatThreadIndicatorsCache$ = computed(
   (get): WorkerChatThreadIndicatorsCache => {
-    get(rootSignal$).throwIfAborted();
+    get(rootVersion$);
     return { source: null, result: null };
   },
 );

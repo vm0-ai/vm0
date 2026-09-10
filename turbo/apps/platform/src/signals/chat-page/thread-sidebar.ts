@@ -1,5 +1,4 @@
 import { createAttachmentPreviewSignals } from "../attachment-resource-url.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import {
   command,
   computed,
@@ -150,11 +149,11 @@ function attachmentResourceReset(
 
 function createCatalogArtifactPreviewSignals(
   artifactCatalog: ArtifactCatalogSignals,
+  internalArtifactPreviewVersion$: State<number>,
   internalArtifactPreviewSignal$: State<AbortSignal>,
 ) {
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const selectedArtifactPreview$ = computed(async (get) => {
-    get(internalArtifactPreviewSignal$);
+    get(internalArtifactPreviewVersion$);
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
     return detail
       ? createAttachmentPreviewSignals(artifactDetailPreview(detail).url)
@@ -170,7 +169,6 @@ function createCatalogArtifactPreviewSignals(
     return preview ? await get(preview.shareUrl$) : null;
   });
 
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const selectedArtifactText$ = computed(async (get): Promise<string> => {
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
     if (!detail) {
@@ -184,7 +182,7 @@ function createCatalogArtifactPreviewSignals(
     if (!resourceUrl) {
       throw new Error("Selected artifact preview is unavailable");
     }
-    return fetchPreviewText(resourceUrl, get(rootSignal$));
+    return fetchPreviewText(resourceUrl);
   });
   const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
     selectedArtifactText$,
@@ -210,6 +208,7 @@ export function createThreadSidebarSignals(
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
   const resetArtifactPreviewSignal$ = resetSignal();
+  const internalArtifactPreviewVersion$ = state(0);
   const internalArtifactPreviewSignal$ = state(ownerSignal);
   const imageCanvas = createZoomableImageCanvasSignals();
   const artifactCatalog = createArtifactCatalogSignals({
@@ -217,6 +216,7 @@ export function createThreadSidebarSignals(
   });
   const preview = createCatalogArtifactPreviewSignals(
     artifactCatalog,
+    internalArtifactPreviewVersion$,
     internalArtifactPreviewSignal$,
   );
 
@@ -235,6 +235,9 @@ export function createThreadSidebarSignals(
       internalArtifactPreviewSignal$,
       set(resetArtifactPreviewSignal$, ownerSignal),
     );
+    set(internalArtifactPreviewVersion$, (version) => {
+      return version + 1;
+    });
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
@@ -249,6 +252,9 @@ export function createThreadSidebarSignals(
       internalArtifactPreviewSignal$,
       set(resetArtifactPreviewSignal$, ownerSignal),
     );
+    set(internalArtifactPreviewVersion$, (version) => {
+      return version + 1;
+    });
     const resourceReset$ = attachmentResourceReset(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);

@@ -114,7 +114,7 @@ await set(throttledCatchUp$, signal);
 - Scheduling state is private to each factory and each Store. Throttled calls
   that share a factory in a Store must use the same lifecycle signal. Create a
   fresh factory at the owning lifecycle boundary when that owner changes, as
-  indicator catch-up does in its `rootSignal$`-dependent computed.
+  indicator catch-up does in its `rootVersion$`-dependent computed.
 - Create wrappers at module scope or in a signal factory, never during React
   render or on every invocation. Return or await their Promises; only detach
   at the existing DOM boundary.

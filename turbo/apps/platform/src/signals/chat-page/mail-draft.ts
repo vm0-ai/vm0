@@ -15,7 +15,6 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { pageSignal$ } from "../page-signal.ts";
 import {
   createCardSignalsRegistry,
   type CardSignalsRegistry,
@@ -100,7 +99,6 @@ function createAttachmentPreviews(
 ): Pick<MailDraftSignals, "attachmentPreviews$" | "setAttachmentScopeRef$"> {
   const attachmentObjectUrls = new Map<string, string>();
   const attachmentScopeActive$ = state(false);
-  let cleanupSignal: AbortSignal | null = null;
   let loadVersion = 0;
   const revokeAttachmentObjectUrls = () => {
     for (const url of attachmentObjectUrls.values()) {
@@ -112,7 +110,6 @@ function createAttachmentPreviews(
     loadVersion += 1;
     revokeAttachmentObjectUrls();
   };
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const attachmentPreviews$ = computed(
     async (get): Promise<MailAttachmentPreviews> => {
       if (!get(attachmentScopeActive$)) {
@@ -120,21 +117,8 @@ function createAttachmentPreviews(
       }
       const currentLoadVersion = ++loadVersion;
       const draftPromise = get(sidebarDraft$);
-      const signal = get(pageSignal$);
       const client = get(apiClient$)(mailContract);
-      signal.throwIfAborted();
-      if (cleanupSignal !== signal) {
-        cleanupSignal?.removeEventListener(
-          "abort",
-          releaseAttachmentObjectUrls,
-        );
-        cleanupSignal = signal;
-        signal.addEventListener("abort", releaseAttachmentObjectUrls, {
-          once: true,
-        });
-      }
       const draft = await draftPromise;
-      signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
         return { attachments: [], inlineImages: [] };
       }
@@ -160,14 +144,12 @@ function createAttachmentPreviews(
                 mailDraftId: descriptor.mailDraftId,
                 partId,
               },
-              fetchOptions: { signal },
             }),
             [200, 404],
           );
           return { partId, response };
         }),
       );
-      signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
         return { attachments: [], inlineImages: [] };
       }
@@ -235,7 +217,6 @@ function createMailDraftResourceSignals(
 ): MailDraftResourceSignals {
   const draftOverride$ = state<MailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const draft$ = computed(async (get): Promise<MailDraft | null> => {
     get(draftReloadVersion$);
     const override = get(draftOverride$);
@@ -245,7 +226,6 @@ function createMailDraftResourceSignals(
     const response = await accept(
       get(apiClient$)(mailContract).getDraft({
         params: { mailDraftId: descriptor.mailDraftId },
-        fetchOptions: { signal: get(pageSignal$) },
       }),
       [200, 404],
     );

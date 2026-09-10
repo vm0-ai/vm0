@@ -17,7 +17,6 @@ import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
-import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
 import {
@@ -226,12 +225,10 @@ function createBrowserFitDomSignals(): BrowserFitDomSignals {
 async function fetchBrowserSession(
   createClient: ApiClientFactory,
   threadId: string,
-  signal: AbortSignal,
 ): Promise<BrowserSession | null> {
   const response = await accept(
     createClient(browserContract).get({
       params: { threadId },
-      fetchOptions: { signal },
     }),
     [200, 404],
   );
@@ -434,16 +431,11 @@ export function createBrowserSessionSignals(
   const reloadVersion$ = state(0);
   const screenshotImageLoad = createImageLoadSignals();
   const sessionOverride$ = state<BrowserSession | null | undefined>(undefined);
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const session$ = computed(async (get): Promise<BrowserSession | null> => {
     get(reloadVersion$);
     const override = get(sessionOverride$);
     return override === undefined
-      ? await fetchBrowserSession(
-          get(apiClient$),
-          descriptor.threadId,
-          get(pageSignal$),
-        )
+      ? await fetchBrowserSession(get(apiClient$), descriptor.threadId)
       : override;
   });
   const reload$ = command(({ set }) => {

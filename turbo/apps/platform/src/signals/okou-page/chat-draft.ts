@@ -20,7 +20,6 @@ import {
   type ImageLoadSignals,
 } from "../image-load.ts";
 import { apiClient$ } from "../api-client.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import type {
@@ -686,17 +685,13 @@ export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
 export function createRestoredAttachment(
   persisted: RestorableAttachment,
 ): ChatAttachment {
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
-    const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
     const resolved = await accept(
       client.fileUrl({
         query: { file_id: persisted.id },
-        fetchOptions: { signal },
       }),
       [200, 404],
-      signal,
     );
     return resolved.status === 404
       ? null

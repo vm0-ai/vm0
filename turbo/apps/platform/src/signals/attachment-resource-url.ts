@@ -8,7 +8,6 @@ import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { hostContract } from "@okouai/api-contracts/contracts/host";
 import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import { accept } from "../lib/accept.ts";
-import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
 import { apiClient$ } from "./api-client.ts";
 
@@ -51,16 +50,13 @@ function withFragment(url: string, fragment: string): string {
 function createArtifactReferencePresignedToken$(
   reference: ArtifactReference,
 ): Computed<Promise<AttachmentPresignedToken | null>> {
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
-    const signal = get(pageSignal$);
     const response = await accept(
       get(apiClient$)(artifactReferencesContract).resolve({
         params: { reference: `${reference.hash}${reference.extension}` },
-        fetchOptions: { signal, cache: "no-store" },
+        fetchOptions: { cache: "no-store" },
       }),
       [200],
-      signal,
     );
     return {
       token: withFragment(response.body.url, reference.fragment),
@@ -74,16 +70,12 @@ function createPrivateHostedPresignedToken$(
   url: string,
   deploymentId: string,
 ): Computed<Promise<AttachmentPresignedToken | null>> {
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
-    const signal = get(pageSignal$);
     const response = await accept(
       get(apiClient$)(hostContract).privatePreview({
         params: { deploymentId },
-        fetchOptions: { signal },
       }),
       [200],
-      signal,
     );
     return {
       token: withFragment(response.body.url, new URL(url).hash),
@@ -96,22 +88,18 @@ function createPrivateHostedPresignedToken$(
 function createWebFilePresignedToken$(
   url: string,
 ): Computed<Promise<AttachmentPresignedToken | null>> {
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const sourceUrl = new URL(url);
     const fileId = sourceUrl.searchParams.get("file_id");
     if (!fileId) {
       throw new Error("Authenticated attachment URL is missing file_id");
     }
-    const signal = get(pageSignal$);
     const client = get(apiClient$)(webFilesContract);
     const response = await accept(
       client.fileUrl({
         query: { file_id: fileId },
-        fetchOptions: { signal },
       }),
       [200],
-      signal,
     );
     return {
       token: response.body.url,

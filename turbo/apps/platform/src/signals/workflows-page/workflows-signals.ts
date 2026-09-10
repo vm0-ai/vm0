@@ -37,7 +37,7 @@ import {
 import { MORNING_BRIEF_OFFICIAL_DEFINITION_NAME } from "@okouai/api-contracts/contracts/morning-brief-preference";
 
 import { accept } from "../../lib/accept.ts";
-import { apiClient$ } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { locale$ } from "../locale.ts";
 import {
@@ -806,45 +806,48 @@ export const allWorkflowAutomationEntries$ = computed(
   },
 );
 
-/** One response owner per workflow and reload generation. */
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-const currentWorkflowDetailResource$ = computed((get) => {
-  get(workflowReloadVersion$);
-  const workflowId = get(currentWorkflowId$);
-  if (!workflowId) {
-    return null;
-  }
-  const client = get(apiClient$)(workflowsDetailContract);
-  const read = async (
-    signal?: AbortSignal,
-  ): Promise<WorkflowDetailResponse | null> => {
-    const result = await accept(
-      client.get({
-        params: { workflowId },
-        fetchOptions: { signal },
-      }),
-      [200, 404],
-    );
-    signal?.throwIfAborted();
-    return result.status === 404 ? null : result.body;
-  };
-  const response$ = state<Promise<WorkflowDetailResponse | null>>(read());
-  const refresh$ = command(async ({ set }, signal: AbortSignal) => {
-    const detail = await read(signal);
-    signal.throwIfAborted();
-    // Publish only authoritative successful reads. Failed/cancelled confirmation
-    // stays in its command loadable while the page retains the last real warning.
-    set(response$, Promise.resolve(detail));
-    return detail;
-  });
-  return { response$, refresh$ };
-});
+interface WorkflowDetailOverride {
+  readonly detail: WorkflowDetailResponse | null;
+  readonly reloadVersion: number;
+  readonly workflowId: string;
+}
+
+const currentWorkflowDetailOverride$ = state<WorkflowDetailOverride | null>(
+  null,
+);
+
+async function readWorkflowDetail(
+  createClient: ApiClientFactory,
+  workflowId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowDetailResponse | null> {
+  const result = await accept(
+    createClient(workflowsDetailContract).get({
+      params: { workflowId },
+      ...(signal ? { fetchOptions: { signal } } : {}),
+    }),
+    [200, 404],
+    signal,
+  );
+  return result.status === 404 ? null : result.body;
+}
 
 /** The workflow detail derived from the active route. */
 export const currentWorkflowDetail$ = computed(
-  async (get): Promise<WorkflowDetailResponse | null> => {
-    const resource = get(currentWorkflowDetailResource$);
-    return resource ? await get(resource.response$) : null;
+  (get): Promise<WorkflowDetailResponse | null> => {
+    const reloadVersion = get(workflowReloadVersion$);
+    const workflowId = get(currentWorkflowId$);
+    if (!workflowId) {
+      return Promise.resolve(null);
+    }
+    const override = get(currentWorkflowDetailOverride$);
+    if (
+      override?.workflowId === workflowId &&
+      override.reloadVersion === reloadVersion
+    ) {
+      return Promise.resolve(override.detail);
+    }
+    return readWorkflowDetail(get(apiClient$), workflowId);
   },
 );
 
@@ -852,8 +855,30 @@ export const currentWorkflowDetail$ = computed(
 export const reloadCurrentWorkflowDetail$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    const resource = get(currentWorkflowDetailResource$);
-    return resource ? await set(resource.refresh$, signal) : null;
+    const workflowId = get(currentWorkflowId$);
+    if (!workflowId) {
+      return null;
+    }
+    const reloadVersion = get(workflowReloadVersion$);
+    const detail = await readWorkflowDetail(
+      get(apiClient$),
+      workflowId,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (
+      get(currentWorkflowId$) === workflowId &&
+      get(workflowReloadVersion$) === reloadVersion
+    ) {
+      // Publish only an authoritative successful read. Failed or cancelled
+      // confirmation retains the last resolved workflow detail.
+      set(currentWorkflowDetailOverride$, {
+        detail,
+        reloadVersion,
+        workflowId,
+      });
+    }
+    return detail;
   },
 );
 

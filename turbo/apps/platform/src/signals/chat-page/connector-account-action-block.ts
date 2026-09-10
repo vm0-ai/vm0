@@ -18,7 +18,6 @@ import type {
   ComposerConnectorSignals,
 } from "../okou-page/connectors.ts";
 import { customConnectors$ } from "../okou-page/settings/custom-connectors.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { withCleanup } from "../utils.ts";
 import {
   chatActionCallbackFromUrl,
@@ -224,7 +223,6 @@ function createConnectorAccountActionSignals(
       };
     },
   );
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const status$ = computed(
     async (get): Promise<ConnectorAccountActionStatus> => {
       get(reload$);
@@ -236,7 +234,6 @@ function createConnectorAccountActionSignals(
         get(apiClient$)(connectorAccountsContract).connection({
           params: { connectionId: descriptor.selection.connectionId },
           query: targetQuery(descriptor.selection),
-          fetchOptions: { signal: get(rootSignal$) },
         }),
         [200, 404],
       );

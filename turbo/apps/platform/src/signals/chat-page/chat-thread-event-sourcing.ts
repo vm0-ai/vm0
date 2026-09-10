@@ -16,7 +16,7 @@ import {
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { rootSignal$ } from "../root-signal.ts";
+import { rootSignal$, rootVersion$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
 import {
   createChildAbortController,
@@ -165,10 +165,9 @@ interface ChatThreadEventSyncBarrier {
   work: Promise<void> | null;
 }
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const chatThreadEventSyncBarrier$ = computed(
   (get): ChatThreadEventSyncBarrier => {
-    get(rootSignal$);
+    get(rootVersion$);
     return { work: null };
   },
 );

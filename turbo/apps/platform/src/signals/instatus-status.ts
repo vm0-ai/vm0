@@ -3,7 +3,6 @@ import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 
 import { localStorageSignals } from "./external/local-storage.ts";
-import { rootSignal$ } from "./root-signal.ts";
 import { isRecord, jsonParseOr, setLoop } from "./utils.ts";
 import { resolvePlatformServiceStatusConfig } from "../lib/platform-host.ts";
 
@@ -84,7 +83,6 @@ function parseDismissedIssueIds(value: string | null): Set<string> {
   );
 }
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const activeInstatusIssues$ = computed(
   async (get): Promise<InstatusIssue[]> => {
     get(refreshVersion$);
@@ -93,14 +91,12 @@ const activeInstatusIssues$ = computed(
       return [];
     }
 
-    const signal = get(rootSignal$);
-    const response = await fetchResource(config.issuesUrl, {}, signal);
+    const response = await fetchResource(config.issuesUrl, {});
     if (!response.ok) {
       throw new Error(`Instatus issues request failed with ${response.status}`);
     }
 
     const result: unknown = await response.json();
-    signal.throwIfAborted();
     return parseIssues(result);
   },
 );
